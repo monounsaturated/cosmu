@@ -1,51 +1,3 @@
-# Global philosophy
-
-The ultimate goal of this product is simple: make money.
-
-This is not a research project for its own sake, and it is not an exercise in building an elegant AI platform disconnected from outcomes. The purpose of the system is to generate trading performance by using LLMs as practical tools for reasoning, adaptation, experimentation, and execution.
-
-The edge of this product is not supposed to come from building the most complex infrastructure, the most academic signal pipeline, or the most rigid architecture. Its edge should come from:
-
-speed of iteration,
-speed of deployment,
-the ability to switch quickly between models, tools, and workflows,
-the ability to test and compare prompts systematically,
-and the ability to learn faster than slower, more rigid trading organizations.
-
-The ambition is to compete with trading firms not by copying their structure, but by exploiting a different advantage: rapidity.
-
-This means the platform should be built to make it easy to:
-
-try new prompts,
-compare prompt versions,
-switch models quickly,
-adopt new tools when they appear,
-discard what does not work,
-keep what performs,
-and continuously improve the system through short feedback loops.
-
-The product should therefore remain:
-
-lean, so it can move quickly,
-modular, so components can be replaced without rebuilding the whole system,
-interoperable, so new models, tools, and future workflows can be plugged in with limited friction,
-observable, so it is always clear what the bot did and why,
-and disciplined enough that iteration creates knowledge instead of chaos.
-
-A core part of the product’s value is not only running bots, but being able to test different prompts and setups, measure which ones work, quantify their behavior, and compare them over time. The system should make it easy to identify what is actually producing useful outcomes and what is not.
-
-In that sense, this is both:
-
-a live trading engine,
-and an iteration engine.
-
-The trading engine exists to act.
-The iteration engine exists to improve what acts.
-
-The platform should not overbuild for hypothetical needs, but it must preserve the right foundations: prompt versioning, model interchangeability, clear run history, structured decisions, execution traceability, and enough stored data to compare outcomes meaningfully.
-
-In short, this product should be built as a lean autonomous trading system designed to make money by iterating faster, adapting faster, and learning faster than more rigid competitors.
-
 # Global Context Document — Lean Autonomous Trading Platform (V1-first, future-ready)
 
 ## 1. Document purpose
@@ -986,3 +938,51 @@ That is the correct balance between:
 3. clarity,
 4. future adaptability,
 5. and disciplined technical execution.
+
+# Global philosophy
+
+The ultimate goal of this product is simple: make money.
+
+This is not a research project for its own sake, and it is not an exercise in building an elegant AI platform disconnected from outcomes. The purpose of the system is to generate trading performance by using LLMs as practical tools for reasoning, adaptation, experimentation, and execution.
+
+The edge of this product is not supposed to come from building the most complex infrastructure, the most academic signal pipeline, or the most rigid architecture. Its edge should come from:
+
+speed of iteration,
+speed of deployment,
+the ability to switch quickly between models, tools, and workflows,
+the ability to test and compare prompts systematically,
+and the ability to learn faster than slower, more rigid trading organizations.
+
+The ambition is to compete with trading firms not by copying their structure, but by exploiting a different advantage: rapidity.
+
+This means the platform should be built to make it easy to:
+
+try new prompts,
+compare prompt versions,
+switch models quickly,
+adopt new tools when they appear,
+discard what does not work,
+keep what performs,
+and continuously improve the system through short feedback loops.
+
+The product should therefore remain:
+
+lean, so it can move quickly,
+modular, so components can be replaced without rebuilding the whole system,
+interoperable, so new models, tools, and future workflows can be plugged in with limited friction,
+observable, so it is always clear what the bot did and why,
+and disciplined enough that iteration creates knowledge instead of chaos.
+
+A core part of the product’s value is not only running bots, but being able to test different prompts and setups, measure which ones work, quantify their behavior, and compare them over time. The system should make it easy to identify what is actually producing useful outcomes and what is not.
+
+In that sense, this is both:
+
+a live trading engine,
+and an iteration engine.
+
+The trading engine exists to act.
+The iteration engine exists to improve what acts.
+
+The platform should not overbuild for hypothetical needs, but it must preserve the right foundations: prompt versioning, model interchangeability, clear run history, structured decisions, execution traceability, and enough stored data to compare outcomes meaningfully.
+
+In short, this product should be built as a lean autonomous trading system designed to make money by iterating faster, adapting faster, and learning faster than more rigid competitors.
