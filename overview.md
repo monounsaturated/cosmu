@@ -32,7 +32,7 @@ The purpose of this document is to ensure the product is built in a way that is:
 
 ## 2. Product in one sentence
 
-This product is a **lean, prompt-driven autonomous spot trading platform** that runs bots on a schedule, lets an LLM make structured portfolio decisions, validates and executes those decisions on Binance, records what happened with clarity, and is designed so it can later support more bots, more providers, more venues, richer workflows, and future learning systems without collapsing into technical debt.
+This product is a **lean, prompt-driven autonomous spot trading platform** that runs bots on a schedule, lets an LLM make structured portfolio decisions, validates and executes those decisions on Binance, records what happened with clarity, and is designed so it can later support more bots, more providers, more venues, richer workflows, and future learning systems without collapsing into technical debt. All decisions and executions are tagged with their asset class from day one, making the historical record comparable and extensible.
 
 ---
 
@@ -91,7 +91,7 @@ The product should therefore remain:
 4. **observable**, so it is always clear what the bot did and why,
 5. and **disciplined enough that iteration creates knowledge instead of chaos.**
 
-A core part of the product’s value is not only running bots, but being able to:
+A core part of the product's value is not only running bots, but being able to:
 
 1. test different prompts and setups,
 2. measure which ones work,
@@ -152,7 +152,7 @@ This project should **not** become:
 3. a fragile one-off bot that must be rebuilt later,
 4. a dashboard-heavy internal tool that neglects the core trading loop,
 5. a prompt experiment with poor execution discipline,
-6. or a “future-proof” system so generalized that it becomes slow and annoying to build.
+6. or a "future-proof" system so generalized that it becomes slow and annoying to build.
 
 ---
 
@@ -187,7 +187,7 @@ but Python should **not** define the main product architecture in V1.
 The exact stack to anchor around is:
 
 1. **TypeScript-first**
-2. **pnpm monorepo**
+2. **pnpm monorepo** — `apps/api` + `apps/web` + `packages/shared`
 3. **Node backend**
 4. **Next.js frontend**
 5. **Supabase Postgres**
@@ -204,6 +204,8 @@ This means:
 4. long-running backend and scheduled execution live on Railway,
 5. the frontend deploys through Vercel,
 6. and the operational build flow should feel natural inside a GitHub-centered workflow.
+
+All internal business types live in `packages/shared` and are imported by both `apps/api` and `apps/web`. Never duplicate type definitions between apps.
 
 These choices are not ideological.
 They are chosen because they support:
@@ -318,7 +320,7 @@ Future readiness should come from:
 3. modularity where it matters,
 4. and disciplined persistence,
 
-not from building tomorrow’s complexity today.
+not from building tomorrow's complexity today.
 
 The anti-future-creep rule can be stated explicitly as:
 
@@ -426,22 +428,22 @@ These decisions are part of the official build direction.
 1. **Binance first**
 2. **Spot only**
 3. Futures are **not planned for a long time**
-4. However, the system should not incur technical debt that makes futures impossible later
-
-This means the code should not assume that “spot-only Binance payloads” are the eternal truth of the product.
+4. However, the system must not incur technical debt that makes futures impossible later
 
 The correct approach is:
 
 1. simple internal concepts,
 2. Binance-specific translation isolated in an adapter,
-3. and enough separation that futures or other venues can be added later without rewriting the core.
+3. and an `asset_class` field recorded on every execution and portfolio snapshot.
+
+Every V1 record will carry `asset_class = 'spot'`. This costs nothing to implement now and avoids a painful migration of the entire historical record later. There is no futures toggle, no futures adapter, and no futures logic anywhere in V1. The field is informational only — its purpose is to keep the historical record meaningful if the system ever expands.
 
 ---
 
 ### 9.2 Provider direction
 
 1. **One provider first**
-2. **Grok direct** is a valid starting assumption
+2. **Grok direct** (xAI API) is the starting assumption
 3. No need to build OpenRouter or multi-provider support immediately
 4. But prompts and model profiles must remain conceptually separate
 
@@ -453,22 +455,22 @@ The architecture should be **single-provider in implementation, provider-ready i
 
 1. **One bot at the beginning**
 2. **One simple core structure**
-3. But it must be **ready to welcome more later**
-4. No watchdog loop in V1
-5. No multi-step workflow in V1
-6. No multi-bot orchestration in V1
+3. But the database schema and core types must support multiple bots from the start
+4. Do not hardcode a single-bot assumption anywhere in the data layer or API
+5. No watchdog loop in V1
+6. No multi-step workflow in V1
+7. No multi-bot orchestration in V1
 
-The app should not hardcode itself into “one eternal bot only,” but it should also not build the multi-bot future before it is needed.
+The app should not hardcode itself into "one eternal bot only," but it should also not build the multi-bot future before it is needed.
 
 ---
 
 ### 9.4 Automation and live usage
 
 1. **Live usage is the priority**
-2. Testnet mode is optional but should exist as a **toggle**
-3. Testnet mode should also exist as a practical integration mode
-4. The system should support **testnet / live distinctions**
-5. Live capability is part of V1 seriousness
+2. Testnet mode should exist as a **toggle** and as a practical integration mode
+3. The system should support **testnet / live distinctions** as fully distinct execution paths
+4. Live capability is part of V1 seriousness
 
 This matters because the system is not meant to remain a purely simulated prototype.
 
@@ -645,6 +647,8 @@ The core should think in concepts such as:
 10. `Execution`
 11. `PortfolioSnapshot`
 
+The Binance adapter translates between `OrderIntent` → Binance payload, and Binance response → `Execution`. Nothing outside the adapter should import Binance-specific types.
+
 This matters because later the system may support:
 
 1. different venues,
@@ -659,7 +663,7 @@ The correct relationship is:
 
 1. the **core depends on internal types**
 2. the **Binance adapter translates to and from Binance**
-3. Binance is an implementation detail of the venue layer, not the whole product’s truth
+3. Binance is an implementation detail of the venue layer, not the whole product's truth
 
 ---
 
@@ -699,7 +703,8 @@ A runtime config defines **how the bot lives operationally**, including:
 2. frequency,
 3. enabled/disabled state,
 4. mode,
-5. relevant execution options.
+5. asset class (default: `spot`),
+6. relevant execution options.
 
 ### 13.6 A run
 
@@ -728,14 +733,15 @@ The actual V1 heartbeat is simple.
 3. system loads active prompt version,
 4. system loads model profile,
 5. system loads runtime config,
-6. system builds compact context,
-7. model returns structured decision,
-8. backend validates the decision,
-9. Binance adapter translates to venue order(s),
-10. execution is attempted,
-11. run is recorded,
-12. UI reflects the latest state,
-13. notifications may be sent for important events.
+6. system fetches current market data via REST (prices, balances, holdings),
+7. system builds compact context,
+8. model returns structured decision (JSON strict via structured output),
+9. backend validates the decision,
+10. Binance adapter translates to venue order(s),
+11. execution is attempted,
+12. run is recorded with full trace,
+13. UI reflects the latest state,
+14. notifications sent to Slack for important events.
 
 That is the product core.
 
@@ -748,6 +754,8 @@ Everything else is extension.
 ### 15.1 Asset class
 
 1. **Spot only**
+2. `asset_class = 'spot'` is recorded on every execution and portfolio snapshot
+3. No futures logic, no futures toggle — the field is for historical record integrity only
 
 ### 15.2 Portfolio structure
 
@@ -775,9 +783,7 @@ The system should support:
 
 1. **market orders**
 2. **limit orders**
-3. **native stop-loss / take-profit-capable structure**, where appropriate
-
-This adds some complexity, but it is acceptable because it aligns with the desired prompt-driven richness.
+3. **native stop-loss / take-profit-capable structure**, where appropriate — translated to native Binance OCO or conditional orders by the adapter
 
 V1 should still avoid turning into a giant execution framework.
 Support only what is actually needed for the intended first strategies.
@@ -787,6 +793,8 @@ Support only what is actually needed for the intended first strategies.
 ## 16. Recommended structured decision format
 
 The model should return a structured object, not vague prose.
+
+**Output format:** JSON strict via structured output / tool use. The model is constrained at the API level to return valid structured JSON. Do not parse prose. Do not rely on regex or heuristic extraction. Add Zod validation on top to double-validate the received schema.
 
 A good V1 decision shape should support something conceptually like:
 
@@ -803,7 +811,7 @@ A good V1 decision shape should support something conceptually like:
    * asset
    * action
    * target allocation or size intent
-   * order preference
+   * order preference (market / limit)
    * optional limit price
    * optional stop loss
    * optional take profit
@@ -813,6 +821,8 @@ A good V1 decision shape should support something conceptually like:
 4. **global rationale**
 
    * concise explanation of portfolio logic
+
+This schema is the contract between the LLM and the backend. It lives in `packages/shared/types/decision.ts`.
 
 This does **not** mean the system should expose raw unstructured thinking as execution truth.
 The model may think broadly, but the backend must consume a strict schema.
@@ -829,21 +839,22 @@ The system may preserve useful historical information in the database, but the m
 
 ### 17.1 Context should include, at minimum
 
-1. wallet state,
+1. wallet state and current balances,
 2. current spot holdings / positions,
-3. selected venue,
-4. bot identity or role context,
-5. active prompt version,
-6. output schema / execution constraints,
-7. compact internal state if useful.
+3. current prices for held and candidate assets (fetched via REST at run time),
+4. selected venue,
+5. bot identity or role context,
+6. active prompt version,
+7. output schema / execution constraints.
 
 ### 17.2 Context should not include by default
 
 1. giant logs,
 2. huge raw histories,
-3. bloated market data dumps,
-4. large speculative memory payloads,
-5. unnecessary JSON walls.
+3. past N decisions (snapshot only in V1),
+4. bloated market data dumps,
+5. large speculative memory payloads,
+6. unnecessary JSON walls.
 
 The context builder must remain disciplined.
 
@@ -861,7 +872,7 @@ Its job is to validate **practical correctness** and transform a structured deci
 That means it should verify things such as:
 
 1. is the asset tradable on Binance spot,
-2. are the order parameters valid,
+2. are the order parameters valid (qty, price precision, lot size),
 3. does the wallet have sufficient funds,
 4. is the requested order type valid,
 5. is the selected mode compatible with execution,
@@ -891,34 +902,21 @@ The correct V1 design is:
 
 This is sufficient to prevent avoidable technical debt while staying lean.
 
-### 19.1 Binance implementation best practices
+### 19.1 Binance implementation — REST only
 
-The Binance integration should follow practical best practices:
+**V1 uses REST exclusively for all market data.** No WebSocket.
 
-1. **WebSocket-first where appropriate**
-2. REST for:
+The bot runs on a schedule. At the moment a run is triggered, all required data is fetched via REST calls. There is no persistent connection to maintain, no reconnection logic to handle, and no in-memory state to keep synchronized between runs. WebSocket would add meaningful operational complexity — reconnection, state drift, fallback logic — with no benefit at the run frequencies this bot operates at.
 
-   * bootstrap,
-   * fallback,
-   * reconciliation,
-   * and resync
-3. light caching for:
+REST behavior:
 
-   * symbol metadata,
-   * balances,
-   * recent prices if needed,
-   * trading constraints,
-   * exchange metadata
-4. robust handling of:
+1. prices, balances, and holdings fetched fresh at the start of each run,
+2. symbol metadata (tick sizes, lot sizes, tradable pairs) cached lightly in-process and refreshed periodically — not per run,
+3. exchange info (rate limits, precision rules) cached similarly,
+4. rate-limit awareness required — the adapter must respect Binance REST rate limits and handle 429 responses gracefully with backoff,
+5. raw venue responses stored on every execution for audit and debugging.
 
-   * API failures,
-   * resync cases,
-   * partial state uncertainty,
-   * and rate-limit awareness
-5. persistence of raw venue responses for audit and debugging
-
-The point is not to build a giant market-data subsystem.
-The point is to build a robust enough Binance integration for a real autonomous loop.
+**Future upgrade path:** if run frequency drops well below 1 minute or real-time orderbook depth becomes strategically necessary, WebSocket can be added as a new adapter layer without changing anything outside the Binance adapter. This is not a V1 concern.
 
 ---
 
@@ -926,15 +924,15 @@ The point is to build a robust enough Binance integration for a real autonomous 
 
 These modes must be treated as distinct.
 
-### 20.2 Testnet mode
+### 20.1 Testnet mode
 
 Testnet mode means:
 
-1. orders are sent to an exchange test environment,
-2. integration behavior is exercised,
+1. orders are sent to the Binance testnet environment,
+2. integration behavior is fully exercised,
 3. but real funds are not used.
 
-### 20.3 Live mode
+### 20.2 Live mode
 
 Live mode means:
 
@@ -949,7 +947,7 @@ For V1, the system should support:
 1. **testnet/live toggle** as product functionality,
 2. and a practical **testnet/live environment distinction** at the exchange integration layer.
 
-The initial implementation may expose testnet/live via environment configuration first, and potentially later via dashboard controls.
+The initial implementation may expose testnet/live via environment configuration first (`BINANCE_MODE=testnet|live`), and potentially later via dashboard controls.
 
 ---
 
@@ -966,22 +964,16 @@ Its job is to:
 
 ### 21.1 Default V1 frequency decision
 
-Because frequency was intentionally left undecided, the recommended V1 assumption is:
-
 1. **default to 15 minutes**
-2. support configurable values such as:
+2. support configurable values:
 
+   * 1 minute
    * 5 minutes
    * 15 minutes
    * 30 minutes
    * 60 minutes
 
-This gives a strong balance between:
-
-1. iteration speed,
-2. operational visibility,
-3. live usefulness,
-4. and avoiding unnecessary churn too early.
+Running at 1 minute is supported and viable. The market data strategy is REST-based and stateless per run, so there is no architectural constraint preventing high-frequency scheduling. The practical tradeoffs are LLM cost and Binance rate limit consumption, which the operator manages through prompt design and asset scope — not through architectural changes.
 
 Refresh frequency belongs in runtime config, not in prompt text and not hardcoded into the scheduler.
 
@@ -1064,9 +1056,10 @@ The runtime config should include at least:
 1. enabled / disabled,
 2. venue,
 3. refresh frequency,
-4. mode,
-5. relevant execution toggles,
-6. possibly future optional flags.
+4. mode (testnet / live),
+5. asset class (default: `spot`),
+6. relevant execution toggles,
+7. possibly future optional flags.
 
 This keeps prompt reasoning and operational behavior properly separated.
 
@@ -1116,11 +1109,11 @@ A lean but strong V1 schema should include at least:
 2. **prompt_versions**
 3. **model_profiles**
 4. **bots**
-5. **bot_runtime_configs**
+5. **bot_runtime_configs** — includes `asset_class` field (default: `'spot'`)
 6. **runs**
 7. **decisions**
-8. **executions**
-9. **portfolio_snapshots**
+8. **executions** — includes `asset_class` field
+9. **portfolio_snapshots** — includes `asset_class` field
 
 That is already enough to support:
 
@@ -1134,7 +1127,7 @@ That is already enough to support:
 
 ## 26. What should be stored per run
 
-The recommended “lean but serious” run record should preserve:
+The recommended "lean but serious" run record should preserve:
 
 1. bot identity
 2. runtime config used
@@ -1145,7 +1138,7 @@ The recommended “lean but serious” run record should preserve:
 7. parsed structured decision
 8. backend validation result
 9. order intent(s)
-10. exchange submission/result
+10. exchange submission/result (including raw venue response)
 11. portfolio snapshot before run
 12. portfolio snapshot after run
 13. error state if any
@@ -1167,19 +1160,15 @@ The system must track execution economics properly.
 
 This is not optional, because otherwise the platform may falsely classify a strategy as profitable.
 
-The execution layer should track, as accurately as possible:
+V1 uses simplified fee tracking: fee amount and fee asset are stored per execution. Aggregation by trade, run, and bot is deferred to a later phase, but the raw data is preserved from day one so that aggregation can be added without backfilling.
+
+The execution layer should track:
 
 1. **fees per fill**
 2. **fee asset**
-3. **gross PnL**
-4. **net PnL**
+3. **gross PnL** (from portfolio snapshots)
+4. **net PnL** (approximated from gross minus recorded fees)
 5. **slippage**, where reasonably possible
-6. fee aggregation by:
-
-   * execution,
-   * trade,
-   * run,
-   * bot
 
 This matters because a strategy that appears profitable before costs may be weak or negative after fees and slippage.
 
@@ -1237,7 +1226,7 @@ Examples of future modules that should fit this pattern include:
 
 This does **not** mean these should be fully implemented in V1.
 
-It means the product should avoid being structured in a way that makes them awkward or destructive later.
+It means the product should avoid being structured in a way that makes them awkward or destructive later. Future-oriented modules should also be easy to remove later without breaking the core — the platform should support clean reversibility, not only extensibility.
 
 ---
 
@@ -1253,6 +1242,10 @@ The most important forms of technical debt to avoid are:
 6. **scheduler logic mixed with strategy logic**
 7. **a database model too weak to support comparison**
 8. **UI logic becoming the place where core business rules live**
+9. **raw Binance payloads used as internal types**
+10. **fee data discarded at execution time**
+11. **run records missing raw LLM output or raw venue response**
+12. **bot ID hardcoded anywhere in the data layer**
 
 These are the debts most likely to make the project painful later.
 
@@ -1287,26 +1280,20 @@ It allows the operator to inspect the system without constantly rerunning everyt
 
 ## 32. Notifications
 
-Notifications should exist as a practical part of the system, even if they begin very simply.
+Notifications should exist as a practical part of the system from V1, but must stay simple.
 
-Possible channels include:
+**V1 channel: Slack only.** One webhook, configured via environment variable (`SLACK_WEBHOOK_URL`). Telegram, Discord, and other channels are possible future additions but are not a priority and must not be built in V1.
 
-1. Slack,
-2. Telegram,
-3. or equivalent lightweight notification destinations.
-
-Important notification types may include:
+Important notification types for V1:
 
 1. trade opened,
 2. trade closed,
-3. run success,
-4. run failure,
-5. critical errors,
-6. PnL summaries,
-7. bot status summaries.
+3. run failure or critical error,
+4. bot enabled/disabled.
 
-This does not need to become a giant V1 subsystem.
-But notifications should be recognized as part of the practical operating framework.
+PnL summaries and richer notification types are deferred to Phase 1.5.
+
+Notifications must not block the run pipeline. Fire-and-forget with error logging.
 
 ---
 
@@ -1339,7 +1326,7 @@ The dashboard should allow the operator to view:
 3. refresh frequency
 4. active prompt version
 5. active model profile
-6. mode
+6. mode (testnet / live)
 7. last run status
 8. latest decision summary
 9. latest orders / executions
@@ -1347,6 +1334,8 @@ The dashboard should allow the operator to view:
 11. recent PnL / portfolio state
 12. logs / recent errors
 13. prompt version history
+
+**Priority order for V1 UI:** portfolio view and PnL first, then run history, then bot config, then prompt management, then logs.
 
 ---
 
@@ -1374,7 +1363,7 @@ The key principle is:
 
 To protect speed and maintain clarity, the following should remain out of scope initially:
 
-1. futures trading,
+1. futures trading (the `asset_class` field is stored but no futures logic exists),
 2. real multi-venue support,
 3. multi-bot orchestration,
 4. watchdog / review loop,
@@ -1387,7 +1376,9 @@ To protect speed and maintain clarity, the following should remain out of scope 
 11. automated strategy generation,
 12. large-scale ML infrastructure,
 13. enterprise auth/permissions complexity,
-14. consumer-grade product polish.
+14. consumer-grade product polish,
+15. Telegram, Discord, or other notification channels (Slack only),
+16. WebSocket market data (REST only).
 
 These are future possibilities, not V1 requirements.
 
@@ -1400,7 +1391,7 @@ The following are legitimate future possibilities, but should remain future-faci
 1. additional venues such as **Hyperliquid**
 2. additional venues such as **KuCoin**
 3. later expansion into **Polymarket** or other non-standard venues
-4. later expansion into other asset classes
+4. later expansion into futures or other asset classes
 5. later providers such as **OpenAI**
 6. later providers such as **Claude**
 7. future learning loops
@@ -1408,6 +1399,7 @@ The following are legitimate future possibilities, but should remain future-faci
 9. future strategy generation
 10. community indicators / TradingView-style integrations later
 11. ML-heavy experiments later
+12. Telegram, Discord, or other notification channels later
 
 These should influence **boundaries**, not **V1 scope**.
 
@@ -1444,43 +1436,27 @@ But none of that should distort V1.
 
 ## 37. Recommended build order
 
-### Phase 0 — Foundation
+**Do not build Phase 0 separately.** The first deliverable is a working end-to-end autonomous loop. Foundation pieces are built as part of that loop, not before it.
+
+### Phase 1 — First real autonomous loop (current target)
 
 Build:
 
-1. pnpm monorepo structure,
-2. shared internal types,
-3. initial database schema,
-4. provider integration,
-5. Binance spot adapter,
-6. scheduler,
-7. run recording system,
-8. dashboard skeleton.
-
-Goal:
-
-> A lean but durable product skeleton.
-
----
-
-### Phase 1 — First real autonomous loop
-
-Build:
-
-1. one bot,
-2. prompt versioning,
-3. model profile support,
-4. runtime config support,
-5. compact context builder,
-6. structured decision schema,
+1. pnpm monorepo with `apps/api`, `apps/web`, `packages/shared`,
+2. shared internal TypeScript types,
+3. Supabase schema,
+4. xAI (Grok) LLM client with structured output + Zod validation,
+5. Binance spot adapter (REST only),
+6. context builder,
 7. backend validator,
-8. order translation and execution,
+8. scheduler (Railway cron),
 9. run / decision / execution persistence,
-10. basic dashboard visibility.
+10. basic Next.js dashboard (portfolio + PnL first),
+11. Slack notifications.
 
 Goal:
 
-> Get one real autonomous bot running clearly.
+> Get one real autonomous bot running clearly end-to-end.
 
 ---
 
@@ -1491,10 +1467,10 @@ Build:
 1. prompt version management from UI,
 2. model switching from UI,
 3. frequency editing,
-4. testnet / live controls,
+4. testnet / live controls from UI,
 5. improved logs and run inspection,
 6. better execution visibility,
-7. simple notifications.
+7. richer Slack notifications (PnL summaries, run summaries).
 
 Goal:
 
@@ -1529,7 +1505,8 @@ Possible later additions:
 6. policy layers,
 7. retrieval,
 8. learning-oriented systems,
-9. advanced strategy comparison.
+9. advanced strategy comparison,
+10. additional notification channels.
 
 Only build these if the core loop proves valuable.
 
@@ -1543,7 +1520,7 @@ Cursor should treat the following as implementation rules:
 2. **Do not create heavy abstractions for future features that are not being implemented yet**
 3. **Do keep boundaries clean where they matter**
 4. **Do separate model decision from execution result**
-5. **Do keep Binance-specific translation isolated**
+5. **Do keep Binance-specific translation isolated in the adapter**
 6. **Do make prompts versioned and immutable once created**
 7. **Do keep runtime config separate from prompt logic**
 8. **Do store enough for auditability and comparison**
@@ -1558,11 +1535,15 @@ Cursor should treat the following as implementation rules:
 17. **Do follow the practical stack assumptions unless there is a strong reason not to**
 18. **Do treat the frontend as an internal admin tool, not a consumer product**
 19. **Do not shape V1 around future features that are not required for the first live loop**
-20. **Do preserve the product’s main edge: iteration speed**
+20. **Do preserve the product's main edge: iteration speed**
 21. **Do keep the backend validator narrow and practical**
 22. **Do keep the DB useful for future replay and comparison**
 23. **Do track fees and execution economics properly**
 24. **Do preserve future hooks without implementing future systems prematurely**
+25. **Do use REST only for all Binance market data — do not introduce WebSocket**
+26. **Do tag every execution and portfolio snapshot with `asset_class = 'spot'` — no futures logic, just the field**
+27. **Do use Slack as the sole notification channel — do not add Telegram or Discord**
+28. **Do never hardcode a single-bot assumption in the data layer**
 
 ---
 
@@ -1575,11 +1556,12 @@ A successful V1 is one where:
 3. it produces structured decisions,
 4. the backend validates correctly,
 5. it executes properly on Binance spot,
-6. the operator can run in test, or live-oriented modes appropriately,
-7. the system records each run clearly,
+6. the operator can run in testnet or live mode appropriately,
+7. the system records each run clearly and completely,
 8. the UI makes the system understandable,
 9. prompt and config iteration are fast,
-10. and the codebase remains lean, modular, and adaptable.
+10. Slack notifications fire on key events,
+11. and the codebase remains lean, modular, and adaptable.
 
 The first success condition is **not** exceptional returns.
 The first success condition is a **real, understandable, extensible autonomous trading loop**.
