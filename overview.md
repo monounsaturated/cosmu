@@ -1,9 +1,3 @@
-Voici la **version refaite et fusionnée**, avec les éléments manquants intégrés proprement, **sans réduire le document**.
-
-Le document ci-dessous est en **anglais**, prêt à être partagé à Cursor.
-
----
-
 # Global Context Document — Lean Autonomous Trading Platform (V1-first, future-ready)
 
 ## 1. Document purpose
