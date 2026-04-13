@@ -553,7 +553,7 @@ export const createModelProfile = async (input: {
   name: string;
   provider: string;
   model: string;
-  settings: Record<string, unknown>;
+  settings: Record<string, JsonValue>;
 }) => {
   const [row] = await sql<{ id: string }[]>`
     insert into model_profiles (name, provider, model, settings)
