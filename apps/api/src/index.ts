@@ -18,7 +18,15 @@ import { runBot } from "./services/run-bot.js";
 
 const app = express();
 
-app.use(cors({ origin: env.WEB_BASE_URL }));
+app.use(
+  cors(
+    env.WEB_BASE_URL
+      ? {
+          origin: env.WEB_BASE_URL
+        }
+      : undefined
+  )
+);
 app.use(express.json());
 
 app.use((request, response, next) => {
@@ -39,6 +47,24 @@ app.get("/health", async (_request, response) => {
   response.json({
     ok: true,
     mode: "runtime"
+  });
+});
+
+app.get("/internal/qa/status", async (_request, response) => {
+  response.json({
+    ok: true,
+    runtime: {
+      port: env.API_PORT,
+      corsOriginMode: env.WEB_BASE_URL ? "strict" : "open"
+    },
+    envReadiness: {
+      database: Boolean(env.DATABASE_URL),
+      apiSecretConfigured: env.API_SECRET_KEY.length >= 32,
+      xaiConfigured: Boolean(env.XAI_API_KEY),
+      binanceConfigured: Boolean(env.BINANCE_API_KEY && env.BINANCE_API_SECRET),
+      slackConfigured: Boolean(env.SLACK_WEBHOOK_URL),
+      webBaseUrlConfigured: Boolean(env.WEB_BASE_URL)
+    }
   });
 });
 
@@ -80,6 +106,20 @@ app.post("/bots/:botId/run", async (request, response, next) => {
 
     const result = await runBot(bot);
     response.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/bots/:botId/setup", async (request, response, next) => {
+  try {
+    const bot = await getBotSetupById(request.params.botId);
+    if (!bot) {
+      response.status(404).json({ error: "Bot not found" });
+      return;
+    }
+
+    response.json(bot);
   } catch (error) {
     next(error);
   }
@@ -160,13 +200,15 @@ app.post("/bots", async (request, response, next) => {
 
 app.patch("/bots/:botId", async (request, response, next) => {
   try {
-    const { promptVersionId, modelProfileId, frequencyMinutes, mode, contextSymbols } = request.body;
+    const { enabled, promptVersionId, modelProfileId, frequencyMinutes, mode, contextSymbols, execution } = request.body;
     await updateBotConfig(request.params.botId, {
+      enabled,
       promptVersionId,
       modelProfileId,
       frequencyMinutes,
       mode,
-      contextSymbols
+      contextSymbols,
+      execution
     });
     response.json({ ok: true });
   } catch (error) {
@@ -181,6 +223,6 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
   });
 });
 
-app.listen(env.API_PORT, () => {
-  console.log(`API listening on http://localhost:${env.API_PORT}`);
+app.listen(env.API_PORT, "0.0.0.0", () => {
+  console.log(`API listening on http://0.0.0.0:${env.API_PORT}`);
 });

@@ -605,11 +605,13 @@ export const createBot = async (input: {
 export const updateBotConfig = async (
   botId: string,
   input: {
+    enabled?: boolean;
     promptVersionId?: string;
     modelProfileId?: string;
     frequencyMinutes?: number;
     mode?: "testnet" | "live";
     contextSymbols?: string[];
+    execution?: RuntimeConfig["execution"];
   }
 ) => {
   if (input.promptVersionId) {
@@ -631,15 +633,13 @@ export const updateBotConfig = async (
   }
 
   const runtimeUpdates: Record<string, unknown> = {};
+  if (input.enabled !== undefined) runtimeUpdates.enabled = input.enabled;
   if (input.frequencyMinutes !== undefined) runtimeUpdates.frequency_minutes = input.frequencyMinutes;
   if (input.mode !== undefined) runtimeUpdates.mode = input.mode;
   if (input.contextSymbols !== undefined) runtimeUpdates.context_symbols = sql.json(input.contextSymbols);
+  if (input.execution !== undefined) runtimeUpdates.execution_config = sql.json(input.execution);
 
   if (Object.keys(runtimeUpdates).length > 0) {
-    const setClauses = Object.entries(runtimeUpdates)
-      .map(([key]) => `${key} = $${key}`)
-      .join(", ");
-
     await sql`
       update bot_runtime_configs
       set ${sql(runtimeUpdates)},
