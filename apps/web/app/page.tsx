@@ -1,5 +1,6 @@
 import { dashboardSchema } from "@cosmu/shared";
 import { BotControls } from "./bot-controls";
+import { DashboardActions } from "./dashboard-actions";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
@@ -51,7 +52,10 @@ export default async function HomePage() {
           <h1>Autonomous Loop Dashboard</h1>
           <p>One bot, one real loop, clear decision and execution traceability.</p>
         </div>
-        <span className="badge">Updated {new Date(dashboard.generatedAt).toLocaleString()}</span>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
+          <span className="badge">Updated {new Date(dashboard.generatedAt).toLocaleString()}</span>
+          <DashboardActions hasNoBots={dashboard.bots.length === 0} />
+        </div>
       </section>
 
       <section className="grid">

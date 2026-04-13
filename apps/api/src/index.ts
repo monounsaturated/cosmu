@@ -1,7 +1,18 @@
 import cors from "cors";
 import express from "express";
 import { env } from "./env.js";
-import { getBotEnabledState, getBotSetupById, getDashboard, getDueBots, toggleBotEnabled } from "./lib/store.js";
+import {
+  createBot,
+  createModelProfile,
+  createPrompt,
+  getBotSetupById,
+  getDashboard,
+  getDueBots,
+  listModelProfiles,
+  listPrompts,
+  toggleBotEnabled,
+  updateBotConfig
+} from "./lib/store.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
 
@@ -96,6 +107,68 @@ app.post("/internal/scheduler/tick", async (_request, response, next) => {
       dueBotCount: dueBots.length,
       results
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/prompts", async (_request, response, next) => {
+  try {
+    response.json(await listPrompts());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/prompts", async (request, response, next) => {
+  try {
+    const { name, slug, initialBody } = request.body;
+    const result = await createPrompt({ name, slug, initialBody });
+    response.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/models", async (_request, response, next) => {
+  try {
+    response.json(await listModelProfiles());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/models", async (request, response, next) => {
+  try {
+    const { name, provider, model, settings } = request.body;
+    const id = await createModelProfile({ name, provider, model, settings });
+    response.json({ id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/bots", async (request, response, next) => {
+  try {
+    const { name, slug, promptVersionId, modelProfileId, runtimeConfig } = request.body;
+    const id = await createBot({ name, slug, promptVersionId, modelProfileId, runtimeConfig });
+    response.json({ id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/bots/:botId", async (request, response, next) => {
+  try {
+    const { promptVersionId, modelProfileId, frequencyMinutes, mode, contextSymbols } = request.body;
+    await updateBotConfig(request.params.botId, {
+      promptVersionId,
+      modelProfileId,
+      frequencyMinutes,
+      mode,
+      contextSymbols
+    });
+    response.json({ ok: true });
   } catch (error) {
     next(error);
   }

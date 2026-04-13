@@ -497,4 +497,156 @@ export const toggleBotEnabled = async (botId: string) => {
   return row ?? null;
 };
 
+export const listPrompts = async () =>
+  sql`
+    select
+      p.id,
+      p.name,
+      p.slug,
+      p.created_at as "createdAt",
+      coalesce(
+        json_agg(
+          json_build_object(
+            'id', pv.id,
+            'version', pv.version,
+            'createdAt', pv.created_at
+          ) order by pv.version desc
+        ) filter (where pv.id is not null),
+        '[]'::json
+      ) as versions
+    from prompts p
+    left join prompt_versions pv on pv.prompt_id = p.id
+    group by p.id, p.name, p.slug, p.created_at
+    order by p.created_at desc
+  `;
+
+export const listModelProfiles = async () =>
+  sql`
+    select
+      id,
+      name,
+      provider,
+      model,
+      settings,
+      created_at as "createdAt"
+    from model_profiles
+    order by created_at desc
+  `;
+
+export const createPrompt = async (input: { name: string; slug: string; initialBody: string }) => {
+  const [prompt] = await sql<{ id: string }[]>`
+    insert into prompts (name, slug)
+    values (${input.name}, ${input.slug})
+    returning id
+  `;
+
+  const [promptVersion] = await sql<{ id: string }[]>`
+    insert into prompt_versions (prompt_id, version, body)
+    values (${prompt.id}, 1, ${input.initialBody})
+    returning id
+  `;
+
+  return { promptId: prompt.id, promptVersionId: promptVersion.id };
+};
+
+export const createModelProfile = async (input: {
+  name: string;
+  provider: string;
+  model: string;
+  settings: Record<string, unknown>;
+}) => {
+  const [row] = await sql<{ id: string }[]>`
+    insert into model_profiles (name, provider, model, settings)
+    values (${input.name}, ${input.provider}, ${input.model}, ${sql.json(input.settings)})
+    returning id
+  `;
+
+  return row.id;
+};
+
+export const createBot = async (input: {
+  name: string;
+  slug: string;
+  promptVersionId: string;
+  modelProfileId: string;
+  runtimeConfig: Omit<RuntimeConfig, "enabled">;
+}) => {
+  const [bot] = await sql<{ id: string }[]>`
+    insert into bots (name, slug, active_prompt_version_id, active_model_profile_id)
+    values (${input.name}, ${input.slug}, ${input.promptVersionId}, ${input.modelProfileId})
+    returning id
+  `;
+
+  await sql`
+    insert into bot_runtime_configs (
+      bot_id,
+      enabled,
+      venue,
+      frequency_minutes,
+      mode,
+      asset_class,
+      execution_config,
+      context_symbols
+    ) values (
+      ${bot.id},
+      false,
+      ${input.runtimeConfig.venue},
+      ${input.runtimeConfig.frequencyMinutes},
+      ${input.runtimeConfig.mode},
+      ${input.runtimeConfig.assetClass},
+      ${sql.json(input.runtimeConfig.execution)},
+      ${sql.json(input.runtimeConfig.contextSymbols)}
+    )
+  `;
+
+  return bot.id;
+};
+
+export const updateBotConfig = async (
+  botId: string,
+  input: {
+    promptVersionId?: string;
+    modelProfileId?: string;
+    frequencyMinutes?: number;
+    mode?: "testnet" | "live";
+    contextSymbols?: string[];
+  }
+) => {
+  if (input.promptVersionId) {
+    await sql`
+      update bots
+      set active_prompt_version_id = ${input.promptVersionId},
+          updated_at = now()
+      where id = ${botId}
+    `;
+  }
+
+  if (input.modelProfileId) {
+    await sql`
+      update bots
+      set active_model_profile_id = ${input.modelProfileId},
+          updated_at = now()
+      where id = ${botId}
+    `;
+  }
+
+  const runtimeUpdates: Record<string, unknown> = {};
+  if (input.frequencyMinutes !== undefined) runtimeUpdates.frequency_minutes = input.frequencyMinutes;
+  if (input.mode !== undefined) runtimeUpdates.mode = input.mode;
+  if (input.contextSymbols !== undefined) runtimeUpdates.context_symbols = sql.json(input.contextSymbols);
+
+  if (Object.keys(runtimeUpdates).length > 0) {
+    const setClauses = Object.entries(runtimeUpdates)
+      .map(([key]) => `${key} = $${key}`)
+      .join(", ");
+
+    await sql`
+      update bot_runtime_configs
+      set ${sql(runtimeUpdates)},
+          updated_at = now()
+      where bot_id = ${botId}
+    `;
+  }
+};
+
 export const assetClass = assetClassSchema.parse("spot");
