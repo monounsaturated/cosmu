@@ -45,7 +45,7 @@ a {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
 }
 
@@ -83,8 +83,105 @@ a {
   background: #132033;
 }
 
+.badge-live { border-color: #b04040; color: #ff8888; background: #2a1216; }
+.badge-success { border-color: #2e6848; color: #6ee7a0; background: #0f2418; }
+.badge-failure { border-color: #6e3838; color: #ff8888; background: #2a1216; }
+.badge-uncertain { border-color: #6e5c38; color: #ffd080; background: #2a2010; }
+.badge-running { border-color: #38506e; color: #80c0ff; background: #10202a; }
+.badge-buy { border-color: #2e6848; color: #6ee7a0; background: #0f2418; }
+.badge-sell { border-color: #6e3838; color: #ff8888; background: #2a1216; }
+
 .stack {
   display: grid;
   gap: 16px;
   margin-top: 16px;
 }
+
+/* Bot card */
+.bot-card h2 { font-size: 20px; margin: 0 0 2px; }
+
+.bot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+.status-active { background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+.status-inactive { background: #555; }
+
+.bot-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.bot-meta { margin-bottom: 12px; }
+.bot-meta p { margin: 4px 0; font-size: 14px; }
+
+.label {
+  color: #7a8eb0;
+  margin-right: 6px;
+}
+
+.error-text { color: #ff8888; }
+
+/* Controls */
+.bot-controls { margin-top: 4px; }
+
+.bot-controls-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #1a6dff;
+  color: #fff;
+  border-color: #1a6dff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #1558cc;
+}
+
+.btn-warn {
+  background: transparent;
+  color: #ff8888;
+  border-color: #6e3838;
+}
+
+.btn-warn:hover:not(:disabled) {
+  background: #2a1216;
+}
+
+.feedback {
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+
+.feedback-success { color: #6ee7a0; }
+.feedback-error { color: #ff8888; }

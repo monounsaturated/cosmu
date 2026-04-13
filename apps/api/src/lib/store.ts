@@ -485,4 +485,16 @@ export const getBotEnabledState = async (botId: string) => {
   return row ?? null;
 };
 
+export const toggleBotEnabled = async (botId: string) => {
+  const [row] = await sql<{ enabled: boolean; name: string }[]>`
+    update bot_runtime_configs
+    set enabled = not enabled,
+        updated_at = now()
+    where bot_id = ${botId}
+    returning enabled, (select name from bots where id = ${botId}) as name
+  `;
+
+  return row ?? null;
+};
+
 export const assetClass = assetClassSchema.parse("spot");

@@ -2,6 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "../..",
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "lib": ["dom", "dom.iterable", "es2022"],
     "jsx": "preserve",
     "allowJs": false,

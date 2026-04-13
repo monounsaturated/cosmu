@@ -73,19 +73,22 @@ const computeAfterSnapshot = (input: {
 export const runBot = async (bot: BotSetup) => {
   await markRunStarted(bot.runtimeConfigId);
 
-  const beforeVenueContext = await loadVenueContext(bot.runtimeConfig, bot.runtimeConfig.contextSymbols);
-  const compactContext = buildCompactContext(bot, beforeVenueContext);
-  const runId = await createRun({
-    botId: bot.id,
-    promptVersionId: bot.promptVersionId,
-    modelProfileId: bot.modelProfileId,
-    runtimeConfig: bot.runtimeConfig,
-    compactContext
-  });
-
-  await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
+  let runId: string | null = null;
 
   try {
+    const beforeVenueContext = await loadVenueContext(bot.runtimeConfig, bot.runtimeConfig.contextSymbols);
+    const compactContext = buildCompactContext(bot, beforeVenueContext);
+
+    runId = await createRun({
+      botId: bot.id,
+      promptVersionId: bot.promptVersionId,
+      modelProfileId: bot.modelProfileId,
+      runtimeConfig: bot.runtimeConfig,
+      compactContext
+    });
+
+    await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
+
     const { rawText, decision } = await getDecisionWithRetry(bot, compactContext);
     const validationResult = await validateDecision({
       decision,
@@ -145,17 +148,18 @@ export const runBot = async (bot: BotSetup) => {
 
     return { runId, status: runStatus, decision };
   } catch (error) {
-    await finishRun({
-      runId,
-      runtimeConfigId: bot.runtimeConfigId,
-      status: "failure",
-      errorState: {
-        message: error instanceof Error ? error.message : "Unknown run error"
-      }
-    });
-    await notifySlack(
-      `Run failure for ${bot.name}: ${error instanceof Error ? error.message : "Unknown run error"}`
-    );
+    const errorMessage = error instanceof Error ? error.message : "Unknown run error";
+
+    if (runId) {
+      await finishRun({
+        runId,
+        runtimeConfigId: bot.runtimeConfigId,
+        status: "failure",
+        errorState: { message: errorMessage }
+      });
+    }
+
+    await notifySlack(`Run failure for ${bot.name}: ${errorMessage}`);
     throw error;
   }
 };
