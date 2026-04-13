@@ -1,17 +1,33 @@
 import { dashboardSchema } from "@cosmu/shared";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
+export const dynamic = "force-dynamic";
 
-const getDashboard = async () => {
-  const response = await fetch(`${apiBaseUrl}/dashboard`, {
-    cache: "no-store"
+const emptyDashboard = () =>
+  dashboardSchema.parse({
+    generatedAt: new Date().toISOString(),
+    bots: [],
+    recentRuns: [],
+    recentExecutions: [],
+    latestSnapshots: [],
+    promptVersions: []
   });
 
-  if (!response.ok) {
-    throw new Error(`Dashboard request failed: ${response.status}`);
-  }
+const getDashboard = async () => {
+  try {
+    const response = await fetch(`${apiBaseUrl}/dashboard`, {
+      cache: "no-store"
+    });
 
-  return dashboardSchema.parse(await response.json());
+    if (!response.ok) {
+      throw new Error(`Dashboard request failed: ${response.status}`);
+    }
+
+    return dashboardSchema.parse(await response.json());
+  } catch (error) {
+    console.error("Dashboard fetch failed, rendering empty state", error);
+    return emptyDashboard();
+  }
 };
 
 export default async function HomePage() {
