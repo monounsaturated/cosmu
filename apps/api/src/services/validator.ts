@@ -1,0 +1,69 @@
+import { validationResultSchema, type RuntimeConfig, type TradingDecision } from "@cosmu/shared";
+import { validateTradability, type VenueContext } from "../adapters/binance.js";
+
+const getBaseAsset = (symbol: string) => symbol.replace(/USDT$/i, "");
+
+type SnapshotBalance = VenueContext["snapshot"]["balances"][number];
+
+export const validateDecision = async (input: {
+  decision: TradingDecision;
+  runtimeConfig: RuntimeConfig;
+  venueContext: VenueContext;
+}) => {
+  const issues: string[] = [];
+  const normalizedOrders = [];
+  const balances = new Map<string, SnapshotBalance>(
+    input.venueContext.snapshot.balances.map((balance: SnapshotBalance) => [
+      balance.asset.toUpperCase(),
+      balance
+    ])
+  );
+
+  if (input.decision.orders.length > input.runtimeConfig.execution.maxOrdersPerRun) {
+    issues.push("Decision exceeds maxOrdersPerRun");
+  }
+
+  for (const order of input.decision.orders.slice(0, input.runtimeConfig.execution.maxOrdersPerRun)) {
+    try {
+      if (order.type === "market" && !input.runtimeConfig.execution.allowMarketOrders) {
+        throw new Error("Runtime config disallows market orders");
+      }
+
+      if (order.type === "limit" && !input.runtimeConfig.execution.allowLimitOrders) {
+        throw new Error("Runtime config disallows limit orders");
+      }
+
+      const normalized = await validateTradability(input.runtimeConfig, order, input.venueContext);
+
+      if (normalized.side === "buy") {
+        const cash = balances.get("USDT");
+        const cashAvailable = (cash?.free ?? 0) - input.runtimeConfig.execution.minCashReserveUsd;
+        const referencePrice =
+          input.venueContext.priceMap[normalized.symbol] ?? normalized.limitPrice ?? null;
+        const requiredUsd = referencePrice ? normalized.quantity * referencePrice : Infinity;
+
+        if (requiredUsd > cashAvailable) {
+          throw new Error(`Insufficient USDT for ${normalized.symbol}`);
+        }
+      }
+
+      if (normalized.side === "sell") {
+        const baseAsset = getBaseAsset(normalized.symbol);
+        const balance = balances.get(baseAsset);
+        if (!balance || balance.free < normalized.quantity) {
+          throw new Error(`Insufficient ${baseAsset} balance to sell ${normalized.symbol}`);
+        }
+      }
+
+      normalizedOrders.push(normalized);
+    } catch (error) {
+      issues.push(error instanceof Error ? error.message : "Unknown validation error");
+    }
+  }
+
+  return validationResultSchema.parse({
+    accepted: issues.length === 0,
+    issues,
+    normalizedOrders
+  });
+};
