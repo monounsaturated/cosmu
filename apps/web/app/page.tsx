@@ -2,11 +2,6 @@ import { dashboardSchema } from "@cosmu/shared";
 import { BotControls } from "./bot-controls";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
-const apiSecretKey = process.env.API_SECRET_KEY;
-
-if (!apiSecretKey) {
-  throw new Error("API_SECRET_KEY is required");
-}
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +17,11 @@ const emptyDashboard = () =>
 
 const getDashboard = async () => {
   try {
+    const apiSecretKey = process.env.API_SECRET_KEY;
+    if (!apiSecretKey) {
+      throw new Error("API_SECRET_KEY is required");
+    }
+
     const response = await fetch(`${apiBaseUrl}/dashboard`, {
       cache: "no-store",
       headers: {

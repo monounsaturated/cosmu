@@ -1,17 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
-const apiSecretKey = process.env.API_SECRET_KEY;
-
-if (!apiSecretKey) {
-  throw new Error("API_SECRET_KEY is required");
-}
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { botId: string } }
-) {
+export async function POST(_request: Request, { params }: { params: { botId: string } }) {
   try {
+    const apiSecretKey = process.env.API_SECRET_KEY;
+    if (!apiSecretKey) {
+      return NextResponse.json({ error: "API_SECRET_KEY is required" }, { status: 500 });
+    }
+
     const res = await fetch(`${apiBaseUrl}/bots/${params.botId}/run`, {
       method: "POST",
       headers: {
