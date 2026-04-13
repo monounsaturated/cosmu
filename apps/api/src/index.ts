@@ -6,7 +6,7 @@ import { runBot } from "./services/run-bot.js";
 
 const app = express();
 
-app.use(cors());
+app.use(cors({ origin: env.WEB_BASE_URL }));
 app.use(express.json());
 
 app.get("/health", async (_request, response) => {
