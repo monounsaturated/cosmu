@@ -1,0 +1,4 @@
+{
+  "installCommand": "cd ../.. && pnpm install",
+  "buildCommand": "cd ../.. && pnpm --filter @cosmu/shared build && pnpm --filter @cosmu/web build"
+}
