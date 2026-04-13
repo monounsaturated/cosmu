@@ -10,6 +10,20 @@ const app = express();
 app.use(cors({ origin: env.WEB_BASE_URL }));
 app.use(express.json());
 
+app.use((request, response, next) => {
+  if (request.path === "/health") {
+    return next();
+  }
+
+  const apiKey = request.headers["x-api-key"];
+  if (apiKey !== env.API_SECRET_KEY) {
+    response.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  next();
+});
+
 app.get("/health", async (_request, response) => {
   response.json({
     ok: true,

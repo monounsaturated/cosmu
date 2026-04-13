@@ -9,7 +9,8 @@ const envSchema = z.object({
   XAI_API_KEY: z.string().min(1, "XAI_API_KEY is required"),
   BINANCE_API_KEY: z.string().min(1, "BINANCE_API_KEY is required"),
   BINANCE_API_SECRET: z.string().min(1, "BINANCE_API_SECRET is required"),
-  SLACK_WEBHOOK_URL: z.string().url().optional()
+  SLACK_WEBHOOK_URL: z.string().url().optional(),
+  API_SECRET_KEY: z.string().min(32, "API_SECRET_KEY must be at least 32 characters")
 });
 
 const parsedEnv = envSchema.parse(process.env);

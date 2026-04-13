@@ -2,6 +2,12 @@ import { dashboardSchema } from "@cosmu/shared";
 import { BotControls } from "./bot-controls";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
+const apiSecretKey = process.env.API_SECRET_KEY;
+
+if (!apiSecretKey) {
+  throw new Error("API_SECRET_KEY is required");
+}
+
 export const dynamic = "force-dynamic";
 
 const emptyDashboard = () =>
@@ -17,7 +23,10 @@ const emptyDashboard = () =>
 const getDashboard = async () => {
   try {
     const response = await fetch(`${apiBaseUrl}/dashboard`, {
-      cache: "no-store"
+      cache: "no-store",
+      headers: {
+        "x-api-key": apiSecretKey
+      }
     });
 
     if (!response.ok) {
@@ -69,7 +78,7 @@ export default async function HomePage() {
                 <p className="error-text"><span className="label">Error</span> {bot.latestError}</p>
               )}
             </div>
-            <BotControls botId={bot.id} enabled={bot.enabled} apiBaseUrl={apiBaseUrl} />
+            <BotControls botId={bot.id} enabled={bot.enabled} />
           </article>
         ))}
       </section>

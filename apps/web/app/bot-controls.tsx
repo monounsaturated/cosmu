@@ -5,10 +5,9 @@ import { useState } from "react";
 type BotControlsProps = {
   botId: string;
   enabled: boolean;
-  apiBaseUrl: string;
 };
 
-export function BotControls({ botId, enabled: initialEnabled, apiBaseUrl }: BotControlsProps) {
+export function BotControls({ botId, enabled: initialEnabled }: BotControlsProps) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [loading, setLoading] = useState<"toggle" | "run" | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -19,7 +18,7 @@ export function BotControls({ botId, enabled: initialEnabled, apiBaseUrl }: BotC
     setLoading("toggle");
     setFeedback(null);
     try {
-      const res = await fetch(`${apiBaseUrl}/bots/${botId}/toggle`, { method: "PATCH" });
+      const res = await fetch(`/api/bots/${botId}/toggle`, { method: "PATCH" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Toggle failed");
       setEnabled(data.enabled);
@@ -36,7 +35,7 @@ export function BotControls({ botId, enabled: initialEnabled, apiBaseUrl }: BotC
     setLoading("run");
     setFeedback(null);
     try {
-      const res = await fetch(`${apiBaseUrl}/bots/${botId}/run`, { method: "POST" });
+      const res = await fetch(`/api/bots/${botId}/run`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Run failed");
       setFeedback({ type: "success", text: `Run ${data.status} (${data.runId.slice(0, 8)})` });
