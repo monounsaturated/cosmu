@@ -31,6 +31,13 @@ Lean V1 autonomous trading loop built from `SYSTEM.md`.
 5. Start the API with `pnpm --filter @cosmu/api dev`.
 6. Start the dashboard with `pnpm --filter @cosmu/web dev`.
 
+## Deploy (Railway now, Vercel later)
+
+- Root deploys are API-first: Railway can build and start from repo root without custom commands using `pnpm build` and `pnpm start`.
+- Root `build` compiles shared + API only, so Railway does not require Next.js web env vars for backend deploys.
+- If you also want web on Railway, create a second service with root directory `apps/web` (its own `build`/`start` scripts already exist).
+- If you later move frontend to Vercel, keep Railway on root/API (or `apps/api`) and point Vercel at `apps/web`.
+
 ## Environment
 
 - `DATABASE_URL`: Supabase Postgres connection string

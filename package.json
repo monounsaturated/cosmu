@@ -3,8 +3,13 @@
   "private": true,
   "packageManager": "pnpm@10.18.0",
   "scripts": {
-    "build": "pnpm -r build",
+    "build": "pnpm --filter @cosmu/shared build && pnpm --filter @cosmu/api build",
+    "build:all": "pnpm -r build",
+    "build:railway": "pnpm --filter @cosmu/shared build && pnpm --filter @cosmu/api build",
     "dev": "pnpm --parallel --filter @cosmu/api --filter @cosmu/web dev",
+    "start": "pnpm --filter @cosmu/api start",
+    "start:api": "pnpm --filter @cosmu/api start",
+    "start:web": "pnpm --filter @cosmu/web start",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
   }
