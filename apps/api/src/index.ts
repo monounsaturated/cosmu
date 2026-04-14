@@ -13,7 +13,9 @@ import {
   getPromptVersionBody,
   listModelProfiles,
   listPrompts,
-  updateBotConfig
+  updateBotConfig,
+  getAllPreprompts,
+  setPrepromptForVenue
 } from "./lib/store.js";
 import { getDashboard } from "./services/dashboard.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
@@ -114,6 +116,39 @@ app.get("/internal/qa/status", async (_request, response) => {
 app.get("/dashboard", async (_request, response, next) => {
   try {
     response.json(await getDashboard());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/settings/preprompt", async (_request, response, next) => {
+  try {
+    response.json({ preprompts: await getAllPreprompts() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/settings/preprompt", async (request, response, next) => {
+  try {
+    const body = request.body as { preprompts?: unknown };
+    const raw = body?.preprompts;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      response.status(400).json({ error: "preprompts object required" });
+      return;
+    }
+    const o = raw as Record<string, unknown>;
+    if (typeof o.binance !== "string" || typeof o["binance-testnet"] !== "string") {
+      response.status(400).json({ error: "preprompts must include string fields binance and binance-testnet" });
+      return;
+    }
+    if (o.binance.length > 8000 || o["binance-testnet"].length > 8000) {
+      response.status(400).json({ error: "Each preprompt may be at most 8000 characters" });
+      return;
+    }
+    await setPrepromptForVenue("binance", o.binance);
+    await setPrepromptForVenue("binance-testnet", o["binance-testnet"]);
+    response.json({ ok: true, preprompts: await getAllPreprompts() });
   } catch (error) {
     next(error);
   }

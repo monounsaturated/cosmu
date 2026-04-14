@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: "◈" },
   { href: "/bots", label: "Bots", icon: "⬡" },
   { href: "/prompts", label: "Prompts", icon: "✎" },
+  { href: "/settings", label: "Settings", icon: "⚙" },
 ];
 
 export function Sidebar() {

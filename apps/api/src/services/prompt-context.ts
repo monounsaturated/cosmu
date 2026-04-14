@@ -1,5 +1,5 @@
 import type { VenueContext } from "../adapters/binance.js";
-import { getBotPrePromptContext, type BotSetup } from "../lib/store.js";
+import { getBotPrePromptContext, getPrepromptForVenue, type BotSetup } from "../lib/store.js";
 
 const fmtUsd = (n: number) =>
   `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -24,10 +24,12 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   });
 
   // ── System message: user strategy + hard constraints ───────────────────────
-  const preamble = [
+  const configuredPreprompt = (await getPrepromptForVenue(runtimeConfig.venue)).trim();
+  const defaultPreamble = [
     "You are the trading decision engine for one autonomous spot bot.",
-    "Return only valid JSON matching the provided schema.",
+    "Return only valid JSON matching the provided schema."
   ].join("\n");
+  const preamble = configuredPreprompt.length > 0 ? configuredPreprompt : defaultPreamble;
 
   const systemPrompt = [
     preamble,
@@ -85,19 +87,15 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   }
   sections.push(walletLines.join("\n"));
 
-  // — Market prices: only held assets + explicitly selected symbols —
-  const ANCHOR_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"];
-
+  // — Market prices: held positions + explicitly authorized pairs only (no anchor list).
   const heldAssetSymbols = new Set(
     snapshot.balances
       .filter((b) => b.asset !== "USDT")
       .map((b) => `${b.asset}USDT`)
   );
   const selectedSet = new Set(runtimeConfig.contextSymbols);
-  // Always include anchor prices so SL/TP choices are grounded in live data.
-  const anchorSet = new Set(ANCHOR_SYMBOLS);
   const relevantPriceEntries = Object.entries(venueContext.priceMap)
-    .filter(([symbol]) => heldAssetSymbols.has(symbol) || selectedSet.has(symbol) || anchorSet.has(symbol))
+    .filter(([symbol]) => heldAssetSymbols.has(symbol) || selectedSet.has(symbol))
     .sort(([a], [b]) => a.localeCompare(b));
 
   if (relevantPriceEntries.length > 0) {
@@ -106,9 +104,8 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
     );
     sections.push(
       [
-        "=== LIVE MARKET PRICES ===",
-        "Use these prices to set stopLossPrice / takeProfitPrice correctly.",
-        "You can look up current prices for any other USDT pair on Binance Spot.",
+        "=== LIVE MARKET PRICES (positions & authorized pairs) ===",
+        "Use these prices to set stopLossPrice / takeProfitPrice for the symbols listed here.",
         ...priceLines
       ].join("\n")
     );

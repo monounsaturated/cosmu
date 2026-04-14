@@ -1324,6 +1324,35 @@ export const createBot = async (input: {
   return bot.id;
 };
 
+const prepromptSettingKey = (venue: RuntimeConfig["venue"]) => `preprompt_${venue}`;
+
+export const getPrepromptForVenue = async (venue: RuntimeConfig["venue"]) => {
+  try {
+    const [row] = await sql<{ value: string }[]>`
+      select value from app_settings where key = ${prepromptSettingKey(venue)} limit 1
+    `;
+    return row?.value ?? "";
+  } catch (error) {
+    console.warn("getPrepromptForVenue failed (run sql/006_app_settings.sql if missing):", String(error));
+    return "";
+  }
+};
+
+export const setPrepromptForVenue = async (venue: RuntimeConfig["venue"], text: string) => {
+  await sql`
+    insert into app_settings (key, value, updated_at)
+    values (${prepromptSettingKey(venue)}, ${text}, now())
+    on conflict (key) do update set
+      value = excluded.value,
+      updated_at = now()
+  `;
+};
+
+export const getAllPreprompts = async () => ({
+  binance: await getPrepromptForVenue("binance"),
+  "binance-testnet": await getPrepromptForVenue("binance-testnet")
+});
+
 export const updateBotConfig = async (
   botId: string,
   input: {
