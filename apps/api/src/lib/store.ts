@@ -1118,8 +1118,7 @@ export const createBot = async (input: {
   parentBotId?: string | null;
   runtimeConfig: Omit<RuntimeConfig, "enabled">;
 }) => {
-  const trimmedName = input.name.trim();
-  const effectiveName = trimmedName.length > 0 ? trimmedName : `Bot ${input.slug}`;
+  const effectiveName = input.name.trim();
 
   const [bot] = await sql<{ id: string }[]>`
     insert into bots (
@@ -1177,10 +1176,10 @@ export const updateBotConfig = async (
     enabled?: boolean;
   }
 ) => {
-  if (input.name) {
+  if (input.name !== undefined) {
     await sql`
       update bots
-      set name = ${input.name}
+      set name = ${input.name.trim()}
       where id = ${botId}
     `;
   }

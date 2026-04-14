@@ -45,7 +45,10 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
           <Link href="/" className="muted hover:opacity-80 transition-opacity" style={{ display: "inline-block", marginBottom: "16px", textDecoration: "none" }}>
             ← Back to Dashboard
           </Link>
-          <h1>Bot #{setup.botNumber} - {setup.name}</h1>
+          <h1>
+            Bot #{setup.botNumber}
+            {setup.name ? ` - ${setup.name}` : ""}
+          </h1>
           <p className="muted">Detailed view of strategy, trades, and execution logs.</p>
         </div>
       </div>

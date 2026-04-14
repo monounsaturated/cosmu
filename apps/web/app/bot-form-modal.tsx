@@ -593,7 +593,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{mode === "create" ? "Create Bot" : "Rename Bot"}</h2>
