@@ -59,7 +59,8 @@ export const listXaiModels = async () => {
   const response = await fetch("https://api.x.ai/v1/models", {
     headers: {
       Authorization: `Bearer ${env.XAI_API_KEY}`
-    }
+    },
+    signal: AbortSignal.timeout(5000)
   });
 
   if (!response.ok) {

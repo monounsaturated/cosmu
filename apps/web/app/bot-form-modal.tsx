@@ -187,8 +187,11 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
 
   // Resilient fetch helper — returns data or null without throwing
   const safeFetch = async <T,>(url: string): Promise<T | null> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
       if (!res.ok) {
         console.warn(`[bot-form] ${url} → ${res.status}`);
         return null;
@@ -197,6 +200,8 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     } catch (e) {
       console.warn(`[bot-form] ${url} failed:`, e);
       return null;
+    } finally {
+      clearTimeout(timeout);
     }
   };
 
