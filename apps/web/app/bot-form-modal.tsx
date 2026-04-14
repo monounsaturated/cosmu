@@ -140,16 +140,17 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   const [error, setError] = useState<string | null>(null);
   const [symbolSearch, setSymbolSearch] = useState("");
   const [symbolsExpanded, setSymbolsExpanded] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState("xai");
   const [formData, setFormData] = useState(buildDefaultState(defaultBotNumber));
 
-  const availableModels = useMemo(
-    () =>
-      models.filter((model) => {
-        const normalizedModel = model.model.toLowerCase();
-        const normalizedName = model.name.toLowerCase();
-        return model.provider.toLowerCase() === "xai" && (normalizedModel.includes("grok") || normalizedName.includes("grok"));
-      }),
+  const providerOptions = useMemo(
+    () => Array.from(new Set(models.map((model) => model.provider))).sort(),
     [models]
+  );
+
+  const availableModels = useMemo(
+    () => models.filter((model) => model.provider === selectedProvider),
+    [models, selectedProvider]
   );
 
   const promptOptions = useMemo(
@@ -179,7 +180,11 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
 
     const load = async () => {
       try {
-        const requests: Promise<Response>[] = [fetch("/api/prompts"), fetch("/api/models"), fetch("/api/venues/binance/symbols")];
+        const requests: Promise<Response>[] = [
+          fetch("/api/prompts"),
+          fetch(`/api/models?provider=${encodeURIComponent(selectedProvider)}`),
+          fetch("/api/venues/binance/symbols")
+        ];
         if (mode === "edit" && botId) {
           requests.push(fetch(`/api/bots/${botId}`));
         }
@@ -222,6 +227,10 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
             contextSymbols: setup.runtimeConfig.contextSymbols,
             execution: setup.runtimeConfig.execution
           });
+          const selectedModel = modelsData.find((model: Model) => model.id === setup.modelProfileId);
+          if (selectedModel?.provider) {
+            setSelectedProvider(selectedModel.provider);
+          }
         } else {
           setFormData((current) => ({
             ...current,
@@ -241,13 +250,11 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     };
 
     load();
-    const refreshInterval = setInterval(load, 20000);
 
     return () => {
       cancelled = true;
-      clearInterval(refreshInterval);
     };
-  }, [botId, mode, defaultBotNumber]);
+  }, [botId, mode, defaultBotNumber, selectedProvider]);
 
   useEffect(() => {
     if (!formData.modelProfileId && availableModels[0]?.id) {
@@ -262,6 +269,10 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   }, [promptOptions, formData.existingPromptVersionId]);
 
   const toggleSymbol = (symbol: string) => {
+    if (formData.symbolScope === "all") {
+      return;
+    }
+
     setFormData((current) => ({
       ...current,
       contextSymbols: current.contextSymbols.includes(symbol)
@@ -309,7 +320,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
         throw new Error("Bot name is required");
       }
       if (!formData.modelProfileId) {
-        throw new Error("Choose a Grok model");
+        throw new Error("Choose a model");
       }
       if (formData.promptStrategy === "new" && !formData.newPromptName.trim()) {
         throw new Error("Prompt name is required");
@@ -488,14 +499,35 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
               <div className="form-grid">
                 <div className="form-row">
                   <label>
-                    Grok model (auto-refreshed)
+                    Provider
+                    <select
+                      value={selectedProvider}
+                      onChange={(event) => {
+                        const provider = event.target.value;
+                        setSelectedProvider(provider);
+                        setFormData((current) => ({ ...current, modelProfileId: "" }));
+                      }}
+                      disabled={mode !== "create"}
+                    >
+                      {providerOptions.map((provider) => (
+                        <option key={provider} value={provider}>
+                          {provider}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="form-row">
+                  <label>
+                    Model
                     <select
                       value={formData.modelProfileId}
                       onChange={(event) => setFormData({ ...formData, modelProfileId: event.target.value })}
                       required
                       disabled={mode !== "create" || availableModels.length === 0}
                     >
-                      <option value="">{availableModels.length === 0 ? "No Grok model available" : "Select a model"}</option>
+                      <option value="">{availableModels.length === 0 ? "No model available" : "Select a model"}</option>
                       {availableModels.map((model) => (
                         <option key={model.id} value={model.id}>
                           {model.name} ({model.provider}/{model.model})
@@ -503,7 +535,6 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                       ))}
                     </select>
                   </label>
-                  <p className="field-help">Fetched from API every 20s while this modal is open.</p>
                 </div>
 
                 <div className="form-row">
@@ -712,29 +743,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
             </div>
 
             <div className="form-section">
-              <h3>Symbol Universe</h3>
-              <div className="segmented-control">
-                <button
-                  type="button"
-                  className={`segmented-option ${formData.symbolScope === "all" ? "segmented-option-active" : ""}`}
-                  onClick={() =>
-                    setFormData({
-                      ...formData,
-                      symbolScope: "all",
-                      contextSymbols: []
-                    })
-                  }
-                >
-                  All Binance France spot symbols
-                </button>
-                <button
-                  type="button"
-                  className={`segmented-option ${formData.symbolScope === "selected" ? "segmented-option-active" : ""}`}
-                  onClick={() => setFormData({ ...formData, symbolScope: "selected" })}
-                >
-                  Pick a few symbols
-                </button>
-              </div>
+              <h3>Authorized Pairs</h3>
 
               <div className="form-row">
                 <label className="checkbox-label">
@@ -762,7 +771,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                 {symbolsExpanded ? "Hide authorized pairs" : "Authorized pairs"}
               </button>
 
-              {formData.symbolScope === "selected" && symbolsExpanded ? (
+              {symbolsExpanded ? (
                 <>
                   <div className="form-row">
                     <label>
@@ -783,6 +792,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                         type="button"
                         className="badge badge-button"
                         onClick={() => toggleSymbol(symbol)}
+                        disabled={formData.symbolScope === "all"}
                       >
                         {symbol} ×
                       </button>
@@ -792,11 +802,15 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
 
                   <div className="symbol-list">
                     {filteredSymbols.map((symbol) => (
-                      <label key={symbol} className="symbol-option">
+                      <label
+                        key={symbol}
+                        className={`symbol-option ${formData.symbolScope === "all" ? "symbol-option-disabled" : ""}`}
+                      >
                         <input
                           type="checkbox"
                           checked={formData.contextSymbols.includes(symbol)}
                           onChange={() => toggleSymbol(symbol)}
+                          disabled={formData.symbolScope === "all"}
                         />
                         <span>{symbol}</span>
                       </label>

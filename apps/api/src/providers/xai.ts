@@ -54,3 +54,26 @@ export const requestDecision = async ({
     decision: tradingDecisionSchema.parse(JSON.parse(rawText))
   };
 };
+
+export const listXaiModels = async () => {
+  const response = await fetch("https://api.x.ai/v1/models", {
+    headers: {
+      Authorization: `Bearer ${env.XAI_API_KEY}`
+    }
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`xAI models list failed: ${response.status} ${text}`);
+  }
+
+  const data = await response.json();
+  const rows: Array<{ id?: unknown; created?: unknown }> = Array.isArray(data?.data) ? data.data : [];
+
+  return rows
+    .map((row) => ({
+      id: String(row.id ?? ""),
+      created: typeof row.created === "number" ? row.created : null
+    }))
+    .filter((row: { id: string; created: number | null }) => row.id.length > 0);
+};

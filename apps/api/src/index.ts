@@ -13,7 +13,7 @@ import {
   toggleBotEnabled,
   updateBotConfig
 } from "./lib/store.js";
-import { listVenueSymbols } from "./adapters/binance.js";
+import { getVenueSymbols, syncProviderModels } from "./services/catalog.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
 
@@ -171,7 +171,7 @@ app.get("/venues/:venue/symbols", async (request, response, next) => {
     response.json({
       venue: "binance",
       label: "Binance France",
-      symbols: await listVenueSymbols()
+      symbols: await getVenueSymbols("binance")
     });
   } catch (error) {
     next(error);
@@ -188,9 +188,15 @@ app.post("/prompts", async (request, response, next) => {
   }
 });
 
-app.get("/models", async (_request, response, next) => {
+app.get("/models", async (request, response, next) => {
   try {
-    response.json(await listModelProfiles());
+    const provider = typeof request.query.provider === "string" ? request.query.provider : undefined;
+
+    if (!provider || provider === "xai") {
+      await syncProviderModels("xai");
+    }
+
+    response.json(await listModelProfiles(provider));
   } catch (error) {
     next(error);
   }

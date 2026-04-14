@@ -390,6 +390,10 @@ a {
   font-size: 13px;
 }
 
+.symbol-option-disabled {
+  opacity: 0.45;
+}
+
 .symbol-option input {
   width: auto;
 }

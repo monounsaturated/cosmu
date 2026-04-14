@@ -842,8 +842,23 @@ export const listPrompts = async () =>
     order by max(pv.created_at) desc nulls last, p.created_at desc
   `;
 
-export const listModelProfiles = async () =>
-  sql`
+export const listModelProfiles = async (provider?: string) => {
+  if (provider) {
+    return sql`
+      select
+        id,
+        name,
+        provider,
+        model,
+        settings,
+        created_at as "createdAt"
+      from model_profiles
+      where provider = ${provider}
+      order by created_at desc
+    `;
+  }
+
+  return sql`
     select
       id,
       name,
@@ -854,6 +869,7 @@ export const listModelProfiles = async () =>
     from model_profiles
     order by created_at desc
   `;
+};
 
 export const createPrompt = async (input: { name: string; slug: string; initialBody: string }) => {
   const [prompt] = await sql<{ id: string }[]>`
