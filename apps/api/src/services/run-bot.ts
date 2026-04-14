@@ -11,7 +11,8 @@ import {
   storePortfolioSnapshot,
   type BotSetup
 } from "../lib/store.js";
-import { DecisionParseError, ResearchParseError, requestDecision, requestResearchPhase } from "../providers/xai.js";
+import { DecisionParseError, extractCandidateSymbols, requestDecision, requestResearchPhase } from "../providers/xai.js";
+import { getVenueSymbols } from "./catalog.js";
 import { notifySlack } from "./notifier.js";
 import { buildFormatterPhaseContext, buildResearchPhaseContext } from "./prompt-context.js";
 import { validateDecision } from "./validator.js";
@@ -35,7 +36,11 @@ const getDecisionWithRetry = async (
   throw lastError instanceof Error ? lastError : new Error("Decision request failed");
 };
 
-const getResearchWithRetry = async (bot: BotSetup, systemPrompt: string, userMessage: string) => {
+const getResearchWithRetry = async (
+  bot: BotSetup,
+  systemPrompt: string,
+  userMessage: string
+): Promise<{ rawText: string }> => {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
@@ -206,13 +211,16 @@ export const runBot = async (bot: BotSetup) => {
       venueContext: beforeVenueContext
     });
 
-    const { rawText: researchRaw, research } = await getResearchWithRetry(
+    const { rawText: researchRaw } = await getResearchWithRetry(
       bot,
       researchCtx.systemPrompt,
       researchCtx.userMessage
     );
 
-    const pricingSymbols = symbolsForPricing(bot.runtimeConfig, getHeldSymbols(beforeLogical), research.candidateSymbols);
+    const venueSymbols = await getVenueSymbols("binance");
+    const candidateSymbols = extractCandidateSymbols(researchRaw, venueSymbols);
+
+    const pricingSymbols = symbolsForPricing(bot.runtimeConfig, getHeldSymbols(beforeLogical), candidateSymbols);
     const pricedVenueRaw = await loadVenueContext(
       bot.runtimeConfig,
       pricingSymbols.length > 0
@@ -233,15 +241,15 @@ export const runBot = async (bot: BotSetup) => {
     const formatterCtx = await buildFormatterPhaseContext({
       bot,
       venueContext: decisionVenueContext,
-      research,
+      researchRawText: researchRaw,
+      candidateSymbols,
       priceSymbolFilter
     });
 
     const compactContext = {
       ...researchCtx.compactContext,
       formatter: formatterCtx.compactContext,
-      researchRationale: research.rationaleSummary,
-      researchCandidateSymbols: research.candidateSymbols
+      researchCandidateSymbols: candidateSymbols
     };
 
     const promptSystem = [
@@ -362,7 +370,7 @@ export const runBot = async (bot: BotSetup) => {
     const errorMessage = error instanceof Error ? error.message : "Unknown run error";
 
     if (runId) {
-      if (error instanceof DecisionParseError || error instanceof ResearchParseError) {
+      if (error instanceof DecisionParseError) {
         await storeRawModelOutput(runId, error.rawText);
       } else {
         await storeRawModelOutput(

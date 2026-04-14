@@ -107,15 +107,17 @@ export const orderIntentSchema = z.object({
 
 export type OrderIntent = z.infer<typeof orderIntentSchema>;
 
-/** Phase 1: analyst / research output (not executable orders). */
+/** @deprecated Phase 1 now returns free-form text. Kept for backward compatibility of stored run data. */
 export const researchPhaseSchema = z.object({
   rationaleSummary: z.string().min(1).max(600),
   globalResearch: z.string().min(1).max(8000),
   candidateSymbols: z.array(z.string().min(6).max(24)).max(20).default([])
 });
 
+/** @deprecated Phase 1 now returns free-form text. Kept for backward compatibility of stored run data. */
 export type ResearchPhase = z.infer<typeof researchPhaseSchema>;
 
+/** @deprecated Phase 1 no longer uses structured JSON output. Kept for backward compatibility. */
 export const researchPhaseJsonSchema = {
   type: "object",
   additionalProperties: false,

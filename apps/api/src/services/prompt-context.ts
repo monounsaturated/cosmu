@@ -5,7 +5,6 @@ import {
   getPrepromptForVenue,
   type BotSetup
 } from "../lib/store.js";
-import type { ResearchPhase } from "@cosmu/shared";
 
 const fmtUsd = (n: number) =>
   `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -23,25 +22,14 @@ export const NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
   "• Reply with valid JSON only — no markdown, no text outside the JSON."
 ].join("\n");
 
-const DEFAULT_SYSTEM_PRELUDE = [
-  "You are the trading decision engine for one autonomous spot bot.",
-  "Return only valid JSON matching the provided schema."
-].join("\n");
-
-const RESEARCH_OUTPUT_INSTRUCTION = [
-  "Return a single JSON object only (research phase — not executable orders).",
-  "Fields:",
-  "- rationaleSummary: short headline of your read on conditions and intent.",
-  "- globalResearch: detailed reasoning, themes, risks, and what you would watch next.",
-  "- candidateSymbols: array of Binance USDT spot symbols (e.g. BTCUSDT) you want priced for the execution stage; max 20; may be empty if you need no quotes.",
-  "Do not output orders, quantities, or TradingDecision fields here."
-].join("\n");
+const DEFAULT_SYSTEM_PRELUDE =
+  "You are the research analyst for one autonomous spot bot. Analyse market conditions, identify opportunities, and mention any USDT trading pair symbols you find interesting (e.g. BTCUSDT). Write freely — your analysis will be passed to a separate execution stage.";
 
 const DEFAULT_FORMATTER_BODY = [
   "You are the execution and formatting stage for one autonomous Binance spot bot.",
   "",
   "You receive:",
-  "1) A research JSON object from an upstream analyst (rationale + thesis + candidateSymbols).",
+  "1) Free-form research analysis from an upstream analyst (thesis, reasoning, symbol mentions).",
   "2) Live snapshot prices for relevant symbols plus session, wallet, and execution rules.",
   "",
   "Your only output is one JSON object matching the TradingDecision schema.",
@@ -55,94 +43,82 @@ const DEFAULT_FORMATTER_BODY = [
 
 type HistoryContext = Awaited<ReturnType<typeof getBotPrePromptContext>>;
 
-const buildRuntimeUserSections = (input: {
+/** Shared helpers for building wallet and price sections used by both phases. */
+
+const buildWalletSection = (snapshot: VenueContext["snapshot"]) => {
+  const lines = ["=== WALLET ===", `Total: ${fmtUsd(snapshot.totalUsdValue)}`];
+  for (const b of snapshot.balances) {
+    const usd = b.usdValue != null ? ` (${fmtUsd(b.usdValue)})` : "";
+    const locked = b.locked > 0 ? ` + ${fmtNum(b.locked)} locked` : "";
+    lines.push(`${b.asset}: ${fmtNum(b.free)} free${locked}${usd}`);
+  }
+  return lines.join("\n");
+};
+
+const buildSessionSection = (bot: BotSetup) => [
+  "=== SESSION ===",
+  `Bot: ${bot.name} (#${bot.botNumber}) | Model: ${bot.modelProfileName}`,
+  `Mode: ${bot.runtimeConfig.mode} | Venue: Binance Spot | Frequency: every ${bot.runtimeConfig.frequencyMinutes}min`,
+  `Budget: ${fmtUsd(bot.runtimeConfig.budgetUsdt)} — you must stay within this allocation`
+].join("\n");
+
+const buildExecRulesSection = (exec: BotSetup["runtimeConfig"]["execution"]) => {
+  const allowedTypes = [exec.allowMarketOrders && "MARKET", exec.allowLimitOrders && "LIMIT"]
+    .filter(Boolean)
+    .join(", ");
+  return [
+    "=== EXECUTION RULES ===",
+    `Rules enforced: ${exec.enabled ? "YES" : "NO (relaxed)"}`,
+    exec.enabled
+      ? `Max orders/run: ${exec.maxOrdersPerRun} | Max notional/order: ${exec.maxNotionalPerOrderUsd} USDT`
+      : `Configured caps (not enforced while relaxed): max ${exec.maxOrdersPerRun} orders/run, ${exec.maxNotionalPerOrderUsd} USDT/order — total spend still cannot exceed budget and venue rules apply.`,
+    exec.enabled ? `Cash reserve (untouchable): ${exec.minCashReserveUsd} USDT` : "",
+    `Allowed types: ${allowedTypes}`
+  ]
+    .filter(Boolean)
+    .join("\n");
+};
+
+const buildTradingScopeSection = (runtimeConfig: BotSetup["runtimeConfig"]) => {
+  if (runtimeConfig.symbolScope === "selected" && runtimeConfig.contextSymbols.length > 0) {
+    return ["=== AUTHORIZED PAIRS — trade ONLY these ===", runtimeConfig.contextSymbols.join(", ")].join("\n");
+  }
+  return "=== TRADING SCOPE ===\nYou may trade ANY USDT spot pair available on Binance. Pick your symbols based on your own analysis.";
+};
+
+const buildPriceSection = (venueContext: VenueContext, priceSymbolFilter: Set<string>) => {
+  if (priceSymbolFilter.size === 0) return null;
+  const relevantPriceEntries = Object.entries(venueContext.priceMap)
+    .filter(([symbol]) => priceSymbolFilter.has(symbol))
+    .sort(([a], [b]) => a.localeCompare(b));
+  if (relevantPriceEntries.length === 0) return null;
+  const priceLines = relevantPriceEntries.map(
+    ([symbol, price]) => `${symbol}: ${fmtNum(price)}`
+  );
+  return [
+    "=== LIVE MARKET PRICES (for execution) ===",
+    "Use these reference prices for stopLossPrice / takeProfitPrice on buys.",
+    ...priceLines
+  ].join("\n");
+};
+
+/** Phase 1: full context for creative research (no prices, no formatting constraints). */
+const buildResearchUserSections = (input: {
   bot: BotSetup;
   venueContext: VenueContext;
   historyContext: HistoryContext;
-  /** null = omit live price block; otherwise only symbols in this set appear */
-  priceSymbolFilter: Set<string> | null;
-  /** when true, prepend upstream research JSON block */
-  researchBlock: ResearchPhase | null;
 }) => {
-  const { bot, venueContext, historyContext, priceSymbolFilter, researchBlock } = input;
+  const { bot, venueContext, historyContext } = input;
   const { runtimeConfig, promptConfig } = bot;
   const modules = promptConfig.modules;
-  const exec = runtimeConfig.execution;
   const { snapshot } = venueContext;
 
   const sections: string[] = [];
 
-  if (researchBlock) {
-    sections.push(
-      ["=== UPSTREAM RESEARCH (phase 1 JSON) ===", JSON.stringify(researchBlock, null, 2)].join("\n")
-    );
-  }
-
-  sections.push(
-    [
-      "=== SESSION ===",
-      `Bot: ${bot.name} (#${bot.botNumber}) | Model: ${bot.modelProfileName}`,
-      `Mode: ${runtimeConfig.mode} | Venue: Binance Spot | Frequency: every ${runtimeConfig.frequencyMinutes}min`,
-      `Budget: ${fmtUsd(runtimeConfig.budgetUsdt)} — you must stay within this allocation`
-    ].join("\n")
-  );
-
-  const allowedTypes = [exec.allowMarketOrders && "MARKET", exec.allowLimitOrders && "LIMIT"]
-    .filter(Boolean)
-    .join(", ");
-  sections.push(
-    [
-      "=== EXECUTION RULES ===",
-      `Rules enforced: ${exec.enabled ? "YES" : "NO (relaxed)"}`,
-      exec.enabled
-        ? `Max orders/run: ${exec.maxOrdersPerRun} | Max notional/order: ${exec.maxNotionalPerOrderUsd} USDT`
-        : `Configured caps (not enforced while relaxed): max ${exec.maxOrdersPerRun} orders/run, ${exec.maxNotionalPerOrderUsd} USDT/order — total spend still cannot exceed budget and venue rules apply.`,
-      exec.enabled ? `Cash reserve (untouchable): ${exec.minCashReserveUsd} USDT` : "",
-      `Allowed types: ${allowedTypes}`
-    ]
-      .filter(Boolean)
-      .join("\n")
-  );
-
-  const walletLines = [
-    "=== WALLET ===",
-    `Total: ${fmtUsd(snapshot.totalUsdValue)}`
-  ];
-  for (const b of snapshot.balances) {
-    const usd = b.usdValue != null ? ` (${fmtUsd(b.usdValue)})` : "";
-    const locked = b.locked > 0 ? ` + ${fmtNum(b.locked)} locked` : "";
-    walletLines.push(`${b.asset}: ${fmtNum(b.free)} free${locked}${usd}`);
-  }
-  sections.push(walletLines.join("\n"));
-
-  if (priceSymbolFilter !== null && priceSymbolFilter.size > 0) {
-    const relevantPriceEntries = Object.entries(venueContext.priceMap)
-      .filter(([symbol]) => priceSymbolFilter.has(symbol))
-      .sort(([a], [b]) => a.localeCompare(b));
-
-    if (relevantPriceEntries.length > 0) {
-      const priceLines = relevantPriceEntries.map(
-        ([symbol, price]) => `${symbol}: ${fmtNum(price)}`
-      );
-      sections.push(
-        [
-          "=== LIVE MARKET PRICES (for execution) ===",
-          "Use these reference prices for stopLossPrice / takeProfitPrice on buys.",
-          ...priceLines
-        ].join("\n")
-      );
-    }
-  }
-
-  if (runtimeConfig.symbolScope === "selected" && runtimeConfig.contextSymbols.length > 0) {
-    sections.push(
-      ["=== AUTHORIZED PAIRS — trade ONLY these ===", runtimeConfig.contextSymbols.join(", ")].join("\n")
-    );
-  } else {
-    sections.push(
-      "=== TRADING SCOPE ===\nYou may trade ANY USDT spot pair available on Binance. Pick your symbols based on your own analysis."
-    );
-  }
+  sections.push(buildSessionSection(bot));
+  sections.push(buildExecRulesSection(runtimeConfig.execution));
+  sections.push(buildWalletSection(snapshot));
+  sections.push(buildTradingScopeSection(runtimeConfig));
 
   if (modules.includeWalletOverview && historyContext.performance) {
     const p = historyContext.performance;
@@ -160,10 +136,7 @@ const buildRuntimeUserSections = (input: {
 
   if (modules.includePerformanceStats && historyContext.performance) {
     sections.push(
-      [
-        "=== PERFORMANCE STATS ===",
-        JSON.stringify(historyContext.performance, null, 2)
-      ].join("\n")
+      ["=== PERFORMANCE STATS ===", JSON.stringify(historyContext.performance, null, 2)].join("\n")
     );
   }
 
@@ -187,12 +160,40 @@ const buildRuntimeUserSections = (input: {
   return sections.join("\n\n");
 };
 
+/** Phase 2: slim context for the formatter (research text + prices + wallet + rules). */
+const buildFormatterUserSections = (input: {
+  bot: BotSetup;
+  venueContext: VenueContext;
+  researchRawText: string;
+  priceSymbolFilter: Set<string>;
+}) => {
+  const { bot, venueContext, researchRawText, priceSymbolFilter } = input;
+  const { runtimeConfig } = bot;
+  const { snapshot } = venueContext;
+
+  const sections: string[] = [];
+
+  sections.push(
+    ["=== UPSTREAM RESEARCH (phase 1 analysis) ===", researchRawText].join("\n")
+  );
+  sections.push(buildSessionSection(bot));
+  sections.push(buildExecRulesSection(runtimeConfig.execution));
+  sections.push(buildWalletSection(snapshot));
+
+  const priceBlock = buildPriceSection(venueContext, priceSymbolFilter);
+  if (priceBlock) sections.push(priceBlock);
+
+  sections.push(buildTradingScopeSection(runtimeConfig));
+
+  return sections.join("\n\n");
+};
+
 type BuildPromptContextInput = {
   bot: BotSetup;
   venueContext: VenueContext;
 };
 
-/** Phase 1: preprompt + bot strategy; user context without live prices (research JSON). */
+/** Phase 1: preprompt + bot strategy (free-form, no structured output). */
 export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildPromptContextInput) => {
   const { runtimeConfig, promptConfig } = bot;
   const modules = promptConfig.modules;
@@ -205,15 +206,9 @@ export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildProm
   const configuredPreprompt = (await getPrepromptForVenue(runtimeConfig.venue)).trim();
   const preamble = configuredPreprompt.length > 0 ? configuredPreprompt : DEFAULT_SYSTEM_PRELUDE;
 
-  const systemPrompt = [preamble, bot.promptBody.trim(), RESEARCH_OUTPUT_INSTRUCTION].filter(Boolean).join("\n\n");
+  const systemPrompt = [preamble, bot.promptBody.trim()].filter(Boolean).join("\n\n");
 
-  const userMessage = buildRuntimeUserSections({
-    bot,
-    venueContext,
-    historyContext,
-    priceSymbolFilter: null,
-    researchBlock: null
-  });
+  const userMessage = buildResearchUserSections({ bot, venueContext, historyContext });
 
   const compactContext: Record<string, unknown> = {
     phase: "research",
@@ -229,32 +224,30 @@ export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildProm
   return { systemPrompt, userMessage, compactContext };
 };
 
-/** Phase 2: formatter + hard constraints; user context includes research + prices for given symbols. */
+/** Phase 2: formatter + hard constraints; slim context with research text + prices. */
 export const buildFormatterPhaseContext = async ({
   bot,
   venueContext,
-  research,
+  researchRawText,
+  candidateSymbols,
   priceSymbolFilter
-}: BuildPromptContextInput & { research: ResearchPhase; priceSymbolFilter: Set<string> }) => {
-  const { runtimeConfig, promptConfig } = bot;
-  const modules = promptConfig.modules;
-
-  const historyContext = await getBotPrePromptContext({
-    botId: bot.id,
-    pastTradesLookback: modules.pastTradesLookback
-  });
+}: BuildPromptContextInput & {
+  researchRawText: string;
+  candidateSymbols: string[];
+  priceSymbolFilter: Set<string>;
+}) => {
+  const { runtimeConfig } = bot;
 
   const configuredFormatter = (await getFormatterPromptForVenue(runtimeConfig.venue)).trim();
   const formatterBody = configuredFormatter.length > 0 ? configuredFormatter : DEFAULT_FORMATTER_BODY;
 
   const systemPrompt = [formatterBody, NON_NEGOTIABLE_CONSTRAINTS_BLOCK].join("\n\n");
 
-  const userMessage = buildRuntimeUserSections({
+  const userMessage = buildFormatterUserSections({
     bot,
     venueContext,
-    historyContext,
-    priceSymbolFilter,
-    researchBlock: research
+    researchRawText,
+    priceSymbolFilter
   });
 
   const compactContext: Record<string, unknown> = {
@@ -262,10 +255,8 @@ export const buildFormatterPhaseContext = async ({
     mode: runtimeConfig.mode,
     symbolScope: runtimeConfig.symbolScope,
     walletTotalUsd: venueContext.snapshot.totalUsdValue,
-    candidateSymbols: research.candidateSymbols,
-    modulesActive: Object.entries(modules)
-      .filter(([k, v]) => v === true && k.startsWith("include"))
-      .map(([k]) => k)
+    candidateSymbols,
+    modulesActive: []
   };
 
   return { systemPrompt, userMessage, compactContext };
