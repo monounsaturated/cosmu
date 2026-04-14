@@ -20,6 +20,7 @@ import {
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
 import { listXaiModels } from "./providers/xai.js";
 import { BOOTSTRAP_XAI_PROFILES, bootstrapModelProfiles, getVenueSymbols, syncProviderModels } from "./services/catalog.js";
+import { getAccountBalance } from "./adapters/binance.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
 
@@ -217,15 +218,41 @@ app.get("/prompts", async (_request, response, next) => {
 
 app.get("/venues/:venue/symbols", async (request, response, next) => {
   try {
-    if (request.params.venue !== "binance") {
+    const venue = request.params.venue;
+    if (venue !== "binance" && venue !== "binance-testnet") {
       response.status(404).json({ error: "Venue not found" });
       return;
     }
 
     response.json({
-      venue: "binance",
-      label: "Binance France",
+      venue,
+      label: venue === "binance-testnet" ? "Binance Testnet" : "Binance",
       symbols: await getVenueSymbols("binance")
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/venues/:venue/balance", async (request, response, next) => {
+  try {
+    const venue = request.params.venue;
+    const mode = venue === "binance-testnet" ? "testnet" as const : "live" as const;
+    const balance = await getAccountBalance(mode);
+
+    const allocatedBudgets = await sql<{ total: string }[]>`
+      select coalesce(sum(budget_usdt), 0)::text as total
+      from bot_runtime_configs
+      where venue = ${venue}
+        and enabled = true
+    `;
+    const allocatedUsdt = Number(allocatedBudgets[0]?.total ?? 0);
+
+    response.json({
+      venue,
+      totalFreeUsdt: balance.totalFreeUsdt,
+      allocatedUsdt,
+      availableUsdt: Math.max(0, balance.totalFreeUsdt - allocatedUsdt)
     });
   } catch (error) {
     next(error);

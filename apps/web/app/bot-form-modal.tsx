@@ -60,9 +60,10 @@ type BotSetup = {
     };
   };
   runtimeConfig: {
-    venue: "binance";
+    venue: "binance" | "binance-testnet";
     frequencyMinutes: number;
     mode: "testnet" | "live";
+    budgetUsdt?: number;
     symbolScope: "selected" | "all";
     contextSymbols: string[];
     execution: {
@@ -110,9 +111,9 @@ const buildDefaultState = (defaultBotNumber: number) => {
     newPromptName: `${defaultName} Prompt`,
     newPromptBody: DEFAULT_PROMPT_BODY,
     modelProfileId: "",
-    venue: "binance" as const,
+    venue: "binance-testnet" as "binance" | "binance-testnet",
     frequencyMinutes: "15",
-    mode: "testnet" as "testnet" | "live",
+    budgetUsdt: 100,
     symbolScope: "all" as "selected" | "all",
     contextSymbols: [] as string[],
     execution: {
@@ -158,6 +159,8 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   const [editedBody, setEditedBody] = useState("");
   const [savingVersion, setSavingVersion] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [venueBalance, setVenueBalance] = useState<{ totalFreeUsdt: number; allocatedUsdt: number; availableUsdt: number } | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
 
   const providerOptions = useMemo(() => {
     const fromApi = Array.from(new Set(models.map((m) => m.provider))).sort();
@@ -361,6 +364,11 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
         const botModel = (modelsData ?? []).find((m) => m.id === setup.modelProfileId);
         if (botModel?.provider) setSelectedProvider(botModel.provider);
 
+        const mergedVenue: "binance" | "binance-testnet" =
+          setup.runtimeConfig.venue === "binance-testnet" || setup.runtimeConfig.mode === "testnet"
+            ? "binance-testnet"
+            : "binance";
+
         setFormData({
           name: setup.name,
           promptStrategy: "existing",
@@ -369,9 +377,9 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
           newPromptBody: DEFAULT_PROMPT_BODY,
           modelProfileId: setup.modelProfileId,
           promptConfig: setup.promptConfig,
-          venue: setup.runtimeConfig.venue,
+          venue: mergedVenue,
           frequencyMinutes: String(setup.runtimeConfig.frequencyMinutes),
-          mode: setup.runtimeConfig.mode,
+          budgetUsdt: setup.runtimeConfig.budgetUsdt ?? 100,
           symbolScope: setup.runtimeConfig.symbolScope,
           contextSymbols: setup.runtimeConfig.contextSymbols,
           execution: setup.runtimeConfig.execution
@@ -450,6 +458,21 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
 
     return () => { cancelled = true; };
   }, [formData.existingPromptVersionId, formData.promptStrategy, prompts]);
+
+  // Fetch venue balance when venue changes
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingBalance(true);
+    setVenueBalance(null);
+
+    fetch(`/api/venues/${formData.venue}/balance`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (!cancelled && data) setVenueBalance(data); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingBalance(false); });
+
+    return () => { cancelled = true; };
+  }, [formData.venue]);
 
   const handleSaveNewVersion = async () => {
     const prompt = prompts.find((p) => p.versions.some((v) => v.id === formData.existingPromptVersionId));
@@ -550,8 +573,9 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
             runtimeConfig: {
               venue: formData.venue,
               frequencyMinutes: Number(formData.frequencyMinutes),
-              mode: formData.mode,
+              mode: formData.venue === "binance-testnet" ? "testnet" : "live",
               assetClass: "spot",
+              budgetUsdt: formData.budgetUsdt,
               symbolScope: formData.symbolScope,
               execution: formData.execution,
               contextSymbols
@@ -844,10 +868,37 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
                 <div className="form-row">
                   <label>
                     Venue
-                    <select value={formData.venue} disabled>
-                      <option value="binance">Binance France</option>
+                    <select
+                      value={formData.venue}
+                      onChange={(e) => setFormData({ ...formData, venue: e.target.value as "binance" | "binance-testnet" })}
+                      disabled={mode !== "create"}
+                    >
+                      <option value="binance-testnet">Binance Testnet</option>
+                      <option value="binance">Binance</option>
                     </select>
                   </label>
+                  {venueBalance && (
+                    <span className="venue-balance">
+                      {loadingBalance ? "…" : `${venueBalance.totalFreeUsdt.toFixed(2)} USDT on account · ${venueBalance.availableUsdt.toFixed(2)} available`}
+                    </span>
+                  )}
+                </div>
+
+                <div className="form-row">
+                  <label>
+                    Budget (USDT)
+                    <input
+                      type="number"
+                      min={10}
+                      step={10}
+                      value={formData.budgetUsdt}
+                      onChange={(e) => setFormData({ ...formData, budgetUsdt: Math.max(10, Number(e.target.value)) })}
+                      disabled={mode !== "create"}
+                    />
+                  </label>
+                  <span className="field-help">
+                    Max USDT this bot can use. It must sell positions to free up budget.
+                  </span>
                 </div>
 
                 <div className="form-row">
@@ -863,20 +914,6 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
                       <option value="15">Every 15 min</option>
                       <option value="30">Every 30 min</option>
                       <option value="60">Every 60 min</option>
-                    </select>
-                  </label>
-                </div>
-
-                <div className="form-row">
-                  <label>
-                    Mode
-                    <select
-                      value={formData.mode}
-                      onChange={(e) => setFormData({ ...formData, mode: e.target.value as "testnet" | "live" })}
-                      disabled={mode !== "create"}
-                    >
-                      <option value="testnet">Testnet</option>
-                      <option value="live">Live</option>
                     </select>
                   </label>
                 </div>

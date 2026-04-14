@@ -71,8 +71,8 @@ export default async function HomePage() {
               <span className={`status-dot ${bot.enabled ? "status-active" : "status-inactive"}`} />
             </div>
             <div className="bot-badges">
-              <span className="badge">{bot.venue === "binance" ? "Binance France" : bot.venue}</span>
-              <span className={`badge ${bot.mode === "live" ? "badge-live" : ""}`}>{bot.mode}</span>
+              <span className="badge">{bot.venue === "binance-testnet" ? "Testnet" : bot.venue === "binance" ? (bot.mode === "testnet" ? "Testnet" : "Binance") : bot.venue}</span>
+              <span className="badge">${bot.budgetUsdt} budget</span>
               <span className="badge">{bot.frequencyMinutes}m</span>
               <span className="badge">{bot.assetClass}</span>
             </div>

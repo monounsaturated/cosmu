@@ -21,6 +21,9 @@ export const validateDecision = async (input: {
     ])
   );
 
+  const budget = input.runtimeConfig.budgetUsdt;
+  let spentUsd = 0;
+
   if (rulesEnabled && input.decision.orders.length > input.runtimeConfig.execution.maxOrdersPerRun) {
     issues.push("Decision exceeds maxOrdersPerRun");
   }
@@ -53,15 +56,22 @@ export const validateDecision = async (input: {
           }
         }
 
+        const requiredUsd = referencePrice ? normalized.quantity * referencePrice : Infinity;
+
+        if (spentUsd + requiredUsd > budget) {
+          throw new Error(`Buy ${normalized.symbol} ($${requiredUsd.toFixed(2)}) would exceed bot budget of $${budget} (already spent $${spentUsd.toFixed(2)})`);
+        }
+
         const cash = balances.get("USDT");
         const cashAvailable = rulesEnabled
           ? (cash?.free ?? 0) - input.runtimeConfig.execution.minCashReserveUsd
           : cash?.free ?? 0;
-        const requiredUsd = referencePrice ? normalized.quantity * referencePrice : Infinity;
 
         if (requiredUsd > cashAvailable) {
           throw new Error(`Insufficient USDT for ${normalized.symbol}`);
         }
+
+        spentUsd += requiredUsd;
       }
 
       if (normalized.side === "sell") {

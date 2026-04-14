@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const ALL_SYMBOLS_TOKEN = "__ALL__";
 export const executionModeSchema = z.enum(["testnet", "live"]);
-export const venueSchema = z.literal("binance");
+export const venueSchema = z.enum(["binance", "binance-testnet"]);
 export const assetClassSchema = z.literal("spot");
 export const orderTypeSchema = z.enum(["market", "limit"]);
 export const orderSideSchema = z.enum(["buy", "sell"]);
@@ -52,6 +52,7 @@ export const runtimeConfigSchema = z.object({
   ).transform(Number),
   mode: executionModeSchema,
   assetClass: assetClassSchema,
+  budgetUsdt: z.number().positive().default(100),
   symbolScope: symbolScopeSchema.default("selected"),
   execution: z.object({
     enabled: z.boolean().default(false),
@@ -233,6 +234,7 @@ export const botSummarySchema = z.object({
   frequencyMinutes: z.number(),
   mode: executionModeSchema,
   assetClass: assetClassSchema,
+  budgetUsdt: z.number().positive().default(100),
   promptVersionLabel: z.string(),
   modelProfileName: z.string(),
   lastRunStatus: runStatusSchema.nullable(),

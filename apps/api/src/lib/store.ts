@@ -65,10 +65,11 @@ const parseTraderConfig = (value: unknown) => traderConfigSchema.parse(parseJson
 
 const buildRuntimeConfig = (row: {
   enabled: boolean;
-  venue: "binance";
+  venue: string;
   frequency_minutes: number;
   mode: "testnet" | "live";
   asset_class: "spot";
+  budget_usdt?: number;
   execution_config: unknown;
   context_symbols: unknown;
 }): RuntimeConfig => {
@@ -80,6 +81,7 @@ const buildRuntimeConfig = (row: {
     frequencyMinutes: row.frequency_minutes,
     mode: row.mode,
     assetClass: row.asset_class,
+    budgetUsdt: row.budget_usdt ?? 100,
     symbolScope: contextConfig.symbolScope,
     execution: parseJson<Record<string, JsonValue>>(row.execution_config),
     contextSymbols: contextConfig.contextSymbols
@@ -110,7 +112,8 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
       brc.mode,
       brc.asset_class,
       brc.execution_config,
-      brc.context_symbols
+      brc.context_symbols,
+      brc.budget_usdt::float8 as budget_usdt
     from bots b
     join prompt_versions pv on pv.id = b.active_prompt_version_id
     join prompts p on p.id = pv.prompt_id
@@ -168,7 +171,8 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
       brc.mode,
       brc.asset_class,
       brc.execution_config,
-      brc.context_symbols
+      brc.context_symbols,
+      brc.budget_usdt::float8 as budget_usdt
     from bots b
     join prompt_versions pv on pv.id = b.active_prompt_version_id
     join prompts p on p.id = pv.prompt_id
@@ -459,6 +463,7 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
       latest_snapshot."grossPnlUsd",
       latest_snapshot."netPnlUsd",
       latest_snapshot."currentPortfolioUsd",
+      brc.budget_usdt::float8 as "budgetUsdt",
       brc.updated_at as "updatedAt"
     from bots b
     join bot_runtime_configs brc on brc.bot_id = b.id
@@ -1036,6 +1041,7 @@ export const createBot = async (input: {
       frequency_minutes,
       mode,
       asset_class,
+      budget_usdt,
       execution_config,
       context_symbols
     ) values (
@@ -1045,6 +1051,7 @@ export const createBot = async (input: {
       ${input.runtimeConfig.frequencyMinutes},
       ${input.runtimeConfig.mode},
       ${input.runtimeConfig.assetClass},
+      ${input.runtimeConfig.budgetUsdt ?? 100},
       ${sql.json(input.runtimeConfig.execution)},
       ${sql.json(input.runtimeConfig.contextSymbols)}
     )

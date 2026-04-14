@@ -170,6 +170,23 @@ const requestPublicJson = async (path: string) => {
 const getAccount = (mode: RuntimeConfig["mode"]) =>
   requestWithQuery(mode, "/v3/account", new URLSearchParams(), true);
 
+export const getAccountBalance = async (mode: RuntimeConfig["mode"]) => {
+  const account = await getAccount(mode);
+  const balances = (account.balances ?? [])
+    .filter((b: { free: string; locked: string }) => Number(b.free) > 0 || Number(b.locked) > 0)
+    .map((b: { asset: string; free: string; locked: string }) => ({
+      asset: b.asset,
+      free: Number(b.free),
+      locked: Number(b.locked)
+    }));
+  const usdt = balances.find((b: { asset: string }) => b.asset === "USDT");
+  return {
+    totalFreeUsdt: usdt?.free ?? 0,
+    totalLockedUsdt: usdt?.locked ?? 0,
+    balances
+  };
+};
+
 const getAllTickerPrices = (mode: RuntimeConfig["mode"]) =>
   binanceFetch(mode, "/v3/ticker/price", { method: "GET" });
 

@@ -44,7 +44,8 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
     [
       "=== SESSION ===",
       `Bot: ${bot.name} (#${bot.botNumber}) | Model: ${bot.modelProfileName}`,
-      `Mode: ${runtimeConfig.mode} | Venue: Binance Spot | Frequency: every ${runtimeConfig.frequencyMinutes}min`
+      `Mode: ${runtimeConfig.mode} | Venue: Binance Spot | Frequency: every ${runtimeConfig.frequencyMinutes}min`,
+      `Budget: ${fmtUsd(runtimeConfig.budgetUsdt)} — you must stay within this allocation`
     ].join("\n")
   );
 

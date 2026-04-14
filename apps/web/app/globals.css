@@ -470,6 +470,14 @@ a {
   text-align: center;
 }
 
+/* Venue balance indicator */
+.venue-balance {
+  display: block;
+  font-size: 11.5px;
+  color: #5a9;
+  margin-top: 4px;
+}
+
 /* Prompt how-to guide */
 .prompt-howto {
   border: 1px solid #223149;
