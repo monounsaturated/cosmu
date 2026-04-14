@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   try {
     const apiSecretKey = process.env.API_SECRET_KEY;

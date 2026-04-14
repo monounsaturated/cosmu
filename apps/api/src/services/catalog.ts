@@ -36,7 +36,7 @@ export const bootstrapModelProfiles = async (): Promise<CatalogUpsertResult> => 
       set
         provider = excluded.provider,
         model = excluded.model
-      returning (xmax = 0) as inserted
+      returning (xmax::text = '0') as inserted
     `;
     if (result[0]?.inserted) {
       inserted++;
@@ -99,7 +99,7 @@ export const syncProviderModels = async (provider: string, force = false): Promi
         provider = excluded.provider,
         model = excluded.model,
         settings = model_profiles.settings
-      returning (xmax = 0) as inserted
+      returning (xmax::text = '0') as inserted
     `;
     if (result[0]?.inserted) {
       inserted++;
