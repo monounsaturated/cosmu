@@ -871,6 +871,37 @@ export const listModelProfiles = async (provider?: string) => {
   `;
 };
 
+export const getPromptVersionBody = async (versionId: string) => {
+  const [row] = await sql<{ id: string; body: string; version: number; promptId: string; promptName: string }[]>`
+    select
+      pv.id,
+      pv.body,
+      pv.version,
+      p.id as "promptId",
+      p.name as "promptName"
+    from prompt_versions pv
+    join prompts p on p.id = pv.prompt_id
+    where pv.id = ${versionId}
+    limit 1
+  `;
+  return row ?? null;
+};
+
+export const addPromptVersion = async (input: { promptId: string; body: string }) => {
+  const [maxRow] = await sql<{ maxVersion: number }[]>`
+    select coalesce(max(version), 0) as "maxVersion"
+    from prompt_versions
+    where prompt_id = ${input.promptId}
+  `;
+  const nextVersion = (maxRow?.maxVersion ?? 0) + 1;
+  const [promptVersion] = await sql<{ id: string }[]>`
+    insert into prompt_versions (prompt_id, version, body)
+    values (${input.promptId}, ${nextVersion}, ${input.body})
+    returning id
+  `;
+  return { promptVersionId: promptVersion.id, version: nextVersion };
+};
+
 export const createPrompt = async (input: { name: string; slug: string; initialBody: string }) => {
   const [prompt] = await sql<{ id: string }[]>`
     insert into prompts (name, slug)

@@ -2,12 +2,14 @@ import cors from "cors";
 import express from "express";
 import { env } from "./env.js";
 import {
+  addPromptVersion,
   createBot,
   createModelProfile,
   createPrompt,
   getBotSetupById,
   getDashboard,
   getDueBots,
+  getPromptVersionBody,
   listModelProfiles,
   listPrompts,
   toggleBotEnabled,
@@ -182,6 +184,33 @@ app.post("/prompts", async (request, response, next) => {
   try {
     const { name, slug, initialBody } = request.body;
     const result = await createPrompt({ name, slug, initialBody });
+    response.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/prompts/versions/:versionId/body", async (request, response, next) => {
+  try {
+    const version = await getPromptVersionBody(request.params.versionId);
+    if (!version) {
+      response.status(404).json({ error: "Prompt version not found" });
+      return;
+    }
+    response.json(version);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/prompts/:promptId/versions", async (request, response, next) => {
+  try {
+    const { body } = request.body;
+    if (!body || typeof body !== "string" || !body.trim()) {
+      response.status(400).json({ error: "body is required" });
+      return;
+    }
+    const result = await addPromptVersion({ promptId: request.params.promptId, body: body.trim() });
     response.json(result);
   } catch (error) {
     next(error);

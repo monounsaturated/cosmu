@@ -92,11 +92,10 @@ const slugify = (value: string) =>
 const uniqueSlug = (value: string) => `${slugify(value) || "bot"}-${Date.now().toString(36)}`;
 
 const uniqueSymbols = (symbols: string[]) =>
-  Array.from(new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean)));
+  Array.from(new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean)));
 
 const buildDefaultState = (defaultBotNumber: number) => {
   const defaultName = `Bot #${defaultBotNumber}`;
-
   return {
     name: defaultName,
     promptStrategy: "new" as "new" | "existing",
@@ -139,17 +138,23 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [symbolSearch, setSymbolSearch] = useState("");
-  const [symbolsExpanded, setSymbolsExpanded] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState("xai");
   const [formData, setFormData] = useState(buildDefaultState(defaultBotNumber));
 
+  // Prompt body view/edit state
+  const [promptBody, setPromptBody] = useState<string | null>(null);
+  const [loadingBody, setLoadingBody] = useState(false);
+  const [showBodyEditor, setShowBodyEditor] = useState(false);
+  const [editedBody, setEditedBody] = useState("");
+  const [savingVersion, setSavingVersion] = useState(false);
+
   const providerOptions = useMemo(
-    () => Array.from(new Set(models.map((model) => model.provider))).sort(),
+    () => Array.from(new Set(models.map((m) => m.provider))).sort(),
     [models]
   );
 
   const availableModels = useMemo(
-    () => models.filter((model) => model.provider === selectedProvider),
+    () => models.filter((m) => m.provider === selectedProvider),
     [models, selectedProvider]
   );
 
@@ -158,23 +163,25 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       prompts
         .flatMap((prompt) =>
           [...prompt.versions]
-            .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
             .map((version) => ({
               id: version.id,
+              promptId: prompt.id,
               createdAt: version.createdAt,
               label: `${prompt.name} v${version.version}`
             }))
         )
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [prompts]
   );
 
   const filteredSymbols = useMemo(() => {
     const query = symbolSearch.trim().toUpperCase();
-    const source = query ? symbols.filter((symbol) => symbol.includes(query)) : symbols;
+    const source = query ? symbols.filter((s) => s.includes(query)) : symbols;
     return source.slice(0, 120);
   }, [symbolSearch, symbols]);
 
+  // Initial data load — models fetched without provider filter to populate all providers
   useEffect(() => {
     let cancelled = false;
 
@@ -182,7 +189,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       try {
         const requests: Promise<Response>[] = [
           fetch("/api/prompts"),
-          fetch(`/api/models?provider=${encodeURIComponent(selectedProvider)}`),
+          fetch("/api/models"),
           fetch("/api/venues/binance/symbols")
         ];
         if (mode === "edit" && botId) {
@@ -212,6 +219,9 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
 
         if (mode === "edit" && botData) {
           const setup = botData as BotSetup;
+          const botModel = (modelsData as Model[]).find((m) => m.id === setup.modelProfileId);
+          if (botModel?.provider) setSelectedProvider(botModel.provider);
+
           setFormData({
             name: setup.name,
             promptStrategy: "existing",
@@ -227,87 +237,138 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
             contextSymbols: setup.runtimeConfig.contextSymbols,
             execution: setup.runtimeConfig.execution
           });
-          const selectedModel = modelsData.find((model: Model) => model.id === setup.modelProfileId);
-          if (selectedModel?.provider) {
-            setSelectedProvider(selectedModel.provider);
-          }
         } else {
-          setFormData((current) => ({
-            ...current,
-            modelProfileId: current.modelProfileId || modelsData[0]?.id || "",
-            existingPromptVersionId: current.existingPromptVersionId || promptOptions[0]?.id || ""
-          }));
+          const firstModel = (modelsData as Model[]).find((m) => m.provider === selectedProvider) ?? (modelsData as Model[])[0];
+          if (firstModel) {
+            setSelectedProvider(firstModel.provider);
+            setFormData((cur) => ({
+              ...cur,
+              modelProfileId: cur.modelProfileId || firstModel.id
+            }));
+          }
         }
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError instanceof Error ? loadError.message : "Failed to load bot form");
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     };
 
     load();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [botId, mode]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [botId, mode, defaultBotNumber, selectedProvider]);
-
+  // Sync model selection when provider changes
   useEffect(() => {
     if (!formData.modelProfileId && availableModels[0]?.id) {
-      setFormData((current) => ({ ...current, modelProfileId: availableModels[0]!.id }));
+      setFormData((cur) => ({ ...cur, modelProfileId: availableModels[0]!.id }));
     }
   }, [availableModels, formData.modelProfileId]);
 
+  // Auto-select first prompt version
   useEffect(() => {
     if (!formData.existingPromptVersionId && promptOptions[0]?.id) {
-      setFormData((current) => ({ ...current, existingPromptVersionId: promptOptions[0]!.id }));
+      setFormData((cur) => ({ ...cur, existingPromptVersionId: promptOptions[0]!.id }));
     }
   }, [promptOptions, formData.existingPromptVersionId]);
 
-  const toggleSymbol = (symbol: string) => {
-    if (formData.symbolScope === "all") {
+  // Load prompt body when a saved version is selected
+  useEffect(() => {
+    if (formData.promptStrategy !== "existing" || !formData.existingPromptVersionId) {
+      setPromptBody(null);
+      setShowBodyEditor(false);
       return;
     }
 
-    setFormData((current) => ({
-      ...current,
-      contextSymbols: current.contextSymbols.includes(symbol)
-        ? current.contextSymbols.filter((value) => value !== symbol)
-        : [...current.contextSymbols, symbol]
+    const prompt = prompts.find((p) => p.versions.some((v) => v.id === formData.existingPromptVersionId));
+    if (!prompt) return;
+
+    let cancelled = false;
+    setLoadingBody(true);
+    setShowBodyEditor(false);
+
+    fetch(`/api/prompts/${prompt.id}/versions/${formData.existingPromptVersionId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) {
+          setPromptBody(data.body ?? null);
+          setEditedBody(data.body ?? "");
+        }
+      })
+      .catch(() => { if (!cancelled) setPromptBody(null); })
+      .finally(() => { if (!cancelled) setLoadingBody(false); });
+
+    return () => { cancelled = true; };
+  }, [formData.existingPromptVersionId, formData.promptStrategy, prompts]);
+
+  const handleSaveNewVersion = async () => {
+    const prompt = prompts.find((p) => p.versions.some((v) => v.id === formData.existingPromptVersionId));
+    if (!prompt) return;
+
+    setSavingVersion(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/prompts/${prompt.id}/versions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: editedBody })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to save version");
+
+      const promptsRes = await fetch("/api/prompts");
+      const promptsData = await promptsRes.json();
+      setPrompts(promptsData);
+      setFormData((cur) => ({ ...cur, existingPromptVersionId: data.promptVersionId }));
+      setShowBodyEditor(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save new version");
+    } finally {
+      setSavingVersion(false);
+    }
+  };
+
+  const toggleSymbol = (symbol: string) => {
+    if (formData.symbolScope === "all") return;
+    setFormData((cur) => ({
+      ...cur,
+      contextSymbols: cur.contextSymbols.includes(symbol)
+        ? cur.contextSymbols.filter((s) => s !== symbol)
+        : [...cur.contextSymbols, symbol]
+    }));
+  };
+
+  const updateModule = (key: keyof typeof formData.promptConfig.modules, value: boolean | number) => {
+    setFormData((cur) => ({
+      ...cur,
+      promptConfig: {
+        ...cur.promptConfig,
+        modules: { ...cur.promptConfig.modules, [key]: value }
+      }
     }));
   };
 
   const resolvePromptVersionId = async () => {
     if (formData.promptStrategy === "existing") {
-      if (!formData.existingPromptVersionId) {
-        throw new Error("Choose a saved prompt version");
-      }
-
+      if (!formData.existingPromptVersionId) throw new Error("Choose a saved prompt version");
       return formData.existingPromptVersionId;
     }
 
-    const promptResponse = await fetch("/api/prompts", {
+    const res = await fetch("/api/prompts", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: formData.newPromptName.trim(),
         slug: uniqueSlug(formData.newPromptName),
         initialBody: formData.newPromptBody.trim()
       })
     });
-
-    const promptData = await promptResponse.json();
-    if (!promptResponse.ok) {
-      throw new Error(promptData.error ?? "Failed to create prompt");
-    }
-
-    return promptData.promptVersionId as string;
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Failed to create prompt");
+    return data.promptVersionId as string;
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -316,77 +377,49 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     setError(null);
 
     try {
-      if (!formData.name.trim()) {
-        throw new Error("Bot name is required");
-      }
-      if (!formData.modelProfileId) {
-        throw new Error("Choose a model");
-      }
-      if (formData.promptStrategy === "new" && !formData.newPromptName.trim()) {
-        throw new Error("Prompt name is required");
-      }
-      if (formData.promptStrategy === "new" && !formData.newPromptBody.trim()) {
-        throw new Error("Prompt body is required");
-      }
+      if (!formData.name.trim()) throw new Error("Bot name is required");
+      if (!formData.modelProfileId) throw new Error("Choose a model");
+      if (formData.promptStrategy === "new" && !formData.newPromptName.trim()) throw new Error("Prompt name is required");
+      if (formData.promptStrategy === "new" && !formData.newPromptBody.trim()) throw new Error("Prompt body is required");
       if (formData.symbolScope === "selected" && formData.contextSymbols.length === 0) {
-        throw new Error("Choose at least one symbol or switch to all symbols");
+        throw new Error("Select at least one pair, or choose All Pairs");
       }
 
       const promptVersionId = await resolvePromptVersionId();
       const contextSymbols =
         formData.symbolScope === "all" ? [ALL_SYMBOLS_TOKEN] : uniqueSymbols(formData.contextSymbols);
 
-      const payload = {
-        name: formData.name.trim(),
-        promptVersionId,
-        modelProfileId: formData.modelProfileId,
-        promptConfig: formData.promptConfig,
-        frequencyMinutes: Number(formData.frequencyMinutes),
-        mode: formData.mode,
-        contextSymbols,
-        execution: formData.execution
-      };
-
       if (mode === "create") {
-        const response = await fetch("/api/bots", {
+        const res = await fetch("/api/bots", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...payload,
+            name: formData.name.trim(),
             slug: uniqueSlug(formData.name),
+            promptVersionId,
+            modelProfileId: formData.modelProfileId,
+            promptConfig: formData.promptConfig,
             runtimeConfig: {
               venue: formData.venue,
-              frequencyMinutes: payload.frequencyMinutes,
-              mode: payload.mode,
+              frequencyMinutes: Number(formData.frequencyMinutes),
+              mode: formData.mode,
               assetClass: "spot",
               symbolScope: formData.symbolScope,
-              execution: payload.execution,
+              execution: formData.execution,
               contextSymbols
             }
           })
         });
-
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error ?? "Failed to create bot");
-        }
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Failed to create bot");
       } else {
-        const response = await fetch(`/api/bots/${botId}`, {
+        const res = await fetch(`/api/bots/${botId}`, {
           method: "PATCH",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            name: payload.name
-          })
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: formData.name.trim() })
         });
-
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error ?? "Failed to update bot");
-        }
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Failed to update bot");
       }
 
       onSuccess();
@@ -397,29 +430,31 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     }
   };
 
+  const PRESETS = ["minimal", "performance", "competitive", "full-context"] as const;
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content modal-content-wide" onClick={(event) => event.stopPropagation()}>
+      <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{mode === "create" ? "Create Bot" : "Rename Bot"}</h2>
-          <button className="modal-close" onClick={onClose}>
-            ✕
-          </button>
+          <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
         {loading ? (
-          <p className="muted">Loading configuration...</p>
+          <p className="muted">Loading configuration…</p>
         ) : (
           <form className="modal-form" onSubmit={handleSubmit}>
+
+            {/* ── Bot name ── */}
             <div className="form-section">
               <h3>Bot</h3>
               <div className="form-row">
                 <label>
-                  Bot Name
+                  Name
                   <input
                     type="text"
                     value={formData.name}
-                    onChange={(event) => setFormData({ ...formData, name: event.target.value })}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="Bot #1"
                     required
                   />
@@ -427,8 +462,10 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
               </div>
             </div>
 
+            {/* ── Prompt ── */}
             <div className="form-section">
               <h3>Prompt</h3>
+
               <div className="segmented-control">
                 <button
                   type="button"
@@ -448,71 +485,123 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
               </div>
 
               {formData.promptStrategy === "new" ? (
-                <>
+                <div className="form-grid">
                   <div className="form-row">
                     <label>
                       Prompt Name
                       <input
                         type="text"
                         value={formData.newPromptName}
-                        onChange={(event) => setFormData({ ...formData, newPromptName: event.target.value })}
+                        onChange={(e) => setFormData({ ...formData, newPromptName: e.target.value })}
                         placeholder="Bot #1 Prompt"
                         required
                       />
                     </label>
                   </div>
-                  <div className="form-row">
+                  <div className="form-row" style={{ gridColumn: "1 / -1" }}>
                     <label>
                       Prompt Body
                       <textarea
                         value={formData.newPromptBody}
-                        onChange={(event) => setFormData({ ...formData, newPromptBody: event.target.value })}
+                        onChange={(e) => setFormData({ ...formData, newPromptBody: e.target.value })}
                         rows={10}
                         required
                       />
                     </label>
                   </div>
-                </>
-              ) : (
-                <div className="form-row">
-                  <label>
-                    Choose a saved prompt version
-                    <select
-                      value={formData.existingPromptVersionId}
-                      onChange={(event) => setFormData({ ...formData, existingPromptVersionId: event.target.value })}
-                      required
-                    >
-                      <option value="">Select a prompt</option>
-                      {promptOptions.map((prompt) => (
-                        <option key={prompt.id} value={prompt.id}>
-                          {prompt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
                 </div>
+              ) : (
+                <>
+                  <div className="form-row">
+                    <label>
+                      Version
+                      <select
+                        value={formData.existingPromptVersionId}
+                        onChange={(e) => setFormData({ ...formData, existingPromptVersionId: e.target.value })}
+                        required
+                      >
+                        <option value="">Select a version</option>
+                        {promptOptions.map((p) => (
+                          <option key={p.id} value={p.id}>{p.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  {formData.existingPromptVersionId && (
+                    <div className="prompt-body-panel">
+                      <div className="prompt-body-header">
+                        <span className="field-help">Prompt body</span>
+                        {!showBodyEditor && (
+                          <button
+                            type="button"
+                            className="btn btn-xs"
+                            onClick={() => setShowBodyEditor(true)}
+                            disabled={loadingBody || !promptBody}
+                          >
+                            {loadingBody ? "Loading…" : "Edit"}
+                          </button>
+                        )}
+                      </div>
+
+                      {showBodyEditor ? (
+                        <>
+                          <textarea
+                            className="prompt-body-textarea"
+                            value={editedBody}
+                            onChange={(e) => setEditedBody(e.target.value)}
+                            rows={10}
+                          />
+                          <div className="prompt-body-actions">
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => { setShowBodyEditor(false); setEditedBody(promptBody ?? ""); }}
+                              disabled={savingVersion}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              onClick={handleSaveNewVersion}
+                              disabled={savingVersion || !editedBody.trim()}
+                            >
+                              {savingVersion ? "Saving…" : "Save as new version"}
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <pre className="prompt-body-preview">
+                          {loadingBody ? "Loading…" : (promptBody ?? "—")}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
+            {/* ── Model & Runtime ── */}
             <div className="form-section">
-              <h3>Model + Runtime</h3>
+              <h3>Model &amp; Runtime</h3>
               <div className="form-grid">
                 <div className="form-row">
                   <label>
                     Provider
                     <select
                       value={selectedProvider}
-                      onChange={(event) => {
-                        const provider = event.target.value;
-                        setSelectedProvider(provider);
-                        setFormData((current) => ({ ...current, modelProfileId: "" }));
+                      onChange={(e) => {
+                        setSelectedProvider(e.target.value);
+                        setFormData((cur) => ({ ...cur, modelProfileId: "" }));
                       }}
-                      disabled={mode !== "create"}
+                      disabled={mode !== "create" || providerOptions.length === 0}
                     >
-                      {providerOptions.map((provider) => (
-                        <option key={provider} value={provider}>
-                          {provider}
-                        </option>
+                      {providerOptions.length === 0 && (
+                        <option value="">No providers</option>
+                      )}
+                      {providerOptions.map((p) => (
+                        <option key={p} value={p}>{p}</option>
                       ))}
                     </select>
                   </label>
@@ -523,15 +612,13 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                     Model
                     <select
                       value={formData.modelProfileId}
-                      onChange={(event) => setFormData({ ...formData, modelProfileId: event.target.value })}
+                      onChange={(e) => setFormData({ ...formData, modelProfileId: e.target.value })}
                       required
                       disabled={mode !== "create" || availableModels.length === 0}
                     >
-                      <option value="">{availableModels.length === 0 ? "No model available" : "Select a model"}</option>
-                      {availableModels.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name} ({model.provider}/{model.model})
-                        </option>
+                      <option value="">{availableModels.length === 0 ? "No models available" : "Select a model"}</option>
+                      {availableModels.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name} ({m.model})</option>
                       ))}
                     </select>
                   </label>
@@ -539,52 +626,17 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
 
                 <div className="form-row">
                   <label>
-                    Pre-prompt preset
-                    <select
-                      value={formData.promptConfig.preset}
-                      onChange={(event) =>
-                        setFormData({
-                          ...formData,
-                          promptConfig: {
-                            ...formData.promptConfig,
-                            preset: event.target.value as "minimal" | "performance" | "competitive" | "full-context"
-                          }
-                        })
-                      }
-                    >
-                      <option value="minimal">Minimal</option>
-                      <option value="performance">Performance-aware</option>
-                      <option value="competitive">Competitive</option>
-                      <option value="full-context">Full context</option>
-                    </select>
-                  </label>
-                  <p className="field-help">
-                    {PRE_PROMPT_PRESET_DESCRIPTIONS[formData.promptConfig.preset]}
-                  </p>
-                </div>
-
-                <div className="form-row">
-                  <label>
-                    Venue
-                    <select value={formData.venue} disabled>
-                      <option value="binance">Binance France</option>
-                    </select>
-                  </label>
-                  <p className="field-help">One venue per bot. Venue is fixed after creation.</p>
-                </div>
-
-                <div className="form-row">
-                  <label>
                     Frequency
                     <select
                       value={formData.frequencyMinutes}
-                      onChange={(event) => setFormData({ ...formData, frequencyMinutes: event.target.value })}
+                      onChange={(e) => setFormData({ ...formData, frequencyMinutes: e.target.value })}
+                      disabled={mode !== "create"}
                     >
-                      <option value="1">1 minute</option>
-                      <option value="5">5 minutes</option>
-                      <option value="15">15 minutes</option>
-                      <option value="30">30 minutes</option>
-                      <option value="60">60 minutes</option>
+                      <option value="1">Every 1 min</option>
+                      <option value="5">Every 5 min</option>
+                      <option value="15">Every 15 min</option>
+                      <option value="30">Every 30 min</option>
+                      <option value="60">Every 60 min</option>
                     </select>
                   </label>
                 </div>
@@ -594,9 +646,8 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                     Mode
                     <select
                       value={formData.mode}
-                      onChange={(event) =>
-                        setFormData({ ...formData, mode: event.target.value as "testnet" | "live" })
-                      }
+                      onChange={(e) => setFormData({ ...formData, mode: e.target.value as "testnet" | "live" })}
+                      disabled={mode !== "create"}
                     >
                       <option value="testnet">Testnet</option>
                       <option value="live">Live</option>
@@ -606,317 +657,201 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
               </div>
             </div>
 
+            {/* ── Context & Behavior (preset + modules) ── */}
             <div className="form-section">
-              <h3>Structured Context Modules</h3>
+              <h3>Context &amp; Behavior</h3>
               <p className="field-help">
-                Tick the modules you want the backend to fetch dynamically and inject into the LLM input in a structured
-                way before each run.
+                Choose a preset and tick the data modules injected into every run.
               </p>
 
-              <div className="checkbox-row">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={formData.promptConfig.modules.includeCurrentPositions}
-                    onChange={(event) =>
-                      setFormData({
-                        ...formData,
-                        promptConfig: {
-                          ...formData.promptConfig,
-                          modules: {
-                            ...formData.promptConfig.modules,
-                            includeCurrentPositions: event.target.checked
-                          }
-                        }
-                      })
+              <div className="preset-grid">
+                {PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    className={`preset-option ${formData.promptConfig.preset === preset ? "preset-option-active" : ""}`}
+                    onClick={() =>
+                      setFormData((cur) => ({
+                        ...cur,
+                        promptConfig: { ...cur.promptConfig, preset }
+                      }))
                     }
-                  />
-                  <span>Current positions and prices</span>
-                </label>
+                  >
+                    <span className="preset-label">{preset.replace("-", " ")}</span>
+                    <span className="preset-desc">{PRE_PROMPT_PRESET_DESCRIPTIONS[preset]}</span>
+                  </button>
+                ))}
+              </div>
 
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={formData.promptConfig.modules.includeWalletOverview}
-                    onChange={(event) =>
-                      setFormData({
-                        ...formData,
-                        promptConfig: {
-                          ...formData.promptConfig,
-                          modules: {
-                            ...formData.promptConfig.modules,
-                            includeWalletOverview: event.target.checked
-                          }
-                        }
-                      })
-                    }
-                  />
-                  <span>Wallet start vs current value</span>
-                </label>
-
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={formData.promptConfig.modules.includePerformanceStats}
-                    onChange={(event) =>
-                      setFormData({
-                        ...formData,
-                        promptConfig: {
-                          ...formData.promptConfig,
-                          modules: {
-                            ...formData.promptConfig.modules,
-                            includePerformanceStats: event.target.checked
-                          }
-                        }
-                      })
-                    }
-                  />
-                  <span>Performance stats</span>
-                </label>
-
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={formData.promptConfig.modules.includePastTrades}
-                    onChange={(event) =>
-                      setFormData({
-                        ...formData,
-                        promptConfig: {
-                          ...formData.promptConfig,
-                          modules: {
-                            ...formData.promptConfig.modules,
-                            includePastTrades: event.target.checked
-                          }
-                        }
-                      })
-                    }
-                  />
-                  <span>Past trades</span>
-                </label>
-
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={formData.promptConfig.modules.includeBotRanking}
-                    onChange={(event) =>
-                      setFormData({
-                        ...formData,
-                        promptConfig: {
-                          ...formData.promptConfig,
-                          modules: {
-                            ...formData.promptConfig.modules,
-                            includeBotRanking: event.target.checked
-                          }
-                        }
-                      })
-                    }
-                  />
-                  <span>Ranking vs other bots</span>
-                </label>
+              <div className="modules-grid">
+                {[
+                  { key: "includeCurrentPositions" as const, label: "Current positions & prices" },
+                  { key: "includeWalletOverview" as const, label: "Wallet overview (start vs now)" },
+                  { key: "includePerformanceStats" as const, label: "Performance stats" },
+                  { key: "includePastTrades" as const, label: "Past trades" },
+                  { key: "includeBotRanking" as const, label: "Ranking vs other bots" }
+                ].map(({ key, label }) => (
+                  <label key={key} className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={formData.promptConfig.modules[key] as boolean}
+                      onChange={(e) => updateModule(key, e.target.checked)}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
               </div>
 
               {formData.promptConfig.modules.includePastTrades && (
-                <div className="form-row">
+                <div className="form-row" style={{ maxWidth: 200 }}>
                   <label>
-                    Past trades lookback
+                    Lookback (trades)
                     <input
                       type="number"
                       min={1}
                       max={200}
                       value={formData.promptConfig.modules.pastTradesLookback}
-                      onChange={(event) =>
-                        setFormData({
-                          ...formData,
-                          promptConfig: {
-                            ...formData.promptConfig,
-                            modules: {
-                              ...formData.promptConfig.modules,
-                              pastTradesLookback: Number(event.target.value)
-                            }
-                          }
-                        })
-                      }
+                      onChange={(e) => updateModule("pastTradesLookback", Number(e.target.value))}
                     />
                   </label>
                 </div>
               )}
             </div>
 
+            {/* ── Authorized Pairs ── */}
             <div className="form-section">
               <h3>Authorized Pairs</h3>
 
               <div className="form-row">
-                <label className="checkbox-label">
+                <input
+                  type="text"
+                  className="symbol-search-input"
+                  value={symbolSearch}
+                  onChange={(e) => setSymbolSearch(e.target.value)}
+                  placeholder="Search BTC, ETH, XMR…"
+                />
+              </div>
+
+              <div className="symbol-list-scroll">
+                {/* All pairs option */}
+                <label className="symbol-option symbol-option-all">
                   <input
                     type="checkbox"
                     checked={formData.symbolScope === "all"}
-                    onChange={(event) =>
+                    onChange={(e) =>
                       setFormData({
                         ...formData,
-                        symbolScope: event.target.checked ? "all" : "selected",
-                        contextSymbols: event.target.checked ? [] : formData.contextSymbols
+                        symbolScope: e.target.checked ? "all" : "selected",
+                        contextSymbols: e.target.checked ? [] : formData.contextSymbols
                       })
                     }
                   />
-                  <span>All Pairs</span>
+                  <span>All Binance Pairs</span>
                 </label>
+
+                {/* Individual symbols */}
+                {filteredSymbols.map((symbol) => (
+                  <label
+                    key={symbol}
+                    className={`symbol-option ${formData.symbolScope === "all" ? "symbol-option-disabled" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.contextSymbols.includes(symbol)}
+                      onChange={() => toggleSymbol(symbol)}
+                      disabled={formData.symbolScope === "all"}
+                    />
+                    <span>{symbol}</span>
+                  </label>
+                ))}
               </div>
 
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setSymbolsExpanded((current) => !current)}
-                disabled={formData.symbolScope === "all"}
-              >
-                {symbolsExpanded ? "Hide authorized pairs" : "Authorized pairs"}
-              </button>
-
-              {symbolsExpanded ? (
-                <>
-                  <div className="form-row">
-                    <label>
-                      Search symbols
-                      <input
-                        type="text"
-                        value={symbolSearch}
-                        onChange={(event) => setSymbolSearch(event.target.value)}
-                        placeholder="Search BTCUSDT, ETHUSDT..."
-                      />
-                    </label>
-                  </div>
-
-                  <div className="selected-symbols">
-                    {formData.contextSymbols.map((symbol) => (
-                      <button
-                        key={symbol}
-                        type="button"
-                        className="badge badge-button"
-                        onClick={() => toggleSymbol(symbol)}
-                        disabled={formData.symbolScope === "all"}
-                      >
-                        {symbol} ×
-                      </button>
-                    ))}
-                    {formData.contextSymbols.length === 0 && <span className="muted">No symbols selected yet.</span>}
-                  </div>
-
-                  <div className="symbol-list">
-                    {filteredSymbols.map((symbol) => (
-                      <label
-                        key={symbol}
-                        className={`symbol-option ${formData.symbolScope === "all" ? "symbol-option-disabled" : ""}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.contextSymbols.includes(symbol)}
-                          onChange={() => toggleSymbol(symbol)}
-                          disabled={formData.symbolScope === "all"}
-                        />
-                        <span>{symbol}</span>
-                      </label>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <p className="field-help">
-                  {formData.symbolScope === "all"
-                    ? "All spot pairs are authorized. Individual selection is disabled."
-                    : "Open Authorized pairs to search and tick allowed pairs one by one."}
-                </p>
+              {formData.symbolScope === "selected" && formData.contextSymbols.length > 0 && (
+                <div className="selected-symbols">
+                  {formData.contextSymbols.map((symbol) => (
+                    <button
+                      key={symbol}
+                      type="button"
+                      className="badge badge-button"
+                      onClick={() => toggleSymbol(symbol)}
+                    >
+                      {symbol} ×
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
 
+            {/* ── Execution Rules ── */}
             <div className="form-section">
               <h3>Execution Rules</h3>
               <label className="checkbox-label">
                 <input
                   type="checkbox"
                   checked={formData.execution.enabled}
-                  onChange={(event) =>
-                    setFormData({
-                      ...formData,
-                      execution: {
-                        ...formData.execution,
-                        enabled: event.target.checked
-                      }
-                    })
+                  onChange={(e) =>
+                    setFormData({ ...formData, execution: { ...formData.execution, enabled: e.target.checked } })
                   }
                 />
                 <span>Enable execution rules</span>
               </label>
-              <p className="field-help">Disabled by default. When off, only venue tradability and wallet sanity checks apply.</p>
+              <p className="field-help">When off, only venue tradability and wallet sanity checks apply.</p>
+
               <div className="checkbox-row">
                 <label className="checkbox-label">
                   <input
                     type="checkbox"
                     checked={formData.execution.allowMarketOrders}
-                    onChange={(event) =>
-                      setFormData({
-                        ...formData,
-                        execution: { ...formData.execution, allowMarketOrders: event.target.checked }
-                      })
+                    onChange={(e) =>
+                      setFormData({ ...formData, execution: { ...formData.execution, allowMarketOrders: e.target.checked } })
                     }
                     disabled={!formData.execution.enabled}
                   />
-                  <span>Allow market orders</span>
+                  <span>Market orders</span>
                 </label>
                 <label className="checkbox-label">
                   <input
                     type="checkbox"
                     checked={formData.execution.allowLimitOrders}
-                    onChange={(event) =>
-                      setFormData({
-                        ...formData,
-                        execution: { ...formData.execution, allowLimitOrders: event.target.checked }
-                      })
+                    onChange={(e) =>
+                      setFormData({ ...formData, execution: { ...formData.execution, allowLimitOrders: e.target.checked } })
                     }
                     disabled={!formData.execution.enabled}
                   />
-                  <span>Allow limit orders</span>
+                  <span>Limit orders</span>
                 </label>
               </div>
 
               <div className="form-grid">
                 <div className="form-row">
                   <label>
-                    Max orders per run
+                    Max orders / run
                     <input
                       type="number"
                       min={1}
                       max={20}
                       value={formData.execution.maxOrdersPerRun}
-                      onChange={(event) =>
-                        setFormData({
-                          ...formData,
-                          execution: { ...formData.execution, maxOrdersPerRun: Number(event.target.value) }
-                        })
+                      onChange={(e) =>
+                        setFormData({ ...formData, execution: { ...formData.execution, maxOrdersPerRun: Number(e.target.value) } })
                       }
                       disabled={!formData.execution.enabled}
                     />
                   </label>
                 </div>
-
                 <div className="form-row">
                   <label>
-                    Max notional per order (USD)
+                    Max notional / order (USD)
                     <input
                       type="number"
                       min={1}
                       value={formData.execution.maxNotionalPerOrderUsd}
-                      onChange={(event) =>
-                        setFormData({
-                          ...formData,
-                          execution: {
-                            ...formData.execution,
-                            maxNotionalPerOrderUsd: Number(event.target.value)
-                          }
-                        })
+                      onChange={(e) =>
+                        setFormData({ ...formData, execution: { ...formData.execution, maxNotionalPerOrderUsd: Number(e.target.value) } })
                       }
                       disabled={!formData.execution.enabled}
                     />
                   </label>
                 </div>
-
                 <div className="form-row">
                   <label>
                     Min cash reserve (USD)
@@ -924,14 +859,8 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                       type="number"
                       min={0}
                       value={formData.execution.minCashReserveUsd}
-                      onChange={(event) =>
-                        setFormData({
-                          ...formData,
-                          execution: {
-                            ...formData.execution,
-                            minCashReserveUsd: Number(event.target.value)
-                          }
-                        })
+                      onChange={(e) =>
+                        setFormData({ ...formData, execution: { ...formData.execution, minCashReserveUsd: Number(e.target.value) } })
                       }
                       disabled={!formData.execution.enabled}
                     />
@@ -947,7 +876,9 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                 Cancel
               </button>
               <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? (mode === "create" ? "Creating..." : "Saving...") : mode === "create" ? "Create Bot" : "Save Changes"}
+                {saving
+                  ? mode === "create" ? "Creating…" : "Saving…"
+                  : mode === "create" ? "Create Bot" : "Save Changes"}
               </button>
             </div>
           </form>
