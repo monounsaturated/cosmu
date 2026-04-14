@@ -17,13 +17,13 @@ import { validateDecision } from "./validator.js";
 const getDecisionWithRetry = async (
   bot: BotSetup,
   systemPrompt: string,
-  compactContext: Record<string, unknown>
+  userMessage: string
 ) => {
   let lastError: unknown;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await requestDecision({ bot, systemPrompt, compactContext });
+      return await requestDecision({ bot, systemPrompt, userMessage });
     } catch (error) {
       lastError = error;
     }
@@ -59,7 +59,7 @@ export const runBot = async (bot: BotSetup) => {
 
   try {
     const beforeVenueContext = await loadVenueContext(bot.runtimeConfig, bot.runtimeConfig.contextSymbols);
-    const { systemPrompt, compactContext } = await buildPromptContext({
+    const { systemPrompt, userMessage, compactContext } = await buildPromptContext({
       bot,
       venueContext: beforeVenueContext
     });
@@ -74,7 +74,7 @@ export const runBot = async (bot: BotSetup) => {
 
     await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
 
-    const { rawText, decision } = await getDecisionWithRetry(bot, systemPrompt, compactContext);
+    const { rawText, decision } = await getDecisionWithRetry(bot, systemPrompt, userMessage);
     const validationResult = await validateDecision({
       decision,
       runtimeConfig: bot.runtimeConfig,

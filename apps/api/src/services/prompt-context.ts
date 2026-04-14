@@ -1,109 +1,173 @@
 import type { VenueContext } from "../adapters/binance.js";
 import { getBotPrePromptContext, type BotSetup } from "../lib/store.js";
-import { PRE_PROMPT_PRESET_DESCRIPTIONS } from "@cosmu/shared";
 
-const PRESET_INSTRUCTIONS: Record<string, string> = {
-  minimal: "Focus on high-conviction decisions. Use only the most relevant facts from the structured context.",
-  performance:
-    "Optimize for durable net performance after fees. Prefer disciplined decisions over unnecessary trading activity.",
-  competitive:
-    "Aim to outperform the other bots on risk-adjusted net performance, while keeping turnover and fees under control.",
-  "full-context":
-    "Use the full structured context carefully. Synthesize portfolio state, performance, rankings, and trade history before acting."
-};
+// Shown when symbolScope = "all" — just reference anchors for the LLM
+const MAJOR_PAIRS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT"];
+
+const fmtUsd = (n: number) =>
+  `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const fmtNum = (n: number) =>
+  n.toLocaleString("en-US", { maximumSignificantDigits: 8, useGrouping: false });
 
 type BuildPromptContextInput = {
   bot: BotSetup;
   venueContext: VenueContext;
 };
 
-const buildBaseRuntimeContext = (bot: BotSetup, venueContext: VenueContext) => ({
-  bot: {
-    id: bot.id,
-    botNumber: bot.botNumber,
-    name: bot.name,
-    slug: bot.slug
-  },
-  venue: bot.runtimeConfig.venue,
-  mode: bot.runtimeConfig.mode,
-  assetClass: bot.runtimeConfig.assetClass,
-  promptVersion: bot.promptVersionLabel,
-  modelProfile: bot.modelProfileName,
-  executionConstraints: {
-    enabled: bot.runtimeConfig.execution.enabled,
-    maxOrdersPerRun: bot.runtimeConfig.execution.maxOrdersPerRun,
-    maxNotionalPerOrderUsd: bot.runtimeConfig.execution.maxNotionalPerOrderUsd,
-    minCashReserveUsd: bot.runtimeConfig.execution.minCashReserveUsd,
-    allowMarketOrders: bot.runtimeConfig.execution.allowMarketOrders,
-    allowLimitOrders: bot.runtimeConfig.execution.allowLimitOrders
-  },
-  wallet: venueContext.snapshot.balances,
-  prices: venueContext.snapshot.prices
-});
-
 export const buildPromptContext = async ({ bot, venueContext }: BuildPromptContextInput) => {
-  const runtimeContext = buildBaseRuntimeContext(bot, venueContext);
+  const { runtimeConfig, promptConfig } = bot;
+  const modules = promptConfig.modules;
+  const exec = runtimeConfig.execution;
+  const { snapshot, priceMap } = venueContext;
+
   const historyContext = await getBotPrePromptContext({
     botId: bot.id,
-    pastTradesLookback: bot.promptConfig.modules.pastTradesLookback
+    pastTradesLookback: modules.pastTradesLookback
   });
 
-  const prePromptModules: Record<string, unknown> = {};
-
-  if (bot.promptConfig.modules.includeCurrentPositions) {
-    prePromptModules.currentPositions = {
-      balances: venueContext.snapshot.balances,
-      prices: venueContext.snapshot.prices
-    };
-  }
-
-  if (bot.promptConfig.modules.includeWalletOverview) {
-    prePromptModules.walletOverview = {
-      startedPortfolioUsd: historyContext.performance?.firstPortfolioUsd ?? null,
-      currentPortfolioUsd: historyContext.performance?.currentPortfolioUsd ?? venueContext.snapshot.totalUsdValue,
-      totalUsdValueNow: venueContext.snapshot.totalUsdValue
-    };
-  }
-
-  if (bot.promptConfig.modules.includePerformanceStats) {
-    prePromptModules.performanceStats = historyContext.performance;
-  }
-
-  if (bot.promptConfig.modules.includePastTrades) {
-    prePromptModules.pastTrades = historyContext.pastTrades;
-  }
-
-  if (bot.promptConfig.modules.includeBotRanking) {
-    prePromptModules.botRanking = historyContext.ranking.slice(0, 10);
-  }
-
-  const activeModules = Object.keys(prePromptModules);
-
+  // ── System message: the user's strategy + non-negotiable rules ─────────────
   const systemPrompt = [
-    "You are the research decision engine for one autonomous spot trading bot.",
-    `Preset: ${bot.promptConfig.preset}. ${PRE_PROMPT_PRESET_DESCRIPTIONS[bot.promptConfig.preset]}`,
-    PRESET_INSTRUCTIONS[bot.promptConfig.preset] ?? PRESET_INSTRUCTIONS.minimal,
-    "You will receive a structured JSON payload with two top-level keys: runtimeContext and prePromptModules.",
-    activeModules.length > 0
-      ? `Active structured modules: ${activeModules.join(", ")}. Treat them as factual context.`
-      : "No optional structured modules are active for this bot.",
+    bot.promptBody.trim(),
     [
-      "MANDATORY RISK RULE: Every BUY order MUST include stopLossPrice and takeProfitPrice.",
-      "stopLossPrice must be below the current market price (your exit if the trade goes against you).",
-      "takeProfitPrice must be above the current market price (your exit if the trade goes your way).",
-      "After a buy fills, an OCO sell order is automatically placed with these prices.",
-      "SELL orders are exits from existing positions — set stopLossPrice and takeProfitPrice to null for sells.",
-      "If you cannot determine sensible SL/TP levels, do not propose the buy order."
-    ].join(" "),
-    "Return only valid JSON matching the response schema.",
-    bot.promptBody
+      "---",
+      "NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):",
+      "• Every BUY order MUST include stopLossPrice (strictly below entry) and takeProfitPrice (strictly above entry).",
+      "  After a buy fills, an OCO SELL is automatically placed at those two levels.",
+      "• For SELL orders: set stopLossPrice and takeProfitPrice to null.",
+      "• No clear opportunity? Return mode='hold' with an empty orders array.",
+      "• Reply with valid JSON only — no markdown, no text outside the JSON."
+    ].join("\n")
   ].join("\n\n");
 
-  return {
-    systemPrompt,
-    compactContext: {
-      runtimeContext,
-      prePromptModules
+  // ── User message: structured runtime data as readable sections ─────────────
+  const sections: string[] = [];
+
+  // — Bot metadata —
+  sections.push(
+    [
+      "=== SESSION ===",
+      `Bot: ${bot.name} (#${bot.botNumber}) | Preset: ${promptConfig.preset} | Model: ${bot.modelProfileName}`,
+      `Mode: ${runtimeConfig.mode} | Venue: Binance Spot | Frequency: every ${runtimeConfig.frequencyMinutes}min`
+    ].join("\n")
+  );
+
+  // — Execution rules —
+  const allowedTypes = [exec.allowMarketOrders && "MARKET", exec.allowLimitOrders && "LIMIT"]
+    .filter(Boolean)
+    .join(", ");
+  sections.push(
+    [
+      "=== EXECUTION RULES ===",
+      `Rules enforced: ${exec.enabled ? "YES" : "NO (relaxed)"}`,
+      `Max orders/run: ${exec.maxOrdersPerRun} | Max notional/order: ${exec.maxNotionalPerOrderUsd} USDT`,
+      exec.enabled ? `Cash reserve (untouchable): ${exec.minCashReserveUsd} USDT` : "",
+      `Allowed types: ${allowedTypes}`
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+
+  // — Wallet —
+  const walletLines = [
+    "=== WALLET ===",
+    `Total: ${fmtUsd(snapshot.totalUsdValue)}`
+  ];
+  for (const b of snapshot.balances) {
+    const usd = b.usdValue != null ? ` (${fmtUsd(b.usdValue)})` : "";
+    const locked = b.locked > 0 ? ` + ${fmtNum(b.locked)} locked` : "";
+    walletLines.push(`${b.asset}: ${fmtNum(b.free)} free${locked}${usd}`);
+  }
+  sections.push(walletLines.join("\n"));
+
+  // — Market prices: held assets + selected pairs + major anchors —
+  const heldPairs = snapshot.balances
+    .filter((b) => b.asset !== "USDT" && priceMap[`${b.asset}USDT`])
+    .map((b) => `${b.asset}USDT`);
+
+  const selectedPairs =
+    runtimeConfig.symbolScope === "selected"
+      ? runtimeConfig.contextSymbols.filter((s) => priceMap[s])
+      : [];
+
+  const shownSet = new Set([...heldPairs, ...selectedPairs]);
+  const majorFill = MAJOR_PAIRS.filter((p) => priceMap[p] && !shownSet.has(p));
+  const pricePairs = [...heldPairs, ...selectedPairs.filter((p) => !shownSet.has(p)), ...majorFill].slice(
+    0,
+    30
+  );
+
+  if (pricePairs.length > 0) {
+    const priceLines = ["=== MARKET PRICES ==="];
+    for (const pair of pricePairs) {
+      const tag = heldPairs.includes(pair) ? " [held]" : selectedPairs.includes(pair) ? " [selected]" : "";
+      priceLines.push(`${pair}: ${fmtNum(priceMap[pair]!)}${tag}`);
     }
+    sections.push(priceLines.join("\n"));
+  }
+
+  // — Authorized pairs: only injected when symbolScope = "selected" —
+  if (runtimeConfig.symbolScope === "selected" && runtimeConfig.contextSymbols.length > 0) {
+    sections.push(
+      ["=== AUTHORIZED PAIRS — trade ONLY these ===", runtimeConfig.contextSymbols.join(", ")].join("\n")
+    );
+  }
+
+  // — Optional modules —
+  if (modules.includeWalletOverview && historyContext.performance) {
+    const p = historyContext.performance;
+    const start = fmtUsd(p.firstPortfolioUsd ?? 0);
+    const now = fmtUsd(p.currentPortfolioUsd ?? snapshot.totalUsdValue);
+    const pnlNet = p.netPnlUsd != null ? ` | Net PnL: ${fmtUsd(p.netPnlUsd)}` : "";
+    sections.push(
+      [
+        "=== PORTFOLIO OVERVIEW ===",
+        `Started: ${start} | Now: ${now}${pnlNet}`,
+        `Runs: ${p.runCount ?? 0} | Trades: ${p.tradeCount ?? 0} | Fees: ${fmtUsd(p.totalFeesUsd ?? 0)}`
+      ].join("\n")
+    );
+  }
+
+  if (modules.includePerformanceStats && historyContext.performance) {
+    sections.push(
+      [
+        "=== PERFORMANCE STATS ===",
+        JSON.stringify(historyContext.performance, null, 2)
+      ].join("\n")
+    );
+  }
+
+  if (modules.includePastTrades && historyContext.pastTrades?.length) {
+    const tradeLines = (historyContext.pastTrades as Array<Record<string, unknown>>).map(
+      (t) =>
+        `${String(t.side ?? "").toUpperCase()} ${t.symbol} qty=${t.executedQuantity ?? t.requestedQuantity} @ ${t.averageFillPrice ?? "?"} → ${t.status}`
+    );
+    sections.push(
+      [`=== RECENT TRADES (last ${modules.pastTradesLookback}) ===`, ...tradeLines].join("\n")
+    );
+  }
+
+  if (modules.includeBotRanking && historyContext.ranking?.length) {
+    const rankLines = (historyContext.ranking as Array<Record<string, unknown>>)
+      .slice(0, 10)
+      .map((r, i) => `${i + 1}. ${r.name}: ${fmtUsd(Number(r.netPnlUsd ?? 0))} net PnL`);
+    sections.push(["=== BOT RANKINGS ===", ...rankLines].join("\n"));
+  }
+
+  const userMessage = sections.join("\n\n");
+
+  // Compact summary stored in DB for audit/replay (not sent to LLM)
+  const compactContext: Record<string, unknown> = {
+    preset: promptConfig.preset,
+    mode: runtimeConfig.mode,
+    symbolScope: runtimeConfig.symbolScope,
+    walletTotalUsd: snapshot.totalUsdValue,
+    balanceCount: snapshot.balances.length,
+    pricesShownCount: pricePairs.length,
+    modulesActive: Object.entries(modules)
+      .filter(([k, v]) => v === true && k.startsWith("include"))
+      .map(([k]) => k)
   };
+
+  return { systemPrompt, userMessage, compactContext };
 };
