@@ -18,8 +18,8 @@ async function fetchApi(path: string) {
   return response.json();
 }
 
-export default async function BotPage({ params }: { params: { botId: string } }) {
-  const botId = params.botId;
+export default async function BotPage({ params }: { params: Promise<{ botId: string }> }) {
+  const { botId } = await params;
 
   const [setup, details, runs, dashboard] = await Promise.all([
     fetchApi(`/bots/${botId}/setup`),

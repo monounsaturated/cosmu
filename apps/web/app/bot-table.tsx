@@ -128,7 +128,7 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
 
                 {isExpanded && (
                   <tr className="run-detail-row">
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <div className="run-detail-panels" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
                         
                         <div className="run-detail-panel">

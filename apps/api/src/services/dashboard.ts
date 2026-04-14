@@ -148,7 +148,8 @@ export const getDashboard = async () => {
     }
   }
 
-  let totalAllocatedBotsAmount = 0;
+  let liveAllocatedAmount = 0;
+  let testnetAllocatedAmount = 0;
 
   const bots = botRows.map((row) => {
     const startedAt = row.startedAt.toISOString();
@@ -167,7 +168,9 @@ export const getDashboard = async () => {
       }
     }
 
-    totalAllocatedBotsAmount += currentPortfolioUsd;
+    if (row.mode === "live") liveAllocatedAmount += currentPortfolioUsd;
+    else testnetAllocatedAmount += currentPortfolioUsd;
+
     const netPnlUsd = currentPortfolioUsd - budgetUsdt;
 
     return botSummarySchema.parse({
@@ -185,14 +188,20 @@ export const getDashboard = async () => {
     });
   });
 
-  const totalVenueAmount = (testnetBalance?.totalFreeUsdt ?? 0) + (testnetBalance?.totalLockedUsdt ?? 0);
-  const spareAmount = totalVenueAmount - totalAllocatedBotsAmount;
+  const hasLive = liveBalance || bots.some(b => b.mode === "live");
+  const hasTestnet = testnetBalance || bots.some(b => b.mode === "testnet");
+
+  const liveAccountBalance = (liveBalance?.totalFreeUsdt ?? 0) + (liveBalance?.totalLockedUsdt ?? 0);
+  const testnetAccountBalance = (testnetBalance?.totalFreeUsdt ?? 0) + (testnetBalance?.totalLockedUsdt ?? 0);
 
   // Recent Runs
   const recentRuns = await sql`
     select
       r.id,
-      b.name as "botName",
+      case when b.name is not null and b.name != ''
+        then concat('Bot #', b.bot_number, ' - ', b.name)
+        else concat('Bot #', b.bot_number)
+      end as "botName",
       r.status,
       r.started_at as "startedAt",
       r.finished_at as "finishedAt",
@@ -280,9 +289,16 @@ export const getDashboard = async () => {
   return dashboardSchema.parse({
     generatedAt: new Date().toISOString(),
     venueOverview: {
-      totalVenueAmount,
-      allBotsAmount: totalAllocatedBotsAmount,
-      spareAmount
+      live: hasLive ? {
+        accountBalance: liveAccountBalance,
+        allocatedAmount: liveAllocatedAmount,
+        spareAmount: liveAccountBalance - liveAllocatedAmount
+      } : null,
+      testnet: hasTestnet ? {
+        accountBalance: testnetAccountBalance,
+        allocatedAmount: testnetAllocatedAmount,
+        spareAmount: testnetAccountBalance - testnetAllocatedAmount
+      } : null
     },
     bots,
     performanceSeries: [], // Simplify: skip historical performance chart points or reconstruct them later

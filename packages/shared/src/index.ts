@@ -268,12 +268,17 @@ export const botPerformanceSeriesSchema = z.object({
   points: z.array(botPerformancePointSchema)
 });
 
+const venueOverviewEntrySchema = z.object({
+  accountBalance: z.number(),
+  allocatedAmount: z.number(),
+  spareAmount: z.number()
+});
+
 export const dashboardSchema = z.object({
   generatedAt: z.string().datetime(),
   venueOverview: z.object({
-    totalVenueAmount: z.number(),
-    allBotsAmount: z.number(),
-    spareAmount: z.number()
+    live: venueOverviewEntrySchema.nullable(),
+    testnet: venueOverviewEntrySchema.nullable()
   }),
   bots: z.array(botSummarySchema),
   performanceSeries: z.array(botPerformanceSeriesSchema),

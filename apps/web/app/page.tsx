@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 const emptyDashboard = () =>
   dashboardSchema.parse({
     generatedAt: new Date().toISOString(),
-    venueOverview: { totalVenueAmount: 0, allBotsAmount: 0, spareAmount: 0 },
+    venueOverview: { live: null, testnet: null },
     bots: [],
     performanceSeries: [],
     recentRuns: [],
@@ -62,19 +62,56 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="panel" style={{ marginBottom: "32px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-        <div>
-          <p className="label">Total Venue Amount (API)</p>
-          <h2 style={{ margin: "4px 0" }}>${dashboard.venueOverview.totalVenueAmount.toFixed(2)}</h2>
-        </div>
-        <div>
-          <p className="label">Total Allocated Bots Amount</p>
-          <h2 style={{ margin: "4px 0" }}>${dashboard.venueOverview.allBotsAmount.toFixed(2)}</h2>
-        </div>
-        <div>
-          <p className="label">Spare Amount</p>
-          <h2 style={{ margin: "4px 0" }}>${dashboard.venueOverview.spareAmount.toFixed(2)}</h2>
-        </div>
+      <section style={{ marginBottom: "32px", display: "flex", gap: "16px", flexWrap: "wrap" }}>
+        {dashboard.venueOverview.live && (
+          <div className="panel venue-group" style={{ flex: "1 1 340px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
+              <span className="status-dot status-active" style={{ width: "8px", height: "8px" }} />
+              <span className="label" style={{ fontSize: "13px", color: "#34d399" }}>Live</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
+              <div>
+                <p className="label">Account Balance</p>
+                <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${dashboard.venueOverview.live.accountBalance.toFixed(2)}</h2>
+              </div>
+              <div>
+                <p className="label">Allocated to Bots</p>
+                <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${dashboard.venueOverview.live.allocatedAmount.toFixed(2)}</h2>
+              </div>
+              <div>
+                <p className="label">Spare</p>
+                <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${dashboard.venueOverview.live.spareAmount.toFixed(2)}</h2>
+              </div>
+            </div>
+          </div>
+        )}
+        {dashboard.venueOverview.testnet && (
+          <div className="panel venue-group" style={{ flex: "1 1 340px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
+              <span className="status-dot status-inactive" style={{ width: "8px", height: "8px" }} />
+              <span className="label" style={{ fontSize: "13px", color: "#a1a1aa" }}>Testnet</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
+              <div>
+                <p className="label">Account Balance</p>
+                <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${dashboard.venueOverview.testnet.accountBalance.toFixed(2)}</h2>
+              </div>
+              <div>
+                <p className="label">Allocated to Bots</p>
+                <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${dashboard.venueOverview.testnet.allocatedAmount.toFixed(2)}</h2>
+              </div>
+              <div>
+                <p className="label">Spare</p>
+                <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${dashboard.venueOverview.testnet.spareAmount.toFixed(2)}</h2>
+              </div>
+            </div>
+          </div>
+        )}
+        {!dashboard.venueOverview.live && !dashboard.venueOverview.testnet && (
+          <div className="panel" style={{ flex: 1 }}>
+            <p className="muted">No venue data available.</p>
+          </div>
+        )}
       </section>
 
       <section className="grid" style={{ display: 'block', marginBottom: '32px' }}>
