@@ -218,6 +218,8 @@ export const createRun = async (input: {
   modelProfileId: string;
   runtimeConfig: RuntimeConfig;
   compactContext: Record<string, unknown>;
+  promptSystem?: string;
+  promptUser?: string;
 }) => {
   const [row] = await sql<{ id: string }[]>`
     insert into runs (
@@ -226,6 +228,8 @@ export const createRun = async (input: {
       model_profile_id,
       runtime_config,
       compact_context,
+      prompt_system,
+      prompt_user,
       status
     ) values (
       ${input.botId},
@@ -233,6 +237,8 @@ export const createRun = async (input: {
       ${input.modelProfileId},
       ${sql.json(input.runtimeConfig)},
       ${sql.json(input.compactContext as JsonValue)},
+      ${input.promptSystem ?? null},
+      ${input.promptUser ?? null},
       'running'
     )
     returning id
@@ -491,16 +497,16 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
       e.symbol,
       e.side,
       e.order_type as "orderType",
-      e.requested_quantity as "requestedQuantity",
-      e.executed_quantity as "executedQuantity",
-      e.requested_limit_price as "requestedLimitPrice",
-      e.average_fill_price as "averageFillPrice",
-      e.executed_notional_usd as "executedNotionalUsd",
-      e.fee_amount as "feeAmount",
+      e.requested_quantity::float8 as "requestedQuantity",
+      e.executed_quantity::float8 as "executedQuantity",
+      e.requested_limit_price::float8 as "requestedLimitPrice",
+      e.average_fill_price::float8 as "averageFillPrice",
+      e.executed_notional_usd::float8 as "executedNotionalUsd",
+      e.fee_amount::float8 as "feeAmount",
       e.fee_asset as "feeAsset",
-      e.fee_asset_usd_price as "feeAssetUsdPrice",
-      e.fee_usd as "feeUsd",
-      e.slippage_pct as "slippagePct",
+      e.fee_asset_usd_price::float8 as "feeAssetUsdPrice",
+      e.fee_usd::float8 as "feeUsd",
+      e.slippage_pct::float8 as "slippagePct",
       e.order_intent as "orderIntent",
       e.raw_venue_response as "rawVenueResponse"
     from executions e
@@ -634,6 +640,51 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
       createdAt: row.createdAt.toISOString()
     }))
   });
+};
+
+export const getRunDetail = async (runId: string) => {
+  const [row] = await sql<
+    {
+      id: string;
+      botName: string;
+      status: string;
+      promptSystem: string | null;
+      promptUser: string | null;
+      rawModelOutput: string | null;
+      parsedDecision: unknown;
+      validationResult: unknown;
+      compactContext: unknown;
+      startedAt: Date;
+      finishedAt: Date | null;
+    }[]
+  >`
+    select
+      r.id,
+      b.name as "botName",
+      r.status,
+      r.prompt_system as "promptSystem",
+      r.prompt_user as "promptUser",
+      r.raw_model_output as "rawModelOutput",
+      r.parsed_decision as "parsedDecision",
+      r.validation_result as "validationResult",
+      r.compact_context as "compactContext",
+      r.started_at as "startedAt",
+      r.finished_at as "finishedAt"
+    from runs r
+    join bots b on b.id = r.bot_id
+    where r.id = ${runId}
+  `;
+
+  if (!row) return null;
+
+  return {
+    ...row,
+    startedAt: row.startedAt.toISOString(),
+    finishedAt: row.finishedAt?.toISOString() ?? null,
+    parsedDecision: typeof row.parsedDecision === "string" ? JSON.parse(row.parsedDecision) : row.parsedDecision,
+    validationResult: typeof row.validationResult === "string" ? JSON.parse(row.validationResult) : row.validationResult,
+    compactContext: typeof row.compactContext === "string" ? JSON.parse(row.compactContext) : row.compactContext
+  };
 };
 
 export const recentTradeAlerts = async (runId: string) =>

@@ -2,6 +2,7 @@ import { dashboardSchema } from "@cosmu/shared";
 import { BotControls } from "./bot-controls";
 import { DashboardActions } from "./dashboard-actions";
 import { PerformanceChart } from "./performance-chart";
+import { RecentRunsTable } from "./run-detail-row";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
@@ -107,31 +108,18 @@ export default async function HomePage() {
 
         <article className="panel">
           <h3>Recent Runs</h3>
+          <p className="field-help">Click a row to see the exact prompt sent and LLM response.</p>
           {dashboard.recentRuns.length === 0 ? (
             <p className="muted">No runs yet. Use Run Now to trigger the first one.</p>
           ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Bot</th>
-                  <th>Status</th>
-                  <th>Started</th>
-                  <th>Mode</th>
-                  <th>Summary</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dashboard.recentRuns.map((run) => (
-                  <tr key={run.id}>
-                    <td>{run.botName}</td>
-                    <td><span className={`badge badge-${run.status}`}>{run.status}</span></td>
-                    <td>{new Date(run.startedAt).toLocaleString()}</td>
-                    <td>{run.decisionMode ?? "-"}</td>
-                    <td>{run.rationaleSummary ?? "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <RecentRunsTable runs={dashboard.recentRuns.map((r) => ({
+              id: r.id,
+              botName: r.botName,
+              status: r.status,
+              startedAt: r.startedAt,
+              decisionMode: r.decisionMode,
+              rationaleSummary: r.rationaleSummary
+            }))} />
           )}
         </article>
 

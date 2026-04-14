@@ -10,6 +10,7 @@ import {
   getBotSetupById,
   getDashboard,
   getDueBots,
+  getRunDetail,
   getPromptVersionBody,
   listModelProfiles,
   listPrompts,
@@ -112,6 +113,19 @@ app.get("/internal/qa/status", async (_request, response) => {
 app.get("/dashboard", async (_request, response, next) => {
   try {
     response.json(await getDashboard());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/runs/:runId", async (request, response, next) => {
+  try {
+    const detail = await getRunDetail(request.params.runId);
+    if (!detail) {
+      response.status(404).json({ error: "Run not found" });
+      return;
+    }
+    response.json(detail);
   } catch (error) {
     next(error);
   }

@@ -69,7 +69,9 @@ export const runBot = async (bot: BotSetup) => {
       promptVersionId: bot.promptVersionId,
       modelProfileId: bot.modelProfileId,
       runtimeConfig: bot.runtimeConfig,
-      compactContext
+      compactContext,
+      promptSystem: systemPrompt,
+      promptUser: userMessage
     });
 
     await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
