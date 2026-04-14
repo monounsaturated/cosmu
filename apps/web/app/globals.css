@@ -370,8 +370,12 @@ a {
   cursor: pointer;
 }
 
-/* Authorized pairs — new flat-list design */
-.symbol-search-input {
+/* Authorized pairs — dropdown picker */
+.pairs-picker {
+  position: relative;
+}
+
+.pairs-search {
   width: 100%;
   padding: 8px 12px;
   background: #0a0d12;
@@ -383,20 +387,21 @@ a {
   box-sizing: border-box;
 }
 
-.symbol-search-input:focus {
+.pairs-search:focus {
   outline: none;
   border-color: #1a6dff;
 }
 
-.symbol-list-scroll {
-  max-height: 240px;
+.pairs-dropdown {
+  margin-top: 4px;
+  max-height: 168px;
   overflow-y: auto;
   border: 1px solid #223149;
   border-radius: 10px;
   background: #0d141d;
 }
 
-.symbol-option {
+.pairs-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -407,39 +412,40 @@ a {
   transition: background 0.1s;
 }
 
-.symbol-option:last-child {
+.pairs-row:last-child {
   border-bottom: none;
 }
 
-.symbol-option:hover {
+.pairs-row:hover {
   background: #111d2e;
 }
 
-.symbol-option-all {
+.pairs-row-all {
   font-weight: 600;
   color: #c7d7f5;
   background: #0f1b2a;
   border-bottom: 1px solid #223149 !important;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
-.symbol-option-disabled {
+.pairs-row-disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.symbol-option input {
+.pairs-row input {
   width: auto;
   flex-shrink: 0;
 }
 
-/* Legacy grid (kept for any other usage) */
-.symbol-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 8px;
-  max-height: 280px;
-  overflow: auto;
-  padding: 4px;
+.pairs-empty {
+  padding: 12px;
+  margin: 0;
+  color: #7a8eb0;
+  font-size: 13px;
+  text-align: center;
 }
 
 /* Preset selector */

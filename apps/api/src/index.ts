@@ -222,7 +222,11 @@ app.get("/models", async (request, response, next) => {
     const provider = typeof request.query.provider === "string" ? request.query.provider : undefined;
 
     if (!provider || provider === "xai") {
-      await syncProviderModels("xai");
+      try {
+        await syncProviderModels("xai");
+      } catch (syncError) {
+        console.warn("Model sync failed, serving cached profiles:", syncError);
+      }
     }
 
     response.json(await listModelProfiles(provider));

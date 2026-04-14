@@ -90,7 +90,11 @@ export const syncVenueSymbols = async (venue: "binance") => {
 };
 
 export const getVenueSymbols = async (venue: "binance") => {
-  await syncVenueSymbols(venue);
+  try {
+    await syncVenueSymbols(venue);
+  } catch (syncError) {
+    console.warn("Venue symbol sync failed, serving cached catalog:", syncError);
+  }
 
   const rows = await sql<{ symbol: string }[]>`
     select symbol

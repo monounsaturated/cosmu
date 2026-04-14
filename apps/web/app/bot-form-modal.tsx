@@ -106,8 +106,8 @@ const buildDefaultState = (defaultBotNumber: number) => {
     venue: "binance" as const,
     frequencyMinutes: "15",
     mode: "testnet" as "testnet" | "live",
-    symbolScope: "selected" as "selected" | "all",
-    contextSymbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+    symbolScope: "all" as "selected" | "all",
+    contextSymbols: [] as string[],
     execution: {
       enabled: false,
       allowMarketOrders: true,
@@ -138,6 +138,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [symbolSearch, setSymbolSearch] = useState("");
+  const [pairsOpen, setPairsOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState("xai");
   const [formData, setFormData] = useState(buildDefaultState(defaultBotNumber));
 
@@ -181,79 +182,77 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     return source.slice(0, 120);
   }, [symbolSearch, symbols]);
 
-  // Initial data load — models fetched without provider filter to populate all providers
+  // Resilient fetch helper — returns data or null without throwing
+  const safeFetch = async <T,>(url: string): Promise<T | null> => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.warn(`[bot-form] ${url} returned ${res.status}`);
+        return null;
+      }
+      return (await res.json()) as T;
+    } catch (e) {
+      console.warn(`[bot-form] ${url} failed:`, e);
+      return null;
+    }
+  };
+
+  // Initial data load — each fetch is independent so one failure doesn't block others
   useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
-      try {
-        const requests: Promise<Response>[] = [
-          fetch("/api/prompts"),
-          fetch("/api/models"),
-          fetch("/api/venues/binance/symbols")
-        ];
-        if (mode === "edit" && botId) {
-          requests.push(fetch(`/api/bots/${botId}`));
+      const [promptsData, modelsData, symbolsData, botData] = await Promise.all([
+        safeFetch<Prompt[]>("/api/prompts"),
+        safeFetch<Model[]>("/api/models"),
+        safeFetch<SymbolResponse>("/api/venues/binance/symbols"),
+        mode === "edit" && botId ? safeFetch<BotSetup>(`/api/bots/${botId}`) : Promise.resolve(null)
+      ]);
+
+      if (cancelled) return;
+
+      if (promptsData) setPrompts(promptsData);
+      if (modelsData) setModels(modelsData);
+      if (symbolsData?.symbols) setSymbols(symbolsData.symbols);
+
+      const errors: string[] = [];
+      if (!modelsData) errors.push("models");
+      if (!symbolsData) errors.push("symbols");
+      if (mode === "edit" && botId && !botData) errors.push("bot");
+      if (errors.length) setError(`Failed to load: ${errors.join(", ")}. Some options may be missing.`);
+
+      if (mode === "edit" && botData) {
+        const setup = botData;
+        const botModel = (modelsData ?? []).find((m) => m.id === setup.modelProfileId);
+        if (botModel?.provider) setSelectedProvider(botModel.provider);
+
+        setFormData({
+          name: setup.name,
+          promptStrategy: "existing",
+          existingPromptVersionId: setup.promptVersionId,
+          newPromptName: `${setup.name} Prompt`,
+          newPromptBody: DEFAULT_PROMPT_BODY,
+          modelProfileId: setup.modelProfileId,
+          promptConfig: setup.promptConfig,
+          venue: setup.runtimeConfig.venue,
+          frequencyMinutes: String(setup.runtimeConfig.frequencyMinutes),
+          mode: setup.runtimeConfig.mode,
+          symbolScope: setup.runtimeConfig.symbolScope,
+          contextSymbols: setup.runtimeConfig.contextSymbols,
+          execution: setup.runtimeConfig.execution
+        });
+      } else if (modelsData && modelsData.length > 0) {
+        const firstModel = modelsData.find((m) => m.provider === selectedProvider) ?? modelsData[0];
+        if (firstModel) {
+          setSelectedProvider(firstModel.provider);
+          setFormData((cur) => ({
+            ...cur,
+            modelProfileId: cur.modelProfileId || firstModel.id
+          }));
         }
-
-        const responses = await Promise.all(requests);
-        const [promptsRes, modelsRes, symbolsRes, botRes] = responses;
-
-        const [promptsData, modelsData, symbolsData, botData] = await Promise.all([
-          promptsRes.json(),
-          modelsRes.json(),
-          symbolsRes.json(),
-          botRes ? botRes.json() : Promise.resolve(null)
-        ]);
-
-        if (!promptsRes.ok) throw new Error(promptsData.error ?? "Failed to load prompts");
-        if (!modelsRes.ok) throw new Error(modelsData.error ?? "Failed to load models");
-        if (!symbolsRes.ok) throw new Error(symbolsData.error ?? "Failed to load symbols");
-        if (botRes && !botRes.ok) throw new Error(botData?.error ?? "Failed to load bot");
-
-        if (cancelled) return;
-
-        setPrompts(promptsData);
-        setModels(modelsData);
-        setSymbols((symbolsData as SymbolResponse).symbols);
-
-        if (mode === "edit" && botData) {
-          const setup = botData as BotSetup;
-          const botModel = (modelsData as Model[]).find((m) => m.id === setup.modelProfileId);
-          if (botModel?.provider) setSelectedProvider(botModel.provider);
-
-          setFormData({
-            name: setup.name,
-            promptStrategy: "existing",
-            existingPromptVersionId: setup.promptVersionId,
-            newPromptName: `${setup.name} Prompt`,
-            newPromptBody: DEFAULT_PROMPT_BODY,
-            modelProfileId: setup.modelProfileId,
-            promptConfig: setup.promptConfig,
-            venue: setup.runtimeConfig.venue,
-            frequencyMinutes: String(setup.runtimeConfig.frequencyMinutes),
-            mode: setup.runtimeConfig.mode,
-            symbolScope: setup.runtimeConfig.symbolScope,
-            contextSymbols: setup.runtimeConfig.contextSymbols,
-            execution: setup.runtimeConfig.execution
-          });
-        } else {
-          const firstModel = (modelsData as Model[]).find((m) => m.provider === selectedProvider) ?? (modelsData as Model[])[0];
-          if (firstModel) {
-            setSelectedProvider(firstModel.provider);
-            setFormData((cur) => ({
-              ...cur,
-              modelProfileId: cur.modelProfileId || firstModel.id
-            }));
-          }
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "Failed to load bot form");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+
+      setLoading(false);
     };
 
     load();
@@ -590,19 +589,20 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                   <label>
                     Provider
                     <select
-                      value={selectedProvider}
+                      value={providerOptions.length > 0 ? selectedProvider : ""}
                       onChange={(e) => {
                         setSelectedProvider(e.target.value);
                         setFormData((cur) => ({ ...cur, modelProfileId: "" }));
                       }}
-                      disabled={mode !== "create" || providerOptions.length === 0}
+                      disabled={mode !== "create"}
                     >
-                      {providerOptions.length === 0 && (
-                        <option value="">No providers</option>
+                      {providerOptions.length === 0 ? (
+                        <option value="">Loading…</option>
+                      ) : (
+                        providerOptions.map((p) => (
+                          <option key={p} value={p}>{p}</option>
+                        ))
                       )}
-                      {providerOptions.map((p) => (
-                        <option key={p} value={p}>{p}</option>
-                      ))}
                     </select>
                   </label>
                 </div>
@@ -614,12 +614,27 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                       value={formData.modelProfileId}
                       onChange={(e) => setFormData({ ...formData, modelProfileId: e.target.value })}
                       required
-                      disabled={mode !== "create" || availableModels.length === 0}
+                      disabled={mode !== "create"}
                     >
-                      <option value="">{availableModels.length === 0 ? "No models available" : "Select a model"}</option>
-                      {availableModels.map((m) => (
-                        <option key={m.id} value={m.id}>{m.name} ({m.model})</option>
-                      ))}
+                      {availableModels.length === 0 ? (
+                        <option value="">Loading…</option>
+                      ) : (
+                        <>
+                          <option value="">Select a model</option>
+                          {availableModels.map((m) => (
+                            <option key={m.id} value={m.id}>{m.name} ({m.model})</option>
+                          ))}
+                        </>
+                      )}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="form-row">
+                  <label>
+                    Venue
+                    <select value={formData.venue} disabled>
+                      <option value="binance">Binance France</option>
                     </select>
                   </label>
                 </div>
@@ -722,48 +737,56 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
             <div className="form-section">
               <h3>Authorized Pairs</h3>
 
-              <div className="form-row">
+              <div className="pairs-picker">
                 <input
                   type="text"
-                  className="symbol-search-input"
+                  className="pairs-search"
                   value={symbolSearch}
                   onChange={(e) => setSymbolSearch(e.target.value)}
                   placeholder="Search BTC, ETH, XMR…"
+                  onFocus={() => setPairsOpen(true)}
                 />
-              </div>
 
-              <div className="symbol-list-scroll">
-                {/* All pairs option */}
-                <label className="symbol-option symbol-option-all">
-                  <input
-                    type="checkbox"
-                    checked={formData.symbolScope === "all"}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        symbolScope: e.target.checked ? "all" : "selected",
-                        contextSymbols: e.target.checked ? [] : formData.contextSymbols
-                      })
-                    }
-                  />
-                  <span>All Binance Pairs</span>
-                </label>
+                {pairsOpen && (
+                  <div className="pairs-dropdown">
+                    <label className="pairs-row pairs-row-all">
+                      <input
+                        type="checkbox"
+                        checked={formData.symbolScope === "all"}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            symbolScope: e.target.checked ? "all" : "selected",
+                            contextSymbols: e.target.checked ? [] : formData.contextSymbols
+                          })
+                        }
+                      />
+                      <span>All Binance Pairs</span>
+                    </label>
 
-                {/* Individual symbols */}
-                {filteredSymbols.map((symbol) => (
-                  <label
-                    key={symbol}
-                    className={`symbol-option ${formData.symbolScope === "all" ? "symbol-option-disabled" : ""}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={formData.contextSymbols.includes(symbol)}
-                      onChange={() => toggleSymbol(symbol)}
-                      disabled={formData.symbolScope === "all"}
-                    />
-                    <span>{symbol}</span>
-                  </label>
-                ))}
+                    {filteredSymbols.map((symbol) => (
+                      <label
+                        key={symbol}
+                        className={`pairs-row ${formData.symbolScope === "all" ? "pairs-row-disabled" : ""}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.contextSymbols.includes(symbol)}
+                          onChange={() => toggleSymbol(symbol)}
+                          disabled={formData.symbolScope === "all"}
+                        />
+                        <span>{symbol}</span>
+                      </label>
+                    ))}
+
+                    {filteredSymbols.length === 0 && symbols.length > 0 && (
+                      <p className="pairs-empty">No match</p>
+                    )}
+                    {symbols.length === 0 && (
+                      <p className="pairs-empty">Loading pairs…</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {formData.symbolScope === "selected" && formData.contextSymbols.length > 0 && (
