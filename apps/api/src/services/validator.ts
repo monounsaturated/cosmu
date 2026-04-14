@@ -12,6 +12,8 @@ export const validateDecision = async (input: {
 }) => {
   const issues: string[] = [];
   const normalizedOrders = [];
+  const rulesEnabled = input.runtimeConfig.execution.enabled;
+  const effectiveMaxOrders = rulesEnabled ? input.runtimeConfig.execution.maxOrdersPerRun : input.decision.orders.length;
   const balances = new Map<string, SnapshotBalance>(
     input.venueContext.snapshot.balances.map((balance: SnapshotBalance) => [
       balance.asset.toUpperCase(),
@@ -19,17 +21,17 @@ export const validateDecision = async (input: {
     ])
   );
 
-  if (input.decision.orders.length > input.runtimeConfig.execution.maxOrdersPerRun) {
+  if (rulesEnabled && input.decision.orders.length > input.runtimeConfig.execution.maxOrdersPerRun) {
     issues.push("Decision exceeds maxOrdersPerRun");
   }
 
-  for (const order of input.decision.orders.slice(0, input.runtimeConfig.execution.maxOrdersPerRun)) {
+  for (const order of input.decision.orders.slice(0, effectiveMaxOrders)) {
     try {
-      if (order.type === "market" && !input.runtimeConfig.execution.allowMarketOrders) {
+      if (rulesEnabled && order.type === "market" && !input.runtimeConfig.execution.allowMarketOrders) {
         throw new Error("Runtime config disallows market orders");
       }
 
-      if (order.type === "limit" && !input.runtimeConfig.execution.allowLimitOrders) {
+      if (rulesEnabled && order.type === "limit" && !input.runtimeConfig.execution.allowLimitOrders) {
         throw new Error("Runtime config disallows limit orders");
       }
 
@@ -37,7 +39,9 @@ export const validateDecision = async (input: {
 
       if (normalized.side === "buy") {
         const cash = balances.get("USDT");
-        const cashAvailable = (cash?.free ?? 0) - input.runtimeConfig.execution.minCashReserveUsd;
+        const cashAvailable = rulesEnabled
+          ? (cash?.free ?? 0) - input.runtimeConfig.execution.minCashReserveUsd
+          : cash?.free ?? 0;
         const referencePrice =
           input.venueContext.priceMap[normalized.symbol] ?? normalized.limitPrice ?? null;
         const requiredUsd = referencePrice ? normalized.quantity * referencePrice : Infinity;

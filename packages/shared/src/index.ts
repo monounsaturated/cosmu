@@ -12,6 +12,12 @@ export const decisionModeSchema = z.enum(["rebalance", "enter", "exit", "hold", 
 export const symbolScopeSchema = z.enum(["selected", "all"]);
 export const prePromptPresetSchema = z.enum(["minimal", "performance", "competitive", "full-context"]);
 export const sampleQualitySchema = z.enum(["low", "medium", "high"]);
+export const PRE_PROMPT_PRESET_DESCRIPTIONS: Record<z.infer<typeof prePromptPresetSchema>, string> = {
+  minimal: "Light guidance, favors concise high-conviction actions using only core context.",
+  performance: "Bias toward durable net performance after fees and disciplined turnover control.",
+  competitive: "Encourages outperformance versus other bots on risk-adjusted net performance.",
+  "full-context": "Use every available structured module before deciding."
+};
 
 export const prePromptModulesSchema = z.object({
   includeCurrentPositions: z.boolean().default(true),
@@ -50,6 +56,7 @@ export const runtimeConfigSchema = z.object({
   assetClass: assetClassSchema,
   symbolScope: symbolScopeSchema.default("selected"),
   execution: z.object({
+    enabled: z.boolean().default(false),
     allowMarketOrders: z.boolean().default(true),
     allowLimitOrders: z.boolean().default(true),
     maxOrdersPerRun: z.number().int().positive().max(20).default(5),

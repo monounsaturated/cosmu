@@ -1,5 +1,6 @@
 import type { VenueContext } from "../adapters/binance.js";
 import { getBotPrePromptContext, type BotSetup } from "../lib/store.js";
+import { PRE_PROMPT_PRESET_DESCRIPTIONS } from "@cosmu/shared";
 
 const PRESET_INSTRUCTIONS: Record<string, string> = {
   minimal: "Focus on high-conviction decisions. Use only the most relevant facts from the structured context.",
@@ -29,6 +30,7 @@ const buildBaseRuntimeContext = (bot: BotSetup, venueContext: VenueContext) => (
   promptVersion: bot.promptVersionLabel,
   modelProfile: bot.modelProfileName,
   executionConstraints: {
+    enabled: bot.runtimeConfig.execution.enabled,
     maxOrdersPerRun: bot.runtimeConfig.execution.maxOrdersPerRun,
     maxNotionalPerOrderUsd: bot.runtimeConfig.execution.maxNotionalPerOrderUsd,
     minCashReserveUsd: bot.runtimeConfig.execution.minCashReserveUsd,
@@ -79,6 +81,7 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
 
   const systemPrompt = [
     "You are the research decision engine for one autonomous spot trading bot.",
+    `Preset: ${bot.promptConfig.preset}. ${PRE_PROMPT_PRESET_DESCRIPTIONS[bot.promptConfig.preset]}`,
     PRESET_INSTRUCTIONS[bot.promptConfig.preset] ?? PRESET_INSTRUCTIONS.minimal,
     "You will receive a structured JSON payload with two top-level keys: runtimeContext and prePromptModules.",
     activeModules.length > 0

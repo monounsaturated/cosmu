@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PRE_PROMPT_PRESET_DESCRIPTIONS } from "@cosmu/shared";
 
 const ALL_SYMBOLS_TOKEN = "__ALL__";
 
@@ -58,6 +59,7 @@ type BotSetup = {
     symbolScope: "selected" | "all";
     contextSymbols: string[];
     execution: {
+      enabled: boolean;
       allowMarketOrders: boolean;
       allowLimitOrders: boolean;
       maxOrdersPerRun: number;
@@ -108,6 +110,7 @@ const buildDefaultState = (defaultBotNumber: number) => {
     symbolScope: "selected" as "selected" | "all",
     contextSymbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
     execution: {
+      enabled: false,
       allowMarketOrders: true,
       allowLimitOrders: true,
       maxOrdersPerRun: 3,
@@ -136,7 +139,18 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [symbolSearch, setSymbolSearch] = useState("");
+  const [symbolsExpanded, setSymbolsExpanded] = useState(false);
   const [formData, setFormData] = useState(buildDefaultState(defaultBotNumber));
+
+  const availableModels = useMemo(
+    () =>
+      models.filter((model) => {
+        const normalizedModel = model.model.toLowerCase();
+        const normalizedName = model.name.toLowerCase();
+        return model.provider.toLowerCase() === "xai" && (normalizedModel.includes("grok") || normalizedName.includes("grok"));
+      }),
+    [models]
+  );
 
   const promptOptions = useMemo(
     () =>
@@ -227,17 +241,19 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     };
 
     load();
+    const refreshInterval = setInterval(load, 20000);
 
     return () => {
       cancelled = true;
+      clearInterval(refreshInterval);
     };
   }, [botId, mode, defaultBotNumber]);
 
   useEffect(() => {
-    if (!formData.modelProfileId && models[0]?.id) {
-      setFormData((current) => ({ ...current, modelProfileId: models[0]!.id }));
+    if (!formData.modelProfileId && availableModels[0]?.id) {
+      setFormData((current) => ({ ...current, modelProfileId: availableModels[0]!.id }));
     }
-  }, [models, formData.modelProfileId]);
+  }, [availableModels, formData.modelProfileId]);
 
   useEffect(() => {
     if (!formData.existingPromptVersionId && promptOptions[0]?.id) {
@@ -293,7 +309,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
         throw new Error("Bot name is required");
       }
       if (!formData.modelProfileId) {
-        throw new Error("Choose a model");
+        throw new Error("Choose a Grok model");
       }
       if (formData.promptStrategy === "new" && !formData.newPromptName.trim()) {
         throw new Error("Prompt name is required");
@@ -351,7 +367,9 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({
+            name: payload.name
+          })
         });
 
         const data = await response.json();
@@ -372,7 +390,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content modal-content-wide" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
-          <h2>{mode === "create" ? "Create Bot" : "Edit Bot"}</h2>
+          <h2>{mode === "create" ? "Create Bot" : "Rename Bot"}</h2>
           <button className="modal-close" onClick={onClose}>
             ✕
           </button>
@@ -470,20 +488,22 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
               <div className="form-grid">
                 <div className="form-row">
                   <label>
-                    Model
+                    Grok model (auto-refreshed)
                     <select
                       value={formData.modelProfileId}
                       onChange={(event) => setFormData({ ...formData, modelProfileId: event.target.value })}
                       required
+                      disabled={mode !== "create" || availableModels.length === 0}
                     >
-                      <option value="">Select a model</option>
-                      {models.map((model) => (
+                      <option value="">{availableModels.length === 0 ? "No Grok model available" : "Select a model"}</option>
+                      {availableModels.map((model) => (
                         <option key={model.id} value={model.id}>
                           {model.name} ({model.provider}/{model.model})
                         </option>
                       ))}
                     </select>
                   </label>
+                  <p className="field-help">Fetched from API every 20s while this modal is open.</p>
                 </div>
 
                 <div className="form-row">
@@ -508,7 +528,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                     </select>
                   </label>
                   <p className="field-help">
-                    The backend assembles structured context dynamically and injects it ahead of your prompt.
+                    {PRE_PROMPT_PRESET_DESCRIPTIONS[formData.promptConfig.preset]}
                   </p>
                 </div>
 
@@ -697,7 +717,13 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                 <button
                   type="button"
                   className={`segmented-option ${formData.symbolScope === "all" ? "segmented-option-active" : ""}`}
-                  onClick={() => setFormData({ ...formData, symbolScope: "all" })}
+                  onClick={() =>
+                    setFormData({
+                      ...formData,
+                      symbolScope: "all",
+                      contextSymbols: []
+                    })
+                  }
                 >
                   All Binance France spot symbols
                 </button>
@@ -710,7 +736,33 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                 </button>
               </div>
 
-              {formData.symbolScope === "selected" ? (
+              <div className="form-row">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={formData.symbolScope === "all"}
+                    onChange={(event) =>
+                      setFormData({
+                        ...formData,
+                        symbolScope: event.target.checked ? "all" : "selected",
+                        contextSymbols: event.target.checked ? [] : formData.contextSymbols
+                      })
+                    }
+                  />
+                  <span>All Pairs</span>
+                </label>
+              </div>
+
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setSymbolsExpanded((current) => !current)}
+                disabled={formData.symbolScope === "all"}
+              >
+                {symbolsExpanded ? "Hide authorized pairs" : "Authorized pairs"}
+              </button>
+
+              {formData.symbolScope === "selected" && symbolsExpanded ? (
                 <>
                   <div className="form-row">
                     <label>
@@ -753,13 +805,32 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                 </>
               ) : (
                 <p className="field-help">
-                  The bot will use the full Binance France spot universe. Good for broad QA coverage.
+                  {formData.symbolScope === "all"
+                    ? "All spot pairs are authorized. Individual selection is disabled."
+                    : "Open Authorized pairs to search and tick allowed pairs one by one."}
                 </p>
               )}
             </div>
 
             <div className="form-section">
               <h3>Execution Rules</h3>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={formData.execution.enabled}
+                  onChange={(event) =>
+                    setFormData({
+                      ...formData,
+                      execution: {
+                        ...formData.execution,
+                        enabled: event.target.checked
+                      }
+                    })
+                  }
+                />
+                <span>Enable execution rules</span>
+              </label>
+              <p className="field-help">Disabled by default. When off, only venue tradability and wallet sanity checks apply.</p>
               <div className="checkbox-row">
                 <label className="checkbox-label">
                   <input
@@ -771,6 +842,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                         execution: { ...formData.execution, allowMarketOrders: event.target.checked }
                       })
                     }
+                    disabled={!formData.execution.enabled}
                   />
                   <span>Allow market orders</span>
                 </label>
@@ -784,6 +856,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                         execution: { ...formData.execution, allowLimitOrders: event.target.checked }
                       })
                     }
+                    disabled={!formData.execution.enabled}
                   />
                   <span>Allow limit orders</span>
                 </label>
@@ -804,6 +877,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                           execution: { ...formData.execution, maxOrdersPerRun: Number(event.target.value) }
                         })
                       }
+                      disabled={!formData.execution.enabled}
                     />
                   </label>
                 </div>
@@ -824,6 +898,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                           }
                         })
                       }
+                      disabled={!formData.execution.enabled}
                     />
                   </label>
                 </div>
@@ -844,6 +919,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                           }
                         })
                       }
+                      disabled={!formData.execution.enabled}
                     />
                   </label>
                 </div>
