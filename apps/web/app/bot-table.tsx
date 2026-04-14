@@ -58,7 +58,10 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
               Portfolio <SortIndicator field="currentPortfolioUsd" />
             </th>
             <th className="clickable text-right" onClick={() => handleSort("netPnlUsd")}>
-              Net PnL <SortIndicator field="netPnlUsd" />
+              Net PnL ($) <SortIndicator field="netPnlUsd" />
+            </th>
+            <th className="clickable text-right" onClick={() => handleSort("netPnlUsd")}>
+              Return (%) <SortIndicator field="netPnlUsd" />
             </th>
             <th className="clickable text-right" onClick={() => handleSort("tradeCount")}>
               Trades <SortIndicator field="tradeCount" />
@@ -105,13 +108,16 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
                   </td>
                   <td className="text-right">
                     {bot.netPnlUsd !== null ? (
-                      <div className={bot.netPnlUsd > 0 ? "value-green" : bot.netPnlUsd < 0 ? "value-red" : ""}>
+                      <span className={bot.netPnlUsd > 0 ? "value-green" : bot.netPnlUsd < 0 ? "value-red" : ""}>
                         {bot.netPnlUsd > 0 ? "+" : ""}${bot.netPnlUsd.toFixed(2)}
-                        <br/>
-                        <span style={{ fontSize: "11px", opacity: 0.8 }}>
-                          {bot.netPnlUsd > 0 ? "+" : ""}{((bot.netPnlUsd / bot.budgetUsdt) * 100).toFixed(2)}%
-                        </span>
-                      </div>
+                      </span>
+                    ) : "—"}
+                  </td>
+                  <td className="text-right">
+                    {bot.netPnlUsd !== null ? (
+                      <span className={bot.netPnlUsd > 0 ? "value-green" : bot.netPnlUsd < 0 ? "value-red" : ""}>
+                        {bot.netPnlUsd > 0 ? "+" : ""}{((bot.netPnlUsd / bot.budgetUsdt) * 100).toFixed(2)}%
+                      </span>
                     ) : "—"}
                   </td>
                   <td className="text-right">{bot.tradeCount}</td>
