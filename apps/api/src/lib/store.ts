@@ -1118,6 +1118,9 @@ export const createBot = async (input: {
   parentBotId?: string | null;
   runtimeConfig: Omit<RuntimeConfig, "enabled">;
 }) => {
+  const trimmedName = input.name.trim();
+  const effectiveName = trimmedName.length > 0 ? trimmedName : `Bot ${input.slug}`;
+
   const [bot] = await sql<{ id: string }[]>`
     insert into bots (
       name,
@@ -1129,7 +1132,7 @@ export const createBot = async (input: {
       trader_config
     )
     values (
-      ${input.name},
+      ${effectiveName},
       ${input.slug},
       ${input.promptVersionId},
       ${input.modelProfileId},
