@@ -470,53 +470,77 @@ a {
   text-align: center;
 }
 
-/* Preset selector */
-.preset-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px;
-}
-
-.preset-option {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 10px 12px;
+/* Prompt how-to guide */
+.prompt-howto {
   border: 1px solid #223149;
   border-radius: 10px;
-  background: #111823;
-  color: #9db0d8;
-  cursor: pointer;
-  text-align: left;
-  transition: border-color 0.15s, background 0.15s;
+  background: #0d1520;
+  margin-bottom: 8px;
 }
 
-.preset-option:hover {
-  border-color: #2e5080;
-  background: #0f1d2e;
-}
-
-.preset-option-active {
-  border-color: #1a6dff;
-  background: #0d1e3a;
-  color: #ecf2ff;
-}
-
-.preset-label {
+.prompt-howto summary {
+  padding: 10px 14px;
   font-size: 13px;
   font-weight: 600;
-  text-transform: capitalize;
-}
-
-.preset-desc {
-  font-size: 11px;
-  color: #7a8eb0;
-  line-height: 1.4;
-}
-
-.preset-option-active .preset-desc {
   color: #9db0d8;
+  cursor: pointer;
+  user-select: none;
+}
+
+.prompt-howto summary:hover {
+  color: #c8d8f0;
+}
+
+.prompt-howto-body {
+  padding: 4px 14px 14px;
+  font-size: 12.5px;
+  color: #8a9cbd;
+  line-height: 1.6;
+}
+
+.prompt-howto-body h4 {
+  color: #b8caeb;
+  margin: 12px 0 4px;
+  font-size: 12.5px;
+}
+
+.prompt-howto-body ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.prompt-howto-body li {
+  margin-bottom: 2px;
+}
+
+.prompt-example {
+  border: 1px solid #1a2a40;
+  border-radius: 8px;
+  background: #0a1018;
+  margin: 8px 0;
+  overflow: hidden;
+}
+
+.prompt-example-tag {
+  display: block;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6ba3ff;
+  background: #0f1825;
+  border-bottom: 1px solid #1a2a40;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.prompt-example pre {
+  padding: 8px 10px;
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #8a9cbd;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Modules checkboxes */

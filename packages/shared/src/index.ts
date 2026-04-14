@@ -10,14 +10,7 @@ export const runStatusSchema = z.enum(["success", "failure", "uncertain", "runni
 export const executionStatusSchema = z.enum(["success", "failure", "uncertain"]);
 export const decisionModeSchema = z.enum(["rebalance", "enter", "exit", "hold", "adjust"]);
 export const symbolScopeSchema = z.enum(["selected", "all"]);
-export const prePromptPresetSchema = z.enum(["minimal", "performance", "competitive", "full-context"]);
 export const sampleQualitySchema = z.enum(["low", "medium", "high"]);
-export const PRE_PROMPT_PRESET_DESCRIPTIONS: Record<z.infer<typeof prePromptPresetSchema>, string> = {
-  minimal: "Light guidance, favors concise high-conviction actions using only core context.",
-  performance: "Bias toward durable net performance after fees and disciplined turnover control.",
-  competitive: "Encourages outperformance versus other bots on risk-adjusted net performance.",
-  "full-context": "Use every available structured module before deciding."
-};
 
 export const prePromptModulesSchema = z.object({
   includeCurrentPositions: z.boolean().default(true),
@@ -28,17 +21,19 @@ export const prePromptModulesSchema = z.object({
   includeWalletOverview: z.boolean().default(true)
 });
 
-export const prePromptConfigSchema = z.object({
-  preset: prePromptPresetSchema.default("minimal"),
-  modules: prePromptModulesSchema.default({
-    includeCurrentPositions: true,
-    includePastTrades: false,
-    pastTradesLookback: 10,
-    includePerformanceStats: true,
-    includeBotRanking: false,
-    includeWalletOverview: true
+export const prePromptConfigSchema = z
+  .object({
+    preset: z.string().optional(),
+    modules: prePromptModulesSchema.default({
+      includeCurrentPositions: true,
+      includePastTrades: false,
+      pastTradesLookback: 10,
+      includePerformanceStats: true,
+      includeBotRanking: false,
+      includeWalletOverview: true
+    })
   })
-});
+  .transform((val) => ({ modules: val.modules }));
 
 export const traderConfigSchema = z.object({
   mode: z.literal("deterministic").default("deterministic"),

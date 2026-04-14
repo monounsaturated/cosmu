@@ -1,9 +1,6 @@
 import type { VenueContext } from "../adapters/binance.js";
 import { getBotPrePromptContext, type BotSetup } from "../lib/store.js";
 
-// Shown when symbolScope = "all" — just reference anchors for the LLM
-const MAJOR_PAIRS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT"];
-
 const fmtUsd = (n: number) =>
   `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -19,14 +16,14 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   const { runtimeConfig, promptConfig } = bot;
   const modules = promptConfig.modules;
   const exec = runtimeConfig.execution;
-  const { snapshot, priceMap } = venueContext;
+  const { snapshot } = venueContext;
 
   const historyContext = await getBotPrePromptContext({
     botId: bot.id,
     pastTradesLookback: modules.pastTradesLookback
   });
 
-  // ── System message: the user's strategy + non-negotiable rules ─────────────
+  // ── System message: user strategy + hard constraints ───────────────────────
   const systemPrompt = [
     bot.promptBody.trim(),
     [
@@ -40,14 +37,13 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
     ].join("\n")
   ].join("\n\n");
 
-  // ── User message: structured runtime data as readable sections ─────────────
+  // ── User message: structured runtime data ──────────────────────────────────
   const sections: string[] = [];
 
-  // — Bot metadata —
   sections.push(
     [
       "=== SESSION ===",
-      `Bot: ${bot.name} (#${bot.botNumber}) | Preset: ${promptConfig.preset} | Model: ${bot.modelProfileName}`,
+      `Bot: ${bot.name} (#${bot.botNumber}) | Model: ${bot.modelProfileName}`,
       `Mode: ${runtimeConfig.mode} | Venue: Binance Spot | Frequency: every ${runtimeConfig.frequencyMinutes}min`
     ].join("\n")
   );
@@ -80,33 +76,7 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   }
   sections.push(walletLines.join("\n"));
 
-  // — Market prices: held assets + selected pairs + major anchors —
-  const heldPairs = snapshot.balances
-    .filter((b) => b.asset !== "USDT" && priceMap[`${b.asset}USDT`])
-    .map((b) => `${b.asset}USDT`);
-
-  const selectedPairs =
-    runtimeConfig.symbolScope === "selected"
-      ? runtimeConfig.contextSymbols.filter((s) => priceMap[s])
-      : [];
-
-  const shownSet = new Set([...heldPairs, ...selectedPairs]);
-  const majorFill = MAJOR_PAIRS.filter((p) => priceMap[p] && !shownSet.has(p));
-  const pricePairs = [...heldPairs, ...selectedPairs.filter((p) => !shownSet.has(p)), ...majorFill].slice(
-    0,
-    30
-  );
-
-  if (pricePairs.length > 0) {
-    const priceLines = ["=== MARKET PRICES ==="];
-    for (const pair of pricePairs) {
-      const tag = heldPairs.includes(pair) ? " [held]" : selectedPairs.includes(pair) ? " [selected]" : "";
-      priceLines.push(`${pair}: ${fmtNum(priceMap[pair]!)}${tag}`);
-    }
-    sections.push(priceLines.join("\n"));
-  }
-
-  // — Authorized pairs: only injected when symbolScope = "selected" —
+  // — Authorized pairs: only when user explicitly selected pairs —
   if (runtimeConfig.symbolScope === "selected" && runtimeConfig.contextSymbols.length > 0) {
     sections.push(
       ["=== AUTHORIZED PAIRS — trade ONLY these ===", runtimeConfig.contextSymbols.join(", ")].join("\n")
@@ -156,14 +126,11 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
 
   const userMessage = sections.join("\n\n");
 
-  // Compact summary stored in DB for audit/replay (not sent to LLM)
   const compactContext: Record<string, unknown> = {
-    preset: promptConfig.preset,
     mode: runtimeConfig.mode,
     symbolScope: runtimeConfig.symbolScope,
     walletTotalUsd: snapshot.totalUsdValue,
     balanceCount: snapshot.balances.length,
-    pricesShownCount: pricePairs.length,
     modulesActive: Object.entries(modules)
       .filter(([k, v]) => v === true && k.startsWith("include"))
       .map(([k]) => k)

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PRE_PROMPT_PRESET_DESCRIPTIONS } from "@cosmu/shared";
 
 const ALL_SYMBOLS_TOKEN = "__ALL__";
 
@@ -51,7 +50,6 @@ type BotSetup = {
   promptVersionId: string;
   modelProfileId: string;
   promptConfig: {
-    preset: "minimal" | "performance" | "competitive" | "full-context";
     modules: {
       includeCurrentPositions: boolean;
       includePastTrades: boolean;
@@ -126,7 +124,6 @@ const buildDefaultState = (defaultBotNumber: number) => {
       minCashReserveUsd: 25
     },
     promptConfig: {
-      preset: "minimal" as "minimal" | "performance" | "competitive" | "full-context",
       modules: {
         includeCurrentPositions: true,
         includePastTrades: false,
@@ -581,8 +578,6 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     }
   };
 
-  const PRESETS = ["minimal", "performance", "competitive", "full-context"] as const;
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
@@ -616,6 +611,59 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
             {/* ── Prompt ── */}
             <div className="form-section">
               <h3>Prompt</h3>
+
+              <details className="prompt-howto">
+                <summary>How to write a good prompt</summary>
+                <div className="prompt-howto-body">
+                  <p>The prompt is the <strong>entire brain</strong> of the bot. Everything the model knows about your strategy comes from here. The system automatically appends your wallet balance, execution rules, and any injected data modules you tick below.</p>
+
+                  <h4>What to include</h4>
+                  <ul>
+                    <li><strong>Strategy &amp; style</strong> — scalping, swing, macro rotation, DCA, mean reversion…</li>
+                    <li><strong>Risk tolerance</strong> — how tight/loose SL/TP, max drawdown you accept</li>
+                    <li><strong>Entry/exit logic</strong> — what signals or conditions trigger a buy or sell</li>
+                    <li><strong>Position sizing</strong> — e.g. &quot;never more than 10% of portfolio in one trade&quot;</li>
+                    <li><strong>Market bias</strong> — e.g. &quot;bullish on ETH ecosystem, cautious on memes&quot;</li>
+                    <li><strong>Hold behavior</strong> — when to hold and not trade (the bot defaults to hold)</li>
+                  </ul>
+
+                  <h4>What NOT to include</h4>
+                  <ul>
+                    <li><strong>Market prices</strong> — the model fetches them from its own knowledge</li>
+                    <li><strong>Wallet balances</strong> — injected automatically at every run</li>
+                    <li><strong>SL/TP rules</strong> — enforced by the system (every buy has mandatory SL/TP)</li>
+                    <li><strong>JSON format instructions</strong> — the response format is locked by schema</li>
+                    <li><strong>Execution constraints</strong> — max orders, notional limits etc. are injected separately</li>
+                  </ul>
+
+                  <h4>Example prompts</h4>
+                  <div className="prompt-example">
+                    <span className="prompt-example-tag">Aggressive Scalper</span>
+                    <pre>{`You are an aggressive BTC/ETH scalper on Binance spot.
+Look for short-term momentum: breakouts, volume spikes, support/resistance bounces.
+Enter fast, exit fast. Target 1-3% moves. SL tight at 1.5% below entry.
+If no clear setup exists in the next few minutes, hold.
+Max 2 simultaneous positions. Prefer market orders for speed.`}</pre>
+                  </div>
+                  <div className="prompt-example">
+                    <span className="prompt-example-tag">Swing Holder</span>
+                    <pre>{`You are a patient swing trader focusing on top-20 altcoins.
+Look for multi-day trends: higher lows, RSI divergences, volume confirmation.
+Enter on pullbacks to support. TP at 8-15%, SL at 5%.
+Hold existing winners unless trend structure breaks.
+Avoid trading during low-volume weekends.
+Keep 50% in USDT as dry powder for dips.`}</pre>
+                  </div>
+                  <div className="prompt-example">
+                    <span className="prompt-example-tag">Macro Rotation</span>
+                    <pre>{`You manage a diversified spot portfolio across BTC, ETH, SOL, and stablecoins.
+Rotate allocation based on macro momentum: risk-on → more alts, risk-off → more USDT.
+Rebalance weekly, not daily. Only trade when allocation drifts >10% from target.
+Target allocation: 40% BTC, 25% ETH, 15% SOL, 20% USDT.
+Keep trades small — max 5% of portfolio per order.`}</pre>
+                  </div>
+                </div>
+              </details>
 
               <div className="segmented-control">
                 <button
@@ -835,31 +883,12 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
               </div>
             </div>
 
-            {/* ── Context & Behavior (preset + modules) ── */}
+            {/* ── Injected Data ── */}
             <div className="form-section">
-              <h3>Context &amp; Behavior</h3>
+              <h3>Injected Data</h3>
               <p className="field-help">
-                Choose a preset and tick the data modules injected into every run.
+                Tick the live data modules appended to the prompt at every run.
               </p>
-
-              <div className="preset-grid">
-                {PRESETS.map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    className={`preset-option ${formData.promptConfig.preset === preset ? "preset-option-active" : ""}`}
-                    onClick={() =>
-                      setFormData((cur) => ({
-                        ...cur,
-                        promptConfig: { ...cur.promptConfig, preset }
-                      }))
-                    }
-                  >
-                    <span className="preset-label">{preset.replace("-", " ")}</span>
-                    <span className="preset-desc">{PRE_PROMPT_PRESET_DESCRIPTIONS[preset]}</span>
-                  </button>
-                ))}
-              </div>
 
               <div className="modules-grid">
                 {[
