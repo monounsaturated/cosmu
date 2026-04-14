@@ -27,7 +27,7 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   // ── System message: user strategy + hard constraints ───────────────────────
   const systemPrompt = [
     bot.promptBody.trim(),
-    operatorPrompt ? ["---", "SECONDARY OPERATOR PROMPT", operatorPrompt].join("\n") : "",
+    operatorPrompt ? ["---", "SECONDARY OPERATOR PROMPT", operatorPrompt].join("\n") : null,
     [
       "---",
       "NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):",
@@ -37,7 +37,7 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
       "• No clear opportunity? Return mode='hold' with an empty orders array.",
       "• Reply with valid JSON only — no markdown, no text outside the JSON."
     ].join("\n")
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 
   // ── User message: structured runtime data ──────────────────────────────────
   const sections: string[] = [];
@@ -79,26 +79,39 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   }
   sections.push(walletLines.join("\n"));
 
-  // — Market prices from the venue —
-  const priceEntries = Object.entries(venueContext.priceMap)
+  // — Market prices: only held assets + explicitly selected symbols —
+  const heldAssetSymbols = new Set(
+    snapshot.balances
+      .filter((b) => b.asset !== "USDT")
+      .map((b) => `${b.asset}USDT`)
+  );
+  const selectedSet = new Set(runtimeConfig.contextSymbols);
+  const relevantPriceEntries = Object.entries(venueContext.priceMap)
+    .filter(([symbol]) => heldAssetSymbols.has(symbol) || selectedSet.has(symbol))
     .sort(([a], [b]) => a.localeCompare(b));
-  if (priceEntries.length > 0) {
-    const priceLines = priceEntries.map(
+
+  if (relevantPriceEntries.length > 0) {
+    const priceLines = relevantPriceEntries.map(
       ([symbol, price]) => `${symbol}: ${fmtNum(price)}`
     );
     sections.push(
       [
-        "=== LIVE MARKET PRICES (from venue) ===",
+        "=== LIVE MARKET PRICES (held & selected) ===",
         "Use these prices to set stopLossPrice / takeProfitPrice correctly.",
+        "You can look up current prices for any other USDT pair on Binance Spot.",
         ...priceLines
       ].join("\n")
     );
   }
 
-  // — Available trading pairs —
+  // — Trading scope —
   if (runtimeConfig.symbolScope === "selected" && runtimeConfig.contextSymbols.length > 0) {
     sections.push(
       ["=== AUTHORIZED PAIRS — trade ONLY these ===", runtimeConfig.contextSymbols.join(", ")].join("\n")
+    );
+  } else {
+    sections.push(
+      "=== TRADING SCOPE ===\nYou may trade ANY USDT spot pair available on Binance. Pick your symbols based on your own analysis."
     );
   }
 
