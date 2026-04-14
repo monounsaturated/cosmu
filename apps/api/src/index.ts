@@ -18,7 +18,7 @@ import {
 } from "./lib/store.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
 import { listXaiModels } from "./providers/xai.js";
-import { bootstrapModelProfiles, getVenueSymbols, syncProviderModels } from "./services/catalog.js";
+import { BOOTSTRAP_XAI_PROFILES, bootstrapModelProfiles, getVenueSymbols, syncProviderModels } from "./services/catalog.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
 
@@ -259,6 +259,7 @@ app.get("/models", async (request, response, next) => {
   try {
     const provider = typeof request.query.provider === "string" ? request.query.provider : undefined;
     let liveXaiModelIds: Set<string> | null = null;
+    let liveXaiModels: Array<{ id: string; created: number | null }> = [];
 
     if (!provider || provider === "xai") {
       try {
@@ -266,7 +267,6 @@ app.get("/models", async (request, response, next) => {
       } catch (syncError) {
         console.warn("xAI sync failed:", String(syncError));
       }
-      // If DB is still empty after sync attempt, insert known-good fallback models
       try {
         await bootstrapModelProfiles();
       } catch (bootstrapError) {
@@ -274,23 +274,48 @@ app.get("/models", async (request, response, next) => {
       }
 
       try {
-        const liveModels = await listXaiModels();
-        liveXaiModelIds = new Set(liveModels.map((model) => model.id));
+        liveXaiModels = await listXaiModels();
+        liveXaiModelIds = new Set(liveXaiModels.map((model) => model.id));
       } catch (liveCatalogError) {
         console.warn("xAI live catalog check failed, serving cached profiles:", String(liveCatalogError));
       }
     }
 
-    const profiles = await listModelProfiles(provider);
+    let profiles: Array<Record<string, unknown>>;
+    try {
+      profiles = await listModelProfiles(provider) as Array<Record<string, unknown>>;
+    } catch (dbError) {
+      console.warn("DB query for model profiles failed, building response from xAI live catalog:", String(dbError));
+      if (liveXaiModels.length > 0 && (!provider || provider === "xai")) {
+        profiles = liveXaiModels.map((m) => ({
+          id: `live:xai:${m.id}`,
+          name: `xAI ${m.id}`,
+          provider: "xai",
+          model: m.id,
+          settings: { temperature: 0.2 }
+        }));
+        response.json(profiles);
+        return;
+      }
+      const fallback = BOOTSTRAP_XAI_PROFILES.map((p) => ({
+        id: `fallback:xai:${p.model}`,
+        name: p.name,
+        provider: "xai",
+        model: p.model,
+        settings: { temperature: 0.2 }
+      }));
+      response.json(fallback);
+      return;
+    }
 
     if (provider === "xai" && liveXaiModelIds) {
-      response.json(profiles.filter((profile) => liveXaiModelIds!.has(profile.model)));
+      response.json(profiles.filter((profile) => liveXaiModelIds!.has(String(profile.model))));
       return;
     }
 
     if (!provider && liveXaiModelIds) {
       response.json(
-        profiles.filter((profile) => profile.provider !== "xai" || liveXaiModelIds!.has(profile.model))
+        profiles.filter((profile) => profile.provider !== "xai" || liveXaiModelIds!.has(String(profile.model)))
       );
       return;
     }
