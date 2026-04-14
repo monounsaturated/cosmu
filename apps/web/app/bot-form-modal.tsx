@@ -36,6 +36,15 @@ type Model = {
   model: string;
 };
 
+const FALLBACK_XAI_MODELS: Model[] = [
+  { id: "fallback:xai:grok-3", name: "xAI grok-3", provider: "xai", model: "grok-3" },
+  { id: "fallback:xai:grok-3-fast", name: "xAI grok-3-fast", provider: "xai", model: "grok-3-fast" },
+  { id: "fallback:xai:grok-3-mini", name: "xAI grok-3-mini", provider: "xai", model: "grok-3-mini" },
+  { id: "fallback:xai:grok-3-mini-fast", name: "xAI grok-3-mini-fast", provider: "xai", model: "grok-3-mini-fast" },
+  { id: "fallback:xai:grok-beta", name: "xAI grok-beta", provider: "xai", model: "grok-beta" },
+  { id: "fallback:xai:grok-2", name: "xAI grok-2", provider: "xai", model: "grok-2" }
+];
+
 type BotSetup = {
   id: string;
   name: string;
@@ -152,15 +161,17 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   const [editedBody, setEditedBody] = useState("");
   const [savingVersion, setSavingVersion] = useState(false);
 
-  const providerOptions = useMemo(
-    () => Array.from(new Set(models.map((m) => m.provider))).sort(),
-    [models]
-  );
+  const providerOptions = useMemo(() => {
+    const fromApi = Array.from(new Set(models.map((m) => m.provider))).sort();
+    return fromApi.length > 0 ? fromApi : ["xai"];
+  }, [models]);
 
-  const availableModels = useMemo(
-    () => models.filter((m) => m.provider === selectedProvider),
-    [models, selectedProvider]
-  );
+  const availableModels = useMemo(() => {
+    const fromApi = models.filter((m) => m.provider === selectedProvider);
+    if (fromApi.length > 0) return fromApi;
+    if (selectedProvider === "xai") return FALLBACK_XAI_MODELS;
+    return [];
+  }, [models, selectedProvider]);
 
   const promptOptions = useMemo(
     () =>
@@ -187,8 +198,11 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
 
   // Resilient fetch helper — returns data or null without throwing
   const safeFetch = async <T,>(url: string): Promise<T | null> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
       if (!res.ok) {
         console.warn(`[bot-form] ${url} → ${res.status}`);
         return null;
@@ -197,13 +211,18 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     } catch (e) {
       console.warn(`[bot-form] ${url} failed:`, e);
       return null;
+    } finally {
+      clearTimeout(timeout);
     }
   };
 
   // Client-side Binance fallback — public endpoint, no API key needed
   const fetchSymbolsDirect = async (): Promise<string[]> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
     try {
-      const res = await fetch("https://api.binance.com/api/v3/exchangeInfo");
+      const res = await fetch("https://api.binance.com/api/v3/exchangeInfo", { signal: controller.signal });
       if (!res.ok) return [];
       const data = await res.json();
       return ((data.symbols ?? []) as Array<{ symbol: string; status: string; isSpotTradingAllowed: boolean; quoteAsset: string }>)
@@ -212,7 +231,36 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
         .sort();
     } catch {
       return [];
+    } finally {
+      clearTimeout(timeout);
     }
+  };
+
+  const resolveModelProfileId = async () => {
+    if (!formData.modelProfileId.startsWith("fallback:")) {
+      return formData.modelProfileId;
+    }
+
+    const fallback = FALLBACK_XAI_MODELS.find((model) => model.id === formData.modelProfileId);
+    if (!fallback) {
+      throw new Error("Selected model is invalid");
+    }
+
+    const res = await fetch("/api/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: fallback.name,
+        provider: fallback.provider,
+        model: fallback.model,
+        settings: { temperature: 0.2 }
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Failed to create model profile");
+
+    return data.id as string;
   };
 
   // Initial data load — each fetch is independent so one failure doesn't block others
@@ -429,6 +477,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       }
 
       const promptVersionId = await resolvePromptVersionId();
+      const modelProfileId = await resolveModelProfileId();
       const contextSymbols =
         formData.symbolScope === "all" ? [ALL_SYMBOLS_TOKEN] : uniqueSymbols(formData.contextSymbols);
 
@@ -440,7 +489,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
             name: formData.name.trim(),
             slug: uniqueSlug(formData.name),
             promptVersionId,
-            modelProfileId: formData.modelProfileId,
+            modelProfileId,
             promptConfig: formData.promptConfig,
             runtimeConfig: {
               venue: formData.venue,
