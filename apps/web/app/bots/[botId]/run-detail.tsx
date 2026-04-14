@@ -24,12 +24,20 @@ const PHASE_MARKERS = {
   }
 } as const;
 
+/** Older runs used ASCII hyphen in phase headers instead of em dash. */
+function normalizePhaseHeaders(text: string) {
+  return text
+    .replaceAll("=== PHASE 1 - RESEARCH", "=== PHASE 1 — RESEARCH")
+    .replaceAll("=== PHASE 2 - FORMATTER", "=== PHASE 2 — FORMATTER");
+}
+
 function splitPhases(text: string | null, markers: { p1: string; p2: string }) {
   if (!text) return { phase1: null, phase2: null };
-  const p2Idx = text.indexOf(markers.p2);
-  if (p2Idx === -1) return { phase1: text.trim(), phase2: null };
-  const phase1 = text.slice(0, p2Idx).replace(markers.p1, "").trim();
-  const phase2 = text.slice(p2Idx).replace(markers.p2, "").trim();
+  const normalized = normalizePhaseHeaders(text);
+  const p2Idx = normalized.indexOf(markers.p2);
+  if (p2Idx === -1) return { phase1: normalized.trim(), phase2: null };
+  const phase1 = normalized.slice(0, p2Idx).replace(markers.p1, "").trim();
+  const phase2 = normalized.slice(p2Idx).replace(markers.p2, "").trim();
   return { phase1: phase1 || null, phase2: phase2 || null };
 }
 

@@ -324,6 +324,7 @@ export const dashboardSchema = z.object({
   recentExecutions: z.array(executionRecordSchema.extend({ runId: z.string().uuid() })),
   latestSnapshots: z.array(
     z.object({
+      botId: z.string().uuid(),
       botName: z.string(),
       snapshot: portfolioSnapshotSchema
     })

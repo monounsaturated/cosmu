@@ -24,20 +24,29 @@ export const NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
 const DEFAULT_SYSTEM_PRELUDE =
   "You are the research analyst for one autonomous spot bot. Analyse market conditions, identify opportunities, and mention any USDT trading pair symbols you find interesting (e.g. BTCUSDT). Write freely — your analysis will be passed to a separate execution stage.";
 
-const DEFAULT_FORMATTER_BODY = [
-  "You are the execution and formatting stage for one autonomous Binance spot bot.",
+export const DEFAULT_FORMATTER_BODY = [
+  "You are the execution stage (phase 2) for one autonomous Binance USDT spot bot.",
   "",
-  "You receive:",
-  "1) Free-form research analysis from an upstream analyst (thesis, reasoning, symbol mentions).",
-  "2) Live snapshot prices for relevant symbols plus session, wallet, and execution rules.",
+  "Inputs (in the user message):",
+  "- UPSTREAM RESEARCH: qualitative thesis from phase 1 — symbols may be informal; normalize to valid *USDT pairs only when you place orders.",
+  "- SESSION / EXECUTION RULES / WALLET / AUTHORIZED PAIRS: hard facts — never contradict them.",
+  "- LIVE MARKET PRICES: authoritative reference for sizing stops and limits on buys.",
   "",
-  "Your only output is one JSON object matching the TradingDecision schema.",
+  "Output: exactly one JSON object (no markdown fences, no prose) matching TradingDecision:",
+  '- mode: one of "rebalance" | "enter" | "exit" | "hold" | "adjust". Use "hold" when there is no defensible trade.',
+  "- rationaleSummary: <=600 chars, decision-grade summary.",
+  "- globalRationale: <=4000 chars tying research to orders or explaining why you are flat.",
+  "- confidence: number in [0,1].",
+  "- timeHorizon: short string or null.",
+  "- orders: array (<= max orders/run from rules). Each order: symbol, side buy|sell, type market|limit, quantity (>0), limitPrice (null unless limit), stopLossPrice, takeProfitPrice, rationale.",
+  "- targetAllocations: usually [].",
   "",
-  "Rules:",
-  "- Ground every BUY in the live prices given: stopLossPrice must be strictly below the reference price shown, takeProfitPrice strictly above.",
-  "- If research is insufficient, contradictory, or no valid trade exists, return mode hold with an empty orders array.",
-  "- Do not invent balances or symbols outside the research intent and the authorized trading scope.",
-  "- SELL orders: stopLossPrice and takeProfitPrice must be null."
+  "Order logic:",
+  "- BUY: every buy MUST set stopLossPrice strictly below the live reference price for that symbol and takeProfitPrice strictly above. Omit trades you cannot justify with the given prices.",
+  "- SELL: set stopLossPrice and takeProfitPrice to null.",
+  "- Respect authorized pair list when present; otherwise any Binance USDT spot pair is allowed if grounded in research + prices.",
+  "- Stay within wallet + execution caps; prefer fewer, higher-conviction orders over many small ones.",
+  "- If research conflicts with prices, scope, or risk limits, prefer mode hold with orders: []."
 ].join("\n");
 
 type HistoryContext = Awaited<ReturnType<typeof getBotPrePromptContext>>;
@@ -235,7 +244,8 @@ export const buildFormatterPhaseContext = async ({
   const { runtimeConfig } = bot;
 
   const activeFormatter = await getActiveFormatterPrompt(runtimeConfig.venue);
-  const formatterBody = activeFormatter ? activeFormatter.body.trim() : DEFAULT_FORMATTER_BODY;
+  const trimmedCustom = activeFormatter?.body?.trim() ?? "";
+  const formatterBody = trimmedCustom.length > 0 ? trimmedCustom : DEFAULT_FORMATTER_BODY;
 
   const systemPrompt = [formatterBody, NON_NEGOTIABLE_CONSTRAINTS_BLOCK].join("\n\n");
 

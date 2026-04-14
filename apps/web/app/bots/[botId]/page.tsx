@@ -47,9 +47,11 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
 
   if (!setup) return notFound();
 
-  const botNameDisplay = setup.name ? `Bot #${setup.botNumber} - ${setup.name}` : `Bot #${setup.botNumber}`;
+  const botNameDisplay = setup.name?.trim()
+    ? `Bot #${setup.botNumber} — ${setup.name.trim()}`
+    : `Bot #${setup.botNumber}`;
   const dashboardBot = dashboard?.bots?.find((b: any) => b.id === botId);
-  const botSnapshot = dashboard?.latestSnapshots?.find((s: any) => s.botName === botNameDisplay);
+  const botSnapshot = dashboard?.latestSnapshots?.find((s: any) => s.botId === botId);
   const botSeries = dashboard?.performanceSeries?.filter((series: any) => series.botId === botId) ?? [];
   const netPnl = dashboardBot?.netPnlUsd ?? 0;
   const netPnlPct = setup.runtimeConfig.budgetUsdt > 0 ? (netPnl / setup.runtimeConfig.budgetUsdt) * 100 : 0;
@@ -170,11 +172,11 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
           <div style={{ marginTop: "24px" }}>
             <p className="label" style={{ marginBottom: "12px" }}>Injected Data Modules</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-              <SettingPill label="Current Positions" on={setup.promptConfig.modules.includeCurrentPositions} />
-              <SettingPill label="Past Trades" on={setup.promptConfig.modules.includePastTrades} extra={setup.promptConfig.modules.includePastTrades ? `last ${setup.promptConfig.modules.pastTradesLookback}` : undefined} />
-              <SettingPill label="Performance Stats" on={setup.promptConfig.modules.includePerformanceStats} />
-              <SettingPill label="Bot Ranking" on={setup.promptConfig.modules.includeBotRanking} />
-              <SettingPill label="Wallet Overview" on={setup.promptConfig.modules.includeWalletOverview} />
+              <SettingPill label="Current Positions" on={!!setup.promptConfig?.modules?.includeCurrentPositions} />
+              <SettingPill label="Past Trades" on={!!setup.promptConfig?.modules?.includePastTrades} extra={setup.promptConfig?.modules?.includePastTrades ? `last ${setup.promptConfig.modules.pastTradesLookback}` : undefined} />
+              <SettingPill label="Performance Stats" on={!!setup.promptConfig?.modules?.includePerformanceStats} />
+              <SettingPill label="Bot Ranking" on={!!setup.promptConfig?.modules?.includeBotRanking} />
+              <SettingPill label="Wallet Overview" on={!!setup.promptConfig?.modules?.includeWalletOverview} />
             </div>
           </div>
 
@@ -219,7 +221,7 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
           <div style={{ marginTop: "24px" }} id="prompt">
             <p className="label">System Prompt Body</p>
             <div className="run-detail-pre" style={{ maxHeight: "400px", overflowY: "auto" }}>
-              {setup.promptBody}
+              {setup.promptBody?.trim() ? setup.promptBody : <span className="muted">No strategy body on this prompt version.</span>}
             </div>
           </div>
         </div>

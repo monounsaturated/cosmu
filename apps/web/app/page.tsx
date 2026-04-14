@@ -185,7 +185,7 @@ export default async function HomePage() {
           ) : (
             <div className="grid">
               {dashboard.latestSnapshots.map((item) => (
-                <div key={item.botName} className="panel">
+                <div key={item.botId} className="panel">
                   <h3>{item.botName}</h3>
                   <p><span className="label">Total USD</span> ${item.snapshot.totalUsdValue.toFixed(2)}</p>
                   <p><span className="label">Gross PnL</span> {item.snapshot.grossPnlUsd?.toFixed(2) ?? "—"}</p>

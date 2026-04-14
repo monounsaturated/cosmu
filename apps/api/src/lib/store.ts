@@ -662,7 +662,8 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
 
   const latestSnapshots = await sql`
     select distinct on (b.id)
-      concat('Bot #', b.bot_number, ' ', b.name) as "botName",
+      b.id as "botId",
+      concat('Bot #', b.bot_number, case when b.name is null or length(trim(b.name)) = 0 then '' else ' — ' || b.name end) as "botName",
       ps.raw_snapshot as "snapshot"
     from portfolio_snapshots ps
     join runs r on r.id = ps.run_id
@@ -782,6 +783,7 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
       rawVenueResponse: parseJson(row.rawVenueResponse)
     })),
     latestSnapshots: latestSnapshots.map((row) => ({
+      botId: row.botId,
       botName: row.botName,
       snapshot: portfolioSnapshotSchema.parse(parseJson(row.snapshot))
     })),
@@ -1347,7 +1349,9 @@ export const getActiveFormatterPrompt = async (
       select id, venue, prompt_type as "promptType", version, body,
              created_at::text as "createdAt"
       from venue_prompt_versions
-      where venue = ${venue} and prompt_type = 'formatter'
+      where venue = ${venue}
+        and prompt_type = 'formatter'
+        and length(trim(body)) > 0
       order by version desc
       limit 1
     `;

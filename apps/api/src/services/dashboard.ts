@@ -277,7 +277,10 @@ export const getDashboard = async () => {
     }
 
     return {
-      botName: bot.name ? `Bot #${bot.botNumber} - ${bot.name}` : `Bot #${bot.botNumber}`,
+      botId: bot.id,
+      botName: bot.name?.trim()
+        ? `Bot #${bot.botNumber} — ${bot.name.trim()}`
+        : `Bot #${bot.botNumber}`,
       snapshot: portfolioSnapshotSchema.parse({
         assetClass: bot.assetClass,
         totalUsdValue: bot.currentPortfolioUsd ?? 0,
