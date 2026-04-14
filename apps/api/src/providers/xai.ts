@@ -27,26 +27,24 @@ export class DecisionParseError extends Error {
   }
 }
 
-export const requestDecision = async ({
-  bot,
-  systemPrompt,
-  userMessage
-}: DecisionRequest): Promise<{ rawText: string; decision: TradingDecision }> => {
-  const completion = await client.chat.completions.create({
-    model: bot.modelIdentifier,
-    temperature:
-      typeof bot.modelSettings.temperature === "number" ? bot.modelSettings.temperature : undefined,
-    messages: [
-      {
-        role: "system",
-        content: systemPrompt
-      },
-      {
-        role: "user",
-        content: userMessage
-      }
-    ],
-    response_format: {
+const extractJson = (text: string): string => {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) return fenced[1].trim();
+  const braceStart = trimmed.indexOf("{");
+  if (braceStart > 0) return trimmed.slice(braceStart);
+  return trimmed;
+};
+
+type ResponseStrategy = {
+  label: string;
+  format?: Record<string, unknown>;
+};
+
+const STRATEGIES: ResponseStrategy[] = [
+  {
+    label: "json_schema",
+    format: {
       type: "json_schema",
       json_schema: {
         name: "TradingDecision",
@@ -54,25 +52,66 @@ export const requestDecision = async ({
         strict: true
       }
     }
-  });
+  },
+  {
+    label: "json_object",
+    format: { type: "json_object" }
+  },
+  {
+    label: "text"
+  }
+];
 
-  const rawText = completion.choices[0]?.message?.content;
+export const requestDecision = async ({
+  bot,
+  systemPrompt,
+  userMessage
+}: DecisionRequest): Promise<{ rawText: string; decision: TradingDecision }> => {
+  let lastError: unknown;
 
-  if (!rawText) {
-    throw new Error("xAI returned no structured decision content");
+  for (const strategy of STRATEGIES) {
+    try {
+      const completion = await client.chat.completions.create({
+        model: bot.modelIdentifier,
+        temperature:
+          typeof bot.modelSettings.temperature === "number"
+            ? bot.modelSettings.temperature
+            : undefined,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage }
+        ],
+        ...(strategy.format ? { response_format: strategy.format } : {})
+      } as Parameters<typeof client.chat.completions.create>[0]);
+
+      const rawText = completion.choices[0]?.message?.content;
+      if (!rawText) {
+        throw new Error(`xAI returned no content (strategy: ${strategy.label})`);
+      }
+
+      const jsonText = extractJson(rawText);
+      let decision: TradingDecision;
+      try {
+        decision = tradingDecisionSchema.parse(JSON.parse(jsonText));
+      } catch (parseError) {
+        throw new DecisionParseError(
+          `xAI returned invalid JSON decision (strategy: ${strategy.label})`,
+          rawText,
+          { cause: parseError }
+        );
+      }
+
+      return { rawText, decision };
+    } catch (error) {
+      lastError = error;
+      if (error instanceof DecisionParseError) throw error;
+      console.warn(`Decision strategy "${strategy.label}" failed: ${String(error)}`);
+    }
   }
 
-  let decision: TradingDecision;
-  try {
-    decision = tradingDecisionSchema.parse(JSON.parse(rawText));
-  } catch (error) {
-    throw new DecisionParseError("xAI returned invalid JSON decision", rawText, { cause: error });
-  }
-
-  return {
-    rawText,
-    decision
-  };
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("All decision strategies failed");
 };
 
 export const listXaiModels = async () => {
