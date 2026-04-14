@@ -58,6 +58,23 @@ const parseJson = <T>(value: unknown): T => {
   return value as T;
 };
 
+const toIsoString = (value: Date | string | null | undefined) => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString();
+};
+
 const parseStoredContextSymbols = (value: unknown) => {
   const rawSymbols = parseJson<string[]>(value);
   const symbolScope = rawSymbols.includes(ALL_SYMBOLS_TOKEN) ? "all" : "selected";
@@ -75,24 +92,31 @@ const parseTraderConfig = (value: unknown) => traderConfigSchema.parse(parseJson
 const buildRuntimeConfig = (row: {
   enabled: boolean;
   venue: string;
-  frequency_minutes: number;
+  frequency_minutes?: number;
+  frequencyMinutes?: number;
   mode: "testnet" | "live";
-  asset_class: "spot";
+  asset_class?: "spot";
+  assetClass?: "spot";
   budget_usdt?: number;
-  execution_config: unknown;
-  context_symbols: unknown;
+  budgetUsdt?: number;
+  execution_config?: unknown;
+  executionConfig?: unknown;
+  context_symbols?: unknown;
+  contextSymbols?: unknown;
 }): RuntimeConfig => {
-  const contextConfig = parseStoredContextSymbols(row.context_symbols);
+  const contextSymbols = row.context_symbols ?? row.contextSymbols ?? [];
+  const contextConfig = parseStoredContextSymbols(contextSymbols);
+  const frequencyMinutes = row.frequency_minutes ?? row.frequencyMinutes;
 
   return runtimeConfigSchema.parse({
     enabled: row.enabled,
     venue: row.venue,
-    frequencyMinutes: row.frequency_minutes,
+    frequencyMinutes,
     mode: row.mode,
-    assetClass: row.asset_class,
-    budgetUsdt: row.budget_usdt ?? 100,
+    assetClass: row.asset_class ?? row.assetClass ?? "spot",
+    budgetUsdt: row.budget_usdt ?? row.budgetUsdt ?? 100,
     symbolScope: contextConfig.symbolScope,
-    execution: parseJson<Record<string, JsonValue>>(row.execution_config),
+    execution: parseJson<Record<string, JsonValue>>(row.execution_config ?? row.executionConfig ?? {}),
     contextSymbols: contextConfig.contextSymbols
   });
 };
@@ -121,12 +145,12 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
       brc.id as "runtimeConfigId",
       brc.enabled,
       brc.venue,
-      brc.frequency_minutes,
+      brc.frequency_minutes as "frequencyMinutes",
       brc.mode,
-      brc.asset_class,
-      brc.execution_config,
-      brc.context_symbols,
-      brc.budget_usdt::float8 as budget_usdt
+      brc.asset_class as "assetClass",
+      brc.execution_config as "executionConfig",
+      brc.context_symbols as "contextSymbols",
+      brc.budget_usdt::float8 as "budgetUsdt"
     from bots b
     join prompt_versions pv on pv.id = b.active_prompt_version_id
     join prompts p on p.id = pv.prompt_id
@@ -185,12 +209,12 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
       brc.id as "runtimeConfigId",
       brc.enabled,
       brc.venue,
-      brc.frequency_minutes,
+      brc.frequency_minutes as "frequencyMinutes",
       brc.mode,
-      brc.asset_class,
-      brc.execution_config,
-      brc.context_symbols,
-      brc.budget_usdt::float8 as budget_usdt
+      brc.asset_class as "assetClass",
+      brc.execution_config as "executionConfig",
+      brc.context_symbols as "contextSymbols",
+      brc.budget_usdt::float8 as "budgetUsdt"
     from bots b
     join prompt_versions pv on pv.id = b.active_prompt_version_id
     join prompts p on p.id = pv.prompt_id
@@ -881,8 +905,8 @@ export const getBotPrePromptContext = async (input: {
       e.executed_quantity as "executedQuantity",
       e.average_fill_price as "averageFillPrice",
       e.executed_notional_usd as "executedNotionalUsd",
-      e.stop_loss_price as "stopLossPrice",
-      e.take_profit_price as "takeProfitPrice",
+      nullif(e.order_intent ->> 'stopLossPrice', 'null')::numeric as "stopLossPrice",
+      nullif(e.order_intent ->> 'takeProfitPrice', 'null')::numeric as "takeProfitPrice",
       e.fee_usd as "feeUsd",
       e.created_at as "createdAt"
     from executions e
@@ -918,10 +942,15 @@ export const getBotPrePromptContext = async (input: {
     performance:
       performance === undefined
         ? null
-        : {
-            startedAt: performance.startedAt.toISOString(),
-            daysRunning:
-              (Date.now() - performance.startedAt.getTime()) / (1000 * 60 * 60 * 24),
+        : (() => {
+            const startedAtRaw = performance.startedAt ?? (performance as { started_at?: Date | string }).started_at;
+            const startedAtIso = toIsoString(startedAtRaw) ?? new Date().toISOString();
+            const startedAtDate = startedAtRaw instanceof Date ? startedAtRaw : new Date(startedAtIso);
+
+            return {
+              startedAt: startedAtIso,
+              daysRunning:
+                (Date.now() - startedAtDate.getTime()) / (1000 * 60 * 60 * 24),
             runCount: Number(performance.runCount ?? 0),
             tradeCount: Number(performance.tradeCount ?? 0),
             totalFeesUsd: performance.totalFeesUsd === null ? null : Number(performance.totalFeesUsd),
@@ -931,7 +960,8 @@ export const getBotPrePromptContext = async (input: {
             netPnlUsd: performance.netPnlUsd === null ? null : Number(performance.netPnlUsd),
             firstPortfolioUsd:
               performance.firstPortfolioUsd === null ? null : Number(performance.firstPortfolioUsd)
-          },
+            };
+          })(),
     pastTrades: (() => {
       const remainingBySymbol = new Map(openQuantityBySymbol);
 
@@ -949,7 +979,7 @@ export const getBotPrePromptContext = async (input: {
 
         return {
           ...trade,
-          createdAt: trade.createdAt.toISOString(),
+          createdAt: toIsoString(trade.createdAt ?? trade.created_at) ?? new Date().toISOString(),
           executedQuantity,
           averageFillPrice: trade.averageFillPrice === null ? null : Number(trade.averageFillPrice),
           executedNotionalUsd: trade.executedNotionalUsd === null ? null : Number(trade.executedNotionalUsd),
