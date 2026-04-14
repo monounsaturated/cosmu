@@ -2,6 +2,32 @@ import { sql } from "../db.js";
 import { listVenueSymbols } from "../adapters/binance.js";
 import { listXaiModels } from "../providers/xai.js";
 
+// Known working xAI model profiles — used as seed fallback when xAI API is unreachable.
+// These match the canonical names used by the sync so there are no duplicates.
+const BOOTSTRAP_XAI_PROFILES: { name: string; model: string }[] = [
+  { name: "xAI grok-3", model: "grok-3" },
+  { name: "xAI grok-3-fast", model: "grok-3-fast" },
+  { name: "xAI grok-3-mini", model: "grok-3-mini" },
+  { name: "xAI grok-3-mini-fast", model: "grok-3-mini-fast" },
+  { name: "xAI grok-beta", model: "grok-beta" },
+  { name: "xAI grok-2", model: "grok-2" },
+];
+
+export const bootstrapModelProfiles = async () => {
+  const [row] = await sql<{ count: string }[]>`
+    select count(*)::text as count from model_profiles where provider = 'xai'
+  `;
+  if (Number(row?.count ?? 0) > 0) return;
+
+  for (const profile of BOOTSTRAP_XAI_PROFILES) {
+    await sql`
+      insert into model_profiles (name, provider, model, settings)
+      values (${profile.name}, 'xai', ${profile.model}, '{"temperature":0.2}'::jsonb)
+      on conflict (name) do nothing
+    `;
+  }
+};
+
 const HOURS_12_MS = 12 * 60 * 60 * 1000;
 
 const shouldRefreshProvider = async (provider: string) => {

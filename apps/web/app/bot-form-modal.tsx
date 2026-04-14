@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PRE_PROMPT_PRESET_DESCRIPTIONS } from "@cosmu/shared";
 
 const ALL_SYMBOLS_TOKEN = "__ALL__";
@@ -141,6 +141,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   const [loadTrigger, setLoadTrigger] = useState(0);
   const [symbolSearch, setSymbolSearch] = useState("");
   const [pairsOpen, setPairsOpen] = useState(false);
+  const pairsRef = useRef<HTMLDivElement>(null);
   const [selectedProvider, setSelectedProvider] = useState("xai");
   const [formData, setFormData] = useState(buildDefaultState(defaultBotNumber));
 
@@ -297,6 +298,18 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       setFormData((cur) => ({ ...cur, modelProfileId: availableModels[0]!.id }));
     }
   }, [availableModels, formData.modelProfileId]);
+
+  // Close pairs dropdown on outside click
+  useEffect(() => {
+    if (!pairsOpen) return;
+    const handle = (e: MouseEvent) => {
+      if (pairsRef.current && !pairsRef.current.contains(e.target as Node)) {
+        setPairsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [pairsOpen]);
 
   // Auto-select first prompt version
   useEffect(() => {
@@ -779,7 +792,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
             <div className="form-section">
               <h3>Authorized Pairs</h3>
 
-              <div className="pairs-picker">
+              <div className="pairs-picker" ref={pairsRef}>
                 <input
                   type="text"
                   className="pairs-search"

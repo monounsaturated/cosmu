@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { env } from "./env.js";
+import { sql } from "./db.js";
 import {
   addPromptVersion,
   createBot,
@@ -15,7 +16,7 @@ import {
   toggleBotEnabled,
   updateBotConfig
 } from "./lib/store.js";
-import { getVenueSymbols, syncProviderModels } from "./services/catalog.js";
+import { bootstrapModelProfiles, getVenueSymbols, syncProviderModels } from "./services/catalog.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
 
@@ -51,6 +52,42 @@ app.get("/health", async (_request, response) => {
     ok: true,
     mode: "runtime"
   });
+});
+
+app.get("/internal/diagnostics", async (_request, response) => {
+  const result: Record<string, unknown> = { checkedAt: new Date().toISOString() };
+
+  try {
+    const [r] = await sql<{ count: string }[]>`select count(*)::text as count from model_profiles`;
+    result.modelsInDb = Number(r?.count ?? 0);
+  } catch (e) { result.modelsDbError = String(e); }
+
+  try {
+    const [r] = await sql<{ count: string }[]>`select count(*)::text as count from venue_symbol_catalog where is_active = true`;
+    result.symbolsInDb = Number(r?.count ?? 0);
+  } catch (e) { result.symbolsDbError = String(e); }
+
+  try {
+    const [r] = await sql<{ count: string }[]>`select count(*)::text as count from prompts`;
+    result.promptsInDb = Number(r?.count ?? 0);
+  } catch (e) { result.promptsDbError = String(e); }
+
+  try {
+    const xaiRes = await fetch("https://api.x.ai/v1/models", {
+      headers: { Authorization: `Bearer ${env.XAI_API_KEY}` },
+      signal: AbortSignal.timeout(5000)
+    });
+    result.xaiApi = xaiRes.ok ? `ok (${xaiRes.status})` : `error (${xaiRes.status})`;
+  } catch (e) { result.xaiApi = `unreachable: ${String(e)}`; }
+
+  try {
+    const binRes = await fetch("https://api.binance.com/api/v3/ping", {
+      signal: AbortSignal.timeout(5000)
+    });
+    result.binanceApi = binRes.ok ? `ok (${binRes.status})` : `error (${binRes.status})`;
+  } catch (e) { result.binanceApi = `unreachable: ${String(e)}`; }
+
+  response.json(result);
 });
 
 app.get("/internal/qa/status", async (_request, response) => {
@@ -225,7 +262,13 @@ app.get("/models", async (request, response, next) => {
       try {
         await syncProviderModels("xai");
       } catch (syncError) {
-        console.warn("Model sync failed, serving cached profiles:", syncError);
+        console.warn("xAI sync failed:", String(syncError));
+      }
+      // If DB is still empty after sync attempt, insert known-good fallback models
+      try {
+        await bootstrapModelProfiles();
+      } catch (bootstrapError) {
+        console.warn("Model bootstrap failed:", String(bootstrapError));
       }
     }
 
