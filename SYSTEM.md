@@ -768,6 +768,8 @@ Required now:
 
 Locked:
 - runtime behavior belongs in runtime config, not in prompt text and not in scheduler code
+- bots are enabled by default upon creation
+- bot names are optional (default to just "Bot #N")
 
 Runtime config should include at least:
 - enabled / disabled

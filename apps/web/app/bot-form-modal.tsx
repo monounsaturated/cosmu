@@ -103,12 +103,12 @@ const uniqueSymbols = (symbols: string[]) =>
   Array.from(new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean)));
 
 const buildDefaultState = (defaultBotNumber: number) => {
-  const defaultName = `Bot #${defaultBotNumber}`;
+  const defaultName = "";
   return {
     name: defaultName,
     promptStrategy: "new" as "new" | "existing",
     existingPromptVersionId: "",
-    newPromptName: `${defaultName} Prompt`,
+    newPromptName: `Bot #${defaultBotNumber} Prompt`,
     newPromptBody: DEFAULT_PROMPT_BODY,
     modelProfileId: "",
     venue: "binance-testnet" as "binance" | "binance-testnet",
@@ -547,7 +547,6 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     setError(null);
 
     try {
-      if (!formData.name.trim()) throw new Error("Bot name is required");
       if (!formData.modelProfileId) throw new Error("Choose a model");
       if (formData.promptStrategy === "new" && !formData.newPromptName.trim()) throw new Error("Prompt name is required");
       if (formData.promptStrategy === "new" && !formData.newPromptBody.trim()) throw new Error("Prompt body is required");
@@ -620,13 +619,12 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
               <h3>Bot</h3>
               <div className="form-row">
                 <label>
-                  Name
+                  Name (Optional)
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Bot #1"
-                    required
+                    placeholder="My Strategy"
                   />
                 </label>
               </div>

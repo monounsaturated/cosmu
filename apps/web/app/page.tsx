@@ -1,8 +1,8 @@
 import { dashboardSchema } from "@cosmu/shared";
-import { BotControls } from "./bot-controls";
 import { DashboardActions } from "./dashboard-actions";
 import { PerformanceChart } from "./performance-chart";
 import { RecentRunsTable } from "./run-detail-row";
+import { BotTable } from "./bot-table";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
@@ -61,43 +61,8 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="grid">
-        {dashboard.bots.map((bot) => (
-          <article className="panel bot-card" key={bot.id}>
-            <div className="bot-header">
-              <div>
-                <h2>#{bot.botNumber} {bot.name}</h2>
-              </div>
-              <span className={`status-dot ${bot.enabled ? "status-active" : "status-inactive"}`} />
-            </div>
-            <div className="bot-badges">
-              <span className="badge">{bot.venue === "binance-testnet" ? "Testnet" : bot.venue === "binance" ? (bot.mode === "testnet" ? "Testnet" : "Binance") : bot.venue}</span>
-              <span className="badge">${bot.budgetUsdt} budget</span>
-              <span className="badge">{bot.frequencyMinutes}m</span>
-              <span className="badge">{bot.assetClass}</span>
-            </div>
-            <div className="bot-meta">
-              <p><span className="label">Prompt</span> {bot.promptVersionLabel}</p>
-              <p><span className="label">Model</span> {bot.modelProfileName}</p>
-              <p><span className="label">Running since</span> {new Date(bot.startedAt).toLocaleDateString()}</p>
-              <p><span className="label">Days live</span> {bot.daysRunning.toFixed(1)}</p>
-              <p><span className="label">Runs</span> {bot.runCount}</p>
-              <p><span className="label">Total trades</span> {bot.tradeCount}</p>
-              <p><span className="label">Avg trades/day</span> {bot.avgTradesPerDay.toFixed(2)}</p>
-              <p><span className="label">Portfolio</span> {bot.currentPortfolioUsd !== null ? `$${bot.currentPortfolioUsd.toFixed(2)}` : "—"}</p>
-              <p><span className="label">Gross PnL</span> {bot.grossPnlUsd !== null ? `$${bot.grossPnlUsd.toFixed(2)}` : "—"}</p>
-              <p><span className="label">Net PnL</span> {bot.netPnlUsd !== null ? `$${bot.netPnlUsd.toFixed(2)}` : "—"}</p>
-              <p><span className="label">Fees</span> {bot.totalFeesUsd !== null ? `$${bot.totalFeesUsd.toFixed(2)}` : "—"}</p>
-              <p><span className="label">Credibility</span> {bot.sampleQuality}</p>
-              <p><span className="label">Last run</span> {bot.lastRunStatus ?? "never"}</p>
-              <p><span className="label">Decision</span> {bot.latestDecisionSummary ?? "—"}</p>
-              {bot.latestError && (
-                <p className="error-text"><span className="label">Error</span> {bot.latestError}</p>
-              )}
-            </div>
-            <BotControls botId={bot.id} enabled={bot.enabled} />
-          </article>
-        ))}
+      <section className="grid" style={{ display: 'block', marginBottom: '32px' }}>
+        <BotTable dashboard={dashboard} />
       </section>
 
       <section className="stack">
@@ -169,14 +134,16 @@ export default async function HomePage() {
                   <p><span className="label">Total USD</span> ${item.snapshot.totalUsdValue.toFixed(2)}</p>
                   <p><span className="label">Gross PnL</span> {item.snapshot.grossPnlUsd?.toFixed(2) ?? "—"}</p>
                   <p><span className="label">Net PnL</span> {item.snapshot.netPnlUsd?.toFixed(2) ?? "—"}</p>
-                  <p className="label">Holdings</p>
-                  <ul>
-                    {item.snapshot.balances.map((balance) => (
-                      <li key={balance.asset}>
-                        {balance.asset}: {(balance.free + balance.locked).toFixed(6)}
-                      </li>
-                    ))}
-                  </ul>
+                  <details style={{ marginTop: '8px' }}>
+                    <summary className="label clickable" style={{ display: 'inline-block' }}>View Holdings ({item.snapshot.balances.length})</summary>
+                    <ul style={{ marginTop: '8px' }}>
+                      {item.snapshot.balances.map((balance) => (
+                        <li key={balance.asset}>
+                          {balance.asset}: {(balance.free + balance.locked).toFixed(6)}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 </div>
               ))}
             </div>

@@ -122,7 +122,7 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
     where brc.enabled = true
       and (
         brc.last_run_started_at is null
-        or brc.last_run_started_at <= now() - make_interval(mins => brc.frequency_minutes)
+        or brc.last_run_started_at <= now() - make_interval(secs => (brc.frequency_minutes * 60) - 10)
       )
     order by b.created_at asc
   `;
@@ -1046,7 +1046,7 @@ export const createBot = async (input: {
       context_symbols
     ) values (
       ${bot.id},
-      false,
+      true,
       ${input.runtimeConfig.venue},
       ${input.runtimeConfig.frequencyMinutes},
       ${input.runtimeConfig.mode},
