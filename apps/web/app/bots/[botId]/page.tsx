@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { PerformanceChart } from "../../performance-chart";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 export const dynamic = "force-dynamic";
@@ -33,6 +34,9 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
   const botNameDisplay = setup.name ? `Bot #${setup.botNumber} - ${setup.name}` : `Bot #${setup.botNumber}`;
   const dashboardBot = dashboard?.bots?.find((b: any) => b.id === botId);
   const botSnapshot = dashboard?.latestSnapshots?.find((s: any) => s.botName === botNameDisplay);
+  const botSeries = dashboard?.performanceSeries?.filter((series: any) => series.botId === botId) ?? [];
+  const netPnl = dashboardBot?.netPnlUsd ?? 0;
+  const netPnlPct = setup.runtimeConfig.budgetUsdt > 0 ? (netPnl / setup.runtimeConfig.budgetUsdt) * 100 : 0;
 
   return (
     <main className="page">
@@ -66,6 +70,10 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
           <p className="label">Allocated Budget</p>
           <h2 style={{ margin: "4px 0" }}>${setup.runtimeConfig.budgetUsdt}</h2>
         </div>
+        <div className="panel">
+          <p className="label">Days Since Launch</p>
+          <h2 style={{ margin: "4px 0" }}>{dashboardBot?.daysRunning?.toFixed(1) ?? "0.0"}</h2>
+        </div>
       </div>
 
       <div className="grid" style={{ display: 'block', marginBottom: '32px' }}>
@@ -80,6 +88,12 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
               <p className="label">Net PnL</p>
               <h2 className={dashboardBot?.netPnlUsd && dashboardBot.netPnlUsd > 0 ? "value-green" : dashboardBot?.netPnlUsd && dashboardBot.netPnlUsd < 0 ? "value-red" : ""}>
                 {dashboardBot?.netPnlUsd && dashboardBot.netPnlUsd > 0 ? "+" : ""}{dashboardBot?.netPnlUsd?.toFixed(2) ?? "0.00"}
+              </h2>
+            </div>
+            <div>
+              <p className="label">Net Return</p>
+              <h2 className={netPnl > 0 ? "value-green" : netPnl < 0 ? "value-red" : ""}>
+                {netPnl > 0 ? "+" : ""}{netPnlPct.toFixed(2)}%
               </h2>
             </div>
             <div>
@@ -105,6 +119,13 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
           ) : (
             <p className="muted" style={{ marginTop: "16px" }}>No holdings recorded yet.</p>
           )}
+        </div>
+      </div>
+
+      <div className="grid" style={{ display: "block", marginBottom: "32px" }}>
+        <div className="panel">
+          <h3>Bot Value Evolution</h3>
+          <PerformanceChart series={botSeries} />
         </div>
       </div>
 

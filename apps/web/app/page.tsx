@@ -204,7 +204,7 @@ export default async function HomePage() {
         </article>
 
         <article className="panel">
-          <h3>Prompt History</h3>
+          <h3>Prompt Snapshots</h3>
           {dashboard.promptVersions.length === 0 ? (
             <p className="muted">No prompts yet.</p>
           ) : (
@@ -212,15 +212,13 @@ export default async function HomePage() {
               <thead>
                 <tr>
                   <th>Prompt</th>
-                  <th>Version</th>
                   <th>Created</th>
                 </tr>
               </thead>
               <tbody>
                 {dashboard.promptVersions.map((promptVersion) => (
                   <tr key={`${promptVersion.promptName}-${promptVersion.version}`}>
-                    <td>{promptVersion.promptName}</td>
-                    <td>{promptVersion.version}</td>
+                    <td>{promptVersion.label}</td>
                     <td>{new Date(promptVersion.createdAt).toLocaleString()}</td>
                   </tr>
                 ))}

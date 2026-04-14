@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: "◈" },
+  { href: "/bots", label: "Bots", icon: "⬡" },
   { href: "/prompts", label: "Prompts", icon: "✎" },
 ];
 
@@ -57,8 +58,8 @@ export function Sidebar() {
           </Link>
         ))}
 
-        {isBotPage && (
-          <div className={`sidebar-link sidebar-link-active`} title={collapsed ? "Bot Detail" : undefined}>
+        {isBotPage && !isActive("/bots") && (
+          <div className="sidebar-link sidebar-link-active" title={collapsed ? "Bot Detail" : undefined}>
             <span className="sidebar-icon">⬡</span>
             {!collapsed && <span>Bot Detail</span>}
           </div>

@@ -25,7 +25,11 @@ type Prompt = {
   id: string;
   name: string;
   slug: string;
-  versions: { id: string; version: number; createdAt: string }[];
+  createdAt: string;
+  promptNumber: number;
+  latestVersionId: string | null;
+  latestBody: string | null;
+  latestVersionCreatedAt: string | null;
 };
 
 type Model = {
@@ -177,16 +181,14 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   const promptOptions = useMemo(
     () =>
       prompts
-        .flatMap((prompt) =>
-          [...prompt.versions]
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-            .map((version) => ({
-              id: version.id,
-              promptId: prompt.id,
-              createdAt: version.createdAt,
-              label: `${prompt.name} v${version.version}`
-            }))
-        )
+        .filter((prompt) => Boolean(prompt.latestVersionId))
+        .map((prompt) => ({
+          id: prompt.latestVersionId!,
+          promptId: prompt.id,
+          createdAt: prompt.latestVersionCreatedAt ?? prompt.createdAt,
+          body: prompt.latestBody ?? "",
+          label: `Prompt #${prompt.promptNumber} - ${prompt.name}`
+        }))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [prompts]
   );
@@ -423,14 +425,14 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     return () => document.removeEventListener("mousedown", handle);
   }, [pairsOpen]);
 
-  // Auto-select first prompt version
+  // Auto-select first prompt
   useEffect(() => {
     if (!formData.existingPromptVersionId && promptOptions[0]?.id) {
       setFormData((cur) => ({ ...cur, existingPromptVersionId: promptOptions[0]!.id }));
     }
   }, [promptOptions, formData.existingPromptVersionId]);
 
-  // Load prompt body when a saved version is selected
+  // Load prompt body when a saved prompt is selected
   useEffect(() => {
     if (formData.promptStrategy !== "existing" || !formData.existingPromptVersionId) {
       setPromptBody(null);
@@ -438,26 +440,12 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       return;
     }
 
-    const prompt = prompts.find((p) => p.versions.some((v) => v.id === formData.existingPromptVersionId));
-    if (!prompt) return;
-
-    let cancelled = false;
-    setLoadingBody(true);
+    const selectedPrompt = promptOptions.find((option) => option.id === formData.existingPromptVersionId);
+    setLoadingBody(false);
     setShowBodyEditor(false);
-
-    fetch(`/api/prompts/${prompt.id}/versions/${formData.existingPromptVersionId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled) {
-          setPromptBody(data.body ?? null);
-          setEditedBody(data.body ?? "");
-        }
-      })
-      .catch(() => { if (!cancelled) setPromptBody(null); })
-      .finally(() => { if (!cancelled) setLoadingBody(false); });
-
-    return () => { cancelled = true; };
-  }, [formData.existingPromptVersionId, formData.promptStrategy, prompts]);
+    setPromptBody(selectedPrompt?.body ?? null);
+    setEditedBody(selectedPrompt?.body ?? "");
+  }, [formData.existingPromptVersionId, formData.promptStrategy, promptOptions]);
 
   // Fetch venue balance when venue changes
   useEffect(() => {
@@ -475,19 +463,22 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   }, [formData.venue]);
 
   const handleSaveNewVersion = async () => {
-    const prompt = prompts.find((p) => p.versions.some((v) => v.id === formData.existingPromptVersionId));
-    if (!prompt) return;
-
     setSavingVersion(true);
     setError(null);
     try {
-      const res = await fetch(`/api/prompts/${prompt.id}/versions`, {
+      const selectedPrompt = prompts.find((prompt) => prompt.latestVersionId === formData.existingPromptVersionId);
+      const fallbackName = selectedPrompt?.name ?? `Prompt ${Date.now()}`;
+      const res = await fetch("/api/prompts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: editedBody })
+        body: JSON.stringify({
+          name: fallbackName,
+          slug: uniqueSlug(fallbackName),
+          initialBody: editedBody
+        })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to save version");
+      if (!res.ok) throw new Error(data.error ?? "Failed to save prompt");
 
       const promptsRes = await fetch("/api/prompts");
       const promptsData = await promptsRes.json();
@@ -495,7 +486,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       setFormData((cur) => ({ ...cur, existingPromptVersionId: data.promptVersionId }));
       setShowBodyEditor(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save new version");
+      setError(e instanceof Error ? e.message : "Failed to save updated prompt");
     } finally {
       setSavingVersion(false);
     }
@@ -523,7 +514,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
 
   const resolvePromptVersionId = async () => {
     if (formData.promptStrategy === "existing") {
-      if (!formData.existingPromptVersionId) throw new Error("Choose a saved prompt version");
+      if (!formData.existingPromptVersionId) throw new Error("Choose a saved prompt");
       return formData.existingPromptVersionId;
     }
 
@@ -735,13 +726,13 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
                 <>
                   <div className="form-row">
                     <label>
-                      Version
+                      Prompt
                       <select
                         value={formData.existingPromptVersionId}
                         onChange={(e) => setFormData({ ...formData, existingPromptVersionId: e.target.value })}
                         required
                       >
-                        <option value="">Select a version</option>
+                        <option value="">Select a prompt</option>
                         {promptOptions.map((p) => (
                           <option key={p.id} value={p.id}>{p.label}</option>
                         ))}
@@ -788,7 +779,7 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
                               onClick={handleSaveNewVersion}
                               disabled={savingVersion || !editedBody.trim()}
                             >
-                              {savingVersion ? "Saving…" : "Save as new version"}
+                              {savingVersion ? "Saving…" : "Save as new prompt"}
                             </button>
                           </div>
                         </>

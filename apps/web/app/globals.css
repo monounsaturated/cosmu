@@ -104,6 +104,16 @@ a {
   color: #e4e4e7;
 }
 
+.table-compact th {
+  padding: 8px 10px;
+  font-size: 11px;
+}
+
+.table-compact td {
+  padding: 9px 10px;
+  font-size: 13px;
+}
+
 .table tr:hover td {
   background: #27272a44;
 }

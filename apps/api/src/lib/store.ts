@@ -41,6 +41,15 @@ export type BotSetup = {
   runtimeConfig: RuntimeConfig;
 };
 
+export type BotExecutionLedgerEntry = {
+  symbol: string;
+  side: "buy" | "sell";
+  executedQuantity: number | null;
+  executedNotionalUsd: number | null;
+  feeAmount: number | null;
+  feeAsset: string | null;
+};
+
 const parseJson = <T>(value: unknown): T => {
   if (typeof value === "string") {
     return JSON.parse(value) as T;
@@ -90,6 +99,10 @@ const buildRuntimeConfig = (row: {
 
 export const getDueBots = async (): Promise<BotSetup[]> => {
   const rows = await sql<BotSetup[]>`
+    with prompt_order as (
+      select id, row_number() over (order by created_at asc) as prompt_number
+      from prompts
+    )
     select
       b.id,
       b.bot_number as "botNumber",
@@ -97,7 +110,7 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
       b.slug,
       pv.id as "promptVersionId",
       pv.body as "promptBody",
-      concat(p.name, ' v', pv.version) as "promptVersionLabel",
+      concat('Prompt #', prompt_order.prompt_number) as "promptVersionLabel",
       mp.id as "modelProfileId",
       mp.name as "modelProfileName",
       mp.provider as "modelProvider",
@@ -117,6 +130,7 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
     from bots b
     join prompt_versions pv on pv.id = b.active_prompt_version_id
     join prompts p on p.id = pv.prompt_id
+    join prompt_order on prompt_order.id = p.id
     join model_profiles mp on mp.id = b.active_model_profile_id
     join bot_runtime_configs brc on brc.bot_id = b.id
     where brc.enabled = true
@@ -149,6 +163,10 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
 
 export const getBotSetupById = async (botId: string): Promise<BotSetup | null> => {
   const rows = await sql<BotSetup[]>`
+    with prompt_order as (
+      select id, row_number() over (order by created_at asc) as prompt_number
+      from prompts
+    )
     select
       b.id,
       b.bot_number as "botNumber",
@@ -156,7 +174,7 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
       b.slug,
       pv.id as "promptVersionId",
       pv.body as "promptBody",
-      concat(p.name, ' v', pv.version) as "promptVersionLabel",
+      concat('Prompt #', prompt_order.prompt_number) as "promptVersionLabel",
       mp.id as "modelProfileId",
       mp.name as "modelProfileName",
       mp.provider as "modelProvider",
@@ -176,6 +194,7 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
     from bots b
     join prompt_versions pv on pv.id = b.active_prompt_version_id
     join prompts p on p.id = pv.prompt_id
+    join prompt_order on prompt_order.id = p.id
     join model_profiles mp on mp.id = b.active_model_profile_id
     join bot_runtime_configs brc on brc.bot_id = b.id
     where b.id = ${botId}
@@ -407,7 +426,11 @@ const getSampleQuality = (daysRunning: number, tradeCount: number) => {
 
 export const getDashboard = async (): Promise<DashboardPayload> => {
   const botRows = await sql`
-    with run_stats as (
+    with prompt_order as (
+      select id, row_number() over (order by created_at asc) as prompt_number
+      from prompts
+    ),
+    run_stats as (
       select
         bot_id,
         count(*)::int as "runCount"
@@ -454,7 +477,7 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
       brc.frequency_minutes as "frequencyMinutes",
       brc.mode,
       brc.asset_class as "assetClass",
-      concat(p.name, ' v', pv.version) as "promptVersionLabel",
+      concat('Prompt #', prompt_order.prompt_number) as "promptVersionLabel",
       mp.name as "modelProfileName",
       coalesce(run_stats."runCount", 0) as "runCount",
       coalesce(trade_stats."tradeCount", 0) as "tradeCount",
@@ -471,6 +494,7 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
     join bot_runtime_configs brc on brc.bot_id = b.id
     join prompt_versions pv on pv.id = b.active_prompt_version_id
     join prompts p on p.id = pv.prompt_id
+    join prompt_order on prompt_order.id = p.id
     join model_profiles mp on mp.id = b.active_model_profile_id
     left join run_stats on run_stats.bot_id = b.id
     left join trade_stats on trade_stats.bot_id = b.id
@@ -534,14 +558,18 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
   `;
 
   const promptVersions = await sql`
+    with prompt_order as (
+      select id, row_number() over (order by created_at asc) as prompt_number
+      from prompts
+    )
     select
       p.name as "promptName",
-      pv.version,
-      concat(p.name, ' v', pv.version) as label,
-      pv.created_at as "createdAt"
-    from prompt_versions pv
-    join prompts p on p.id = pv.prompt_id
-    order by pv.created_at desc
+      1 as version,
+      concat('Prompt #', prompt_order.prompt_number) as label,
+      p.created_at as "createdAt"
+    from prompts p
+    join prompt_order on prompt_order.id = p.id
+    order by p.created_at desc
     limit 20
   `;
 
@@ -924,26 +952,32 @@ export const toggleBotEnabled = async (botId: string) => {
 
 export const listPrompts = async () =>
   sql`
+    with prompt_order as (
+      select id, row_number() over (order by created_at asc) as "promptNumber"
+      from prompts
+    ),
+    latest_version as (
+      select distinct on (prompt_id)
+        prompt_id,
+        id,
+        body,
+        created_at
+      from prompt_versions
+      order by prompt_id, version desc
+    )
     select
       p.id,
       p.name,
       p.slug,
       p.created_at as "createdAt",
-      max(pv.created_at) as "latestVersionCreatedAt",
-      coalesce(
-        json_agg(
-          json_build_object(
-            'id', pv.id,
-            'version', pv.version,
-            'createdAt', pv.created_at
-          ) order by pv.version desc
-        ) filter (where pv.id is not null),
-        '[]'::json
-      ) as versions
+      prompt_order."promptNumber",
+      latest_version.id as "latestVersionId",
+      latest_version.body as "latestBody",
+      latest_version.created_at as "latestVersionCreatedAt"
     from prompts p
-    left join prompt_versions pv on pv.prompt_id = p.id
-    group by p.id, p.name, p.slug, p.created_at
-    order by max(pv.created_at) desc nulls last, p.created_at desc
+    join prompt_order on prompt_order.id = p.id
+    left join latest_version on latest_version.prompt_id = p.id
+    order by prompt_order."promptNumber" desc
   `;
 
 export const listModelProfiles = async (provider?: string) => {
@@ -1020,6 +1054,31 @@ export const createPrompt = async (input: { name: string; slug: string; initialB
   `;
 
   return { promptId: prompt.id, promptVersionId: promptVersion.id };
+};
+
+export const listBotExecutionLedger = async (botId: string): Promise<BotExecutionLedgerEntry[]> => {
+  const rows = await sql<BotExecutionLedgerEntry[]>`
+    select
+      e.symbol,
+      e.side,
+      e.executed_quantity::float8 as "executedQuantity",
+      e.executed_notional_usd::float8 as "executedNotionalUsd",
+      e.fee_amount::float8 as "feeAmount",
+      e.fee_asset as "feeAsset"
+    from executions e
+    join runs r on r.id = e.run_id
+    where r.bot_id = ${botId}
+      and r.status in ('success', 'uncertain')
+      and e.status = 'success'
+    order by e.created_at asc
+  `;
+
+  return rows.map((row) => ({
+    ...row,
+    executedQuantity: row.executedQuantity === null ? null : Number(row.executedQuantity),
+    executedNotionalUsd: row.executedNotionalUsd === null ? null : Number(row.executedNotionalUsd),
+    feeAmount: row.feeAmount === null ? null : Number(row.feeAmount)
+  }));
 };
 
 export const createModelProfile = async (input: {
