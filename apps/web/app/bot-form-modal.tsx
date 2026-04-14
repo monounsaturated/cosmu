@@ -197,8 +197,8 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     return source.slice(0, 120);
   }, [symbolSearch, symbols]);
 
-  // Resilient fetch helper — returns data or null without throwing
-  const safeFetch = async <T,>(url: string): Promise<T | null> => {
+  // Resilient fetch helper — returns data or null without throwing, with optional error message
+  const safeFetch = async <T,>(url: string): Promise<{ data: T | null; error: string | null }> => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
@@ -206,12 +206,17 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       const res = await fetch(url, { signal: controller.signal });
       if (!res.ok) {
         console.warn(`[bot-form] ${url} → ${res.status}`);
-        return null;
+        let errorMsg = `HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData.error) errorMsg = errData.error;
+        } catch (_) {}
+        return { data: null, error: errorMsg };
       }
-      return (await res.json()) as T;
+      return { data: (await res.json()) as T, error: null };
     } catch (e) {
       console.warn(`[bot-form] ${url} failed:`, e);
-      return null;
+      return { data: null, error: e instanceof Error ? e.message : String(e) };
     } finally {
       clearTimeout(timeout);
     }
@@ -233,10 +238,12 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       console.log("[bot-form] Model sync result:", result);
 
       // Refresh models list
-      const modelsData = await safeFetch<Model[]>("/api/models");
-      if (modelsData && modelsData.length > 0) {
-        setModels(modelsData);
+      const modelsRes = await safeFetch<Model[]>("/api/models");
+      if (modelsRes.data && modelsRes.data.length > 0) {
+        setModels(modelsRes.data);
         setError(null);
+      } else if (modelsRes.error) {
+        setError(`Sync completed, but could not load models: ${modelsRes.error}`);
       } else {
         setError("Sync completed but no models available. Check XAI_API_KEY configuration.");
       }
@@ -303,14 +310,19 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       setDataLoaded(false);
       setError(null);
 
-      const [promptsData, modelsData, symbolsData, botData] = await Promise.all([
+      const [promptsRes, modelsRes, symbolsRes, botRes] = await Promise.all([
         safeFetch<Prompt[]>("/api/prompts"),
         safeFetch<Model[]>("/api/models"),
         safeFetch<SymbolResponse>("/api/venues/binance/symbols"),
-        mode === "edit" && botId ? safeFetch<BotSetup>(`/api/bots/${botId}`) : Promise.resolve(null)
+        mode === "edit" && botId ? safeFetch<BotSetup>(`/api/bots/${botId}`) : Promise.resolve({ data: null, error: null })
       ]);
 
       if (cancelled) return;
+
+      const promptsData = promptsRes.data;
+      const modelsData = modelsRes.data;
+      const symbolsData = symbolsRes.data;
+      const botData = botRes.data;
 
       if (promptsData) setPrompts(promptsData);
       if (modelsData && modelsData.length > 0) setModels(modelsData);
@@ -333,7 +345,11 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
 
       if (errors.length) {
         if (errors.includes("models")) {
-          errorMessage = "Could not load AI models. The xAI API may be unreachable or XAI_API_KEY is not configured. Try clicking 'Sync Models from xAI' below.";
+          if (modelsRes.error) {
+            errorMessage = `Could not load AI models. Server reported: "${modelsRes.error}". Check database connectivity and API keys.`;
+          } else {
+            errorMessage = "Could not load AI models. The API may be unreachable or XAI_API_KEY is not configured. Try clicking 'Sync Models from xAI' below.";
+          }
         } else {
           errorMessage = `Could not load: ${errors.join(", ")}. Check API connectivity or retry.`;
         }
@@ -1072,7 +1088,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                     </button>
                   </div>
                 )}
-                {error.includes("models") && (
+                {error.includes("models") && !error.includes("Server reported") && (
                   <p className="field-help" style={{ marginTop: "0.5rem" }}>
                     Tip: Ensure XAI_API_KEY is set in your environment and the API server is running.
                   </p>
