@@ -63,7 +63,9 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
     [
       "=== EXECUTION RULES ===",
       `Rules enforced: ${exec.enabled ? "YES" : "NO (relaxed)"}`,
-      `Max orders/run: ${exec.maxOrdersPerRun} | Max notional/order: ${exec.maxNotionalPerOrderUsd} USDT`,
+      exec.enabled
+        ? `Max orders/run: ${exec.maxOrdersPerRun} | Max notional/order: ${exec.maxNotionalPerOrderUsd} USDT`
+        : `Configured caps (not enforced while relaxed): max ${exec.maxOrdersPerRun} orders/run, ${exec.maxNotionalPerOrderUsd} USDT/order — total spend still cannot exceed budget and venue rules apply.`,
       exec.enabled ? `Cash reserve (untouchable): ${exec.minCashReserveUsd} USDT` : "",
       `Allowed types: ${allowedTypes}`
     ]

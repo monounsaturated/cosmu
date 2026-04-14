@@ -351,7 +351,12 @@ export const validateTradability = async (
     throw new Error(`Notional ${notional} is below minNotional for ${symbol}`);
   }
 
-  if (notional > runtimeConfig.execution.maxNotionalPerOrderUsd) {
+  // Per-order notional cap is part of "execution rules" in the UI; when rules are off,
+  // still enforce exchange minNotional above, but do not cap at maxNotionalPerOrderUsd.
+  if (
+    runtimeConfig.execution.enabled &&
+    notional > runtimeConfig.execution.maxNotionalPerOrderUsd
+  ) {
     throw new Error(`Notional ${notional} exceeds runtime maxNotionalPerOrderUsd`);
   }
 
