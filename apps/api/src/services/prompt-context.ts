@@ -84,14 +84,18 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   sections.push(walletLines.join("\n"));
 
   // — Market prices: only held assets + explicitly selected symbols —
+  const ANCHOR_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"];
+
   const heldAssetSymbols = new Set(
     snapshot.balances
       .filter((b) => b.asset !== "USDT")
       .map((b) => `${b.asset}USDT`)
   );
   const selectedSet = new Set(runtimeConfig.contextSymbols);
+  // Always include anchor prices so SL/TP choices are grounded in live data.
+  const anchorSet = new Set(ANCHOR_SYMBOLS);
   const relevantPriceEntries = Object.entries(venueContext.priceMap)
-    .filter(([symbol]) => heldAssetSymbols.has(symbol) || selectedSet.has(symbol))
+    .filter(([symbol]) => heldAssetSymbols.has(symbol) || selectedSet.has(symbol) || anchorSet.has(symbol))
     .sort(([a], [b]) => a.localeCompare(b));
 
   if (relevantPriceEntries.length > 0) {
@@ -100,7 +104,7 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
     );
     sections.push(
       [
-        "=== LIVE MARKET PRICES (held & selected) ===",
+        "=== LIVE MARKET PRICES ===",
         "Use these prices to set stopLossPrice / takeProfitPrice correctly.",
         "You can look up current prices for any other USDT pair on Binance Spot.",
         ...priceLines
@@ -156,7 +160,7 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   if (modules.includeBotRanking && historyContext.ranking?.length) {
     const rankLines = (historyContext.ranking as Array<Record<string, unknown>>)
       .slice(0, 10)
-      .map((r, i) => `${i + 1}. ${r.name}: ${fmtUsd(Number(r.netPnlUsd ?? 0))} net PnL`);
+      .map((r, i) => `${i + 1}. ${r.botName ?? r.name ?? "Bot"}: ${fmtUsd(Number(r.netPnlUsd ?? 0))} net PnL`);
     sections.push(["=== BOT RANKINGS ===", ...rankLines].join("\n"));
   }
 
