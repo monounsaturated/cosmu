@@ -2,21 +2,37 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type FormatterPrompts = {
-  binance: string;
-  "binance-testnet": string;
+type VersionedPrompt = {
+  body: string;
+  version: number | null;
+  id: string | null;
 };
 
-const empty: FormatterPrompts = { binance: "", "binance-testnet": "" };
+type FormatterPrompts = {
+  binance: VersionedPrompt;
+  "binance-testnet": VersionedPrompt;
+};
+
+type HistoryEntry = {
+  id: string;
+  version: number;
+  body: string;
+  createdAt: string;
+};
+
+const emptyVersioned: VersionedPrompt = { body: "", version: null, id: null };
+const empty: FormatterPrompts = { binance: emptyVersioned, "binance-testnet": emptyVersioned };
 
 export function FormatterPromptSettings() {
   const [prompts, setPrompts] = useState<FormatterPrompts>(empty);
-  const [draft, setDraft] = useState<FormatterPrompts>(empty);
+  const [draft, setDraft] = useState<{ binance: string; "binance-testnet": string }>({ binance: "", "binance-testnet": "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [history, setHistory] = useState<{ binance: HistoryEntry[]; "binance-testnet": HistoryEntry[] }>({ binance: [], "binance-testnet": [] });
+  const [historyVenue, setHistoryVenue] = useState<"binance" | "binance-testnet" | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -27,11 +43,11 @@ export function FormatterPromptSettings() {
       if (!res.ok) throw new Error(data.error ?? "Failed to load");
       const p = data.formatterPrompts as FormatterPrompts;
       const next = {
-        binance: typeof p?.binance === "string" ? p.binance : "",
-        "binance-testnet": typeof p?.["binance-testnet"] === "string" ? p["binance-testnet"] : ""
+        binance: p?.binance ?? emptyVersioned,
+        "binance-testnet": p?.["binance-testnet"] ?? emptyVersioned
       };
       setPrompts(next);
-      setDraft(next);
+      setDraft({ binance: next.binance.body, "binance-testnet": next["binance-testnet"].body });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     } finally {
@@ -57,11 +73,11 @@ export function FormatterPromptSettings() {
       if (!res.ok) throw new Error(data.error ?? "Save failed");
       const p = data.formatterPrompts as FormatterPrompts;
       const next = {
-        binance: typeof p?.binance === "string" ? p.binance : "",
-        "binance-testnet": typeof p?.["binance-testnet"] === "string" ? p["binance-testnet"] : ""
+        binance: p?.binance ?? emptyVersioned,
+        "binance-testnet": p?.["binance-testnet"] ?? emptyVersioned
       };
       setPrompts(next);
-      setDraft(next);
+      setDraft({ binance: next.binance.body, "binance-testnet": next["binance-testnet"].body });
       setSavedAt(new Date().toISOString());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -70,40 +86,79 @@ export function FormatterPromptSettings() {
     }
   };
 
-  const dirty =
-    draft.binance !== prompts.binance || draft["binance-testnet"] !== prompts["binance-testnet"];
+  const loadHistory = async (venue: "binance" | "binance-testnet") => {
+    if (historyVenue === venue) {
+      setHistoryVenue(null);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/settings/formatter-prompt/${venue}/versions`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to load versions");
+      setHistory((h) => ({ ...h, [venue]: data.versions ?? [] }));
+      setHistoryVenue(venue);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load history");
+    }
+  };
 
-  const hasCustomPrompt = prompts.binance.length > 0 || prompts["binance-testnet"].length > 0;
+  const restoreVersion = (venue: "binance" | "binance-testnet", body: string) => {
+    setDraft((d) => ({ ...d, [venue]: body }));
+    setHistoryVenue(null);
+    setExpanded(true);
+  };
+
+  const dirty =
+    draft.binance !== prompts.binance.body || draft["binance-testnet"] !== prompts["binance-testnet"].body;
+
+  const hasCustomPrompt = prompts.binance.body.length > 0 || prompts["binance-testnet"].body.length > 0;
+
+  const versionLabel = (v: VersionedPrompt) =>
+    v.version ? `v${v.version}` : "default";
 
   return (
     <div className="stack" style={{ gap: "1.25rem" }}>
       <p className="muted">
-        Phase 2 (execution): reads the free-form research from phase 1, uses live prices for candidate
-        symbols, and must output only valid <strong>TradingDecision</strong> JSON. Hard constraints are
-        appended in code. This prompt rarely needs editing.
+        Converts the free-form research from phase 1 into executable <strong>TradingDecision</strong> JSON
+        using live prices. Hard constraints are appended in code. Each save creates a new version.
       </p>
 
       {!expanded ? (
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
           <button type="button" className="btn" onClick={() => setExpanded(true)}>
             Edit
           </button>
           <span className="muted" style={{ fontSize: "0.85rem" }}>
             {loading
-              ? "Loading…"
+              ? "Loading\u2026"
               : hasCustomPrompt
-                ? "Custom formatter prompt configured."
+                ? `Custom formatter configured (${versionLabel(prompts.binance)} live, ${versionLabel(prompts["binance-testnet"])} testnet).`
                 : "Using built-in defaults."}
           </span>
+          {!loading && hasCustomPrompt && (
+            <>
+              <button type="button" className="btn" onClick={() => void loadHistory("binance")} style={{ fontSize: "0.8rem" }}>
+                {historyVenue === "binance" ? "Hide" : "History"} (live)
+              </button>
+              <button type="button" className="btn" onClick={() => void loadHistory("binance-testnet")} style={{ fontSize: "0.8rem" }}>
+                {historyVenue === "binance-testnet" ? "Hide" : "History"} (testnet)
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <>
           {loading ? (
-            <p className="muted">Loading…</p>
+            <p className="muted">Loading\u2026</p>
           ) : (
             <>
               <div className="panel">
-                <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Formatter — Binance (live)</h2>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Formatter \u2014 Binance (live)</h2>
+                  {prompts.binance.version && (
+                    <span className="badge badge-neutral">{versionLabel(prompts.binance)}</span>
+                  )}
+                </div>
                 <textarea
                   className="prompt-body-textarea"
                   style={{ width: "100%", minHeight: "140px" }}
@@ -111,10 +166,18 @@ export function FormatterPromptSettings() {
                   onChange={(e) => setDraft((d) => ({ ...d, binance: e.target.value }))}
                   placeholder="Optional. Empty = built-in formatter system prompt."
                 />
+                <button type="button" className="btn" onClick={() => void loadHistory("binance")} style={{ marginTop: "0.5rem", fontSize: "0.8rem" }}>
+                  {historyVenue === "binance" ? "Hide history" : "Show history"}
+                </button>
               </div>
 
               <div className="panel">
-                <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Formatter — Binance Testnet</h2>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Formatter \u2014 Binance Testnet</h2>
+                  {prompts["binance-testnet"].version && (
+                    <span className="badge badge-neutral">{versionLabel(prompts["binance-testnet"])}</span>
+                  )}
+                </div>
                 <textarea
                   className="prompt-body-textarea"
                   style={{ width: "100%", minHeight: "140px" }}
@@ -122,6 +185,9 @@ export function FormatterPromptSettings() {
                   onChange={(e) => setDraft((d) => ({ ...d, "binance-testnet": e.target.value }))}
                   placeholder="Optional. Empty = built-in formatter system prompt."
                 />
+                <button type="button" className="btn" onClick={() => void loadHistory("binance-testnet")} style={{ marginTop: "0.5rem", fontSize: "0.8rem" }}>
+                  {historyVenue === "binance-testnet" ? "Hide history" : "Show history"}
+                </button>
               </div>
 
               {error && (
@@ -132,19 +198,19 @@ export function FormatterPromptSettings() {
 
               {savedAt && !error && (
                 <p className="muted" style={{ margin: 0 }}>
-                  Saved.
+                  Saved as new version.
                 </p>
               )}
 
               <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
                 <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={saving || !dirty}>
-                  {saving ? "Saving…" : "Save"}
+                  {saving ? "Saving\u2026" : "Save new version"}
                 </button>
                 <button
                   type="button"
                   className="btn"
                   onClick={() => {
-                    setDraft(prompts);
+                    setDraft({ binance: prompts.binance.body, "binance-testnet": prompts["binance-testnet"].body });
                     setError(null);
                     setSavedAt(null);
                   }}
@@ -156,7 +222,7 @@ export function FormatterPromptSettings() {
                   type="button"
                   className="btn"
                   onClick={() => {
-                    setDraft(prompts);
+                    setDraft({ binance: prompts.binance.body, "binance-testnet": prompts["binance-testnet"].body });
                     setError(null);
                     setSavedAt(null);
                     setExpanded(false);
@@ -169,6 +235,42 @@ export function FormatterPromptSettings() {
             </>
           )}
         </>
+      )}
+
+      {historyVenue && history[historyVenue].length > 0 && (
+        <div className="panel" style={{ maxHeight: "400px", overflowY: "auto" }}>
+          <h3 style={{ marginTop: 0, fontSize: "1rem" }}>
+            Version history \u2014 {historyVenue === "binance" ? "Binance (live)" : "Binance Testnet"}
+          </h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {history[historyVenue].map((entry) => (
+              <details key={entry.id} style={{ background: "#18181b", padding: "12px", borderRadius: "6px" }}>
+                <summary style={{ cursor: "pointer", fontSize: "0.85rem" }}>
+                  <span className="badge badge-neutral" style={{ marginRight: "8px" }}>v{entry.version}</span>
+                  {new Date(entry.createdAt).toLocaleString()}
+                  {entry.version === prompts[historyVenue!].version && (
+                    <span className="badge badge-success" style={{ marginLeft: "8px" }}>active</span>
+                  )}
+                </summary>
+                <pre style={{ background: "#27272a", padding: "8px", borderRadius: "4px", fontSize: "11px", marginTop: "8px", whiteSpace: "pre-wrap", maxHeight: "200px", overflowY: "auto" }}>
+                  {entry.body}
+                </pre>
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ marginTop: "6px", fontSize: "0.75rem" }}
+                  onClick={() => restoreVersion(historyVenue!, entry.body)}
+                >
+                  Restore this version
+                </button>
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {historyVenue && history[historyVenue].length === 0 && (
+        <p className="muted">No version history for this venue yet.</p>
       )}
     </div>
   );

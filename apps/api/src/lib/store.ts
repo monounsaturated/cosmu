@@ -267,6 +267,7 @@ export const createRun = async (input: {
   compactContext: Record<string, unknown>;
   promptSystem?: string;
   promptUser?: string;
+  formatterPromptVersionId?: string | null;
 }) => {
   const [row] = await sql<{ id: string }[]>`
     insert into runs (
@@ -277,6 +278,7 @@ export const createRun = async (input: {
       compact_context,
       prompt_system,
       prompt_user,
+      formatter_prompt_version_id,
       status
     ) values (
       ${input.botId},
@@ -286,6 +288,7 @@ export const createRun = async (input: {
       ${sql.json(input.compactContext as JsonValue)},
       ${input.promptSystem ?? null},
       ${input.promptUser ?? null},
+      ${input.formatterPromptVersionId ?? null},
       'running'
     )
     returning id
@@ -801,6 +804,7 @@ export const getBotRuns = async (botId: string) => {
       parsedDecision: unknown;
       validationResult: unknown;
       compactContext: unknown;
+      formatterVersion: number | null;
       startedAt: Date;
       finishedAt: Date | null;
     }[]
@@ -815,10 +819,12 @@ export const getBotRuns = async (botId: string) => {
       r.parsed_decision as "parsedDecision",
       r.validation_result as "validationResult",
       r.compact_context as "compactContext",
+      vpv.version as "formatterVersion",
       r.started_at as "startedAt",
       r.finished_at as "finishedAt"
     from runs r
     join bots b on b.id = r.bot_id
+    left join venue_prompt_versions vpv on vpv.id = r.formatter_prompt_version_id
     where r.bot_id = ${botId}
     order by r.created_at desc
     limit 20
@@ -1324,63 +1330,75 @@ export const createBot = async (input: {
   return bot.id;
 };
 
-const prepromptSettingKey = (venue: RuntimeConfig["venue"]) => `preprompt_${venue}`;
+type VenuePromptVersion = {
+  id: string;
+  venue: string;
+  promptType: string;
+  version: number;
+  body: string;
+  createdAt: string;
+};
 
-export const getPrepromptForVenue = async (venue: RuntimeConfig["venue"]) => {
+export const getActiveFormatterPrompt = async (
+  venue: RuntimeConfig["venue"]
+): Promise<VenuePromptVersion | null> => {
   try {
-    const [row] = await sql<{ value: string }[]>`
-      select value from app_settings where key = ${prepromptSettingKey(venue)} limit 1
+    const [row] = await sql<VenuePromptVersion[]>`
+      select id, venue, prompt_type as "promptType", version, body,
+             created_at::text as "createdAt"
+      from venue_prompt_versions
+      where venue = ${venue} and prompt_type = 'formatter'
+      order by version desc
+      limit 1
     `;
-    return row?.value ?? "";
+    return row ?? null;
   } catch (error) {
-    console.warn("getPrepromptForVenue failed (run sql/006_app_settings.sql if missing):", String(error));
-    return "";
+    console.warn("getActiveFormatterPrompt failed (run sql/009_venue_prompt_versions.sql if missing):", String(error));
+    return null;
   }
 };
 
-export const setPrepromptForVenue = async (venue: RuntimeConfig["venue"], text: string) => {
-  await sql`
-    insert into app_settings (key, value, updated_at)
-    values (${prepromptSettingKey(venue)}, ${text}, now())
-    on conflict (key) do update set
-      value = excluded.value,
-      updated_at = now()
+export const createFormatterPromptVersion = async (
+  venue: RuntimeConfig["venue"],
+  body: string
+): Promise<VenuePromptVersion> => {
+  const [row] = await sql<VenuePromptVersion[]>`
+    insert into venue_prompt_versions (venue, prompt_type, version, body)
+    values (
+      ${venue},
+      'formatter',
+      coalesce(
+        (select max(version) from venue_prompt_versions where venue = ${venue} and prompt_type = 'formatter'),
+        0
+      ) + 1,
+      ${body}
+    )
+    returning id, venue, prompt_type as "promptType", version, body,
+              created_at::text as "createdAt"
+  `;
+  return row;
+};
+
+export const listFormatterPromptVersions = async (
+  venue: RuntimeConfig["venue"]
+): Promise<VenuePromptVersion[]> => {
+  return sql<VenuePromptVersion[]>`
+    select id, venue, prompt_type as "promptType", version, body,
+           created_at::text as "createdAt"
+    from venue_prompt_versions
+    where venue = ${venue} and prompt_type = 'formatter'
+    order by version desc
   `;
 };
 
-export const getAllPreprompts = async () => ({
-  binance: await getPrepromptForVenue("binance"),
-  "binance-testnet": await getPrepromptForVenue("binance-testnet")
-});
-
-const formatterSettingKey = (venue: RuntimeConfig["venue"]) => `formatter_${venue}`;
-
-export const getFormatterPromptForVenue = async (venue: RuntimeConfig["venue"]) => {
-  try {
-    const [row] = await sql<{ value: string }[]>`
-      select value from app_settings where key = ${formatterSettingKey(venue)} limit 1
-    `;
-    return row?.value ?? "";
-  } catch (error) {
-    console.warn("getFormatterPromptForVenue failed (run sql/006_app_settings.sql if missing):", String(error));
-    return "";
-  }
+export const getAllActiveFormatterPrompts = async () => {
+  const binance = await getActiveFormatterPrompt("binance");
+  const testnet = await getActiveFormatterPrompt("binance-testnet");
+  return {
+    binance: { body: binance?.body ?? "", version: binance?.version ?? null, id: binance?.id ?? null },
+    "binance-testnet": { body: testnet?.body ?? "", version: testnet?.version ?? null, id: testnet?.id ?? null }
+  };
 };
-
-export const setFormatterPromptForVenue = async (venue: RuntimeConfig["venue"], text: string) => {
-  await sql`
-    insert into app_settings (key, value, updated_at)
-    values (${formatterSettingKey(venue)}, ${text}, now())
-    on conflict (key) do update set
-      value = excluded.value,
-      updated_at = now()
-  `;
-};
-
-export const getAllFormatterPrompts = async () => ({
-  binance: await getFormatterPromptForVenue("binance"),
-  "binance-testnet": await getFormatterPromptForVenue("binance-testnet")
-});
 
 export const updateBotConfig = async (
   botId: string,

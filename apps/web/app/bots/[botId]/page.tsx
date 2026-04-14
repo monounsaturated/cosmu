@@ -4,6 +4,7 @@ import { PerformanceChart } from "../../performance-chart";
 import { BotControls } from "../../bot-controls";
 import { AutoRefresh } from "../../live-refresh";
 import { LocalTime } from "../../local-time";
+import { RunDetail } from "./run-detail";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 export const dynamic = "force-dynamic";
@@ -277,32 +278,7 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
           {runs && runs.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               {runs.map((run: any) => (
-                <details key={run.id} className="run-detail-pre" style={{ background: "#18181b", padding: "16px", borderRadius: "8px" }}>
-                  <summary style={{ cursor: "pointer", fontWeight: "bold" }}>
-                    <LocalTime value={run.startedAt} /> - <span className={`badge badge-${run.status}`}>{run.status}</span>
-                  </summary>
-                  
-                  <div style={{ marginTop: "16px" }}>
-                    <p className="label">Prompt Sent (System Context)</p>
-                    <pre style={{ background: "#27272a", padding: "12px", borderRadius: "4px", fontSize: "12px", overflowX: "auto" }}>
-                      {run.promptSystem || "Not recorded"}
-                    </pre>
-                  </div>
-                  
-                  <div style={{ marginTop: "16px" }}>
-                    <p className="label">Prompt Sent (User Context)</p>
-                    <pre style={{ background: "#27272a", padding: "12px", borderRadius: "4px", fontSize: "12px", overflowX: "auto" }}>
-                      {run.promptUser || "Not recorded"}
-                    </pre>
-                  </div>
-                  
-                  <div style={{ marginTop: "16px" }}>
-                    <p className="label">Raw Model Output</p>
-                    <pre style={{ background: "#27272a", padding: "12px", borderRadius: "4px", fontSize: "12px", overflowX: "auto", whiteSpace: "pre-wrap" }}>
-                      {run.rawModelOutput || "Not recorded"}
-                    </pre>
-                  </div>
-                </details>
+                <RunDetail key={run.id} run={run} />
               ))}
             </div>
           ) : (

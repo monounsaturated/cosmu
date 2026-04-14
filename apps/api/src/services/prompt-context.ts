@@ -1,8 +1,7 @@
 import type { VenueContext } from "../adapters/binance.js";
 import {
   getBotPrePromptContext,
-  getFormatterPromptForVenue,
-  getPrepromptForVenue,
+  getActiveFormatterPrompt,
   type BotSetup
 } from "../lib/store.js";
 
@@ -193,7 +192,7 @@ type BuildPromptContextInput = {
   venueContext: VenueContext;
 };
 
-/** Phase 1: preprompt + bot strategy (free-form, no structured output). */
+/** Phase 1: default preamble + bot strategy (free-form, no structured output). */
 export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildPromptContextInput) => {
   const { runtimeConfig, promptConfig } = bot;
   const modules = promptConfig.modules;
@@ -203,10 +202,7 @@ export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildProm
     pastTradesLookback: modules.pastTradesLookback
   });
 
-  const configuredPreprompt = (await getPrepromptForVenue(runtimeConfig.venue)).trim();
-  const preamble = configuredPreprompt.length > 0 ? configuredPreprompt : DEFAULT_SYSTEM_PRELUDE;
-
-  const systemPrompt = [preamble, bot.promptBody.trim()].filter(Boolean).join("\n\n");
+  const systemPrompt = [DEFAULT_SYSTEM_PRELUDE, bot.promptBody.trim()].filter(Boolean).join("\n\n");
 
   const userMessage = buildResearchUserSections({ bot, venueContext, historyContext });
 
@@ -238,8 +234,8 @@ export const buildFormatterPhaseContext = async ({
 }) => {
   const { runtimeConfig } = bot;
 
-  const configuredFormatter = (await getFormatterPromptForVenue(runtimeConfig.venue)).trim();
-  const formatterBody = configuredFormatter.length > 0 ? configuredFormatter : DEFAULT_FORMATTER_BODY;
+  const activeFormatter = await getActiveFormatterPrompt(runtimeConfig.venue);
+  const formatterBody = activeFormatter ? activeFormatter.body.trim() : DEFAULT_FORMATTER_BODY;
 
   const systemPrompt = [formatterBody, NON_NEGOTIABLE_CONSTRAINTS_BLOCK].join("\n\n");
 
@@ -259,5 +255,10 @@ export const buildFormatterPhaseContext = async ({
     modulesActive: []
   };
 
-  return { systemPrompt, userMessage, compactContext };
+  return {
+    systemPrompt,
+    userMessage,
+    compactContext,
+    formatterPromptVersionId: activeFormatter?.id ?? null
+  };
 };

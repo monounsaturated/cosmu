@@ -275,7 +275,8 @@ export const runBot = async (bot: BotSetup) => {
       runtimeConfig: bot.runtimeConfig,
       compactContext,
       promptSystem,
-      promptUser
+      promptUser,
+      formatterPromptVersionId: formatterCtx.formatterPromptVersionId
     });
 
     await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);

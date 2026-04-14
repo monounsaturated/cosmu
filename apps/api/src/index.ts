@@ -14,10 +14,9 @@ import {
   listModelProfiles,
   listPrompts,
   updateBotConfig,
-  getAllPreprompts,
-  getAllFormatterPrompts,
-  setFormatterPromptForVenue,
-  setPrepromptForVenue
+  getAllActiveFormatterPrompts,
+  createFormatterPromptVersion,
+  listFormatterPromptVersions
 } from "./lib/store.js";
 import { getDashboard } from "./services/dashboard.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
@@ -123,42 +122,9 @@ app.get("/dashboard", async (_request, response, next) => {
   }
 });
 
-app.get("/settings/preprompt", async (_request, response, next) => {
-  try {
-    response.json({ preprompts: await getAllPreprompts() });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.put("/settings/preprompt", async (request, response, next) => {
-  try {
-    const body = request.body as { preprompts?: unknown };
-    const raw = body?.preprompts;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-      response.status(400).json({ error: "preprompts object required" });
-      return;
-    }
-    const o = raw as Record<string, unknown>;
-    if (typeof o.binance !== "string" || typeof o["binance-testnet"] !== "string") {
-      response.status(400).json({ error: "preprompts must include string fields binance and binance-testnet" });
-      return;
-    }
-    if (o.binance.length > 8000 || o["binance-testnet"].length > 8000) {
-      response.status(400).json({ error: "Each preprompt may be at most 8000 characters" });
-      return;
-    }
-    await setPrepromptForVenue("binance", o.binance);
-    await setPrepromptForVenue("binance-testnet", o["binance-testnet"]);
-    response.json({ ok: true, preprompts: await getAllPreprompts() });
-  } catch (error) {
-    next(error);
-  }
-});
-
 app.get("/settings/formatter-prompt", async (_request, response, next) => {
   try {
-    response.json({ formatterPrompts: await getAllFormatterPrompts() });
+    response.json({ formatterPrompts: await getAllActiveFormatterPrompts() });
   } catch (error) {
     next(error);
   }
@@ -183,9 +149,27 @@ app.put("/settings/formatter-prompt", async (request, response, next) => {
       response.status(400).json({ error: "Each formatter prompt may be at most 12000 characters" });
       return;
     }
-    await setFormatterPromptForVenue("binance", o.binance);
-    await setFormatterPromptForVenue("binance-testnet", o["binance-testnet"]);
-    response.json({ ok: true, formatterPrompts: await getAllFormatterPrompts() });
+    if (o.binance.trim().length > 0) {
+      await createFormatterPromptVersion("binance", o.binance.trim());
+    }
+    if (o["binance-testnet"].trim().length > 0) {
+      await createFormatterPromptVersion("binance-testnet", o["binance-testnet"].trim());
+    }
+    response.json({ ok: true, formatterPrompts: await getAllActiveFormatterPrompts() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/settings/formatter-prompt/:venue/versions", async (request, response, next) => {
+  try {
+    const venue = request.params.venue;
+    if (venue !== "binance" && venue !== "binance-testnet") {
+      response.status(404).json({ error: "Venue not found" });
+      return;
+    }
+    const versions = await listFormatterPromptVersions(venue);
+    response.json({ venue, versions });
   } catch (error) {
     next(error);
   }
