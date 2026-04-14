@@ -223,8 +223,12 @@ export const cancelAllOpenOrdersForSymbol = async (
     } catch {
       // ignore
     }
-    // Invalid symbol — nothing to cancel; avoid failing kill when pair is malformed.
+    // Invalid symbol — nothing to cancel.
     if (response.status === 400 && code === -1121) {
+      return [];
+    }
+    // No matching open orders (Binance returns this when there is nothing to cancel).
+    if (response.status === 400 && code === -2011) {
       return [];
     }
     throw new Error(`Binance cancel open orders failed for ${symbol}: ${response.status} ${text}`);
