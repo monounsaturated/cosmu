@@ -2,6 +2,17 @@ import { sql } from "../db.js";
 import { listVenueSymbols } from "../adapters/binance.js";
 import { listXaiModels } from "../providers/xai.js";
 
+type CatalogUpsertResult = {
+  count: number;
+  inserted: number;
+  updated: number;
+};
+
+export type ProviderSyncResult = CatalogUpsertResult & {
+  synced: boolean;
+  message: string;
+};
+
 // Known working xAI model profiles — used as seed fallback when xAI API is unreachable.
 // These match the canonical names used by the sync so there are no duplicates.
 export const BOOTSTRAP_XAI_PROFILES: { name: string; model: string }[] = [
@@ -13,7 +24,7 @@ export const BOOTSTRAP_XAI_PROFILES: { name: string; model: string }[] = [
   { name: "xAI grok-2", model: "grok-2" },
 ];
 
-export const bootstrapModelProfiles = async () => {
+export const bootstrapModelProfiles = async (): Promise<CatalogUpsertResult> => {
   let inserted = 0;
   let updated = 0;
 
@@ -55,14 +66,20 @@ const shouldRefreshProvider = async (provider: string) => {
   return Date.now() - row.syncedAt.getTime() > HOURS_12_MS;
 };
 
-export const syncProviderModels = async (provider: string, force = false) => {
+export const syncProviderModels = async (provider: string, force = false): Promise<ProviderSyncResult> => {
   if (provider !== "xai") {
-    return { synced: false, count: 0, message: "Provider not supported" };
+    return { synced: false, count: 0, inserted: 0, updated: 0, message: "Provider not supported" };
   }
 
   if (!force && !(await shouldRefreshProvider(provider))) {
     console.log(`[catalog] Skipping ${provider} sync - within 12 hour window`);
-    return { synced: false, count: 0, message: "Skipped - synced within last 12 hours" };
+    return {
+      synced: false,
+      count: 0,
+      inserted: 0,
+      updated: 0,
+      message: "Skipped - synced within last 12 hours"
+    };
   }
 
   console.log(`[catalog] Fetching models from ${provider} API...`);
@@ -99,7 +116,13 @@ export const syncProviderModels = async (provider: string, force = false) => {
   `;
 
   console.log(`[catalog] Synced ${models.length} models (${inserted} new, ${updated} updated)`);
-  return { synced: true, count: models.length, inserted, updated };
+  return {
+    synced: true,
+    count: models.length,
+    inserted,
+    updated,
+    message: `Synced ${models.length} models from ${provider}`
+  };
 };
 
 const shouldRefreshVenue = async (venue: string) => {

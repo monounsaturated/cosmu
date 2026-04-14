@@ -17,6 +17,7 @@ import {
   updateBotConfig
 } from "./lib/store.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
+import { listXaiModels } from "./providers/xai.js";
 import { bootstrapModelProfiles, getVenueSymbols, syncProviderModels } from "./services/catalog.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
@@ -257,6 +258,7 @@ app.post("/prompts/:promptId/versions", async (request, response, next) => {
 app.get("/models", async (request, response, next) => {
   try {
     const provider = typeof request.query.provider === "string" ? request.query.provider : undefined;
+    let liveXaiModelIds: Set<string> | null = null;
 
     if (!provider || provider === "xai") {
       try {
@@ -270,9 +272,30 @@ app.get("/models", async (request, response, next) => {
       } catch (bootstrapError) {
         console.warn("Model bootstrap failed:", String(bootstrapError));
       }
+
+      try {
+        const liveModels = await listXaiModels();
+        liveXaiModelIds = new Set(liveModels.map((model) => model.id));
+      } catch (liveCatalogError) {
+        console.warn("xAI live catalog check failed, serving cached profiles:", String(liveCatalogError));
+      }
     }
 
-    response.json(await listModelProfiles(provider));
+    const profiles = await listModelProfiles(provider);
+
+    if (provider === "xai" && liveXaiModelIds) {
+      response.json(profiles.filter((profile) => liveXaiModelIds!.has(profile.model)));
+      return;
+    }
+
+    if (!provider && liveXaiModelIds) {
+      response.json(
+        profiles.filter((profile) => profile.provider !== "xai" || liveXaiModelIds!.has(profile.model))
+      );
+      return;
+    }
+
+    response.json(profiles);
   } catch (error) {
     next(error);
   }
