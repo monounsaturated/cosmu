@@ -1,34 +1,39 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type BotControlsProps = {
   botId: string;
-  enabled: boolean;
+  isActive: boolean;
 };
 
-export function BotControls({ botId, enabled: initialEnabled }: BotControlsProps) {
-  const [enabled, setEnabled] = useState(initialEnabled);
-  const [loading, setLoading] = useState<"toggle" | "run" | null>(null);
+export function BotControls({ botId, isActive: initialIsActive }: BotControlsProps) {
+  const router = useRouter();
+  const [isActive, setIsActive] = useState(initialIsActive);
+  const [loading, setLoading] = useState<"kill" | "run" | null>(null);
+  const [confirmKillOpen, setConfirmKillOpen] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
-    setEnabled(initialEnabled);
-  }, [initialEnabled]);
+    setIsActive(initialIsActive);
+  }, [initialIsActive]);
 
   const clearFeedback = () => setTimeout(() => setFeedback(null), 4000);
 
-  const toggle = async () => {
-    setLoading("toggle");
+  const kill = async () => {
+    setLoading("kill");
     setFeedback(null);
     try {
-      const res = await fetch(`/api/bots/${botId}/toggle`, { method: "PATCH" });
+      const res = await fetch(`/api/bots/${botId}/kill`, { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Toggle failed");
-      setEnabled(data.enabled);
-      setFeedback({ type: "success", text: data.enabled ? "Bot enabled" : "Bot disabled" });
+      if (!res.ok) throw new Error(data.error ?? "Kill failed");
+      setIsActive(false);
+      setConfirmKillOpen(false);
+      setFeedback({ type: "success", text: `Bot killed (${data.runId.slice(0, 8)})` });
+      router.refresh();
     } catch (e) {
-      setFeedback({ type: "error", text: e instanceof Error ? e.message : "Toggle failed" });
+      setFeedback({ type: "error", text: e instanceof Error ? e.message : "Kill failed" });
     } finally {
       setLoading(null);
       clearFeedback();
@@ -43,6 +48,7 @@ export function BotControls({ botId, enabled: initialEnabled }: BotControlsProps
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Run failed");
       setFeedback({ type: "success", text: `Run ${data.status} (${data.runId.slice(0, 8)})` });
+      router.refresh();
     } catch (e) {
       setFeedback({ type: "error", text: e instanceof Error ? e.message : "Run failed" });
     } finally {
@@ -55,22 +61,49 @@ export function BotControls({ botId, enabled: initialEnabled }: BotControlsProps
     <div className="bot-controls">
       <div className="bot-controls-buttons">
         <button
-          className={`btn ${enabled ? "btn-warn" : "btn-primary"}`}
-          onClick={toggle}
+          className="btn btn-warn"
+          onClick={() => setConfirmKillOpen(true)}
           disabled={loading !== null}
         >
-          {loading === "toggle" ? "..." : enabled ? "Disable" : "Enable"}
+          {loading === "kill" ? "Killing..." : "Kill Bot"}
         </button>
         <button
           className="btn btn-primary"
           onClick={triggerRun}
-          disabled={!enabled || loading !== null}
+          disabled={!isActive || loading !== null}
         >
           {loading === "run" ? "Running..." : "Run Now"}
         </button>
       </div>
+      {!isActive && (
+        <p className="muted" style={{ marginTop: "8px", fontSize: "12px" }}>
+          Bot killed. Duplicate this bot to restart with a fresh allocation.
+        </p>
+      )}
       {feedback && (
         <p className={`feedback feedback-${feedback.type}`}>{feedback.text}</p>
+      )}
+      {confirmKillOpen && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "460px" }}>
+            <div className="modal-header">
+              <h2>Kill Bot?</h2>
+              <button className="modal-close" onClick={() => setConfirmKillOpen(false)}>✕</button>
+            </div>
+            <p className="muted" style={{ marginBottom: "16px", lineHeight: 1.5 }}>
+              This will cancel open orders, sell all current positions, and permanently stop the bot.
+              It cannot be restarted.
+            </p>
+            <div className="form-actions">
+              <button className="btn" onClick={() => setConfirmKillOpen(false)} disabled={loading !== null}>
+                Cancel
+              </button>
+              <button className="btn btn-warn" onClick={kill} disabled={loading !== null}>
+                {loading === "kill" ? "Killing..." : "Yes, kill bot"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

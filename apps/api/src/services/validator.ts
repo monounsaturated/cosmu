@@ -75,6 +75,9 @@ export const validateDecision = async (input: {
       }
 
       if (normalized.side === "sell") {
+        if (normalized.stopLossPrice !== null || normalized.takeProfitPrice !== null) {
+          throw new Error(`Sell order for ${normalized.symbol} must set stopLossPrice/takeProfitPrice to null`);
+        }
         const baseAsset = getBaseAsset(normalized.symbol);
         const balance = balances.get(baseAsset);
         if (!balance || balance.free < normalized.quantity) {

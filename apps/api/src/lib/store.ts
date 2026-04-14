@@ -309,6 +309,14 @@ export const storeDecision = async (input: {
   `;
 };
 
+export const storeRawModelOutput = async (runId: string, rawModelOutput: string) => {
+  await sql`
+    update runs
+    set raw_model_output = ${rawModelOutput}
+    where id = ${runId}
+  `;
+};
+
 export const storeExecutionRecords = async (runId: string, executionRecords: ExecutionRecord[]) => {
   for (const execution of executionRecords) {
     const parsed = executionRecordSchema.parse(execution);
@@ -331,6 +339,8 @@ export const storeExecutionRecords = async (runId: string, executionRecords: Exe
         fee_asset_usd_price,
         fee_usd,
         slippage_pct,
+        stop_loss_price,
+        take_profit_price,
         oco_order_id,
         order_intent,
         raw_venue_response
@@ -352,6 +362,8 @@ export const storeExecutionRecords = async (runId: string, executionRecords: Exe
         ${parsed.feeAssetUsdPrice},
         ${parsed.feeUsd},
         ${parsed.slippagePct},
+        ${parsed.stopLossPrice},
+        ${parsed.takeProfitPrice},
         ${parsed.ocoOrderId},
         ${sql.json(parsed.orderIntent)},
         ${sql.json(parsed.rawVenueResponse as JsonValue)}
@@ -783,6 +795,17 @@ export const getBotPrePromptContext = async (input: {
   botId: string;
   pastTradesLookback: number;
 }) => {
+  const executionLedger = await listBotExecutionLedger(input.botId);
+  const openQuantityBySymbol = new Map<string, number>();
+  for (const entry of executionLedger) {
+    const current = openQuantityBySymbol.get(entry.symbol) ?? 0;
+    const quantity = entry.executedQuantity ?? 0;
+    openQuantityBySymbol.set(
+      entry.symbol,
+      entry.side === "buy" ? current + quantity : current - quantity
+    );
+  }
+
   const [performance] = await sql<
     {
       startedAt: Date;
@@ -858,6 +881,8 @@ export const getBotPrePromptContext = async (input: {
       e.executed_quantity as "executedQuantity",
       e.average_fill_price as "averageFillPrice",
       e.executed_notional_usd as "executedNotionalUsd",
+      e.stop_loss_price as "stopLossPrice",
+      e.take_profit_price as "takeProfitPrice",
       e.fee_usd as "feeUsd",
       e.created_at as "createdAt"
     from executions e
@@ -907,14 +932,34 @@ export const getBotPrePromptContext = async (input: {
             firstPortfolioUsd:
               performance.firstPortfolioUsd === null ? null : Number(performance.firstPortfolioUsd)
           },
-    pastTrades: pastTrades.map((trade: any) => ({
-      ...trade,
-      createdAt: trade.createdAt.toISOString(),
-      executedQuantity: trade.executedQuantity === null ? null : Number(trade.executedQuantity),
-      averageFillPrice: trade.averageFillPrice === null ? null : Number(trade.averageFillPrice),
-      executedNotionalUsd: trade.executedNotionalUsd === null ? null : Number(trade.executedNotionalUsd),
-      feeUsd: trade.feeUsd === null ? null : Number(trade.feeUsd)
-    })),
+    pastTrades: (() => {
+      const remainingBySymbol = new Map(openQuantityBySymbol);
+
+      return pastTrades.map((trade: any) => {
+        const executedQuantity = trade.executedQuantity === null ? null : Number(trade.executedQuantity);
+        let isActive = false;
+
+        if (trade.side === "buy" && trade.status === "success" && executedQuantity !== null) {
+          const remaining = remainingBySymbol.get(trade.symbol) ?? 0;
+          if (remaining > 1e-8) {
+            isActive = true;
+            remainingBySymbol.set(trade.symbol, Math.max(0, remaining - executedQuantity));
+          }
+        }
+
+        return {
+          ...trade,
+          createdAt: trade.createdAt.toISOString(),
+          executedQuantity,
+          averageFillPrice: trade.averageFillPrice === null ? null : Number(trade.averageFillPrice),
+          executedNotionalUsd: trade.executedNotionalUsd === null ? null : Number(trade.executedNotionalUsd),
+          stopLossPrice: trade.stopLossPrice === null ? null : Number(trade.stopLossPrice),
+          takeProfitPrice: trade.takeProfitPrice === null ? null : Number(trade.takeProfitPrice),
+          feeUsd: trade.feeUsd === null ? null : Number(trade.feeUsd),
+          isActive
+        };
+      });
+    })(),
     ranking: rankingRows.map((row: any, index: number) => ({
       rank: index + 1,
       botId: row.id,
@@ -938,10 +983,11 @@ export const getBotEnabledState = async (botId: string) => {
   return row ?? null;
 };
 
-export const toggleBotEnabled = async (botId: string) => {
+export const killBot = async (botId: string) => {
   const [row] = await sql<{ enabled: boolean; name: string }[]>`
     update bot_runtime_configs
-    set enabled = not enabled,
+    set enabled = false,
+        killed_at = now(),
         updated_at = now()
     where bot_id = ${botId}
     returning enabled, (select name from bots where id = ${botId}) as name

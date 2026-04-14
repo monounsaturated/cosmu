@@ -3,6 +3,7 @@ import { DashboardActions } from "./dashboard-actions";
 import { PerformanceChart } from "./performance-chart";
 import { RecentRunsTable } from "./run-detail-row";
 import { BotTable } from "./bot-table";
+import { AutoRefresh } from "./live-refresh";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
@@ -50,6 +51,7 @@ export default async function HomePage() {
 
   return (
     <main className="page">
+      <AutoRefresh intervalMs={30000} />
       <section className="hero">
         <div>
           <p className="muted">Cosmu V1</p>

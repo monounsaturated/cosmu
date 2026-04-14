@@ -196,6 +196,33 @@ const getTickerPrice = (mode: RuntimeConfig["mode"], symbol: string) =>
 const getAllExchangeInfo = (mode: RuntimeConfig["mode"]) =>
   binanceFetch(mode, "/v3/exchangeInfo", { method: "GET" });
 
+export const cancelAllOpenOrdersForSymbol = async (
+  mode: RuntimeConfig["mode"],
+  symbolInput: string
+) => {
+  const symbol = normalizeSymbol(symbolInput);
+  const params = new URLSearchParams({
+    symbol,
+    timestamp: Date.now().toString(),
+    recvWindow: "5000"
+  });
+  params.set("signature", signParams(params, mode));
+
+  const response = await fetch(`${getBaseUrl(mode)}/v3/openOrders?${params.toString()}`, {
+    method: "DELETE",
+    headers: {
+      "X-MBX-APIKEY": getApiKey(mode)
+    }
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Binance cancel open orders failed for ${symbol}: ${response.status} ${text}`);
+  }
+
+  return response.json();
+};
+
 export const listVenueSymbols = async () => {
   if (venueSymbolsCache && venueSymbolsCache.expiresAt > Date.now()) {
     return venueSymbolsCache.symbols;

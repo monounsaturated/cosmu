@@ -95,7 +95,7 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
               </td>
               <td>
                 <span className={`status-dot ${bot.enabled ? "status-active" : "status-inactive"}`} style={{ display: "inline-block", marginRight: "6px" }} />
-                {bot.enabled ? "Active" : "Paused"}
+                {bot.enabled ? "Active" : "Killed"}
               </td>
               <td>{venueLabel(bot.venue)}</td>
               <td>{new Date(bot.startedAt).toLocaleDateString()}</td>
@@ -125,7 +125,7 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
               </td>
               <td className="text-right">{bot.tradeCount}</td>
               <td onClick={(event) => event.stopPropagation()}>
-                <BotControls botId={bot.id} enabled={bot.enabled} />
+                <BotControls botId={bot.id} isActive={bot.enabled} />
               </td>
             </tr>
           ))}

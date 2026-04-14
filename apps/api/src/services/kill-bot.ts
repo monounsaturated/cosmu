@@ -1,59 +1,18 @@
-import { loadVenueContext, executeOrders } from "../adapters/binance.js";
+import { executeOrders, loadVenueContext, cancelAllOpenOrdersForSymbol } from "../adapters/binance.js";
 import {
   createRun,
   finishRun,
+  killBot,
   listBotExecutionLedger,
   markRunStarted,
-  recentTradeAlerts,
   storeDecision,
   storeExecutionRecords,
-  storeRawModelOutput,
   storePortfolioSnapshot,
   type BotSetup
 } from "../lib/store.js";
-import { DecisionParseError, requestDecision } from "../providers/xai.js";
 import { notifySlack } from "./notifier.js";
-import { buildPromptContext } from "./prompt-context.js";
 import { validateDecision } from "./validator.js";
-import { portfolioSnapshotSchema, type RuntimeConfig } from "@cosmu/shared";
-
-const getDecisionWithRetry = async (
-  bot: BotSetup,
-  systemPrompt: string,
-  userMessage: string
-) => {
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      return await requestDecision({ bot, systemPrompt, userMessage });
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("Decision request failed");
-};
-
-const summarizeTrades = async (runId: string) => {
-  const trades = await recentTradeAlerts(runId);
-  if (trades.length === 0) {
-    return "No executions";
-  }
-
-  return trades.map((trade) => `${trade.side} ${trade.symbol} (${trade.status})`).join(", ");
-};
-
-const computeAfterSnapshot = (input: {
-  beforeSnapshot: Awaited<ReturnType<typeof loadVenueContext>>["snapshot"];
-  afterSnapshot: Awaited<ReturnType<typeof loadVenueContext>>["snapshot"];
-  totalFeeUsd: number;
-}) => ({
-  ...input.afterSnapshot,
-  grossPnlUsd: input.afterSnapshot.totalUsdValue - input.beforeSnapshot.totalUsdValue,
-  netPnlUsd: input.afterSnapshot.totalUsdValue - input.beforeSnapshot.totalUsdValue - input.totalFeeUsd,
-  feeUsd: input.totalFeeUsd
-});
+import { portfolioSnapshotSchema, type RuntimeConfig, type TradingDecision } from "@cosmu/shared";
 
 type LogicalBalances = {
   usdt: number;
@@ -143,7 +102,29 @@ const buildLogicalSnapshot = (input: {
   });
 };
 
-export const runBot = async (bot: BotSetup) => {
+const computeAfterSnapshot = (input: {
+  beforeSnapshot: Awaited<ReturnType<typeof loadVenueContext>>["snapshot"];
+  afterSnapshot: Awaited<ReturnType<typeof loadVenueContext>>["snapshot"];
+  totalFeeUsd: number;
+}) => ({
+  ...input.afterSnapshot,
+  grossPnlUsd: input.afterSnapshot.totalUsdValue - input.beforeSnapshot.totalUsdValue,
+  netPnlUsd: input.afterSnapshot.totalUsdValue - input.beforeSnapshot.totalUsdValue - input.totalFeeUsd,
+  feeUsd: input.totalFeeUsd
+});
+
+const buildKillDecision = (orders: TradingDecision["orders"]): TradingDecision => ({
+  mode: "exit",
+  rationaleSummary: "Kill mode liquidation",
+  globalRationale:
+    "Kill mode requested by operator. Liquidating all currently held spot positions and stopping this bot permanently.",
+  confidence: 1,
+  timeHorizon: null,
+  orders,
+  targetAllocations: []
+});
+
+export const killBotAndLiquidate = async (bot: BotSetup) => {
   await markRunStarted(bot.runtimeConfigId);
 
   let runId: string | null = null;
@@ -163,34 +144,61 @@ export const runBot = async (bot: BotSetup) => {
         priceMap: beforeVenueRaw.priceMap
       })
     };
-    const { systemPrompt, userMessage, compactContext } = await buildPromptContext({
-      bot,
-      venueContext: beforeVenueContext
-    });
 
     runId = await createRun({
       botId: bot.id,
       promptVersionId: bot.promptVersionId,
       modelProfileId: bot.modelProfileId,
       runtimeConfig: bot.runtimeConfig,
-      compactContext,
-      promptSystem: systemPrompt,
-      promptUser: userMessage
+      compactContext: {
+        mode: "kill",
+        reason: "manual liquidate and stop"
+      },
+      promptSystem:
+        "Kill mode execution. No model call. Liquidate all held symbols and permanently disable this bot.",
+      promptUser: "Operator requested kill mode liquidation."
     });
 
     await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
 
-    const { rawText, decision } = await getDecisionWithRetry(bot, systemPrompt, userMessage);
-    await storeRawModelOutput(runId, rawText);
+    for (const balance of beforeVenueRaw.snapshot.balances) {
+      const asset = balance.asset.toUpperCase();
+      if (asset === "USDT") {
+        continue;
+      }
+
+      const totalQty = Number(balance.free) + Number(balance.locked);
+      if (!Number.isFinite(totalQty) || totalQty <= 1e-8) {
+        continue;
+      }
+
+      await cancelAllOpenOrdersForSymbol(bot.runtimeConfig.mode, `${asset}USDT`);
+    }
+
+    const refreshedVenue = await loadVenueContext(bot.runtimeConfig, bot.runtimeConfig.contextSymbols);
+    const sellOrders = refreshedVenue.snapshot.balances
+      .filter((balance) => balance.asset.toUpperCase() !== "USDT" && Number(balance.free) > 1e-8)
+      .map((balance) => ({
+        symbol: `${balance.asset.toUpperCase()}USDT`,
+        side: "sell" as const,
+        type: "market" as const,
+        quantity: Number(balance.free),
+        limitPrice: null,
+        stopLossPrice: null,
+        takeProfitPrice: null,
+        rationale: "Kill mode liquidation"
+      }));
+
+    const decision = buildKillDecision(sellOrders);
     const validationResult = await validateDecision({
       decision,
       runtimeConfig: bot.runtimeConfig,
-      venueContext: beforeVenueContext
+      venueContext: refreshedVenue
     });
 
     await storeDecision({
       runId,
-      rawModelOutput: rawText,
+      rawModelOutput: JSON.stringify(decision),
       decision,
       validationResult
     });
@@ -200,19 +208,17 @@ export const runBot = async (bot: BotSetup) => {
         runId,
         runtimeConfigId: bot.runtimeConfigId,
         status: "failure",
-        errorState: { message: "Decision validation failed", issues: validationResult.issues }
+        errorState: { message: "Kill liquidation validation failed", issues: validationResult.issues }
       });
-      await notifySlack(`Run failed for ${bot.name}: ${validationResult.issues.join("; ")}`);
-      return { runId, status: "failure" as const, decision };
+      return { runId, status: "failure" as const, issues: validationResult.issues };
     }
 
     const executions = await executeOrders({
       runId,
       runtimeConfig: bot.runtimeConfig,
       orders: validationResult.normalizedOrders,
-      venueContext: beforeVenueContext
+      venueContext: refreshedVenue
     });
-
     await storeExecutionRecords(runId, executions);
 
     const afterLedger = await listBotExecutionLedger(bot.id);
@@ -245,20 +251,16 @@ export const runBot = async (bot: BotSetup) => {
       runId,
       runtimeConfigId: bot.runtimeConfigId,
       status: runStatus,
-      errorState: hasUncertain ? { message: "At least one execution result is uncertain" } : null
+      errorState: hasUncertain ? { message: "At least one liquidation execution is uncertain" } : null
     });
+    await killBot(bot.id);
 
-    const tradeSummary = await summarizeTrades(runId);
-    await notifySlack(`Run ${runStatus} for ${bot.name}: ${tradeSummary}`);
+    await notifySlack(`Bot ${bot.name} killed. Liquidation run ${runStatus}.`);
 
-    return { runId, status: runStatus, decision };
+    return { runId, status: runStatus, killed: true as const };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown run error";
-
+    const errorMessage = error instanceof Error ? error.message : "Unknown kill error";
     if (runId) {
-      if (error instanceof DecisionParseError) {
-        await storeRawModelOutput(runId, error.rawText);
-      }
       await finishRun({
         runId,
         runtimeConfigId: bot.runtimeConfigId,
@@ -266,8 +268,7 @@ export const runBot = async (bot: BotSetup) => {
         errorState: { message: errorMessage }
       });
     }
-
-    await notifySlack(`Run failure for ${bot.name}: ${errorMessage}`);
+    await notifySlack(`Kill mode failure for ${bot.name}: ${errorMessage}`);
     throw error;
   }
 };

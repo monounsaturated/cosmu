@@ -13,7 +13,6 @@ import {
   getPromptVersionBody,
   listModelProfiles,
   listPrompts,
-  toggleBotEnabled,
   updateBotConfig
 } from "./lib/store.js";
 import { getDashboard } from "./services/dashboard.js";
@@ -23,6 +22,7 @@ import { BOOTSTRAP_XAI_PROFILES, bootstrapModelProfiles, getVenueSymbols, syncPr
 import { getAccountBalance } from "./adapters/binance.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
+import { killBotAndLiquidate } from "./services/kill-bot.js";
 
 const app = express();
 
@@ -132,16 +132,21 @@ app.get("/runs/:runId", async (request, response, next) => {
   }
 });
 
-app.patch("/bots/:botId/toggle", async (request, response, next) => {
+app.post("/bots/:botId/kill", async (request, response, next) => {
   try {
-    const result = await toggleBotEnabled(request.params.botId);
-    if (!result) {
+    const bot = await getBotSetupById(request.params.botId);
+    if (!bot) {
       response.status(404).json({ error: "Bot not found" });
       return;
     }
 
-    await notifySlack(`Bot ${result.name} ${result.enabled ? "enabled" : "disabled"}`);
-    response.json({ id: request.params.botId, name: result.name, enabled: result.enabled });
+    if (!bot.runtimeConfig.enabled) {
+      response.status(409).json({ error: "Bot is already killed" });
+      return;
+    }
+
+    const result = await killBotAndLiquidate(bot);
+    response.json(result);
   } catch (error) {
     next(error);
   }
@@ -156,7 +161,7 @@ app.post("/bots/:botId/run", async (request, response, next) => {
     }
 
     if (!bot.runtimeConfig.enabled) {
-      response.status(409).json({ error: "Bot is disabled. Enable it before triggering a run." });
+      response.status(409).json({ error: "Bot is killed. Duplicate this bot to restart from scratch." });
       return;
     }
 
@@ -467,6 +472,13 @@ app.patch("/bots/:botId", async (request, response, next) => {
     ) {
       response.status(409).json({
         error: "Bot strategy is immutable after creation. Create a new bot to test another prompt, model, or settings."
+      });
+      return;
+    }
+
+    if (enabled !== undefined) {
+      response.status(409).json({
+        error: "Bots can no longer be enabled/disabled. Use kill mode to stop a bot permanently."
       });
       return;
     }

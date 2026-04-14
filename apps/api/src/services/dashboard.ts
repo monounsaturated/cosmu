@@ -168,8 +168,13 @@ export const getDashboard = async () => {
       }
     }
 
-    if (row.mode === "live") liveAllocatedAmount += currentPortfolioUsd;
-    else testnetAllocatedAmount += currentPortfolioUsd;
+    if (row.enabled) {
+      if (row.mode === "live") {
+        liveAllocatedAmount += currentPortfolioUsd;
+      } else {
+        testnetAllocatedAmount += currentPortfolioUsd;
+      }
+    }
 
     const netPnlUsd = currentPortfolioUsd - budgetUsdt;
 

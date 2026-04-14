@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PerformanceChart } from "../../performance-chart";
 import { BotControls } from "../../bot-controls";
+import { AutoRefresh } from "../../live-refresh";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 export const dynamic = "force-dynamic";
@@ -65,16 +66,17 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
           <p className="muted">Detailed view of strategy, trades, and execution logs.</p>
         </div>
         <div style={{ display: "flex", alignItems: "flex-start" }}>
-          <BotControls botId={botId} enabled={setup.runtimeConfig.enabled} />
+          <BotControls botId={botId} isActive={setup.runtimeConfig.enabled} />
         </div>
       </div>
+      <AutoRefresh intervalMs={30000} />
 
       <div className="grid" style={{ marginBottom: "24px", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
         <div className="panel">
           <p className="label">Status</p>
           <h2 style={{ margin: "4px 0" }}>
             <span className={`status-dot ${setup.runtimeConfig.enabled ? "status-active" : "status-inactive"}`} style={{ display: "inline-block", marginRight: "6px" }} />
-            {setup.runtimeConfig.enabled ? "Active" : "Paused"}
+            {setup.runtimeConfig.enabled ? "Active" : "Killed"}
           </h2>
         </div>
         <div className="panel">
@@ -236,6 +238,9 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
                   <th>Quantity</th>
                   <th>Avg Price</th>
                   <th>Notional USD</th>
+                  <th>SL</th>
+                  <th>TP</th>
+                  <th>Position</th>
                 </tr>
               </thead>
               <tbody>
@@ -249,6 +254,13 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
                     <td>{trade.executedQuantity}</td>
                     <td>{trade.averageFillPrice ? `$${trade.averageFillPrice}` : "—"}</td>
                     <td>{trade.executedNotionalUsd ? `$${trade.executedNotionalUsd}` : "—"}</td>
+                    <td>{trade.stopLossPrice ? `$${trade.stopLossPrice}` : "—"}</td>
+                    <td>{trade.takeProfitPrice ? `$${trade.takeProfitPrice}` : "—"}</td>
+                    <td>
+                      <span className={`badge ${trade.isActive ? "badge-running" : "badge-neutral"}`}>
+                        {trade.isActive ? "Active" : "Closed"}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>

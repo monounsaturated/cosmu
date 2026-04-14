@@ -14,6 +14,19 @@ type DecisionRequest = {
   userMessage: string;
 };
 
+export class DecisionParseError extends Error {
+  rawText: string;
+
+  constructor(message: string, rawText: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = "DecisionParseError";
+    this.rawText = rawText;
+    if (options?.cause !== undefined) {
+      (this as Error & { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
 export const requestDecision = async ({
   bot,
   systemPrompt,
@@ -49,9 +62,16 @@ export const requestDecision = async ({
     throw new Error("xAI returned no structured decision content");
   }
 
+  let decision: TradingDecision;
+  try {
+    decision = tradingDecisionSchema.parse(JSON.parse(rawText));
+  } catch (error) {
+    throw new DecisionParseError("xAI returned invalid JSON decision", rawText, { cause: error });
+  }
+
   return {
     rawText,
-    decision: tradingDecisionSchema.parse(JSON.parse(rawText))
+    decision
   };
 };
 

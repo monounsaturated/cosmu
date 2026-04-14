@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
-export async function PATCH(_request: Request, { params }: { params: Promise<{ botId: string }> }) {
+
+export async function POST(_request: Request, { params }: { params: Promise<{ botId: string }> }) {
   try {
     const apiSecretKey = process.env.API_SECRET_KEY;
     if (!apiSecretKey) {
@@ -9,8 +10,8 @@ export async function PATCH(_request: Request, { params }: { params: Promise<{ b
     }
 
     const { botId } = await params;
-    const res = await fetch(`${apiBaseUrl}/bots/${botId}/toggle`, {
-      method: "PATCH",
+    const res = await fetch(`${apiBaseUrl}/bots/${botId}/kill`, {
+      method: "POST",
       headers: {
         "x-api-key": apiSecretKey,
         "Content-Type": "application/json"
