@@ -56,7 +56,7 @@ export const runtimeConfigSchema = z.object({
   ).transform(Number),
   mode: executionModeSchema,
   assetClass: assetClassSchema,
-  budgetUsdt: z.number().positive().default(100),
+  budgetUsdt: z.number().positive().default(1000),
   symbolScope: symbolScopeSchema.default("selected"),
   execution: z.object({
     enabled: z.boolean().default(false),
@@ -238,7 +238,7 @@ export const botSummarySchema = z.object({
   frequencyMinutes: z.number(),
   mode: executionModeSchema,
   assetClass: assetClassSchema,
-  budgetUsdt: z.number().positive().default(100),
+  budgetUsdt: z.number().positive().default(1000),
   promptVersionLabel: z.string(),
   modelProfileName: z.string(),
   lastRunStatus: runStatusSchema.nullable(),

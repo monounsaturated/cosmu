@@ -20,8 +20,6 @@ export const BOOTSTRAP_XAI_PROFILES: { name: string; model: string }[] = [
   { name: "xAI grok-3-fast", model: "grok-3-fast" },
   { name: "xAI grok-3-mini", model: "grok-3-mini" },
   { name: "xAI grok-3-mini-fast", model: "grok-3-mini-fast" },
-  { name: "xAI grok-beta", model: "grok-beta" },
-  { name: "xAI grok-2", model: "grok-2" },
 ];
 
 export const bootstrapModelProfiles = async (): Promise<CatalogUpsertResult> => {

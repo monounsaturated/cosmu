@@ -25,9 +25,15 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   });
 
   // ── System message: user strategy + hard constraints ───────────────────────
+  const preamble = [
+    "You are the trading decision engine for one autonomous spot bot.",
+    "Return only valid JSON matching the provided schema.",
+  ].join("\n");
+
   const systemPrompt = [
+    preamble,
     bot.promptBody.trim(),
-    operatorPrompt ? ["---", "SECONDARY OPERATOR PROMPT", operatorPrompt].join("\n") : null,
+    operatorPrompt ? ["---", "OPERATOR GUIDELINES (risk & trading rules)", operatorPrompt].join("\n") : null,
     [
       "---",
       "NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):",

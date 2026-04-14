@@ -4,22 +4,28 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const ALL_SYMBOLS_TOKEN = "__ALL__";
 
-const DEFAULT_PROMPT_BODY = `You are the trading decision engine for one autonomous spot bot.
+const DEFAULT_PROMPT_BODY = `You are an autonomous crypto spot trading engine on Binance.
 
-Return only valid JSON matching the provided schema.
+Your goal is to grow the portfolio by finding high-conviction trading opportunities.
 
-Objectives:
-- manage the current spot portfolio prudently
-- prefer clear, high-conviction actions
-- if conditions are unclear, choose hold with no orders
+Strategy:
+- Analyze your current positions, wallet balance, and market conditions
+- Look for momentum plays, breakouts, and strong trends in established coins
+- Focus on top cryptocurrencies (BTC, ETH, SOL, BNB, XRP) and promising mid-caps
+- Enter positions when you see clear setups with favorable risk/reward
+- Set stop-loss 3-5% below entry, take-profit 8-15% above entry
+- If no clear opportunity exists right now, hold and wait
+
+Position management:
+- Keep at least 30% of budget in USDT as dry powder
+- Maximum 3 open positions at any time
+- Cut losers quickly, let winners run
 
 Rules:
-- venue is Binance spot
-- mode is supplied in runtime context and must be respected implicitly by the operator, not mentioned in the output
-- do not invent balances, prices, or symbols
-- only propose orders for symbols that can plausibly trade against USDT
-- keep the order list lean
-- every order must include a concise rationale`;
+- Do not invent balances, prices, or symbols
+- Only propose orders for symbols that can plausibly trade against USDT
+- Keep the order list lean — quality over quantity
+- Every order must include a concise rationale`;
 
 type Prompt = {
   id: string;
@@ -44,9 +50,21 @@ const FALLBACK_XAI_MODELS: Model[] = [
   { id: "fallback:xai:grok-3-fast", name: "xAI grok-3-fast", provider: "xai", model: "grok-3-fast" },
   { id: "fallback:xai:grok-3-mini", name: "xAI grok-3-mini", provider: "xai", model: "grok-3-mini" },
   { id: "fallback:xai:grok-3-mini-fast", name: "xAI grok-3-mini-fast", provider: "xai", model: "grok-3-mini-fast" },
-  { id: "fallback:xai:grok-beta", name: "xAI grok-beta", provider: "xai", model: "grok-beta" },
-  { id: "fallback:xai:grok-2", name: "xAI grok-2", provider: "xai", model: "grok-2" }
 ];
+
+const pickBestModel = (models: Model[]): Model | undefined => {
+  const checks: Array<(m: Model) => boolean> = [
+    (m) => /reasoning/i.test(m.model) && !/fast|mini/i.test(m.model),
+    (m) => /reasoning/i.test(m.model),
+    (m) => !/mini|fast|beta/i.test(m.model),
+    () => true,
+  ];
+  for (const check of checks) {
+    const match = models.find(check);
+    if (match) return match;
+  }
+  return models[0];
+};
 
 type BotSetup = {
   id: string;
@@ -116,7 +134,7 @@ const buildDefaultState = () => {
     modelProfileId: "",
     venue: "binance-testnet" as "binance" | "binance-testnet",
     frequencyMinutes: "15",
-    budgetUsdt: 100,
+    budgetUsdt: 1000,
     symbolScope: "all" as "selected" | "all",
     contextSymbols: [] as string[],
     execution: {
@@ -128,7 +146,13 @@ const buildDefaultState = () => {
       minCashReserveUsd: 25
     },
     promptConfig: {
-      operatorPrompt: "",
+      operatorPrompt: `Risk management (always apply):
+- Never risk more than 10% of total portfolio on a single trade
+- Prefer limit orders over market orders when spreads are tight
+- If portfolio is down >15% from initial budget, reduce position sizes and increase cash reserve
+- Always have a clear rationale backed by current market conditions
+- When in doubt, hold — missed opportunities cost nothing, bad trades do
+- Factor in trading fees when evaluating expected profit on small moves`,
       modules: {
         includeCurrentPositions: true,
         includePastTrades: false,
@@ -385,18 +409,19 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
           },
           venue: mergedVenue,
           frequencyMinutes: String(setup.runtimeConfig.frequencyMinutes),
-          budgetUsdt: setup.runtimeConfig.budgetUsdt ?? 100,
+          budgetUsdt: setup.runtimeConfig.budgetUsdt ?? 1000,
           symbolScope: setup.runtimeConfig.symbolScope,
           contextSymbols: setup.runtimeConfig.contextSymbols,
           execution: setup.runtimeConfig.execution
         });
       } else if (modelsData && modelsData.length > 0) {
-        const firstModel = modelsData.find((m) => m.provider === selectedProvider) ?? modelsData[0];
-        if (firstModel) {
-          setSelectedProvider(firstModel.provider);
+        const providerModels = modelsData.filter((m) => m.provider === selectedProvider);
+        const bestModel = pickBestModel(providerModels.length > 0 ? providerModels : modelsData);
+        if (bestModel) {
+          setSelectedProvider(bestModel.provider);
           setFormData((cur) => ({
             ...cur,
-            modelProfileId: cur.modelProfileId || firstModel.id
+            modelProfileId: cur.modelProfileId || bestModel.id
           }));
         }
       }
@@ -412,8 +437,9 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
 
   // Sync model selection when provider changes
   useEffect(() => {
-    if (!formData.modelProfileId && availableModels[0]?.id) {
-      setFormData((cur) => ({ ...cur, modelProfileId: availableModels[0]!.id }));
+    if (!formData.modelProfileId && availableModels.length > 0) {
+      const best = pickBestModel(availableModels);
+      if (best) setFormData((cur) => ({ ...cur, modelProfileId: best.id }));
     }
   }, [availableModels, formData.modelProfileId]);
 
@@ -838,8 +864,8 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
                 ) : (
                   <pre className="prompt-body-preview">
                     {(formData.promptConfig.operatorPrompt ?? "").trim()
-                      ? "Configured (hidden by default). Click Edit to view."
-                      : "Not configured. Click Edit if you want an advanced secondary prompt."}
+                      ? "Configured — risk & trading guidelines. Click Edit to view or modify."
+                      : "Not configured. Click Edit to add advanced risk/trading guidelines."}
                   </pre>
                 )}
               </div>
@@ -968,9 +994,12 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
               </p>
 
               <div className="modules-grid">
+                <label className="checkbox-label" style={{ opacity: 0.6 }}>
+                  <input type="checkbox" checked disabled />
+                  <span>Wallet & held positions <span className="field-help">(always included)</span></span>
+                </label>
                 {[
-                  { key: "includeCurrentPositions" as const, label: "Current positions & prices" },
-                  { key: "includeWalletOverview" as const, label: "Wallet overview (start vs now)" },
+                  { key: "includeWalletOverview" as const, label: "Portfolio overview (start vs now)" },
                   { key: "includePerformanceStats" as const, label: "Performance stats" },
                   { key: "includePastTrades" as const, label: "Past trades" },
                   { key: "includeBotRanking" as const, label: "Ranking vs other bots" }

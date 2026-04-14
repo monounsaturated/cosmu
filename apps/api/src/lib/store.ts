@@ -114,7 +114,7 @@ const buildRuntimeConfig = (row: {
     frequencyMinutes,
     mode: row.mode,
     assetClass: row.asset_class ?? row.assetClass ?? "spot",
-    budgetUsdt: row.budget_usdt ?? row.budgetUsdt ?? 100,
+    budgetUsdt: row.budget_usdt ?? row.budgetUsdt ?? 1000,
     symbolScope: contextConfig.symbolScope,
     execution: parseJson<Record<string, JsonValue>>(row.execution_config ?? row.executionConfig ?? {}),
     contextSymbols: contextConfig.contextSymbols
@@ -1315,7 +1315,7 @@ export const createBot = async (input: {
       ${input.runtimeConfig.frequencyMinutes},
       ${input.runtimeConfig.mode},
       ${input.runtimeConfig.assetClass},
-      ${input.runtimeConfig.budgetUsdt ?? 100},
+      ${input.runtimeConfig.budgetUsdt ?? 1000},
       ${sql.json(input.runtimeConfig.execution)},
       ${sql.json(input.runtimeConfig.contextSymbols)}
     )

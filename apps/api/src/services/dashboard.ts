@@ -72,7 +72,7 @@ export const getDashboard = async () => {
     left join run_stats on run_stats.bot_id = b.id
     left join trade_stats on trade_stats.bot_id = b.id
     left join latest_run on latest_run.bot_id = b.id
-    order by b.bot_number asc
+    order by brc.enabled desc, b.created_at desc
   `;
 
   // Fetch all successful executions to compute virtual portfolios
@@ -120,7 +120,7 @@ export const getDashboard = async () => {
 
   const virtualPortfolios = new Map<string, { usdt: number; assets: Record<string, number> }>();
   for (const bot of botRows) {
-    virtualPortfolios.set(bot.id, { usdt: bot.budgetUsdt ?? 100, assets: {} });
+    virtualPortfolios.set(bot.id, { usdt: bot.budgetUsdt ?? 1000, assets: {} });
   }
 
   for (const exec of allExecutions) {
@@ -155,7 +155,7 @@ export const getDashboard = async () => {
     const startedAt = row.startedAt.toISOString();
     const daysRunning = Math.max(0, (Date.now() - row.startedAt.getTime()) / (1000 * 60 * 60 * 24));
     const tradeCount = Number(row.tradeCount ?? 0);
-    const budgetUsdt = Number(row.budgetUsdt ?? 100);
+    const budgetUsdt = Number(row.budgetUsdt ?? 1000);
 
     const portfolio = virtualPortfolios.get(row.id) ?? { usdt: budgetUsdt, assets: {} };
     const priceMap = row.mode === "testnet" ? testnetPriceMap : livePriceMap;

@@ -14,8 +14,8 @@ const venueLabel = (venue: "binance" | "binance-testnet") =>
 
 export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
   const router = useRouter();
-  const [sortField, setSortField] = useState<SortField>("botNumber");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+  const [sortField, setSortField] = useState<SortField>("startedAt");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
