@@ -137,6 +137,7 @@ a {
 .badge-buy { border-color: #34d39944; color: #34d399; background: #34d3991a; }
 .badge-sell { border-color: #f8717144; color: #f87171; background: #f871711a; }
 .badge-neutral { border-color: #a1a1aa44; color: #a1a1aa; background: #a1a1aa1a; }
+.badge-inactive { border-color: #52525b44; color: #71717a; background: #27272a; opacity: 0.7; }
 
 .stack {
   display: flex;

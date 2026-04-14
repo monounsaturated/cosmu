@@ -1040,10 +1040,14 @@ export const addPromptVersion = async (input: { promptId: string; body: string }
   return { promptVersionId: promptVersion.id, version: nextVersion };
 };
 
-export const createPrompt = async (input: { name: string; slug: string; initialBody: string }) => {
+export const createPrompt = async (input: { name?: string; slug?: string; initialBody: string }) => {
+  const trimmedName = (input.name ?? "").trim();
+  const effectiveName = trimmedName || `Prompt ${Date.now().toString(36)}`;
+  const effectiveSlug = (input.slug ?? "").trim() || `prompt-${Date.now().toString(36)}`;
+
   const [prompt] = await sql<{ id: string }[]>`
     insert into prompts (name, slug)
-    values (${input.name}, ${input.slug})
+    values (${effectiveName}, ${effectiveSlug})
     returning id
   `;
 

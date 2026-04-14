@@ -52,7 +52,7 @@ export default async function BotsPage() {
           <h1>Bots</h1>
           <p>Compare bots quickly, then click a row to open full details.</p>
         </div>
-        <DashboardActions hasNoBots={dashboard.bots.length === 0} botCount={dashboard.bots.length} />
+        <DashboardActions hasNoBots={dashboard.bots.length === 0}  />
       </section>
 
       <BotTable dashboard={dashboard} />

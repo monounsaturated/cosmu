@@ -89,7 +89,6 @@ type SymbolResponse = {
 type BotFormModalProps = {
   mode: "create" | "edit";
   botId?: string;
-  defaultBotNumber?: number;
   onClose: () => void;
   onSuccess: () => void;
 };
@@ -106,13 +105,12 @@ const uniqueSlug = (value: string) => `${slugify(value) || "bot"}-${Date.now().t
 const uniqueSymbols = (symbols: string[]) =>
   Array.from(new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean)));
 
-const buildDefaultState = (defaultBotNumber: number) => {
-  const defaultName = "";
+const buildDefaultState = () => {
   return {
-    name: defaultName,
+    name: "",
     promptStrategy: "new" as "new" | "existing",
     existingPromptVersionId: "",
-    newPromptName: `Bot #${defaultBotNumber} Prompt`,
+    newPromptName: "",
     newPromptBody: DEFAULT_PROMPT_BODY,
     modelProfileId: "",
     venue: "binance-testnet" as "binance" | "binance-testnet",
@@ -141,7 +139,7 @@ const buildDefaultState = (defaultBotNumber: number) => {
   };
 };
 
-export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuccess }: BotFormModalProps) {
+export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalProps) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
@@ -154,7 +152,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   const [pairsOpen, setPairsOpen] = useState(false);
   const pairsRef = useRef<HTMLDivElement>(null);
   const [selectedProvider, setSelectedProvider] = useState("xai");
-  const [formData, setFormData] = useState(buildDefaultState(defaultBotNumber));
+  const [formData, setFormData] = useState(buildDefaultState());
 
   // Prompt body view/edit state
   const [promptBody, setPromptBody] = useState<string | null>(null);
@@ -375,7 +373,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
           name: setup.name,
           promptStrategy: "existing",
           existingPromptVersionId: setup.promptVersionId,
-          newPromptName: `${setup.name} Prompt`,
+          newPromptName: "",
           newPromptBody: DEFAULT_PROMPT_BODY,
           modelProfileId: setup.modelProfileId,
           promptConfig: setup.promptConfig,
@@ -466,14 +464,12 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     setSavingVersion(true);
     setError(null);
     try {
-      const selectedPrompt = prompts.find((prompt) => prompt.latestVersionId === formData.existingPromptVersionId);
-      const fallbackName = selectedPrompt?.name ?? `Prompt ${Date.now()}`;
       const res = await fetch("/api/prompts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: fallbackName,
-          slug: uniqueSlug(fallbackName),
+          name: "",
+          slug: "",
           initialBody: editedBody
         })
       });
@@ -539,7 +535,6 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
 
     try {
       if (!formData.modelProfileId) throw new Error("Choose a model");
-      if (formData.promptStrategy === "new" && !formData.newPromptName.trim()) throw new Error("Prompt name is required");
       if (formData.promptStrategy === "new" && !formData.newPromptBody.trim()) throw new Error("Prompt body is required");
       if (formData.symbolScope === "selected" && formData.contextSymbols.length === 0) {
         throw new Error("Select at least one pair, or choose All Pairs");
@@ -700,13 +695,12 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
                 <div className="form-grid">
                   <div className="form-row">
                     <label>
-                      Prompt Name
+                      Prompt Name <span className="field-help">(optional)</span>
                       <input
                         type="text"
                         value={formData.newPromptName}
                         onChange={(e) => setFormData({ ...formData, newPromptName: e.target.value })}
-                        placeholder="Bot #1 Prompt"
-                        required
+                        placeholder="Auto-generated if empty"
                       />
                     </label>
                   </div>

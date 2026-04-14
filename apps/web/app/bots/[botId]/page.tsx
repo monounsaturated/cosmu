@@ -5,6 +5,18 @@ import { PerformanceChart } from "../../performance-chart";
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 export const dynamic = "force-dynamic";
 
+function SettingPill({ label, on, extra }: { label: string; on: boolean; extra?: string }) {
+  return (
+    <span
+      className={`badge ${on ? "badge-success" : "badge-inactive"}`}
+      style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px" }}
+    >
+      <span style={{ fontSize: "10px" }}>{on ? "●" : "○"}</span>
+      {label}{extra ? ` (${extra})` : ""}
+    </span>
+  );
+}
+
 async function fetchApi(path: string) {
   const apiSecretKey = process.env.API_SECRET_KEY;
   if (!apiSecretKey) throw new Error("API_SECRET_KEY is required");
@@ -134,18 +146,68 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
 
       <div className="grid" style={{ display: 'block', marginBottom: '32px' }}>
         <div className="panel">
-          <h3>Strategy Configuration</h3>
-          <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "24px", marginTop: "16px" }}>
+          <h3>Bot Settings</h3>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginTop: "16px" }}>
             <div>
-              <p className="label">Prompt Version</p>
+              <p className="label">Prompt</p>
               <p><span className="badge badge-neutral">{setup.promptVersionLabel}</span></p>
             </div>
             <div>
-              <p className="label">Model Profile</p>
-              <p>{setup.modelProfileName} ({setup.modelProvider} - {setup.modelIdentifier})</p>
+              <p className="label">Model</p>
+              <p>{setup.modelProfileName} <span className="muted">({setup.modelProvider} / {setup.modelIdentifier})</span></p>
             </div>
           </div>
-          
+
+          <div style={{ marginTop: "24px" }}>
+            <p className="label" style={{ marginBottom: "12px" }}>Injected Data Modules</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+              <SettingPill label="Current Positions" on={setup.promptConfig.modules.includeCurrentPositions} />
+              <SettingPill label="Past Trades" on={setup.promptConfig.modules.includePastTrades} extra={setup.promptConfig.modules.includePastTrades ? `last ${setup.promptConfig.modules.pastTradesLookback}` : undefined} />
+              <SettingPill label="Performance Stats" on={setup.promptConfig.modules.includePerformanceStats} />
+              <SettingPill label="Bot Ranking" on={setup.promptConfig.modules.includeBotRanking} />
+              <SettingPill label="Wallet Overview" on={setup.promptConfig.modules.includeWalletOverview} />
+            </div>
+          </div>
+
+          <div style={{ marginTop: "24px" }}>
+            <p className="label" style={{ marginBottom: "12px" }}>Execution Rules</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+              <SettingPill label="Live Execution" on={setup.runtimeConfig.execution.enabled} />
+              <SettingPill label="Market Orders" on={setup.runtimeConfig.execution.allowMarketOrders} />
+              <SettingPill label="Limit Orders" on={setup.runtimeConfig.execution.allowLimitOrders} />
+            </div>
+            {setup.runtimeConfig.execution.enabled && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "16px", marginTop: "12px" }}>
+                <div>
+                  <p className="label">Max Orders / Run</p>
+                  <p>{setup.runtimeConfig.execution.maxOrdersPerRun}</p>
+                </div>
+                <div>
+                  <p className="label">Max Notional / Order</p>
+                  <p>${setup.runtimeConfig.execution.maxNotionalPerOrderUsd}</p>
+                </div>
+                <div>
+                  <p className="label">Min Cash Reserve</p>
+                  <p>${setup.runtimeConfig.execution.minCashReserveUsd}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginTop: "24px" }}>
+            <p className="label" style={{ marginBottom: "8px" }}>Trading Pairs</p>
+            {setup.runtimeConfig.symbolScope === "all" ? (
+              <span className="badge badge-neutral">All Pairs</span>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {setup.runtimeConfig.contextSymbols.map((s: string) => (
+                  <span key={s} className="badge badge-neutral" style={{ fontSize: "12px" }}>{s}</span>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div style={{ marginTop: "24px" }} id="prompt">
             <p className="label">System Prompt Body</p>
             <div className="run-detail-pre" style={{ maxHeight: "400px", overflowY: "auto" }}>

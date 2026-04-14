@@ -58,7 +58,7 @@ export default async function HomePage() {
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
           <span className="badge">Updated {new Date(dashboard.generatedAt).toLocaleString()}</span>
-          <DashboardActions hasNoBots={dashboard.bots.length === 0} botCount={dashboard.bots.length} />
+          <DashboardActions hasNoBots={dashboard.bots.length === 0} />
         </div>
       </section>
 
