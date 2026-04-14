@@ -288,22 +288,35 @@ app.post("/models", async (request, response, next) => {
   }
 });
 
-app.post("/internal/catalog/sync", async (_request, response, next) => {
+app.post("/internal/catalog/sync", async (request, response, next) => {
   try {
+    const force = request.query.force === "true";
+    let syncResult = { synced: false, count: 0, inserted: 0, updated: 0, message: "" };
+    let bootstrapResult = { count: 0, inserted: 0, updated: 0 };
+
     try {
-      await syncProviderModels("xai");
+      syncResult = await syncProviderModels("xai", force);
     } catch (syncError) {
       console.warn("xAI sync failed:", String(syncError));
+      syncResult.message = String(syncError);
     }
 
-    await bootstrapModelProfiles();
+    try {
+      bootstrapResult = await bootstrapModelProfiles();
+    } catch (bootstrapError) {
+      console.warn("Model bootstrap failed:", String(bootstrapError));
+    }
+
     const models = await listModelProfiles("xai");
 
     response.json({
       ok: true,
       provider: "xai",
       modelCount: models.length,
-      syncedAt: new Date().toISOString()
+      syncedAt: new Date().toISOString(),
+      sync: syncResult,
+      bootstrap: bootstrapResult,
+      models: models.map(m => ({ id: m.id, name: m.name, model: m.model }))
     });
   } catch (error) {
     next(error);

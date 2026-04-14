@@ -160,6 +160,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   const [showBodyEditor, setShowBodyEditor] = useState(false);
   const [editedBody, setEditedBody] = useState("");
   const [savingVersion, setSavingVersion] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const providerOptions = useMemo(() => {
     const fromApi = Array.from(new Set(models.map((m) => m.provider))).sort();
@@ -213,6 +214,37 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       return null;
     } finally {
       clearTimeout(timeout);
+    }
+  };
+
+  // Force sync models from xAI API
+  const syncModels = async () => {
+    setIsSyncing(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/internal/catalog/sync?force=true", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (!res.ok) {
+        throw new Error(`Sync failed: ${res.status}`);
+      }
+      const result = await res.json();
+      console.log("[bot-form] Model sync result:", result);
+
+      // Refresh models list
+      const modelsData = await safeFetch<Model[]>("/api/models");
+      if (modelsData && modelsData.length > 0) {
+        setModels(modelsData);
+        setError(null);
+      } else {
+        setError("Sync completed but no models available. Check XAI_API_KEY configuration.");
+      }
+    } catch (e) {
+      console.error("[bot-form] Sync failed:", e);
+      setError(`Failed to sync models: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -293,11 +325,19 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       if (cancelled) return;
 
       const errors: string[] = [];
+      let errorMessage = "";
+
       if (!modelsData || modelsData.length === 0) errors.push("models");
       if (resolvedSymbols.length === 0) errors.push("symbols");
       if (mode === "edit" && botId && !botData) errors.push("bot config");
+
       if (errors.length) {
-        setError(`Could not load: ${errors.join(", ")}. Check API connectivity or retry.`);
+        if (errors.includes("models")) {
+          errorMessage = "Could not load AI models. The xAI API may be unreachable or XAI_API_KEY is not configured. Try clicking 'Sync Models from xAI' below.";
+        } else {
+          errorMessage = `Could not load: ${errors.join(", ")}. Check API connectivity or retry.`;
+        }
+        setError(errorMessage);
       }
 
       if (mode === "edit" && botData) {
@@ -1008,7 +1048,37 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
               </div>
             </div>
 
-            {error && <p className="form-error">{error}</p>}
+            {error && (
+              <div className="form-error">
+                <p>{error}</p>
+                {error.includes("models") && (
+                  <div className="form-error-actions" style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="btn btn-small"
+                      onClick={syncModels}
+                      disabled={isSyncing}
+                      title="Fetch latest models from xAI API"
+                    >
+                      {isSyncing ? "Syncing…" : "↻ Sync Models from xAI"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-small"
+                      onClick={() => window.location.reload()}
+                      disabled={isSyncing}
+                    >
+                      Reload Page
+                    </button>
+                  </div>
+                )}
+                {error.includes("models") && (
+                  <p className="field-help" style={{ marginTop: "0.5rem" }}>
+                    Tip: Ensure XAI_API_KEY is set in your environment and the API server is running.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="form-actions">
               <button type="button" className="btn" onClick={onClose} disabled={saving}>

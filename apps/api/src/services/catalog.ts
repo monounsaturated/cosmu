@@ -14,16 +14,28 @@ export const BOOTSTRAP_XAI_PROFILES: { name: string; model: string }[] = [
 ];
 
 export const bootstrapModelProfiles = async () => {
+  let inserted = 0;
+  let updated = 0;
+
   for (const profile of BOOTSTRAP_XAI_PROFILES) {
-    await sql`
+    const result = await sql`
       insert into model_profiles (name, provider, model, settings)
       values (${profile.name}, 'xai', ${profile.model}, '{"temperature":0.2}'::jsonb)
       on conflict (name) do update
       set
         provider = excluded.provider,
         model = excluded.model
+      returning (xmax = 0) as inserted
     `;
+    if (result[0]?.inserted) {
+      inserted++;
+    } else {
+      updated++;
+    }
   }
+
+  console.log(`[catalog] Bootstrapped ${BOOTSTRAP_XAI_PROFILES.length} models (${inserted} new, ${updated} updated)`);
+  return { count: BOOTSTRAP_XAI_PROFILES.length, inserted, updated };
 };
 
 const HOURS_12_MS = 12 * 60 * 60 * 1000;
@@ -43,19 +55,26 @@ const shouldRefreshProvider = async (provider: string) => {
   return Date.now() - row.syncedAt.getTime() > HOURS_12_MS;
 };
 
-export const syncProviderModels = async (provider: string) => {
+export const syncProviderModels = async (provider: string, force = false) => {
   if (provider !== "xai") {
-    return;
+    return { synced: false, count: 0, message: "Provider not supported" };
   }
 
-  if (!(await shouldRefreshProvider(provider))) {
-    return;
+  if (!force && !(await shouldRefreshProvider(provider))) {
+    console.log(`[catalog] Skipping ${provider} sync - within 12 hour window`);
+    return { synced: false, count: 0, message: "Skipped - synced within last 12 hours" };
   }
 
+  console.log(`[catalog] Fetching models from ${provider} API...`);
   const models = await listXaiModels();
+  console.log(`[catalog] Found ${models.length} models from ${provider}`);
+
+  let inserted = 0;
+  let updated = 0;
+
   for (const model of models) {
     const profileName = `xAI ${model.id}`;
-    await sql`
+    const result = await sql`
       insert into model_profiles (name, provider, model, settings)
       values (${profileName}, 'xai', ${model.id}, '{"temperature":0.2}'::jsonb)
       on conflict (name) do update
@@ -63,7 +82,13 @@ export const syncProviderModels = async (provider: string) => {
         provider = excluded.provider,
         model = excluded.model,
         settings = model_profiles.settings
+      returning (xmax = 0) as inserted
     `;
+    if (result[0]?.inserted) {
+      inserted++;
+    } else {
+      updated++;
+    }
   }
 
   await sql`
@@ -72,6 +97,9 @@ export const syncProviderModels = async (provider: string) => {
     on conflict (provider) do update
     set synced_at = now()
   `;
+
+  console.log(`[catalog] Synced ${models.length} models (${inserted} new, ${updated} updated)`);
+  return { synced: true, count: models.length, inserted, updated };
 };
 
 const shouldRefreshVenue = async (venue: string) => {
