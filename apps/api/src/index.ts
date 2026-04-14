@@ -288,6 +288,28 @@ app.post("/models", async (request, response, next) => {
   }
 });
 
+app.post("/internal/catalog/sync", async (_request, response, next) => {
+  try {
+    try {
+      await syncProviderModels("xai");
+    } catch (syncError) {
+      console.warn("xAI sync failed:", String(syncError));
+    }
+
+    await bootstrapModelProfiles();
+    const models = await listModelProfiles("xai");
+
+    response.json({
+      ok: true,
+      provider: "xai",
+      modelCount: models.length,
+      syncedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/bots", async (request, response, next) => {
   try {
     const { name, slug, promptVersionId, modelProfileId, promptConfig, traderConfig, parentBotId, runtimeConfig } =
@@ -344,6 +366,25 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
   });
 });
 
+const CATALOG_SYNC_INTERVAL_MS = 30 * 60 * 1000;
+
+const startCatalogSyncLoop = () => {
+  const runSync = async () => {
+    try {
+      await syncProviderModels("xai");
+      await bootstrapModelProfiles();
+    } catch (error) {
+      console.warn("Background catalog sync failed:", String(error));
+    }
+  };
+
+  void runSync();
+  setInterval(() => {
+    void runSync();
+  }, CATALOG_SYNC_INTERVAL_MS);
+};
+
 app.listen(env.API_PORT, "0.0.0.0", () => {
+  startCatalogSyncLoop();
   console.log(`API listening on http://0.0.0.0:${env.API_PORT}`);
 });
