@@ -18,7 +18,10 @@ export const bootstrapModelProfiles = async () => {
     await sql`
       insert into model_profiles (name, provider, model, settings)
       values (${profile.name}, 'xai', ${profile.model}, '{"temperature":0.2}'::jsonb)
-      on conflict (provider, model) do nothing
+      on conflict (name) do update
+      set
+        provider = excluded.provider,
+        model = excluded.model
     `;
   }
 };
@@ -55,9 +58,10 @@ export const syncProviderModels = async (provider: string) => {
     await sql`
       insert into model_profiles (name, provider, model, settings)
       values (${profileName}, 'xai', ${model.id}, '{"temperature":0.2}'::jsonb)
-      on conflict (provider, model) do update
+      on conflict (name) do update
       set
-        name = excluded.name,
+        provider = excluded.provider,
+        model = excluded.model,
         settings = model_profiles.settings
     `;
   }
