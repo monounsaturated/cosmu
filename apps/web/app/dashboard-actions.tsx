@@ -6,9 +6,10 @@ import { CreateBotModal } from "./create-bot-modal";
 
 type DashboardActionsProps = {
   hasNoBots: boolean;
+  botCount: number;
 };
 
-export function DashboardActions({ hasNoBots }: DashboardActionsProps) {
+export function DashboardActions({ hasNoBots, botCount }: DashboardActionsProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const router = useRouter();
 
@@ -31,6 +32,7 @@ export function DashboardActions({ hasNoBots }: DashboardActionsProps) {
 
       {showCreateModal && (
         <CreateBotModal
+          defaultBotNumber={botCount + 1}
           onClose={() => setShowCreateModal(false)}
           onSuccess={handleSuccess}
         />

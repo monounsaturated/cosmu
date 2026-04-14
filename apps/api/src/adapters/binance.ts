@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import {
+  ALL_SYMBOLS_TOKEN,
   executionRecordSchema,
   portfolioSnapshotSchema,
   type ExecutionRecord,
@@ -28,6 +29,8 @@ export type VenueContext = {
   symbolRules: Record<string, SymbolRules>;
   rawAccountResponse: unknown;
 };
+
+let venueSymbolsCache: { expiresAt: number; symbols: string[] } | null = null;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -127,18 +130,58 @@ const parseSymbolRules = (exchangeInfo: any): SymbolRules => {
   };
 };
 
+const isTradableSpotUsdtSymbol = (exchangeSymbol: any) =>
+  exchangeSymbol?.symbol &&
+  exchangeSymbol?.status === "TRADING" &&
+  exchangeSymbol?.isSpotTradingAllowed !== false &&
+  exchangeSymbol?.quoteAsset === "USDT";
+
+const requestPublicJson = async (path: string) => {
+  const response = await fetch(`${LIVE_BASE_URL}${path}`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Binance public ${path} failed: ${response.status} ${errorText}`);
+  }
+
+  return response.json();
+};
+
 const getAccount = (mode: RuntimeConfig["mode"]) =>
   requestWithQuery(mode, "/v3/account", new URLSearchParams(), true);
+
+const getAllTickerPrices = (mode: RuntimeConfig["mode"]) =>
+  binanceFetch(mode, "/v3/ticker/price", {
+    method: "GET"
+  });
 
 const getTickerPrice = (mode: RuntimeConfig["mode"], symbol: string) =>
   binanceFetch(mode, `/v3/ticker/price?symbol=${encodeURIComponent(symbol)}`, {
     method: "GET"
   });
 
-const getExchangeInfo = (mode: RuntimeConfig["mode"], symbol: string) =>
-  binanceFetch(mode, `/v3/exchangeInfo?symbol=${encodeURIComponent(symbol)}`, {
+const getAllExchangeInfo = (mode: RuntimeConfig["mode"]) =>
+  binanceFetch(mode, "/v3/exchangeInfo", {
     method: "GET"
   });
+
+export const listVenueSymbols = async () => {
+  if (venueSymbolsCache && venueSymbolsCache.expiresAt > Date.now()) {
+    return venueSymbolsCache.symbols;
+  }
+
+  const response = await requestPublicJson("/v3/exchangeInfo");
+  const symbols = (response.symbols ?? [])
+    .filter(isTradableSpotUsdtSymbol)
+    .map((symbol: any) => normalizeSymbol(symbol.symbol))
+    .sort((left: string, right: string) => left.localeCompare(right));
+
+  venueSymbolsCache = {
+    expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+    symbols
+  };
+
+  return symbols;
+};
 
 export const loadVenueContext = async (
   runtimeConfig: RuntimeConfig,
@@ -149,28 +192,36 @@ export const loadVenueContext = async (
     (balance: any) => Number(balance.free) > 0 || Number(balance.locked) > 0
   );
 
+  const balanceSymbols = balances
+    .map((balance: any) => normalizeSymbol(`${balance.asset}USDT`))
+    .filter((symbol: string) => symbol !== "USDTUSDT");
+  const selectedSymbols = contextSymbols
+    .map(normalizeSymbol)
+    .filter((symbol) => symbol !== ALL_SYMBOLS_TOKEN && symbol !== "USDTUSDT");
+
+  const exchangeInfoResponse = await getAllExchangeInfo(runtimeConfig.mode);
+  const exchangeSymbols = exchangeInfoResponse.symbols ?? [];
+  const allTradableSpotSymbols = exchangeSymbols
+    .filter(isTradableSpotUsdtSymbol)
+    .map((symbol: any) => normalizeSymbol(symbol.symbol));
+
   const derivedSymbols = new Set(
-    balances
-      .map((balance: any) => normalizeSymbol(`${balance.asset}USDT`))
-      .concat(contextSymbols.map(normalizeSymbol))
-      .filter((symbol: string) => symbol !== "USDTUSDT")
+    runtimeConfig.symbolScope === "all"
+      ? [...allTradableSpotSymbols, ...balanceSymbols]
+      : [...balanceSymbols, ...selectedSymbols]
   );
 
-  const prices = await Promise.all(
-    Array.from(derivedSymbols).map(async (symbol) => {
-      try {
-        const price = await getTickerPrice(runtimeConfig.mode, String(symbol));
-        return { symbol, price: Number(price.price) };
-      } catch {
-        return null;
-      }
-    })
-  );
-
+  const allPrices = await getAllTickerPrices(runtimeConfig.mode);
   const priceMap = Object.fromEntries(
-    prices
-      .filter((value): value is { symbol: string; price: number } => value !== null)
-      .map((value) => [value.symbol, value.price])
+    (Array.isArray(allPrices) ? allPrices : [])
+      .filter((price: any) => derivedSymbols.has(normalizeSymbol(price.symbol)))
+      .map((price: any) => [normalizeSymbol(price.symbol), Number(price.price)])
+  );
+
+  const symbolRules = Object.fromEntries(
+    exchangeSymbols
+      .filter((symbol: any) => derivedSymbols.has(normalizeSymbol(symbol.symbol)))
+      .map((symbol: any) => [normalizeSymbol(symbol.symbol), parseSymbolRules(symbol)])
   );
 
   const normalizedBalances = balances.map((balance: any) => {
@@ -190,26 +241,6 @@ export const loadVenueContext = async (
   const totalUsdValue = normalizedBalances.reduce(
     (sum: number, balance: { usdValue: number | null }) => sum + (balance.usdValue ?? 0),
     0
-  );
-
-  const symbolRulesEntries = await Promise.all(
-    Array.from(derivedSymbols).map(async (symbol) => {
-      try {
-        const response = await getExchangeInfo(runtimeConfig.mode, String(symbol));
-        const exchangeSymbol = response.symbols?.[0];
-        if (!exchangeSymbol) {
-          return null;
-        }
-
-        return [symbol, parseSymbolRules(exchangeSymbol)] as const;
-      } catch {
-        return null;
-      }
-    })
-  );
-
-  const symbolRules = Object.fromEntries(
-    symbolRulesEntries.filter((entry): entry is readonly [string, SymbolRules] => entry !== null)
   );
 
   return {
@@ -273,6 +304,38 @@ export const validateTradability = async (
   };
 };
 
+const getUsdPriceForAsset = async (
+  mode: RuntimeConfig["mode"],
+  asset: string | null,
+  venueContext: VenueContext
+) => {
+  if (!asset) {
+    return null;
+  }
+
+  const normalizedAsset = normalizeSymbol(asset);
+  if (normalizedAsset === "USDT") {
+    return 1;
+  }
+
+  const cachedPrice = venueContext.priceMap[`${normalizedAsset}USDT`];
+  if (cachedPrice) {
+    return cachedPrice;
+  }
+
+  try {
+    const ticker = await getTickerPrice(mode, `${normalizedAsset}USDT`);
+    const usdPrice = Number(ticker.price);
+    if (Number.isFinite(usdPrice) && usdPrice > 0) {
+      return usdPrice;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
 export const executeOrders = async (input: {
   runId: string;
   runtimeConfig: RuntimeConfig;
@@ -331,6 +394,12 @@ export const executeOrders = async (input: {
         benchmarkPrice && averageFillPrice
           ? ((averageFillPrice - benchmarkPrice) / benchmarkPrice) * 100
           : null;
+      const executedQuantity = Number(rawVenueResponse.executedQty ?? order.quantity);
+      const executedNotionalUsd =
+        averageFillPrice === null ? null : Number((executedQuantity * averageFillPrice).toFixed(8));
+      const feeAssetUsdPrice = await getUsdPriceForAsset(input.runtimeConfig.mode, feeAsset, input.venueContext);
+      const feeUsd =
+        feeAmount && feeAssetUsdPrice !== null ? Number((feeAmount * feeAssetUsdPrice).toFixed(8)) : feeAmount === 0 ? 0 : null;
 
       executions.push(
         executionRecordSchema.parse({
@@ -341,12 +410,14 @@ export const executeOrders = async (input: {
           side: order.side,
           orderType: order.type,
           requestedQuantity: order.quantity,
-          executedQuantity: Number(rawVenueResponse.executedQty ?? order.quantity),
+          executedQuantity,
           requestedLimitPrice: order.limitPrice,
           averageFillPrice,
+          executedNotionalUsd,
           feeAmount,
           feeAsset,
-          feeUsd: feeAsset === "USDT" ? feeAmount : null,
+          feeAssetUsdPrice,
+          feeUsd,
           slippagePct,
           orderIntent: order,
           rawVenueResponse
@@ -365,8 +436,10 @@ export const executeOrders = async (input: {
           executedQuantity: null,
           requestedLimitPrice: order.limitPrice,
           averageFillPrice: null,
+          executedNotionalUsd: null,
           feeAmount: null,
           feeAsset: null,
+          feeAssetUsdPrice: null,
           feeUsd: null,
           slippagePct: null,
           orderIntent: order,

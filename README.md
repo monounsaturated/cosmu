@@ -27,9 +27,10 @@ Lean V1 autonomous trading loop built from `SYSTEM.md`.
 1. Copy `.env.example` to `.env` and fill in real values.
 2. Create the database schema with `apps/api/sql/001_init.sql`.
 3. Seed the first prompt, model profile, bot, and runtime config with `apps/api/sql/002_seed.sql`.
-4. Install dependencies with `pnpm install`.
-5. Start the API with `pnpm --filter @cosmu/api dev`.
-6. Start the dashboard with `pnpm --filter @cosmu/web dev`.
+4. Apply follow-up schema changes with `apps/api/sql/003_bot_experiments.sql`.
+5. Install dependencies with `pnpm install`.
+6. Start the API with `pnpm --filter @cosmu/api dev`.
+7. Start the dashboard with `pnpm --filter @cosmu/web dev`.
 
 ## Deploy (Railway now, Vercel later)
 

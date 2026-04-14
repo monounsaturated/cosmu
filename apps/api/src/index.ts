@@ -13,6 +13,7 @@ import {
   toggleBotEnabled,
   updateBotConfig
 } from "./lib/store.js";
+import { listVenueSymbols } from "./adapters/binance.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
 
@@ -160,6 +161,23 @@ app.get("/prompts", async (_request, response, next) => {
   }
 });
 
+app.get("/venues/:venue/symbols", async (request, response, next) => {
+  try {
+    if (request.params.venue !== "binance") {
+      response.status(404).json({ error: "Venue not found" });
+      return;
+    }
+
+    response.json({
+      venue: "binance",
+      label: "Binance France",
+      symbols: await listVenueSymbols()
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/prompts", async (request, response, next) => {
   try {
     const { name, slug, initialBody } = request.body;
@@ -190,8 +208,18 @@ app.post("/models", async (request, response, next) => {
 
 app.post("/bots", async (request, response, next) => {
   try {
-    const { name, slug, promptVersionId, modelProfileId, runtimeConfig } = request.body;
-    const id = await createBot({ name, slug, promptVersionId, modelProfileId, runtimeConfig });
+    const { name, slug, promptVersionId, modelProfileId, promptConfig, traderConfig, parentBotId, runtimeConfig } =
+      request.body;
+    const id = await createBot({
+      name,
+      slug,
+      promptVersionId,
+      modelProfileId,
+      promptConfig,
+      traderConfig,
+      parentBotId,
+      runtimeConfig
+    });
     response.json({ id });
   } catch (error) {
     next(error);
@@ -200,15 +228,26 @@ app.post("/bots", async (request, response, next) => {
 
 app.patch("/bots/:botId", async (request, response, next) => {
   try {
-    const { enabled, promptVersionId, modelProfileId, frequencyMinutes, mode, contextSymbols, execution } = request.body;
+    const { name, enabled, promptVersionId, modelProfileId, frequencyMinutes, mode, contextSymbols, execution } =
+      request.body;
+
+    if (
+      promptVersionId !== undefined ||
+      modelProfileId !== undefined ||
+      frequencyMinutes !== undefined ||
+      mode !== undefined ||
+      contextSymbols !== undefined ||
+      execution !== undefined
+    ) {
+      response.status(409).json({
+        error: "Bot strategy is immutable after creation. Create a new bot to test another prompt, model, or settings."
+      });
+      return;
+    }
+
     await updateBotConfig(request.params.botId, {
-      enabled,
-      promptVersionId,
-      modelProfileId,
-      frequencyMinutes,
-      mode,
-      contextSymbols,
-      execution
+      name,
+      enabled
     });
     response.json({ ok: true });
   } catch (error) {

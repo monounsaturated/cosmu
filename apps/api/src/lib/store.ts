@@ -1,14 +1,20 @@
 import {
+  ALL_SYMBOLS_TOKEN,
   assetClassSchema,
   botSummarySchema,
+  botPerformanceSeriesSchema,
   dashboardSchema,
   executionRecordSchema,
   portfolioSnapshotSchema,
+  prePromptConfigSchema,
   runtimeConfigSchema,
+  traderConfigSchema,
   type DashboardPayload,
   type ExecutionRecord,
   type PortfolioSnapshot,
+  type PrePromptConfig,
   type RuntimeConfig,
+  type TraderConfig,
   type TradingDecision,
   type ValidationResult
 } from "@cosmu/shared";
@@ -18,6 +24,7 @@ type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string
 
 export type BotSetup = {
   id: string;
+  botNumber: number;
   name: string;
   slug: string;
   promptVersionId: string;
@@ -28,6 +35,8 @@ export type BotSetup = {
   modelProvider: string;
   modelIdentifier: string;
   modelSettings: Record<string, JsonValue>;
+  promptConfig: PrePromptConfig;
+  traderConfig: TraderConfig;
   runtimeConfigId: string;
   runtimeConfig: RuntimeConfig;
 };
@@ -40,6 +49,20 @@ const parseJson = <T>(value: unknown): T => {
   return value as T;
 };
 
+const parseStoredContextSymbols = (value: unknown) => {
+  const rawSymbols = parseJson<string[]>(value);
+  const symbolScope = rawSymbols.includes(ALL_SYMBOLS_TOKEN) ? "all" : "selected";
+
+  return {
+    symbolScope,
+    contextSymbols: rawSymbols.filter((symbol) => symbol !== ALL_SYMBOLS_TOKEN)
+  } as const;
+};
+
+const parsePromptConfig = (value: unknown) => prePromptConfigSchema.parse(parseJson(value));
+
+const parseTraderConfig = (value: unknown) => traderConfigSchema.parse(parseJson(value));
+
 const buildRuntimeConfig = (row: {
   enabled: boolean;
   venue: "binance";
@@ -48,21 +71,26 @@ const buildRuntimeConfig = (row: {
   asset_class: "spot";
   execution_config: unknown;
   context_symbols: unknown;
-}): RuntimeConfig =>
-  runtimeConfigSchema.parse({
+}): RuntimeConfig => {
+  const contextConfig = parseStoredContextSymbols(row.context_symbols);
+
+  return runtimeConfigSchema.parse({
     enabled: row.enabled,
     venue: row.venue,
     frequencyMinutes: row.frequency_minutes,
     mode: row.mode,
     assetClass: row.asset_class,
+    symbolScope: contextConfig.symbolScope,
     execution: parseJson<Record<string, JsonValue>>(row.execution_config),
-    contextSymbols: parseJson<string[]>(row.context_symbols)
+    contextSymbols: contextConfig.contextSymbols
   });
+};
 
 export const getDueBots = async (): Promise<BotSetup[]> => {
   const rows = await sql<BotSetup[]>`
     select
       b.id,
+      b.bot_number as "botNumber",
       b.name,
       b.slug,
       pv.id as "promptVersionId",
@@ -73,6 +101,8 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
       mp.provider as "modelProvider",
       mp.model as "modelIdentifier",
       mp.settings as "modelSettings",
+      b.prompt_config as "promptConfig",
+      b.trader_config as "traderConfig",
       brc.id as "runtimeConfigId",
       brc.enabled,
       brc.venue,
@@ -96,6 +126,7 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
 
   return rows.map((row) => ({
     id: row.id,
+    botNumber: row.botNumber,
     name: row.name,
     slug: row.slug,
     promptVersionId: row.promptVersionId,
@@ -106,6 +137,8 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
     modelProvider: row.modelProvider,
     modelIdentifier: row.modelIdentifier,
     modelSettings: parseJson<Record<string, JsonValue>>(row.modelSettings),
+    promptConfig: parsePromptConfig(row.promptConfig),
+    traderConfig: parseTraderConfig(row.traderConfig),
     runtimeConfigId: row.runtimeConfigId,
     runtimeConfig: buildRuntimeConfig(row as never)
   }));
@@ -115,6 +148,7 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
   const rows = await sql<BotSetup[]>`
     select
       b.id,
+      b.bot_number as "botNumber",
       b.name,
       b.slug,
       pv.id as "promptVersionId",
@@ -125,6 +159,8 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
       mp.provider as "modelProvider",
       mp.model as "modelIdentifier",
       mp.settings as "modelSettings",
+      b.prompt_config as "promptConfig",
+      b.trader_config as "traderConfig",
       brc.id as "runtimeConfigId",
       brc.enabled,
       brc.venue,
@@ -149,6 +185,7 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
 
   return {
     id: row.id,
+    botNumber: row.botNumber,
     name: row.name,
     slug: row.slug,
     promptVersionId: row.promptVersionId,
@@ -159,6 +196,8 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
     modelProvider: row.modelProvider,
     modelIdentifier: row.modelIdentifier,
     modelSettings: parseJson<Record<string, JsonValue>>(row.modelSettings),
+    promptConfig: parsePromptConfig(row.promptConfig),
+    traderConfig: parseTraderConfig(row.traderConfig),
     runtimeConfigId: row.runtimeConfigId,
     runtimeConfig: buildRuntimeConfig(row as never)
   };
@@ -178,7 +217,7 @@ export const createRun = async (input: {
   promptVersionId: string;
   modelProfileId: string;
   runtimeConfig: RuntimeConfig;
-  compactContext: Record<string, JsonValue>;
+  compactContext: Record<string, unknown>;
 }) => {
   const [row] = await sql<{ id: string }[]>`
     insert into runs (
@@ -193,7 +232,7 @@ export const createRun = async (input: {
       ${input.promptVersionId},
       ${input.modelProfileId},
       ${sql.json(input.runtimeConfig)},
-      ${sql.json(input.compactContext)},
+      ${sql.json(input.compactContext as JsonValue)},
       'running'
     )
     returning id
@@ -257,8 +296,10 @@ export const storeExecutionRecords = async (runId: string, executionRecords: Exe
         executed_quantity,
         requested_limit_price,
         average_fill_price,
+        executed_notional_usd,
         fee_amount,
         fee_asset,
+        fee_asset_usd_price,
         fee_usd,
         slippage_pct,
         order_intent,
@@ -275,8 +316,10 @@ export const storeExecutionRecords = async (runId: string, executionRecords: Exe
         ${parsed.executedQuantity},
         ${parsed.requestedLimitPrice},
         ${parsed.averageFillPrice},
+        ${parsed.executedNotionalUsd},
         ${parsed.feeAmount},
         ${parsed.feeAsset},
+        ${parsed.feeAssetUsdPrice},
         ${parsed.feeUsd},
         ${parsed.slippagePct},
         ${sql.json(parsed.orderIntent)},
@@ -338,36 +381,89 @@ export const finishRun = async (input: {
   `;
 };
 
+const getSampleQuality = (daysRunning: number, tradeCount: number) => {
+  if (daysRunning >= 14 && tradeCount >= 50) {
+    return "high" as const;
+  }
+
+  if (daysRunning >= 3 && tradeCount >= 10) {
+    return "medium" as const;
+  }
+
+  return "low" as const;
+};
+
 export const getDashboard = async (): Promise<DashboardPayload> => {
   const botRows = await sql`
+    with run_stats as (
+      select
+        bot_id,
+        count(*)::int as "runCount"
+      from runs
+      group by bot_id
+    ),
+    trade_stats as (
+      select
+        r.bot_id,
+        count(e.id)::int as "tradeCount",
+        coalesce(sum(e.fee_usd), 0)::float8 as "totalFeesUsd"
+      from runs r
+      left join executions e on e.run_id = r.id
+      group by r.bot_id
+    ),
+    latest_run as (
+      select distinct on (r.bot_id)
+        r.bot_id,
+        r.status as "lastRunStatus",
+        r.error_state as "errorState",
+        d.rationale_summary as "latestDecisionSummary"
+      from runs r
+      left join decisions d on d.run_id = r.id
+      order by r.bot_id, r.created_at desc
+    ),
+    latest_snapshot as (
+      select distinct on (r.bot_id)
+        r.bot_id,
+        ps.total_usd_value::float8 as "currentPortfolioUsd",
+        ps.gross_pnl_usd::float8 as "grossPnlUsd",
+        ps.net_pnl_usd::float8 as "netPnlUsd"
+      from portfolio_snapshots ps
+      join runs r on r.id = ps.run_id
+      order by r.bot_id, ps.created_at desc
+    )
     select
       b.id,
+      b.bot_number as "botNumber",
       b.name,
       b.slug,
+      b.created_at as "startedAt",
       brc.enabled,
+      brc.venue,
       brc.frequency_minutes as "frequencyMinutes",
       brc.mode,
       brc.asset_class as "assetClass",
       concat(p.name, ' v', pv.version) as "promptVersionLabel",
       mp.name as "modelProfileName",
-      r.status as "lastRunStatus",
-      d.rationale_summary as "latestDecisionSummary",
-      cast(r.error_state ->> 'message' as text) as "latestError",
+      coalesce(run_stats."runCount", 0) as "runCount",
+      coalesce(trade_stats."tradeCount", 0) as "tradeCount",
+      coalesce(trade_stats."totalFeesUsd", 0) as "totalFeesUsd",
+      latest_run."lastRunStatus",
+      latest_run."latestDecisionSummary",
+      cast(latest_run."errorState" ->> 'message' as text) as "latestError",
+      latest_snapshot."grossPnlUsd",
+      latest_snapshot."netPnlUsd",
+      latest_snapshot."currentPortfolioUsd",
       brc.updated_at as "updatedAt"
     from bots b
     join bot_runtime_configs brc on brc.bot_id = b.id
     join prompt_versions pv on pv.id = b.active_prompt_version_id
     join prompts p on p.id = pv.prompt_id
     join model_profiles mp on mp.id = b.active_model_profile_id
-    left join lateral (
-      select *
-      from runs
-      where bot_id = b.id
-      order by created_at desc
-      limit 1
-    ) r on true
-    left join decisions d on d.run_id = r.id
-    order by b.created_at asc
+    left join run_stats on run_stats.bot_id = b.id
+    left join trade_stats on trade_stats.bot_id = b.id
+    left join latest_run on latest_run.bot_id = b.id
+    left join latest_snapshot on latest_snapshot.bot_id = b.id
+    order by b.bot_number asc
   `;
 
   const recentRuns = await sql`
@@ -399,8 +495,10 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
       e.executed_quantity as "executedQuantity",
       e.requested_limit_price as "requestedLimitPrice",
       e.average_fill_price as "averageFillPrice",
+      e.executed_notional_usd as "executedNotionalUsd",
       e.fee_amount as "feeAmount",
       e.fee_asset as "feeAsset",
+      e.fee_asset_usd_price as "feeAssetUsdPrice",
       e.fee_usd as "feeUsd",
       e.slippage_pct as "slippagePct",
       e.order_intent as "orderIntent",
@@ -412,7 +510,7 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
 
   const latestSnapshots = await sql`
     select distinct on (b.id)
-      b.name as "botName",
+      concat('Bot #', b.bot_number, ' ', b.name) as "botName",
       ps.raw_snapshot as "snapshot"
     from portfolio_snapshots ps
     join runs r on r.id = ps.run_id
@@ -433,14 +531,90 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
     limit 20
   `;
 
+  const performanceRows = await sql<
+    {
+      botId: string;
+      botNumber: number;
+      botName: string;
+      at: Date;
+      totalUsdValue: number;
+    }[]
+  >`
+    select
+      b.id as "botId",
+      b.bot_number as "botNumber",
+      b.name as "botName",
+      ps.created_at as "at",
+      ps.total_usd_value::float8 as "totalUsdValue"
+    from portfolio_snapshots ps
+    join runs r on r.id = ps.run_id
+    join bots b on b.id = r.bot_id
+    where ps.stage = 'after'
+    order by b.bot_number asc, ps.created_at asc
+  `;
+
+  const performanceSeriesMap = new Map<
+    string,
+    { botId: string; botName: string; botNumber: number; points: { at: string; totalUsdValue: number; normalizedValue: number }[] }
+  >();
+
+  for (const row of performanceRows) {
+    const existing = performanceSeriesMap.get(row.botId);
+    const point = {
+      at: row.at.toISOString(),
+      totalUsdValue: Number(row.totalUsdValue),
+      normalizedValue: 100
+    };
+
+    if (existing) {
+      existing.points.push(point);
+    } else {
+      performanceSeriesMap.set(row.botId, {
+        botId: row.botId,
+        botName: row.botName,
+        botNumber: row.botNumber,
+        points: [point]
+      });
+    }
+  }
+
+  const performanceSeries = Array.from(performanceSeriesMap.values()).map((series) => {
+    const firstValue = series.points[0]?.totalUsdValue ?? null;
+
+    return botPerformanceSeriesSchema.parse({
+      ...series,
+      points: series.points.map((point) => ({
+        ...point,
+        normalizedValue: firstValue && firstValue > 0 ? (point.totalUsdValue / firstValue) * 100 : 100
+      }))
+    });
+  });
+
   return dashboardSchema.parse({
     generatedAt: new Date().toISOString(),
-    bots: botRows.map((row) =>
-      botSummarySchema.parse({
+    bots: botRows.map((row) => {
+      const startedAt = row.startedAt.toISOString();
+      const daysRunning = Math.max(
+        0,
+        (Date.now() - row.startedAt.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      const tradeCount = Number(row.tradeCount ?? 0);
+
+      return botSummarySchema.parse({
         ...row,
+        startedAt,
+        daysRunning,
+        tradeCount,
+        avgTradesPerDay: tradeCount / Math.max(daysRunning, 1),
+        totalFeesUsd: row.totalFeesUsd === null ? null : Number(row.totalFeesUsd),
+        grossPnlUsd: row.grossPnlUsd === null ? null : Number(row.grossPnlUsd),
+        netPnlUsd: row.netPnlUsd === null ? null : Number(row.netPnlUsd),
+        currentPortfolioUsd: row.currentPortfolioUsd === null ? null : Number(row.currentPortfolioUsd),
+        sampleQuality: getSampleQuality(daysRunning, tradeCount),
         updatedAt: row.updatedAt.toISOString()
-      })
-    ),
+      });
+    }),
+    performanceSeries,
     recentRuns: recentRuns.map((row) => ({
       ...row,
       startedAt: row.startedAt.toISOString(),
@@ -473,6 +647,153 @@ export const recentTradeAlerts = async (runId: string) =>
     order by created_at asc
   `;
 
+export const getBotPrePromptContext = async (input: {
+  botId: string;
+  pastTradesLookback: number;
+}) => {
+  const [performance] = await sql<
+    {
+      startedAt: Date;
+      runCount: number;
+      tradeCount: number;
+      totalFeesUsd: number | null;
+      currentPortfolioUsd: number | null;
+      grossPnlUsd: number | null;
+      netPnlUsd: number | null;
+      firstPortfolioUsd: number | null;
+    }[]
+  >`
+    with run_stats as (
+      select bot_id, count(*)::int as "runCount"
+      from runs
+      where bot_id = ${input.botId}
+      group by bot_id
+    ),
+    trade_stats as (
+      select
+        r.bot_id,
+        count(e.id)::int as "tradeCount",
+        coalesce(sum(e.fee_usd), 0)::float8 as "totalFeesUsd"
+      from runs r
+      left join executions e on e.run_id = r.id
+      where r.bot_id = ${input.botId}
+      group by r.bot_id
+    ),
+    first_snapshot as (
+      select distinct on (r.bot_id)
+        r.bot_id,
+        ps.total_usd_value::float8 as "firstPortfolioUsd"
+      from portfolio_snapshots ps
+      join runs r on r.id = ps.run_id
+      where r.bot_id = ${input.botId}
+      order by r.bot_id, ps.created_at asc
+    ),
+    latest_snapshot as (
+      select distinct on (r.bot_id)
+        r.bot_id,
+        ps.total_usd_value::float8 as "currentPortfolioUsd",
+        ps.gross_pnl_usd::float8 as "grossPnlUsd",
+        ps.net_pnl_usd::float8 as "netPnlUsd"
+      from portfolio_snapshots ps
+      join runs r on r.id = ps.run_id
+      where r.bot_id = ${input.botId}
+      order by r.bot_id, ps.created_at desc
+    )
+    select
+      b.created_at as "startedAt",
+      coalesce(run_stats."runCount", 0) as "runCount",
+      coalesce(trade_stats."tradeCount", 0) as "tradeCount",
+      coalesce(trade_stats."totalFeesUsd", 0)::float8 as "totalFeesUsd",
+      latest_snapshot."currentPortfolioUsd",
+      latest_snapshot."grossPnlUsd",
+      latest_snapshot."netPnlUsd",
+      first_snapshot."firstPortfolioUsd"
+    from bots b
+    left join run_stats on run_stats.bot_id = b.id
+    left join trade_stats on trade_stats.bot_id = b.id
+    left join first_snapshot on first_snapshot.bot_id = b.id
+    left join latest_snapshot on latest_snapshot.bot_id = b.id
+    where b.id = ${input.botId}
+    limit 1
+  `;
+
+  const pastTrades = await sql`
+    select
+      e.symbol,
+      e.side,
+      e.order_type as "orderType",
+      e.status,
+      e.executed_quantity as "executedQuantity",
+      e.average_fill_price as "averageFillPrice",
+      e.executed_notional_usd as "executedNotionalUsd",
+      e.fee_usd as "feeUsd",
+      e.created_at as "createdAt"
+    from executions e
+    join runs r on r.id = e.run_id
+    where r.bot_id = ${input.botId}
+    order by e.created_at desc
+    limit ${input.pastTradesLookback}
+  `;
+
+  const rankingRows = await sql`
+    with latest_snapshot as (
+      select distinct on (r.bot_id)
+        r.bot_id,
+        ps.net_pnl_usd::float8 as "netPnlUsd",
+        ps.total_usd_value::float8 as "currentPortfolioUsd"
+      from portfolio_snapshots ps
+      join runs r on r.id = ps.run_id
+      where ps.stage = 'after'
+      order by r.bot_id, ps.created_at desc
+    )
+    select
+      b.id,
+      b.bot_number as "botNumber",
+      b.name,
+      latest_snapshot."netPnlUsd",
+      latest_snapshot."currentPortfolioUsd"
+    from bots b
+    left join latest_snapshot on latest_snapshot.bot_id = b.id
+    order by latest_snapshot."netPnlUsd" desc nulls last, b.bot_number asc
+  `;
+
+  return {
+    performance:
+      performance === undefined
+        ? null
+        : {
+            startedAt: performance.startedAt.toISOString(),
+            daysRunning:
+              (Date.now() - performance.startedAt.getTime()) / (1000 * 60 * 60 * 24),
+            runCount: Number(performance.runCount ?? 0),
+            tradeCount: Number(performance.tradeCount ?? 0),
+            totalFeesUsd: performance.totalFeesUsd === null ? null : Number(performance.totalFeesUsd),
+            currentPortfolioUsd:
+              performance.currentPortfolioUsd === null ? null : Number(performance.currentPortfolioUsd),
+            grossPnlUsd: performance.grossPnlUsd === null ? null : Number(performance.grossPnlUsd),
+            netPnlUsd: performance.netPnlUsd === null ? null : Number(performance.netPnlUsd),
+            firstPortfolioUsd:
+              performance.firstPortfolioUsd === null ? null : Number(performance.firstPortfolioUsd)
+          },
+    pastTrades: pastTrades.map((trade: any) => ({
+      ...trade,
+      createdAt: trade.createdAt.toISOString(),
+      executedQuantity: trade.executedQuantity === null ? null : Number(trade.executedQuantity),
+      averageFillPrice: trade.averageFillPrice === null ? null : Number(trade.averageFillPrice),
+      executedNotionalUsd: trade.executedNotionalUsd === null ? null : Number(trade.executedNotionalUsd),
+      feeUsd: trade.feeUsd === null ? null : Number(trade.feeUsd)
+    })),
+    ranking: rankingRows.map((row: any, index: number) => ({
+      rank: index + 1,
+      botId: row.id,
+      botNumber: row.botNumber,
+      botName: row.name,
+      netPnlUsd: row.netPnlUsd === null ? null : Number(row.netPnlUsd),
+      currentPortfolioUsd: row.currentPortfolioUsd === null ? null : Number(row.currentPortfolioUsd)
+    }))
+  };
+};
+
 export const getBotEnabledState = async (botId: string) => {
   const [row] = await sql<{ enabled: boolean; name: string }[]>`
     select b.name, brc.enabled
@@ -504,6 +825,7 @@ export const listPrompts = async () =>
       p.name,
       p.slug,
       p.created_at as "createdAt",
+      max(pv.created_at) as "latestVersionCreatedAt",
       coalesce(
         json_agg(
           json_build_object(
@@ -517,7 +839,7 @@ export const listPrompts = async () =>
     from prompts p
     left join prompt_versions pv on pv.prompt_id = p.id
     group by p.id, p.name, p.slug, p.created_at
-    order by p.created_at desc
+    order by max(pv.created_at) desc nulls last, p.created_at desc
   `;
 
 export const listModelProfiles = async () =>
@@ -569,11 +891,30 @@ export const createBot = async (input: {
   slug: string;
   promptVersionId: string;
   modelProfileId: string;
+  promptConfig: PrePromptConfig;
+  traderConfig?: TraderConfig;
+  parentBotId?: string | null;
   runtimeConfig: Omit<RuntimeConfig, "enabled">;
 }) => {
   const [bot] = await sql<{ id: string }[]>`
-    insert into bots (name, slug, active_prompt_version_id, active_model_profile_id)
-    values (${input.name}, ${input.slug}, ${input.promptVersionId}, ${input.modelProfileId})
+    insert into bots (
+      name,
+      slug,
+      active_prompt_version_id,
+      active_model_profile_id,
+      parent_bot_id,
+      prompt_config,
+      trader_config
+    )
+    values (
+      ${input.name},
+      ${input.slug},
+      ${input.promptVersionId},
+      ${input.modelProfileId},
+      ${input.parentBotId ?? null},
+      ${sql.json(input.promptConfig)},
+      ${sql.json(input.traderConfig ?? traderConfigSchema.parse({}))}
+    )
     returning id
   `;
 
@@ -605,39 +946,20 @@ export const createBot = async (input: {
 export const updateBotConfig = async (
   botId: string,
   input: {
+    name?: string;
     enabled?: boolean;
-    promptVersionId?: string;
-    modelProfileId?: string;
-    frequencyMinutes?: number;
-    mode?: "testnet" | "live";
-    contextSymbols?: string[];
-    execution?: RuntimeConfig["execution"];
   }
 ) => {
-  if (input.promptVersionId) {
+  if (input.name) {
     await sql`
       update bots
-      set active_prompt_version_id = ${input.promptVersionId},
-          updated_at = now()
-      where id = ${botId}
-    `;
-  }
-
-  if (input.modelProfileId) {
-    await sql`
-      update bots
-      set active_model_profile_id = ${input.modelProfileId},
-          updated_at = now()
+      set name = ${input.name}
       where id = ${botId}
     `;
   }
 
   const runtimeUpdates: Record<string, unknown> = {};
   if (input.enabled !== undefined) runtimeUpdates.enabled = input.enabled;
-  if (input.frequencyMinutes !== undefined) runtimeUpdates.frequency_minutes = input.frequencyMinutes;
-  if (input.mode !== undefined) runtimeUpdates.mode = input.mode;
-  if (input.contextSymbols !== undefined) runtimeUpdates.context_symbols = sql.json(input.contextSymbols);
-  if (input.execution !== undefined) runtimeUpdates.execution_config = sql.json(input.execution);
 
   if (Object.keys(runtimeUpdates).length > 0) {
     await sql`

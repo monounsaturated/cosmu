@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+export const ALL_SYMBOLS_TOKEN = "__ALL__";
 export const executionModeSchema = z.enum(["testnet", "live"]);
 export const venueSchema = z.literal("binance");
 export const assetClassSchema = z.literal("spot");
@@ -8,6 +9,38 @@ export const orderSideSchema = z.enum(["buy", "sell"]);
 export const runStatusSchema = z.enum(["success", "failure", "uncertain", "running"]);
 export const executionStatusSchema = z.enum(["success", "failure", "uncertain"]);
 export const decisionModeSchema = z.enum(["rebalance", "enter", "exit", "hold", "adjust"]);
+export const symbolScopeSchema = z.enum(["selected", "all"]);
+export const prePromptPresetSchema = z.enum(["minimal", "performance", "competitive", "full-context"]);
+export const sampleQualitySchema = z.enum(["low", "medium", "high"]);
+
+export const prePromptModulesSchema = z.object({
+  includeCurrentPositions: z.boolean().default(true),
+  includePastTrades: z.boolean().default(false),
+  pastTradesLookback: z.number().int().min(1).max(200).default(10),
+  includePerformanceStats: z.boolean().default(true),
+  includeBotRanking: z.boolean().default(false),
+  includeWalletOverview: z.boolean().default(true)
+});
+
+export const prePromptConfigSchema = z.object({
+  preset: prePromptPresetSchema.default("minimal"),
+  modules: prePromptModulesSchema.default({
+    includeCurrentPositions: true,
+    includePastTrades: false,
+    pastTradesLookback: 10,
+    includePerformanceStats: true,
+    includeBotRanking: false,
+    includeWalletOverview: true
+  })
+});
+
+export const traderConfigSchema = z.object({
+  mode: z.literal("deterministic").default("deterministic"),
+  modelProfileId: z.string().uuid().nullable().default(null)
+});
+
+export type PrePromptConfig = z.infer<typeof prePromptConfigSchema>;
+export type TraderConfig = z.infer<typeof traderConfigSchema>;
 
 export const runtimeConfigSchema = z.object({
   enabled: z.boolean(),
@@ -15,6 +48,7 @@ export const runtimeConfigSchema = z.object({
   frequencyMinutes: z.enum(["1", "5", "15", "30", "60"]).transform(Number),
   mode: executionModeSchema,
   assetClass: assetClassSchema,
+  symbolScope: symbolScopeSchema.default("selected"),
   execution: z.object({
     allowMarketOrders: z.boolean().default(true),
     allowLimitOrders: z.boolean().default(true),
@@ -22,7 +56,7 @@ export const runtimeConfigSchema = z.object({
     maxNotionalPerOrderUsd: z.number().positive().default(500),
     minCashReserveUsd: z.number().nonnegative().default(50)
   }),
-  contextSymbols: z.array(z.string().min(3).max(20)).max(20).default([])
+  contextSymbols: z.array(z.string().min(3).max(20)).max(200).default([])
 });
 
 export type RuntimeConfig = z.infer<typeof runtimeConfigSchema>;
@@ -162,8 +196,10 @@ export const executionRecordSchema = z.object({
   executedQuantity: z.number().nullable(),
   requestedLimitPrice: z.number().nullable(),
   averageFillPrice: z.number().nullable(),
+  executedNotionalUsd: z.number().nullable().default(null),
   feeAmount: z.number().nullable(),
   feeAsset: z.string().nullable(),
+  feeAssetUsdPrice: z.number().nullable().default(null),
   feeUsd: z.number().nullable(),
   slippagePct: z.number().nullable(),
   orderIntent: orderIntentSchema,
@@ -174,9 +210,11 @@ export type ExecutionRecord = z.infer<typeof executionRecordSchema>;
 
 export const botSummarySchema = z.object({
   id: z.string().uuid(),
+  botNumber: z.number().int().positive(),
   name: z.string(),
   slug: z.string(),
   enabled: z.boolean(),
+  venue: venueSchema,
   frequencyMinutes: z.number(),
   mode: executionModeSchema,
   assetClass: assetClassSchema,
@@ -185,14 +223,38 @@ export const botSummarySchema = z.object({
   lastRunStatus: runStatusSchema.nullable(),
   latestDecisionSummary: z.string().nullable(),
   latestError: z.string().nullable(),
+  startedAt: z.string().datetime(),
+  daysRunning: z.number().nonnegative(),
+  runCount: z.number().int().nonnegative(),
+  tradeCount: z.number().int().nonnegative(),
+  avgTradesPerDay: z.number().nonnegative(),
+  totalFeesUsd: z.number().nullable(),
+  grossPnlUsd: z.number().nullable(),
+  netPnlUsd: z.number().nullable(),
+  currentPortfolioUsd: z.number().nullable(),
+  sampleQuality: sampleQualitySchema,
   updatedAt: z.string().datetime()
 });
 
 export type BotSummary = z.infer<typeof botSummarySchema>;
 
+export const botPerformancePointSchema = z.object({
+  at: z.string().datetime(),
+  totalUsdValue: z.number(),
+  normalizedValue: z.number()
+});
+
+export const botPerformanceSeriesSchema = z.object({
+  botId: z.string().uuid(),
+  botName: z.string(),
+  botNumber: z.number().int().positive(),
+  points: z.array(botPerformancePointSchema)
+});
+
 export const dashboardSchema = z.object({
   generatedAt: z.string().datetime(),
   bots: z.array(botSummarySchema),
+  performanceSeries: z.array(botPerformanceSeriesSchema),
   recentRuns: z.array(
     z.object({
       id: z.string().uuid(),

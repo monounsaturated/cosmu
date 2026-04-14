@@ -1,4 +1,3 @@
-import type { TradingDecision } from "@cosmu/shared";
 import { loadVenueContext, executeOrders } from "../adapters/binance.js";
 import {
   createRun,
@@ -12,36 +11,19 @@ import {
 } from "../lib/store.js";
 import { requestDecision } from "../providers/xai.js";
 import { notifySlack } from "./notifier.js";
+import { buildPromptContext } from "./prompt-context.js";
 import { validateDecision } from "./validator.js";
 
-const buildCompactContext = (bot: BotSetup, venueContext: Awaited<ReturnType<typeof loadVenueContext>>) => ({
-  bot: {
-    id: bot.id,
-    name: bot.name,
-    slug: bot.slug
-  },
-  venue: bot.runtimeConfig.venue,
-  mode: bot.runtimeConfig.mode,
-  assetClass: bot.runtimeConfig.assetClass,
-  promptVersion: bot.promptVersionLabel,
-  modelProfile: bot.modelProfileName,
-  executionConstraints: {
-    maxOrdersPerRun: bot.runtimeConfig.execution.maxOrdersPerRun,
-    maxNotionalPerOrderUsd: bot.runtimeConfig.execution.maxNotionalPerOrderUsd,
-    minCashReserveUsd: bot.runtimeConfig.execution.minCashReserveUsd,
-    allowMarketOrders: bot.runtimeConfig.execution.allowMarketOrders,
-    allowLimitOrders: bot.runtimeConfig.execution.allowLimitOrders
-  },
-  wallet: venueContext.snapshot.balances,
-  prices: venueContext.snapshot.prices
-});
-
-const getDecisionWithRetry = async (bot: BotSetup, compactContext: Record<string, unknown>) => {
+const getDecisionWithRetry = async (
+  bot: BotSetup,
+  systemPrompt: string,
+  compactContext: Record<string, unknown>
+) => {
   let lastError: unknown;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await requestDecision({ bot, compactContext });
+      return await requestDecision({ bot, systemPrompt, compactContext });
     } catch (error) {
       lastError = error;
     }
@@ -77,7 +59,10 @@ export const runBot = async (bot: BotSetup) => {
 
   try {
     const beforeVenueContext = await loadVenueContext(bot.runtimeConfig, bot.runtimeConfig.contextSymbols);
-    const compactContext = buildCompactContext(bot, beforeVenueContext);
+    const { systemPrompt, compactContext } = await buildPromptContext({
+      bot,
+      venueContext: beforeVenueContext
+    });
 
     runId = await createRun({
       botId: bot.id,
@@ -89,7 +74,7 @@ export const runBot = async (bot: BotSetup) => {
 
     await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
 
-    const { rawText, decision } = await getDecisionWithRetry(bot, compactContext);
+    const { rawText, decision } = await getDecisionWithRetry(bot, systemPrompt, compactContext);
     const validationResult = await validateDecision({
       decision,
       runtimeConfig: bot.runtimeConfig,

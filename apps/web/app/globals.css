@@ -97,6 +97,39 @@ a {
   margin-top: 16px;
 }
 
+.chart-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.performance-chart {
+  width: 100%;
+  height: auto;
+  border: 1px solid #223149;
+  border-radius: 12px;
+  background: #0d141d;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #c7d7f5;
+}
+
+.chart-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+}
+
 /* Bot card */
 .bot-card h2 { font-size: 20px; margin: 0 0 2px; }
 
@@ -149,7 +182,9 @@ a {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid transparent;
+  border: 1px solid #223149;
+  background: #132033;
+  color: #ecf2ff;
   transition: background 0.15s, opacity 0.15s;
 }
 
@@ -211,6 +246,10 @@ a {
   overflow-y: auto;
 }
 
+.modal-content-wide {
+  max-width: 860px;
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -246,6 +285,20 @@ a {
   gap: 16px;
 }
 
+.form-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #223149;
+  border-radius: 12px;
+  background: #0d141d;
+}
+
+.form-section h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
 .form-row label {
   display: block;
   font-size: 13px;
@@ -255,7 +308,8 @@ a {
 }
 
 .form-row input,
-.form-row select {
+.form-row select,
+.form-row textarea {
   width: 100%;
   padding: 8px 12px;
   background: #0a0d12;
@@ -267,9 +321,91 @@ a {
 }
 
 .form-row input:focus,
-.form-row select:focus {
+.form-row select:focus,
+.form-row textarea:focus {
   outline: none;
   border-color: #1a6dff;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.segmented-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.segmented-option {
+  border: 1px solid #223149;
+  background: #111823;
+  color: #9db0d8;
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.segmented-option-active {
+  background: #1a6dff;
+  border-color: #1a6dff;
+  color: #fff;
+}
+
+.field-help {
+  margin: 0;
+  color: #7a8eb0;
+  font-size: 12px;
+}
+
+.selected-symbols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.badge-button {
+  cursor: pointer;
+}
+
+.symbol-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 4px;
+}
+
+.symbol-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #223149;
+  background: #111823;
+  font-size: 13px;
+}
+
+.symbol-option input {
+  width: auto;
+}
+
+.checkbox-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ecf2ff;
+  font-size: 14px;
 }
 
 .form-error {

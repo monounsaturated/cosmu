@@ -1,6 +1,7 @@
 import { dashboardSchema } from "@cosmu/shared";
 import { BotControls } from "./bot-controls";
 import { DashboardActions } from "./dashboard-actions";
+import { PerformanceChart } from "./performance-chart";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
@@ -10,6 +11,7 @@ const emptyDashboard = () =>
   dashboardSchema.parse({
     generatedAt: new Date().toISOString(),
     bots: [],
+    performanceSeries: [],
     recentRuns: [],
     recentExecutions: [],
     latestSnapshots: [],
@@ -54,7 +56,7 @@ export default async function HomePage() {
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
           <span className="badge">Updated {new Date(dashboard.generatedAt).toLocaleString()}</span>
-          <DashboardActions hasNoBots={dashboard.bots.length === 0} />
+          <DashboardActions hasNoBots={dashboard.bots.length === 0} botCount={dashboard.bots.length} />
         </div>
       </section>
 
@@ -63,12 +65,12 @@ export default async function HomePage() {
           <article className="panel bot-card" key={bot.id}>
             <div className="bot-header">
               <div>
-                <h2>{bot.name}</h2>
-                <p className="muted">{bot.slug}</p>
+                <h2>#{bot.botNumber} {bot.name}</h2>
               </div>
               <span className={`status-dot ${bot.enabled ? "status-active" : "status-inactive"}`} />
             </div>
             <div className="bot-badges">
+              <span className="badge">{bot.venue === "binance" ? "Binance France" : bot.venue}</span>
               <span className={`badge ${bot.mode === "live" ? "badge-live" : ""}`}>{bot.mode}</span>
               <span className="badge">{bot.frequencyMinutes}m</span>
               <span className="badge">{bot.assetClass}</span>
@@ -76,6 +78,16 @@ export default async function HomePage() {
             <div className="bot-meta">
               <p><span className="label">Prompt</span> {bot.promptVersionLabel}</p>
               <p><span className="label">Model</span> {bot.modelProfileName}</p>
+              <p><span className="label">Running since</span> {new Date(bot.startedAt).toLocaleDateString()}</p>
+              <p><span className="label">Days live</span> {bot.daysRunning.toFixed(1)}</p>
+              <p><span className="label">Runs</span> {bot.runCount}</p>
+              <p><span className="label">Total trades</span> {bot.tradeCount}</p>
+              <p><span className="label">Avg trades/day</span> {bot.avgTradesPerDay.toFixed(2)}</p>
+              <p><span className="label">Portfolio</span> {bot.currentPortfolioUsd !== null ? `$${bot.currentPortfolioUsd.toFixed(2)}` : "—"}</p>
+              <p><span className="label">Gross PnL</span> {bot.grossPnlUsd !== null ? `$${bot.grossPnlUsd.toFixed(2)}` : "—"}</p>
+              <p><span className="label">Net PnL</span> {bot.netPnlUsd !== null ? `$${bot.netPnlUsd.toFixed(2)}` : "—"}</p>
+              <p><span className="label">Fees</span> {bot.totalFeesUsd !== null ? `$${bot.totalFeesUsd.toFixed(2)}` : "—"}</p>
+              <p><span className="label">Credibility</span> {bot.sampleQuality}</p>
               <p><span className="label">Last run</span> {bot.lastRunStatus ?? "never"}</p>
               <p><span className="label">Decision</span> {bot.latestDecisionSummary ?? "—"}</p>
               {bot.latestError && (
@@ -88,6 +100,11 @@ export default async function HomePage() {
       </section>
 
       <section className="stack">
+        <article className="panel">
+          <h3>Performance Comparison</h3>
+          <PerformanceChart series={dashboard.performanceSeries} />
+        </article>
+
         <article className="panel">
           <h3>Recent Runs</h3>
           {dashboard.recentRuns.length === 0 ? (

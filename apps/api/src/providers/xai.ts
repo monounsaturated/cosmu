@@ -10,11 +10,13 @@ const client = new OpenAI({
 
 type DecisionRequest = {
   bot: BotSetup;
+  systemPrompt: string;
   compactContext: Record<string, unknown>;
 };
 
 export const requestDecision = async ({
   bot,
+  systemPrompt,
   compactContext
 }: DecisionRequest): Promise<{ rawText: string; decision: TradingDecision }> => {
   const completion = await client.chat.completions.create({
@@ -24,7 +26,7 @@ export const requestDecision = async ({
     messages: [
       {
         role: "system",
-        content: bot.promptBody
+        content: systemPrompt
       },
       {
         role: "user",

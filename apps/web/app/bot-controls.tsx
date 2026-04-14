@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type BotControlsProps = {
   botId: string;
@@ -11,6 +11,10 @@ export function BotControls({ botId, enabled: initialEnabled }: BotControlsProps
   const [enabled, setEnabled] = useState(initialEnabled);
   const [loading, setLoading] = useState<"toggle" | "run" | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    setEnabled(initialEnabled);
+  }, [initialEnabled]);
 
   const clearFeedback = () => setTimeout(() => setFeedback(null), 4000);
 
