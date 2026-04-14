@@ -19,7 +19,11 @@ type LogicalBalances = {
   assets: Record<string, number>;
 };
 
-const baseAssetFromSymbol = (symbol: string) => symbol.replace(/USDT$/i, "").toUpperCase();
+/** Base asset for *USDT pairs, or null if the symbol does not denote a base (e.g. malformed "USDT"). */
+const baseAssetFromSymbol = (symbol: string) => {
+  const base = symbol.replace(/USDT$/i, "").trim().toUpperCase();
+  return base.length > 0 ? base : null;
+};
 
 const computeLogicalBalances = (
   budgetUsdt: number,
@@ -33,6 +37,9 @@ const computeLogicalBalances = (
     const feeAmount = execution.feeAmount ?? 0;
     const feeAsset = execution.feeAsset?.toUpperCase() ?? null;
     const baseAsset = baseAssetFromSymbol(execution.symbol);
+    if (!baseAsset) {
+      continue;
+    }
 
     if (!(baseAsset in balances.assets)) {
       balances.assets[baseAsset] = 0;
@@ -60,7 +67,7 @@ const computeLogicalBalances = (
 
 const getHeldSymbols = (logical: LogicalBalances) =>
   Object.entries(logical.assets)
-    .filter(([, qty]) => Math.abs(qty) > 1e-8)
+    .filter(([asset, qty]) => asset.length > 0 && Math.abs(qty) > 1e-8)
     .map(([asset]) => `${asset}USDT`);
 
 const buildLogicalSnapshot = (input: {
@@ -162,8 +169,10 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
     await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
 
     for (const balance of beforeVenueRaw.snapshot.balances) {
-      const asset = balance.asset.toUpperCase();
-      if (asset === "USDT") {
+      const asset = String(balance.asset ?? "")
+        .trim()
+        .toUpperCase();
+      if (!asset || asset === "USDT") {
         continue;
       }
 
@@ -177,9 +186,16 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
 
     const refreshedVenue = await loadVenueContext(bot.runtimeConfig, bot.runtimeConfig.contextSymbols);
     const sellOrders = refreshedVenue.snapshot.balances
-      .filter((balance) => balance.asset.toUpperCase() !== "USDT" && Number(balance.free) > 1e-8)
+      .filter((balance) => {
+        const a = String(balance.asset ?? "")
+          .trim()
+          .toUpperCase();
+        return a.length > 0 && a !== "USDT" && Number(balance.free) > 1e-8;
+      })
       .map((balance) => ({
-        symbol: `${balance.asset.toUpperCase()}USDT`,
+        symbol: `${String(balance.asset)
+          .trim()
+          .toUpperCase()}USDT`,
         side: "sell" as const,
         type: "market" as const,
         quantity: Number(balance.free),

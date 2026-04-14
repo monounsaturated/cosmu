@@ -101,7 +101,10 @@ type LogicalBalances = {
   assets: Record<string, number>;
 };
 
-const baseAssetFromSymbol = (symbol: string) => symbol.replace(/USDT$/i, "").toUpperCase();
+const baseAssetFromSymbol = (symbol: string) => {
+  const base = symbol.replace(/USDT$/i, "").trim().toUpperCase();
+  return base.length > 0 ? base : null;
+};
 
 const computeLogicalBalances = (
   budgetUsdt: number,
@@ -115,6 +118,9 @@ const computeLogicalBalances = (
     const feeAmount = execution.feeAmount ?? 0;
     const feeAsset = execution.feeAsset?.toUpperCase() ?? null;
     const baseAsset = baseAssetFromSymbol(execution.symbol);
+    if (!baseAsset) {
+      continue;
+    }
 
     if (!(baseAsset in balances.assets)) {
       balances.assets[baseAsset] = 0;
@@ -142,7 +148,7 @@ const computeLogicalBalances = (
 
 const getHeldSymbols = (logical: LogicalBalances) =>
   Object.entries(logical.assets)
-    .filter(([, qty]) => Math.abs(qty) > 1e-8)
+    .filter(([asset, qty]) => asset.length > 0 && Math.abs(qty) > 1e-8)
     .map(([asset]) => `${asset}USDT`);
 
 const buildLogicalSnapshot = (input: {

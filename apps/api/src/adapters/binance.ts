@@ -217,6 +217,16 @@ export const cancelAllOpenOrdersForSymbol = async (
 
   if (!response.ok) {
     const text = await response.text();
+    let code: number | undefined;
+    try {
+      code = JSON.parse(text)?.code;
+    } catch {
+      // ignore
+    }
+    // Invalid symbol — nothing to cancel; avoid failing kill when pair is malformed.
+    if (response.status === 400 && code === -1121) {
+      return [];
+    }
     throw new Error(`Binance cancel open orders failed for ${symbol}: ${response.status} ${text}`);
   }
 
@@ -247,9 +257,13 @@ export const loadVenueContext = async (
   contextSymbols: string[]
 ): Promise<VenueContext> => {
   const rawAccountResponse = await getAccount(runtimeConfig.mode);
-  const balances = (rawAccountResponse.balances ?? []).filter(
-    (balance: any) => Number(balance.free) > 0 || Number(balance.locked) > 0
-  );
+  const balances = (rawAccountResponse.balances ?? []).filter((balance: any) => {
+    const asset = String(balance.asset ?? "").trim();
+    if (!asset) {
+      return false;
+    }
+    return Number(balance.free) > 0 || Number(balance.locked) > 0;
+  });
 
   const balanceSymbols = balances
     .map((balance: any) => normalizeSymbol(`${balance.asset}USDT`))
