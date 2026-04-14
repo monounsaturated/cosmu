@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LocalTime } from "../local-time";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 export const dynamic = "force-dynamic";
@@ -63,7 +64,7 @@ export default async function PromptsPage() {
                   </p>
                 </div>
                 <span className="badge badge-neutral">
-                  Saved {new Date(prompt.createdAt).toLocaleDateString()}
+                  Saved <LocalTime value={prompt.createdAt} mode="date" />
                 </span>
               </div>
 

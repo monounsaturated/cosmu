@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { LocalTime } from "./local-time";
 
 type RunRow = {
   id: string;
@@ -70,7 +71,7 @@ export function RecentRunsTable({ runs }: { runs: RunRow[] }) {
             >
               <td>{run.botName}</td>
               <td><span className={`badge badge-${run.status}`}>{run.status}</span></td>
-              <td>{new Date(run.startedAt).toLocaleString()}</td>
+              <td><LocalTime value={run.startedAt} /></td>
               <td>{run.decisionMode ?? "-"}</td>
               <td className="run-summary-cell">{run.rationaleSummary ?? "-"}</td>
               <td className="run-expand-icon">{expandedId === run.id ? "▾" : "▸"}</td>

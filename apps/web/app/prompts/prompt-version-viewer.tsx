@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { LocalTime } from "../local-time";
 
 interface Props {
   promptId: string;
@@ -57,7 +58,7 @@ export function PromptVersionViewer({ promptId, versionId, versionNumber, create
       >
         <span>
           <span style={{ fontWeight: 600, marginRight: "8px" }}>v{versionNumber}</span>
-          <span className="muted">{new Date(createdAt).toLocaleString()}</span>
+          <span className="muted"><LocalTime value={createdAt} /></span>
         </span>
         <span style={{ color: "#71717a", fontSize: "12px" }}>
           {loading ? "Loading…" : expanded ? "▼" : "▶"}

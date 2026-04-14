@@ -41,6 +41,11 @@ type ResponseStrategy = {
   format?: Record<string, unknown>;
 };
 
+type TemperatureStrategy = {
+  label: string;
+  includeTemperature: boolean;
+};
+
 const STRATEGIES: ResponseStrategy[] = [
   {
     label: "json_schema",
@@ -62,50 +67,66 @@ const STRATEGIES: ResponseStrategy[] = [
   }
 ];
 
+const TEMPERATURE_STRATEGIES: TemperatureStrategy[] = [
+  { label: "with_temperature", includeTemperature: true },
+  { label: "without_temperature", includeTemperature: false }
+];
+
 export const requestDecision = async ({
   bot,
   systemPrompt,
   userMessage
 }: DecisionRequest): Promise<{ rawText: string; decision: TradingDecision }> => {
   let lastError: unknown;
+  const configuredTemperature =
+    typeof bot.modelSettings.temperature === "number" ? bot.modelSettings.temperature : undefined;
 
   for (const strategy of STRATEGIES) {
-    try {
-      const completion = await client.chat.completions.create({
-        model: bot.modelIdentifier,
-        temperature:
-          typeof bot.modelSettings.temperature === "number"
-            ? bot.modelSettings.temperature
-            : undefined,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage }
-        ],
-        ...(strategy.format ? { response_format: strategy.format } : {})
-      } as Parameters<typeof client.chat.completions.create>[0]);
-
-      const rawText = completion.choices[0]?.message?.content;
-      if (!rawText) {
-        throw new Error(`xAI returned no content (strategy: ${strategy.label})`);
-      }
-
-      const jsonText = extractJson(rawText);
-      let decision: TradingDecision;
+    for (const tempStrategy of TEMPERATURE_STRATEGIES) {
       try {
-        decision = tradingDecisionSchema.parse(JSON.parse(jsonText));
-      } catch (parseError) {
-        throw new DecisionParseError(
-          `xAI returned invalid JSON decision (strategy: ${strategy.label})`,
-          rawText,
-          { cause: parseError }
+        const completion = await client.chat.completions.create({
+          model: bot.modelIdentifier,
+          ...(tempStrategy.includeTemperature && configuredTemperature !== undefined
+            ? { temperature: configuredTemperature }
+            : {}),
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage }
+          ],
+          ...(strategy.format ? { response_format: strategy.format } : {})
+        } as Parameters<typeof client.chat.completions.create>[0]);
+
+        if (!("choices" in completion)) {
+          throw new Error("xAI returned a stream response unexpectedly");
+        }
+
+        const rawText = completion.choices[0]?.message?.content;
+        if (!rawText) {
+          throw new Error(
+            `xAI returned no content (strategy: ${strategy.label}, temperature: ${tempStrategy.label})`
+          );
+        }
+
+        const jsonText = extractJson(rawText);
+        let decision: TradingDecision;
+        try {
+          decision = tradingDecisionSchema.parse(JSON.parse(jsonText));
+        } catch (parseError) {
+          throw new DecisionParseError(
+            `xAI returned invalid JSON decision (strategy: ${strategy.label}, temperature: ${tempStrategy.label})`,
+            rawText,
+            { cause: parseError }
+          );
+        }
+
+        return { rawText, decision };
+      } catch (error) {
+        lastError = error;
+        if (error instanceof DecisionParseError) throw error;
+        console.warn(
+          `Decision strategy "${strategy.label}" (${tempStrategy.label}) failed: ${String(error)}`
         );
       }
-
-      return { rawText, decision };
-    } catch (error) {
-      lastError = error;
-      if (error instanceof DecisionParseError) throw error;
-      console.warn(`Decision strategy "${strategy.label}" failed: ${String(error)}`);
     }
   }
 

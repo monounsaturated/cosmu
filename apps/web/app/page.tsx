@@ -4,6 +4,7 @@ import { PerformanceChart } from "./performance-chart";
 import { RecentRunsTable } from "./run-detail-row";
 import { BotTable } from "./bot-table";
 import { AutoRefresh } from "./live-refresh";
+import { LocalTime } from "./local-time";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
@@ -59,7 +60,7 @@ export default async function HomePage() {
           <p>One bot, one real loop, clear decision and execution traceability.</p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
-          <span className="badge">Updated {new Date(dashboard.generatedAt).toLocaleString()}</span>
+          <span className="badge">Updated <LocalTime value={dashboard.generatedAt} /></span>
           <DashboardActions hasNoBots={dashboard.bots.length === 0} />
         </div>
       </section>
@@ -221,7 +222,7 @@ export default async function HomePage() {
                 {dashboard.promptVersions.map((promptVersion) => (
                   <tr key={`${promptVersion.promptName}-${promptVersion.version}`}>
                     <td>{promptVersion.label}</td>
-                    <td>{new Date(promptVersion.createdAt).toLocaleString()}</td>
+                    <td><LocalTime value={promptVersion.createdAt} /></td>
                   </tr>
                 ))}
               </tbody>

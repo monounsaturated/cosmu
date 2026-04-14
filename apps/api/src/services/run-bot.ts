@@ -258,6 +258,18 @@ export const runBot = async (bot: BotSetup) => {
     if (runId) {
       if (error instanceof DecisionParseError) {
         await storeRawModelOutput(runId, error.rawText);
+      } else {
+        await storeRawModelOutput(
+          runId,
+          JSON.stringify(
+            {
+              providerError: errorMessage,
+              at: new Date().toISOString()
+            },
+            null,
+            2
+          )
+        );
       }
       await finishRun({
         runId,

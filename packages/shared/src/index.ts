@@ -24,6 +24,7 @@ export const prePromptModulesSchema = z.object({
 export const prePromptConfigSchema = z
   .object({
     preset: z.string().optional(),
+    operatorPrompt: z.string().max(4000).optional().default(""),
     modules: prePromptModulesSchema.default({
       includeCurrentPositions: true,
       includePastTrades: false,
@@ -33,7 +34,10 @@ export const prePromptConfigSchema = z
       includeWalletOverview: true
     })
   })
-  .transform((val) => ({ modules: val.modules }));
+  .transform((val) => ({
+    modules: val.modules,
+    operatorPrompt: val.operatorPrompt?.trim() ?? ""
+  }));
 
 export const traderConfigSchema = z.object({
   mode: z.literal("deterministic").default("deterministic"),

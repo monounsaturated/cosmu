@@ -908,3 +908,106 @@ a {
 .mb-4 { margin-bottom: 16px; }
 .clickable { cursor: pointer; transition: opacity 0.2s; }
 .clickable:hover { opacity: 0.8; }
+
+@media (max-width: 900px) {
+  .app-shell {
+    display: block;
+    min-height: 100dvh;
+  }
+
+  .sidebar,
+  .sidebar-collapsed {
+    width: 100%;
+    min-height: auto;
+    height: auto;
+    position: sticky;
+    top: 0;
+    border-right: none;
+    border-bottom: 1px solid #27272a;
+  }
+
+  .sidebar-toggle {
+    display: none;
+  }
+
+  .sidebar-header {
+    padding: 10px 12px;
+    min-height: 0;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 10px 8px;
+  }
+
+  .sidebar-link {
+    flex: 0 0 auto;
+  }
+
+  .page {
+    padding: 18px 12px 28px;
+  }
+
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hero h1 {
+    font-size: 28px;
+  }
+
+  .panel {
+    padding: 14px;
+  }
+
+  .table th,
+  .table td {
+    padding: 10px 8px;
+  }
+
+  .table {
+    font-size: 12px;
+  }
+
+  .bot-controls-buttons {
+    flex-wrap: wrap;
+  }
+
+  .bot-controls-buttons .btn {
+    flex: 1 1 140px;
+  }
+
+  .modal-content {
+    width: 96%;
+    max-height: 95dvh;
+    padding: 16px;
+  }
+
+  .modal-content-wide {
+    max-width: 96vw;
+  }
+
+  .form-grid,
+  .modules-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero h1 {
+    font-size: 24px;
+  }
+
+  .btn {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .run-detail-pre {
+    font-size: 11px;
+    padding: 10px 12px;
+  }
+}

@@ -54,6 +54,7 @@ type BotSetup = {
   promptVersionId: string;
   modelProfileId: string;
   promptConfig: {
+    operatorPrompt?: string;
     modules: {
       includeCurrentPositions: boolean;
       includePastTrades: boolean;
@@ -127,6 +128,7 @@ const buildDefaultState = () => {
       minCashReserveUsd: 25
     },
     promptConfig: {
+      operatorPrompt: "",
       modules: {
         includeCurrentPositions: true,
         includePastTrades: false,
@@ -160,6 +162,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   const [showBodyEditor, setShowBodyEditor] = useState(false);
   const [editedBody, setEditedBody] = useState("");
   const [savingVersion, setSavingVersion] = useState(false);
+  const [showOperatorPromptEditor, setShowOperatorPromptEditor] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [venueBalance, setVenueBalance] = useState<{ totalFreeUsdt: number; allocatedUsdt: number; availableUsdt: number } | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
@@ -376,7 +379,10 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
           newPromptName: "",
           newPromptBody: DEFAULT_PROMPT_BODY,
           modelProfileId: setup.modelProfileId,
-          promptConfig: setup.promptConfig,
+          promptConfig: {
+            ...setup.promptConfig,
+            operatorPrompt: setup.promptConfig?.operatorPrompt ?? ""
+          },
           venue: mergedVenue,
           frequencyMinutes: String(setup.runtimeConfig.frequencyMinutes),
           budgetUsdt: setup.runtimeConfig.budgetUsdt ?? 100,
@@ -786,6 +792,57 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
                   )}
                 </>
               )}
+
+              <div className="prompt-body-panel">
+                <div className="prompt-body-header">
+                  <span className="field-help">Secondary Operator Prompt (advanced)</span>
+                  {!showOperatorPromptEditor && (
+                    <button
+                      type="button"
+                      className="btn btn-xs"
+                      onClick={() => setShowOperatorPromptEditor(true)}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+                {showOperatorPromptEditor ? (
+                  <div style={{ padding: "12px 14px" }}>
+                    <p className="field-help" style={{ marginBottom: "8px" }}>
+                      Rarely edited. This prompt is appended after the strategy prompt and before hard constraints.
+                    </p>
+                    <textarea
+                      className="prompt-body-textarea"
+                      value={formData.promptConfig.operatorPrompt ?? ""}
+                      onChange={(e) =>
+                        setFormData((current) => ({
+                          ...current,
+                          promptConfig: {
+                            ...current.promptConfig,
+                            operatorPrompt: e.target.value
+                          }
+                        }))
+                      }
+                      rows={8}
+                    />
+                    <div className="prompt-body-actions" style={{ padding: "10px 0 0", borderTop: "none" }}>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => setShowOperatorPromptEditor(false)}
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <pre className="prompt-body-preview">
+                    {(formData.promptConfig.operatorPrompt ?? "").trim()
+                      ? "Configured (hidden by default). Click Edit to view."
+                      : "Not configured. Click Edit if you want an advanced secondary prompt."}
+                  </pre>
+                )}
+              </div>
             </div>
 
             {/* ── Model & Runtime ── */}

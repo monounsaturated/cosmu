@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PerformanceChart } from "../../performance-chart";
 import { BotControls } from "../../bot-controls";
 import { AutoRefresh } from "../../live-refresh";
+import { LocalTime } from "../../local-time";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 export const dynamic = "force-dynamic";
@@ -246,7 +247,7 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
               <tbody>
                 {details.pastTrades.map((trade: any) => (
                   <tr key={`${trade.createdAt}-${trade.symbol}`}>
-                    <td>{new Date(trade.createdAt).toLocaleString()}</td>
+                    <td><LocalTime value={trade.createdAt} /></td>
                     <td>{trade.symbol}</td>
                     <td><span className={`badge badge-${trade.side}`}>{trade.side}</span></td>
                     <td>{trade.orderType}</td>
@@ -278,7 +279,7 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
               {runs.map((run: any) => (
                 <details key={run.id} className="run-detail-pre" style={{ background: "#18181b", padding: "16px", borderRadius: "8px" }}>
                   <summary style={{ cursor: "pointer", fontWeight: "bold" }}>
-                    {new Date(run.startedAt).toLocaleString()} - <span className={`badge badge-${run.status}`}>{run.status}</span>
+                    <LocalTime value={run.startedAt} /> - <span className={`badge badge-${run.status}`}>{run.status}</span>
                   </summary>
                   
                   <div style={{ marginTop: "16px" }}>

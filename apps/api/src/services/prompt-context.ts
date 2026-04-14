@@ -15,6 +15,7 @@ type BuildPromptContextInput = {
 export const buildPromptContext = async ({ bot, venueContext }: BuildPromptContextInput) => {
   const { runtimeConfig, promptConfig } = bot;
   const modules = promptConfig.modules;
+  const operatorPrompt = promptConfig.operatorPrompt?.trim();
   const exec = runtimeConfig.execution;
   const { snapshot } = venueContext;
 
@@ -26,6 +27,7 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   // ── System message: user strategy + hard constraints ───────────────────────
   const systemPrompt = [
     bot.promptBody.trim(),
+    operatorPrompt ? ["---", "SECONDARY OPERATOR PROMPT", operatorPrompt].join("\n") : "",
     [
       "---",
       "NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):",
@@ -94,18 +96,9 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   }
 
   // — Available trading pairs —
-  const availableSymbols = Object.keys(venueContext.symbolRules).sort();
   if (runtimeConfig.symbolScope === "selected" && runtimeConfig.contextSymbols.length > 0) {
     sections.push(
       ["=== AUTHORIZED PAIRS — trade ONLY these ===", runtimeConfig.contextSymbols.join(", ")].join("\n")
-    );
-  } else if (availableSymbols.length > 0) {
-    sections.push(
-      [
-        "=== AVAILABLE PAIRS (venue) ===",
-        "Only trade symbols from this list. Others will be rejected.",
-        availableSymbols.join(", ")
-      ].join("\n")
     );
   }
 

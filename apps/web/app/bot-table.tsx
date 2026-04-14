@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DashboardPayload } from "@cosmu/shared";
 import { BotControls } from "./bot-controls";
+import { LocalTime } from "./local-time";
 
 type SortField = "botNumber" | "startedAt" | "netPnlUsd" | "tradeCount" | "currentPortfolioUsd" | "netReturnPct";
 type SortOrder = "asc" | "desc";
@@ -98,7 +99,7 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
                 {bot.enabled ? "Active" : "Killed"}
               </td>
               <td>{venueLabel(bot.venue)}</td>
-              <td>{new Date(bot.startedAt).toLocaleDateString()}</td>
+              <td><LocalTime value={bot.startedAt} mode="date" /></td>
               <td>
                 <div style={{ fontSize: "12px", lineHeight: 1.35 }}>
                   <span className="badge badge-neutral">{bot.promptVersionLabel}</span>
