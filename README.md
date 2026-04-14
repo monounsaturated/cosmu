@@ -47,6 +47,20 @@ Lean V1 autonomous trading loop built from `SYSTEM.md`.
 - `BINANCE_API_KEY`: Binance Spot API key
 - `BINANCE_API_SECRET`: Binance Spot API secret
 - `SLACK_WEBHOOK_URL`: optional Slack webhook
+- `API_SECRET_KEY`: shared secret between the Next.js BFF routes and this API (header `x-api-key`)
+
+### CORS (API ↔ dashboard on Vercel)
+
+You do **not** need to update `WEB_BASE_URL` for every Vercel preview deployment. By default, the API allows browser `Origin` values on `https://*.vercel.app`, plus `http://localhost` / `127.0.0.1` for local dev.
+
+- `WEB_BASE_URL` (optional): single extra origin (e.g. your stable production URL).
+- `CORS_EXTRA_ORIGINS` (optional): comma-separated list of full origins, e.g. `https://app.example.com,https://other.com`.
+- `CORS_ALLOW_VERCEL_PREVIEWS`: set to `false` only if you want to turn off automatic `*.vercel.app` allowance.
+- `CORS_ALLOW_ANY_ORIGIN=true`: restores permissive CORS (equivalent to the old “no `WEB_BASE_URL`” behavior); avoid on public deployments.
+
+### Postman vs Vercel “authentication”
+
+If Postman gets an auth / HTML challenge from `*.vercel.app`, that is usually **Vercel Deployment Protection** (or similar), not CORS. The browser session on the real dashboard can pass; Postman does not. Either test from the deployed UI, temporarily disable deployment protection for previews, or use a Vercel bypass token as Vercel documents for that feature.
 
 ## Notes
 

@@ -16,21 +16,15 @@ import {
   toggleBotEnabled,
   updateBotConfig
 } from "./lib/store.js";
+import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
 import { bootstrapModelProfiles, getVenueSymbols, syncProviderModels } from "./services/catalog.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
 
 const app = express();
 
-app.use(
-  cors(
-    env.WEB_BASE_URL
-      ? {
-          origin: env.WEB_BASE_URL
-        }
-      : undefined
-  )
-);
+const corsOptions = buildCorsOptions();
+app.use(corsOptions ? cors(corsOptions) : cors());
 app.use(express.json());
 
 app.use((request, response, next) => {
@@ -87,6 +81,8 @@ app.get("/internal/diagnostics", async (_request, response) => {
     result.binanceApi = binRes.ok ? `ok (${binRes.status})` : `error (${binRes.status})`;
   } catch (e) { result.binanceApi = `unreachable: ${String(e)}`; }
 
+  result.cors = corsDiagnostics();
+
   response.json(result);
 });
 
@@ -95,8 +91,12 @@ app.get("/internal/qa/status", async (_request, response) => {
     ok: true,
     runtime: {
       port: env.API_PORT,
-      corsOriginMode: env.WEB_BASE_URL ? "strict" : "open"
+      corsOriginMode:
+        env.CORS_ALLOW_ANY_ORIGIN === "true"
+          ? "any"
+          : "whitelist"
     },
+    cors: corsDiagnostics(),
     envReadiness: {
       database: Boolean(env.DATABASE_URL),
       apiSecretConfigured: env.API_SECRET_KEY.length >= 32,
