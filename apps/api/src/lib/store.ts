@@ -1353,6 +1353,35 @@ export const getAllPreprompts = async () => ({
   "binance-testnet": await getPrepromptForVenue("binance-testnet")
 });
 
+const formatterSettingKey = (venue: RuntimeConfig["venue"]) => `formatter_${venue}`;
+
+export const getFormatterPromptForVenue = async (venue: RuntimeConfig["venue"]) => {
+  try {
+    const [row] = await sql<{ value: string }[]>`
+      select value from app_settings where key = ${formatterSettingKey(venue)} limit 1
+    `;
+    return row?.value ?? "";
+  } catch (error) {
+    console.warn("getFormatterPromptForVenue failed (run sql/006_app_settings.sql if missing):", String(error));
+    return "";
+  }
+};
+
+export const setFormatterPromptForVenue = async (venue: RuntimeConfig["venue"], text: string) => {
+  await sql`
+    insert into app_settings (key, value, updated_at)
+    values (${formatterSettingKey(venue)}, ${text}, now())
+    on conflict (key) do update set
+      value = excluded.value,
+      updated_at = now()
+  `;
+};
+
+export const getAllFormatterPrompts = async () => ({
+  binance: await getFormatterPromptForVenue("binance"),
+  "binance-testnet": await getFormatterPromptForVenue("binance-testnet")
+});
+
 export const updateBotConfig = async (
   botId: string,
   input: {

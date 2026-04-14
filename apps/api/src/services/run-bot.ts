@@ -11,11 +11,11 @@ import {
   storePortfolioSnapshot,
   type BotSetup
 } from "../lib/store.js";
-import { DecisionParseError, requestDecision } from "../providers/xai.js";
+import { DecisionParseError, ResearchParseError, requestDecision, requestResearchPhase } from "../providers/xai.js";
 import { notifySlack } from "./notifier.js";
-import { buildPromptContext } from "./prompt-context.js";
+import { buildFormatterPhaseContext, buildResearchPhaseContext } from "./prompt-context.js";
 import { validateDecision } from "./validator.js";
-import { portfolioSnapshotSchema, type RuntimeConfig } from "@cosmu/shared";
+import { ALL_SYMBOLS_TOKEN, portfolioSnapshotSchema, type RuntimeConfig } from "@cosmu/shared";
 
 const getDecisionWithRetry = async (
   bot: BotSetup,
@@ -33,6 +33,42 @@ const getDecisionWithRetry = async (
   }
 
   throw lastError instanceof Error ? lastError : new Error("Decision request failed");
+};
+
+const getResearchWithRetry = async (bot: BotSetup, systemPrompt: string, userMessage: string) => {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await requestResearchPhase({ bot, systemPrompt, userMessage });
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Research request failed");
+};
+
+const normalizePricingSymbol = (value: string) => value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+
+const symbolsForPricing = (
+  runtime: RuntimeConfig,
+  held: string[],
+  researchCandidates: string[]
+): string[] => {
+  const set = new Set<string>();
+  for (const h of held) {
+    const n = normalizePricingSymbol(h);
+    if (n && n !== "USDTUSDT") set.add(n);
+  }
+  for (const c of researchCandidates) {
+    const n = normalizePricingSymbol(c);
+    if (n && n.endsWith("USDT") && n.length >= 8 && n !== "USDTUSDT") set.add(n);
+  }
+  for (const s of runtime.contextSymbols) {
+    if (s === ALL_SYMBOLS_TOKEN) continue;
+    const n = normalizePricingSymbol(s);
+    if (n && n !== "USDTUSDT") set.add(n);
+  }
+  return Array.from(set);
 };
 
 const summarizeTrades = async (runId: string) => {
@@ -151,10 +187,11 @@ export const runBot = async (bot: BotSetup) => {
   try {
     const beforeLedger = await listBotExecutionLedger(bot.id);
     const beforeLogical = computeLogicalBalances(bot.runtimeConfig.budgetUsdt, beforeLedger);
-    const beforeVenueRaw = await loadVenueContext(bot.runtimeConfig, [
-      ...bot.runtimeConfig.contextSymbols,
-      ...getHeldSymbols(beforeLogical)
-    ]);
+    const initialSymbols = symbolsForPricing(bot.runtimeConfig, getHeldSymbols(beforeLogical), []);
+    const beforeVenueRaw = await loadVenueContext(
+      bot.runtimeConfig,
+      initialSymbols.length > 0 ? initialSymbols : [...bot.runtimeConfig.contextSymbols, ...getHeldSymbols(beforeLogical)]
+    );
     const beforeVenueContext = {
       ...beforeVenueRaw,
       snapshot: buildLogicalSnapshot({
@@ -163,10 +200,65 @@ export const runBot = async (bot: BotSetup) => {
         priceMap: beforeVenueRaw.priceMap
       })
     };
-    const { systemPrompt, userMessage, compactContext } = await buildPromptContext({
+
+    const researchCtx = await buildResearchPhaseContext({
       bot,
       venueContext: beforeVenueContext
     });
+
+    const { rawText: researchRaw, research } = await getResearchWithRetry(
+      bot,
+      researchCtx.systemPrompt,
+      researchCtx.userMessage
+    );
+
+    const pricingSymbols = symbolsForPricing(bot.runtimeConfig, getHeldSymbols(beforeLogical), research.candidateSymbols);
+    const pricedVenueRaw = await loadVenueContext(
+      bot.runtimeConfig,
+      pricingSymbols.length > 0
+        ? pricingSymbols
+        : [...bot.runtimeConfig.contextSymbols, ...getHeldSymbols(beforeLogical)]
+    );
+    const decisionVenueContext = {
+      ...pricedVenueRaw,
+      snapshot: buildLogicalSnapshot({
+        runtimeConfig: bot.runtimeConfig,
+        logical: beforeLogical,
+        priceMap: pricedVenueRaw.priceMap
+      })
+    };
+
+    const priceSymbolFilter = new Set(pricingSymbols.map(normalizePricingSymbol));
+
+    const formatterCtx = await buildFormatterPhaseContext({
+      bot,
+      venueContext: decisionVenueContext,
+      research,
+      priceSymbolFilter
+    });
+
+    const compactContext = {
+      ...researchCtx.compactContext,
+      formatter: formatterCtx.compactContext,
+      researchRationale: research.rationaleSummary,
+      researchCandidateSymbols: research.candidateSymbols
+    };
+
+    const promptSystem = [
+      "=== PHASE 1 — RESEARCH (system) ===",
+      researchCtx.systemPrompt,
+      "",
+      "=== PHASE 2 — FORMATTER (system) ===",
+      formatterCtx.systemPrompt
+    ].join("\n");
+
+    const promptUser = [
+      "=== PHASE 1 — RESEARCH (user context) ===",
+      researchCtx.userMessage,
+      "",
+      "=== PHASE 2 — FORMATTER (user context) ===",
+      formatterCtx.userMessage
+    ].join("\n");
 
     runId = await createRun({
       botId: bot.id,
@@ -174,23 +266,37 @@ export const runBot = async (bot: BotSetup) => {
       modelProfileId: bot.modelProfileId,
       runtimeConfig: bot.runtimeConfig,
       compactContext,
-      promptSystem: systemPrompt,
-      promptUser: userMessage
+      promptSystem,
+      promptUser
     });
 
     await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
 
-    const { rawText, decision } = await getDecisionWithRetry(bot, systemPrompt, userMessage);
-    await storeRawModelOutput(runId, rawText);
+    const { rawText: decisionRaw, decision } = await getDecisionWithRetry(
+      bot,
+      formatterCtx.systemPrompt,
+      formatterCtx.userMessage
+    );
+    await storeRawModelOutput(
+      runId,
+      JSON.stringify(
+        {
+          phase1Research: researchRaw,
+          phase2Decision: decisionRaw
+        },
+        null,
+        2
+      )
+    );
     const validationResult = await validateDecision({
       decision,
       runtimeConfig: bot.runtimeConfig,
-      venueContext: beforeVenueContext
+      venueContext: decisionVenueContext
     });
 
     await storeDecision({
       runId,
-      rawModelOutput: rawText,
+      rawModelOutput: decisionRaw,
       decision,
       validationResult
     });
@@ -210,7 +316,7 @@ export const runBot = async (bot: BotSetup) => {
       runId,
       runtimeConfig: bot.runtimeConfig,
       orders: validationResult.normalizedOrders,
-      venueContext: beforeVenueContext
+      venueContext: decisionVenueContext
     });
 
     await storeExecutionRecords(runId, executions);
@@ -256,7 +362,7 @@ export const runBot = async (bot: BotSetup) => {
     const errorMessage = error instanceof Error ? error.message : "Unknown run error";
 
     if (runId) {
-      if (error instanceof DecisionParseError) {
+      if (error instanceof DecisionParseError || error instanceof ResearchParseError) {
         await storeRawModelOutput(runId, error.rawText);
       } else {
         await storeRawModelOutput(

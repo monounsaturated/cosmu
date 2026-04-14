@@ -107,6 +107,30 @@ export const orderIntentSchema = z.object({
 
 export type OrderIntent = z.infer<typeof orderIntentSchema>;
 
+/** Phase 1: analyst / research output (not executable orders). */
+export const researchPhaseSchema = z.object({
+  rationaleSummary: z.string().min(1).max(600),
+  globalResearch: z.string().min(1).max(8000),
+  candidateSymbols: z.array(z.string().min(6).max(24)).max(20).default([])
+});
+
+export type ResearchPhase = z.infer<typeof researchPhaseSchema>;
+
+export const researchPhaseJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    rationaleSummary: { type: "string" },
+    globalResearch: { type: "string" },
+    candidateSymbols: {
+      type: "array",
+      items: { type: "string", minLength: 6, maxLength: 24 },
+      maxItems: 20
+    }
+  },
+  required: ["rationaleSummary", "globalResearch", "candidateSymbols"]
+} as const;
+
 export const tradingDecisionSchema = z.object({
   mode: decisionModeSchema,
   rationaleSummary: z.string().min(1).max(600),

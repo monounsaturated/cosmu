@@ -15,6 +15,8 @@ import {
   listPrompts,
   updateBotConfig,
   getAllPreprompts,
+  getAllFormatterPrompts,
+  setFormatterPromptForVenue,
   setPrepromptForVenue
 } from "./lib/store.js";
 import { getDashboard } from "./services/dashboard.js";
@@ -149,6 +151,41 @@ app.put("/settings/preprompt", async (request, response, next) => {
     await setPrepromptForVenue("binance", o.binance);
     await setPrepromptForVenue("binance-testnet", o["binance-testnet"]);
     response.json({ ok: true, preprompts: await getAllPreprompts() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/settings/formatter-prompt", async (_request, response, next) => {
+  try {
+    response.json({ formatterPrompts: await getAllFormatterPrompts() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/settings/formatter-prompt", async (request, response, next) => {
+  try {
+    const body = request.body as { formatterPrompts?: unknown };
+    const raw = body?.formatterPrompts;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      response.status(400).json({ error: "formatterPrompts object required" });
+      return;
+    }
+    const o = raw as Record<string, unknown>;
+    if (typeof o.binance !== "string" || typeof o["binance-testnet"] !== "string") {
+      response.status(400).json({
+        error: "formatterPrompts must include string fields binance and binance-testnet"
+      });
+      return;
+    }
+    if (o.binance.length > 12000 || o["binance-testnet"].length > 12000) {
+      response.status(400).json({ error: "Each formatter prompt may be at most 12000 characters" });
+      return;
+    }
+    await setFormatterPromptForVenue("binance", o.binance);
+    await setFormatterPromptForVenue("binance-testnet", o["binance-testnet"]);
+    response.json({ ok: true, formatterPrompts: await getAllFormatterPrompts() });
   } catch (error) {
     next(error);
   }

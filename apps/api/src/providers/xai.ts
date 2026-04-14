@@ -1,5 +1,12 @@
 import OpenAI from "openai";
-import { tradingDecisionJsonSchema, tradingDecisionSchema, type TradingDecision } from "@cosmu/shared";
+import {
+  researchPhaseJsonSchema,
+  researchPhaseSchema,
+  tradingDecisionJsonSchema,
+  tradingDecisionSchema,
+  type ResearchPhase,
+  type TradingDecision
+} from "@cosmu/shared";
 import { env } from "../env.js";
 import type { BotSetup } from "../lib/store.js";
 
@@ -13,6 +20,19 @@ type DecisionRequest = {
   systemPrompt: string;
   userMessage: string;
 };
+
+export class ResearchParseError extends Error {
+  rawText: string;
+
+  constructor(message: string, rawText: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = "ResearchParseError";
+    this.rawText = rawText;
+    if (options?.cause !== undefined) {
+      (this as Error & { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
 
 export class DecisionParseError extends Error {
   rawText: string;
@@ -45,6 +65,27 @@ type TemperatureStrategy = {
   label: string;
   includeTemperature: boolean;
 };
+
+const RESEARCH_STRATEGIES: ResponseStrategy[] = [
+  {
+    label: "json_schema",
+    format: {
+      type: "json_schema",
+      json_schema: {
+        name: "ResearchPhase",
+        schema: researchPhaseJsonSchema,
+        strict: true
+      }
+    }
+  },
+  {
+    label: "json_object",
+    format: { type: "json_object" }
+  },
+  {
+    label: "text"
+  }
+];
 
 const STRATEGIES: ResponseStrategy[] = [
   {
@@ -200,6 +241,82 @@ export const requestDecision = async ({
   const message = recentFailures.length > 0
     ? `All xAI decision attempts failed for ${bot.modelIdentifier}. Recent failures: ${recentFailures}`
     : `All xAI decision attempts failed for ${bot.modelIdentifier}.`;
+  throw new Error(message, { cause: lastError });
+};
+
+export const requestResearchPhase = async ({
+  bot,
+  systemPrompt,
+  userMessage
+}: DecisionRequest): Promise<{ rawText: string; research: ResearchPhase }> => {
+  let lastError: unknown;
+  const attemptErrors: string[] = [];
+  const configuredTemperature =
+    typeof bot.modelSettings.temperature === "number" ? bot.modelSettings.temperature : undefined;
+  const modelCandidates = buildModelCandidates(bot.modelIdentifier);
+
+  for (const modelIdentifier of modelCandidates) {
+    for (const strategy of RESEARCH_STRATEGIES) {
+      for (const tempStrategy of TEMPERATURE_STRATEGIES) {
+        try {
+          const completion = await client.chat.completions.create({
+            model: modelIdentifier,
+            ...(tempStrategy.includeTemperature && configuredTemperature !== undefined
+              ? { temperature: configuredTemperature }
+              : {}),
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userMessage }
+            ],
+            ...(strategy.format ? { response_format: strategy.format } : {})
+          } as Parameters<typeof client.chat.completions.create>[0]);
+
+          if (!("choices" in completion)) {
+            throw new Error("xAI returned a stream response unexpectedly");
+          }
+
+          const rawText = completion.choices[0]?.message?.content;
+          if (!rawText) {
+            throw new Error(
+              `xAI returned no content (model: ${modelIdentifier}, strategy: ${strategy.label}, temperature: ${tempStrategy.label})`
+            );
+          }
+
+          const jsonText = extractJson(rawText);
+          let research: ResearchPhase;
+          try {
+            research = researchPhaseSchema.parse(JSON.parse(jsonText));
+          } catch (parseError) {
+            throw new ResearchParseError(
+              `xAI returned invalid research JSON (model: ${modelIdentifier}, strategy: ${strategy.label}, temperature: ${tempStrategy.label})`,
+              rawText,
+              { cause: parseError }
+            );
+          }
+
+          if (modelIdentifier !== bot.modelIdentifier) {
+            console.warn(
+              `[xAI] Research phase using fallback model ${modelIdentifier} for bot ${bot.id} (configured ${bot.modelIdentifier})`
+            );
+          }
+
+          return { rawText, research };
+        } catch (error) {
+          lastError = error;
+          if (error instanceof ResearchParseError) throw error;
+          const message = toErrorMessage(error);
+          const attemptLabel = `${modelIdentifier}/${strategy.label}/${tempStrategy.label}`;
+          attemptErrors.push(`${attemptLabel}: ${message}`);
+          console.warn(`Research attempt failed (${attemptLabel}): ${message}`);
+        }
+      }
+    }
+  }
+
+  const recentFailures = attemptErrors.slice(-3).join(" | ");
+  const message = recentFailures.length > 0
+    ? `All xAI research attempts failed for ${bot.modelIdentifier}. Recent failures: ${recentFailures}`
+    : `All xAI research attempts failed for ${bot.modelIdentifier}.`;
   throw new Error(message, { cause: lastError });
 };
 
