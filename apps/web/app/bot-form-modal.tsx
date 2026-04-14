@@ -135,8 +135,10 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   const [models, setModels] = useState<Model[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [loading, setLoading] = useState(mode === "edit");
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadTrigger, setLoadTrigger] = useState(0);
   const [symbolSearch, setSymbolSearch] = useState("");
   const [pairsOpen, setPairsOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState("xai");
@@ -187,7 +189,7 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     try {
       const res = await fetch(url);
       if (!res.ok) {
-        console.warn(`[bot-form] ${url} returned ${res.status}`);
+        console.warn(`[bot-form] ${url} → ${res.status}`);
         return null;
       }
       return (await res.json()) as T;
@@ -197,11 +199,29 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
     }
   };
 
+  // Client-side Binance fallback — public endpoint, no API key needed
+  const fetchSymbolsDirect = async (): Promise<string[]> => {
+    try {
+      const res = await fetch("https://api.binance.com/api/v3/exchangeInfo");
+      if (!res.ok) return [];
+      const data = await res.json();
+      return ((data.symbols ?? []) as Array<{ symbol: string; status: string; isSpotTradingAllowed: boolean; quoteAsset: string }>)
+        .filter((s) => s.status === "TRADING" && s.isSpotTradingAllowed !== false && s.quoteAsset === "USDT")
+        .map((s) => s.symbol)
+        .sort();
+    } catch {
+      return [];
+    }
+  };
+
   // Initial data load — each fetch is independent so one failure doesn't block others
   useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
+      setDataLoaded(false);
+      setError(null);
+
       const [promptsData, modelsData, symbolsData, botData] = await Promise.all([
         safeFetch<Prompt[]>("/api/prompts"),
         safeFetch<Model[]>("/api/models"),
@@ -212,14 +232,24 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       if (cancelled) return;
 
       if (promptsData) setPrompts(promptsData);
-      if (modelsData) setModels(modelsData);
-      if (symbolsData?.symbols) setSymbols(symbolsData.symbols);
+      if (modelsData && modelsData.length > 0) setModels(modelsData);
+
+      // Symbols: try backend first, fall back to direct Binance call
+      let resolvedSymbols: string[] = symbolsData?.symbols ?? [];
+      if (resolvedSymbols.length === 0) {
+        resolvedSymbols = await fetchSymbolsDirect();
+      }
+      if (resolvedSymbols.length > 0) setSymbols(resolvedSymbols);
+
+      if (cancelled) return;
 
       const errors: string[] = [];
-      if (!modelsData) errors.push("models");
-      if (!symbolsData) errors.push("symbols");
-      if (mode === "edit" && botId && !botData) errors.push("bot");
-      if (errors.length) setError(`Failed to load: ${errors.join(", ")}. Some options may be missing.`);
+      if (!modelsData || modelsData.length === 0) errors.push("models");
+      if (resolvedSymbols.length === 0) errors.push("symbols");
+      if (mode === "edit" && botId && !botData) errors.push("bot config");
+      if (errors.length) {
+        setError(`Could not load: ${errors.join(", ")}. Check API connectivity or retry.`);
+      }
 
       if (mode === "edit" && botData) {
         const setup = botData;
@@ -252,13 +282,14 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
         }
       }
 
+      setDataLoaded(true);
       setLoading(false);
     };
 
     load();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [botId, mode]);
+  }, [botId, mode, loadTrigger]);
 
   // Sync model selection when provider changes
   useEffect(() => {
@@ -583,7 +614,18 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
 
             {/* ── Model & Runtime ── */}
             <div className="form-section">
-              <h3>Model &amp; Runtime</h3>
+              <div className="section-header">
+                <h3>Model &amp; Runtime</h3>
+                {dataLoaded && models.length === 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-xs"
+                    onClick={() => setLoadTrigger((n) => n + 1)}
+                  >
+                    ↻ Retry
+                  </button>
+                )}
+              </div>
               <div className="form-grid">
                 <div className="form-row">
                   <label>
@@ -594,10 +636,10 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                         setSelectedProvider(e.target.value);
                         setFormData((cur) => ({ ...cur, modelProfileId: "" }));
                       }}
-                      disabled={mode !== "create"}
+                      disabled={mode !== "create" || providerOptions.length === 0}
                     >
                       {providerOptions.length === 0 ? (
-                        <option value="">Loading…</option>
+                        <option value="">{dataLoaded ? "Not available" : "Loading…"}</option>
                       ) : (
                         providerOptions.map((p) => (
                           <option key={p} value={p}>{p}</option>
@@ -614,10 +656,10 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                       value={formData.modelProfileId}
                       onChange={(e) => setFormData({ ...formData, modelProfileId: e.target.value })}
                       required
-                      disabled={mode !== "create"}
+                      disabled={mode !== "create" || availableModels.length === 0}
                     >
                       {availableModels.length === 0 ? (
-                        <option value="">Loading…</option>
+                        <option value="">{dataLoaded ? "Not available" : "Loading…"}</option>
                       ) : (
                         <>
                           <option value="">Select a model</option>
@@ -782,8 +824,20 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
                     {filteredSymbols.length === 0 && symbols.length > 0 && (
                       <p className="pairs-empty">No match</p>
                     )}
-                    {symbols.length === 0 && (
+                    {symbols.length === 0 && !dataLoaded && (
                       <p className="pairs-empty">Loading pairs…</p>
+                    )}
+                    {symbols.length === 0 && dataLoaded && (
+                      <p className="pairs-empty">
+                        Pairs unavailable.{" "}
+                        <button
+                          type="button"
+                          className="inline-retry"
+                          onClick={() => setLoadTrigger((n) => n + 1)}
+                        >
+                          Retry
+                        </button>
+                      </p>
                     )}
                   </div>
                 )}

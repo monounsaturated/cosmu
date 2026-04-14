@@ -299,6 +299,28 @@ a {
   font-size: 16px;
 }
 
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.inline-retry {
+  background: none;
+  border: none;
+  color: #5b9cf6;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
 .form-row label {
   display: block;
   font-size: 13px;
