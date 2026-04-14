@@ -36,8 +36,22 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const getBaseUrl = (mode: RuntimeConfig["mode"]) => (mode === "live" ? LIVE_BASE_URL : TESTNET_BASE_URL);
 
-const signParams = (params: URLSearchParams) =>
-  crypto.createHmac("sha256", env.BINANCE_API_SECRET).update(params.toString()).digest("hex");
+const getApiKey = (mode: RuntimeConfig["mode"]) => {
+  if (mode === "testnet" && env.BINANCE_TESTNET_API_KEY) {
+    return env.BINANCE_TESTNET_API_KEY;
+  }
+  return env.BINANCE_API_KEY;
+};
+
+const getApiSecret = (mode: RuntimeConfig["mode"]) => {
+  if (mode === "testnet" && env.BINANCE_TESTNET_API_SECRET) {
+    return env.BINANCE_TESTNET_API_SECRET;
+  }
+  return env.BINANCE_API_SECRET;
+};
+
+const signParams = (params: URLSearchParams, mode: RuntimeConfig["mode"]) =>
+  crypto.createHmac("sha256", getApiSecret(mode)).update(params.toString()).digest("hex");
 
 const requestWithQuery = async (
   mode: RuntimeConfig["mode"],
@@ -49,7 +63,7 @@ const requestWithQuery = async (
   if (signed) {
     finalParams.set("timestamp", Date.now().toString());
     finalParams.set("recvWindow", "5000");
-    finalParams.set("signature", signParams(finalParams));
+    finalParams.set("signature", signParams(finalParams, mode));
   }
 
   const suffix = finalParams.toString();
@@ -64,14 +78,14 @@ const binanceFetch = async (
 ) => {
   const url = new URL(`${getBaseUrl(mode)}${path}`);
   const headers = new Headers(init?.headers);
-  headers.set("X-MBX-APIKEY", env.BINANCE_API_KEY);
+  headers.set("X-MBX-APIKEY", getApiKey(mode));
 
   let body: string | undefined;
   if (signed && init?.body && typeof init.body === "string") {
     const params = new URLSearchParams(init.body);
     params.set("timestamp", Date.now().toString());
     params.set("recvWindow", "5000");
-    params.set("signature", signParams(params));
+    params.set("signature", signParams(params, mode));
     body = params.toString();
   } else if (typeof init?.body === "string") {
     body = init.body;
@@ -114,6 +128,13 @@ const roundToStep = (value: number, step: number) => {
   return Number(rounded.toFixed(precision));
 };
 
+const roundToTick = (value: number, tickSize: number) => {
+  if (!Number.isFinite(tickSize) || tickSize <= 0) return value;
+  const precision = tickSize.toString().includes(".") ? tickSize.toString().split(".")[1]!.length : 0;
+  const rounded = Math.round(value / tickSize) * tickSize;
+  return Number(rounded.toFixed(precision));
+};
+
 const parseSymbolRules = (exchangeInfo: any): SymbolRules => {
   const lotSize = exchangeInfo.filters.find((filter: any) => filter.filterType === "LOT_SIZE");
   const minNotional = exchangeInfo.filters.find((filter: any) => filter.filterType === "MIN_NOTIONAL");
@@ -150,19 +171,13 @@ const getAccount = (mode: RuntimeConfig["mode"]) =>
   requestWithQuery(mode, "/v3/account", new URLSearchParams(), true);
 
 const getAllTickerPrices = (mode: RuntimeConfig["mode"]) =>
-  binanceFetch(mode, "/v3/ticker/price", {
-    method: "GET"
-  });
+  binanceFetch(mode, "/v3/ticker/price", { method: "GET" });
 
 const getTickerPrice = (mode: RuntimeConfig["mode"], symbol: string) =>
-  binanceFetch(mode, `/v3/ticker/price?symbol=${encodeURIComponent(symbol)}`, {
-    method: "GET"
-  });
+  binanceFetch(mode, `/v3/ticker/price?symbol=${encodeURIComponent(symbol)}`, { method: "GET" });
 
 const getAllExchangeInfo = (mode: RuntimeConfig["mode"]) =>
-  binanceFetch(mode, "/v3/exchangeInfo", {
-    method: "GET"
-  });
+  binanceFetch(mode, "/v3/exchangeInfo", { method: "GET" });
 
 export const listVenueSymbols = async () => {
   if (venueSymbolsCache && venueSymbolsCache.expiresAt > Date.now()) {
@@ -300,7 +315,9 @@ export const validateTradability = async (
     ...order,
     symbol,
     quantity,
-    limitPrice: order.limitPrice ? roundToStep(order.limitPrice, rules.tickSize) : null
+    limitPrice: order.limitPrice ? roundToStep(order.limitPrice, rules.tickSize) : null,
+    stopLossPrice: order.stopLossPrice ? roundToTick(order.stopLossPrice, rules.tickSize) : null,
+    takeProfitPrice: order.takeProfitPrice ? roundToTick(order.takeProfitPrice, rules.tickSize) : null
   };
 };
 
@@ -334,6 +351,89 @@ const getUsdPriceForAsset = async (
   }
 
   return null;
+};
+
+const placeOcoSellOrder = async (input: {
+  mode: RuntimeConfig["mode"];
+  runId: string;
+  index: number;
+  symbol: string;
+  quantity: number;
+  takeProfitPrice: number;
+  stopLossPrice: number;
+}): Promise<{ ocoOrderListId: string; rawResponse: unknown }> => {
+  const params = new URLSearchParams({
+    symbol: input.symbol,
+    side: "SELL",
+    quantity: input.quantity.toString(),
+    price: input.takeProfitPrice.toString(),
+    stopPrice: input.stopLossPrice.toString(),
+    stopLimitPrice: input.stopLossPrice.toString(),
+    stopLimitTimeInForce: "GTC",
+    newOrderRespType: "FULL",
+    listClientOrderId: `${input.runId.replace(/-/g, "").slice(0, 16)}-oco-${input.index + 1}`
+  });
+
+  const rawResponse = await binanceFetch(
+    input.mode,
+    "/v3/orderList/oco",
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: params.toString()
+    },
+    true
+  );
+
+  return {
+    ocoOrderListId: String(rawResponse.orderListId ?? ""),
+    rawResponse
+  };
+};
+
+const buildExecutionRecord = (input: {
+  runtimeConfig: RuntimeConfig;
+  order: OrderIntent & { symbol: string; quantity: number; limitPrice: number | null; stopLossPrice: number | null; takeProfitPrice: number | null };
+  rawVenueResponse: any;
+  ocoOrderId: string | null;
+}): ExecutionRecord => {
+  const fills = input.rawVenueResponse.fills ?? [];
+  const feeAmount = fills.reduce((sum: number, fill: any) => sum + Number(fill.commission ?? 0), 0);
+  const feeAsset = fills[0]?.commissionAsset ?? null;
+  const averageFillPrice =
+    fills.length > 0
+      ? fills.reduce((sum: number, fill: any) => sum + Number(fill.price) * Number(fill.qty), 0) /
+        fills.reduce((sum: number, fill: any) => sum + Number(fill.qty), 0)
+      : input.rawVenueResponse.price
+        ? Number(input.rawVenueResponse.price)
+        : null;
+  const executedQuantity = Number(input.rawVenueResponse.executedQty ?? input.order.quantity);
+  const executedNotionalUsd =
+    averageFillPrice === null ? null : Number((executedQuantity * averageFillPrice).toFixed(8));
+
+  return executionRecordSchema.parse({
+    assetClass: input.runtimeConfig.assetClass,
+    venue: input.runtimeConfig.venue,
+    status: "success",
+    symbol: input.order.symbol,
+    side: input.order.side,
+    orderType: input.order.type,
+    requestedQuantity: input.order.quantity,
+    executedQuantity,
+    requestedLimitPrice: input.order.limitPrice,
+    averageFillPrice,
+    executedNotionalUsd,
+    feeAmount,
+    feeAsset,
+    feeAssetUsdPrice: null,
+    feeUsd: null,
+    slippagePct: null,
+    stopLossPrice: input.order.stopLossPrice,
+    takeProfitPrice: input.order.takeProfitPrice,
+    ocoOrderId: input.ocoOrderId,
+    orderIntent: input.order,
+    rawVenueResponse: input.rawVenueResponse
+  });
 };
 
 export const executeOrders = async (input: {
@@ -371,56 +471,63 @@ export const executeOrders = async (input: {
         "/v3/order",
         {
           method: "POST",
-          headers: {
-            "content-type": "application/x-www-form-urlencoded"
-          },
+          headers: { "content-type": "application/x-www-form-urlencoded" },
           body: params.toString()
         },
         true
       );
 
-      const fills = rawVenueResponse.fills ?? [];
-      const feeAmount = fills.reduce((sum: number, fill: any) => sum + Number(fill.commission ?? 0), 0);
-      const feeAsset = fills[0]?.commissionAsset ?? null;
-      const averageFillPrice =
-        fills.length > 0
-          ? fills.reduce((sum: number, fill: any) => sum + Number(fill.price) * Number(fill.qty), 0) /
-            fills.reduce((sum: number, fill: any) => sum + Number(fill.qty), 0)
-          : rawVenueResponse.price
-            ? Number(rawVenueResponse.price)
-            : null;
+      let ocoOrderId: string | null = null;
+
+      // After a BUY fills, place an OCO sell for SL/TP protection
+      if (order.side === "buy" && order.stopLossPrice && order.takeProfitPrice) {
+        const executedQty = Number(rawVenueResponse.executedQty ?? order.quantity);
+        const rules = input.venueContext.symbolRules[order.symbol];
+        const ocoQty = rules ? roundToStep(executedQty, rules.stepSize) : executedQty;
+
+        if (ocoQty > 0) {
+          try {
+            const ocoResult = await placeOcoSellOrder({
+              mode: input.runtimeConfig.mode,
+              runId: input.runId,
+              index,
+              symbol: order.symbol,
+              quantity: ocoQty,
+              takeProfitPrice: order.takeProfitPrice,
+              stopLossPrice: order.stopLossPrice
+            });
+            ocoOrderId = ocoResult.ocoOrderListId;
+            console.log(`[binance] OCO SL/TP placed for ${order.symbol}: SL=${order.stopLossPrice} TP=${order.takeProfitPrice} ocoId=${ocoOrderId}`);
+          } catch (ocoError) {
+            console.error(`[binance] OCO SL/TP failed for ${order.symbol}:`, ocoError instanceof Error ? ocoError.message : ocoError);
+          }
+        }
+      }
+
+      const record = buildExecutionRecord({
+        runtimeConfig: input.runtimeConfig,
+        order,
+        rawVenueResponse,
+        ocoOrderId
+      });
+
+      const feeAssetUsdPrice = await getUsdPriceForAsset(input.runtimeConfig.mode, record.feeAsset, input.venueContext);
+      const feeUsd =
+        record.feeAmount && feeAssetUsdPrice !== null
+          ? Number((record.feeAmount * feeAssetUsdPrice).toFixed(8))
+          : record.feeAmount === 0 ? 0 : null;
       const benchmarkPrice = input.venueContext.priceMap[order.symbol] ?? order.limitPrice ?? null;
       const slippagePct =
-        benchmarkPrice && averageFillPrice
-          ? ((averageFillPrice - benchmarkPrice) / benchmarkPrice) * 100
+        benchmarkPrice && record.averageFillPrice
+          ? ((record.averageFillPrice - benchmarkPrice) / benchmarkPrice) * 100
           : null;
-      const executedQuantity = Number(rawVenueResponse.executedQty ?? order.quantity);
-      const executedNotionalUsd =
-        averageFillPrice === null ? null : Number((executedQuantity * averageFillPrice).toFixed(8));
-      const feeAssetUsdPrice = await getUsdPriceForAsset(input.runtimeConfig.mode, feeAsset, input.venueContext);
-      const feeUsd =
-        feeAmount && feeAssetUsdPrice !== null ? Number((feeAmount * feeAssetUsdPrice).toFixed(8)) : feeAmount === 0 ? 0 : null;
 
       executions.push(
         executionRecordSchema.parse({
-          assetClass: input.runtimeConfig.assetClass,
-          venue: input.runtimeConfig.venue,
-          status: "success",
-          symbol: order.symbol,
-          side: order.side,
-          orderType: order.type,
-          requestedQuantity: order.quantity,
-          executedQuantity,
-          requestedLimitPrice: order.limitPrice,
-          averageFillPrice,
-          executedNotionalUsd,
-          feeAmount,
-          feeAsset,
+          ...record,
           feeAssetUsdPrice,
           feeUsd,
-          slippagePct,
-          orderIntent: order,
-          rawVenueResponse
+          slippagePct
         })
       );
     } catch (error) {
@@ -442,6 +549,9 @@ export const executeOrders = async (input: {
           feeAssetUsdPrice: null,
           feeUsd: null,
           slippagePct: null,
+          stopLossPrice: order.stopLossPrice,
+          takeProfitPrice: order.takeProfitPrice,
+          ocoOrderId: null,
           orderIntent: order,
           rawVenueResponse: {
             error: error instanceof Error ? error.message : "Unknown Binance execution error"

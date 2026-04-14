@@ -102,6 +102,8 @@ export const orderIntentSchema = z.object({
   type: orderTypeSchema,
   quantity: z.number().positive(),
   limitPrice: z.number().positive().nullable().default(null),
+  stopLossPrice: z.number().positive().nullable().default(null),
+  takeProfitPrice: z.number().positive().nullable().default(null),
   rationale: z.string().min(1).max(400)
 });
 
@@ -111,7 +113,10 @@ export const tradingDecisionSchema = z.object({
   mode: decisionModeSchema,
   rationaleSummary: z.string().min(1).max(600),
   globalRationale: z.string().min(1).max(4000),
-  confidence: z.number().min(0).max(1),
+  confidence: z.preprocess(
+    (v) => Math.max(0, Math.min(1, Number(v) || 0)),
+    z.number().min(0).max(1)
+  ),
   timeHorizon: z.string().min(1).max(120).nullable().default(null),
   orders: z.array(orderIntentSchema).max(20),
   targetAllocations: z
@@ -158,9 +163,11 @@ export const tradingDecisionJsonSchema = {
           type: { type: "string", enum: ["market", "limit"] },
           quantity: { type: "number" },
           limitPrice: { type: ["number", "null"] },
+          stopLossPrice: { type: ["number", "null"] },
+          takeProfitPrice: { type: ["number", "null"] },
           rationale: { type: "string" }
         },
-        required: ["symbol", "side", "type", "quantity", "limitPrice", "rationale"]
+        required: ["symbol", "side", "type", "quantity", "limitPrice", "stopLossPrice", "takeProfitPrice", "rationale"]
       }
     },
     targetAllocations: {
@@ -212,6 +219,9 @@ export const executionRecordSchema = z.object({
   feeAssetUsdPrice: z.number().nullable().default(null),
   feeUsd: z.number().nullable(),
   slippagePct: z.number().nullable(),
+  stopLossPrice: z.number().nullable().default(null),
+  takeProfitPrice: z.number().nullable().default(null),
+  ocoOrderId: z.string().nullable().default(null),
   orderIntent: orderIntentSchema,
   rawVenueResponse: z.unknown()
 });

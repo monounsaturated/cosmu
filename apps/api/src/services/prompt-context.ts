@@ -87,6 +87,14 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
     activeModules.length > 0
       ? `Active structured modules: ${activeModules.join(", ")}. Treat them as factual context.`
       : "No optional structured modules are active for this bot.",
+    [
+      "MANDATORY RISK RULE: Every BUY order MUST include stopLossPrice and takeProfitPrice.",
+      "stopLossPrice must be below the current market price (your exit if the trade goes against you).",
+      "takeProfitPrice must be above the current market price (your exit if the trade goes your way).",
+      "After a buy fills, an OCO sell order is automatically placed with these prices.",
+      "SELL orders are exits from existing positions — set stopLossPrice and takeProfitPrice to null for sells.",
+      "If you cannot determine sensible SL/TP levels, do not propose the buy order."
+    ].join(" "),
     "Return only valid JSON matching the response schema.",
     bot.promptBody
   ].join("\n\n");

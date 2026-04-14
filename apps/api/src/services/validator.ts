@@ -36,14 +36,27 @@ export const validateDecision = async (input: {
       }
 
       const normalized = await validateTradability(input.runtimeConfig, order, input.venueContext);
+      const referencePrice =
+        input.venueContext.priceMap[normalized.symbol] ?? normalized.limitPrice ?? null;
 
       if (normalized.side === "buy") {
+        if (!normalized.stopLossPrice || !normalized.takeProfitPrice) {
+          throw new Error(`Buy order for ${normalized.symbol} must include both stopLossPrice and takeProfitPrice`);
+        }
+
+        if (referencePrice) {
+          if (normalized.stopLossPrice >= referencePrice) {
+            throw new Error(`stopLossPrice (${normalized.stopLossPrice}) must be below current price (${referencePrice}) for ${normalized.symbol}`);
+          }
+          if (normalized.takeProfitPrice <= referencePrice) {
+            throw new Error(`takeProfitPrice (${normalized.takeProfitPrice}) must be above current price (${referencePrice}) for ${normalized.symbol}`);
+          }
+        }
+
         const cash = balances.get("USDT");
         const cashAvailable = rulesEnabled
           ? (cash?.free ?? 0) - input.runtimeConfig.execution.minCashReserveUsd
           : cash?.free ?? 0;
-        const referencePrice =
-          input.venueContext.priceMap[normalized.symbol] ?? normalized.limitPrice ?? null;
         const requiredUsd = referencePrice ? normalized.quantity * referencePrice : Infinity;
 
         if (requiredUsd > cashAvailable) {
