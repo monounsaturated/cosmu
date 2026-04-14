@@ -1,5 +1,27 @@
-import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import { z } from "zod";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function findRepoRoot(): string {
+  let dir = __dirname;
+  for (let i = 0; i < 12; i++) {
+    if (fs.existsSync(path.join(dir, "pnpm-workspace.yaml"))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(__dirname, "../../..");
+}
+
+const repoRoot = findRepoRoot();
+dotenv.config({ path: path.join(repoRoot, ".env") });
+dotenv.config({ path: path.join(repoRoot, ".env.local"), override: true });
 
 const envSchema = z.object({
   API_PORT: z.coerce.number().optional(),

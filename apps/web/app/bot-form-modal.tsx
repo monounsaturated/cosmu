@@ -276,12 +276,15 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
   };
 
   const resolveModelProfileId = async () => {
-    if (!formData.modelProfileId.startsWith("fallback:")) {
-      return formData.modelProfileId;
+    const id = formData.modelProfileId;
+    const needsCreation = id.startsWith("fallback:") || id.startsWith("live:");
+
+    if (!needsCreation) {
+      return id;
     }
 
-    const fallback = FALLBACK_XAI_MODELS.find((model) => model.id === formData.modelProfileId);
-    if (!fallback) {
+    const selected = availableModels.find((m) => m.id === id);
+    if (!selected) {
       throw new Error("Selected model is invalid");
     }
 
@@ -289,9 +292,9 @@ export function BotFormModal({ mode, botId, defaultBotNumber = 1, onClose, onSuc
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: fallback.name,
-        provider: fallback.provider,
-        model: fallback.model,
+        name: selected.name,
+        provider: selected.provider,
+        model: selected.model,
         settings: { temperature: 0.2 }
       })
     });

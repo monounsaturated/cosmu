@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
-export async function PATCH(_request: Request, { params }: { params: { botId: string } }) {
+export async function PATCH(_request: Request, { params }: { params: Promise<{ botId: string }> }) {
   try {
     const apiSecretKey = process.env.API_SECRET_KEY;
     if (!apiSecretKey) {
       return NextResponse.json({ error: "API_SECRET_KEY is required" }, { status: 500 });
     }
 
-    const res = await fetch(`${apiBaseUrl}/bots/${params.botId}/toggle`, {
+    const { botId } = await params;
+    const res = await fetch(`${apiBaseUrl}/bots/${botId}/toggle`, {
       method: "PATCH",
       headers: {
         "x-api-key": apiSecretKey,

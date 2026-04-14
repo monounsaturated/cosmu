@@ -51,7 +51,10 @@ export type TraderConfig = z.infer<typeof traderConfigSchema>;
 export const runtimeConfigSchema = z.object({
   enabled: z.boolean(),
   venue: venueSchema,
-  frequencyMinutes: z.enum(["1", "5", "15", "30", "60"]).transform(Number),
+  frequencyMinutes: z.preprocess(
+    (v) => String(v),
+    z.enum(["1", "5", "15", "30", "60"])
+  ).transform(Number),
   mode: executionModeSchema,
   assetClass: assetClassSchema,
   symbolScope: symbolScopeSchema.default("selected"),
