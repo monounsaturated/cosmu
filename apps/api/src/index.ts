@@ -8,7 +8,6 @@ import {
   createModelProfile,
   createPrompt,
   getBotSetupById,
-  getDashboard,
   getDueBots,
   getRunDetail,
   getPromptVersionBody,
@@ -17,6 +16,7 @@ import {
   toggleBotEnabled,
   updateBotConfig
 } from "./lib/store.js";
+import { getDashboard } from "./services/dashboard.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
 import { listXaiModels } from "./providers/xai.js";
 import { BOOTSTRAP_XAI_PROFILES, bootstrapModelProfiles, getVenueSymbols, syncProviderModels } from "./services/catalog.js";
@@ -176,6 +176,26 @@ app.get("/bots/:botId/setup", async (request, response, next) => {
     }
 
     response.json(bot);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/bots/:botId/details", async (request, response, next) => {
+  try {
+    const { getBotPrePromptContext } = await import("./lib/store.js");
+    const details = await getBotPrePromptContext({ botId: request.params.botId, pastTradesLookback: 100 });
+    response.json(details);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/bots/:botId/runs", async (request, response, next) => {
+  try {
+    const { getBotRuns } = await import("./lib/store.js");
+    const runs = await getBotRuns(request.params.botId);
+    response.json(runs);
   } catch (error) {
     next(error);
   }
@@ -486,7 +506,32 @@ const startCatalogSyncLoop = () => {
   }, CATALOG_SYNC_INTERVAL_MS);
 };
 
+const SCHEDULER_INTERVAL_MS = 15 * 1000; // 15 seconds to ensure we don't miss the frequency
+
+const startSchedulerLoop = () => {
+  const runScheduler = async () => {
+    try {
+      const dueBots = await getDueBots();
+      for (const bot of dueBots) {
+        try {
+          await runBot(bot);
+        } catch (error) {
+          console.error(`Bot ${bot.id} run failed in scheduler:`, error);
+        }
+      }
+    } catch (error) {
+      console.warn("Background scheduler tick failed:", String(error));
+    }
+  };
+
+  void runScheduler();
+  setInterval(() => {
+    void runScheduler();
+  }, SCHEDULER_INTERVAL_MS);
+};
+
 app.listen(env.API_PORT, "0.0.0.0", () => {
   startCatalogSyncLoop();
+  startSchedulerLoop();
   console.log(`API listening on http://0.0.0.0:${env.API_PORT}`);
 });

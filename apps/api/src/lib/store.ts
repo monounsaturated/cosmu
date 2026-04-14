@@ -312,6 +312,7 @@ export const storeExecutionRecords = async (runId: string, executionRecords: Exe
         fee_asset_usd_price,
         fee_usd,
         slippage_pct,
+        oco_order_id,
         order_intent,
         raw_venue_response
       ) values (
@@ -332,6 +333,7 @@ export const storeExecutionRecords = async (runId: string, executionRecords: Exe
         ${parsed.feeAssetUsdPrice},
         ${parsed.feeUsd},
         ${parsed.slippagePct},
+        ${parsed.ocoOrderId},
         ${sql.json(parsed.orderIntent)},
         ${sql.json(parsed.rawVenueResponse as JsonValue)}
       )
@@ -512,6 +514,7 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
       e.fee_asset_usd_price::float8 as "feeAssetUsdPrice",
       e.fee_usd::float8 as "feeUsd",
       e.slippage_pct::float8 as "slippagePct",
+      e.oco_order_id as "ocoOrderId",
       e.order_intent as "orderIntent",
       e.raw_venue_response as "rawVenueResponse"
     from executions e
@@ -645,6 +648,51 @@ export const getDashboard = async (): Promise<DashboardPayload> => {
       createdAt: row.createdAt.toISOString()
     }))
   });
+};
+
+export const getBotRuns = async (botId: string) => {
+  const rows = await sql<
+    {
+      id: string;
+      botName: string;
+      status: string;
+      promptSystem: string | null;
+      promptUser: string | null;
+      rawModelOutput: string | null;
+      parsedDecision: unknown;
+      validationResult: unknown;
+      compactContext: unknown;
+      startedAt: Date;
+      finishedAt: Date | null;
+    }[]
+  >`
+    select
+      r.id,
+      b.name as "botName",
+      r.status,
+      r.prompt_system as "promptSystem",
+      r.prompt_user as "promptUser",
+      r.raw_model_output as "rawModelOutput",
+      r.parsed_decision as "parsedDecision",
+      r.validation_result as "validationResult",
+      r.compact_context as "compactContext",
+      r.started_at as "startedAt",
+      r.finished_at as "finishedAt"
+    from runs r
+    join bots b on b.id = r.bot_id
+    where r.bot_id = ${botId}
+    order by r.created_at desc
+    limit 20
+  `;
+
+  return rows.map((row) => ({
+    ...row,
+    startedAt: row.startedAt.toISOString(),
+    finishedAt: row.finishedAt?.toISOString() ?? null,
+    parsedDecision: typeof row.parsedDecision === "string" ? JSON.parse(row.parsedDecision) : row.parsedDecision,
+    validationResult: typeof row.validationResult === "string" ? JSON.parse(row.validationResult) : row.validationResult,
+    compactContext: typeof row.compactContext === "string" ? JSON.parse(row.compactContext) : row.compactContext
+  }));
 };
 
 export const getRunDetail = async (runId: string) => {

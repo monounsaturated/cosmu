@@ -270,6 +270,11 @@ export const botPerformanceSeriesSchema = z.object({
 
 export const dashboardSchema = z.object({
   generatedAt: z.string().datetime(),
+  venueOverview: z.object({
+    totalVenueAmount: z.number(),
+    allBotsAmount: z.number(),
+    spareAmount: z.number()
+  }),
   bots: z.array(botSummarySchema),
   performanceSeries: z.array(botPerformanceSeriesSchema),
   recentRuns: z.array(

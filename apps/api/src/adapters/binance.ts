@@ -187,7 +187,7 @@ export const getAccountBalance = async (mode: RuntimeConfig["mode"]) => {
   };
 };
 
-const getAllTickerPrices = (mode: RuntimeConfig["mode"]) =>
+export const getAllTickerPrices = (mode: RuntimeConfig["mode"]) =>
   binanceFetch(mode, "/v3/ticker/price", { method: "GET" });
 
 const getTickerPrice = (mode: RuntimeConfig["mode"], symbol: string) =>
@@ -383,10 +383,12 @@ const placeOcoSellOrder = async (input: {
     symbol: input.symbol,
     side: "SELL",
     quantity: input.quantity.toString(),
-    price: input.takeProfitPrice.toString(),
-    stopPrice: input.stopLossPrice.toString(),
-    stopLimitPrice: input.stopLossPrice.toString(),
-    stopLimitTimeInForce: "GTC",
+    aboveType: "LIMIT_MAKER",
+    abovePrice: input.takeProfitPrice.toString(),
+    belowType: "STOP_LOSS_LIMIT",
+    belowPrice: input.stopLossPrice.toString(),
+    belowStopPrice: input.stopLossPrice.toString(),
+    belowTimeInForce: "GTC",
     newOrderRespType: "FULL",
     listClientOrderId: `${input.runId.replace(/-/g, "").slice(0, 16)}-oco-${input.index + 1}`
   });
