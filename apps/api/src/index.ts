@@ -374,12 +374,12 @@ app.get("/models", async (request, response, next) => {
       return;
     }
 
-    if (provider === "xai" && liveXaiModelIds) {
+    if (provider === "xai" && liveXaiModelIds && liveXaiModelIds.size > 0) {
       response.json(profiles.filter((profile) => liveXaiModelIds!.has(String(profile.model))));
       return;
     }
 
-    if (!provider && liveXaiModelIds) {
+    if (!provider && liveXaiModelIds && liveXaiModelIds.size > 0) {
       response.json(
         profiles.filter((profile) => profile.provider !== "xai" || liveXaiModelIds!.has(String(profile.model)))
       );

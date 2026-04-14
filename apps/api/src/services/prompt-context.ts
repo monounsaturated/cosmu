@@ -15,7 +15,6 @@ type BuildPromptContextInput = {
 export const buildPromptContext = async ({ bot, venueContext }: BuildPromptContextInput) => {
   const { runtimeConfig, promptConfig } = bot;
   const modules = promptConfig.modules;
-  const operatorPrompt = promptConfig.operatorPrompt?.trim();
   const exec = runtimeConfig.execution;
   const { snapshot } = venueContext;
 
@@ -33,7 +32,6 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   const systemPrompt = [
     preamble,
     bot.promptBody.trim(),
-    operatorPrompt ? ["---", "OPERATOR GUIDELINES (risk & trading rules)", operatorPrompt].join("\n") : null,
     [
       "---",
       "NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):",

@@ -24,7 +24,6 @@ export const prePromptModulesSchema = z.object({
 export const prePromptConfigSchema = z
   .object({
     preset: z.string().optional(),
-    operatorPrompt: z.string().max(4000).optional().default(""),
     modules: prePromptModulesSchema.default({
       includeCurrentPositions: true,
       includePastTrades: false,
@@ -35,8 +34,7 @@ export const prePromptConfigSchema = z
     })
   })
   .transform((val) => ({
-    modules: val.modules,
-    operatorPrompt: val.operatorPrompt?.trim() ?? ""
+    modules: val.modules
   }));
 
 export const traderConfigSchema = z.object({

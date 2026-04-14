@@ -72,67 +72,135 @@ const TEMPERATURE_STRATEGIES: TemperatureStrategy[] = [
   { label: "without_temperature", includeTemperature: false }
 ];
 
+const XAI_STABLE_FALLBACK_MODELS = [
+  "grok-4.20-reasoning",
+  "grok-3",
+  "grok-3-fast",
+  "grok-3-mini",
+  "grok-3-mini-fast"
+];
+
+const XAI_NON_CHAT_MODEL_PATTERNS = [
+  /-multi-agent/i,
+  /-vision/i,
+  /-image/i,
+  /-audio/i
+];
+
+const isLikelyChatModel = (modelId: string) =>
+  modelId.length > 0 && !XAI_NON_CHAT_MODEL_PATTERNS.some((pattern) => pattern.test(modelId));
+
+const buildModelCandidates = (primaryModel: string) => {
+  const candidates: string[] = [primaryModel];
+
+  if (/-multi-agent/i.test(primaryModel)) {
+    candidates.push(primaryModel.replace(/-multi-agent.*$/i, "-reasoning"));
+  }
+
+  candidates.push(...XAI_STABLE_FALLBACK_MODELS);
+  return Array.from(new Set(candidates.filter(Boolean)));
+};
+
+const toErrorMessage = (error: unknown) => {
+  if (error instanceof Error) {
+    const details: string[] = [];
+    const status = (error as { status?: unknown }).status;
+    const code = (error as { code?: unknown }).code;
+    const type = (error as { type?: unknown }).type;
+    const payload = (error as { error?: unknown }).error;
+
+    if (typeof status === "number") details.push(`status=${status}`);
+    if (typeof code === "string" && code.length > 0) details.push(`code=${code}`);
+    if (typeof type === "string" && type.length > 0) details.push(`type=${type}`);
+    if (payload !== undefined) {
+      try {
+        const serialized = JSON.stringify(payload);
+        if (serialized !== "{}") details.push(`payload=${serialized}`);
+      } catch {
+        details.push("payload=[unserializable]");
+      }
+    }
+
+    return details.length > 0 ? `${error.message} (${details.join(", ")})` : error.message;
+  }
+
+  return String(error);
+};
+
 export const requestDecision = async ({
   bot,
   systemPrompt,
   userMessage
 }: DecisionRequest): Promise<{ rawText: string; decision: TradingDecision }> => {
   let lastError: unknown;
+  const attemptErrors: string[] = [];
   const configuredTemperature =
     typeof bot.modelSettings.temperature === "number" ? bot.modelSettings.temperature : undefined;
+  const modelCandidates = buildModelCandidates(bot.modelIdentifier);
 
-  for (const strategy of STRATEGIES) {
-    for (const tempStrategy of TEMPERATURE_STRATEGIES) {
-      try {
-        const completion = await client.chat.completions.create({
-          model: bot.modelIdentifier,
-          ...(tempStrategy.includeTemperature && configuredTemperature !== undefined
-            ? { temperature: configuredTemperature }
-            : {}),
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userMessage }
-          ],
-          ...(strategy.format ? { response_format: strategy.format } : {})
-        } as Parameters<typeof client.chat.completions.create>[0]);
-
-        if (!("choices" in completion)) {
-          throw new Error("xAI returned a stream response unexpectedly");
-        }
-
-        const rawText = completion.choices[0]?.message?.content;
-        if (!rawText) {
-          throw new Error(
-            `xAI returned no content (strategy: ${strategy.label}, temperature: ${tempStrategy.label})`
-          );
-        }
-
-        const jsonText = extractJson(rawText);
-        let decision: TradingDecision;
+  for (const modelIdentifier of modelCandidates) {
+    for (const strategy of STRATEGIES) {
+      for (const tempStrategy of TEMPERATURE_STRATEGIES) {
         try {
-          decision = tradingDecisionSchema.parse(JSON.parse(jsonText));
-        } catch (parseError) {
-          throw new DecisionParseError(
-            `xAI returned invalid JSON decision (strategy: ${strategy.label}, temperature: ${tempStrategy.label})`,
-            rawText,
-            { cause: parseError }
-          );
-        }
+          const completion = await client.chat.completions.create({
+            model: modelIdentifier,
+            ...(tempStrategy.includeTemperature && configuredTemperature !== undefined
+              ? { temperature: configuredTemperature }
+              : {}),
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userMessage }
+            ],
+            ...(strategy.format ? { response_format: strategy.format } : {})
+          } as Parameters<typeof client.chat.completions.create>[0]);
 
-        return { rawText, decision };
-      } catch (error) {
-        lastError = error;
-        if (error instanceof DecisionParseError) throw error;
-        console.warn(
-          `Decision strategy "${strategy.label}" (${tempStrategy.label}) failed: ${String(error)}`
-        );
+          if (!("choices" in completion)) {
+            throw new Error("xAI returned a stream response unexpectedly");
+          }
+
+          const rawText = completion.choices[0]?.message?.content;
+          if (!rawText) {
+            throw new Error(
+              `xAI returned no content (model: ${modelIdentifier}, strategy: ${strategy.label}, temperature: ${tempStrategy.label})`
+            );
+          }
+
+          const jsonText = extractJson(rawText);
+          let decision: TradingDecision;
+          try {
+            decision = tradingDecisionSchema.parse(JSON.parse(jsonText));
+          } catch (parseError) {
+            throw new DecisionParseError(
+              `xAI returned invalid JSON decision (model: ${modelIdentifier}, strategy: ${strategy.label}, temperature: ${tempStrategy.label})`,
+              rawText,
+              { cause: parseError }
+            );
+          }
+
+          if (modelIdentifier !== bot.modelIdentifier) {
+            console.warn(
+              `[xAI] Using fallback model ${modelIdentifier} for bot ${bot.id} (configured ${bot.modelIdentifier})`
+            );
+          }
+
+          return { rawText, decision };
+        } catch (error) {
+          lastError = error;
+          if (error instanceof DecisionParseError) throw error;
+          const message = toErrorMessage(error);
+          const attemptLabel = `${modelIdentifier}/${strategy.label}/${tempStrategy.label}`;
+          attemptErrors.push(`${attemptLabel}: ${message}`);
+          console.warn(`Decision attempt failed (${attemptLabel}): ${message}`);
+        }
       }
     }
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("All decision strategies failed");
+  const recentFailures = attemptErrors.slice(-3).join(" | ");
+  const message = recentFailures.length > 0
+    ? `All xAI decision attempts failed for ${bot.modelIdentifier}. Recent failures: ${recentFailures}`
+    : `All xAI decision attempts failed for ${bot.modelIdentifier}.`;
+  throw new Error(message, { cause: lastError });
 };
 
 export const listXaiModels = async () => {
@@ -156,5 +224,5 @@ export const listXaiModels = async () => {
       id: String(row.id ?? ""),
       created: typeof row.created === "number" ? row.created : null
     }))
-    .filter((row: { id: string; created: number | null }) => row.id.length > 0);
+    .filter((row: { id: string; created: number | null }) => isLikelyChatModel(row.id));
 };
