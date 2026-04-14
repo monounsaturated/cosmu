@@ -4,6 +4,8 @@ import { Fragment, useState } from "react";
 import type { DashboardPayload, BotSummary } from "@cosmu/shared";
 import { BotControls } from "./bot-controls";
 
+import Link from "next/link";
+
 type SortField = "botNumber" | "startedAt" | "netPnlUsd" | "runCount" | "tradeCount" | "currentPortfolioUsd";
 type SortOrder = "asc" | "desc";
 
@@ -79,7 +81,9 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
                   <td>
                     <div className="flex items-center gap-2">
                       <span className="run-expand-icon">{isExpanded ? "▼" : "▶"}</span>
-                      <strong>#{bot.botNumber}</strong> {bot.name}
+                      <Link href={`/bots/${bot.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                        <strong>#{bot.botNumber}</strong> {bot.name}
+                      </Link>
                     </div>
                   </td>
                   <td>
@@ -89,7 +93,9 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
                   <td>{new Date(bot.startedAt).toLocaleDateString()}</td>
                   <td>
                     <div style={{ fontSize: "12px" }}>
-                      <span className="badge badge-neutral">{bot.promptVersionLabel}</span>
+                      <Link href={`/bots/${bot.id}#prompt`} style={{ textDecoration: 'none', color: 'inherit' }} onClick={(e) => e.stopPropagation()}>
+                        <span className="badge badge-neutral hover:opacity-80 transition-opacity">{bot.promptVersionLabel}</span>
+                      </Link>
                       <br/>
                       <span className="muted" style={{ fontSize: "11px", marginTop: "4px", display: "inline-block" }}>{bot.modelProfileName}</span>
                     </div>
@@ -99,9 +105,13 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
                   </td>
                   <td className="text-right">
                     {bot.netPnlUsd !== null ? (
-                      <span className={bot.netPnlUsd > 0 ? "value-green" : bot.netPnlUsd < 0 ? "value-red" : ""}>
+                      <div className={bot.netPnlUsd > 0 ? "value-green" : bot.netPnlUsd < 0 ? "value-red" : ""}>
                         {bot.netPnlUsd > 0 ? "+" : ""}${bot.netPnlUsd.toFixed(2)}
-                      </span>
+                        <br/>
+                        <span style={{ fontSize: "11px", opacity: 0.8 }}>
+                          {bot.netPnlUsd > 0 ? "+" : ""}{((bot.netPnlUsd / bot.budgetUsdt) * 100).toFixed(2)}%
+                        </span>
+                      </div>
                     ) : "—"}
                   </td>
                   <td className="text-right">{bot.tradeCount}</td>

@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 const emptyDashboard = () =>
   dashboardSchema.parse({
     generatedAt: new Date().toISOString(),
+    venueOverview: { totalVenueAmount: 0, allBotsAmount: 0, spareAmount: 0 },
     bots: [],
     performanceSeries: [],
     recentRuns: [],
@@ -58,6 +59,21 @@ export default async function HomePage() {
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
           <span className="badge">Updated {new Date(dashboard.generatedAt).toLocaleString()}</span>
           <DashboardActions hasNoBots={dashboard.bots.length === 0} botCount={dashboard.bots.length} />
+        </div>
+      </section>
+
+      <section className="panel" style={{ marginBottom: "32px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+        <div>
+          <p className="label">Total Venue Amount (API)</p>
+          <h2 style={{ margin: "4px 0" }}>${dashboard.venueOverview.totalVenueAmount.toFixed(2)}</h2>
+        </div>
+        <div>
+          <p className="label">Total Allocated Bots Amount</p>
+          <h2 style={{ margin: "4px 0" }}>${dashboard.venueOverview.allBotsAmount.toFixed(2)}</h2>
+        </div>
+        <div>
+          <p className="label">Spare Amount</p>
+          <h2 style={{ margin: "4px 0" }}>${dashboard.venueOverview.spareAmount.toFixed(2)}</h2>
         </div>
       </section>
 

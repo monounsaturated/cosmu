@@ -1,0 +1,213 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+
+const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
+export const dynamic = "force-dynamic";
+
+async function fetchApi(path: string) {
+  const apiSecretKey = process.env.API_SECRET_KEY;
+  if (!apiSecretKey) throw new Error("API_SECRET_KEY is required");
+
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    cache: "no-store",
+    headers: { "x-api-key": apiSecretKey }
+  });
+
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`API request failed: ${response.status} for ${path}`);
+  return response.json();
+}
+
+export default async function BotPage({ params }: { params: { botId: string } }) {
+  const botId = params.botId;
+
+  const [setup, details, runs, dashboard] = await Promise.all([
+    fetchApi(`/bots/${botId}/setup`),
+    fetchApi(`/bots/${botId}/details`),
+    fetchApi(`/bots/${botId}/runs`),
+    fetchApi(`/dashboard`)
+  ]);
+
+  if (!setup) return notFound();
+
+  const botNameDisplay = setup.name ? `Bot #${setup.botNumber} - ${setup.name}` : `Bot #${setup.botNumber}`;
+  const dashboardBot = dashboard?.bots?.find((b: any) => b.id === botId);
+  const botSnapshot = dashboard?.latestSnapshots?.find((s: any) => s.botName === botNameDisplay);
+
+  return (
+    <main className="page">
+      <div className="hero" style={{ paddingBottom: 0, marginBottom: "24px" }}>
+        <div>
+          <Link href="/" className="muted hover:opacity-80 transition-opacity" style={{ display: "inline-block", marginBottom: "16px", textDecoration: "none" }}>
+            ← Back to Dashboard
+          </Link>
+          <h1>Bot #{setup.botNumber} - {setup.name}</h1>
+          <p className="muted">Detailed view of strategy, trades, and execution logs.</p>
+        </div>
+      </div>
+
+      <div className="grid" style={{ marginBottom: "24px", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+        <div className="panel">
+          <p className="label">Status</p>
+          <h2 style={{ margin: "4px 0" }}>
+            <span className={`status-dot ${setup.runtimeConfig.enabled ? "status-active" : "status-inactive"}`} style={{ display: "inline-block", marginRight: "6px" }} />
+            {setup.runtimeConfig.enabled ? "Active" : "Paused"}
+          </h2>
+        </div>
+        <div className="panel">
+          <p className="label">Venue & Mode</p>
+          <h2 style={{ margin: "4px 0" }}>{setup.runtimeConfig.venue} ({setup.runtimeConfig.mode})</h2>
+        </div>
+        <div className="panel">
+          <p className="label">Frequency</p>
+          <h2 style={{ margin: "4px 0" }}>Every {setup.runtimeConfig.frequencyMinutes}m</h2>
+        </div>
+        <div className="panel">
+          <p className="label">Allocated Budget</p>
+          <h2 style={{ margin: "4px 0" }}>${setup.runtimeConfig.budgetUsdt}</h2>
+        </div>
+      </div>
+
+      <div className="grid" style={{ display: 'block', marginBottom: '32px' }}>
+        <div className="panel">
+          <h3>Performance & Current Holdings</h3>
+          <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "16px", marginTop: "16px", marginBottom: "24px" }}>
+            <div>
+              <p className="label">Current Portfolio USD</p>
+              <h2>${dashboardBot?.currentPortfolioUsd?.toFixed(2) ?? setup.runtimeConfig.budgetUsdt.toFixed(2)}</h2>
+            </div>
+            <div>
+              <p className="label">Net PnL</p>
+              <h2 className={dashboardBot?.netPnlUsd && dashboardBot.netPnlUsd > 0 ? "value-green" : dashboardBot?.netPnlUsd && dashboardBot.netPnlUsd < 0 ? "value-red" : ""}>
+                {dashboardBot?.netPnlUsd && dashboardBot.netPnlUsd > 0 ? "+" : ""}{dashboardBot?.netPnlUsd?.toFixed(2) ?? "0.00"}
+              </h2>
+            </div>
+            <div>
+              <p className="label">Total Trades</p>
+              <h2>{dashboardBot?.tradeCount ?? 0}</h2>
+            </div>
+            <div>
+              <p className="label">Fees Paid</p>
+              <h2>${dashboardBot?.totalFeesUsd?.toFixed(2) ?? "0.00"}</h2>
+            </div>
+          </div>
+
+          <h4>Holdings</h4>
+          {botSnapshot && botSnapshot.snapshot.balances.length > 0 ? (
+            <ul style={{ marginTop: "16px", paddingLeft: "20px", fontSize: "14px" }}>
+              {botSnapshot.snapshot.balances.map((b: any) => (
+                <li key={b.asset} style={{ marginBottom: "8px" }}>
+                  <strong>{b.asset}</strong>: {(b.free + b.locked).toFixed(8)} 
+                  <span className="muted" style={{ marginLeft: "8px" }}>(${b.usdValue?.toFixed(2) ?? "0.00"})</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted" style={{ marginTop: "16px" }}>No holdings recorded yet.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid" style={{ display: 'block', marginBottom: '32px' }}>
+        <div className="panel">
+          <h3>Strategy Configuration</h3>
+          <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "24px", marginTop: "16px" }}>
+            <div>
+              <p className="label">Prompt Version</p>
+              <p><span className="badge badge-neutral">{setup.promptVersionLabel}</span></p>
+            </div>
+            <div>
+              <p className="label">Model Profile</p>
+              <p>{setup.modelProfileName} ({setup.modelProvider} - {setup.modelIdentifier})</p>
+            </div>
+          </div>
+          
+          <div style={{ marginTop: "24px" }} id="prompt">
+            <p className="label">System Prompt Body</p>
+            <div className="run-detail-pre" style={{ maxHeight: "400px", overflowY: "auto" }}>
+              {setup.promptBody}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {details && details.pastTrades && details.pastTrades.length > 0 && (
+        <div className="grid" style={{ display: 'block', marginBottom: '32px' }}>
+          <div className="panel">
+            <h3>Recent Trades</h3>
+            <table className="table" style={{ marginTop: "16px" }}>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Symbol</th>
+                  <th>Side</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Quantity</th>
+                  <th>Avg Price</th>
+                  <th>Notional USD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {details.pastTrades.map((trade: any) => (
+                  <tr key={`${trade.createdAt}-${trade.symbol}`}>
+                    <td>{new Date(trade.createdAt).toLocaleString()}</td>
+                    <td>{trade.symbol}</td>
+                    <td><span className={`badge badge-${trade.side}`}>{trade.side}</span></td>
+                    <td>{trade.orderType}</td>
+                    <td><span className={`badge badge-${trade.status}`}>{trade.status}</span></td>
+                    <td>{trade.executedQuantity}</td>
+                    <td>{trade.averageFillPrice ? `$${trade.averageFillPrice}` : "—"}</td>
+                    <td>{trade.executedNotionalUsd ? `$${trade.executedNotionalUsd}` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="grid" style={{ display: 'block', marginBottom: '32px' }}>
+        <div className="panel">
+          <h3>Recent Execution Runs</h3>
+          <p className="muted" style={{ marginBottom: "16px" }}>Click to expand for full input/output logs.</p>
+          {runs && runs.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              {runs.map((run: any) => (
+                <details key={run.id} className="run-detail-pre" style={{ background: "#18181b", padding: "16px", borderRadius: "8px" }}>
+                  <summary style={{ cursor: "pointer", fontWeight: "bold" }}>
+                    {new Date(run.startedAt).toLocaleString()} - <span className={`badge badge-${run.status}`}>{run.status}</span>
+                  </summary>
+                  
+                  <div style={{ marginTop: "16px" }}>
+                    <p className="label">Prompt Sent (System Context)</p>
+                    <pre style={{ background: "#27272a", padding: "12px", borderRadius: "4px", fontSize: "12px", overflowX: "auto" }}>
+                      {run.promptSystem || "Not recorded"}
+                    </pre>
+                  </div>
+                  
+                  <div style={{ marginTop: "16px" }}>
+                    <p className="label">Prompt Sent (User Context)</p>
+                    <pre style={{ background: "#27272a", padding: "12px", borderRadius: "4px", fontSize: "12px", overflowX: "auto" }}>
+                      {run.promptUser || "Not recorded"}
+                    </pre>
+                  </div>
+                  
+                  <div style={{ marginTop: "16px" }}>
+                    <p className="label">Raw Model Output</p>
+                    <pre style={{ background: "#27272a", padding: "12px", borderRadius: "4px", fontSize: "12px", overflowX: "auto", whiteSpace: "pre-wrap" }}>
+                      {run.rawModelOutput || "Not recorded"}
+                    </pre>
+                  </div>
+                </details>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">No execution runs yet.</p>
+          )}
+        </div>
+      </div>
+
+    </main>
+  );
+}
