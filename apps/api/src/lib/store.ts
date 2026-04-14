@@ -924,6 +924,18 @@ export const createModelProfile = async (input: {
   model: string;
   settings: Record<string, JsonValue>;
 }) => {
+  const [existing] = await sql<{ id: string }[]>`
+    select id
+    from model_profiles
+    where provider = ${input.provider}
+      and model = ${input.model}
+    limit 1
+  `;
+
+  if (existing) {
+    return existing.id;
+  }
+
   const [row] = await sql<{ id: string }[]>`
     insert into model_profiles (name, provider, model, settings)
     values (${input.name}, ${input.provider}, ${input.model}, ${sql.json(input.settings)})
