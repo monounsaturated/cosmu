@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PerformanceChart } from "../../performance-chart";
+import { BotControls } from "../../bot-controls";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 export const dynamic = "force-dynamic";
@@ -62,6 +63,9 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
             {setup.name ? ` - ${setup.name}` : ""}
           </h1>
           <p className="muted">Detailed view of strategy, trades, and execution logs.</p>
+        </div>
+        <div style={{ display: "flex", alignItems: "flex-start" }}>
+          <BotControls botId={botId} enabled={setup.runtimeConfig.enabled} />
         </div>
       </div>
 

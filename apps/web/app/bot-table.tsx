@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { DashboardPayload } from "@cosmu/shared";
 import { BotControls } from "./bot-controls";
 
-type SortField = "botNumber" | "startedAt" | "netPnlUsd" | "tradeCount" | "currentPortfolioUsd";
+type SortField = "botNumber" | "startedAt" | "netPnlUsd" | "tradeCount" | "currentPortfolioUsd" | "netReturnPct";
 type SortOrder = "asc" | "desc";
 
 const venueLabel = (venue: "binance" | "binance-testnet") =>
@@ -26,13 +26,20 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
     setSortOrder(field === "botNumber" || field === "startedAt" ? "asc" : "desc");
   };
 
+  const getSortValue = (bot: (typeof dashboard.bots)[number], field: SortField) => {
+    if (field === "netReturnPct") {
+      return bot.netPnlUsd !== null ? (bot.netPnlUsd / bot.budgetUsdt) * 100 : null;
+    }
+    return bot[field as Exclude<SortField, "netReturnPct">];
+  };
+
   const sortedBots = [...dashboard.bots].sort((a, b) => {
     if (a.enabled !== b.enabled) {
       return a.enabled ? -1 : 1;
     }
 
-    const aValue = a[sortField];
-    const bValue = b[sortField];
+    const aValue = getSortValue(a, sortField);
+    const bValue = getSortValue(b, sortField);
     if (aValue === null && bValue !== null) return sortOrder === "asc" ? -1 : 1;
     if (aValue !== null && bValue === null) return sortOrder === "asc" ? 1 : -1;
     if (aValue === null && bValue === null) return 0;
@@ -66,7 +73,9 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
             <th className="clickable text-right" onClick={() => handleSort("netPnlUsd")}>
               Net PnL <SortIndicator field="netPnlUsd" />
             </th>
-            <th className="text-right">%</th>
+            <th className="clickable text-right" onClick={() => handleSort("netReturnPct")}>
+              % <SortIndicator field="netReturnPct" />
+            </th>
             <th className="clickable text-right" onClick={() => handleSort("tradeCount")}>
               Trades <SortIndicator field="tradeCount" />
             </th>

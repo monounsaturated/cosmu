@@ -77,10 +77,35 @@ export const buildPromptContext = async ({ bot, venueContext }: BuildPromptConte
   }
   sections.push(walletLines.join("\n"));
 
-  // — Authorized pairs: only when user explicitly selected pairs —
+  // — Market prices from the venue —
+  const priceEntries = Object.entries(venueContext.priceMap)
+    .sort(([a], [b]) => a.localeCompare(b));
+  if (priceEntries.length > 0) {
+    const priceLines = priceEntries.map(
+      ([symbol, price]) => `${symbol}: ${fmtNum(price)}`
+    );
+    sections.push(
+      [
+        "=== LIVE MARKET PRICES (from venue) ===",
+        "Use these prices to set stopLossPrice / takeProfitPrice correctly.",
+        ...priceLines
+      ].join("\n")
+    );
+  }
+
+  // — Available trading pairs —
+  const availableSymbols = Object.keys(venueContext.symbolRules).sort();
   if (runtimeConfig.symbolScope === "selected" && runtimeConfig.contextSymbols.length > 0) {
     sections.push(
       ["=== AUTHORIZED PAIRS — trade ONLY these ===", runtimeConfig.contextSymbols.join(", ")].join("\n")
+    );
+  } else if (availableSymbols.length > 0) {
+    sections.push(
+      [
+        "=== AVAILABLE PAIRS (venue) ===",
+        "Only trade symbols from this list. Others will be rejected.",
+        availableSymbols.join(", ")
+      ].join("\n")
     );
   }
 
