@@ -22,6 +22,8 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
   const clearFeedback = () => setTimeout(() => setFeedback(null), 4000);
 
   const kill = async () => {
+    // Close modal immediately so the user gets instant feedback
+    setConfirmKillOpen(false);
     setLoading("kill");
     setFeedback(null);
     try {
@@ -29,7 +31,6 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Kill failed");
       setIsActive(false);
-      setConfirmKillOpen(false);
       setFeedback({ type: "success", text: `Bot killed (${data.runId.slice(0, 8)})` });
       router.refresh();
     } catch (e) {
@@ -63,7 +64,7 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
         <button
           className="btn btn-warn"
           onClick={() => setConfirmKillOpen(true)}
-          disabled={loading !== null}
+          disabled={!isActive || loading !== null}
         >
           {loading === "kill" ? "Killing..." : "Kill Bot"}
         </button>

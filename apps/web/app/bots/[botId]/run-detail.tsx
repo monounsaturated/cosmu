@@ -41,6 +41,23 @@ function splitPhases(text: string | null, markers: { p1: string; p2: string }) {
   return { phase1: phase1 || null, phase2: phase2 || null };
 }
 
+/** Parse stored raw output — may be JSON with phase1Research / phase2Decision keys. */
+function splitRawOutput(raw: string | null): { phase1: string | null; phase2: string | null } {
+  if (!raw) return { phase1: null, phase2: null };
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && (parsed.phase1Research !== undefined || parsed.phase2Decision !== undefined)) {
+      return {
+        phase1: parsed.phase1Research ?? null,
+        phase2: parsed.phase2Decision ?? null
+      };
+    }
+  } catch {
+    // not JSON — treat as legacy single-phase output
+  }
+  return { phase1: raw, phase2: null };
+}
+
 const preStyle = {
   background: "#27272a",
   padding: "12px",
@@ -52,11 +69,49 @@ const preStyle = {
   overflowY: "auto" as const
 };
 
+function PhaseBlock({
+  label,
+  content,
+  defaultHidden = false
+}: {
+  label: string;
+  content: string | null;
+  defaultHidden?: boolean;
+}) {
+  const [visible, setVisible] = useState(!defaultHidden);
+  if (!content) return null;
+  return (
+    <div style={{ marginTop: "16px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+        <p className="label" style={{ margin: 0 }}>{label}</p>
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          style={{
+            background: "none",
+            border: "1px solid #3f3f46",
+            borderRadius: "4px",
+            color: "#a1a1aa",
+            cursor: "pointer",
+            fontSize: "11px",
+            padding: "1px 6px",
+            lineHeight: 1.4
+          }}
+        >
+          {visible ? "Hide" : "Edit"}
+        </button>
+      </div>
+      {visible && <pre style={preStyle}>{content}</pre>}
+    </div>
+  );
+}
+
 export function RunDetail({ run }: { run: Run }) {
   const [showRaw, setShowRaw] = useState(false);
 
   const systemParts = splitPhases(run.promptSystem, PHASE_MARKERS.system);
   const userParts = splitPhases(run.promptUser, PHASE_MARKERS.user);
+  const rawParts = splitRawOutput(run.rawModelOutput);
 
   return (
     <details style={{ background: "#18181b", padding: "16px", borderRadius: "8px" }}>
@@ -99,41 +154,35 @@ export function RunDetail({ run }: { run: Run }) {
         </>
       ) : (
         <>
-          {systemParts.phase1 && (
-            <div style={{ marginTop: "16px" }}>
-              <p className="label">Phase 1 — Research (system)</p>
-              <pre style={preStyle}>{systemParts.phase1}</pre>
+          {/* ── Phase 1: Research ── */}
+          {(systemParts.phase1 || userParts.phase1) && (
+            <div style={{ marginTop: "20px" }}>
+              <p style={{ fontWeight: 600, fontSize: "13px", color: "#a78bfa", marginBottom: "4px" }}>
+                Phase 1 — Research
+              </p>
+              <PhaseBlock label="System prompt" content={systemParts.phase1} />
+              <PhaseBlock label="User context" content={userParts.phase1} />
             </div>
           )}
 
-          {userParts.phase1 && (
-            <div style={{ marginTop: "16px" }}>
-              <p className="label">Phase 1 — Research (user context)</p>
-              <pre style={preStyle}>{userParts.phase1}</pre>
+          {/* ── Phase 2: Trader ── */}
+          {(systemParts.phase2 || userParts.phase2) && (
+            <div style={{ marginTop: "20px" }}>
+              <p style={{ fontWeight: 600, fontSize: "13px", color: "#34d399", marginBottom: "4px" }}>
+                Phase 2 — Trader
+              </p>
+              <PhaseBlock label="System prompt" content={systemParts.phase2} defaultHidden={true} />
+              <PhaseBlock label="User context" content={userParts.phase2} />
             </div>
           )}
 
-          {systemParts.phase2 && (
-            <div style={{ marginTop: "16px" }}>
-              <p className="label">Phase 2 — Formatter (system)</p>
-              <pre style={preStyle}>{systemParts.phase2}</pre>
-            </div>
-          )}
-
-          {userParts.phase2 && (
-            <div style={{ marginTop: "16px" }}>
-              <p className="label">Phase 2 — Formatter (user context)</p>
-              <pre style={preStyle}>{userParts.phase2}</pre>
-            </div>
-          )}
-
+          {/* Fallback for old single-phase runs */}
           {!systemParts.phase1 && !systemParts.phase2 && (
             <div style={{ marginTop: "16px" }}>
               <p className="label">System Prompt</p>
               <pre style={preStyle}>{run.promptSystem || "Not recorded"}</pre>
             </div>
           )}
-
           {!userParts.phase1 && !userParts.phase2 && (
             <div style={{ marginTop: "16px" }}>
               <p className="label">User Context</p>
@@ -143,11 +192,31 @@ export function RunDetail({ run }: { run: Run }) {
         </>
       )}
 
-      <div style={{ marginTop: "16px" }}>
-        <p className="label">Raw Model Output</p>
-        <pre style={{ ...preStyle, maxHeight: "400px" }}>
-          {run.rawModelOutput || "Not recorded"}
-        </pre>
+      {/* ── Model outputs ── */}
+      <div style={{ marginTop: "20px" }}>
+        {rawParts.phase2 ? (
+          <>
+            <div>
+              <p style={{ fontWeight: 600, fontSize: "13px", color: "#a78bfa", marginBottom: "4px" }}>
+                Research output
+              </p>
+              <pre style={{ ...preStyle, maxHeight: "300px" }}>{rawParts.phase1 || "Not recorded"}</pre>
+            </div>
+            <div style={{ marginTop: "16px" }}>
+              <p style={{ fontWeight: 600, fontSize: "13px", color: "#34d399", marginBottom: "4px" }}>
+                Trader decision
+              </p>
+              <pre style={{ ...preStyle, maxHeight: "400px" }}>{rawParts.phase2}</pre>
+            </div>
+          </>
+        ) : (
+          <div>
+            <p className="label">Raw Model Output</p>
+            <pre style={{ ...preStyle, maxHeight: "400px" }}>
+              {run.rawModelOutput || "Not recorded"}
+            </pre>
+          </div>
+        )}
       </div>
     </details>
   );

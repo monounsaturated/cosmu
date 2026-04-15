@@ -124,7 +124,6 @@ const buildResearchUserSections = (input: {
   const sections: string[] = [];
 
   sections.push(buildSessionSection(bot));
-  sections.push(buildExecRulesSection(runtimeConfig.execution));
   sections.push(buildWalletSection(snapshot));
   sections.push(buildTradingScopeSection(runtimeConfig));
 

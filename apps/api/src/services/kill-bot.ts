@@ -284,7 +284,15 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
         errorState: { message: errorMessage }
       });
     }
-    await notifySlack(`Kill mode failure for ${bot.name}: ${errorMessage}`);
+    // Always mark the bot as killed even if liquidation failed — the operator
+    // requested a stop and we must honour it regardless of execution errors.
+    await killBot(bot.id);
+    await notifySlack(`Kill mode failure for ${bot.name}: ${errorMessage}. Bot marked as killed.`);
+    // Return a partial result so the API can respond with 200 and the client
+    // can update its UI. Re-throw only if there is no runId (very early failure).
+    if (runId) {
+      return { runId, status: "failure" as const, killed: true as const };
+    }
     throw error;
   }
 };
