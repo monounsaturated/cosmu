@@ -78,7 +78,7 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
       <div className="grid" style={{ marginBottom: "24px", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
         <div className="panel">
           <p className="label">Status</p>
-          <h2 style={{ margin: "4px 0" }}>
+          <h2 style={{ margin: "4px 0", color: setup.runtimeConfig.enabled ? undefined : "#ef4444" }}>
             <span className={`status-dot ${setup.runtimeConfig.enabled ? "status-active" : "status-inactive"}`} style={{ display: "inline-block", marginRight: "6px" }} />
             {setup.runtimeConfig.enabled ? "Active" : "Killed"}
           </h2>

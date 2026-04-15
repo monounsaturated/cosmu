@@ -146,9 +146,10 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
   try {
     const beforeLedger = await listBotExecutionLedger(bot.id);
     const beforeLogical = computeLogicalBalances(bot.runtimeConfig.budgetUsdt, beforeLedger);
+    const heldSymbols = getHeldSymbols(beforeLogical);
     const beforeVenueRaw = await loadVenueContext(bot.runtimeConfig, [
       ...bot.runtimeConfig.contextSymbols,
-      ...getHeldSymbols(beforeLogical)
+      ...heldSymbols
     ]);
     const beforeVenueContext = {
       ...beforeVenueRaw,
@@ -172,31 +173,23 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
 
     await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
 
-    // Cancel open orders (continue on per-symbol failures)
-    for (const balance of beforeVenueRaw.snapshot.balances) {
-      const asset = String(balance.asset ?? "").trim().toUpperCase();
-      if (!asset || asset === "USDT") continue;
-      const totalQty = Number(balance.free) + Number(balance.locked);
-      if (!Number.isFinite(totalQty) || totalQty <= 1e-8) continue;
+    // Cancel open orders only for symbols this bot logically holds
+    for (const symbol of heldSymbols) {
       try {
-        await cancelAllOpenOrdersForSymbol(bot.runtimeConfig.mode, `${asset}USDT`);
+        await cancelAllOpenOrdersForSymbol(bot.runtimeConfig.mode, symbol);
       } catch (cancelError) {
-        console.warn(`kill-bot: cancel orders for ${asset}USDT failed, continuing:`, cancelError);
+        console.warn(`kill-bot: cancel orders for ${symbol} failed, continuing:`, cancelError);
       }
     }
 
-    // Build sell orders from refreshed venue balance
-    const refreshedVenue = await loadVenueContext(bot.runtimeConfig, bot.runtimeConfig.contextSymbols);
-    const sellOrders = refreshedVenue.snapshot.balances
-      .filter((balance) => {
-        const a = String(balance.asset ?? "").trim().toUpperCase();
-        return a.length > 0 && a !== "USDT" && Number(balance.free) > 1e-8;
-      })
-      .map((balance) => ({
-        symbol: `${String(balance.asset).trim().toUpperCase()}USDT`,
+    // Build sell orders from logical balances — only what this bot actually bought
+    const sellOrders = Object.entries(beforeLogical.assets)
+      .filter(([asset, qty]) => asset.length > 0 && qty > 1e-8)
+      .map(([asset, qty]) => ({
+        symbol: `${asset}USDT`,
         side: "sell" as const,
         type: "market" as const,
-        quantity: Number(balance.free),
+        quantity: qty,
         limitPrice: null,
         stopLossPrice: null,
         takeProfitPrice: null,
@@ -207,7 +200,7 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
     const validationResult = await validateDecision({
       decision,
       runtimeConfig: bot.runtimeConfig,
-      venueContext: refreshedVenue
+      venueContext: beforeVenueContext
     });
 
     await storeDecision({
@@ -235,7 +228,7 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
       runId,
       runtimeConfig: bot.runtimeConfig,
       orders: validationResult.normalizedOrders,
-      venueContext: refreshedVenue
+      venueContext: beforeVenueContext
     });
     await storeExecutionRecords(runId, executions);
 

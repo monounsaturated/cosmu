@@ -79,11 +79,6 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
           {loading === "run" ? "Running..." : "Run Now"}
         </button>
       </div>
-      {!isActive && (
-        <p className="muted" style={{ marginTop: "8px", fontSize: "12px" }}>
-          Bot killed. Duplicate this bot to restart with a fresh allocation.
-        </p>
-      )}
       {feedback && (
         <p className={`feedback feedback-${feedback.type}`}>{feedback.text}</p>
       )}
