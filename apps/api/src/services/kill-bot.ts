@@ -19,7 +19,6 @@ type LogicalBalances = {
   assets: Record<string, number>;
 };
 
-/** Base asset for *USDT pairs, or null if the symbol does not denote a base (e.g. malformed "USDT"). */
 const baseAssetFromSymbol = (symbol: string) => {
   const base = symbol.replace(/USDT$/i, "").trim().toUpperCase();
   return base.length > 0 ? base : null;
@@ -37,9 +36,7 @@ const computeLogicalBalances = (
     const feeAmount = execution.feeAmount ?? 0;
     const feeAsset = execution.feeAsset?.toUpperCase() ?? null;
     const baseAsset = baseAssetFromSymbol(execution.symbol);
-    if (!baseAsset) {
-      continue;
-    }
+    if (!baseAsset) continue;
 
     if (!(baseAsset in balances.assets)) {
       balances.assets[baseAsset] = 0;
@@ -131,9 +128,19 @@ const buildKillDecision = (orders: TradingDecision["orders"]): TradingDecision =
   targetAllocations: []
 });
 
+/**
+ * Kill a bot and attempt to liquidate its positions.
+ *
+ * The bot is disabled FIRST so the scheduler can never pick it up again.
+ * Liquidation is best-effort — if it fails the bot is still killed.
+ * This function never throws; it always returns a result object.
+ */
 export const killBotAndLiquidate = async (bot: BotSetup) => {
+  // ── Step 1: disable the bot immediately ──────────────────────────────
+  await killBot(bot.id);
   await markRunStarted(bot.runtimeConfigId);
 
+  // ── Step 2: best-effort liquidation ──────────────────────────────────
   let runId: string | null = null;
 
   try {
@@ -157,10 +164,7 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
       promptVersionId: bot.promptVersionId,
       modelProfileId: bot.modelProfileId,
       runtimeConfig: bot.runtimeConfig,
-      compactContext: {
-        mode: "kill",
-        reason: "manual liquidate and stop"
-      },
+      compactContext: { mode: "kill", reason: "manual liquidate and stop" },
       promptSystem:
         "Kill mode execution. No model call. Liquidate all held symbols and permanently disable this bot.",
       promptUser: "Operator requested kill mode liquidation."
@@ -168,34 +172,28 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
 
     await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
 
+    // Cancel open orders (continue on per-symbol failures)
     for (const balance of beforeVenueRaw.snapshot.balances) {
-      const asset = String(balance.asset ?? "")
-        .trim()
-        .toUpperCase();
-      if (!asset || asset === "USDT") {
-        continue;
-      }
-
+      const asset = String(balance.asset ?? "").trim().toUpperCase();
+      if (!asset || asset === "USDT") continue;
       const totalQty = Number(balance.free) + Number(balance.locked);
-      if (!Number.isFinite(totalQty) || totalQty <= 1e-8) {
-        continue;
+      if (!Number.isFinite(totalQty) || totalQty <= 1e-8) continue;
+      try {
+        await cancelAllOpenOrdersForSymbol(bot.runtimeConfig.mode, `${asset}USDT`);
+      } catch (cancelError) {
+        console.warn(`kill-bot: cancel orders for ${asset}USDT failed, continuing:`, cancelError);
       }
-
-      await cancelAllOpenOrdersForSymbol(bot.runtimeConfig.mode, `${asset}USDT`);
     }
 
+    // Build sell orders from refreshed venue balance
     const refreshedVenue = await loadVenueContext(bot.runtimeConfig, bot.runtimeConfig.contextSymbols);
     const sellOrders = refreshedVenue.snapshot.balances
       .filter((balance) => {
-        const a = String(balance.asset ?? "")
-          .trim()
-          .toUpperCase();
+        const a = String(balance.asset ?? "").trim().toUpperCase();
         return a.length > 0 && a !== "USDT" && Number(balance.free) > 1e-8;
       })
       .map((balance) => ({
-        symbol: `${String(balance.asset)
-          .trim()
-          .toUpperCase()}USDT`,
+        symbol: `${String(balance.asset).trim().toUpperCase()}USDT`,
         side: "sell" as const,
         type: "market" as const,
         quantity: Number(balance.free),
@@ -224,11 +222,15 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
         runId,
         runtimeConfigId: bot.runtimeConfigId,
         status: "failure",
-        errorState: { message: "Kill liquidation validation failed", issues: validationResult.issues }
+        errorState: { message: "Liquidation validation failed", issues: validationResult.issues }
       });
-      return { runId, status: "failure" as const, issues: validationResult.issues };
+      await notifySlack(
+        `Bot ${bot.name} killed. Liquidation had validation issues: ${validationResult.issues.join("; ")}`
+      );
+      return { runId, status: "failure" as const, killed: true as const };
     }
 
+    // Execute sell orders
     const executions = await executeOrders({
       runId,
       runtimeConfig: bot.runtimeConfig,
@@ -237,6 +239,7 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
     });
     await storeExecutionRecords(runId, executions);
 
+    // After snapshot
     const afterLedger = await listBotExecutionLedger(bot.id);
     const afterLogical = computeLogicalBalances(bot.runtimeConfig.budgetUsdt, afterLedger);
     const afterVenueRaw = await loadVenueContext(bot.runtimeConfig, [
@@ -269,30 +272,24 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
       status: runStatus,
       errorState: hasUncertain ? { message: "At least one liquidation execution is uncertain" } : null
     });
-    await killBot(bot.id);
 
     await notifySlack(`Bot ${bot.name} killed. Liquidation run ${runStatus}.`);
-
     return { runId, status: runStatus, killed: true as const };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown kill error";
     if (runId) {
-      await finishRun({
-        runId,
-        runtimeConfigId: bot.runtimeConfigId,
-        status: "failure",
-        errorState: { message: errorMessage }
-      });
+      try {
+        await finishRun({
+          runId,
+          runtimeConfigId: bot.runtimeConfigId,
+          status: "failure",
+          errorState: { message: errorMessage }
+        });
+      } catch {
+        // finishRun itself failed — run stays as "running" in DB
+      }
     }
-    // Always mark the bot as killed even if liquidation failed — the operator
-    // requested a stop and we must honour it regardless of execution errors.
-    await killBot(bot.id);
-    await notifySlack(`Kill mode failure for ${bot.name}: ${errorMessage}. Bot marked as killed.`);
-    // Return a partial result so the API can respond with 200 and the client
-    // can update its UI. Re-throw only if there is no runId (very early failure).
-    if (runId) {
-      return { runId, status: "failure" as const, killed: true as const };
-    }
-    throw error;
+    await notifySlack(`Bot ${bot.name} killed. Liquidation failed: ${errorMessage}`);
+    return { runId, status: "failure" as const, killed: true as const };
   }
 };

@@ -1097,16 +1097,13 @@ export const getBotEnabledState = async (botId: string) => {
 };
 
 export const killBot = async (botId: string) => {
-  const [row] = await sql<{ enabled: boolean; name: string }[]>`
+  await sql`
     update bot_runtime_configs
     set enabled = false,
         killed_at = now(),
         updated_at = now()
     where bot_id = ${botId}
-    returning enabled, (select name from bots where id = ${botId}) as name
   `;
-
-  return row ?? null;
 };
 
 export const listPrompts = async () =>

@@ -31,7 +31,10 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Kill failed");
       setIsActive(false);
-      setFeedback({ type: "success", text: `Bot killed (${data.runId.slice(0, 8)})` });
+      setFeedback({
+        type: "success",
+        text: data.runId ? `Bot killed (${data.runId.slice(0, 8)})` : "Bot killed"
+      });
       router.refresh();
     } catch (e) {
       setFeedback({ type: "error", text: e instanceof Error ? e.message : "Kill failed" });
