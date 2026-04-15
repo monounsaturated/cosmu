@@ -66,7 +66,7 @@ const symbolsForPricing = (
   }
   for (const c of researchCandidates) {
     const n = normalizePricingSymbol(c);
-    if (n && n.endsWith("USDT") && n.length >= 8 && n !== "USDTUSDT") set.add(n);
+    if (n && n.endsWith("USDT") && n !== "USDTUSDT") set.add(n);
   }
   for (const s of runtime.contextSymbols) {
     if (s === ALL_SYMBOLS_TOKEN) continue;
