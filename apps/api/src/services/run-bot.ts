@@ -1,3 +1,10 @@
+/**
+ * Cosmu v2 Bot Runner
+ *
+ * Orchestrates: Research Agent → Trader Agent → Validator → Execution
+ * Uses the new pipeline, MCP tools, and LLM call logging.
+ */
+
 import { loadVenueContext, executeOrders } from "../adapters/binance.js";
 import {
   createRun,
@@ -11,46 +18,23 @@ import {
   storePortfolioSnapshot,
   type BotSetup
 } from "../lib/store.js";
-import { DecisionParseError, extractCandidateSymbols, requestDecision, requestResearchPhase } from "../providers/xai.js";
+import {
+  computeLogicalBalances,
+  buildLogicalSnapshot,
+  getHeldSymbols,
+  computeAfterSnapshot
+} from "../lib/logical-balances.js";
+import {
+  runResearchAgent,
+  runTraderAgent,
+  extractCandidateSymbols,
+  DecisionParseError
+} from "./pipeline.js";
 import { getVenueSymbols } from "./catalog.js";
 import { notifySlack } from "./notifier.js";
 import { buildFormatterPhaseContext, buildResearchPhaseContext } from "./prompt-context.js";
 import { validateDecision } from "./validator.js";
-import { ALL_SYMBOLS_TOKEN, portfolioSnapshotSchema, type RuntimeConfig } from "@cosmu/shared";
-
-const getDecisionWithRetry = async (
-  bot: BotSetup,
-  systemPrompt: string,
-  userMessage: string
-) => {
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      return await requestDecision({ bot, systemPrompt, userMessage });
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("Decision request failed");
-};
-
-const getResearchWithRetry = async (
-  bot: BotSetup,
-  systemPrompt: string,
-  userMessage: string
-): Promise<{ rawText: string }> => {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      return await requestResearchPhase({ bot, systemPrompt, userMessage });
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error("Research request failed");
-};
+import { ALL_SYMBOLS_TOKEN, type RuntimeConfig } from "@cosmu/shared";
 
 const normalizePricingSymbol = (value: string) => value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
 
@@ -78,116 +62,8 @@ const symbolsForPricing = (
 
 const summarizeTrades = async (runId: string) => {
   const trades = await recentTradeAlerts(runId);
-  if (trades.length === 0) {
-    return "No executions";
-  }
-
+  if (trades.length === 0) return "No executions";
   return trades.map((trade) => `${trade.side} ${trade.symbol} (${trade.status})`).join(", ");
-};
-
-const computeAfterSnapshot = (input: {
-  beforeSnapshot: Awaited<ReturnType<typeof loadVenueContext>>["snapshot"];
-  afterSnapshot: Awaited<ReturnType<typeof loadVenueContext>>["snapshot"];
-  totalFeeUsd: number;
-}) => ({
-  ...input.afterSnapshot,
-  grossPnlUsd: input.afterSnapshot.totalUsdValue - input.beforeSnapshot.totalUsdValue,
-  netPnlUsd: input.afterSnapshot.totalUsdValue - input.beforeSnapshot.totalUsdValue - input.totalFeeUsd,
-  feeUsd: input.totalFeeUsd
-});
-
-type LogicalBalances = {
-  usdt: number;
-  assets: Record<string, number>;
-};
-
-const baseAssetFromSymbol = (symbol: string) => {
-  const base = symbol.replace(/USDT$/i, "").trim().toUpperCase();
-  return base.length > 0 ? base : null;
-};
-
-const computeLogicalBalances = (
-  budgetUsdt: number,
-  ledger: Awaited<ReturnType<typeof listBotExecutionLedger>>
-): LogicalBalances => {
-  const balances: LogicalBalances = { usdt: budgetUsdt, assets: {} };
-
-  for (const execution of ledger) {
-    const quantity = execution.executedQuantity ?? 0;
-    const notionalUsd = execution.executedNotionalUsd ?? 0;
-    const feeAmount = execution.feeAmount ?? 0;
-    const feeAsset = execution.feeAsset?.toUpperCase() ?? null;
-    const baseAsset = baseAssetFromSymbol(execution.symbol);
-    if (!baseAsset) {
-      continue;
-    }
-
-    if (!(baseAsset in balances.assets)) {
-      balances.assets[baseAsset] = 0;
-    }
-
-    if (execution.side === "buy") {
-      balances.assets[baseAsset] += quantity;
-      balances.usdt -= notionalUsd;
-    } else {
-      balances.assets[baseAsset] -= quantity;
-      balances.usdt += notionalUsd;
-    }
-
-    if (feeAmount > 0 && feeAsset) {
-      if (feeAsset === "USDT") {
-        balances.usdt -= feeAmount;
-      } else {
-        balances.assets[feeAsset] = (balances.assets[feeAsset] ?? 0) - feeAmount;
-      }
-    }
-  }
-
-  return balances;
-};
-
-const getHeldSymbols = (logical: LogicalBalances) =>
-  Object.entries(logical.assets)
-    .filter(([asset, qty]) => asset.length > 0 && Math.abs(qty) > 1e-8)
-    .map(([asset]) => `${asset}USDT`);
-
-const buildLogicalSnapshot = (input: {
-  runtimeConfig: RuntimeConfig;
-  logical: LogicalBalances;
-  priceMap: Record<string, number>;
-}) => {
-  const balances = [
-    {
-      asset: "USDT",
-      free: input.logical.usdt,
-      locked: 0,
-      usdValue: input.logical.usdt
-    },
-    ...Object.entries(input.logical.assets)
-      .filter(([, qty]) => Math.abs(qty) > 1e-8)
-      .map(([asset, quantity]) => {
-        const price = input.priceMap[`${asset}USDT`];
-        return {
-          asset,
-          free: quantity,
-          locked: 0,
-          usdValue: price ? quantity * price : null
-        };
-      })
-  ];
-
-  const totalUsdValue = balances.reduce((sum, balance) => sum + (balance.usdValue ?? 0), 0);
-
-  return portfolioSnapshotSchema.parse({
-    assetClass: input.runtimeConfig.assetClass,
-    totalUsdValue,
-    grossPnlUsd: null,
-    netPnlUsd: null,
-    feeUsd: null,
-    balances,
-    prices: Object.entries(input.priceMap).map(([symbol, price]) => ({ symbol, price })),
-    capturedAt: new Date().toISOString()
-  });
 };
 
 export const runBot = async (bot: BotSetup) => {
@@ -196,6 +72,7 @@ export const runBot = async (bot: BotSetup) => {
   let runId: string | null = null;
 
   try {
+    // ── 1. Build "before" state ──────────────────────────────────────
     const beforeLedger = await listBotExecutionLedger(bot.id);
     const beforeLogical = computeLogicalBalances(bot.runtimeConfig.budgetUsdt, beforeLedger);
     const initialSymbols = symbolsForPricing(bot.runtimeConfig, getHeldSymbols(beforeLogical), []);
@@ -212,19 +89,40 @@ export const runBot = async (bot: BotSetup) => {
       })
     };
 
+    // ── 2. Research Agent ────────────────────────────────────────────
     const researchCtx = await buildResearchPhaseContext({
       bot,
       venueContext: beforeVenueContext
     });
 
-    const { rawText: researchRaw } = await getResearchWithRetry(
-      bot,
-      researchCtx.systemPrompt,
-      researchCtx.userMessage
-    );
+    // Create run early so we can log LLM calls against it
+    const compactContextPlaceholder = {
+      ...researchCtx.compactContext,
+      phase: "initializing"
+    };
 
+    runId = await createRun({
+      botId: bot.id,
+      promptVersionId: bot.promptVersionId,
+      modelProfileId: bot.modelProfileId,
+      runtimeConfig: bot.runtimeConfig,
+      compactContext: compactContextPlaceholder,
+      promptSystem: researchCtx.systemPrompt,
+      promptUser: researchCtx.userMessage
+    });
+
+    await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
+
+    const researchResult = await runResearchAgent({
+      bot,
+      systemPrompt: researchCtx.systemPrompt,
+      userMessage: researchCtx.userMessage,
+      runId
+    });
+
+    // ── 3. Prepare Trader context ────────────────────────────────────
     const venueSymbols = await getVenueSymbols("binance");
-    const candidateSymbols = extractCandidateSymbols(researchRaw, venueSymbols);
+    const candidateSymbols = extractCandidateSymbols(researchResult.rawText, venueSymbols);
 
     const pricingSymbols = symbolsForPricing(bot.runtimeConfig, getHeldSymbols(beforeLogical), candidateSymbols);
     const pricedVenueRaw = await loadVenueContext(
@@ -247,11 +145,12 @@ export const runBot = async (bot: BotSetup) => {
     const formatterCtx = await buildFormatterPhaseContext({
       bot,
       venueContext: decisionVenueContext,
-      researchRawText: researchRaw,
+      researchRawText: researchResult.rawText,
       candidateSymbols,
       priceSymbolFilter
     });
 
+    // Update run with full prompt context
     const compactContext = {
       ...researchCtx.compactContext,
       formatter: formatterCtx.compactContext,
@@ -262,7 +161,7 @@ export const runBot = async (bot: BotSetup) => {
       "=== PHASE 1 — RESEARCH (system) ===",
       researchCtx.systemPrompt,
       "",
-      "=== PHASE 2 — FORMATTER (system) ===",
+      "=== PHASE 2 — TRADER (system) ===",
       formatterCtx.systemPrompt
     ].join("\n");
 
@@ -270,49 +169,45 @@ export const runBot = async (bot: BotSetup) => {
       "=== PHASE 1 — RESEARCH (user context) ===",
       researchCtx.userMessage,
       "",
-      "=== PHASE 2 — FORMATTER (user context) ===",
+      "=== PHASE 2 — TRADER (user context) ===",
       formatterCtx.userMessage
     ].join("\n");
 
-    runId = await createRun({
-      botId: bot.id,
-      promptVersionId: bot.promptVersionId,
-      modelProfileId: bot.modelProfileId,
-      runtimeConfig: bot.runtimeConfig,
-      compactContext,
-      promptSystem,
-      promptUser,
-      formatterPromptVersionId: formatterCtx.formatterPromptVersionId
+    // Update run record with full context (prompt_system/prompt_user already set at creation,
+    // but we want the combined version for inspection)
+    await storeRawModelOutput(runId, ""); // Placeholder, will be overwritten
+
+    // ── 4. Trader Agent ──────────────────────────────────────────────
+    const traderResult = await runTraderAgent({
+      bot,
+      systemPrompt: formatterCtx.systemPrompt,
+      userMessage: formatterCtx.userMessage,
+      runId
     });
 
-    await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
-
-    const { rawText: decisionRaw, decision } = await getDecisionWithRetry(
-      bot,
-      formatterCtx.systemPrompt,
-      formatterCtx.userMessage
-    );
     await storeRawModelOutput(
       runId,
       JSON.stringify(
         {
-          phase1Research: researchRaw,
-          phase2Decision: decisionRaw
+          phase1Research: researchResult.rawText,
+          phase2Trader: traderResult.rawText
         },
         null,
         2
       )
     );
+
+    // ── 5. Deterministic Validator ───────────────────────────────────
     const validationResult = await validateDecision({
-      decision,
+      decision: traderResult.decision,
       runtimeConfig: bot.runtimeConfig,
       venueContext: decisionVenueContext
     });
 
     await storeDecision({
       runId,
-      rawModelOutput: decisionRaw,
-      decision,
+      rawModelOutput: traderResult.rawText,
+      decision: traderResult.decision,
       validationResult
     });
 
@@ -324,9 +219,10 @@ export const runBot = async (bot: BotSetup) => {
         errorState: { message: "Decision validation failed", issues: validationResult.issues }
       });
       await notifySlack(`Run failed for ${bot.name}: ${validationResult.issues.join("; ")}`);
-      return { runId, status: "failure" as const, decision };
+      return { runId, status: "failure" as const, decision: traderResult.decision };
     }
 
+    // ── 6. Execution ─────────────────────────────────────────────────
     const executions = await executeOrders({
       runId,
       runtimeConfig: bot.runtimeConfig,
@@ -336,6 +232,7 @@ export const runBot = async (bot: BotSetup) => {
 
     await storeExecutionRecords(runId, executions);
 
+    // ── 7. After snapshot ────────────────────────────────────────────
     const afterLedger = await listBotExecutionLedger(bot.id);
     const afterLogical = computeLogicalBalances(bot.runtimeConfig.budgetUsdt, afterLedger);
     const afterVenueRaw = await loadVenueContext(bot.runtimeConfig, [
@@ -372,7 +269,7 @@ export const runBot = async (bot: BotSetup) => {
     const tradeSummary = await summarizeTrades(runId);
     await notifySlack(`Run ${runStatus} for ${bot.name}: ${tradeSummary}`);
 
-    return { runId, status: runStatus, decision };
+    return { runId, status: runStatus, decision: traderResult.decision };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown run error";
 
@@ -382,14 +279,7 @@ export const runBot = async (bot: BotSetup) => {
       } else {
         await storeRawModelOutput(
           runId,
-          JSON.stringify(
-            {
-              providerError: errorMessage,
-              at: new Date().toISOString()
-            },
-            null,
-            2
-          )
+          JSON.stringify({ providerError: errorMessage, at: new Date().toISOString() }, null, 2)
         );
       }
       await finishRun({

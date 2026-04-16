@@ -16,7 +16,10 @@ import {
   updateBotConfig,
   getAllActiveFormatterPrompts,
   createFormatterPromptVersion,
-  listFormatterPromptVersions
+  listFormatterPromptVersions,
+  isGlobalKillSwitchOn,
+  setGlobalKillSwitch,
+  getLLMCallsForRun
 } from "./lib/store.js";
 import { getDashboard } from "./services/dashboard.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
@@ -26,6 +29,7 @@ import { getAccountBalance } from "./adapters/binance.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
 import { killBotAndLiquidate } from "./services/kill-bot.js";
+import { listTools } from "./mcp/index.js";
 
 const app = express();
 
@@ -549,6 +553,55 @@ app.patch("/bots/:botId", async (request, response, next) => {
   }
 });
 
+// ── v2: Kill Switch ──────────────────────────────────────────────────
+
+app.get("/settings/kill-switch", async (_request, response, next) => {
+  try {
+    const on = await isGlobalKillSwitchOn();
+    response.json({ killSwitch: on ? "on" : "off" });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/settings/kill-switch", async (request, response, next) => {
+  try {
+    const { enabled } = request.body as { enabled?: boolean };
+    if (typeof enabled !== "boolean") {
+      response.status(400).json({ error: "enabled (boolean) is required" });
+      return;
+    }
+    await setGlobalKillSwitch(enabled);
+    if (enabled) {
+      await notifySlack("GLOBAL KILL SWITCH ACTIVATED — all bot executions are now blocked.");
+    } else {
+      await notifySlack("Global kill switch deactivated — bot executions are allowed again.");
+    }
+    response.json({ killSwitch: enabled ? "on" : "off" });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── v2: LLM Call Logs ────────────────────────────────────────────────
+
+app.get("/runs/:runId/llm-calls", async (request, response, next) => {
+  try {
+    const calls = await getLLMCallsForRun(request.params.runId);
+    response.json({ runId: request.params.runId, calls });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── v2: MCP Tool List ────────────────────────────────────────────────
+
+app.get("/mcp/tools", async (_request, response) => {
+  response.json({ tools: listTools() });
+});
+
+// ── Error Handler ────────────────────────────────────────────────────
+
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   console.error(error);
   response.status(500).json({
@@ -579,6 +632,10 @@ const SCHEDULER_INTERVAL_MS = 15 * 1000; // 15 seconds to ensure we don't miss t
 const startSchedulerLoop = () => {
   const runScheduler = async () => {
     try {
+      // v2: Check global kill switch before running any bots
+      const killSwitchOn = await isGlobalKillSwitchOn();
+      if (killSwitchOn) return;
+
       const dueBots = await getDueBots();
       for (const bot of dueBots) {
         try {

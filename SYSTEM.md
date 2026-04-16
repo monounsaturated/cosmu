@@ -61,6 +61,11 @@ Current posture:
 - internal frontend first
 - Slack only in V1
 - REST market data as the current default for V1
+- 3-phase pipeline: Research Agent → Trader Agent → Deterministic Validator/Executor
+- internal MCP tool layer wrapping venue adapter calls
+- LLM provider abstraction (swappable providers)
+- per-LLM-call tracing via `run_llm_calls` table
+- global kill switch for emergency halt
 
 Why this posture:
 - it is fast to ship
@@ -252,14 +257,17 @@ Why:
 ### 5.6 Provider posture
 
 Locked:
-- one provider implementation first
+- LLM providers are abstracted behind a common `LLMProvider` interface (`apps/api/src/providers/llm.ts`)
+- providers expose a single `chat(input)` method returning `LLMResponse` with usage metrics
 - prompts and model profiles must remain separate concepts
+- new providers are registered via `registerProvider()` and resolved via `getProvider(name)`
 
 Current default:
-- Grok direct via xAI API as the starting provider
+- xAI (Grok) as the starting provider (`apps/api/src/providers/xai.ts`)
+- provider abstraction is in place — adding a new provider means implementing the `LLMProvider` interface and registering it
 
 Why:
-- this keeps implementation simpler now while preserving provider flexibility later
+- provider flexibility is a first-class concern; swapping or adding providers should not require touching pipeline code
 
 ### 5.7 Bot and workflow posture
 
@@ -396,11 +404,12 @@ Why:
 ### 6.4 Provider default
 
 Current default:
-- Grok direct via xAI API
+- xAI (Grok) via provider abstraction layer
+- providers implement `LLMProvider` interface and are resolved by name at runtime
 
 Why:
 - one provider first reduces complexity
-- future provider flexibility is preserved by architecture, not by implementing everything now
+- provider abstraction is implemented — adding new providers is a single-file implementation task
 
 ### 6.5 UI ordering default
 
@@ -594,22 +603,42 @@ Why:
 
 ## 10. Core autonomous loop
 
-The V1 heartbeat is:
+The v2 heartbeat is a 3-phase pipeline:
 
+**Phase 0 — Scheduling & safety**
 1. scheduler checks active bots
-2. a bot is due
-3. system loads active prompt version
-4. system loads model profile
-5. system loads runtime config
-6. system fetches wallet and market state
-7. system builds compact context
-8. model returns strict structured JSON decision
-9. backend validates the decision
-10. adapter translates to venue order requests
-11. execution is attempted
-12. full run trace is stored
-13. UI reflects latest state
-14. Slack notifies important events
+2. global kill switch is checked — if on, all bots are skipped
+3. a bot is due
+
+**Phase 1 — Research Agent** (`apps/api/src/services/pipeline.ts: runResearchAgent`)
+4. system loads active prompt version, model profile, runtime config
+5. system fetches wallet and market state via MCP tools
+6. system builds compact context
+7. LLM produces free-form research analysis (text)
+8. candidate symbols are extracted from research text
+9. LLM call is logged to `run_llm_calls` (provider, model, tokens, latency, attempt)
+
+**Phase 2 — Trader Agent** (`apps/api/src/services/pipeline.ts: runTraderAgent`)
+10. research output, market data, and portfolio state are assembled into trader prompt
+11. LLM returns strict structured JSON decision (`TradingDecision` schema)
+12. multi-strategy retry: tries json_schema → json_object → text, with temperature fallback
+13. each LLM attempt is logged to `run_llm_calls`
+
+**Phase 3 — Deterministic Validator/Executor** (`apps/api/src/services/validator.ts`)
+14. global kill switch check (redundant safety)
+15. venue authorization check
+16. authorized pairs enforcement (when symbolScope is "selected")
+17. existing validation: tradability, precision, lot size, wallet sufficiency
+18. adapter translates to venue order requests via MCP tools
+19. execution is attempted
+20. full run trace is stored (decision, raw model output, executions, portfolio snapshots)
+21. UI reflects latest state
+22. Slack notifies important events
+
+**MCP tool layer** (`apps/api/src/mcp/`)
+- all venue interactions go through the internal MCP registry
+- registered tools: `get_account`, `get_prices`, `get_symbols`, `get_exchange_info`, `execute_order`, `cancel_orders`
+- tools are typed, registered at startup, and callable by name via `callTool(name, input, context)`
 
 This is the product core.
 Everything else is extension.
@@ -704,6 +733,12 @@ Its job is practical correctness, such as:
 - mode compatibility
 - submission success
 - response trackability
+
+Deterministic guardrails (non-LLM):
+- global kill switch — halts all execution immediately when enabled
+- venue authorization — only configured venues are allowed
+- authorized pairs enforcement — when `symbolScope` is "selected", only whitelisted pairs pass
+- these checks run before any existing validation logic
 
 It must not become:
 - a heavy rule engine
@@ -827,6 +862,9 @@ Required now:
 - `decisions`
 - `executions`
 - `portfolio_snapshots`
+- `run_llm_calls` — per-LLM-call tracing (phase, provider, model, tokens, latency, attempt, strategy, error)
+- `app_settings` — key-value store for global settings (e.g. `global_kill_switch`)
+- `venue_prompt_versions` — venue-specific prompt versions (e.g. formatter prompts per venue)
 
 Required asset-class posture:
 - `bot_runtime_configs.asset_class = 'spot'`

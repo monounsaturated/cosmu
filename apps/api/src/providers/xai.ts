@@ -6,11 +6,71 @@ import {
 } from "@cosmu/shared";
 import { env } from "../env.js";
 import type { BotSetup } from "../lib/store.js";
+import type { LLMProvider, LLMChatInput, LLMResponse, LLMMessage } from "./llm.js";
 
 const client = new OpenAI({
   apiKey: env.XAI_API_KEY,
   baseURL: "https://api.x.ai/v1"
 });
+
+// ─── LLM Provider Interface Implementation ──────────────────────────
+
+export const xaiProvider: LLMProvider = {
+  name: "xai",
+  chat: async (input: LLMChatInput): Promise<LLMResponse> => {
+    const completion = await client.chat.completions.create({
+      model: input.model,
+      ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+      messages: input.messages.map((m) => ({ role: m.role, content: m.content })),
+      ...(input.responseFormat ? { response_format: input.responseFormat } : {})
+    } as Parameters<typeof client.chat.completions.create>[0]);
+
+    if (!("choices" in completion)) {
+      throw new Error("xAI returned a stream response unexpectedly");
+    }
+
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error(`xAI returned no content (model: ${input.model})`);
+    }
+
+    const usage = completion.usage
+      ? {
+          inputTokens: completion.usage.prompt_tokens ?? 0,
+          outputTokens: completion.usage.completion_tokens ?? 0
+        }
+      : null;
+
+    return {
+      content,
+      usage,
+      model: input.model,
+      strategy: input.responseFormat
+        ? (input.responseFormat as { type?: string }).type ?? "unknown"
+        : "text"
+    };
+  }
+};
+
+// ─── Provider Factory ────────────────────────────────────────────────
+
+const providers: Record<string, LLMProvider> = {
+  xai: xaiProvider
+};
+
+export const getProvider = (name: string): LLMProvider => {
+  const provider = providers[name];
+  if (!provider) {
+    throw new Error(`Unknown LLM provider: ${name}. Available: ${Object.keys(providers).join(", ")}`);
+  }
+  return provider;
+};
+
+export const registerProvider = (provider: LLMProvider) => {
+  providers[provider.name] = provider;
+};
+
+// ─── Legacy Functions (used by existing run-bot.ts until pipeline.ts takes over) ─
 
 type DecisionRequest = {
   bot: BotSetup;
@@ -20,7 +80,6 @@ type DecisionRequest = {
 
 export class DecisionParseError extends Error {
   rawText: string;
-
   constructor(message: string, rawText: string, options?: { cause?: unknown }) {
     super(message);
     this.name = "DecisionParseError";
@@ -62,13 +121,8 @@ const STRATEGIES: ResponseStrategy[] = [
       }
     }
   },
-  {
-    label: "json_object",
-    format: { type: "json_object" }
-  },
-  {
-    label: "text"
-  }
+  { label: "json_object", format: { type: "json_object" } },
+  { label: "text" }
 ];
 
 const TEMPERATURE_STRATEGIES: TemperatureStrategy[] = [
@@ -96,11 +150,9 @@ const isLikelyChatModel = (modelId: string) =>
 
 const buildModelCandidates = (primaryModel: string) => {
   const candidates: string[] = [primaryModel];
-
   if (/-multi-agent/i.test(primaryModel)) {
     candidates.push(primaryModel.replace(/-multi-agent.*$/i, "-reasoning"));
   }
-
   candidates.push(...XAI_STABLE_FALLBACK_MODELS);
   return Array.from(new Set(candidates.filter(Boolean)));
 };
@@ -112,7 +164,6 @@ const toErrorMessage = (error: unknown) => {
     const code = (error as { code?: unknown }).code;
     const type = (error as { type?: unknown }).type;
     const payload = (error as { error?: unknown }).error;
-
     if (typeof status === "number") details.push(`status=${status}`);
     if (typeof code === "string" && code.length > 0) details.push(`code=${code}`);
     if (typeof type === "string" && type.length > 0) details.push(`type=${type}`);
@@ -120,14 +171,10 @@ const toErrorMessage = (error: unknown) => {
       try {
         const serialized = JSON.stringify(payload);
         if (serialized !== "{}") details.push(`payload=${serialized}`);
-      } catch {
-        details.push("payload=[unserializable]");
-      }
+      } catch { details.push("payload=[unserializable]"); }
     }
-
     return details.length > 0 ? `${error.message} (${details.join(", ")})` : error.message;
   }
-
   return String(error);
 };
 
@@ -207,7 +254,6 @@ export const requestDecision = async ({
   throw new Error(message, { cause: lastError });
 };
 
-/** Extract candidate trading symbols from free-form research text by matching against known venue symbols. */
 export const extractCandidateSymbols = (rawText: string, venueSymbols: string[]): string[] => {
   const venueSet = new Set(venueSymbols.map((s) => s.toUpperCase()));
   const matches = rawText.match(/[A-Z]{2,10}USDT/g);
@@ -281,9 +327,7 @@ export const requestResearchPhase = async ({
 
 export const listXaiModels = async () => {
   const response = await fetch("https://api.x.ai/v1/models", {
-    headers: {
-      Authorization: `Bearer ${env.XAI_API_KEY}`
-    },
+    headers: { Authorization: `Bearer ${env.XAI_API_KEY}` },
     signal: AbortSignal.timeout(5000)
   });
 
