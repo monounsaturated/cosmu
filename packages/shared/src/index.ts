@@ -50,7 +50,7 @@ export const runtimeConfigSchema = z.object({
   venue: venueSchema,
   frequencyMinutes: z.preprocess(
     (v) => String(v),
-    z.enum(["1", "5", "15", "30", "60"])
+    z.enum(["1", "5", "15", "30", "60", "240", "720", "1440"])
   ).transform(Number),
   mode: executionModeSchema,
   assetClass: assetClassSchema,

@@ -917,6 +917,172 @@ a {
   color: #e4e4e7;
 }
 
+/* ── 3-column form grid ── */
+.form-grid-3col {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* ── Prompt Composer (prompt + injected preview) ── */
+.prompt-composer {
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #09090b;
+}
+
+.prompt-composer-textarea {
+  width: 100%;
+  padding: 14px;
+  background: transparent;
+  border: none;
+  color: #e4e4e7;
+  font-size: 13px;
+  font-family: "SF Mono", "Fira Code", monospace;
+  resize: vertical;
+  box-sizing: border-box;
+  min-height: 200px;
+}
+
+.prompt-composer-textarea:focus {
+  outline: none;
+}
+
+.prompt-composer-injected {
+  border-top: 2px dashed #3f3f46;
+  background: #0d0d12;
+}
+
+/* ── Injected Data Separator ── */
+.injected-separator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #18181b;
+}
+
+.injected-separator-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #a78bfa;
+  white-space: nowrap;
+}
+
+/* ── Injected Data Block ── */
+.injected-block {
+  border-top: 1px solid #27272a;
+}
+
+.injected-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 14px;
+  background: transparent;
+  border: none;
+  color: #a1a1aa;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  transition: background 0.15s;
+  text-align: left;
+}
+
+.injected-block-header:hover {
+  background: #18181b;
+}
+
+.injected-block-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.injected-always-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #52525b;
+  background: #27272a;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.injected-block-chevron {
+  color: #52525b;
+  font-size: 11px;
+}
+
+.injected-block-preview {
+  margin: 0;
+  padding: 10px 14px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #a78bfa88;
+  font-family: "SF Mono", "Fira Code", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #0a0a10;
+  border-top: 1px solid #1e1e2e;
+}
+
+/* ── Injected Data Section (within prompt section) ── */
+.injected-data-section {
+  border-top: 1px solid #27272a;
+  padding-top: 16px;
+}
+
+.injected-data-section h4 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e4e4e7;
+}
+
+/* ── Selected symbols (inline in Core Settings) ── */
+.selected-symbols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.badge-button {
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 6px;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  color: #e4e4e7;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.badge-button:hover {
+  background: #3f3f46;
+}
+
+.pairs-empty {
+  padding: 10px 14px;
+  color: #71717a;
+  font-size: 13px;
+  margin: 0;
+}
+
+.btn-xs {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
 /* Helpers */
 .flex { display: flex; }
 .justify-between { justify-content: space-between; }
@@ -1010,6 +1176,7 @@ a {
   }
 
   .form-grid,
+  .form-grid-3col,
   .modules-grid {
     grid-template-columns: 1fr;
   }

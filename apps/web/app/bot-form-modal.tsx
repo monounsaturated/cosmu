@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const ALL_SYMBOLS_TOKEN = "__ALL__";
 
-const DEFAULT_PROMPT_BODY = `You are an autonomous crypto spot trading engine on Binance.
+const DEFAULT_RESEARCH_PROMPT = `You are an autonomous crypto spot trading engine on Binance.
 
 Your goal is to grow the portfolio by finding high-conviction trading opportunities.
 
@@ -27,6 +27,134 @@ Rules:
 - Keep the order list lean — quality over quantity
 - Every order must include a concise rationale`;
 
+const DEFAULT_TRADER_PROMPT = `You are the execution stage (phase 2) for one autonomous Binance USDT spot bot.
+
+Inputs (in the user message):
+- UPSTREAM RESEARCH: qualitative thesis from phase 1 — symbols may be informal; normalize to valid *USDT pairs only when you place orders.
+- SESSION / EXECUTION RULES / WALLET / AUTHORIZED PAIRS: hard facts — never contradict them.
+- LIVE MARKET PRICES: authoritative reference for sizing stops and limits on buys.
+
+Output: exactly one JSON object (no markdown fences, no prose) matching TradingDecision:
+- mode: one of "rebalance" | "enter" | "exit" | "hold" | "adjust". Use "hold" when there is no defensible trade.
+- rationaleSummary: <=600 chars, decision-grade summary.
+- globalRationale: <=4000 chars tying research to orders or explaining why you are flat.
+- confidence: number in [0,1].
+- timeHorizon: short string or null.
+- orders: array (<= max orders/run from rules). Each order: symbol, side buy|sell, type market|limit, quantity (>0), limitPrice (null unless limit), stopLossPrice, takeProfitPrice, rationale.
+- targetAllocations: usually [].
+
+Order logic:
+- BUY: every buy MUST set stopLossPrice strictly below the live reference price for that symbol and takeProfitPrice strictly above. Omit trades you cannot justify with the given prices.
+- SELL: set stopLossPrice and takeProfitPrice to null.
+- Respect authorized pair list when present; otherwise any Binance USDT spot pair is allowed if grounded in research + prices.
+- Stay within wallet + execution caps; prefer fewer, higher-conviction orders over many small ones.
+- If research conflicts with prices, scope, or risk limits, prefer mode hold with orders: [].`;
+
+// Example injected data previews — matches the exact format produced by prompt-context.ts
+const INJECTED_DATA_EXAMPLES: Record<string, { label: string; preview: string }> = {
+  includeWalletOverview: {
+    label: "Portfolio Overview",
+    preview: `=== PORTFOLIO OVERVIEW ===
+Started: $1,000.00 | Now: $1,072.50 | Net PnL: $72.50
+Runs: 24 | Trades: 18 | Fees: $3.40`,
+  },
+  includePerformanceStats: {
+    label: "Performance Stats",
+    preview: `=== PERFORMANCE STATS ===
+{
+  "runCount": 24,
+  "tradeCount": 18,
+  "totalFeesUsd": 3.40,
+  "firstPortfolioUsd": 1000,
+  "currentPortfolioUsd": 1072.50,
+  "netPnlUsd": 72.50
+}`,
+  },
+  includePastTrades: {
+    label: "Past Trades",
+    preview: `=== RECENT TRADES (last 10) ===
+BUY BTCUSDT qty=0.0012 @ 68450 → success
+SELL ETHUSDT qty=0.15 @ 2410 → success
+BUY SOLUSDT qty=2.5 @ 142.80 → success`,
+  },
+  includeBotRanking: {
+    label: "Bot Rankings",
+    preview: `=== BOT RANKINGS ===
+1. Alpha Momentum: $142.30 net PnL
+2. Swing Macro: $72.50 net PnL
+3. This Bot: $45.20 net PnL`,
+  },
+};
+
+// Always-injected sections for the trader prompt (non-toggleable)
+const ALWAYS_INJECTED_TRADER: { label: string; preview: string }[] = [
+  {
+    label: "Upstream Research",
+    preview: `=== UPSTREAM RESEARCH (phase 1 analysis) ===
+[The full output from the research agent will appear here — your creative analysis, symbol mentions, thesis, etc.]`,
+  },
+  {
+    label: "Session",
+    preview: `=== SESSION ===
+Bot: My Strategy (#32) | Model: xAI grok-3
+Mode: testnet | Venue: Binance Spot | Frequency: every 30min
+Budget: $1,000.00 — you must stay within this allocation`,
+  },
+  {
+    label: "Execution Rules",
+    preview: `=== EXECUTION RULES ===
+Rules enforced: YES
+Max orders/run: 3 | Max notional/order: 250 USDT
+Cash reserve (untouchable): 25 USDT
+Allowed types: MARKET, LIMIT`,
+  },
+  {
+    label: "Wallet",
+    preview: `=== WALLET ===
+Total: $1,072.50
+USDT: 750.20 free ($750.20)
+BTC: 0.0012 free ($82.14)
+ETH: 0.15 free ($361.50)`,
+  },
+  {
+    label: "Live Market Prices",
+    preview: `=== LIVE MARKET PRICES (for execution) ===
+Use these reference prices for stopLossPrice / takeProfitPrice on buys.
+BTCUSDT: 68450.00
+ETHUSDT: 2410.00
+SOLUSDT: 142.80`,
+  },
+  {
+    label: "Trading Scope",
+    preview: `=== TRADING SCOPE ===
+You may trade ANY USDT spot pair available on Binance. Pick your symbols based on your own analysis.`,
+  },
+];
+
+// Always-injected sections for the research prompt (non-toggleable)
+const ALWAYS_INJECTED_RESEARCH: { label: string; preview: string }[] = [
+  {
+    label: "Session",
+    preview: `=== SESSION ===
+Bot: My Strategy (#32) | Model: xAI grok-3
+Mode: testnet | Venue: Binance Spot | Frequency: every 30min
+Budget: $1,000.00 — you must stay within this allocation`,
+  },
+  {
+    label: "Wallet",
+    preview: `=== WALLET ===
+Total: $1,072.50
+USDT: 750.20 free ($750.20)
+BTC: 0.0012 free ($82.14)
+ETH: 0.15 free ($361.50)`,
+  },
+  {
+    label: "Trading Scope",
+    preview: `=== TRADING SCOPE ===
+You may trade ANY USDT spot pair available on Binance. Pick your symbols based on your own analysis.`,
+  },
+];
+
 type Prompt = {
   id: string;
   name: string;
@@ -36,6 +164,15 @@ type Prompt = {
   latestVersionId: string | null;
   latestBody: string | null;
   latestVersionCreatedAt: string | null;
+};
+
+type FormatterVersion = {
+  id: string;
+  venue: string;
+  promptType: string;
+  version: number;
+  body: string;
+  createdAt: string;
 };
 
 type Model = {
@@ -123,16 +260,34 @@ const uniqueSlug = (value: string) => `${slugify(value) || "bot"}-${Date.now().t
 const uniqueSymbols = (symbols: string[]) =>
   Array.from(new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean)));
 
+const FREQUENCY_OPTIONS = [
+  { value: "1", label: "Every 1 min" },
+  { value: "5", label: "Every 5 min" },
+  { value: "15", label: "Every 15 min" },
+  { value: "30", label: "Every 30 min" },
+  { value: "60", label: "Every 1 hour" },
+  { value: "240", label: "Every 4 hours" },
+  { value: "720", label: "Every 12 hours" },
+  { value: "1440", label: "Every 24 hours" },
+];
+
 const buildDefaultState = () => {
   return {
     name: "",
-    promptStrategy: "new" as "new" | "existing",
+    // Research prompt
+    researchStrategy: "new" as "new" | "existing",
     existingPromptVersionId: "",
-    newPromptName: "",
-    newPromptBody: DEFAULT_PROMPT_BODY,
+    newResearchName: "",
+    newResearchBody: DEFAULT_RESEARCH_PROMPT,
+    // Trader prompt
+    traderStrategy: "new" as "new" | "existing",
+    existingTraderVersionId: "",
+    newTraderName: "",
+    newTraderBody: DEFAULT_TRADER_PROMPT,
+    // Model & runtime
     modelProfileId: "",
     venue: "binance-testnet" as "binance" | "binance-testnet",
-    frequencyMinutes: "15",
+    frequencyMinutes: "30",
     budgetUsdt: 1000,
     symbolScope: "all" as "selected" | "all",
     contextSymbols: [] as string[],
@@ -157,8 +312,290 @@ const buildDefaultState = () => {
   };
 };
 
+// ── Injected Data Preview Component ─────────────────────────────────────
+function InjectedPreviewBlock({ label, preview, alwaysOn }: { label: string; preview: string; alwaysOn?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="injected-block">
+      <button
+        type="button"
+        className="injected-block-header"
+        onClick={() => setOpen(!open)}
+      >
+        <span className="injected-block-label">
+          {alwaysOn && <span className="injected-always-badge">always</span>}
+          {label}
+        </span>
+        <span className="injected-block-chevron">{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <pre className="injected-block-preview">{preview}</pre>
+      )}
+    </div>
+  );
+}
+
+// ── Prompt Section Component ────────────────────────────────────────────
+function PromptSection({
+  phase,
+  phaseColor,
+  strategy,
+  onStrategyChange,
+  promptOptions,
+  selectedVersionId,
+  onVersionChange,
+  promptName,
+  onNameChange,
+  promptBody,
+  onBodyChange,
+  savedBody,
+  showBodyEditor,
+  onToggleEditor,
+  editedBody,
+  onEditedBodyChange,
+  onSaveNewVersion,
+  savingVersion,
+  loadingBody,
+  // Injected data
+  alwaysInjected,
+  optionalModules,
+  activeModules,
+  onToggleModule,
+  pastTradesLookback,
+  onLookbackChange,
+}: {
+  phase: "research" | "trader";
+  phaseColor: string;
+  strategy: "new" | "existing";
+  onStrategyChange: (s: "new" | "existing") => void;
+  promptOptions: { id: string; label: string; body: string }[];
+  selectedVersionId: string;
+  onVersionChange: (id: string) => void;
+  promptName: string;
+  onNameChange: (n: string) => void;
+  promptBody: string;
+  onBodyChange: (b: string) => void;
+  savedBody: string | null;
+  showBodyEditor: boolean;
+  onToggleEditor: (v: boolean) => void;
+  editedBody: string;
+  onEditedBodyChange: (b: string) => void;
+  onSaveNewVersion: () => void;
+  savingVersion: boolean;
+  loadingBody: boolean;
+  alwaysInjected: { label: string; preview: string }[];
+  optionalModules?: { key: string; label: string; preview: string }[];
+  activeModules?: Record<string, boolean>;
+  onToggleModule?: (key: string, value: boolean) => void;
+  pastTradesLookback?: number;
+  onLookbackChange?: (n: number) => void;
+}) {
+  const title = phase === "research" ? "Research Prompt" : "Trader Prompt";
+
+  // Derive prompt number from selected option
+  const selectedOption = promptOptions.find((p) => p.id === selectedVersionId);
+  const promptLabel = strategy === "existing" && selectedOption
+    ? selectedOption.label
+    : promptName
+      ? `${title} — ${promptName}`
+      : title;
+
+  return (
+    <div className="form-section" style={{ borderLeft: `3px solid ${phaseColor}` }}>
+      <h3 style={{ color: phaseColor }}>{promptLabel}</h3>
+
+      <div className="segmented-control">
+        <button
+          type="button"
+          className={`segmented-option ${strategy === "new" ? "segmented-option-active" : ""}`}
+          onClick={() => onStrategyChange("new")}
+        >
+          New Prompt
+        </button>
+        <button
+          type="button"
+          className={`segmented-option ${strategy === "existing" ? "segmented-option-active" : ""}`}
+          onClick={() => onStrategyChange("existing")}
+          disabled={promptOptions.length === 0}
+        >
+          Saved Prompt
+        </button>
+      </div>
+
+      {strategy === "new" ? (
+        <div className="form-grid">
+          <div className="form-row">
+            <label>
+              Prompt Name <span className="field-help">(optional)</span>
+              <input
+                type="text"
+                value={promptName}
+                onChange={(e) => onNameChange(e.target.value)}
+                placeholder="Auto-generated if empty"
+              />
+            </label>
+          </div>
+          <div className="form-row" style={{ gridColumn: "1 / -1" }}>
+            <label>Prompt Body</label>
+            <div className="prompt-composer">
+              <textarea
+                className="prompt-composer-textarea"
+                value={promptBody}
+                onChange={(e) => onBodyChange(e.target.value)}
+                rows={10}
+                required
+              />
+              {/* Injected data separator + preview */}
+              {alwaysInjected.length > 0 && (
+                <div className="prompt-composer-injected">
+                  <div className="injected-separator">
+                    <span className="injected-separator-label">Injected Data (auto-appended at runtime)</span>
+                  </div>
+                  {alwaysInjected.map((item) => (
+                    <InjectedPreviewBlock key={item.label} label={item.label} preview={item.preview} alwaysOn />
+                  ))}
+                  {optionalModules?.filter((m) => activeModules?.[m.key]).map((m) => (
+                    <InjectedPreviewBlock key={m.key} label={m.label} preview={m.preview} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="form-row">
+            <label>
+              Prompt
+              <select
+                value={selectedVersionId}
+                onChange={(e) => onVersionChange(e.target.value)}
+                required
+              >
+                <option value="">Select a prompt</option>
+                {promptOptions.map((p) => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {selectedVersionId && (
+            <div className="prompt-body-panel">
+              <div className="prompt-body-header">
+                <span className="field-help">Prompt body</span>
+                {!showBodyEditor && (
+                  <button
+                    type="button"
+                    className="btn btn-xs"
+                    onClick={() => onToggleEditor(true)}
+                    disabled={loadingBody || !savedBody}
+                  >
+                    {loadingBody ? "Loading..." : "Edit"}
+                  </button>
+                )}
+              </div>
+
+              {showBodyEditor ? (
+                <>
+                  <textarea
+                    className="prompt-body-textarea"
+                    value={editedBody}
+                    onChange={(e) => onEditedBodyChange(e.target.value)}
+                    rows={10}
+                  />
+                  <div className="prompt-body-actions">
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => { onToggleEditor(false); onEditedBodyChange(savedBody ?? ""); }}
+                      disabled={savingVersion}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={onSaveNewVersion}
+                      disabled={savingVersion || !editedBody.trim()}
+                    >
+                      {savingVersion ? "Saving..." : "Save as new prompt"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <pre className="prompt-body-preview">
+                    {loadingBody ? "Loading..." : (savedBody ?? "\u2014")}
+                  </pre>
+                  {/* Injected data preview below saved prompt */}
+                  {alwaysInjected.length > 0 && (
+                    <div className="prompt-composer-injected">
+                      <div className="injected-separator">
+                        <span className="injected-separator-label">Injected Data (auto-appended at runtime)</span>
+                      </div>
+                      {alwaysInjected.map((item) => (
+                        <InjectedPreviewBlock key={item.label} label={item.label} preview={item.preview} alwaysOn />
+                      ))}
+                      {optionalModules?.filter((m) => activeModules?.[m.key]).map((m) => (
+                        <InjectedPreviewBlock key={m.key} label={m.label} preview={m.preview} />
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Optional injected data modules (trader only) */}
+      {optionalModules && optionalModules.length > 0 && (
+        <div className="injected-data-section">
+          <h4>Injected Data</h4>
+          <p className="field-help">
+            Tick modules to append live data to the trader prompt at every run. Toggle a module to preview how it appears.
+          </p>
+          <div className="modules-grid">
+            <label className="checkbox-label" style={{ opacity: 0.6 }}>
+              <input type="checkbox" checked disabled />
+              <span>Wallet &amp; held positions <span className="field-help">(always included)</span></span>
+            </label>
+            {optionalModules.map((m) => (
+              <label key={m.key} className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={activeModules?.[m.key] ?? false}
+                  onChange={(e) => onToggleModule?.(m.key, e.target.checked)}
+                />
+                <span>{m.label}</span>
+              </label>
+            ))}
+          </div>
+
+          {activeModules?.includePastTrades && pastTradesLookback !== undefined && (
+            <div className="form-row" style={{ maxWidth: 200, marginTop: 8 }}>
+              <label>
+                Lookback (trades)
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={pastTradesLookback}
+                  onChange={(e) => onLookbackChange?.(Number(e.target.value))}
+                />
+              </label>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalProps) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [formatterVersions, setFormatterVersions] = useState<FormatterVersion[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [loading, setLoading] = useState(mode === "edit");
@@ -171,13 +608,20 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   const pairsRef = useRef<HTMLDivElement>(null);
   const [selectedProvider, setSelectedProvider] = useState("xai");
   const [formData, setFormData] = useState(buildDefaultState());
+  const [nextBotNumber, setNextBotNumber] = useState<number | null>(null);
 
-  // Prompt body view/edit state
-  const [promptBody, setPromptBody] = useState<string | null>(null);
-  const [loadingBody, setLoadingBody] = useState(false);
-  const [showBodyEditor, setShowBodyEditor] = useState(false);
-  const [editedBody, setEditedBody] = useState("");
-  const [savingVersion, setSavingVersion] = useState(false);
+  // Research prompt editor state
+  const [researchSavedBody, setResearchSavedBody] = useState<string | null>(null);
+  const [researchShowEditor, setResearchShowEditor] = useState(false);
+  const [researchEditedBody, setResearchEditedBody] = useState("");
+  const [researchSavingVersion, setResearchSavingVersion] = useState(false);
+
+  // Trader prompt editor state
+  const [traderSavedBody, setTraderSavedBody] = useState<string | null>(null);
+  const [traderShowEditor, setTraderShowEditor] = useState(false);
+  const [traderEditedBody, setTraderEditedBody] = useState("");
+  const [traderSavingVersion, setTraderSavingVersion] = useState(false);
+
   const [isSyncing, setIsSyncing] = useState(false);
   const [venueBalance, setVenueBalance] = useState<{ totalFreeUsdt: number; allocatedUsdt: number; availableUsdt: number } | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
@@ -194,20 +638,35 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     return [];
   }, [models, selectedProvider]);
 
-  const promptOptions = useMemo(
-    () =>
-      prompts
-        .filter((prompt) => Boolean(prompt.latestVersionId))
-        .map((prompt) => ({
-          id: prompt.latestVersionId!,
-          promptId: prompt.id,
-          createdAt: prompt.latestVersionCreatedAt ?? prompt.createdAt,
-          body: prompt.latestBody ?? "",
-          label: `Prompt #${prompt.promptNumber} - ${prompt.name}`
-        }))
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [prompts]
-  );
+  // Research prompt options — "Default Prompt" always first, then by most recently used
+  const researchPromptOptions = useMemo(() => {
+    const opts = prompts
+      .filter((prompt) => Boolean(prompt.latestVersionId))
+      .map((prompt) => ({
+        id: prompt.latestVersionId!,
+        promptId: prompt.id,
+        createdAt: prompt.latestVersionCreatedAt ?? prompt.createdAt,
+        body: prompt.latestBody ?? "",
+        label: `Research Prompt #${prompt.promptNumber} — ${prompt.name}`,
+        isDefault: prompt.name.toLowerCase().includes("default")
+      }));
+
+    // Default prompt first, then most recently used
+    return opts.sort((a, b) => {
+      if (a.isDefault && !b.isDefault) return -1;
+      if (!a.isDefault && b.isDefault) return 1;
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+  }, [prompts]);
+
+  // Trader prompt options from formatter versions
+  const traderPromptOptions = useMemo(() => {
+    return formatterVersions.map((v) => ({
+      id: v.id,
+      label: `Trader Prompt #${v.version}`,
+      body: v.body,
+    }));
+  }, [formatterVersions]);
 
   const filteredSymbols = useMemo(() => {
     const query = symbolSearch.trim().toUpperCase();
@@ -215,32 +674,24 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     return source.slice(0, 120);
   }, [symbolSearch, symbols]);
 
-  // Resilient fetch helper — returns data or null without throwing, with optional error message
   const safeFetch = async <T,>(url: string): Promise<{ data: T | null; error: string | null }> => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
-
     try {
       const res = await fetch(url, { signal: controller.signal });
       if (!res.ok) {
-        console.warn(`[bot-form] ${url} → ${res.status}`);
         let errorMsg = `HTTP ${res.status}`;
-        try {
-          const errData = await res.json();
-          if (errData.error) errorMsg = errData.error;
-        } catch (_) {}
+        try { const errData = await res.json(); if (errData.error) errorMsg = errData.error; } catch (_) {}
         return { data: null, error: errorMsg };
       }
       return { data: (await res.json()) as T, error: null };
     } catch (e) {
-      console.warn(`[bot-form] ${url} failed:`, e);
       return { data: null, error: e instanceof Error ? e.message : String(e) };
     } finally {
       clearTimeout(timeout);
     }
   };
 
-  // Force sync models from xAI API
   const syncModels = async () => {
     setIsSyncing(true);
     setError(null);
@@ -249,35 +700,24 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
         method: "POST",
         headers: { "Content-Type": "application/json" }
       });
-      if (!res.ok) {
-        throw new Error(`Sync failed: ${res.status}`);
-      }
-      const result = await res.json();
-      console.log("[bot-form] Model sync result:", result);
-
-      // Refresh models list
+      if (!res.ok) throw new Error(`Sync failed: ${res.status}`);
       const modelsRes = await safeFetch<Model[]>("/api/models");
       if (modelsRes.data && modelsRes.data.length > 0) {
         setModels(modelsRes.data);
         setError(null);
-      } else if (modelsRes.error) {
-        setError(`Sync completed, but could not load models: ${modelsRes.error}`);
       } else {
         setError("Sync completed but no models available. Check XAI_API_KEY configuration.");
       }
     } catch (e) {
-      console.error("[bot-form] Sync failed:", e);
       setError(`Failed to sync models: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // Client-side Binance fallback — public endpoint, no API key needed
   const fetchSymbolsDirect = async (): Promise<string[]> => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
-
     try {
       const res = await fetch("https://api.binance.com/api/v3/exchangeInfo", { signal: controller.signal });
       if (!res.ok) return [];
@@ -296,15 +736,10 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   const resolveModelProfileId = async () => {
     const id = formData.modelProfileId;
     const needsCreation = id.startsWith("fallback:") || id.startsWith("live:");
-
-    if (!needsCreation) {
-      return id;
-    }
+    if (!needsCreation) return id;
 
     const selected = availableModels.find((m) => m.id === id);
-    if (!selected) {
-      throw new Error("Selected model is invalid");
-    }
+    if (!selected) throw new Error("Selected model is invalid");
 
     const res = await fetch("/api/models", {
       method: "POST",
@@ -316,14 +751,12 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
         settings: { temperature: 0.2 }
       })
     });
-
     const data = await res.json();
     if (!res.ok) throw new Error(data.error ?? "Failed to create model profile");
-
     return data.id as string;
   };
 
-  // Initial data load — each fetch is independent so one failure doesn't block others
+  // Initial data load
   useEffect(() => {
     let cancelled = false;
 
@@ -331,55 +764,48 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       setDataLoaded(false);
       setError(null);
 
-      const [promptsRes, modelsRes, symbolsRes, botRes] = await Promise.all([
+      const defaultVenue = formData.venue;
+
+      const [promptsRes, modelsRes, symbolsRes, botRes, formatterRes, dashRes] = await Promise.all([
         safeFetch<Prompt[]>("/api/prompts"),
         safeFetch<Model[]>("/api/models"),
         safeFetch<SymbolResponse>("/api/venues/binance/symbols"),
-        mode === "edit" && botId ? safeFetch<BotSetup>(`/api/bots/${botId}`) : Promise.resolve({ data: null, error: null })
+        mode === "edit" && botId ? safeFetch<BotSetup>(`/api/bots/${botId}`) : Promise.resolve({ data: null, error: null }),
+        safeFetch<FormatterVersion[]>(`/api/settings/formatter-prompt/${defaultVenue}/versions`),
+        safeFetch<{ bots: { id: string }[] }>("/api/dashboard"),
       ]);
 
       if (cancelled) return;
 
-      const promptsData = promptsRes.data;
-      const modelsData = modelsRes.data;
-      const symbolsData = symbolsRes.data;
-      const botData = botRes.data;
+      if (promptsRes.data) setPrompts(promptsRes.data);
+      if (modelsRes.data && modelsRes.data.length > 0) setModels(modelsRes.data);
+      if (formatterRes.data) setFormatterVersions(formatterRes.data);
+      if (dashRes.data?.bots) setNextBotNumber(dashRes.data.bots.length + 1);
 
-      if (promptsData) setPrompts(promptsData);
-      if (modelsData && modelsData.length > 0) setModels(modelsData);
-
-      // Symbols: try backend first, fall back to direct Binance call
-      let resolvedSymbols: string[] = symbolsData?.symbols ?? [];
-      if (resolvedSymbols.length === 0) {
-        resolvedSymbols = await fetchSymbolsDirect();
-      }
+      let resolvedSymbols: string[] = symbolsRes.data?.symbols ?? [];
+      if (resolvedSymbols.length === 0) resolvedSymbols = await fetchSymbolsDirect();
       if (resolvedSymbols.length > 0) setSymbols(resolvedSymbols);
 
       if (cancelled) return;
 
       const errors: string[] = [];
-      let errorMessage = "";
-
-      if (!modelsData || modelsData.length === 0) errors.push("models");
+      if (!modelsRes.data || modelsRes.data.length === 0) errors.push("models");
       if (resolvedSymbols.length === 0) errors.push("symbols");
-      if (mode === "edit" && botId && !botData) errors.push("bot config");
+      if (mode === "edit" && botId && !botRes.data) errors.push("bot config");
 
       if (errors.length) {
         if (errors.includes("models")) {
-          if (modelsRes.error) {
-            errorMessage = `Could not load AI models. Server reported: "${modelsRes.error}". Check database connectivity and API keys.`;
-          } else {
-            errorMessage = "Could not load AI models. The API may be unreachable or XAI_API_KEY is not configured. Try clicking 'Sync Models from xAI' below.";
-          }
+          setError(modelsRes.error
+            ? `Could not load AI models: "${modelsRes.error}".`
+            : "Could not load AI models. Try clicking 'Sync Models from xAI' below.");
         } else {
-          errorMessage = `Could not load: ${errors.join(", ")}. Check API connectivity or retry.`;
+          setError(`Could not load: ${errors.join(", ")}. Check API connectivity.`);
         }
-        setError(errorMessage);
       }
 
-      if (mode === "edit" && botData) {
-        const setup = botData;
-        const botModel = (modelsData ?? []).find((m) => m.id === setup.modelProfileId);
+      if (mode === "edit" && botRes.data) {
+        const setup = botRes.data;
+        const botModel = (modelsRes.data ?? []).find((m) => m.id === setup.modelProfileId);
         if (botModel?.provider) setSelectedProvider(botModel.provider);
 
         const mergedVenue: "binance" | "binance-testnet" =
@@ -389,14 +815,16 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
 
         setFormData({
           name: setup.name,
-          promptStrategy: "existing",
+          researchStrategy: "existing",
           existingPromptVersionId: setup.promptVersionId,
-          newPromptName: "",
-          newPromptBody: DEFAULT_PROMPT_BODY,
+          newResearchName: "",
+          newResearchBody: DEFAULT_RESEARCH_PROMPT,
+          traderStrategy: "existing",
+          existingTraderVersionId: "",
+          newTraderName: "",
+          newTraderBody: DEFAULT_TRADER_PROMPT,
           modelProfileId: setup.modelProfileId,
-          promptConfig: {
-            ...setup.promptConfig
-          },
+          promptConfig: { ...setup.promptConfig },
           venue: mergedVenue,
           frequencyMinutes: String(setup.runtimeConfig.frequencyMinutes),
           budgetUsdt: setup.runtimeConfig.budgetUsdt ?? 1000,
@@ -404,14 +832,15 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
           contextSymbols: setup.runtimeConfig.contextSymbols,
           execution: setup.runtimeConfig.execution
         });
-      } else if (modelsData && modelsData.length > 0) {
-        const providerModels = modelsData.filter((m) => m.provider === selectedProvider);
-        const bestModel = pickBestModel(providerModels.length > 0 ? providerModels : modelsData);
+      } else if (modelsRes.data && modelsRes.data.length > 0) {
+        const providerModels = modelsRes.data.filter((m) => m.provider === selectedProvider);
+        const bestModel = pickBestModel(providerModels.length > 0 ? providerModels : modelsRes.data);
         if (bestModel) {
           setSelectedProvider(bestModel.provider);
           setFormData((cur) => ({
             ...cur,
-            modelProfileId: cur.modelProfileId || bestModel.id
+            modelProfileId: cur.modelProfileId || bestModel.id,
+            name: cur.name || (nextBotNumber ? `Bot #${nextBotNumber}` : ""),
           }));
         }
       }
@@ -425,6 +854,13 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botId, mode, loadTrigger]);
 
+  // Set default bot name once we know the count
+  useEffect(() => {
+    if (mode === "create" && nextBotNumber && !formData.name) {
+      setFormData((cur) => ({ ...cur, name: `Bot #${nextBotNumber}` }));
+    }
+  }, [nextBotNumber, mode, formData.name]);
+
   // Sync model selection when provider changes
   useEffect(() => {
     if (!formData.modelProfileId && availableModels.length > 0) {
@@ -437,76 +873,128 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   useEffect(() => {
     if (!pairsOpen) return;
     const handle = (e: MouseEvent) => {
-      if (pairsRef.current && !pairsRef.current.contains(e.target as Node)) {
-        setPairsOpen(false);
-      }
+      if (pairsRef.current && !pairsRef.current.contains(e.target as Node)) setPairsOpen(false);
     };
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, [pairsOpen]);
 
-  // Auto-select first prompt
+  // Auto-select first research prompt
   useEffect(() => {
-    if (!formData.existingPromptVersionId && promptOptions[0]?.id) {
-      setFormData((cur) => ({ ...cur, existingPromptVersionId: promptOptions[0]!.id }));
+    if (!formData.existingPromptVersionId && researchPromptOptions[0]?.id) {
+      setFormData((cur) => ({ ...cur, existingPromptVersionId: researchPromptOptions[0]!.id }));
     }
-  }, [promptOptions, formData.existingPromptVersionId]);
+  }, [researchPromptOptions, formData.existingPromptVersionId]);
 
-  // Load prompt body when a saved prompt is selected
+  // Auto-select first trader prompt
   useEffect(() => {
-    if (formData.promptStrategy !== "existing" || !formData.existingPromptVersionId) {
-      setPromptBody(null);
-      setShowBodyEditor(false);
+    if (!formData.existingTraderVersionId && traderPromptOptions[0]?.id) {
+      setFormData((cur) => ({ ...cur, existingTraderVersionId: traderPromptOptions[0]!.id }));
+    }
+  }, [traderPromptOptions, formData.existingTraderVersionId]);
+
+  // Load research prompt body when saved prompt selected
+  useEffect(() => {
+    if (formData.researchStrategy !== "existing" || !formData.existingPromptVersionId) {
+      setResearchSavedBody(null);
+      setResearchShowEditor(false);
       return;
     }
+    const selected = researchPromptOptions.find((o) => o.id === formData.existingPromptVersionId);
+    setResearchSavedBody(selected?.body ?? null);
+    setResearchEditedBody(selected?.body ?? "");
+    setResearchShowEditor(false);
+  }, [formData.existingPromptVersionId, formData.researchStrategy, researchPromptOptions]);
 
-    const selectedPrompt = promptOptions.find((option) => option.id === formData.existingPromptVersionId);
-    setLoadingBody(false);
-    setShowBodyEditor(false);
-    setPromptBody(selectedPrompt?.body ?? null);
-    setEditedBody(selectedPrompt?.body ?? "");
-  }, [formData.existingPromptVersionId, formData.promptStrategy, promptOptions]);
+  // Load trader prompt body when saved prompt selected
+  useEffect(() => {
+    if (formData.traderStrategy !== "existing" || !formData.existingTraderVersionId) {
+      setTraderSavedBody(null);
+      setTraderShowEditor(false);
+      return;
+    }
+    const selected = traderPromptOptions.find((o) => o.id === formData.existingTraderVersionId);
+    setTraderSavedBody(selected?.body ?? null);
+    setTraderEditedBody(selected?.body ?? "");
+    setTraderShowEditor(false);
+  }, [formData.existingTraderVersionId, formData.traderStrategy, traderPromptOptions]);
+
+  // Fetch formatter versions when venue changes
+  useEffect(() => {
+    let cancelled = false;
+    safeFetch<FormatterVersion[]>(`/api/settings/formatter-prompt/${formData.venue}/versions`)
+      .then((res) => { if (!cancelled && res.data) setFormatterVersions(res.data); });
+    return () => { cancelled = true; };
+  }, [formData.venue]);
 
   // Fetch venue balance when venue changes
   useEffect(() => {
     let cancelled = false;
     setLoadingBalance(true);
     setVenueBalance(null);
-
     fetch(`/api/venues/${formData.venue}/balance`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => { if (!cancelled && data) setVenueBalance(data); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoadingBalance(false); });
-
     return () => { cancelled = true; };
   }, [formData.venue]);
 
-  const handleSaveNewVersion = async () => {
-    setSavingVersion(true);
+  const handleSaveResearchVersion = async () => {
+    setResearchSavingVersion(true);
     setError(null);
     try {
       const res = await fetch("/api/prompts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "",
-          slug: "",
-          initialBody: editedBody
-        })
+        body: JSON.stringify({ name: "", slug: "", initialBody: researchEditedBody })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to save prompt");
 
       const promptsRes = await fetch("/api/prompts");
-      const promptsData = await promptsRes.json();
-      setPrompts(promptsData);
+      setPrompts(await promptsRes.json());
       setFormData((cur) => ({ ...cur, existingPromptVersionId: data.promptVersionId }));
-      setShowBodyEditor(false);
+      setResearchShowEditor(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save updated prompt");
+      setError(e instanceof Error ? e.message : "Failed to save prompt");
     } finally {
-      setSavingVersion(false);
+      setResearchSavingVersion(false);
+    }
+  };
+
+  const handleSaveTraderVersion = async () => {
+    setTraderSavingVersion(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/settings/formatter-prompt", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          formatterPrompts: {
+            [formData.venue]: traderEditedBody,
+            // Keep other venue unchanged
+            ...(formData.venue === "binance"
+              ? { "binance-testnet": formatterVersions[0]?.body ?? "" }
+              : { binance: "" })
+          }
+        })
+      });
+      if (!res.ok) throw new Error("Failed to save trader prompt");
+
+      // Refresh versions
+      const versionsRes = await safeFetch<FormatterVersion[]>(`/api/settings/formatter-prompt/${formData.venue}/versions`);
+      if (versionsRes.data) {
+        setFormatterVersions(versionsRes.data);
+        if (versionsRes.data[0]) {
+          setFormData((cur) => ({ ...cur, existingTraderVersionId: versionsRes.data![0].id }));
+        }
+      }
+      setTraderShowEditor(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save trader prompt");
+    } finally {
+      setTraderSavingVersion(false);
     }
   };
 
@@ -520,7 +1008,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     }));
   };
 
-  const updateModule = (key: keyof typeof formData.promptConfig.modules, value: boolean | number) => {
+  const updateModule = (key: string, value: boolean) => {
     setFormData((cur) => ({
       ...cur,
       promptConfig: {
@@ -530,19 +1018,18 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     }));
   };
 
-  const resolvePromptVersionId = async () => {
-    if (formData.promptStrategy === "existing") {
-      if (!formData.existingPromptVersionId) throw new Error("Choose a saved prompt");
+  const resolveResearchPromptVersionId = async () => {
+    if (formData.researchStrategy === "existing") {
+      if (!formData.existingPromptVersionId) throw new Error("Choose a research prompt");
       return formData.existingPromptVersionId;
     }
-
     const res = await fetch("/api/prompts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: formData.newPromptName.trim(),
-        slug: uniqueSlug(formData.newPromptName),
-        initialBody: formData.newPromptBody.trim()
+        name: formData.newResearchName.trim(),
+        slug: uniqueSlug(formData.newResearchName || "research"),
+        initialBody: formData.newResearchBody.trim()
       })
     });
     const data = await res.json();
@@ -557,12 +1044,28 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
 
     try {
       if (!formData.modelProfileId) throw new Error("Choose a model");
-      if (formData.promptStrategy === "new" && !formData.newPromptBody.trim()) throw new Error("Prompt body is required");
+      if (formData.researchStrategy === "new" && !formData.newResearchBody.trim()) throw new Error("Research prompt body is required");
       if (formData.symbolScope === "selected" && formData.contextSymbols.length === 0) {
         throw new Error("Select at least one pair, or choose All Pairs");
       }
 
-      const promptVersionId = await resolvePromptVersionId();
+      // Save trader prompt if it's new
+      if (formData.traderStrategy === "new" && formData.newTraderBody.trim()) {
+        await fetch("/api/settings/formatter-prompt", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            formatterPrompts: {
+              [formData.venue]: formData.newTraderBody.trim(),
+              ...(formData.venue === "binance"
+                ? { "binance-testnet": formatterVersions[0]?.body ?? DEFAULT_TRADER_PROMPT }
+                : { binance: formatterVersions[0]?.body ?? DEFAULT_TRADER_PROMPT })
+            }
+          })
+        });
+      }
+
+      const promptVersionId = await resolveResearchPromptVersionId();
       const modelProfileId = await resolveModelProfileId();
       const contextSymbols =
         formData.symbolScope === "all" ? [ALL_SYMBOLS_TOKEN] : uniqueSymbols(formData.contextSymbols);
@@ -609,223 +1112,60 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     }
   };
 
+  // Build optional module list for trader prompt
+  const optionalModules = Object.entries(INJECTED_DATA_EXAMPLES).map(([key, val]) => ({
+    key,
+    label: val.label,
+    preview: val.preview,
+  }));
+
+  const activeModules: Record<string, boolean> = {
+    includeWalletOverview: formData.promptConfig.modules.includeWalletOverview,
+    includePerformanceStats: formData.promptConfig.modules.includePerformanceStats,
+    includePastTrades: formData.promptConfig.modules.includePastTrades,
+    includeBotRanking: formData.promptConfig.modules.includeBotRanking,
+  };
+
   return (
     <div className="modal-overlay">
       <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{mode === "create" ? "Create Bot" : "Rename Bot"}</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
 
         {loading ? (
-          <p className="muted">Loading configuration…</p>
+          <p className="muted">Loading configuration...</p>
         ) : (
           <form className="modal-form" onSubmit={handleSubmit}>
 
-            {/* ── Bot name ── */}
+            {/* ── Bot Name ── */}
             <div className="form-section">
-              <h3>Bot</h3>
               <div className="form-row">
                 <label>
-                  Name (Optional)
+                  Bot Name
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="My Strategy"
+                    placeholder={nextBotNumber ? `Bot #${nextBotNumber}` : "My Strategy"}
                   />
                 </label>
               </div>
             </div>
 
-            {/* ── Prompt ── */}
-            <div className="form-section">
-              <h3>Prompt</h3>
-
-              <details className="prompt-howto">
-                <summary>How to write a good prompt</summary>
-                <div className="prompt-howto-body">
-                  <p>The prompt is the <strong>entire brain</strong> of the bot. Everything the model knows about your strategy comes from here. The system automatically appends your wallet balance, execution rules, and any injected data modules you tick below.</p>
-
-                  <h4>What to include</h4>
-                  <ul>
-                    <li><strong>Strategy &amp; style</strong> — scalping, swing, macro rotation, DCA, mean reversion…</li>
-                    <li><strong>Risk tolerance</strong> — how tight/loose SL/TP, max drawdown you accept</li>
-                    <li><strong>Entry/exit logic</strong> — what signals or conditions trigger a buy or sell</li>
-                    <li><strong>Position sizing</strong> — e.g. &quot;never more than 10% of portfolio in one trade&quot;</li>
-                    <li><strong>Market bias</strong> — e.g. &quot;bullish on ETH ecosystem, cautious on memes&quot;</li>
-                    <li><strong>Hold behavior</strong> — when to hold and not trade (the bot defaults to hold)</li>
-                  </ul>
-
-                  <h4>What NOT to include</h4>
-                  <ul>
-                    <li><strong>Market prices</strong> — the model fetches them from its own knowledge</li>
-                    <li><strong>Wallet balances</strong> — injected automatically at every run</li>
-                    <li><strong>SL/TP rules</strong> — enforced by the system (every buy has mandatory SL/TP)</li>
-                    <li><strong>JSON format instructions</strong> — the response format is locked by schema</li>
-                    <li><strong>Execution constraints</strong> — max orders, notional limits etc. are injected separately</li>
-                  </ul>
-
-                  <h4>Example prompts</h4>
-                  <div className="prompt-example">
-                    <span className="prompt-example-tag">Aggressive Scalper</span>
-                    <pre>{`You are an aggressive BTC/ETH scalper on Binance spot.
-Look for short-term momentum: breakouts, volume spikes, support/resistance bounces.
-Enter fast, exit fast. Target 1-3% moves. SL tight at 1.5% below entry.
-If no clear setup exists in the next few minutes, hold.
-Max 2 simultaneous positions. Prefer market orders for speed.`}</pre>
-                  </div>
-                  <div className="prompt-example">
-                    <span className="prompt-example-tag">Swing Holder</span>
-                    <pre>{`You are a patient swing trader focusing on top-20 altcoins.
-Look for multi-day trends: higher lows, RSI divergences, volume confirmation.
-Enter on pullbacks to support. TP at 8-15%, SL at 5%.
-Hold existing winners unless trend structure breaks.
-Avoid trading during low-volume weekends.
-Keep 50% in USDT as dry powder for dips.`}</pre>
-                  </div>
-                  <div className="prompt-example">
-                    <span className="prompt-example-tag">Macro Rotation</span>
-                    <pre>{`You manage a diversified spot portfolio across BTC, ETH, SOL, and stablecoins.
-Rotate allocation based on macro momentum: risk-on → more alts, risk-off → more USDT.
-Rebalance weekly, not daily. Only trade when allocation drifts >10% from target.
-Target allocation: 40% BTC, 25% ETH, 15% SOL, 20% USDT.
-Keep trades small — max 5% of portfolio per order.`}</pre>
-                  </div>
-                </div>
-              </details>
-
-              <div className="segmented-control">
-                <button
-                  type="button"
-                  className={`segmented-option ${formData.promptStrategy === "new" ? "segmented-option-active" : ""}`}
-                  onClick={() => setFormData({ ...formData, promptStrategy: "new" })}
-                >
-                  New prompt
-                </button>
-                <button
-                  type="button"
-                  className={`segmented-option ${formData.promptStrategy === "existing" ? "segmented-option-active" : ""}`}
-                  onClick={() => setFormData({ ...formData, promptStrategy: "existing" })}
-                  disabled={promptOptions.length === 0}
-                >
-                  Saved prompt
-                </button>
-              </div>
-
-              {formData.promptStrategy === "new" ? (
-                <div className="form-grid">
-                  <div className="form-row">
-                    <label>
-                      Prompt Name <span className="field-help">(optional)</span>
-                      <input
-                        type="text"
-                        value={formData.newPromptName}
-                        onChange={(e) => setFormData({ ...formData, newPromptName: e.target.value })}
-                        placeholder="Auto-generated if empty"
-                      />
-                    </label>
-                  </div>
-                  <div className="form-row" style={{ gridColumn: "1 / -1" }}>
-                    <label>
-                      Prompt Body
-                      <textarea
-                        value={formData.newPromptBody}
-                        onChange={(e) => setFormData({ ...formData, newPromptBody: e.target.value })}
-                        rows={10}
-                        required
-                      />
-                    </label>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="form-row">
-                    <label>
-                      Prompt
-                      <select
-                        value={formData.existingPromptVersionId}
-                        onChange={(e) => setFormData({ ...formData, existingPromptVersionId: e.target.value })}
-                        required
-                      >
-                        <option value="">Select a prompt</option>
-                        {promptOptions.map((p) => (
-                          <option key={p.id} value={p.id}>{p.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-
-                  {formData.existingPromptVersionId && (
-                    <div className="prompt-body-panel">
-                      <div className="prompt-body-header">
-                        <span className="field-help">Prompt body</span>
-                        {!showBodyEditor && (
-                          <button
-                            type="button"
-                            className="btn btn-xs"
-                            onClick={() => setShowBodyEditor(true)}
-                            disabled={loadingBody || !promptBody}
-                          >
-                            {loadingBody ? "Loading…" : "Edit"}
-                          </button>
-                        )}
-                      </div>
-
-                      {showBodyEditor ? (
-                        <>
-                          <textarea
-                            className="prompt-body-textarea"
-                            value={editedBody}
-                            onChange={(e) => setEditedBody(e.target.value)}
-                            rows={10}
-                          />
-                          <div className="prompt-body-actions">
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => { setShowBodyEditor(false); setEditedBody(promptBody ?? ""); }}
-                              disabled={savingVersion}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              onClick={handleSaveNewVersion}
-                              disabled={savingVersion || !editedBody.trim()}
-                            >
-                              {savingVersion ? "Saving…" : "Save as new prompt"}
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <pre className="prompt-body-preview">
-                          {loadingBody ? "Loading…" : (promptBody ?? "—")}
-                        </pre>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-
-            </div>
-
-            {/* ── Model & Runtime ── */}
+            {/* ── Core Settings ── */}
             <div className="form-section">
               <div className="section-header">
-                <h3>Model &amp; Runtime</h3>
+                <h3>Core Settings</h3>
                 {dataLoaded && models.length === 0 && (
-                  <button
-                    type="button"
-                    className="btn btn-xs"
-                    onClick={() => setLoadTrigger((n) => n + 1)}
-                  >
-                    ↻ Retry
+                  <button type="button" className="btn btn-xs" onClick={() => setLoadTrigger((n) => n + 1)}>
+                    Retry
                   </button>
                 )}
               </div>
-              <div className="form-grid">
+              <div className="form-grid form-grid-3col">
+                {/* Row 1: Provider, Model, Frequency */}
                 <div className="form-row">
                   <label>
                     Provider
@@ -838,7 +1178,7 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
                       disabled={mode !== "create" || providerOptions.length === 0}
                     >
                       {providerOptions.length === 0 ? (
-                        <option value="">{dataLoaded ? "Not available" : "Loading…"}</option>
+                        <option value="">{dataLoaded ? "Not available" : "Loading..."}</option>
                       ) : (
                         providerOptions.map((p) => (
                           <option key={p} value={p}>{p}</option>
@@ -858,7 +1198,7 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
                       disabled={mode !== "create" || availableModels.length === 0}
                     >
                       {availableModels.length === 0 ? (
-                        <option value="">{dataLoaded ? "Not available" : "Loading…"}</option>
+                        <option value="">{dataLoaded ? "Not available" : "Loading..."}</option>
                       ) : (
                         <>
                           <option value="">Select a model</option>
@@ -873,6 +1213,22 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
 
                 <div className="form-row">
                   <label>
+                    Frequency
+                    <select
+                      value={formData.frequencyMinutes}
+                      onChange={(e) => setFormData({ ...formData, frequencyMinutes: e.target.value })}
+                      disabled={mode !== "create"}
+                    >
+                      {FREQUENCY_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {/* Row 2: Venue, Authorized Pairs, Budget */}
+                <div className="form-row">
+                  <label>
                     Venue
                     <select
                       value={formData.venue}
@@ -885,8 +1241,73 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
                   </label>
                   {venueBalance && (
                     <span className="venue-balance">
-                      {loadingBalance ? "…" : `${venueBalance.totalFreeUsdt.toFixed(2)} USDT on account · ${venueBalance.availableUsdt.toFixed(2)} available`}
+                      {loadingBalance ? "..." : `${venueBalance.totalFreeUsdt.toFixed(2)} USDT on account`}
                     </span>
+                  )}
+                </div>
+
+                <div className="form-row">
+                  <label>
+                    Authorized Pairs
+                    <div className="pairs-picker" ref={pairsRef}>
+                      <input
+                        type="text"
+                        className="pairs-search"
+                        value={formData.symbolScope === "all" ? "" : symbolSearch}
+                        onChange={(e) => setSymbolSearch(e.target.value)}
+                        placeholder={formData.symbolScope === "all"
+                          ? `All ${formData.venue === "binance" ? "Binance" : "Testnet"} Pairs`
+                          : formData.contextSymbols.length > 0
+                            ? `${formData.contextSymbols.length} pairs selected`
+                            : "Search pairs..."}
+                        onFocus={() => setPairsOpen(true)}
+                        disabled={mode !== "create"}
+                      />
+                      {pairsOpen && (
+                        <div className="pairs-dropdown">
+                          <label className="pairs-row pairs-row-all">
+                            <input
+                              type="checkbox"
+                              checked={formData.symbolScope === "all"}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  symbolScope: e.target.checked ? "all" : "selected",
+                                  contextSymbols: e.target.checked ? [] : formData.contextSymbols
+                                })
+                              }
+                            />
+                            <span>All {formData.venue === "binance" ? "Binance" : "Testnet"} Pairs</span>
+                          </label>
+                          {filteredSymbols.map((symbol) => (
+                            <label
+                              key={symbol}
+                              className={`pairs-row ${formData.symbolScope === "all" ? "pairs-row-disabled" : ""}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={formData.contextSymbols.includes(symbol)}
+                                onChange={() => toggleSymbol(symbol)}
+                                disabled={formData.symbolScope === "all"}
+                              />
+                              <span>{symbol}</span>
+                            </label>
+                          ))}
+                          {filteredSymbols.length === 0 && symbols.length > 0 && (
+                            <p className="pairs-empty">No match</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                  {formData.symbolScope === "selected" && formData.contextSymbols.length > 0 && (
+                    <div className="selected-symbols">
+                      {formData.contextSymbols.map((symbol) => (
+                        <button key={symbol} type="button" className="badge badge-button" onClick={() => toggleSymbol(symbol)}>
+                          {symbol} &times;
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
 
@@ -903,161 +1324,71 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
                     />
                   </label>
                   <span className="field-help">
-                    Max USDT this bot can use. It must sell positions to free up budget.
+                    Max USDT this bot can use.
                   </span>
                 </div>
-
-                <div className="form-row">
-                  <label>
-                    Frequency
-                    <select
-                      value={formData.frequencyMinutes}
-                      onChange={(e) => setFormData({ ...formData, frequencyMinutes: e.target.value })}
-                      disabled={mode !== "create"}
-                    >
-                      <option value="1">Every 1 min</option>
-                      <option value="5">Every 5 min</option>
-                      <option value="15">Every 15 min</option>
-                      <option value="30">Every 30 min</option>
-                      <option value="60">Every 60 min</option>
-                    </select>
-                  </label>
-                </div>
               </div>
             </div>
 
-            {/* ── Injected Data ── */}
+            {/* ── Research Prompt ── */}
+            <PromptSection
+              phase="research"
+              phaseColor="#60a5fa"
+              strategy={formData.researchStrategy}
+              onStrategyChange={(s) => setFormData({ ...formData, researchStrategy: s })}
+              promptOptions={researchPromptOptions}
+              selectedVersionId={formData.existingPromptVersionId}
+              onVersionChange={(id) => setFormData({ ...formData, existingPromptVersionId: id })}
+              promptName={formData.newResearchName}
+              onNameChange={(n) => setFormData({ ...formData, newResearchName: n })}
+              promptBody={formData.newResearchBody}
+              onBodyChange={(b) => setFormData({ ...formData, newResearchBody: b })}
+              savedBody={researchSavedBody}
+              showBodyEditor={researchShowEditor}
+              onToggleEditor={setResearchShowEditor}
+              editedBody={researchEditedBody}
+              onEditedBodyChange={setResearchEditedBody}
+              onSaveNewVersion={handleSaveResearchVersion}
+              savingVersion={researchSavingVersion}
+              loadingBody={false}
+              alwaysInjected={ALWAYS_INJECTED_RESEARCH}
+            />
+
+            {/* ── Trader Prompt ── */}
+            <PromptSection
+              phase="trader"
+              phaseColor="#a78bfa"
+              strategy={formData.traderStrategy}
+              onStrategyChange={(s) => setFormData({ ...formData, traderStrategy: s })}
+              promptOptions={traderPromptOptions}
+              selectedVersionId={formData.existingTraderVersionId}
+              onVersionChange={(id) => setFormData({ ...formData, existingTraderVersionId: id })}
+              promptName={formData.newTraderName}
+              onNameChange={(n) => setFormData({ ...formData, newTraderName: n })}
+              promptBody={formData.newTraderBody}
+              onBodyChange={(b) => setFormData({ ...formData, newTraderBody: b })}
+              savedBody={traderSavedBody}
+              showBodyEditor={traderShowEditor}
+              onToggleEditor={setTraderShowEditor}
+              editedBody={traderEditedBody}
+              onEditedBodyChange={setTraderEditedBody}
+              onSaveNewVersion={handleSaveTraderVersion}
+              savingVersion={traderSavingVersion}
+              loadingBody={false}
+              alwaysInjected={ALWAYS_INJECTED_TRADER}
+              optionalModules={optionalModules}
+              activeModules={activeModules}
+              onToggleModule={updateModule}
+              pastTradesLookback={formData.promptConfig.modules.pastTradesLookback}
+              onLookbackChange={(n) => setFormData((cur) => ({
+                ...cur,
+                promptConfig: { ...cur.promptConfig, modules: { ...cur.promptConfig.modules, pastTradesLookback: n } }
+              }))}
+            />
+
+            {/* ── Deterministic Settings ── */}
             <div className="form-section">
-              <h3>Injected Data</h3>
-              <p className="field-help">
-                Tick the live data modules appended to the prompt at every run.
-              </p>
-
-              <div className="modules-grid">
-                <label className="checkbox-label" style={{ opacity: 0.6 }}>
-                  <input type="checkbox" checked disabled />
-                  <span>Wallet & held positions <span className="field-help">(always included)</span></span>
-                </label>
-                {[
-                  { key: "includeWalletOverview" as const, label: "Portfolio overview (start vs now)" },
-                  { key: "includePerformanceStats" as const, label: "Performance stats" },
-                  { key: "includePastTrades" as const, label: "Past trades" },
-                  { key: "includeBotRanking" as const, label: "Ranking vs other bots" }
-                ].map(({ key, label }) => (
-                  <label key={key} className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={formData.promptConfig.modules[key] as boolean}
-                      onChange={(e) => updateModule(key, e.target.checked)}
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
-              </div>
-
-              {formData.promptConfig.modules.includePastTrades && (
-                <div className="form-row" style={{ maxWidth: 200 }}>
-                  <label>
-                    Lookback (trades)
-                    <input
-                      type="number"
-                      min={1}
-                      max={200}
-                      value={formData.promptConfig.modules.pastTradesLookback}
-                      onChange={(e) => updateModule("pastTradesLookback", Number(e.target.value))}
-                    />
-                  </label>
-                </div>
-              )}
-            </div>
-
-            {/* ── Authorized Pairs ── */}
-            <div className="form-section">
-              <h3>Authorized Pairs</h3>
-
-              <div className="pairs-picker" ref={pairsRef}>
-                <input
-                  type="text"
-                  className="pairs-search"
-                  value={symbolSearch}
-                  onChange={(e) => setSymbolSearch(e.target.value)}
-                  placeholder="Search BTC, ETH, XMR…"
-                  onFocus={() => setPairsOpen(true)}
-                />
-
-                {pairsOpen && (
-                  <div className="pairs-dropdown">
-                    <label className="pairs-row pairs-row-all">
-                      <input
-                        type="checkbox"
-                        checked={formData.symbolScope === "all"}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            symbolScope: e.target.checked ? "all" : "selected",
-                            contextSymbols: e.target.checked ? [] : formData.contextSymbols
-                          })
-                        }
-                      />
-                      <span>All Binance Pairs</span>
-                    </label>
-
-                    {filteredSymbols.map((symbol) => (
-                      <label
-                        key={symbol}
-                        className={`pairs-row ${formData.symbolScope === "all" ? "pairs-row-disabled" : ""}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.contextSymbols.includes(symbol)}
-                          onChange={() => toggleSymbol(symbol)}
-                          disabled={formData.symbolScope === "all"}
-                        />
-                        <span>{symbol}</span>
-                      </label>
-                    ))}
-
-                    {filteredSymbols.length === 0 && symbols.length > 0 && (
-                      <p className="pairs-empty">No match</p>
-                    )}
-                    {symbols.length === 0 && !dataLoaded && (
-                      <p className="pairs-empty">Loading pairs…</p>
-                    )}
-                    {symbols.length === 0 && dataLoaded && (
-                      <p className="pairs-empty">
-                        Pairs unavailable.{" "}
-                        <button
-                          type="button"
-                          className="inline-retry"
-                          onClick={() => setLoadTrigger((n) => n + 1)}
-                        >
-                          Retry
-                        </button>
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {formData.symbolScope === "selected" && formData.contextSymbols.length > 0 && (
-                <div className="selected-symbols">
-                  {formData.contextSymbols.map((symbol) => (
-                    <button
-                      key={symbol}
-                      type="button"
-                      className="badge badge-button"
-                      onClick={() => toggleSymbol(symbol)}
-                    >
-                      {symbol} ×
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* ── Execution Rules ── */}
-            <div className="form-section">
-              <h3>Execution Rules</h3>
+              <h3>Deterministic Settings</h3>
               <label className="checkbox-label">
                 <input
                   type="checkbox"
@@ -1146,30 +1477,14 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
               <div className="form-error">
                 <p>{error}</p>
                 {error.includes("models") && (
-                  <div className="form-error-actions" style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      className="btn btn-small"
-                      onClick={syncModels}
-                      disabled={isSyncing}
-                      title="Fetch latest models from xAI API"
-                    >
-                      {isSyncing ? "Syncing…" : "↻ Sync Models from xAI"}
+                  <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <button type="button" className="btn btn-small" onClick={syncModels} disabled={isSyncing}>
+                      {isSyncing ? "Syncing..." : "Sync Models from xAI"}
                     </button>
-                    <button
-                      type="button"
-                      className="btn btn-small"
-                      onClick={() => window.location.reload()}
-                      disabled={isSyncing}
-                    >
+                    <button type="button" className="btn btn-small" onClick={() => window.location.reload()} disabled={isSyncing}>
                       Reload Page
                     </button>
                   </div>
-                )}
-                {error.includes("models") && !error.includes("Server reported") && (
-                  <p className="field-help" style={{ marginTop: "0.5rem" }}>
-                    Tip: Ensure XAI_API_KEY is set in your environment and the API server is running.
-                  </p>
                 )}
               </div>
             )}
@@ -1180,7 +1495,7 @@ Keep trades small — max 5% of portfolio per order.`}</pre>
               </button>
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving
-                  ? mode === "create" ? "Creating…" : "Saving…"
+                  ? mode === "create" ? "Creating..." : "Saving..."
                   : mode === "create" ? "Create Bot" : "Save Changes"}
               </button>
             </div>
