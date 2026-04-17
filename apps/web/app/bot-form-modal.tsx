@@ -766,21 +766,22 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
 
       const defaultVenue = formData.venue;
 
-      const [promptsRes, modelsRes, symbolsRes, botRes, formatterRes, dashRes] = await Promise.all([
+      const [promptsRes, modelsRes, symbolsRes, botRes, formatterRes] = await Promise.all([
         safeFetch<Prompt[]>("/api/prompts"),
         safeFetch<Model[]>("/api/models"),
         safeFetch<SymbolResponse>("/api/venues/binance/symbols"),
         mode === "edit" && botId ? safeFetch<BotSetup>(`/api/bots/${botId}`) : Promise.resolve({ data: null, error: null }),
-        safeFetch<FormatterVersion[]>(`/api/settings/formatter-prompt/${defaultVenue}/versions`),
-        safeFetch<{ bots: { id: string }[] }>("/api/dashboard"),
+        safeFetch<{ versions: FormatterVersion[] }>(`/api/settings/formatter-prompt/${defaultVenue}/versions`),
       ]);
 
       if (cancelled) return;
 
-      if (promptsRes.data) setPrompts(promptsRes.data);
+      if (promptsRes.data) {
+        setPrompts(promptsRes.data);
+        setNextBotNumber(promptsRes.data.length + 1);
+      }
       if (modelsRes.data && modelsRes.data.length > 0) setModels(modelsRes.data);
-      if (formatterRes.data) setFormatterVersions(formatterRes.data);
-      if (dashRes.data?.bots) setNextBotNumber(dashRes.data.bots.length + 1);
+      if (formatterRes.data?.versions) setFormatterVersions(formatterRes.data.versions);
 
       let resolvedSymbols: string[] = symbolsRes.data?.symbols ?? [];
       if (resolvedSymbols.length === 0) resolvedSymbols = await fetchSymbolsDirect();
@@ -840,7 +841,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
           setFormData((cur) => ({
             ...cur,
             modelProfileId: cur.modelProfileId || bestModel.id,
-            name: cur.name || (nextBotNumber ? `Bot #${nextBotNumber}` : ""),
+            name: cur.name || "",
           }));
         }
       }
@@ -922,8 +923,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   // Fetch formatter versions when venue changes
   useEffect(() => {
     let cancelled = false;
-    safeFetch<FormatterVersion[]>(`/api/settings/formatter-prompt/${formData.venue}/versions`)
-      .then((res) => { if (!cancelled && res.data) setFormatterVersions(res.data); });
+    safeFetch<{ versions: FormatterVersion[] }>(`/api/settings/formatter-prompt/${formData.venue}/versions`)
+      .then((res) => { if (!cancelled && res.data?.versions) setFormatterVersions(res.data.versions); });
     return () => { cancelled = true; };
   }, [formData.venue]);
 
@@ -983,11 +984,11 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       if (!res.ok) throw new Error("Failed to save trader prompt");
 
       // Refresh versions
-      const versionsRes = await safeFetch<FormatterVersion[]>(`/api/settings/formatter-prompt/${formData.venue}/versions`);
-      if (versionsRes.data) {
-        setFormatterVersions(versionsRes.data);
-        if (versionsRes.data[0]) {
-          setFormData((cur) => ({ ...cur, existingTraderVersionId: versionsRes.data![0].id }));
+      const versionsRes = await safeFetch<{ versions: FormatterVersion[] }>(`/api/settings/formatter-prompt/${formData.venue}/versions`);
+      if (versionsRes.data?.versions) {
+        setFormatterVersions(versionsRes.data.versions);
+        if (versionsRes.data.versions[0]) {
+          setFormData((cur) => ({ ...cur, existingTraderVersionId: versionsRes.data!.versions[0].id }));
         }
       }
       setTraderShowEditor(false);
