@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LocalTime } from "../../local-time";
 
 type Run = {
@@ -11,24 +11,40 @@ type Run = {
   promptUser: string | null;
   rawModelOutput: string | null;
   formatterVersion: number | null;
+  validationResult?: { accepted: boolean; issues: string[] } | null;
+};
+
+type LLMCall = {
+  id: string;
+  phase: string;
+  provider: string;
+  model: string;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  latencyMs: number | null;
+  attempt: number;
+  strategy: string | null;
+  error: string | null;
+  createdAt: string;
 };
 
 const PHASE_MARKERS = {
   system: {
     p1: "=== PHASE 1 — RESEARCH (system) ===",
-    p2: "=== PHASE 2 — FORMATTER (system) ==="
+    p2: "=== PHASE 2 — TRADER (system) ==="
   },
   user: {
     p1: "=== PHASE 1 — RESEARCH (user context) ===",
-    p2: "=== PHASE 2 — FORMATTER (user context) ==="
+    p2: "=== PHASE 2 — TRADER (user context) ==="
   }
 } as const;
 
-/** Older runs used ASCII hyphen in phase headers instead of em dash. */
+/** Older runs used ASCII hyphen or "FORMATTER" in phase headers. */
 function normalizePhaseHeaders(text: string) {
   return text
     .replaceAll("=== PHASE 1 - RESEARCH", "=== PHASE 1 — RESEARCH")
-    .replaceAll("=== PHASE 2 - FORMATTER", "=== PHASE 2 — FORMATTER");
+    .replaceAll("=== PHASE 2 - FORMATTER", "=== PHASE 2 — TRADER")
+    .replaceAll("=== PHASE 2 — FORMATTER", "=== PHASE 2 — TRADER");
 }
 
 function splitPhases(text: string | null, markers: { p1: string; p2: string }) {
@@ -41,15 +57,15 @@ function splitPhases(text: string | null, markers: { p1: string; p2: string }) {
   return { phase1: phase1 || null, phase2: phase2 || null };
 }
 
-/** Parse stored raw output — may be JSON with phase1Research / phase2Decision keys. */
+/** Parse stored raw output — may be JSON with phase1Research / phase2Trader keys. */
 function splitRawOutput(raw: string | null): { phase1: string | null; phase2: string | null } {
   if (!raw) return { phase1: null, phase2: null };
   try {
     const parsed = JSON.parse(raw);
-    if (parsed && (parsed.phase1Research !== undefined || parsed.phase2Decision !== undefined)) {
+    if (parsed && (parsed.phase1Research !== undefined || parsed.phase2Trader !== undefined || parsed.phase2Decision !== undefined)) {
       return {
         phase1: parsed.phase1Research ?? null,
-        phase2: parsed.phase2Decision ?? null
+        phase2: parsed.phase2Trader ?? parsed.phase2Decision ?? null
       };
     }
   } catch {
@@ -98,10 +114,91 @@ function PhaseBlock({
             lineHeight: 1.4
           }}
         >
-          {visible ? "Hide" : "Edit"}
+          {visible ? "Hide" : "Show"}
         </button>
       </div>
       {visible && <pre style={preStyle}>{content}</pre>}
+    </div>
+  );
+}
+
+function LLMCallsPanel({ runId }: { runId: string }) {
+  const [calls, setCalls] = useState<LLMCall[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!expanded || calls) return;
+    setLoading(true);
+    fetch(`/api/runs/${runId}/llm-calls`)
+      .then((res) => res.ok ? res.json() : [])
+      .then((data) => setCalls(Array.isArray(data) ? data : []))
+      .catch(() => setCalls([]))
+      .finally(() => setLoading(false));
+  }, [expanded, runId, calls]);
+
+  return (
+    <div style={{ marginTop: "20px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <p style={{ fontWeight: 600, fontSize: "13px", color: "#fbbf24", margin: 0 }}>
+          LLM Calls
+        </p>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          style={{
+            background: "none",
+            border: "1px solid #3f3f46",
+            borderRadius: "4px",
+            color: "#a1a1aa",
+            cursor: "pointer",
+            fontSize: "11px",
+            padding: "1px 6px",
+            lineHeight: 1.4
+          }}
+        >
+          {expanded ? "Hide" : "Show"}
+        </button>
+      </div>
+      {expanded && (
+        <div style={{ marginTop: "8px" }}>
+          {loading && <p className="muted">Loading...</p>}
+          {calls && calls.length === 0 && <p className="muted">No LLM calls recorded for this run.</p>}
+          {calls && calls.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {calls.map((call) => (
+                <div
+                  key={call.id}
+                  style={{
+                    background: "#27272a",
+                    padding: "10px 12px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    borderLeft: call.error ? "3px solid #ef4444" : call.phase === "research" ? "3px solid #a78bfa" : "3px solid #34d399"
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <span style={{ fontWeight: 600, textTransform: "capitalize" }}>
+                      {call.phase}
+                      {call.attempt > 1 && <span style={{ color: "#fbbf24" }}> (attempt {call.attempt})</span>}
+                    </span>
+                    <span className="muted">{call.provider}/{call.model}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: "16px", color: "#a1a1aa" }}>
+                    {call.inputTokens != null && <span>In: {call.inputTokens.toLocaleString()} tok</span>}
+                    {call.outputTokens != null && <span>Out: {call.outputTokens.toLocaleString()} tok</span>}
+                    {call.latencyMs != null && <span>{(call.latencyMs / 1000).toFixed(1)}s</span>}
+                    {call.strategy && <span>Strategy: {call.strategy}</span>}
+                  </div>
+                  {call.error && (
+                    <div style={{ color: "#ef4444", marginTop: "4px", fontSize: "11px" }}>{call.error}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -113,6 +210,8 @@ export function RunDetail({ run }: { run: Run }) {
   const userParts = splitPhases(run.promptUser, PHASE_MARKERS.user);
   const rawParts = splitRawOutput(run.rawModelOutput);
 
+  const validationFailed = run.validationResult && !run.validationResult.accepted;
+
   return (
     <details style={{ background: "#18181b", padding: "16px", borderRadius: "8px" }}>
       <summary style={{ cursor: "pointer", fontWeight: "bold" }}>
@@ -121,6 +220,23 @@ export function RunDetail({ run }: { run: Run }) {
           <span className="badge badge-neutral" style={{ marginLeft: "8px" }}>formatter v{run.formatterVersion}</span>
         )}
       </summary>
+
+      {/* Validation failure banner */}
+      {validationFailed && (
+        <div style={{
+          marginTop: "12px",
+          background: "#451a1a",
+          border: "1px solid #7f1d1d",
+          borderRadius: "6px",
+          padding: "10px 12px",
+          fontSize: "12px"
+        }}>
+          <p style={{ color: "#fca5a5", fontWeight: 600, margin: "0 0 4px 0" }}>Validation rejected</p>
+          {run.validationResult!.issues.map((issue, i) => (
+            <p key={i} style={{ color: "#fca5a5", margin: "2px 0", fontSize: "11px" }}>{issue}</p>
+          ))}
+        </div>
+      )}
 
       <div style={{ marginTop: "12px", display: "flex", gap: "8px" }}>
         <button
@@ -154,7 +270,7 @@ export function RunDetail({ run }: { run: Run }) {
         </>
       ) : (
         <>
-          {/* ── Phase 1: Research ── */}
+          {/* Phase 1: Research */}
           {(systemParts.phase1 || userParts.phase1) && (
             <div style={{ marginTop: "20px" }}>
               <p style={{ fontWeight: 600, fontSize: "13px", color: "#a78bfa", marginBottom: "4px" }}>
@@ -165,7 +281,7 @@ export function RunDetail({ run }: { run: Run }) {
             </div>
           )}
 
-          {/* ── Phase 2: Trader ── */}
+          {/* Phase 2: Trader */}
           {(systemParts.phase2 || userParts.phase2) && (
             <div style={{ marginTop: "20px" }}>
               <p style={{ fontWeight: 600, fontSize: "13px", color: "#34d399", marginBottom: "4px" }}>
@@ -192,7 +308,7 @@ export function RunDetail({ run }: { run: Run }) {
         </>
       )}
 
-      {/* ── Model outputs ── */}
+      {/* Model outputs */}
       <div style={{ marginTop: "20px" }}>
         {rawParts.phase2 ? (
           <>
@@ -218,6 +334,9 @@ export function RunDetail({ run }: { run: Run }) {
           </div>
         )}
       </div>
+
+      {/* LLM Calls */}
+      <LLMCallsPanel runId={run.id} />
     </details>
   );
 }
