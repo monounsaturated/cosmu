@@ -48,6 +48,28 @@ importers:
         specifier: latest
         version: 6.0.2
 
+  apps/mcp-server:
+    dependencies:
+      '@cosmu/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      dotenv:
+        specifier: latest
+        version: 17.4.2
+      zod:
+        specifier: latest
+        version: 4.3.6
+    devDependencies:
+      '@types/node':
+        specifier: latest
+        version: 25.6.0
+      tsx:
+        specifier: latest
+        version: 4.21.0
+      typescript:
+        specifier: latest
+        version: 6.0.3
+
   apps/web:
     dependencies:
       '@cosmu/shared':
@@ -868,6 +890,11 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
   undici-types@7.19.2:
     resolution: {integrity: sha512-qYVnV5OEm2AW8cJMCpdV20CDyaN3g0AjDlOGf1OW4iaDEx8MwdtChUp4zu4H0VP3nDRF/8RKWH+IPp9uW0YGZg==}
 
@@ -1595,6 +1622,8 @@ snapshots:
       mime-types: 3.0.2
 
   typescript@6.0.2: {}
+
+  typescript@6.0.3: {}
 
   undici-types@7.19.2: {}
 

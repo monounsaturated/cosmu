@@ -6,6 +6,10 @@ import { BotTable } from "./bot-table";
 import { AutoRefresh } from "./live-refresh";
 import { LocalTime } from "./local-time";
 import { KillSwitch } from "./kill-switch";
+import { VenueOverview } from "./venue-overview";
+import { RecentExecutions } from "./recent-executions";
+import { PortfolioState } from "./portfolio-state";
+import { PromptSnapshots } from "./prompt-snapshots";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
@@ -67,57 +71,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section style={{ marginBottom: "32px", display: "flex", gap: "16px", flexWrap: "wrap" }}>
-        {dashboard.venueOverview.live && (
-          <div className="panel venue-group" style={{ flex: "1 1 340px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
-              <span className="status-dot status-active" style={{ width: "8px", height: "8px" }} />
-              <span className="label" style={{ fontSize: "13px", color: "#34d399" }}>Live</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
-              <div>
-                <p className="label">Account Balance</p>
-                <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${dashboard.venueOverview.live.accountBalance.toFixed(2)}</h2>
-              </div>
-              <div>
-                <p className="label">Allocated to Bots</p>
-                <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${dashboard.venueOverview.live.allocatedAmount.toFixed(2)}</h2>
-              </div>
-              <div>
-                <p className="label">Spare</p>
-                <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${dashboard.venueOverview.live.spareAmount.toFixed(2)}</h2>
-              </div>
-            </div>
-          </div>
-        )}
-        {dashboard.venueOverview.testnet && (
-          <div className="panel venue-group" style={{ flex: "1 1 340px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
-              <span className="status-dot status-inactive" style={{ width: "8px", height: "8px" }} />
-              <span className="label" style={{ fontSize: "13px", color: "#a1a1aa" }}>Testnet</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
-              <div>
-                <p className="label">Account Balance</p>
-                <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${dashboard.venueOverview.testnet.accountBalance.toFixed(2)}</h2>
-              </div>
-              <div>
-                <p className="label">Allocated to Bots</p>
-                <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${dashboard.venueOverview.testnet.allocatedAmount.toFixed(2)}</h2>
-              </div>
-              <div>
-                <p className="label">Spare</p>
-                <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${dashboard.venueOverview.testnet.spareAmount.toFixed(2)}</h2>
-              </div>
-            </div>
-          </div>
-        )}
-        {!dashboard.venueOverview.live && !dashboard.venueOverview.testnet && (
-          <div className="panel" style={{ flex: 1 }}>
-            <p className="muted">No venue data available.</p>
-          </div>
-        )}
-      </section>
+      <VenueOverview venueOverview={dashboard.venueOverview} />
 
       <section className="grid" style={{ display: 'block', marginBottom: '32px' }}>
         <BotTable dashboard={dashboard} />
@@ -146,91 +100,9 @@ export default async function HomePage() {
           )}
         </article>
 
-        <article className="panel">
-          <h3>Recent Executions</h3>
-          {dashboard.recentExecutions.length === 0 ? (
-            <p className="muted">No executions yet.</p>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Symbol</th>
-                  <th>Side</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Qty</th>
-                  <th>Fee</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dashboard.recentExecutions.map((execution) => (
-                  <tr key={`${execution.runId}-${execution.symbol}-${execution.requestedQuantity}`}>
-                    <td>{execution.symbol}</td>
-                    <td><span className={`badge badge-${execution.side}`}>{execution.side}</span></td>
-                    <td>{execution.orderType}</td>
-                    <td><span className={`badge badge-${execution.status}`}>{execution.status}</span></td>
-                    <td>{execution.executedQuantity ?? execution.requestedQuantity}</td>
-                    <td>
-                      {execution.feeAmount ?? 0} {execution.feeAsset ?? ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </article>
-
-        <article className="panel">
-          <h3>Latest Portfolio State</h3>
-          {dashboard.latestSnapshots.length === 0 ? (
-            <p className="muted">No portfolio snapshots yet.</p>
-          ) : (
-            <div className="grid">
-              {dashboard.latestSnapshots.map((item) => (
-                <div key={item.botId} className="panel">
-                  <h3>{item.botName}</h3>
-                  <p><span className="label">Total USD</span> ${item.snapshot.totalUsdValue.toFixed(2)}</p>
-                  <p><span className="label">Gross PnL</span> {item.snapshot.grossPnlUsd?.toFixed(2) ?? "—"}</p>
-                  <p><span className="label">Net PnL</span> {item.snapshot.netPnlUsd?.toFixed(2) ?? "—"}</p>
-                  <details style={{ marginTop: '8px' }}>
-                    <summary className="label clickable" style={{ display: 'inline-block' }}>View Holdings ({item.snapshot.balances.length})</summary>
-                    <ul style={{ marginTop: '8px' }}>
-                      {item.snapshot.balances.map((balance) => (
-                        <li key={balance.asset}>
-                          {balance.asset}: {(balance.free + balance.locked).toFixed(6)}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                </div>
-              ))}
-            </div>
-          )}
-        </article>
-
-        <article className="panel">
-          <h3>Prompt Snapshots</h3>
-          {dashboard.promptVersions.length === 0 ? (
-            <p className="muted">No prompts yet.</p>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Prompt</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dashboard.promptVersions.map((promptVersion) => (
-                  <tr key={`${promptVersion.promptName}-${promptVersion.version}`}>
-                    <td>{promptVersion.label}</td>
-                    <td><LocalTime value={promptVersion.createdAt} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </article>
+        <RecentExecutions executions={dashboard.recentExecutions} />
+        <PortfolioState snapshots={dashboard.latestSnapshots} />
+        <PromptSnapshots versions={dashboard.promptVersions} />
       </section>
     </main>
   );
