@@ -1,4 +1,17 @@
-import "dotenv/config";
+import { config } from "dotenv";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
+
+// Load .env.local from monorepo root (works whether running from project root or mcp-server dir)
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const roots = [resolve(__dirname, "../../.."), resolve(__dirname, "..")];
+for (const root of roots) {
+  for (const file of [".env.local", ".env"]) {
+    const path = resolve(root, file);
+    if (existsSync(path)) config({ path });
+  }
+}
 
 function required(name: string): string {
   const value = process.env[name];

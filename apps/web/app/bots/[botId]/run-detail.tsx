@@ -132,7 +132,7 @@ function LLMCallsPanel({ runId }: { runId: string }) {
     setLoading(true);
     fetch(`/api/runs/${runId}/llm-calls`)
       .then((res) => res.ok ? res.json() : [])
-      .then((data) => setCalls(Array.isArray(data) ? data : []))
+      .then((data) => setCalls(Array.isArray(data) ? data : data?.calls ?? []))
       .catch(() => setCalls([]))
       .finally(() => setLoading(false));
   }, [expanded, runId, calls]);

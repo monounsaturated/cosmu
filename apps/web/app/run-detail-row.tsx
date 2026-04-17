@@ -270,7 +270,7 @@ function RunDetailExpanded({ runId }: { runId: string }) {
   useEffect(() => {
     Promise.all([
       fetch(`/api/runs/${runId}`).then((r) => r.ok ? r.json() : null),
-      fetch(`/api/runs/${runId}/llm-calls`).then((r) => r.ok ? r.json() : []).catch(() => [])
+      fetch(`/api/runs/${runId}/llm-calls`).then((r) => r.ok ? r.json() : []).then((d) => Array.isArray(d) ? d : d?.calls ?? []).catch(() => [])
     ])
       .then(([d, calls]) => {
         setDetail(d);

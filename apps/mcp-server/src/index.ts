@@ -101,7 +101,14 @@ async function handleToolsCall(id: string | number | null, params: Record<string
 
 const rl = createInterface({ input: process.stdin, terminal: false });
 
-rl.on("line", async (line) => {
+let pending = 0;
+let stdinClosed = false;
+
+function maybeExit() {
+  if (stdinClosed && pending === 0) process.exit(0);
+}
+
+rl.on("line", (line) => {
   const trimmed = line.trim();
   if (!trimmed) return;
 
@@ -117,34 +124,46 @@ rl.on("line", async (line) => {
 
   // Notifications (no id) — just ack silently
   if (id === undefined || id === null) {
-    // "notifications/initialized" is the only expected notification
     return;
   }
 
-  let response: string;
+  pending++;
 
-  switch (method) {
-    case "initialize":
-      response = handleInitialize(id);
-      break;
-    case "tools/list":
-      response = handleToolsList(id);
-      break;
-    case "tools/call":
-      response = await handleToolsCall(id, (params ?? {}) as Record<string, unknown>);
-      break;
-    case "ping":
-      response = jsonRpcResponse(id, {});
-      break;
-    default:
-      response = jsonRpcError(id, -32601, `Method not found: ${method}`);
-  }
+  const handle = async () => {
+    let response: string;
 
-  process.stdout.write(response + "\n");
+    switch (method) {
+      case "initialize":
+        response = handleInitialize(id);
+        break;
+      case "tools/list":
+        response = handleToolsList(id);
+        break;
+      case "tools/call":
+        response = await handleToolsCall(id, (params ?? {}) as Record<string, unknown>);
+        break;
+      case "ping":
+        response = jsonRpcResponse(id, {});
+        break;
+      default:
+        response = jsonRpcError(id, -32601, `Method not found: ${method}`);
+    }
+
+    process.stdout.write(response + "\n");
+    pending--;
+    maybeExit();
+  };
+
+  handle().catch((err) => {
+    process.stdout.write(jsonRpcError(id, -32603, String(err)) + "\n");
+    pending--;
+    maybeExit();
+  });
 });
 
 rl.on("close", () => {
-  process.exit(0);
+  stdinClosed = true;
+  maybeExit();
 });
 
 // Log to stderr so it doesn't pollute the JSON-RPC stream
