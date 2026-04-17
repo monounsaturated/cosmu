@@ -28,6 +28,8 @@ type LLMCall = {
   createdAt: string;
 };
 
+/* ── Phase splitting ── */
+
 const PHASE_MARKERS = {
   system: {
     p1: "=== PHASE 1 — RESEARCH (system) ===",
@@ -39,7 +41,6 @@ const PHASE_MARKERS = {
   }
 } as const;
 
-/** Older runs used ASCII hyphen or "FORMATTER" in phase headers. */
 function normalizePhaseHeaders(text: string) {
   return text
     .replaceAll("=== PHASE 1 - RESEARCH", "=== PHASE 1 — RESEARCH")
@@ -57,7 +58,6 @@ function splitPhases(text: string | null, markers: { p1: string; p2: string }) {
   return { phase1: phase1 || null, phase2: phase2 || null };
 }
 
-/** Parse stored raw output — may be JSON with phase1Research / phase2Trader keys. */
 function splitRawOutput(raw: string | null): { phase1: string | null; phase2: string | null } {
   if (!raw) return { phase1: null, phase2: null };
   try {
@@ -69,10 +69,97 @@ function splitRawOutput(raw: string | null): { phase1: string | null; phase2: st
       };
     }
   } catch {
-    // not JSON — treat as legacy single-phase output
+    // not JSON — legacy single-phase output
   }
   return { phase1: raw, phase2: null };
 }
+
+/* ── User context section splitting ── */
+
+const SECTION_MARKERS = [
+  "=== SESSION ===",
+  "=== WALLET ===",
+  "=== TRADING SCOPE ===",
+  "=== PORTFOLIO OVERVIEW ===",
+  "=== PERFORMANCE STATS ===",
+  "=== EXECUTION RULES ===",
+  "=== LIVE MARKET PRICES",
+  "=== UPSTREAM RESEARCH",
+];
+
+type ParsedInput = {
+  writtenPrompt: string | null;
+  sections: { label: string; content: string }[];
+};
+
+/** Separate the system prompt into the user-written strategy prompt and the framework preamble. */
+function parseSystemPrompt(text: string | null): { preamble: string | null; writtenPrompt: string | null } {
+  if (!text) return { preamble: null, writtenPrompt: null };
+
+  // The system prompt structure:
+  // Line 1: framework preamble ("You are the research analyst...")
+  // Then an empty line, then the user's written prompt body
+  const lines = text.split("\n");
+
+  // Find where the preamble ends — it's the first paragraph (up to first blank line)
+  let preambleEnd = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() === "") {
+      preambleEnd = i;
+      break;
+    }
+    preambleEnd = i + 1;
+  }
+
+  const preamble = lines.slice(0, preambleEnd).join("\n").trim();
+  const writtenPrompt = lines.slice(preambleEnd).join("\n").trim();
+
+  return {
+    preamble: preamble || null,
+    writtenPrompt: writtenPrompt || null
+  };
+}
+
+/** Split user context into labelled sections (SESSION, WALLET, etc.) */
+function parseUserContext(text: string | null): ParsedInput {
+  if (!text) return { writtenPrompt: null, sections: [] };
+
+  const sections: { label: string; content: string }[] = [];
+  const lines = text.split("\n");
+  let currentLabel: string | null = null;
+  let currentLines: string[] = [];
+  let prelude: string[] = [];
+
+  for (const line of lines) {
+    const markerMatch = SECTION_MARKERS.find((m) => line.trim().startsWith(m));
+    if (markerMatch) {
+      // Flush previous section
+      if (currentLabel) {
+        sections.push({ label: currentLabel, content: currentLines.join("\n").trim() });
+      }
+      // Extract label from the === LABEL === format
+      const labelMatch = line.trim().match(/^===\s*(.+?)\s*===$/);
+      currentLabel = labelMatch ? labelMatch[1] : line.trim().replace(/^===\s*/, "").replace(/\s*===$/, "");
+      currentLines = [];
+    } else if (currentLabel) {
+      currentLines.push(line);
+    } else {
+      prelude.push(line);
+    }
+  }
+
+  // Flush last section
+  if (currentLabel) {
+    sections.push({ label: currentLabel, content: currentLines.join("\n").trim() });
+  }
+
+  return {
+    writtenPrompt: prelude.join("\n").trim() || null,
+    sections
+  };
+}
+
+/* ── Styles ── */
 
 const preStyle = {
   background: "#27272a",
@@ -85,39 +172,140 @@ const preStyle = {
   overflowY: "auto" as const
 };
 
-function PhaseBlock({
-  label,
-  content,
-  defaultHidden = false
-}: {
-  label: string;
-  content: string | null;
-  defaultHidden?: boolean;
-}) {
+const sectionTagStyle = {
+  display: "inline-block" as const,
+  fontSize: "10px",
+  fontWeight: 600 as const,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.05em",
+  padding: "2px 8px",
+  borderRadius: "4px",
+  marginBottom: "6px"
+};
+
+/* ── Sub-components ── */
+
+function ToggleButton({ visible, onClick }: { visible: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="toggle-btn">
+      {visible ? "Hide" : "Show"}
+    </button>
+  );
+}
+
+function PhaseBlock({ label, content, defaultHidden = false }: { label: string; content: string | null; defaultHidden?: boolean }) {
   const [visible, setVisible] = useState(!defaultHidden);
   if (!content) return null;
   return (
     <div style={{ marginTop: "16px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
         <p className="label" style={{ margin: 0 }}>{label}</p>
-        <button
-          type="button"
-          onClick={() => setVisible((v) => !v)}
-          style={{
-            background: "none",
-            border: "1px solid #3f3f46",
-            borderRadius: "4px",
-            color: "#a1a1aa",
-            cursor: "pointer",
-            fontSize: "11px",
-            padding: "1px 6px",
-            lineHeight: 1.4
-          }}
-        >
-          {visible ? "Hide" : "Show"}
-        </button>
+        <ToggleButton visible={visible} onClick={() => setVisible((v) => !v)} />
       </div>
       {visible && <pre style={preStyle}>{content}</pre>}
+    </div>
+  );
+}
+
+function InputBreakdown({ systemPrompt, userContext, phaseLabel, phaseColor }: {
+  systemPrompt: string | null;
+  userContext: string | null;
+  phaseLabel: string;
+  phaseColor: string;
+}) {
+  const [showSystem, setShowSystem] = useState(false);
+  const [showSections, setShowSections] = useState(false);
+
+  const { preamble, writtenPrompt } = parseSystemPrompt(systemPrompt);
+  const { sections } = parseUserContext(userContext);
+
+  return (
+    <div style={{ marginTop: "20px" }}>
+      <p style={{ fontWeight: 600, fontSize: "13px", color: phaseColor, marginBottom: "8px" }}>
+        {phaseLabel} — Input
+      </p>
+
+      {/* Preamble (framework-generated system prompt intro) */}
+      {preamble && (
+        <div style={{ marginBottom: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+            <span style={{ ...sectionTagStyle, background: "#3f3f4633", color: "#71717a" }}>System Preamble</span>
+            <ToggleButton visible={showSystem} onClick={() => setShowSystem((v) => !v)} />
+          </div>
+          {showSystem && <pre style={{ ...preStyle, maxHeight: "200px" }}>{preamble}</pre>}
+        </div>
+      )}
+
+      {/* Written prompt (user's strategy text) */}
+      {writtenPrompt && (
+        <div style={{ marginBottom: "12px" }}>
+          <span style={{ ...sectionTagStyle, background: `${phaseColor}1a`, color: phaseColor }}>Written Prompt</span>
+          <pre style={{ ...preStyle, borderLeft: `3px solid ${phaseColor}` }}>{writtenPrompt}</pre>
+        </div>
+      )}
+
+      {/* Injected data sections */}
+      {sections.length > 0 && (
+        <div style={{ marginBottom: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+            <span style={{ ...sectionTagStyle, background: "#60a5fa1a", color: "#60a5fa" }}>
+              Injected Data ({sections.length} sections)
+            </span>
+            <ToggleButton visible={showSections} onClick={() => setShowSections((v) => !v)} />
+          </div>
+          {showSections && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {sections.map((section, i) => (
+                <div key={i} style={{ background: "#1e1e21", border: "1px solid #27272a", borderRadius: "6px", overflow: "hidden" }}>
+                  <div style={{ padding: "6px 10px", background: "#27272a", fontSize: "11px", fontWeight: 600, color: "#a1a1aa", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    {section.label}
+                  </div>
+                  <pre style={{ ...preStyle, background: "transparent", borderRadius: 0, maxHeight: "200px", margin: 0 }}>
+                    {section.content}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OutputBreakdown({ rawParts, phaseColor }: {
+  rawParts: { phase1: string | null; phase2: string | null };
+  phaseColor?: { p1: string; p2: string };
+}) {
+  const colors = phaseColor ?? { p1: "#a78bfa", p2: "#34d399" };
+
+  if (rawParts.phase2) {
+    return (
+      <>
+        <div style={{ marginTop: "20px" }}>
+          <p style={{ fontWeight: 600, fontSize: "13px", color: colors.p1, marginBottom: "4px" }}>
+            Research — Output
+          </p>
+          <pre style={{ ...preStyle, maxHeight: "300px" }}>{rawParts.phase1 || "Not recorded"}</pre>
+        </div>
+        <div style={{ marginTop: "16px" }}>
+          <p style={{ fontWeight: 600, fontSize: "13px", color: colors.p2, marginBottom: "4px" }}>
+            Trader — Output
+          </p>
+          <pre style={{ ...preStyle, maxHeight: "400px" }}>{tryFormatJson(rawParts.phase2)}</pre>
+        </div>
+      </>
+    );
+  }
+
+  // Single output (either legacy or direct decision)
+  const raw = rawParts.phase1;
+  return (
+    <div style={{ marginTop: "20px" }}>
+      <p className="label">Model Output</p>
+      <pre style={{ ...preStyle, maxHeight: "400px" }}>
+        {raw ? tryFormatJson(raw) : "Not recorded"}
+      </pre>
     </div>
   );
 }
@@ -143,22 +331,7 @@ function LLMCallsPanel({ runId }: { runId: string }) {
         <p style={{ fontWeight: 600, fontSize: "13px", color: "#fbbf24", margin: 0 }}>
           LLM Calls
         </p>
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          style={{
-            background: "none",
-            border: "1px solid #3f3f46",
-            borderRadius: "4px",
-            color: "#a1a1aa",
-            cursor: "pointer",
-            fontSize: "11px",
-            padding: "1px 6px",
-            lineHeight: 1.4
-          }}
-        >
-          {expanded ? "Hide" : "Show"}
-        </button>
+        <ToggleButton visible={expanded} onClick={() => setExpanded((v) => !v)} />
       </div>
       {expanded && (
         <div style={{ marginTop: "8px" }}>
@@ -203,12 +376,15 @@ function LLMCallsPanel({ runId }: { runId: string }) {
   );
 }
 
+/* ── Main component ── */
+
 export function RunDetail({ run }: { run: Run }) {
   const [showRaw, setShowRaw] = useState(false);
 
   const systemParts = splitPhases(run.promptSystem, PHASE_MARKERS.system);
   const userParts = splitPhases(run.promptUser, PHASE_MARKERS.user);
   const rawParts = splitRawOutput(run.rawModelOutput);
+  const hasTwoPhases = !!(systemParts.phase2 || userParts.phase2);
 
   const validationFailed = run.validationResult && !run.validationResult.accepted;
 
@@ -267,76 +443,52 @@ export function RunDetail({ run }: { run: Run }) {
             <p className="label">User Message (full)</p>
             <pre style={preStyle}>{run.promptUser || "Not recorded"}</pre>
           </div>
+          <div style={{ marginTop: "16px" }}>
+            <p className="label">Raw Model Output (full)</p>
+            <pre style={preStyle}>{run.rawModelOutput || "Not recorded"}</pre>
+          </div>
+        </>
+      ) : hasTwoPhases ? (
+        <>
+          {/* Two-phase run — show each phase with input breakdown */}
+          <InputBreakdown
+            systemPrompt={systemParts.phase1}
+            userContext={userParts.phase1}
+            phaseLabel="Phase 1 — Research"
+            phaseColor="#a78bfa"
+          />
+          <InputBreakdown
+            systemPrompt={systemParts.phase2}
+            userContext={userParts.phase2}
+            phaseLabel="Phase 2 — Trader"
+            phaseColor="#34d399"
+          />
         </>
       ) : (
         <>
-          {/* Phase 1: Research */}
-          {(systemParts.phase1 || userParts.phase1) && (
-            <div style={{ marginTop: "20px" }}>
-              <p style={{ fontWeight: 600, fontSize: "13px", color: "#a78bfa", marginBottom: "4px" }}>
-                Phase 1 — Research
-              </p>
-              <PhaseBlock label="System prompt" content={systemParts.phase1} />
-              <PhaseBlock label="User context" content={userParts.phase1} />
-            </div>
-          )}
-
-          {/* Phase 2: Trader */}
-          {(systemParts.phase2 || userParts.phase2) && (
-            <div style={{ marginTop: "20px" }}>
-              <p style={{ fontWeight: 600, fontSize: "13px", color: "#34d399", marginBottom: "4px" }}>
-                Phase 2 — Trader
-              </p>
-              <PhaseBlock label="System prompt" content={systemParts.phase2} defaultHidden={true} />
-              <PhaseBlock label="User context" content={userParts.phase2} />
-            </div>
-          )}
-
-          {/* Fallback for old single-phase runs */}
-          {!systemParts.phase1 && !systemParts.phase2 && (
-            <div style={{ marginTop: "16px" }}>
-              <p className="label">System Prompt</p>
-              <pre style={preStyle}>{run.promptSystem || "Not recorded"}</pre>
-            </div>
-          )}
-          {!userParts.phase1 && !userParts.phase2 && (
-            <div style={{ marginTop: "16px" }}>
-              <p className="label">User Context</p>
-              <pre style={preStyle}>{run.promptUser || "Not recorded"}</pre>
-            </div>
-          )}
+          {/* Single-phase run (old format or Phase 1 only stored) */}
+          <InputBreakdown
+            systemPrompt={run.promptSystem}
+            userContext={run.promptUser}
+            phaseLabel="Research"
+            phaseColor="#a78bfa"
+          />
         </>
       )}
 
       {/* Model outputs */}
-      <div style={{ marginTop: "20px" }}>
-        {rawParts.phase2 ? (
-          <>
-            <div>
-              <p style={{ fontWeight: 600, fontSize: "13px", color: "#a78bfa", marginBottom: "4px" }}>
-                Research output
-              </p>
-              <pre style={{ ...preStyle, maxHeight: "300px" }}>{rawParts.phase1 || "Not recorded"}</pre>
-            </div>
-            <div style={{ marginTop: "16px" }}>
-              <p style={{ fontWeight: 600, fontSize: "13px", color: "#34d399", marginBottom: "4px" }}>
-                Trader decision
-              </p>
-              <pre style={{ ...preStyle, maxHeight: "400px" }}>{rawParts.phase2}</pre>
-            </div>
-          </>
-        ) : (
-          <div>
-            <p className="label">Raw Model Output</p>
-            <pre style={{ ...preStyle, maxHeight: "400px" }}>
-              {run.rawModelOutput || "Not recorded"}
-            </pre>
-          </div>
-        )}
-      </div>
+      <OutputBreakdown rawParts={rawParts} />
 
       {/* LLM Calls */}
       <LLMCallsPanel runId={run.id} />
     </details>
   );
+}
+
+function tryFormatJson(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
 }

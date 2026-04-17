@@ -70,6 +70,15 @@ export const storeRawModelOutput = async (runId: string, rawModelOutput: string)
   `;
 };
 
+export const updateRunPrompts = async (runId: string, promptSystem: string, promptUser: string) => {
+  await sql`
+    update runs
+    set prompt_system = ${promptSystem},
+        prompt_user = ${promptUser}
+    where id = ${runId}
+  `;
+};
+
 export const finishRun = async (input: {
   runId: string;
   runtimeConfigId: string;

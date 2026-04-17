@@ -15,6 +15,7 @@ import {
   storeDecision,
   storeExecutionRecords,
   storeRawModelOutput,
+  updateRunPrompts,
   storePortfolioSnapshot,
   type BotSetup
 } from "../lib/store.js";
@@ -173,9 +174,8 @@ export const runBot = async (bot: BotSetup) => {
       formatterCtx.userMessage
     ].join("\n");
 
-    // Update run record with full context (prompt_system/prompt_user already set at creation,
-    // but we want the combined version for inspection)
-    await storeRawModelOutput(runId, ""); // Placeholder, will be overwritten
+    // Persist combined prompts so the UI can show both phases
+    await updateRunPrompts(runId, promptSystem, promptUser);
 
     // ── 4. Trader Agent ──────────────────────────────────────────────
     const traderResult = await runTraderAgent({

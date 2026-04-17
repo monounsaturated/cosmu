@@ -18,6 +18,7 @@ export {
   createRun,
   storeDecision,
   storeRawModelOutput,
+  updateRunPrompts,
   finishRun,
   recentTradeAlerts,
   getRunDetail,
