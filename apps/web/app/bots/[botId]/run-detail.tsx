@@ -92,32 +92,10 @@ type ParsedInput = {
   sections: { label: string; content: string }[];
 };
 
-/** Separate the system prompt into the user-written strategy prompt and the framework preamble. */
-function parseSystemPrompt(text: string | null): { preamble: string | null; writtenPrompt: string | null } {
-  if (!text) return { preamble: null, writtenPrompt: null };
-
-  // The system prompt structure:
-  // Line 1: framework preamble ("You are the research analyst...")
-  // Then an empty line, then the user's written prompt body
-  const lines = text.split("\n");
-
-  // Find where the preamble ends — it's the first paragraph (up to first blank line)
-  let preambleEnd = 0;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() === "") {
-      preambleEnd = i;
-      break;
-    }
-    preambleEnd = i + 1;
-  }
-
-  const preamble = lines.slice(0, preambleEnd).join("\n").trim();
-  const writtenPrompt = lines.slice(preambleEnd).join("\n").trim();
-
-  return {
-    preamble: preamble || null,
-    writtenPrompt: writtenPrompt || null
-  };
+/** System prompt is just the user's written prompt (no preamble). */
+function parseSystemPrompt(text: string | null): string | null {
+  if (!text) return null;
+  return text.trim() || null;
 }
 
 /** Split user context into labelled sections (SESSION, WALLET, etc.) */
@@ -209,36 +187,25 @@ function PhaseBlock({ label, content, defaultHidden = false }: { label: string; 
   );
 }
 
-function InputBreakdown({ systemPrompt, userContext, phaseLabel, phaseColor }: {
+function InputBreakdown({ systemPrompt, userContext, phaseLabel, phaseColor, rawOutput, outputLabel }: {
   systemPrompt: string | null;
   userContext: string | null;
   phaseLabel: string;
   phaseColor: string;
+  rawOutput?: string | null;
+  outputLabel?: string;
 }) {
-  const [showSystem, setShowSystem] = useState(false);
   const [showSections, setShowSections] = useState(false);
 
-  const { preamble, writtenPrompt } = parseSystemPrompt(systemPrompt);
+  const writtenPrompt = parseSystemPrompt(systemPrompt);
   const { sections } = parseUserContext(userContext);
 
   return (
     <div style={{ marginTop: "20px" }}>
       <p style={{ fontWeight: 600, fontSize: "13px", color: phaseColor, marginBottom: "8px" }}>
-        {phaseLabel} — Input
+        {phaseLabel}
       </p>
 
-      {/* Preamble (framework-generated system prompt intro) */}
-      {preamble && (
-        <div style={{ marginBottom: "12px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-            <span style={{ ...sectionTagStyle, background: "#3f3f4633", color: "#71717a" }}>System Preamble</span>
-            <ToggleButton visible={showSystem} onClick={() => setShowSystem((v) => !v)} />
-          </div>
-          {showSystem && <pre style={{ ...preStyle, maxHeight: "200px" }}>{preamble}</pre>}
-        </div>
-      )}
-
-      {/* Written prompt (user's strategy text) */}
       {writtenPrompt && (
         <div style={{ marginBottom: "12px" }}>
           <span style={{ ...sectionTagStyle, background: `${phaseColor}1a`, color: phaseColor }}>Written Prompt</span>
@@ -246,11 +213,10 @@ function InputBreakdown({ systemPrompt, userContext, phaseLabel, phaseColor }: {
         </div>
       )}
 
-      {/* Injected data sections */}
       {sections.length > 0 && (
         <div style={{ marginBottom: "12px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-            <span style={{ ...sectionTagStyle, background: "#60a5fa1a", color: "#60a5fa" }}>
+            <span style={{ ...sectionTagStyle, background: "#34d3991a", color: "#34d399" }}>
               Injected Data ({sections.length} sections)
             </span>
             <ToggleButton visible={showSections} onClick={() => setShowSections((v) => !v)} />
@@ -271,36 +237,21 @@ function InputBreakdown({ systemPrompt, userContext, phaseLabel, phaseColor }: {
           )}
         </div>
       )}
+
+      {rawOutput !== undefined && (
+        <div style={{ marginTop: "16px" }}>
+          <p style={{ fontWeight: 600, fontSize: "13px", color: phaseColor, marginBottom: "4px" }}>
+            {outputLabel ?? "Model Output"}
+          </p>
+          <pre style={{ ...preStyle, maxHeight: "400px" }}>{rawOutput ? tryFormatJson(rawOutput) : "Not recorded"}</pre>
+        </div>
+      )}
     </div>
   );
 }
 
-function OutputBreakdown({ rawParts, phaseColor }: {
-  rawParts: { phase1: string | null; phase2: string | null };
-  phaseColor?: { p1: string; p2: string };
-}) {
-  const colors = phaseColor ?? { p1: "#a78bfa", p2: "#34d399" };
-
-  if (rawParts.phase2) {
-    return (
-      <>
-        <div style={{ marginTop: "20px" }}>
-          <p style={{ fontWeight: 600, fontSize: "13px", color: colors.p1, marginBottom: "4px" }}>
-            Research — Output
-          </p>
-          <pre style={{ ...preStyle, maxHeight: "300px" }}>{rawParts.phase1 || "Not recorded"}</pre>
-        </div>
-        <div style={{ marginTop: "16px" }}>
-          <p style={{ fontWeight: 600, fontSize: "13px", color: colors.p2, marginBottom: "4px" }}>
-            Trader — Output
-          </p>
-          <pre style={{ ...preStyle, maxHeight: "400px" }}>{tryFormatJson(rawParts.phase2)}</pre>
-        </div>
-      </>
-    );
-  }
-
-  // Single output (either legacy or direct decision)
+function SingleOutputBlock({ rawParts }: { rawParts: { phase1: string | null; phase2: string | null } }) {
+  if (rawParts.phase2) return null;
   const raw = rawParts.phase1;
   return (
     <div style={{ marginTop: "20px" }}>
@@ -452,34 +403,38 @@ export function RunDetail({ run }: { run: Run }) {
         </>
       ) : hasTwoPhases ? (
         <>
-          {/* Two-phase run — show each phase with input breakdown */}
           <InputBreakdown
             systemPrompt={systemParts.phase1}
             userContext={userParts.phase1}
             phaseLabel="Phase 1 — Research"
             phaseColor="#a78bfa"
+            rawOutput={rawParts.phase1}
+            outputLabel="Research Model Output"
           />
           <InputBreakdown
             systemPrompt={systemParts.phase2}
             userContext={userParts.phase2}
             phaseLabel="Phase 2 — Trader"
             phaseColor="#34d399"
+            rawOutput={rawParts.phase2}
+            outputLabel="Trader Model Output"
           />
         </>
       ) : (
         <>
-          {/* Single-phase run (old format or Phase 1 only stored) */}
           <InputBreakdown
             systemPrompt={run.promptSystem}
             userContext={run.promptUser}
             phaseLabel="Research"
             phaseColor="#a78bfa"
+            rawOutput={rawParts.phase1}
+            outputLabel="Research Model Output"
           />
         </>
       )}
 
-      {/* Model outputs */}
-      <OutputBreakdown rawParts={rawParts} />
+      {/* Fallback for legacy single-output runs */}
+      <SingleOutputBlock rawParts={rawParts} />
 
       {/* LLM Calls */}
       <LLMCallsPanel runId={run.id} />

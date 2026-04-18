@@ -21,8 +21,7 @@ export const NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
   "• Reply with valid JSON only — no markdown, no text outside the JSON."
 ].join("\n");
 
-const DEFAULT_SYSTEM_PRELUDE =
-  "You are the research analyst for one autonomous spot bot. Analyse market conditions, identify opportunities, and mention any USDT trading pair symbols you find interesting (e.g. BTCUSDT). Write freely — your analysis will be passed to a separate execution stage.";
+// System prelude removed — the user's written prompt is now the entire system prompt for research.
 
 export const DEFAULT_FORMATTER_BODY = [
   "You are the execution stage (phase 2) for one autonomous Binance USDT spot bot.",
@@ -215,8 +214,7 @@ type BuildPromptContextInput = {
 export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildPromptContextInput) => {
   const { runtimeConfig } = bot;
 
-  // Research phase = pure creative prompt. No injected data sections.
-  const systemPrompt = [DEFAULT_SYSTEM_PRELUDE, bot.promptBody.trim()].filter(Boolean).join("\n\n");
+  const systemPrompt = bot.promptBody.trim();
   const userMessage = "Analyze the market now. Identify any trading opportunities worth exploring.";
 
   const compactContext: Record<string, unknown> = {

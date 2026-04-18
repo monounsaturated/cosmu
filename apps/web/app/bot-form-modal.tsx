@@ -424,7 +424,21 @@ function PromptSection({
         </button>
       </div>
 
-      {/* Provider / Model selector */}
+      {/* Prompt Name (new prompt only) + Provider / Model */}
+      {strategy === "new" && (
+        <div className="form-row" style={{ marginBottom: "12px" }}>
+          <label>
+            Prompt Name
+            <input
+              type="text"
+              value={promptName}
+              onChange={(e) => onNameChange(e.target.value)}
+              placeholder={defaultPromptName}
+            />
+          </label>
+        </div>
+      )}
+
       {providerOptions && providerOptions.length > 0 && (
         <div className="form-grid" style={{ marginBottom: "12px" }}>
           <div className="form-row">
@@ -468,17 +482,6 @@ function PromptSection({
 
       {strategy === "new" ? (
         <div className="form-grid">
-          <div className="form-row">
-            <label>
-              Prompt Name
-              <input
-                type="text"
-                value={promptName}
-                onChange={(e) => onNameChange(e.target.value)}
-                placeholder={defaultPromptName}
-              />
-            </label>
-          </div>
           <div className="form-row" style={{ gridColumn: "1 / -1" }}>
             <label>Prompt Body</label>
             <div className="prompt-composer">
