@@ -852,9 +852,22 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   // Set default bot name once we know the count
   useEffect(() => {
     if (mode === "create" && nextBotNumber && !formData.name) {
-      setFormData((cur) => ({ ...cur, name: `Bot #${nextBotNumber}` }));
+      setFormData((cur) => ({ ...cur, name: `#${nextBotNumber}` }));
     }
   }, [nextBotNumber, mode, formData.name]);
+
+  // Pre-fill prompt names with real text (not just placeholder)
+  useEffect(() => {
+    if (mode === "create" && nextResearchPromptNumber && !formData.newResearchName) {
+      setFormData((cur) => ({ ...cur, newResearchName: `Research Prompt #${nextResearchPromptNumber}` }));
+    }
+  }, [nextResearchPromptNumber, mode, formData.newResearchName]);
+
+  useEffect(() => {
+    if (mode === "create" && nextTraderPromptNumber && !formData.newTraderName) {
+      setFormData((cur) => ({ ...cur, newTraderName: `Trader Prompt #${nextTraderPromptNumber}` }));
+    }
+  }, [nextTraderPromptNumber, mode, formData.newTraderName]);
 
   // Sync model selection when provider changes
   useEffect(() => {
@@ -1132,7 +1145,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder={nextBotNumber ? `Bot #${nextBotNumber}` : "My Strategy"}
+                    placeholder={nextBotNumber ? `#${nextBotNumber}` : "My Strategy"}
                   />
                 </label>
               </div>
@@ -1254,14 +1267,23 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                       <input
                         type="text"
                         className="pairs-search"
-                        value={formData.symbolScope === "all" ? "" : symbolSearch}
-                        onChange={(e) => setSymbolSearch(e.target.value)}
-                        placeholder={formData.symbolScope === "all"
+                        value={formData.symbolScope === "all"
                           ? `All ${VENUE_LABELS[formData.venue] ?? formData.venue} Pairs`
-                          : formData.contextSymbols.length > 0
-                            ? `${formData.contextSymbols.length} pairs selected`
-                            : "Search pairs..."}
-                        onFocus={() => setPairsOpen(true)}
+                          : symbolSearch
+                            ? symbolSearch
+                            : formData.contextSymbols.length > 0
+                              ? `${formData.contextSymbols.length} pairs selected`
+                              : ""}
+                        onChange={(e) => {
+                          if (formData.symbolScope !== "all") setSymbolSearch(e.target.value);
+                        }}
+                        placeholder={formData.symbolScope === "all" ? "" : "Search pairs..."}
+                        onFocus={() => {
+                          setPairsOpen(true);
+                          // Clear "N pairs selected" when focusing to type
+                          if (formData.symbolScope !== "all" && !symbolSearch) setSymbolSearch("");
+                        }}
+                        readOnly={formData.symbolScope === "all"}
                         disabled={mode !== "create"}
                       />
                       {pairsOpen && (

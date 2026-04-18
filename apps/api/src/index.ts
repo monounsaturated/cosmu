@@ -75,7 +75,7 @@ app.get("/internal/diagnostics", async (_request, response) => {
   } catch (e) { result.symbolsDbError = String(e); }
 
   try {
-    const [r] = await sql<{ count: string }[]>`select count(*)::text as count from prompts`;
+    const [r] = await sql<{ count: string }[]>`select count(*)::text as count from research_prompts`;
     result.promptsInDb = Number(r?.count ?? 0);
   } catch (e) { result.promptsDbError = String(e); }
 
@@ -124,7 +124,7 @@ app.get("/internal/qa/status", async (_request, response) => {
 app.get("/next-numbers", async (_request, response, next) => {
   try {
     const [botRow] = await sql<{ next: number }[]>`select coalesce(max(bot_number), 0) + 1 as next from bots`;
-    const [promptRow] = await sql<{ next: number }[]>`select coalesce(count(*), 0) + 1 as next from prompts`;
+    const [promptRow] = await sql<{ next: number }[]>`select coalesce(count(*), 0) + 1 as next from research_prompts`;
     const [traderRow] = await sql<{ next: number }[]>`select coalesce(max(prompt_number), 0) + 1 as next from trader_prompts`;
     response.json({
       nextBotNumber: botRow.next,

@@ -66,8 +66,8 @@ export const getDashboard = async () => {
       brc.updated_at as "updatedAt"
     from bots b
     join bot_runtime_configs brc on brc.bot_id = b.id
-    join prompt_versions pv on pv.id = b.active_prompt_version_id
-    join prompts p on p.id = pv.prompt_id
+    join research_prompt_versions pv on pv.id = b.active_prompt_version_id
+    join research_prompts p on p.id = pv.prompt_id
     join model_profiles mp on mp.id = b.active_model_profile_id
     left join run_stats on run_stats.bot_id = b.id
     left join trade_stats on trade_stats.bot_id = b.id
@@ -253,8 +253,8 @@ export const getDashboard = async () => {
       pv.version,
       concat(p.name, ' v', pv.version) as label,
       pv.created_at as "createdAt"
-    from prompt_versions pv
-    join prompts p on p.id = pv.prompt_id
+    from research_prompt_versions pv
+    join research_prompts p on p.id = pv.prompt_id
     order by pv.created_at desc
     limit 20
   `;

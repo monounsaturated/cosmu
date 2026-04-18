@@ -64,7 +64,7 @@ const parseBotRow = (row: BotSetup): BotSetup => ({
 const BOT_SELECT_QUERY = `
   with prompt_order as (
     select id, row_number() over (order by created_at asc) as prompt_number
-    from prompts
+    from research_prompts
   ),
   trader_prompt_order as (
     select id, row_number() over (order by created_at asc) as prompt_number
@@ -98,8 +98,8 @@ const BOT_SELECT_QUERY = `
     brc.context_symbols as "contextSymbols",
     brc.budget_usdt::float8 as "budgetUsdt"
   from bots b
-  join prompt_versions pv on pv.id = b.active_prompt_version_id
-  join prompts p on p.id = pv.prompt_id
+  join research_prompt_versions pv on pv.id = b.active_prompt_version_id
+  join research_prompts p on p.id = pv.prompt_id
   join prompt_order on prompt_order.id = p.id
   join model_profiles mp on mp.id = b.active_model_profile_id
   join bot_runtime_configs brc on brc.bot_id = b.id
@@ -112,7 +112,7 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
   const rows = await sql<BotSetup[]>`
     with prompt_order as (
       select id, row_number() over (order by created_at asc) as prompt_number
-      from prompts
+      from research_prompts
     ),
     trader_prompt_order as (
       select id, row_number() over (order by created_at asc) as prompt_number
@@ -146,8 +146,8 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
       brc.context_symbols as "contextSymbols",
       brc.budget_usdt::float8 as "budgetUsdt"
     from bots b
-    join prompt_versions pv on pv.id = b.active_prompt_version_id
-    join prompts p on p.id = pv.prompt_id
+    join research_prompt_versions pv on pv.id = b.active_prompt_version_id
+    join research_prompts p on p.id = pv.prompt_id
     join prompt_order on prompt_order.id = p.id
     join model_profiles mp on mp.id = b.active_model_profile_id
     join bot_runtime_configs brc on brc.bot_id = b.id
@@ -168,7 +168,7 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
   const rows = await sql<BotSetup[]>`
     with prompt_order as (
       select id, row_number() over (order by created_at asc) as prompt_number
-      from prompts
+      from research_prompts
     ),
     trader_prompt_order as (
       select id, row_number() over (order by created_at asc) as prompt_number
@@ -202,8 +202,8 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
       brc.context_symbols as "contextSymbols",
       brc.budget_usdt::float8 as "budgetUsdt"
     from bots b
-    join prompt_versions pv on pv.id = b.active_prompt_version_id
-    join prompts p on p.id = pv.prompt_id
+    join research_prompt_versions pv on pv.id = b.active_prompt_version_id
+    join research_prompts p on p.id = pv.prompt_id
     join prompt_order on prompt_order.id = p.id
     join model_profiles mp on mp.id = b.active_model_profile_id
     join bot_runtime_configs brc on brc.bot_id = b.id

@@ -511,6 +511,14 @@ a {
   transition: background 0.1s;
 }
 
+.pairs-row input[type="checkbox"] {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  accent-color: #3b82f6;
+  cursor: pointer;
+}
+
 .pairs-row:last-child {
   border-bottom: none;
 }

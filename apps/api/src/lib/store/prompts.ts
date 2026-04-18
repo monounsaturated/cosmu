@@ -5,12 +5,12 @@ export const listPrompts = async () =>
   sql`
     with prompt_order as (
       select id, row_number() over (order by created_at asc) as "promptNumber"
-      from prompts
+      from research_prompts
     ),
     latest_version as (
       select distinct on (prompt_id)
         prompt_id, id, body, created_at
-      from prompt_versions
+      from research_prompt_versions
       order by prompt_id, version desc
     )
     select
@@ -19,7 +19,7 @@ export const listPrompts = async () =>
       latest_version.id as "latestVersionId",
       latest_version.body as "latestBody",
       latest_version.created_at as "latestVersionCreatedAt"
-    from prompts p
+    from research_prompts p
     join prompt_order on prompt_order.id = p.id
     left join latest_version on latest_version.prompt_id = p.id
     order by prompt_order."promptNumber" desc
@@ -44,8 +44,8 @@ export const listModelProfiles = async (provider?: string) => {
 export const getPromptVersionBody = async (versionId: string) => {
   const [row] = await sql<{ id: string; body: string; version: number; promptId: string; promptName: string }[]>`
     select pv.id, pv.body, pv.version, p.id as "promptId", p.name as "promptName"
-    from prompt_versions pv
-    join prompts p on p.id = pv.prompt_id
+    from research_prompt_versions pv
+    join research_prompts p on p.id = pv.prompt_id
     where pv.id = ${versionId}
     limit 1
   `;
@@ -55,12 +55,12 @@ export const getPromptVersionBody = async (versionId: string) => {
 export const addPromptVersion = async (input: { promptId: string; body: string }) => {
   const [maxRow] = await sql<{ maxVersion: number }[]>`
     select coalesce(max(version), 0) as "maxVersion"
-    from prompt_versions
+    from research_prompt_versions
     where prompt_id = ${input.promptId}
   `;
   const nextVersion = (maxRow?.maxVersion ?? 0) + 1;
   const [promptVersion] = await sql<{ id: string }[]>`
-    insert into prompt_versions (prompt_id, version, body)
+    insert into research_prompt_versions (prompt_id, version, body)
     values (${input.promptId}, ${nextVersion}, ${input.body})
     returning id
   `;
@@ -73,10 +73,10 @@ export const createPrompt = async (input: { name?: string; slug?: string; initia
   const effectiveSlug = (input.slug ?? "").trim() || `prompt-${Date.now().toString(36)}`;
 
   const [prompt] = await sql<{ id: string }[]>`
-    insert into prompts (name, slug) values (${effectiveName}, ${effectiveSlug}) returning id
+    insert into research_prompts (name, slug) values (${effectiveName}, ${effectiveSlug}) returning id
   `;
   const [promptVersion] = await sql<{ id: string }[]>`
-    insert into prompt_versions (prompt_id, version, body)
+    insert into research_prompt_versions (prompt_id, version, body)
     values (${prompt.id}, 1, ${input.initialBody})
     returning id
   `;
