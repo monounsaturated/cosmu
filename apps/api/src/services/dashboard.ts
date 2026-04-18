@@ -56,6 +56,8 @@ export const getDashboard = async () => {
       brc.asset_class as "assetClass",
       concat(p.name, ' v', pv.version) as "promptVersionLabel",
       mp.name as "modelProfileName",
+      mp.name as "researchModelName",
+      coalesce(tmp.name, mp.name) as "traderModelName",
       coalesce(run_stats."runCount", 0) as "runCount",
       coalesce(trade_stats."tradeCount", 0) as "tradeCount",
       coalesce(trade_stats."totalFeesUsd", 0) as "totalFeesUsd",
@@ -69,6 +71,7 @@ export const getDashboard = async () => {
     join research_prompt_versions pv on pv.id = b.active_prompt_version_id
     join research_prompts p on p.id = pv.prompt_id
     join model_profiles mp on mp.id = b.active_model_profile_id
+    left join model_profiles tmp on tmp.id = b.active_trader_model_profile_id
     left join run_stats on run_stats.bot_id = b.id
     left join trade_stats on trade_stats.bot_id = b.id
     left join latest_run on latest_run.bot_id = b.id

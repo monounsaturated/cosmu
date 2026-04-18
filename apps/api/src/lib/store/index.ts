@@ -38,7 +38,8 @@ export {
   getActiveFormatterPrompt,
   createFormatterPromptVersion,
   listFormatterPromptVersions,
-  getAllActiveFormatterPrompts
+  getAllActiveFormatterPrompts,
+  touchResearchPromptUsage
 } from "./prompts.js";
 
 export { getBotPrePromptContext } from "./dashboard.js";
@@ -48,7 +49,8 @@ export {
   createTraderPrompt,
   addTraderPromptVersion,
   getTraderPromptVersionBody,
-  getNextTraderPromptNumber
+  getNextTraderPromptNumber,
+  touchTraderPromptUsage
 } from "./trader-prompts.js";
 
 export { storeLLMCall, getLLMCallsForRun } from "./llm-calls.js";

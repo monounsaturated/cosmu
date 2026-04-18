@@ -65,7 +65,7 @@ const buildWalletSection = (snapshot: VenueContext["snapshot"]) => {
 
 const buildSessionSection = (bot: BotSetup) => [
   "=== SESSION ===",
-  `Bot: ${bot.name} (#${bot.botNumber}) | Model: ${bot.modelProfileName}`,
+  `Bot: ${bot.name} (#${bot.botNumber}) | Model: ${bot.traderModelProfileName}`,
   `Mode: ${bot.runtimeConfig.mode} | Venue: Binance Spot | Frequency: every ${bot.runtimeConfig.frequencyMinutes}min`,
   `Budget: ${fmtUsd(bot.runtimeConfig.budgetUsdt)} — you must stay within this allocation`
 ].join("\n");

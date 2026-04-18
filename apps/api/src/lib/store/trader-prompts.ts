@@ -9,6 +9,7 @@ export type TraderPromptSummary = {
   latestVersionId: string | null;
   latestBody: string | null;
   latestVersionCreatedAt: string | null;
+  lastUsedAt: string | null;
 };
 
 export const listTraderPrompts = async (): Promise<TraderPromptSummary[]> =>
@@ -28,12 +29,23 @@ export const listTraderPrompts = async (): Promise<TraderPromptSummary[]> =>
       prompt_order."promptNumber",
       latest_version.id as "latestVersionId",
       latest_version.body as "latestBody",
-      latest_version.created_at as "latestVersionCreatedAt"
+      latest_version.created_at as "latestVersionCreatedAt",
+      p.last_used_at as "lastUsedAt"
     from trader_prompts p
     join prompt_order on prompt_order.id = p.id
     left join latest_version on latest_version.prompt_id = p.id
     order by prompt_order."promptNumber" desc
   `;
+
+export const touchTraderPromptUsage = async (promptVersionId: string) => {
+  await sql`
+    update trader_prompts
+    set last_used_at = now(), updated_at = now()
+    where id = (
+      select prompt_id from trader_prompt_versions where id = ${promptVersionId} limit 1
+    )
+  `;
+};
 
 export const createTraderPrompt = async (input: {
   name?: string;

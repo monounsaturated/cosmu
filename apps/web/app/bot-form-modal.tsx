@@ -70,13 +70,6 @@ Runs: 24 | Trades: 18 | Fees: $3.40`,
   "netPnlUsd": 72.50
 }`,
   },
-  includePastTrades: {
-    label: "Past Trades",
-    preview: `=== RECENT TRADES (last 10) ===
-BUY BTCUSDT qty=0.0012 @ 68450 → success
-SELL ETHUSDT qty=0.15 @ 2410 → success
-BUY SOLUSDT qty=2.5 @ 142.80 → success`,
-  },
   includeBotRanking: {
     label: "Bot Rankings",
     preview: `=== BOT RANKINGS ===
@@ -84,12 +77,19 @@ BUY SOLUSDT qty=2.5 @ 142.80 → success`,
 2. Swing Macro: $72.50 net PnL
 3. This Bot: $45.20 net PnL`,
   },
+  includePastTrades: {
+    label: "Past Trades",
+    preview: `=== RECENT TRADES (last 10) ===
+BUY BTCUSDT qty=0.0012 @ 68450 → success
+SELL ETHUSDT qty=0.15 @ 2410 → success
+BUY SOLUSDT qty=2.5 @ 142.80 → success`,
+  },
 };
 
 // Always-injected sections for the trader prompt (non-toggleable)
 const ALWAYS_INJECTED_TRADER: { label: string; preview: string }[] = [
   {
-    label: "Upstream Research",
+    label: "Research Output",
     preview: `=== UPSTREAM RESEARCH (phase 1 analysis) ===
 [The full output from the research agent will appear here — your creative analysis, symbol mentions, thesis, etc.]`,
   },
@@ -140,6 +140,7 @@ type Prompt = {
   latestVersionId: string | null;
   latestBody: string | null;
   latestVersionCreatedAt: string | null;
+  lastUsedAt: string | null;
 };
 
 type TraderPrompt = {
@@ -151,6 +152,7 @@ type TraderPrompt = {
   latestVersionId: string | null;
   latestBody: string | null;
   latestVersionCreatedAt: string | null;
+  lastUsedAt: string | null;
 };
 
 type Model = {
@@ -263,11 +265,14 @@ const buildDefaultState = () => {
     newResearchName: "",
     newResearchBody: DEFAULT_RESEARCH_PROMPT,
     // Trader prompt
-    traderStrategy: "new" as "new" | "existing",
+    traderStrategy: "existing" as "new" | "existing",
     existingTraderVersionId: "",
     newTraderName: "",
     newTraderBody: DEFAULT_TRADER_PROMPT,
-    // Model & runtime
+    // Per-phase model selection
+    researchModelProfileId: "",
+    traderModelProfileId: "",
+    // Runtime (kept for backward compat during submit)
     modelProfileId: "",
     venue: "binance-testnet" as "binance" | "binance-testnet",
     frequencyMinutes: "30",
@@ -339,7 +344,6 @@ function PromptSection({
   onSaveNewVersion,
   savingVersion,
   loadingBody,
-  // Injected data
   alwaysInjected,
   optionalModules,
   activeModules,
@@ -347,6 +351,14 @@ function PromptSection({
   pastTradesLookback,
   onLookbackChange,
   nextPromptNumber,
+  providerOptions,
+  selectedProvider,
+  onProviderChange,
+  availableModels,
+  selectedModelId,
+  onModelChange,
+  dataLoaded,
+  disabled,
 }: {
   phase: "research" | "trader";
   phaseColor: string;
@@ -374,16 +386,17 @@ function PromptSection({
   pastTradesLookback?: number;
   onLookbackChange?: (n: number) => void;
   nextPromptNumber?: number | null;
+  // Provider/Model per prompt section
+  providerOptions?: string[];
+  selectedProvider?: string;
+  onProviderChange?: (p: string) => void;
+  availableModels?: Model[];
+  selectedModelId?: string;
+  onModelChange?: (id: string) => void;
+  dataLoaded?: boolean;
+  disabled?: boolean;
 }) {
   const title = phase === "research" ? "Research Prompt" : "Trader Prompt";
-
-  // Derive prompt number from selected option
-  const selectedOption = promptOptions.find((p) => p.id === selectedVersionId);
-  const promptLabel = strategy === "existing" && selectedOption
-    ? selectedOption.label
-    : promptName
-      ? `${title} — ${promptName}`
-      : title;
 
   const defaultPromptName = nextPromptNumber
     ? `${title} #${nextPromptNumber}`
@@ -391,7 +404,7 @@ function PromptSection({
 
   return (
     <div className="form-section" style={{ borderLeft: `3px solid ${phaseColor}` }}>
-      <h3 style={{ color: phaseColor }}>{promptLabel}</h3>
+      <h3 style={{ color: phaseColor }}>{title}</h3>
 
       <div className="segmented-control">
         <button
@@ -410,6 +423,48 @@ function PromptSection({
           Saved Prompt
         </button>
       </div>
+
+      {/* Provider / Model selector */}
+      {providerOptions && providerOptions.length > 0 && (
+        <div className="form-grid" style={{ marginBottom: "12px" }}>
+          <div className="form-row">
+            <label>
+              Provider
+              <select
+                value={selectedProvider ?? ""}
+                onChange={(e) => onProviderChange?.(e.target.value)}
+                disabled={disabled}
+              >
+                {providerOptions.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="form-row">
+            <label>
+              Model
+              <select
+                value={selectedModelId ?? ""}
+                onChange={(e) => onModelChange?.(e.target.value)}
+                required
+                disabled={disabled || !availableModels || availableModels.length === 0}
+              >
+                {!availableModels || availableModels.length === 0 ? (
+                  <option value="">{dataLoaded ? "Not available" : "Loading..."}</option>
+                ) : (
+                  <>
+                    <option value="">Select a model</option>
+                    {availableModels.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name} ({m.model})</option>
+                    ))}
+                  </>
+                )}
+              </select>
+            </label>
+          </div>
+        </div>
+      )}
 
       {strategy === "new" ? (
         <div className="form-grid">
@@ -595,7 +650,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   const [symbolSearch, setSymbolSearch] = useState("");
   const [pairsOpen, setPairsOpen] = useState(false);
   const pairsRef = useRef<HTMLDivElement>(null);
-  const [selectedProvider, setSelectedProvider] = useState("xai");
+  const [selectedResearchProvider, setSelectedResearchProvider] = useState("xai");
+  const [selectedTraderProvider, setSelectedTraderProvider] = useState("xai");
   const [formData, setFormData] = useState(buildDefaultState());
   const [nextBotNumber, setNextBotNumber] = useState<number | null>(null);
   const [nextResearchPromptNumber, setNextResearchPromptNumber] = useState<number | null>(null);
@@ -622,14 +678,21 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     return fromApi.length > 0 ? fromApi : ["xai"];
   }, [models]);
 
-  const availableModels = useMemo(() => {
-    const fromApi = models.filter((m) => m.provider === selectedProvider);
+  const researchAvailableModels = useMemo(() => {
+    const fromApi = models.filter((m) => m.provider === selectedResearchProvider);
     if (fromApi.length > 0) return fromApi;
-    if (selectedProvider === "xai") return FALLBACK_XAI_MODELS;
+    if (selectedResearchProvider === "xai") return FALLBACK_XAI_MODELS;
     return [];
-  }, [models, selectedProvider]);
+  }, [models, selectedResearchProvider]);
 
-  // Research prompt options — "Default Prompt" always first, then by most recently used
+  const traderAvailableModels = useMemo(() => {
+    const fromApi = models.filter((m) => m.provider === selectedTraderProvider);
+    if (fromApi.length > 0) return fromApi;
+    if (selectedTraderProvider === "xai") return FALLBACK_XAI_MODELS;
+    return [];
+  }, [models, selectedTraderProvider]);
+
+  // Research prompt options — sorted by last used (most recent first), then by creation date
   const researchPromptOptions = useMemo(() => {
     const opts = prompts
       .filter((prompt) => Boolean(prompt.latestVersionId))
@@ -637,28 +700,40 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
         id: prompt.latestVersionId!,
         promptId: prompt.id,
         createdAt: prompt.latestVersionCreatedAt ?? prompt.createdAt,
+        lastUsedAt: prompt.lastUsedAt,
         body: prompt.latestBody ?? "",
         label: `Research Prompt #${prompt.promptNumber} — ${prompt.name}`,
         isDefault: prompt.name.toLowerCase().includes("default")
       }));
 
-    // Default prompt first, then most recently used
     return opts.sort((a, b) => {
       if (a.isDefault && !b.isDefault) return -1;
       if (!a.isDefault && b.isDefault) return 1;
+      if (a.lastUsedAt && b.lastUsedAt) return b.lastUsedAt.localeCompare(a.lastUsedAt);
+      if (a.lastUsedAt && !b.lastUsedAt) return -1;
+      if (!a.lastUsedAt && b.lastUsedAt) return 1;
       return b.createdAt.localeCompare(a.createdAt);
     });
   }, [prompts]);
 
-  // Trader prompt options from trader_prompts table
+  // Trader prompt options — sorted by last used (most recent first), then by creation date
   const traderPromptOptions = useMemo(() => {
-    return traderPrompts
+    const opts = traderPrompts
       .filter((tp) => Boolean(tp.latestVersionId))
       .map((tp) => ({
         id: tp.latestVersionId!,
         label: `Trader Prompt #${tp.promptNumber} — ${tp.name}`,
         body: tp.latestBody ?? "",
+        lastUsedAt: tp.lastUsedAt,
+        createdAt: tp.latestVersionCreatedAt ?? tp.createdAt,
       }));
+
+    return opts.sort((a, b) => {
+      if (a.lastUsedAt && b.lastUsedAt) return b.lastUsedAt.localeCompare(a.lastUsedAt);
+      if (a.lastUsedAt && !b.lastUsedAt) return -1;
+      if (!a.lastUsedAt && b.lastUsedAt) return 1;
+      return b.createdAt.localeCompare(a.createdAt);
+    });
   }, [traderPrompts]);
 
   const filteredSymbols = useMemo(() => {
@@ -726,12 +801,11 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     }
   };
 
-  const resolveModelProfileId = async () => {
-    const id = formData.modelProfileId;
+  const resolveModelId = async (id: string, modelsList: Model[]) => {
     const needsCreation = id.startsWith("fallback:") || id.startsWith("live:");
     if (!needsCreation) return id;
 
-    const selected = availableModels.find((m) => m.id === id);
+    const selected = modelsList.find((m) => m.id === id);
     if (!selected) throw new Error("Selected model is invalid");
 
     const res = await fetch("/api/models", {
@@ -801,7 +875,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       if (mode === "edit" && botRes.data) {
         const setup = botRes.data;
         const botModel = (modelsRes.data ?? []).find((m) => m.id === setup.modelProfileId);
-        if (botModel?.provider) setSelectedProvider(botModel.provider);
+        if (botModel?.provider) setSelectedResearchProvider(botModel.provider);
+        if (botModel?.provider) setSelectedTraderProvider(botModel.provider);
 
         const mergedVenue: "binance" | "binance-testnet" =
           setup.runtimeConfig.venue === "binance-testnet" || setup.runtimeConfig.mode === "testnet"
@@ -818,6 +893,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
           existingTraderVersionId: "",
           newTraderName: "",
           newTraderBody: DEFAULT_TRADER_PROMPT,
+          researchModelProfileId: setup.modelProfileId,
+          traderModelProfileId: setup.modelProfileId,
           modelProfileId: setup.modelProfileId,
           promptConfig: { ...setup.promptConfig },
           venue: mergedVenue,
@@ -828,16 +905,23 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
           execution: setup.runtimeConfig.execution
         });
       } else if (modelsRes.data && modelsRes.data.length > 0) {
-        const providerModels = modelsRes.data.filter((m) => m.provider === selectedProvider);
-        const bestModel = pickBestModel(providerModels.length > 0 ? providerModels : modelsRes.data);
+        const bestModel = pickBestModel(modelsRes.data);
         if (bestModel) {
-          setSelectedProvider(bestModel.provider);
+          setSelectedResearchProvider(bestModel.provider);
+          setSelectedTraderProvider(bestModel.provider);
           setFormData((cur) => ({
             ...cur,
+            researchModelProfileId: cur.researchModelProfileId || bestModel.id,
+            traderModelProfileId: cur.traderModelProfileId || bestModel.id,
             modelProfileId: cur.modelProfileId || bestModel.id,
             name: cur.name || "",
           }));
         }
+      }
+
+      // If trader defaults to "existing" but no saved prompts exist, fall back to "new"
+      if (mode === "create" && (!traderPromptsRes.data || traderPromptsRes.data.filter(tp => tp.latestVersionId).length === 0)) {
+        setFormData((cur) => ({ ...cur, traderStrategy: "new" }));
       }
 
       setDataLoaded(true);
@@ -869,13 +953,21 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     }
   }, [nextTraderPromptNumber, mode, formData.newTraderName]);
 
-  // Sync model selection when provider changes
+  // Sync model selection when research provider changes
   useEffect(() => {
-    if (!formData.modelProfileId && availableModels.length > 0) {
-      const best = pickBestModel(availableModels);
-      if (best) setFormData((cur) => ({ ...cur, modelProfileId: best.id }));
+    if (!formData.researchModelProfileId && researchAvailableModels.length > 0) {
+      const best = pickBestModel(researchAvailableModels);
+      if (best) setFormData((cur) => ({ ...cur, researchModelProfileId: best.id }));
     }
-  }, [availableModels, formData.modelProfileId]);
+  }, [researchAvailableModels, formData.researchModelProfileId]);
+
+  // Sync model selection when trader provider changes
+  useEffect(() => {
+    if (!formData.traderModelProfileId && traderAvailableModels.length > 0) {
+      const best = pickBestModel(traderAvailableModels);
+      if (best) setFormData((cur) => ({ ...cur, traderModelProfileId: best.id }));
+    }
+  }, [traderAvailableModels, formData.traderModelProfileId]);
 
   // Close pairs dropdown on outside click
   useEffect(() => {
@@ -1036,7 +1128,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     setError(null);
 
     try {
-      if (!formData.modelProfileId) throw new Error("Choose a model");
+      if (!formData.researchModelProfileId) throw new Error("Choose a research model");
+      if (!formData.traderModelProfileId) throw new Error("Choose a trader model");
       if (formData.researchStrategy === "new" && !formData.newResearchBody.trim()) throw new Error("Research prompt body is required");
       if (formData.symbolScope === "selected" && formData.contextSymbols.length === 0) {
         throw new Error("Select at least one pair, or choose All Pairs");
@@ -1062,7 +1155,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       }
 
       const promptVersionId = await resolveResearchPromptVersionId();
-      const modelProfileId = await resolveModelProfileId();
+      const researchModelId = await resolveModelId(formData.researchModelProfileId, researchAvailableModels);
+      const traderModelId = await resolveModelId(formData.traderModelProfileId, traderAvailableModels);
       const contextSymbols =
         formData.symbolScope === "all" ? [ALL_SYMBOLS_TOKEN] : uniqueSymbols(formData.contextSymbols);
 
@@ -1074,7 +1168,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
             name: formData.name.trim(),
             slug: uniqueSlug(formData.name),
             promptVersionId,
-            modelProfileId,
+            modelProfileId: researchModelId,
+            traderModelProfileId: traderModelId,
             promptConfig: formData.promptConfig,
             traderPromptVersionId,
             runtimeConfig: {
@@ -1162,68 +1257,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 )}
               </div>
               <div className="form-grid form-grid-3col">
-                {/* Row 1: Provider, Model, Frequency */}
-                <div className="form-row">
-                  <label>
-                    Provider
-                    <select
-                      value={providerOptions.length > 0 ? selectedProvider : ""}
-                      onChange={(e) => {
-                        setSelectedProvider(e.target.value);
-                        setFormData((cur) => ({ ...cur, modelProfileId: "" }));
-                      }}
-                      disabled={mode !== "create" || providerOptions.length === 0}
-                    >
-                      {providerOptions.length === 0 ? (
-                        <option value="">{dataLoaded ? "Not available" : "Loading..."}</option>
-                      ) : (
-                        providerOptions.map((p) => (
-                          <option key={p} value={p}>{p}</option>
-                        ))
-                      )}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="form-row">
-                  <label>
-                    Model
-                    <select
-                      value={formData.modelProfileId}
-                      onChange={(e) => setFormData({ ...formData, modelProfileId: e.target.value })}
-                      required
-                      disabled={mode !== "create" || availableModels.length === 0}
-                    >
-                      {availableModels.length === 0 ? (
-                        <option value="">{dataLoaded ? "Not available" : "Loading..."}</option>
-                      ) : (
-                        <>
-                          <option value="">Select a model</option>
-                          {availableModels.map((m) => (
-                            <option key={m.id} value={m.id}>{m.name} ({m.model})</option>
-                          ))}
-                        </>
-                      )}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="form-row">
-                  <label>
-                    Frequency
-                    <select
-                      value={formData.frequencyMinutes}
-                      onChange={(e) => setFormData({ ...formData, frequencyMinutes: e.target.value })}
-                      disabled={mode !== "create"}
-                    >
-                      {FREQUENCY_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                {/* Row 2: Venue, Budget, Authorized Pairs */}
+                {/* Row 1: Venue, Budget, Frequency */}
                 <div className="form-row">
                   <label>
                     Venue
@@ -1260,6 +1294,22 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                   </span>
                 </div>
 
+                <div className="form-row">
+                  <label>
+                    Frequency
+                    <select
+                      value={formData.frequencyMinutes}
+                      onChange={(e) => setFormData({ ...formData, frequencyMinutes: e.target.value })}
+                      disabled={mode !== "create"}
+                    >
+                      {FREQUENCY_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {/* Authorized Pairs */}
                 <div className="form-row">
                   <label>
                     Authorized Pairs
@@ -1359,6 +1409,17 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
               loadingBody={false}
               alwaysInjected={[]}
               nextPromptNumber={nextResearchPromptNumber}
+              providerOptions={providerOptions}
+              selectedProvider={selectedResearchProvider}
+              onProviderChange={(p) => {
+                setSelectedResearchProvider(p);
+                setFormData((cur) => ({ ...cur, researchModelProfileId: "" }));
+              }}
+              availableModels={researchAvailableModels}
+              selectedModelId={formData.researchModelProfileId}
+              onModelChange={(id) => setFormData((cur) => ({ ...cur, researchModelProfileId: id }))}
+              dataLoaded={dataLoaded}
+              disabled={mode !== "create"}
             />
 
             {/* ── Trader Prompt ── */}
@@ -1392,6 +1453,17 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 promptConfig: { ...cur.promptConfig, modules: { ...cur.promptConfig.modules, pastTradesLookback: n } }
               }))}
               nextPromptNumber={nextTraderPromptNumber}
+              providerOptions={providerOptions}
+              selectedProvider={selectedTraderProvider}
+              onProviderChange={(p) => {
+                setSelectedTraderProvider(p);
+                setFormData((cur) => ({ ...cur, traderModelProfileId: "" }));
+              }}
+              availableModels={traderAvailableModels}
+              selectedModelId={formData.traderModelProfileId}
+              onModelChange={(id) => setFormData((cur) => ({ ...cur, traderModelProfileId: id }))}
+              dataLoaded={dataLoaded}
+              disabled={mode !== "create"}
             />
 
             {/* ── Deterministic Settings ── */}

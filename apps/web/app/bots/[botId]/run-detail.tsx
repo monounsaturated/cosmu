@@ -139,7 +139,9 @@ function parseUserContext(text: string | null): ParsedInput {
       }
       // Extract label from the === LABEL === format
       const labelMatch = line.trim().match(/^===\s*(.+?)\s*===$/);
-      currentLabel = labelMatch ? labelMatch[1] : line.trim().replace(/^===\s*/, "").replace(/\s*===$/, "");
+      let rawLabel = labelMatch ? labelMatch[1] : line.trim().replace(/^===\s*/, "").replace(/\s*===$/, "");
+      if (/^UPSTREAM RESEARCH/i.test(rawLabel)) rawLabel = "Research Output";
+      currentLabel = rawLabel;
       currentLines = [];
     } else if (currentLabel) {
       currentLines.push(line);

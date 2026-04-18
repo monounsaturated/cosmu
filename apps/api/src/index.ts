@@ -22,7 +22,9 @@ import {
   setGlobalKillSwitch,
   getLLMCallsForRun,
   listTraderPrompts,
-  createTraderPrompt
+  createTraderPrompt,
+  touchResearchPromptUsage,
+  touchTraderPromptUsage
 } from "./lib/store.js";
 import { getDashboard } from "./services/dashboard.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
@@ -539,19 +541,25 @@ app.post("/trader-prompts", async (request, response, next) => {
 
 app.post("/bots", async (request, response, next) => {
   try {
-    const { name, slug, promptVersionId, modelProfileId, promptConfig, traderConfig, traderPromptVersionId, parentBotId, runtimeConfig } =
+    const { name, slug, promptVersionId, modelProfileId, traderModelProfileId, promptConfig, traderConfig, traderPromptVersionId, parentBotId, runtimeConfig } =
       request.body;
     const id = await createBot({
       name,
       slug,
       promptVersionId,
       modelProfileId,
+      traderModelProfileId: traderModelProfileId ?? null,
       promptConfig,
       traderConfig,
       traderPromptVersionId: traderPromptVersionId ?? null,
       parentBotId,
       runtimeConfig
     });
+
+    // Track prompt usage
+    if (promptVersionId) void touchResearchPromptUsage(promptVersionId).catch(() => {});
+    if (traderPromptVersionId) void touchTraderPromptUsage(traderPromptVersionId).catch(() => {});
+
     response.json({ id });
   } catch (error) {
     next(error);

@@ -18,12 +18,23 @@ export const listPrompts = async () =>
       prompt_order."promptNumber",
       latest_version.id as "latestVersionId",
       latest_version.body as "latestBody",
-      latest_version.created_at as "latestVersionCreatedAt"
+      latest_version.created_at as "latestVersionCreatedAt",
+      p.last_used_at as "lastUsedAt"
     from research_prompts p
     join prompt_order on prompt_order.id = p.id
     left join latest_version on latest_version.prompt_id = p.id
     order by prompt_order."promptNumber" desc
   `;
+
+export const touchResearchPromptUsage = async (promptVersionId: string) => {
+  await sql`
+    update research_prompts
+    set last_used_at = now(), updated_at = now()
+    where id = (
+      select prompt_id from research_prompt_versions where id = ${promptVersionId} limit 1
+    )
+  `;
+};
 
 export const listModelProfiles = async (provider?: string) => {
   if (provider) {

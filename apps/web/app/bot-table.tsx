@@ -67,7 +67,7 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
             <th className="clickable" onClick={() => handleSort("startedAt")}>
               Created <SortIndicator field="startedAt" />
             </th>
-            <th>Prompt</th>
+            <th>Prompt & Models</th>
             <th className="clickable text-right" onClick={() => handleSort("currentPortfolioUsd")}>
               Value <SortIndicator field="currentPortfolioUsd" />
             </th>
@@ -103,7 +103,12 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
               <td>
                 <div style={{ fontSize: "12px", lineHeight: 1.35 }}>
                   <span className="badge badge-neutral">{bot.promptVersionLabel}</span>
-                  <div className="muted" style={{ fontSize: "11px" }}>{bot.modelProfileName}</div>
+                  <div className="muted" style={{ fontSize: "11px" }}>
+                    Research: {bot.researchModelName ?? bot.modelProfileName}
+                  </div>
+                  <div className="muted" style={{ fontSize: "11px" }}>
+                    Trader: {bot.traderModelName ?? bot.modelProfileName}
+                  </div>
                 </div>
               </td>
               <td className="text-right">

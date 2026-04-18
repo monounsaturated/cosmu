@@ -56,8 +56,12 @@ const extractJson = (text: string): string => {
   return trimmed;
 };
 
-const getProviderForBot = (bot: BotSetup): LLMProvider => {
+const getResearchProvider = (bot: BotSetup): LLMProvider => {
   return getProvider(bot.modelProvider);
+};
+
+const getTraderProvider = (bot: BotSetup): LLMProvider => {
+  return getProvider(bot.traderModelProvider);
 };
 
 // ─── Research Agent ──────────────────────────────────────────────────
@@ -69,7 +73,7 @@ export const runResearchAgent = async (input: {
   runId: string | null;
 }): Promise<ResearchResult> => {
   const { bot, systemPrompt, userMessage, runId } = input;
-  const provider = getProviderForBot(bot);
+  const provider = getResearchProvider(bot);
   const temperature =
     typeof bot.modelSettings.temperature === "number" ? bot.modelSettings.temperature : undefined;
 
@@ -169,9 +173,9 @@ export const runTraderAgent = async (input: {
   runId: string | null;
 }): Promise<TraderResult> => {
   const { bot, systemPrompt, userMessage, runId } = input;
-  const provider = getProviderForBot(bot);
+  const provider = getTraderProvider(bot);
   const temperature =
-    typeof bot.modelSettings.temperature === "number" ? bot.modelSettings.temperature : undefined;
+    typeof bot.traderModelSettings.temperature === "number" ? bot.traderModelSettings.temperature : undefined;
 
   const messages: LLMMessage[] = [
     { role: "system", content: systemPrompt },
@@ -189,7 +193,7 @@ export const runTraderAgent = async (input: {
 
       try {
         const response = await provider.chat({
-          model: bot.modelIdentifier,
+          model: bot.traderModelIdentifier,
           messages,
           responseFormat: strategy.format,
           temperature: useTemp ? temperature : undefined
@@ -240,7 +244,7 @@ export const runTraderAgent = async (input: {
               runId,
               phase: "trader",
               provider: provider.name,
-              model: bot.modelIdentifier,
+              model: bot.traderModelIdentifier,
               inputMessages: messages,
               outputText: error.rawText,
               inputTokens: null,
@@ -263,7 +267,7 @@ export const runTraderAgent = async (input: {
             runId,
             phase: "trader",
             provider: provider.name,
-            model: bot.modelIdentifier,
+            model: bot.traderModelIdentifier,
             inputMessages: messages,
             outputText: null,
             inputTokens: null,
@@ -280,7 +284,7 @@ export const runTraderAgent = async (input: {
 
   const recentFailures = attemptErrors.slice(-3).join(" | ");
   throw new Error(
-    `All trader attempts failed for ${bot.modelIdentifier}. Recent: ${recentFailures}`,
+    `All trader attempts failed for ${bot.traderModelIdentifier}. Recent: ${recentFailures}`,
     { cause: lastError }
   );
 };

@@ -168,8 +168,12 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
               <p><span className="badge badge-neutral">{setup.traderPromptVersionLabel ?? "Default"}</span></p>
             </div>
             <div>
-              <p className="label">Model</p>
+              <p className="label">Research Model</p>
               <p>{setup.modelProfileName} <span className="muted">({setup.modelProvider} / {setup.modelIdentifier})</span></p>
+            </div>
+            <div>
+              <p className="label">Trader Model</p>
+              <p>{setup.traderModelProfileName ?? setup.modelProfileName} <span className="muted">({setup.traderModelProvider ?? setup.modelProvider} / {setup.traderModelIdentifier ?? setup.modelIdentifier})</span></p>
             </div>
           </div>
 

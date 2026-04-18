@@ -24,6 +24,11 @@ export type BotSetup = {
   modelProvider: string;
   modelIdentifier: string;
   modelSettings: Record<string, JsonValue>;
+  traderModelProfileId: string;
+  traderModelProfileName: string;
+  traderModelProvider: string;
+  traderModelIdentifier: string;
+  traderModelSettings: Record<string, JsonValue>;
   promptConfig: PrePromptConfig;
   traderConfig: TraderConfig;
   runtimeConfigId: string;
@@ -55,6 +60,11 @@ const parseBotRow = (row: BotSetup): BotSetup => ({
   modelProvider: row.modelProvider,
   modelIdentifier: row.modelIdentifier,
   modelSettings: parseJson<Record<string, JsonValue>>(row.modelSettings),
+  traderModelProfileId: row.traderModelProfileId ?? row.modelProfileId,
+  traderModelProfileName: row.traderModelProfileName ?? row.modelProfileName,
+  traderModelProvider: row.traderModelProvider ?? row.modelProvider,
+  traderModelIdentifier: row.traderModelIdentifier ?? row.modelIdentifier,
+  traderModelSettings: parseJson<Record<string, JsonValue>>(row.traderModelSettings ?? row.modelSettings),
   promptConfig: parsePromptConfig(row.promptConfig),
   traderConfig: parseTraderConfig(row.traderConfig),
   runtimeConfigId: row.runtimeConfigId,
@@ -86,6 +96,11 @@ const BOT_SELECT_QUERY = `
     mp.provider as "modelProvider",
     mp.model as "modelIdentifier",
     mp.settings as "modelSettings",
+    coalesce(tmp.id, mp.id) as "traderModelProfileId",
+    coalesce(tmp.name, mp.name) as "traderModelProfileName",
+    coalesce(tmp.provider, mp.provider) as "traderModelProvider",
+    coalesce(tmp.model, mp.model) as "traderModelIdentifier",
+    coalesce(tmp.settings, mp.settings) as "traderModelSettings",
     b.prompt_config as "promptConfig",
     b.trader_config as "traderConfig",
     brc.id as "runtimeConfigId",
@@ -102,6 +117,7 @@ const BOT_SELECT_QUERY = `
   join research_prompts p on p.id = pv.prompt_id
   join prompt_order on prompt_order.id = p.id
   join model_profiles mp on mp.id = b.active_model_profile_id
+  left join model_profiles tmp on tmp.id = b.active_trader_model_profile_id
   join bot_runtime_configs brc on brc.bot_id = b.id
   left join trader_prompt_versions tpv on tpv.id = b.active_trader_prompt_version_id
   left join trader_prompts tp on tp.id = tpv.prompt_id
@@ -134,6 +150,11 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
       mp.provider as "modelProvider",
       mp.model as "modelIdentifier",
       mp.settings as "modelSettings",
+      coalesce(tmp.id, mp.id) as "traderModelProfileId",
+      coalesce(tmp.name, mp.name) as "traderModelProfileName",
+      coalesce(tmp.provider, mp.provider) as "traderModelProvider",
+      coalesce(tmp.model, mp.model) as "traderModelIdentifier",
+      coalesce(tmp.settings, mp.settings) as "traderModelSettings",
       b.prompt_config as "promptConfig",
       b.trader_config as "traderConfig",
       brc.id as "runtimeConfigId",
@@ -150,6 +171,7 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
     join research_prompts p on p.id = pv.prompt_id
     join prompt_order on prompt_order.id = p.id
     join model_profiles mp on mp.id = b.active_model_profile_id
+    left join model_profiles tmp on tmp.id = b.active_trader_model_profile_id
     join bot_runtime_configs brc on brc.bot_id = b.id
     left join trader_prompt_versions tpv on tpv.id = b.active_trader_prompt_version_id
     left join trader_prompts tp on tp.id = tpv.prompt_id
@@ -190,6 +212,11 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
       mp.provider as "modelProvider",
       mp.model as "modelIdentifier",
       mp.settings as "modelSettings",
+      coalesce(tmp.id, mp.id) as "traderModelProfileId",
+      coalesce(tmp.name, mp.name) as "traderModelProfileName",
+      coalesce(tmp.provider, mp.provider) as "traderModelProvider",
+      coalesce(tmp.model, mp.model) as "traderModelIdentifier",
+      coalesce(tmp.settings, mp.settings) as "traderModelSettings",
       b.prompt_config as "promptConfig",
       b.trader_config as "traderConfig",
       brc.id as "runtimeConfigId",
@@ -206,6 +233,7 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
     join research_prompts p on p.id = pv.prompt_id
     join prompt_order on prompt_order.id = p.id
     join model_profiles mp on mp.id = b.active_model_profile_id
+    left join model_profiles tmp on tmp.id = b.active_trader_model_profile_id
     join bot_runtime_configs brc on brc.bot_id = b.id
     left join trader_prompt_versions tpv on tpv.id = b.active_trader_prompt_version_id
     left join trader_prompts tp on tp.id = tpv.prompt_id
@@ -253,6 +281,7 @@ export const createBot = async (input: {
   slug: string;
   promptVersionId: string;
   modelProfileId: string;
+  traderModelProfileId?: string | null;
   promptConfig: PrePromptConfig;
   traderConfig?: TraderConfig;
   traderPromptVersionId?: string | null;
@@ -263,9 +292,11 @@ export const createBot = async (input: {
   const [bot] = await sql<{ id: string }[]>`
     insert into bots (
       name, slug, active_prompt_version_id, active_model_profile_id,
+      active_trader_model_profile_id,
       active_trader_prompt_version_id, parent_bot_id, prompt_config, trader_config
     ) values (
       ${effectiveName}, ${input.slug}, ${input.promptVersionId}, ${input.modelProfileId},
+      ${input.traderModelProfileId ?? input.modelProfileId},
       ${input.traderPromptVersionId ?? null}, ${input.parentBotId ?? null},
       ${sql.json(input.promptConfig)},
       ${sql.json(input.traderConfig ?? traderConfigSchema.parse({}))}
