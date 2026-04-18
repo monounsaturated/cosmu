@@ -130,7 +130,6 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
 
     await storeDecision({
       runId,
-      rawModelOutput: JSON.stringify(decision),
       decision,
       validationResult
     });

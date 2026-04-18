@@ -9,7 +9,8 @@ type Run = {
   startedAt: string;
   promptSystem: string | null;
   promptUser: string | null;
-  rawModelOutput: string | null;
+  researchOutput: string | null;
+  traderOutput: string | null;
   formatterVersion: number | null;
   validationResult?: { accepted: boolean; issues: string[] } | null;
 };
@@ -56,22 +57,6 @@ function splitPhases(text: string | null, markers: { p1: string; p2: string }) {
   const phase1 = normalized.slice(0, p2Idx).replace(markers.p1, "").trim();
   const phase2 = normalized.slice(p2Idx).replace(markers.p2, "").trim();
   return { phase1: phase1 || null, phase2: phase2 || null };
-}
-
-function splitRawOutput(raw: string | null): { phase1: string | null; phase2: string | null } {
-  if (!raw) return { phase1: null, phase2: null };
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && (parsed.phase1Research !== undefined || parsed.phase2Trader !== undefined || parsed.phase2Decision !== undefined)) {
-      return {
-        phase1: parsed.phase1Research ?? null,
-        phase2: parsed.phase2Trader ?? parsed.phase2Decision ?? null
-      };
-    }
-  } catch {
-    // not JSON — legacy single-phase output
-  }
-  return { phase1: raw, phase2: null };
 }
 
 /* ── User context section splitting ── */
@@ -250,18 +235,6 @@ function InputBreakdown({ systemPrompt, userContext, phaseLabel, phaseColor, raw
   );
 }
 
-function SingleOutputBlock({ rawParts }: { rawParts: { phase1: string | null; phase2: string | null } }) {
-  if (rawParts.phase2) return null;
-  const raw = rawParts.phase1;
-  return (
-    <div style={{ marginTop: "20px" }}>
-      <p className="label">Model Output</p>
-      <pre style={{ ...preStyle, maxHeight: "400px" }}>
-        {raw ? tryFormatJson(raw) : "Not recorded"}
-      </pre>
-    </div>
-  );
-}
 
 function LLMCallsPanel({ runId }: { runId: string }) {
   const [calls, setCalls] = useState<LLMCall[] | null>(null);
@@ -336,7 +309,6 @@ export function RunDetail({ run }: { run: Run }) {
 
   const systemParts = splitPhases(run.promptSystem, PHASE_MARKERS.system);
   const userParts = splitPhases(run.promptUser, PHASE_MARKERS.user);
-  const rawParts = splitRawOutput(run.rawModelOutput);
   const hasTwoPhases = !!(systemParts.phase2 || userParts.phase2);
 
   const validationFailed = run.validationResult && !run.validationResult.accepted;
@@ -397,8 +369,12 @@ export function RunDetail({ run }: { run: Run }) {
             <pre style={preStyle}>{run.promptUser || "Not recorded"}</pre>
           </div>
           <div style={{ marginTop: "16px" }}>
-            <p className="label">Raw Model Output (full)</p>
-            <pre style={preStyle}>{run.rawModelOutput || "Not recorded"}</pre>
+            <p className="label">Research Output (full)</p>
+            <pre style={preStyle}>{run.researchOutput || "Not recorded"}</pre>
+          </div>
+          <div style={{ marginTop: "16px" }}>
+            <p className="label">Trader Output (full)</p>
+            <pre style={preStyle}>{run.traderOutput || "Not recorded"}</pre>
           </div>
         </>
       ) : hasTwoPhases ? (
@@ -408,7 +384,7 @@ export function RunDetail({ run }: { run: Run }) {
             userContext={userParts.phase1}
             phaseLabel="Phase 1 — Research"
             phaseColor="#a78bfa"
-            rawOutput={rawParts.phase1}
+            rawOutput={run.researchOutput}
             outputLabel="Research Model Output"
           />
           <InputBreakdown
@@ -416,7 +392,7 @@ export function RunDetail({ run }: { run: Run }) {
             userContext={userParts.phase2}
             phaseLabel="Phase 2 — Trader"
             phaseColor="#34d399"
-            rawOutput={rawParts.phase2}
+            rawOutput={run.traderOutput}
             outputLabel="Trader Model Output"
           />
         </>
@@ -427,14 +403,11 @@ export function RunDetail({ run }: { run: Run }) {
             userContext={run.promptUser}
             phaseLabel="Research"
             phaseColor="#a78bfa"
-            rawOutput={rawParts.phase1}
-            outputLabel="Research Model Output"
+            rawOutput={run.researchOutput ?? run.traderOutput}
+            outputLabel="Model Output"
           />
         </>
       )}
-
-      {/* Fallback for legacy single-output runs */}
-      <SingleOutputBlock rawParts={rawParts} />
 
       {/* LLM Calls */}
       <LLMCallsPanel runId={run.id} />

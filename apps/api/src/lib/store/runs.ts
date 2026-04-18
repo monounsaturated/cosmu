@@ -34,14 +34,12 @@ export const createRun = async (input: {
 
 export const storeDecision = async (input: {
   runId: string;
-  rawModelOutput: string;
   decision: TradingDecision;
   validationResult: ValidationResult;
 }) => {
   await sql`
     update runs
-    set raw_model_output = ${input.rawModelOutput},
-        parsed_decision = ${sql.json(input.decision)},
+    set parsed_decision = ${sql.json(input.decision)},
         validation_result = ${sql.json(input.validationResult)}
     where id = ${input.runId}
   `;
@@ -62,10 +60,18 @@ export const storeDecision = async (input: {
   `;
 };
 
-export const storeRawModelOutput = async (runId: string, rawModelOutput: string) => {
+export const storeResearchOutput = async (runId: string, researchOutput: string) => {
   await sql`
     update runs
-    set raw_model_output = ${rawModelOutput}
+    set research_output = ${researchOutput}
+    where id = ${runId}
+  `;
+};
+
+export const storeTraderOutput = async (runId: string, traderOutput: string) => {
+  await sql`
+    update runs
+    set trader_output = ${traderOutput}
     where id = ${runId}
   `;
 };
@@ -115,7 +121,8 @@ export const getRunDetail = async (runId: string) => {
       status: string;
       promptSystem: string | null;
       promptUser: string | null;
-      rawModelOutput: string | null;
+      researchOutput: string | null;
+      traderOutput: string | null;
       parsedDecision: unknown;
       validationResult: unknown;
       compactContext: unknown;
@@ -126,7 +133,8 @@ export const getRunDetail = async (runId: string) => {
     select
       r.id, b.name as "botName", r.status,
       r.prompt_system as "promptSystem", r.prompt_user as "promptUser",
-      r.raw_model_output as "rawModelOutput",
+      r.research_output as "researchOutput",
+      r.trader_output as "traderOutput",
       r.parsed_decision as "parsedDecision",
       r.validation_result as "validationResult",
       r.compact_context as "compactContext",
@@ -154,7 +162,8 @@ export const getBotRuns = async (botId: string) => {
       status: string;
       promptSystem: string | null;
       promptUser: string | null;
-      rawModelOutput: string | null;
+      researchOutput: string | null;
+      traderOutput: string | null;
       parsedDecision: unknown;
       validationResult: unknown;
       compactContext: unknown;
@@ -166,7 +175,8 @@ export const getBotRuns = async (botId: string) => {
     select
       r.id, b.name as "botName", r.status,
       r.prompt_system as "promptSystem", r.prompt_user as "promptUser",
-      r.raw_model_output as "rawModelOutput",
+      r.research_output as "researchOutput",
+      r.trader_output as "traderOutput",
       r.parsed_decision as "parsedDecision",
       r.validation_result as "validationResult",
       r.compact_context as "compactContext",

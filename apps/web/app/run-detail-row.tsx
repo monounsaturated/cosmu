@@ -15,7 +15,8 @@ type RunRow = {
 type RunDetail = {
   promptSystem: string | null;
   promptUser: string | null;
-  rawModelOutput: string | null;
+  researchOutput: string | null;
+  traderOutput: string | null;
   parsedDecision: Record<string, unknown> | null;
   validationResult: { accepted: boolean; issues: string[] } | null;
 };
@@ -64,22 +65,6 @@ function splitPhases(text: string | null, markers: { p1: string; p2: string }) {
   return { phase1: phase1 || null, phase2: phase2 || null };
 }
 
-function splitRawOutput(raw: string | null): { phase1: string | null; phase2: string | null } {
-  if (!raw) return { phase1: null, phase2: null };
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && (parsed.phase1Research !== undefined || parsed.phase2Trader !== undefined || parsed.phase2Decision !== undefined)) {
-      return {
-        phase1: parsed.phase1Research ?? null,
-        phase2: parsed.phase2Trader ?? parsed.phase2Decision ?? null
-      };
-    }
-  } catch {
-    // not JSON — legacy single-phase output
-  }
-  return { phase1: raw, phase2: null };
-}
-
 /* ── Reusable sub-components ── */
 
 function PhaseBlock({ label, content, defaultHidden = false }: { label: string; content: string | null; defaultHidden?: boolean }) {
@@ -104,9 +89,8 @@ function PhaseBlock({ label, content, defaultHidden = false }: { label: string; 
 
 function PipelineSteps({ detail, llmCalls }: { detail: RunDetail; llmCalls: LLMCall[] | null }) {
   const systemParts = splitPhases(detail.promptSystem, PHASE_MARKERS.system);
-  const rawParts = splitRawOutput(detail.rawModelOutput);
-  const hasPhase1 = !!(systemParts.phase1 || rawParts.phase1);
-  const hasPhase2 = !!(systemParts.phase2 || rawParts.phase2);
+  const hasPhase1 = !!(systemParts.phase1 || detail.researchOutput);
+  const hasPhase2 = !!(systemParts.phase2 || detail.traderOutput);
   const validationOk = detail.validationResult ? detail.validationResult.accepted : null;
 
   const researchCalls = llmCalls?.filter((c) => c.phase === "research") ?? [];
@@ -285,7 +269,6 @@ function RunDetailExpanded({ runId }: { runId: string }) {
 
   const systemParts = splitPhases(detail.promptSystem, PHASE_MARKERS.system);
   const userParts = splitPhases(detail.promptUser, PHASE_MARKERS.user);
-  const rawParts = splitRawOutput(detail.rawModelOutput);
 
   return (
     <div className="run-detail-panels">
@@ -364,26 +347,19 @@ function RunDetailExpanded({ runId }: { runId: string }) {
         </>
       )}
 
-      {/* Model outputs */}
-      {rawParts.phase2 ? (
-        <>
-          <div className="run-detail-panel">
-            <h4 style={{ color: "#a78bfa" }}>Research output</h4>
-            <pre className="run-detail-pre">{rawParts.phase1 || "Not recorded"}</pre>
-          </div>
-          <div className="run-detail-panel">
-            <h4 style={{ color: "#34d399" }}>Trader decision</h4>
-            <pre className="run-detail-pre" style={{ maxHeight: "400px" }}>{rawParts.phase2}</pre>
-          </div>
-        </>
-      ) : (
-        <div className="run-detail-panel">
-          <h4>Raw Model Output</h4>
-          <pre className="run-detail-pre" style={{ maxHeight: "400px" }}>
-            {detail.rawModelOutput ? tryFormatJson(detail.rawModelOutput) : "Not recorded"}
-          </pre>
-        </div>
-      )}
+      {/* Model outputs — always show both phases separately */}
+      <div className="run-detail-panel">
+        <h4 style={{ color: "#a78bfa" }}>Research output</h4>
+        <pre className="run-detail-pre">
+          {detail.researchOutput ? tryFormatJson(detail.researchOutput) : "Not recorded"}
+        </pre>
+      </div>
+      <div className="run-detail-panel">
+        <h4 style={{ color: "#34d399" }}>Trader output</h4>
+        <pre className="run-detail-pre" style={{ maxHeight: "400px" }}>
+          {detail.traderOutput ? tryFormatJson(detail.traderOutput) : "Not recorded"}
+        </pre>
+      </div>
 
       {/* LLM Calls */}
       {llmCalls && llmCalls.length > 0 && <LLMCallsPanel calls={llmCalls} />}

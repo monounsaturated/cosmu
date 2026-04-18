@@ -14,7 +14,8 @@ import {
   recentTradeAlerts,
   storeDecision,
   storeExecutionRecords,
-  storeRawModelOutput,
+  storeResearchOutput,
+  storeTraderOutput,
   updateRunPrompts,
   storePortfolioSnapshot,
   type BotSetup
@@ -121,6 +122,8 @@ export const runBot = async (bot: BotSetup) => {
       runId
     });
 
+    await storeResearchOutput(runId, researchResult.rawText);
+
     // ── 3. Prepare Trader context ────────────────────────────────────
     const venueSymbols = await getVenueSymbols("binance");
     const candidateSymbols = extractCandidateSymbols(researchResult.rawText, venueSymbols);
@@ -185,17 +188,7 @@ export const runBot = async (bot: BotSetup) => {
       runId
     });
 
-    await storeRawModelOutput(
-      runId,
-      JSON.stringify(
-        {
-          phase1Research: researchResult.rawText,
-          phase2Trader: traderResult.rawText
-        },
-        null,
-        2
-      )
-    );
+    await storeTraderOutput(runId, traderResult.rawText);
 
     // ── 5. Deterministic Validator ───────────────────────────────────
     const validationResult = await validateDecision({
@@ -206,7 +199,6 @@ export const runBot = async (bot: BotSetup) => {
 
     await storeDecision({
       runId,
-      rawModelOutput: traderResult.rawText,
       decision: traderResult.decision,
       validationResult
     });
@@ -275,12 +267,7 @@ export const runBot = async (bot: BotSetup) => {
 
     if (runId) {
       if (error instanceof DecisionParseError) {
-        await storeRawModelOutput(runId, error.rawText);
-      } else {
-        await storeRawModelOutput(
-          runId,
-          JSON.stringify({ providerError: errorMessage, at: new Date().toISOString() }, null, 2)
-        );
+        await storeTraderOutput(runId, error.rawText);
       }
       await finishRun({
         runId,
