@@ -25,14 +25,18 @@ async function fetchApi(path: string) {
   const apiSecretKey = process.env.API_SECRET_KEY;
   if (!apiSecretKey) throw new Error("API_SECRET_KEY is required");
 
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    cache: "no-store",
-    headers: { "x-api-key": apiSecretKey }
-  });
+  try {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      cache: "no-store",
+      headers: { "x-api-key": apiSecretKey }
+    });
 
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`API request failed: ${response.status} for ${path}`);
-  return response.json();
+    if (response.status === 404) return null;
+    if (!response.ok) return null;
+    return response.json();
+  } catch {
+    return null;
+  }
 }
 
 export default async function BotPage({ params }: { params: Promise<{ botId: string }> }) {

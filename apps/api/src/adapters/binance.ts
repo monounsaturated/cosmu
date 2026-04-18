@@ -95,7 +95,8 @@ const binanceFetch = async (
     const response = await fetch(url, {
       ...init,
       headers,
-      body
+      body,
+      signal: AbortSignal.timeout(8000)
     });
 
     if (response.status !== 429) {
