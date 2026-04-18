@@ -424,7 +424,7 @@ function PromptSection({
         </button>
       </div>
 
-      {/* Prompt Name (new prompt only) + Provider / Model */}
+      {/* Prompt Name (new prompt only) */}
       {strategy === "new" && (
         <div className="form-row" style={{ marginBottom: "12px" }}>
           <label>
@@ -435,6 +435,25 @@ function PromptSection({
               onChange={(e) => onNameChange(e.target.value)}
               placeholder={defaultPromptName}
             />
+          </label>
+        </div>
+      )}
+
+      {/* Saved prompt dropdown (existing only) — shown above Provider/Model */}
+      {strategy === "existing" && (
+        <div className="form-row" style={{ marginBottom: "12px" }}>
+          <label>
+            Prompt
+            <select
+              value={selectedVersionId}
+              onChange={(e) => onVersionChange(e.target.value)}
+              required
+            >
+              <option value="">Select a prompt</option>
+              {promptOptions.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
           </label>
         </div>
       )}
@@ -511,22 +530,6 @@ function PromptSection({
         </div>
       ) : (
         <>
-          <div className="form-row">
-            <label>
-              Prompt
-              <select
-                value={selectedVersionId}
-                onChange={(e) => onVersionChange(e.target.value)}
-                required
-              >
-                <option value="">Select a prompt</option>
-                {promptOptions.map((p) => (
-                  <option key={p.id} value={p.id}>{p.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-
           {selectedVersionId && (
             <div className="prompt-body-panel">
               <div className="prompt-body-header">
