@@ -43,6 +43,14 @@ export {
 
 export { getBotPrePromptContext } from "./dashboard.js";
 
+export {
+  listTraderPrompts,
+  createTraderPrompt,
+  addTraderPromptVersion,
+  getTraderPromptVersionBody,
+  getNextTraderPromptNumber
+} from "./trader-prompts.js";
+
 export { storeLLMCall, getLLMCallsForRun } from "./llm-calls.js";
 export { getAppSetting, setAppSetting, isGlobalKillSwitchOn, setGlobalKillSwitch } from "./settings.js";
 

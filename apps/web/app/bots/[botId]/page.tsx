@@ -158,10 +158,14 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
         <div className="panel">
           <h3>Bot Settings</h3>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginTop: "16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "24px", marginTop: "16px" }}>
             <div>
-              <p className="label">Prompt</p>
+              <p className="label">Research Prompt</p>
               <p><span className="badge badge-neutral">{setup.promptVersionLabel}</span></p>
+            </div>
+            <div>
+              <p className="label">Trader Prompt</p>
+              <p><span className="badge badge-neutral">{setup.traderPromptVersionLabel ?? "Default"}</span></p>
             </div>
             <div>
               <p className="label">Model</p>
@@ -219,9 +223,16 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
           </div>
 
           <div style={{ marginTop: "24px" }} id="prompt">
-            <p className="label">System Prompt Body</p>
-            <div className="run-detail-pre" style={{ maxHeight: "400px", overflowY: "auto" }}>
-              {setup.promptBody?.trim() ? setup.promptBody : <span className="muted">No strategy body on this prompt version.</span>}
+            <p className="label">Research Prompt</p>
+            <div className="run-detail-pre" style={{ maxHeight: "400px", overflowY: "auto", borderLeft: "3px solid #60a5fa" }}>
+              {setup.promptBody?.trim() ? setup.promptBody : <span className="muted">No research prompt body on this prompt version.</span>}
+            </div>
+          </div>
+
+          <div style={{ marginTop: "16px" }}>
+            <p className="label">Trader Prompt</p>
+            <div className="run-detail-pre" style={{ maxHeight: "400px", overflowY: "auto", borderLeft: "3px solid #a78bfa" }}>
+              {setup.traderPromptBody?.trim() ? setup.traderPromptBody : <span className="muted">Using default trader prompt.</span>}
             </div>
           </div>
         </div>

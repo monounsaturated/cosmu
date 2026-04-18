@@ -14,12 +14,15 @@ import {
   listModelProfiles,
   listPrompts,
   updateBotConfig,
+  getActiveFormatterPrompt,
   getAllActiveFormatterPrompts,
   createFormatterPromptVersion,
   listFormatterPromptVersions,
   isGlobalKillSwitchOn,
   setGlobalKillSwitch,
-  getLLMCallsForRun
+  getLLMCallsForRun,
+  listTraderPrompts,
+  createTraderPrompt
 } from "./lib/store.js";
 import { getDashboard } from "./services/dashboard.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
@@ -116,6 +119,21 @@ app.get("/internal/qa/status", async (_request, response) => {
       webBaseUrlConfigured: Boolean(env.WEB_BASE_URL)
     }
   });
+});
+
+app.get("/next-numbers", async (_request, response, next) => {
+  try {
+    const [botRow] = await sql<{ next: number }[]>`select coalesce(max(bot_number), 0) + 1 as next from bots`;
+    const [promptRow] = await sql<{ next: number }[]>`select coalesce(count(*), 0) + 1 as next from prompts`;
+    const [traderRow] = await sql<{ next: number }[]>`select coalesce(max(prompt_number), 0) + 1 as next from trader_prompts`;
+    response.json({
+      nextBotNumber: botRow.next,
+      nextResearchPromptNumber: promptRow.next,
+      nextTraderPromptNumber: traderRow.next
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get("/dashboard", async (_request, response, next) => {
@@ -497,9 +515,31 @@ app.post("/internal/catalog/sync", async (request, response, next) => {
   }
 });
 
+app.get("/trader-prompts", async (_request, response, next) => {
+  try {
+    response.json(await listTraderPrompts());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/trader-prompts", async (request, response, next) => {
+  try {
+    const { name, slug, initialBody } = request.body;
+    if (!initialBody || typeof initialBody !== "string" || !initialBody.trim()) {
+      response.status(400).json({ error: "initialBody is required" });
+      return;
+    }
+    const result = await createTraderPrompt({ name, slug, initialBody: initialBody.trim() });
+    response.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/bots", async (request, response, next) => {
   try {
-    const { name, slug, promptVersionId, modelProfileId, promptConfig, traderConfig, parentBotId, runtimeConfig } =
+    const { name, slug, promptVersionId, modelProfileId, promptConfig, traderConfig, traderPromptVersionId, parentBotId, runtimeConfig } =
       request.body;
     const id = await createBot({
       name,
@@ -508,6 +548,7 @@ app.post("/bots", async (request, response, next) => {
       modelProfileId,
       promptConfig,
       traderConfig,
+      traderPromptVersionId: traderPromptVersionId ?? null,
       parentBotId,
       runtimeConfig
     });

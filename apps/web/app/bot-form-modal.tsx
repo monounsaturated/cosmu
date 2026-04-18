@@ -131,30 +131,6 @@ You may trade ANY USDT spot pair available on Binance. Pick your symbols based o
   },
 ];
 
-// Always-injected sections for the research prompt (non-toggleable)
-const ALWAYS_INJECTED_RESEARCH: { label: string; preview: string }[] = [
-  {
-    label: "Session",
-    preview: `=== SESSION ===
-Bot: My Strategy (#32) | Model: xAI grok-3
-Mode: testnet | Venue: Binance Spot | Frequency: every 30min
-Budget: $1,000.00 — you must stay within this allocation`,
-  },
-  {
-    label: "Wallet",
-    preview: `=== WALLET ===
-Total: $1,072.50
-USDT: 750.20 free ($750.20)
-BTC: 0.0012 free ($82.14)
-ETH: 0.15 free ($361.50)`,
-  },
-  {
-    label: "Trading Scope",
-    preview: `=== TRADING SCOPE ===
-You may trade ANY USDT spot pair available on Binance. Pick your symbols based on your own analysis.`,
-  },
-];
-
 type Prompt = {
   id: string;
   name: string;
@@ -166,13 +142,15 @@ type Prompt = {
   latestVersionCreatedAt: string | null;
 };
 
-type FormatterVersion = {
+type TraderPrompt = {
   id: string;
-  venue: string;
-  promptType: string;
-  version: number;
-  body: string;
+  name: string;
+  slug: string;
   createdAt: string;
+  promptNumber: number;
+  latestVersionId: string | null;
+  latestBody: string | null;
+  latestVersionCreatedAt: string | null;
 };
 
 type Model = {
@@ -259,6 +237,11 @@ const uniqueSlug = (value: string) => `${slugify(value) || "bot"}-${Date.now().t
 
 const uniqueSymbols = (symbols: string[]) =>
   Array.from(new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean)));
+
+const VENUE_LABELS: Record<string, string> = {
+  "binance": "Binance",
+  "binance-testnet": "Binance Testnet",
+};
 
 const FREQUENCY_OPTIONS = [
   { value: "1", label: "Every 1 min" },
@@ -363,6 +346,7 @@ function PromptSection({
   onToggleModule,
   pastTradesLookback,
   onLookbackChange,
+  nextPromptNumber,
 }: {
   phase: "research" | "trader";
   phaseColor: string;
@@ -389,6 +373,7 @@ function PromptSection({
   onToggleModule?: (key: string, value: boolean) => void;
   pastTradesLookback?: number;
   onLookbackChange?: (n: number) => void;
+  nextPromptNumber?: number | null;
 }) {
   const title = phase === "research" ? "Research Prompt" : "Trader Prompt";
 
@@ -399,6 +384,10 @@ function PromptSection({
     : promptName
       ? `${title} — ${promptName}`
       : title;
+
+  const defaultPromptName = nextPromptNumber
+    ? `${title} #${nextPromptNumber}`
+    : title;
 
   return (
     <div className="form-section" style={{ borderLeft: `3px solid ${phaseColor}` }}>
@@ -426,12 +415,12 @@ function PromptSection({
         <div className="form-grid">
           <div className="form-row">
             <label>
-              Prompt Name <span className="field-help">(optional)</span>
+              Prompt Name
               <input
                 type="text"
                 value={promptName}
                 onChange={(e) => onNameChange(e.target.value)}
-                placeholder="Auto-generated if empty"
+                placeholder={defaultPromptName}
               />
             </label>
           </div>
@@ -595,7 +584,7 @@ function PromptSection({
 
 export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalProps) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
-  const [formatterVersions, setFormatterVersions] = useState<FormatterVersion[]>([]);
+  const [traderPrompts, setTraderPrompts] = useState<TraderPrompt[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [loading, setLoading] = useState(mode === "edit");
@@ -609,6 +598,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   const [selectedProvider, setSelectedProvider] = useState("xai");
   const [formData, setFormData] = useState(buildDefaultState());
   const [nextBotNumber, setNextBotNumber] = useState<number | null>(null);
+  const [nextResearchPromptNumber, setNextResearchPromptNumber] = useState<number | null>(null);
+  const [nextTraderPromptNumber, setNextTraderPromptNumber] = useState<number | null>(null);
 
   // Research prompt editor state
   const [researchSavedBody, setResearchSavedBody] = useState<string | null>(null);
@@ -659,14 +650,16 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     });
   }, [prompts]);
 
-  // Trader prompt options from formatter versions
+  // Trader prompt options from trader_prompts table
   const traderPromptOptions = useMemo(() => {
-    return formatterVersions.map((v) => ({
-      id: v.id,
-      label: `Trader Prompt #${v.version}`,
-      body: v.body,
-    }));
-  }, [formatterVersions]);
+    return traderPrompts
+      .filter((tp) => Boolean(tp.latestVersionId))
+      .map((tp) => ({
+        id: tp.latestVersionId!,
+        label: `Trader Prompt #${tp.promptNumber} — ${tp.name}`,
+        body: tp.latestBody ?? "",
+      }));
+  }, [traderPrompts]);
 
   const filteredSymbols = useMemo(() => {
     const query = symbolSearch.trim().toUpperCase();
@@ -764,24 +757,25 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       setDataLoaded(false);
       setError(null);
 
-      const defaultVenue = formData.venue;
-
-      const [promptsRes, modelsRes, symbolsRes, botRes, formatterRes] = await Promise.all([
+      const [promptsRes, modelsRes, symbolsRes, botRes, traderPromptsRes, numbersRes] = await Promise.all([
         safeFetch<Prompt[]>("/api/prompts"),
         safeFetch<Model[]>("/api/models"),
         safeFetch<SymbolResponse>("/api/venues/binance/symbols"),
         mode === "edit" && botId ? safeFetch<BotSetup>(`/api/bots/${botId}`) : Promise.resolve({ data: null, error: null }),
-        safeFetch<{ versions: FormatterVersion[] }>(`/api/settings/formatter-prompt/${defaultVenue}/versions`),
+        safeFetch<TraderPrompt[]>("/api/trader-prompts"),
+        safeFetch<{ nextBotNumber: number; nextResearchPromptNumber: number; nextTraderPromptNumber: number }>("/api/next-numbers"),
       ]);
 
       if (cancelled) return;
 
-      if (promptsRes.data) {
-        setPrompts(promptsRes.data);
-        setNextBotNumber(promptsRes.data.length + 1);
-      }
+      if (promptsRes.data) setPrompts(promptsRes.data);
       if (modelsRes.data && modelsRes.data.length > 0) setModels(modelsRes.data);
-      if (formatterRes.data?.versions) setFormatterVersions(formatterRes.data.versions);
+      if (traderPromptsRes.data) setTraderPrompts(traderPromptsRes.data);
+      if (numbersRes.data) {
+        setNextBotNumber(numbersRes.data.nextBotNumber);
+        setNextResearchPromptNumber(numbersRes.data.nextResearchPromptNumber);
+        setNextTraderPromptNumber(numbersRes.data.nextTraderPromptNumber);
+      }
 
       let resolvedSymbols: string[] = symbolsRes.data?.symbols ?? [];
       if (resolvedSymbols.length === 0) resolvedSymbols = await fetchSymbolsDirect();
@@ -920,14 +914,6 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     setTraderShowEditor(false);
   }, [formData.existingTraderVersionId, formData.traderStrategy, traderPromptOptions]);
 
-  // Fetch formatter versions when venue changes
-  useEffect(() => {
-    let cancelled = false;
-    safeFetch<{ versions: FormatterVersion[] }>(`/api/settings/formatter-prompt/${formData.venue}/versions`)
-      .then((res) => { if (!cancelled && res.data?.versions) setFormatterVersions(res.data.versions); });
-    return () => { cancelled = true; };
-  }, [formData.venue]);
-
   // Fetch venue balance when venue changes
   useEffect(() => {
     let cancelled = false;
@@ -968,29 +954,22 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     setTraderSavingVersion(true);
     setError(null);
     try {
-      const res = await fetch("/api/settings/formatter-prompt", {
-        method: "PUT",
+      const res = await fetch("/api/trader-prompts", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          formatterPrompts: {
-            [formData.venue]: traderEditedBody,
-            // Keep other venue unchanged
-            ...(formData.venue === "binance"
-              ? { "binance-testnet": formatterVersions[0]?.body ?? "" }
-              : { binance: "" })
-          }
+          name: "",
+          slug: "",
+          initialBody: traderEditedBody.trim()
         })
       });
-      if (!res.ok) throw new Error("Failed to save trader prompt");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to save trader prompt");
 
-      // Refresh versions
-      const versionsRes = await safeFetch<{ versions: FormatterVersion[] }>(`/api/settings/formatter-prompt/${formData.venue}/versions`);
-      if (versionsRes.data?.versions) {
-        setFormatterVersions(versionsRes.data.versions);
-        if (versionsRes.data.versions[0]) {
-          setFormData((cur) => ({ ...cur, existingTraderVersionId: versionsRes.data!.versions[0].id }));
-        }
-      }
+      // Refresh trader prompts list
+      const traderPromptsRes = await safeFetch<TraderPrompt[]>("/api/trader-prompts");
+      if (traderPromptsRes.data) setTraderPrompts(traderPromptsRes.data);
+      setFormData((cur) => ({ ...cur, existingTraderVersionId: data.promptVersionId }));
       setTraderShowEditor(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save trader prompt");
@@ -1050,20 +1029,23 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
         throw new Error("Select at least one pair, or choose All Pairs");
       }
 
-      // Save trader prompt if it's new
-      if (formData.traderStrategy === "new" && formData.newTraderBody.trim()) {
-        await fetch("/api/settings/formatter-prompt", {
-          method: "PUT",
+      // Resolve trader prompt version ID
+      let traderPromptVersionId: string | null = null;
+      if (formData.traderStrategy === "existing") {
+        traderPromptVersionId = formData.existingTraderVersionId || null;
+      } else if (formData.newTraderBody.trim()) {
+        const traderRes = await fetch("/api/trader-prompts", {
+          method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            formatterPrompts: {
-              [formData.venue]: formData.newTraderBody.trim(),
-              ...(formData.venue === "binance"
-                ? { "binance-testnet": formatterVersions[0]?.body ?? DEFAULT_TRADER_PROMPT }
-                : { binance: formatterVersions[0]?.body ?? DEFAULT_TRADER_PROMPT })
-            }
+            name: formData.newTraderName.trim(),
+            slug: uniqueSlug(formData.newTraderName || "trader"),
+            initialBody: formData.newTraderBody.trim()
           })
         });
+        const traderData = await traderRes.json();
+        if (!traderRes.ok) throw new Error(traderData.error ?? "Failed to create trader prompt");
+        traderPromptVersionId = traderData.promptVersionId;
       }
 
       const promptVersionId = await resolveResearchPromptVersionId();
@@ -1081,6 +1063,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
             promptVersionId,
             modelProfileId,
             promptConfig: formData.promptConfig,
+            traderPromptVersionId,
             runtimeConfig: {
               venue: formData.venue,
               frequencyMinutes: Number(formData.frequencyMinutes),
@@ -1227,7 +1210,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                   </label>
                 </div>
 
-                {/* Row 2: Venue, Authorized Pairs, Budget */}
+                {/* Row 2: Venue, Budget, Authorized Pairs */}
                 <div className="form-row">
                   <label>
                     Venue
@@ -1249,6 +1232,23 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
 
                 <div className="form-row">
                   <label>
+                    Budget (USDT)
+                    <input
+                      type="number"
+                      min={10}
+                      step={10}
+                      value={formData.budgetUsdt}
+                      onChange={(e) => setFormData({ ...formData, budgetUsdt: Math.max(10, Number(e.target.value)) })}
+                      disabled={mode !== "create"}
+                    />
+                  </label>
+                  <span className="field-help">
+                    Max USDT this bot can use.
+                  </span>
+                </div>
+
+                <div className="form-row">
+                  <label>
                     Authorized Pairs
                     <div className="pairs-picker" ref={pairsRef}>
                       <input
@@ -1257,7 +1257,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                         value={formData.symbolScope === "all" ? "" : symbolSearch}
                         onChange={(e) => setSymbolSearch(e.target.value)}
                         placeholder={formData.symbolScope === "all"
-                          ? `All ${formData.venue === "binance" ? "Binance" : "Testnet"} Pairs`
+                          ? `All ${VENUE_LABELS[formData.venue] ?? formData.venue} Pairs`
                           : formData.contextSymbols.length > 0
                             ? `${formData.contextSymbols.length} pairs selected`
                             : "Search pairs..."}
@@ -1278,7 +1278,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                                 })
                               }
                             />
-                            <span>All {formData.venue === "binance" ? "Binance" : "Testnet"} Pairs</span>
+                            <span>All {VENUE_LABELS[formData.venue] ?? formData.venue} Pairs</span>
                           </label>
                           {filteredSymbols.map((symbol) => (
                             <label
@@ -1311,23 +1311,6 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                     </div>
                   )}
                 </div>
-
-                <div className="form-row">
-                  <label>
-                    Budget (USDT)
-                    <input
-                      type="number"
-                      min={10}
-                      step={10}
-                      value={formData.budgetUsdt}
-                      onChange={(e) => setFormData({ ...formData, budgetUsdt: Math.max(10, Number(e.target.value)) })}
-                      disabled={mode !== "create"}
-                    />
-                  </label>
-                  <span className="field-help">
-                    Max USDT this bot can use.
-                  </span>
-                </div>
               </div>
             </div>
 
@@ -1352,7 +1335,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
               onSaveNewVersion={handleSaveResearchVersion}
               savingVersion={researchSavingVersion}
               loadingBody={false}
-              alwaysInjected={ALWAYS_INJECTED_RESEARCH}
+              alwaysInjected={[]}
+              nextPromptNumber={nextResearchPromptNumber}
             />
 
             {/* ── Trader Prompt ── */}
@@ -1385,6 +1369,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 ...cur,
                 promptConfig: { ...cur.promptConfig, modules: { ...cur.promptConfig.modules, pastTradesLookback: n } }
               }))}
+              nextPromptNumber={nextTraderPromptNumber}
             />
 
             {/* ── Deterministic Settings ── */}

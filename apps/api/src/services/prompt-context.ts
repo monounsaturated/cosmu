@@ -110,22 +110,28 @@ const buildPriceSection = (venueContext: VenueContext, priceSymbolFilter: Set<st
   ].join("\n");
 };
 
-/** Phase 1: full context for creative research (no prices, no formatting constraints). */
-const buildResearchUserSections = (input: {
+/** Phase 1: pure written prompt — no injected data sections. */
+const buildResearchUserSections = (_input: {
+  bot: BotSetup;
+  venueContext: VenueContext;
+  historyContext: HistoryContext;
+}) => {
+  // Research phase receives NO injected data — just the written prompt
+  // (delivered via the system message). Return empty user message.
+  return "";
+};
+
+/** Build optional module sections (used by the trader/formatter phase). */
+const buildOptionalModuleSections = (input: {
   bot: BotSetup;
   venueContext: VenueContext;
   historyContext: HistoryContext;
 }) => {
   const { bot, venueContext, historyContext } = input;
-  const { runtimeConfig, promptConfig } = bot;
-  const modules = promptConfig.modules;
+  const modules = bot.promptConfig.modules;
   const { snapshot } = venueContext;
 
   const sections: string[] = [];
-
-  sections.push(buildSessionSection(bot));
-  sections.push(buildWalletSection(snapshot));
-  sections.push(buildTradingScopeSection(runtimeConfig));
 
   if (modules.includeWalletOverview && historyContext.performance) {
     const p = historyContext.performance;
@@ -164,17 +170,18 @@ const buildResearchUserSections = (input: {
     sections.push(["=== BOT RANKINGS ===", ...rankLines].join("\n"));
   }
 
-  return sections.join("\n\n");
+  return sections;
 };
 
-/** Phase 2: slim context for the formatter (research text + prices + wallet + rules). */
+/** Phase 2: trader context with research text + prices + wallet + rules + optional modules. */
 const buildFormatterUserSections = (input: {
   bot: BotSetup;
   venueContext: VenueContext;
   researchRawText: string;
   priceSymbolFilter: Set<string>;
+  historyContext: HistoryContext;
 }) => {
-  const { bot, venueContext, researchRawText, priceSymbolFilter } = input;
+  const { bot, venueContext, researchRawText, priceSymbolFilter, historyContext } = input;
   const { runtimeConfig } = bot;
   const { snapshot } = venueContext;
 
@@ -192,6 +199,10 @@ const buildFormatterUserSections = (input: {
 
   sections.push(buildTradingScopeSection(runtimeConfig));
 
+  // Append optional data modules (toggled on bot creation form)
+  const moduleSections = buildOptionalModuleSections({ bot, venueContext, historyContext });
+  sections.push(...moduleSections);
+
   return sections.join("\n\n");
 };
 
@@ -200,19 +211,13 @@ type BuildPromptContextInput = {
   venueContext: VenueContext;
 };
 
-/** Phase 1: default preamble + bot strategy (free-form, no structured output). */
+/** Phase 1: pure written prompt — no injected data. */
 export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildPromptContextInput) => {
-  const { runtimeConfig, promptConfig } = bot;
-  const modules = promptConfig.modules;
+  const { runtimeConfig } = bot;
 
-  const historyContext = await getBotPrePromptContext({
-    botId: bot.id,
-    pastTradesLookback: modules.pastTradesLookback
-  });
-
+  // Research phase = pure creative prompt. No injected data sections.
   const systemPrompt = [DEFAULT_SYSTEM_PRELUDE, bot.promptBody.trim()].filter(Boolean).join("\n\n");
-
-  const userMessage = buildResearchUserSections({ bot, venueContext, historyContext });
+  const userMessage = "Analyze the market now. Identify any trading opportunities worth exploring.";
 
   const compactContext: Record<string, unknown> = {
     phase: "research",
@@ -220,15 +225,13 @@ export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildProm
     symbolScope: runtimeConfig.symbolScope,
     walletTotalUsd: venueContext.snapshot.totalUsdValue,
     balanceCount: venueContext.snapshot.balances.length,
-    modulesActive: Object.entries(modules)
-      .filter(([k, v]) => v === true && k.startsWith("include"))
-      .map(([k]) => k)
+    modulesActive: []
   };
 
   return { systemPrompt, userMessage, compactContext };
 };
 
-/** Phase 2: formatter + hard constraints; slim context with research text + prices. */
+/** Phase 2: formatter + hard constraints; includes all injected data. */
 export const buildFormatterPhaseContext = async ({
   bot,
   venueContext,
@@ -240,11 +243,28 @@ export const buildFormatterPhaseContext = async ({
   candidateSymbols: string[];
   priceSymbolFilter: Set<string>;
 }) => {
-  const { runtimeConfig } = bot;
+  const { runtimeConfig, promptConfig } = bot;
+  const modules = promptConfig.modules;
 
-  const activeFormatter = await getActiveFormatterPrompt(runtimeConfig.venue);
-  const trimmedCustom = activeFormatter?.body?.trim() ?? "";
-  const formatterBody = trimmedCustom.length > 0 ? trimmedCustom : DEFAULT_FORMATTER_BODY;
+  const historyContext = await getBotPrePromptContext({
+    botId: bot.id,
+    pastTradesLookback: modules.pastTradesLookback
+  });
+
+  // Use bot's own trader prompt if set; fall back to venue-level formatter; then default
+  const botTraderBody = bot.traderPromptBody?.trim() ?? "";
+  let formatterBody: string;
+  let formatterPromptVersionId: string | null = null;
+
+  if (botTraderBody.length > 0) {
+    formatterBody = botTraderBody;
+    formatterPromptVersionId = bot.traderPromptVersionId ?? null;
+  } else {
+    const activeFormatter = await getActiveFormatterPrompt(runtimeConfig.venue);
+    const trimmedCustom = activeFormatter?.body?.trim() ?? "";
+    formatterBody = trimmedCustom.length > 0 ? trimmedCustom : DEFAULT_FORMATTER_BODY;
+    formatterPromptVersionId = activeFormatter?.id ?? null;
+  }
 
   const systemPrompt = [formatterBody, NON_NEGOTIABLE_CONSTRAINTS_BLOCK].join("\n\n");
 
@@ -252,7 +272,8 @@ export const buildFormatterPhaseContext = async ({
     bot,
     venueContext,
     researchRawText,
-    priceSymbolFilter
+    priceSymbolFilter,
+    historyContext
   });
 
   const compactContext: Record<string, unknown> = {
@@ -268,6 +289,6 @@ export const buildFormatterPhaseContext = async ({
     systemPrompt,
     userMessage,
     compactContext,
-    formatterPromptVersionId: activeFormatter?.id ?? null
+    formatterPromptVersionId
   };
 };

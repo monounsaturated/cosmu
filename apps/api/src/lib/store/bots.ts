@@ -16,6 +16,9 @@ export type BotSetup = {
   promptVersionId: string;
   promptBody: string;
   promptVersionLabel: string;
+  traderPromptVersionId: string | null;
+  traderPromptBody: string | null;
+  traderPromptVersionLabel: string | null;
   modelProfileId: string;
   modelProfileName: string;
   modelProvider: string;
@@ -44,6 +47,9 @@ const parseBotRow = (row: BotSetup): BotSetup => ({
   promptVersionId: row.promptVersionId,
   promptBody: row.promptBody,
   promptVersionLabel: row.promptVersionLabel,
+  traderPromptVersionId: row.traderPromptVersionId ?? null,
+  traderPromptBody: row.traderPromptBody ?? null,
+  traderPromptVersionLabel: row.traderPromptVersionLabel ?? null,
   modelProfileId: row.modelProfileId,
   modelProfileName: row.modelProfileName,
   modelProvider: row.modelProvider,
@@ -59,6 +65,10 @@ const BOT_SELECT_QUERY = `
   with prompt_order as (
     select id, row_number() over (order by created_at asc) as prompt_number
     from prompts
+  ),
+  trader_prompt_order as (
+    select id, row_number() over (order by created_at asc) as prompt_number
+    from trader_prompts
   )
   select
     b.id,
@@ -67,7 +77,10 @@ const BOT_SELECT_QUERY = `
     b.slug,
     pv.id as "promptVersionId",
     pv.body as "promptBody",
-    concat('Prompt #', prompt_order.prompt_number) as "promptVersionLabel",
+    concat('Research Prompt #', prompt_order.prompt_number) as "promptVersionLabel",
+    tpv.id as "traderPromptVersionId",
+    tpv.body as "traderPromptBody",
+    case when tp.id is not null then concat('Trader Prompt #', trader_prompt_order.prompt_number) else null end as "traderPromptVersionLabel",
     mp.id as "modelProfileId",
     mp.name as "modelProfileName",
     mp.provider as "modelProvider",
@@ -90,6 +103,9 @@ const BOT_SELECT_QUERY = `
   join prompt_order on prompt_order.id = p.id
   join model_profiles mp on mp.id = b.active_model_profile_id
   join bot_runtime_configs brc on brc.bot_id = b.id
+  left join trader_prompt_versions tpv on tpv.id = b.active_trader_prompt_version_id
+  left join trader_prompts tp on tp.id = tpv.prompt_id
+  left join trader_prompt_order on trader_prompt_order.id = tp.id
 `;
 
 export const getDueBots = async (): Promise<BotSetup[]> => {
@@ -97,6 +113,10 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
     with prompt_order as (
       select id, row_number() over (order by created_at asc) as prompt_number
       from prompts
+    ),
+    trader_prompt_order as (
+      select id, row_number() over (order by created_at asc) as prompt_number
+      from trader_prompts
     )
     select
       b.id,
@@ -105,7 +125,10 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
       b.slug,
       pv.id as "promptVersionId",
       pv.body as "promptBody",
-      concat('Prompt #', prompt_order.prompt_number) as "promptVersionLabel",
+      concat('Research Prompt #', prompt_order.prompt_number) as "promptVersionLabel",
+      tpv.id as "traderPromptVersionId",
+      tpv.body as "traderPromptBody",
+      case when tp.id is not null then concat('Trader Prompt #', trader_prompt_order.prompt_number) else null end as "traderPromptVersionLabel",
       mp.id as "modelProfileId",
       mp.name as "modelProfileName",
       mp.provider as "modelProvider",
@@ -128,6 +151,9 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
     join prompt_order on prompt_order.id = p.id
     join model_profiles mp on mp.id = b.active_model_profile_id
     join bot_runtime_configs brc on brc.bot_id = b.id
+    left join trader_prompt_versions tpv on tpv.id = b.active_trader_prompt_version_id
+    left join trader_prompts tp on tp.id = tpv.prompt_id
+    left join trader_prompt_order on trader_prompt_order.id = tp.id
     where brc.enabled = true
       and (
         brc.last_run_started_at is null
@@ -143,6 +169,10 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
     with prompt_order as (
       select id, row_number() over (order by created_at asc) as prompt_number
       from prompts
+    ),
+    trader_prompt_order as (
+      select id, row_number() over (order by created_at asc) as prompt_number
+      from trader_prompts
     )
     select
       b.id,
@@ -151,7 +181,10 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
       b.slug,
       pv.id as "promptVersionId",
       pv.body as "promptBody",
-      concat('Prompt #', prompt_order.prompt_number) as "promptVersionLabel",
+      concat('Research Prompt #', prompt_order.prompt_number) as "promptVersionLabel",
+      tpv.id as "traderPromptVersionId",
+      tpv.body as "traderPromptBody",
+      case when tp.id is not null then concat('Trader Prompt #', trader_prompt_order.prompt_number) else null end as "traderPromptVersionLabel",
       mp.id as "modelProfileId",
       mp.name as "modelProfileName",
       mp.provider as "modelProvider",
@@ -174,6 +207,9 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
     join prompt_order on prompt_order.id = p.id
     join model_profiles mp on mp.id = b.active_model_profile_id
     join bot_runtime_configs brc on brc.bot_id = b.id
+    left join trader_prompt_versions tpv on tpv.id = b.active_trader_prompt_version_id
+    left join trader_prompts tp on tp.id = tpv.prompt_id
+    left join trader_prompt_order on trader_prompt_order.id = tp.id
     where b.id = ${botId}
     limit 1
   `;
@@ -219,6 +255,7 @@ export const createBot = async (input: {
   modelProfileId: string;
   promptConfig: PrePromptConfig;
   traderConfig?: TraderConfig;
+  traderPromptVersionId?: string | null;
   parentBotId?: string | null;
   runtimeConfig: Omit<RuntimeConfig, "enabled">;
 }) => {
@@ -226,10 +263,10 @@ export const createBot = async (input: {
   const [bot] = await sql<{ id: string }[]>`
     insert into bots (
       name, slug, active_prompt_version_id, active_model_profile_id,
-      parent_bot_id, prompt_config, trader_config
+      active_trader_prompt_version_id, parent_bot_id, prompt_config, trader_config
     ) values (
       ${effectiveName}, ${input.slug}, ${input.promptVersionId}, ${input.modelProfileId},
-      ${input.parentBotId ?? null},
+      ${input.traderPromptVersionId ?? null}, ${input.parentBotId ?? null},
       ${sql.json(input.promptConfig)},
       ${sql.json(input.traderConfig ?? traderConfigSchema.parse({}))}
     )
