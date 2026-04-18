@@ -55,6 +55,7 @@ export const getDashboard = async () => {
       brc.mode,
       brc.asset_class as "assetClass",
       concat(p.name, ' v', pv.version) as "promptVersionLabel",
+      case when tp.id is not null then concat(tp.name, ' v', tpv.version) else null end as "traderPromptVersionLabel",
       mp.name as "modelProfileName",
       mp.name as "researchModelName",
       mp.provider as "researchModelProvider",
@@ -74,6 +75,8 @@ export const getDashboard = async () => {
     join research_prompts p on p.id = pv.prompt_id
     join model_profiles mp on mp.id = b.active_model_profile_id
     left join model_profiles tmp on tmp.id = b.active_trader_model_profile_id
+    left join trader_prompt_versions tpv on tpv.id = b.active_trader_prompt_version_id
+    left join trader_prompts tp on tp.id = tpv.prompt_id
     left join run_stats on run_stats.bot_id = b.id
     left join trade_stats on trade_stats.bot_id = b.id
     left join latest_run on latest_run.bot_id = b.id

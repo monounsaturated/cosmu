@@ -67,7 +67,6 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
             <th className="clickable" onClick={() => handleSort("startedAt")}>
               Created <SortIndicator field="startedAt" />
             </th>
-            <th>Prompt</th>
             <th>Research</th>
             <th>Trader</th>
             <th className="clickable text-right" onClick={() => handleSort("currentPortfolioUsd")}>
@@ -107,11 +106,9 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
               <td>{venueLabel(bot.venue)}</td>
               <td><LocalTime value={bot.startedAt} mode="date" /></td>
               <td>
-                <span className="badge badge-neutral">{bot.promptVersionLabel}</span>
-              </td>
-              <td>
                 <div style={{ fontSize: "12px", lineHeight: 1.35 }}>
-                  <div>{bot.researchModelName ?? bot.modelProfileName}</div>
+                  <span className="badge badge-neutral">{bot.promptVersionLabel}</span>
+                  <div style={{ marginTop: "4px" }}>{bot.researchModelName ?? bot.modelProfileName}</div>
                   {bot.researchModelProvider && (
                     <div className="muted" style={{ fontSize: "11px" }}>
                       {bot.researchModelProvider}
@@ -121,7 +118,12 @@ export function BotTable({ dashboard }: { dashboard: DashboardPayload }) {
               </td>
               <td>
                 <div style={{ fontSize: "12px", lineHeight: 1.35 }}>
-                  <div>{bot.traderModelName ?? bot.modelProfileName}</div>
+                  {bot.traderPromptVersionLabel && (
+                    <span className="badge badge-neutral">{bot.traderPromptVersionLabel}</span>
+                  )}
+                  <div style={{ marginTop: bot.traderPromptVersionLabel ? "4px" : 0 }}>
+                    {bot.traderModelName ?? bot.modelProfileName}
+                  </div>
                   {bot.traderModelProvider && (
                     <div className="muted" style={{ fontSize: "11px" }}>
                       {bot.traderModelProvider}

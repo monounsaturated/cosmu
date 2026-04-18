@@ -264,6 +264,7 @@ export const botSummarySchema = z.object({
   assetClass: assetClassSchema,
   budgetUsdt: z.number().positive().default(1000),
   promptVersionLabel: z.string(),
+  traderPromptVersionLabel: z.string().nullable().optional(),
   modelProfileName: z.string(),
   researchModelName: z.string().optional(),
   researchModelProvider: z.string().optional(),
