@@ -24,8 +24,7 @@ export const xaiProvider: LLMProvider = {
       model: input.model,
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
       messages: input.messages.map((m) => ({ role: m.role, content: m.content })),
-      ...(input.responseFormat ? { response_format: input.responseFormat } : {}),
-      ...(input.searchParameters ? { search_parameters: input.searchParameters } : {})
+      ...(input.responseFormat ? { response_format: input.responseFormat } : {})
     } as Parameters<typeof client.chat.completions.create>[0]);
 
     if (!("choices" in completion)) {
