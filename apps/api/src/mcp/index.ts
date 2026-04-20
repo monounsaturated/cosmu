@@ -5,6 +5,7 @@ import { getSymbolsTool } from "./tools/get-symbols.js";
 import { getExchangeInfoTool } from "./tools/get-exchange-info.js";
 import { executeOrderTool } from "./tools/execute-order.js";
 import { cancelOrdersTool } from "./tools/cancel-orders.js";
+import { binanceSymbolLookupTool } from "./tools/binance-symbol-lookup.js";
 
 export type { ToolContext, ToolCallResult };
 
@@ -21,6 +22,7 @@ register(getSymbolsTool);
 register(getExchangeInfoTool);
 register(executeOrderTool);
 register(cancelOrdersTool);
+register(binanceSymbolLookupTool);
 
 /** Call a registered tool by name. */
 export const callTool = async <T = unknown>(
@@ -66,3 +68,11 @@ export const listTools = () =>
     name: tool.name,
     description: tool.description
   }));
+
+/** Return the set of tools that can be invoked by an LLM agent. */
+export const getAgentFacingTools = (): ToolDefinition[] =>
+  Array.from(toolRegistry.values()).filter(
+    (tool) => tool.agentFacing === true && tool.inputSchema !== undefined
+  );
+
+export { toolRegistry };

@@ -238,6 +238,88 @@ export const cancelAllOpenOrdersForSymbol = async (
   return response.json();
 };
 
+export type SymbolLookupEntry =
+  | {
+      tradable: true;
+      currentPrice: number | null;
+      minQty: number;
+      minNotional: number;
+      tickSize: number;
+      stepSize: number;
+      orderTypes: string[];
+    }
+  | {
+      tradable: false;
+      currentPrice: null;
+      reason: string;
+    };
+
+/**
+ * Targeted lookup: for a small set of symbols, return tradability + live price + rules.
+ * Does NOT fetch account data. Cheap to call mid-agent-loop.
+ */
+export const lookupBinanceSymbols = async (
+  mode: RuntimeConfig["mode"],
+  rawSymbols: string[]
+): Promise<Record<string, SymbolLookupEntry>> => {
+  const symbols = Array.from(
+    new Set(
+      rawSymbols
+        .map((s) => normalizeSymbol(String(s ?? "")))
+        .filter((s) => s.length > 0 && s !== "USDTUSDT")
+    )
+  );
+  if (symbols.length === 0) return {};
+
+  const [exchangeInfoResponse, tickerPrices] = await Promise.all([
+    getAllExchangeInfo(mode),
+    getAllTickerPrices(mode)
+  ]);
+
+  const wanted = new Set(symbols);
+  const rulesMap: Record<string, SymbolRules> = {};
+  for (const raw of exchangeInfoResponse.symbols ?? []) {
+    const sym = normalizeSymbol(String(raw.symbol ?? ""));
+    if (!wanted.has(sym)) continue;
+    if (!isTradableSpotUsdtSymbol(raw)) continue;
+    rulesMap[sym] = parseSymbolRules(raw);
+  }
+
+  const priceMap: Record<string, number> = {};
+  for (const p of (Array.isArray(tickerPrices) ? tickerPrices : []) as Array<{
+    symbol: string;
+    price: string;
+  }>) {
+    const sym = normalizeSymbol(String(p.symbol ?? ""));
+    if (wanted.has(sym)) priceMap[sym] = Number(p.price);
+  }
+
+  const out: Record<string, SymbolLookupEntry> = {};
+  for (const sym of symbols) {
+    const rules = rulesMap[sym];
+    if (!rules || rules.status !== "TRADING") {
+      out[sym] = {
+        tradable: false,
+        currentPrice: null,
+        reason: rules
+          ? `Symbol ${sym} is not in TRADING status on Binance spot`
+          : `Symbol ${sym} is not a tradable USDT spot pair on Binance`
+      };
+      continue;
+    }
+    out[sym] = {
+      tradable: true,
+      currentPrice: priceMap[sym] ?? null,
+      minQty: rules.minQty,
+      minNotional: rules.minNotional,
+      tickSize: rules.tickSize,
+      stepSize: rules.stepSize,
+      orderTypes: rules.orderTypes
+    };
+  }
+  return out;
+};
+
 export const listVenueSymbols = async () => {
   if (venueSymbolsCache && venueSymbolsCache.expiresAt > Date.now()) {
     return venueSymbolsCache.symbols;

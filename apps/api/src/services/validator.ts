@@ -26,6 +26,7 @@ export const validateDecision = async (input: {
   venueContext: VenueContext;
 }) => {
   const issues: string[] = [];
+  const droppedOrders: string[] = [];
   const normalizedOrders = [];
   const rulesEnabled = input.runtimeConfig.execution.enabled;
   const effectiveMaxOrders = rulesEnabled ? input.runtimeConfig.execution.maxOrdersPerRun : input.decision.orders.length;
@@ -68,7 +69,9 @@ export const validateDecision = async (input: {
     : null;
 
   if (rulesEnabled && input.decision.orders.length > input.runtimeConfig.execution.maxOrdersPerRun) {
-    issues.push("Decision exceeds maxOrdersPerRun");
+    droppedOrders.push(
+      `Truncated ${input.decision.orders.length - input.runtimeConfig.execution.maxOrdersPerRun} order(s) exceeding maxOrdersPerRun`
+    );
   }
 
   for (const order of input.decision.orders.slice(0, effectiveMaxOrders)) {
@@ -136,13 +139,14 @@ export const validateDecision = async (input: {
 
       normalizedOrders.push(normalized);
     } catch (error) {
-      issues.push(error instanceof Error ? error.message : "Unknown validation error");
+      const message = error instanceof Error ? error.message : "Unknown validation error";
+      droppedOrders.push(`Dropped ${order.symbol} ${order.side}: ${message}`);
     }
   }
 
   return validationResultSchema.parse({
     accepted: issues.length === 0,
-    issues,
+    issues: [...issues, ...droppedOrders],
     normalizedOrders
   });
 };

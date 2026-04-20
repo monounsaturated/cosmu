@@ -495,6 +495,11 @@ function PromptSection({
                 )}
               </select>
             </label>
+            {phase === "trader" && (
+              <span className="field-help" style={{ marginTop: "4px", fontSize: "0.75rem", opacity: 0.7 }}>
+                Tip: a reasoning model works best here — the trader uses tools to verify pairs and prices.
+              </span>
+            )}
           </div>
         </div>
       )}

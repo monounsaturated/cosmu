@@ -125,33 +125,18 @@ export const runBot = async (bot: BotSetup) => {
     await storeResearchOutput(runId, researchResult.rawText);
 
     // ── 3. Prepare Trader context ────────────────────────────────────
+    // We still compute candidateSymbols from the research output for logging/debugging
+    // (and to help surface "what did the research mention" in the UI). But the trader no
+    // longer receives pre-fetched prices — it calls `binance_symbol_lookup` itself.
     const venueSymbols = await getVenueSymbols("binance");
     const candidateSymbols = extractCandidateSymbols(researchResult.rawText, venueSymbols);
-
-    const pricingSymbols = symbolsForPricing(bot.runtimeConfig, getHeldSymbols(beforeLogical), candidateSymbols);
-    const pricedVenueRaw = await loadVenueContext(
-      bot.runtimeConfig,
-      pricingSymbols.length > 0
-        ? pricingSymbols
-        : [...bot.runtimeConfig.contextSymbols, ...getHeldSymbols(beforeLogical)]
-    );
-    const decisionVenueContext = {
-      ...pricedVenueRaw,
-      snapshot: buildLogicalSnapshot({
-        runtimeConfig: bot.runtimeConfig,
-        logical: beforeLogical,
-        priceMap: pricedVenueRaw.priceMap
-      })
-    };
-
-    const priceSymbolFilter = new Set(pricingSymbols.map(normalizePricingSymbol));
+    const decisionVenueContext = beforeVenueContext;
 
     const formatterCtx = await buildFormatterPhaseContext({
       bot,
       venueContext: decisionVenueContext,
       researchRawText: researchResult.rawText,
-      candidateSymbols,
-      priceSymbolFilter
+      candidateSymbols
     });
 
     // Update run with full prompt context
@@ -180,12 +165,13 @@ export const runBot = async (bot: BotSetup) => {
     // Persist combined prompts so the UI can show both phases
     await updateRunPrompts(runId, promptSystem, promptUser);
 
-    // ── 4. Trader Agent ──────────────────────────────────────────────
+    // ── 4. Trader Agent (agentic; uses binance_symbol_lookup tool) ───
     const traderResult = await runTraderAgent({
       bot,
       systemPrompt: formatterCtx.systemPrompt,
       userMessage: formatterCtx.userMessage,
-      runId
+      runId,
+      toolContext: { mode: bot.runtimeConfig.mode }
     });
 
     await storeTraderOutput(runId, traderResult.rawText);

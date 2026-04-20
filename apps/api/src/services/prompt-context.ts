@@ -14,11 +14,13 @@ const fmtNum = (n: number) =>
 export const NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
   "---",
   "NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):",
-  "• Every BUY order MUST include stopLossPrice (strictly below entry) and takeProfitPrice (strictly above entry).",
-  "  After a buy fills, an OCO SELL is automatically placed at those two levels.",
+  "• Every BUY order MUST include stopLossPrice (strictly below entry) AND takeProfitPrice (strictly above entry).",
+  "  The entry reference is the currentPrice returned by `binance_symbol_lookup` for that symbol — NOT any price mentioned in the upstream research.",
+  "  After a buy fills, an OCO SELL is automatically placed at those two levels. Buys missing SL/TP, or with SL/TP on the wrong side of currentPrice, are silently dropped.",
   "• For SELL orders: set stopLossPrice and takeProfitPrice to null.",
-  "• No clear opportunity? Return mode='hold' with an empty orders array.",
-  "• Reply with valid JSON only — no markdown, no text outside the JSON."
+  "• Never place a buy for a symbol you have not verified tradable via `binance_symbol_lookup` in this turn. If tradable:false, drop that candidate.",
+  "• No defensible trade? Return mode='hold' with an empty orders array.",
+  "• Final reply (after all tool calls) MUST be one JSON object matching TradingDecision — no markdown fences, no prose outside the JSON."
 ].join("\n");
 
 // System prelude removed — the user's written prompt is now the entire system prompt for research.
@@ -26,26 +28,30 @@ export const NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
 export const DEFAULT_FORMATTER_BODY = [
   "You are the execution stage (phase 2) for one autonomous Binance USDT spot bot.",
   "",
+  "You have a tool available: `binance_symbol_lookup(symbols: string[])`. Use it to verify each candidate symbol and fetch the authoritative currentPrice, minQty, minNotional, and tickSize BEFORE composing orders. Pass ONLY the specific tickers you are considering (e.g. ['BTCUSDT','SOLUSDT']); never bulk-list everything. One call with up to 10 symbols is enough — do not waste iterations.",
+  "",
   "Inputs (in the user message):",
-  "- UPSTREAM RESEARCH: qualitative thesis from phase 1 — symbols may be informal; normalize to valid *USDT pairs only when you place orders.",
+  "- UPSTREAM RESEARCH: qualitative thesis from phase 1. Symbols may be informal or mis-spelled; normalize to valid *USDT tickers. Any price figures mentioned there may be stale or wrong — ignore them and use currentPrice from the tool.",
   "- SESSION / EXECUTION RULES / WALLET / AUTHORIZED PAIRS: hard facts — never contradict them.",
-  "- LIVE MARKET PRICES: authoritative reference for sizing stops and limits on buys.",
+  "- (No live prices are pre-injected. Always fetch via the tool.)",
+  "",
+  "Workflow:",
+  "1. Read the research output and list the candidate tickers (normalized to *USDT).",
+  "2. If the bot has an AUTHORIZED PAIRS list, discard candidates not in it.",
+  "3. Call `binance_symbol_lookup` once with the surviving candidates.",
+  "4. Drop any returned with tradable:false.",
+  "5. For each remaining symbol, size orders with the tool's currentPrice. Compute stopLossPrice strictly below and takeProfitPrice strictly above that price, respecting tickSize.",
+  "6. Respect wallet + execution caps. Prefer fewer, higher-conviction orders.",
+  "7. If after all filtering no order survives, return mode='hold' with orders: [].",
   "",
   "Output: exactly one JSON object (no markdown fences, no prose) matching TradingDecision:",
-  '- mode: one of "rebalance" | "enter" | "exit" | "hold" | "adjust". Use "hold" when there is no defensible trade.',
+  '- mode: one of "rebalance" | "enter" | "exit" | "hold" | "adjust".',
   "- rationaleSummary: <=600 chars, decision-grade summary.",
-  "- globalRationale: <=4000 chars tying research to orders or explaining why you are flat.",
+  "- globalRationale: <=4000 chars tying research + tool-returned facts to orders (or explaining why flat).",
   "- confidence: number in [0,1].",
   "- timeHorizon: short string or null.",
-  "- orders: array (<= max orders/run from rules). Each order: symbol, side buy|sell, type market|limit, quantity (>0), limitPrice (null unless limit), stopLossPrice, takeProfitPrice, rationale.",
-  "- targetAllocations: usually [].",
-  "",
-  "Order logic:",
-  "- BUY: every buy MUST set stopLossPrice strictly below the live reference price for that symbol and takeProfitPrice strictly above. Omit trades you cannot justify with the given prices.",
-  "- SELL: set stopLossPrice and takeProfitPrice to null.",
-  "- Respect authorized pair list when present; otherwise any Binance USDT spot pair is allowed if grounded in research + prices.",
-  "- Stay within wallet + execution caps; prefer fewer, higher-conviction orders over many small ones.",
-  "- If research conflicts with prices, scope, or risk limits, prefer mode hold with orders: []."
+  "- orders: array (<= max orders/run). Each: symbol, side buy|sell, type market|limit, quantity (>0), limitPrice (null unless limit), stopLossPrice, takeProfitPrice, rationale.",
+  "- targetAllocations: usually []."
 ].join("\n");
 
 type HistoryContext = Awaited<ReturnType<typeof getBotPrePromptContext>>;
@@ -93,21 +99,8 @@ const buildTradingScopeSection = (runtimeConfig: BotSetup["runtimeConfig"]) => {
   return "=== TRADING SCOPE ===\nYou may trade ANY USDT spot pair available on Binance. Pick your symbols based on your own analysis.";
 };
 
-const buildPriceSection = (venueContext: VenueContext, priceSymbolFilter: Set<string>) => {
-  if (priceSymbolFilter.size === 0) return null;
-  const relevantPriceEntries = Object.entries(venueContext.priceMap)
-    .filter(([symbol]) => priceSymbolFilter.has(symbol))
-    .sort(([a], [b]) => a.localeCompare(b));
-  if (relevantPriceEntries.length === 0) return null;
-  const priceLines = relevantPriceEntries.map(
-    ([symbol, price]) => `${symbol}: ${fmtNum(price)}`
-  );
-  return [
-    "=== LIVE MARKET PRICES (for execution) ===",
-    "Use these reference prices for stopLossPrice / takeProfitPrice on buys.",
-    ...priceLines
-  ].join("\n");
-};
+// Live prices are no longer pre-injected into the trader prompt.
+// The trader fetches authoritative prices on-demand via the `binance_symbol_lookup` tool.
 
 /** Phase 1: pure written prompt — no injected data sections. */
 const buildResearchUserSections = (_input: {
@@ -172,15 +165,15 @@ const buildOptionalModuleSections = (input: {
   return sections;
 };
 
-/** Phase 2: trader context with research text + prices + wallet + rules + optional modules. */
+/** Phase 2: trader context with research text + wallet + rules + optional modules.
+ *  Live prices are deliberately NOT injected — the trader fetches them via binance_symbol_lookup. */
 const buildFormatterUserSections = (input: {
   bot: BotSetup;
   venueContext: VenueContext;
   researchRawText: string;
-  priceSymbolFilter: Set<string>;
   historyContext: HistoryContext;
 }) => {
-  const { bot, venueContext, researchRawText, priceSymbolFilter, historyContext } = input;
+  const { bot, venueContext, researchRawText, historyContext } = input;
   const { runtimeConfig } = bot;
   const { snapshot } = venueContext;
 
@@ -192,10 +185,6 @@ const buildFormatterUserSections = (input: {
   sections.push(buildSessionSection(bot));
   sections.push(buildExecRulesSection(runtimeConfig.execution));
   sections.push(buildWalletSection(snapshot));
-
-  const priceBlock = buildPriceSection(venueContext, priceSymbolFilter);
-  if (priceBlock) sections.push(priceBlock);
-
   sections.push(buildTradingScopeSection(runtimeConfig));
 
   // Append optional data modules (toggled on bot creation form)
@@ -234,12 +223,10 @@ export const buildFormatterPhaseContext = async ({
   bot,
   venueContext,
   researchRawText,
-  candidateSymbols,
-  priceSymbolFilter
+  candidateSymbols
 }: BuildPromptContextInput & {
   researchRawText: string;
   candidateSymbols: string[];
-  priceSymbolFilter: Set<string>;
 }) => {
   const { runtimeConfig, promptConfig } = bot;
   const modules = promptConfig.modules;
@@ -270,7 +257,6 @@ export const buildFormatterPhaseContext = async ({
     bot,
     venueContext,
     researchRawText,
-    priceSymbolFilter,
     historyContext
   });
 

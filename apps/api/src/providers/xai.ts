@@ -7,6 +7,7 @@ import {
 import { env } from "../env.js";
 import type { BotSetup } from "../lib/store.js";
 import type { LLMProvider, LLMChatInput, LLMResponse, LLMMessage } from "./llm.js";
+import type { ToolInputSchema } from "../mcp/types.js";
 
 const client = new OpenAI({
   apiKey: env.XAI_API_KEY,
@@ -323,6 +324,190 @@ export const requestResearchPhase = async ({
     ? `All xAI research attempts failed for ${bot.modelIdentifier}. Recent failures: ${recentFailures}`
     : `All xAI research attempts failed for ${bot.modelIdentifier}.`;
   throw new Error(message, { cause: lastError });
+};
+
+// ─── Agentic Tool-Use Loop (used by trader phase) ───────────────────
+
+export type AgenticTool = {
+  name: string;
+  description: string;
+  inputSchema: ToolInputSchema;
+  execute: (input: unknown) => Promise<unknown>;
+};
+
+export type AgentToolCallLog = {
+  tool: string;
+  input: unknown;
+  output: unknown;
+  latencyMs: number;
+  error: string | null;
+};
+
+export type AgenticChatResult = {
+  content: string;
+  model: string;
+  usage: { inputTokens: number; outputTokens: number } | null;
+  iterations: number;
+  toolCalls: AgentToolCallLog[];
+  finalConversation: unknown[];
+  finishReason: "stop" | "tool_iterations_exhausted" | "empty";
+};
+
+const toolCallsToOpenAI = (tools: AgenticTool[]) =>
+  tools.map((t) => ({
+    type: "function" as const,
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.inputSchema as unknown as Record<string, unknown>
+    }
+  }));
+
+/**
+ * Run a tool-use agent loop against xAI (OpenAI-compatible).
+ * The model can call tools between turns; we execute them and feed results back.
+ * Stops when the model returns a message with no tool_calls (final answer) or when
+ * maxIterations is reached.
+ */
+export const runXaiAgentLoop = async (input: {
+  model: string;
+  systemPrompt: string;
+  userMessage: string;
+  tools: AgenticTool[];
+  temperature?: number;
+  responseFormat?: Record<string, unknown>;
+  maxIterations?: number;
+}): Promise<AgenticChatResult> => {
+  const max = input.maxIterations ?? 6;
+  const toolMap = new Map(input.tools.map((t) => [t.name, t]));
+  const openAiTools = toolCallsToOpenAI(input.tools);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const conversation: any[] = [
+    { role: "system", content: input.systemPrompt },
+    { role: "user", content: input.userMessage }
+  ];
+
+  const toolCalls: AgentToolCallLog[] = [];
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+  let finalModel = input.model;
+  let iterations = 0;
+
+  for (iterations = 1; iterations <= max; iterations++) {
+    const baseParams: Record<string, unknown> = {
+      model: input.model,
+      messages: conversation,
+      tools: openAiTools,
+      tool_choice: "auto"
+    };
+    if (input.temperature !== undefined) baseParams.temperature = input.temperature;
+    if (input.responseFormat) baseParams.response_format = input.responseFormat;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const completion: any = await client.chat.completions.create(baseParams as any);
+
+    if (!completion?.choices) {
+      throw new Error("xAI returned a stream response unexpectedly");
+    }
+
+    finalModel = completion.model ?? finalModel;
+    if (completion.usage) {
+      totalPromptTokens += completion.usage.prompt_tokens ?? 0;
+      totalCompletionTokens += completion.usage.completion_tokens ?? 0;
+    }
+
+    const message = completion.choices[0]?.message;
+    if (!message) {
+      return {
+        content: "",
+        model: finalModel,
+        usage: { inputTokens: totalPromptTokens, outputTokens: totalCompletionTokens },
+        iterations,
+        toolCalls,
+        finalConversation: conversation,
+        finishReason: "empty"
+      };
+    }
+
+    const assistantEntry: Record<string, unknown> = {
+      role: "assistant",
+      content: message.content ?? null
+    };
+    if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+      assistantEntry.tool_calls = message.tool_calls;
+    }
+    conversation.push(assistantEntry);
+
+    const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+
+    if (calls.length === 0) {
+      return {
+        content: String(message.content ?? ""),
+        model: finalModel,
+        usage: { inputTokens: totalPromptTokens, outputTokens: totalCompletionTokens },
+        iterations,
+        toolCalls,
+        finalConversation: conversation,
+        finishReason: "stop"
+      };
+    }
+
+    for (const call of calls) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fn = (call as any).function;
+      const name = String(fn?.name ?? "");
+      let parsedInput: unknown = {};
+      try {
+        parsedInput = JSON.parse(String(fn?.arguments ?? "{}"));
+      } catch {
+        parsedInput = {};
+      }
+
+      const tool = toolMap.get(name);
+      const start = Date.now();
+      let output: unknown = null;
+      let error: string | null = null;
+
+      if (!tool) {
+        error = `Unknown tool: ${name}`;
+        output = { error };
+      } else {
+        try {
+          output = await tool.execute(parsedInput);
+        } catch (err) {
+          error = err instanceof Error ? err.message : String(err);
+          output = { error };
+        }
+      }
+
+      toolCalls.push({
+        tool: name,
+        input: parsedInput,
+        output,
+        latencyMs: Date.now() - start,
+        error
+      });
+
+      conversation.push({
+        role: "tool",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tool_call_id: (call as any).id,
+        content: JSON.stringify(output)
+      });
+    }
+  }
+
+  // Max iterations reached without a final text response.
+  return {
+    content: "",
+    model: finalModel,
+    usage: { inputTokens: totalPromptTokens, outputTokens: totalCompletionTokens },
+    iterations: max,
+    toolCalls,
+    finalConversation: conversation,
+    finishReason: "tool_iterations_exhausted"
+  };
 };
 
 export const listXaiModels = async () => {

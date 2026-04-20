@@ -9,14 +9,15 @@
  */
 
 import {
-  tradingDecisionJsonSchema,
   tradingDecisionSchema,
   type TradingDecision
 } from "@cosmu/shared";
 import type { BotSetup } from "../lib/store/bots.js";
 import { storeLLMCall } from "../lib/store/llm-calls.js";
-import { getProvider } from "../providers/xai.js";
+import { getProvider, runXaiAgentLoop, type AgenticTool, type AgentToolCallLog } from "../providers/xai.js";
 import type { LLMProvider, LLMMessage } from "../providers/llm.js";
+import { getAgentFacingTools } from "../mcp/index.js";
+import type { ToolContext } from "../mcp/types.js";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -31,6 +32,8 @@ export type TraderResult = {
   decision: TradingDecision;
   provider: string;
   model: string;
+  toolCalls: AgentToolCallLog[];
+  iterations: number;
 };
 
 export class DecisionParseError extends Error {
@@ -143,141 +146,156 @@ export const runResearchAgent = async (input: {
   throw lastError instanceof Error ? lastError : new Error("Research request failed");
 };
 
-// ─── Trader Agent ────────────────────────────────────────────────────
+// ─── Trader Agent (agentic — uses tool-use loop) ─────────────────────
 
-type ResponseStrategy = {
+type TraderAttemptStrategy = {
   label: string;
-  format?: Record<string, unknown>;
+  useTemperature: boolean;
+  responseFormat?: Record<string, unknown>;
 };
 
-const TRADER_STRATEGIES: ResponseStrategy[] = [
-  {
-    label: "json_schema",
-    format: {
-      type: "json_schema",
-      json_schema: {
-        name: "TradingDecision",
-        schema: tradingDecisionJsonSchema,
-        strict: true
-      }
-    }
-  },
-  { label: "json_object", format: { type: "json_object" } },
-  { label: "text" }
+const TRADER_ATTEMPT_STRATEGIES: TraderAttemptStrategy[] = [
+  { label: "tools+json_object", useTemperature: false, responseFormat: { type: "json_object" } },
+  { label: "tools+no_format", useTemperature: false }
 ];
+
+const buildAgenticTools = (toolContext: ToolContext): AgenticTool[] =>
+  getAgentFacingTools().map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema!,
+    execute: (input: unknown) => tool.execute(input, toolContext)
+  }));
 
 export const runTraderAgent = async (input: {
   bot: BotSetup;
   systemPrompt: string;
   userMessage: string;
   runId: string | null;
+  toolContext: ToolContext;
 }): Promise<TraderResult> => {
-  const { bot, systemPrompt, userMessage, runId } = input;
+  const { bot, systemPrompt, userMessage, runId, toolContext } = input;
   const provider = getTraderProvider(bot);
-  const temperature =
+  const configuredTemperature =
     typeof bot.traderModelSettings.temperature === "number" ? bot.traderModelSettings.temperature : undefined;
 
-  const messages: LLMMessage[] = [
+  const tools = buildAgenticTools(toolContext);
+  const loggedMessages: LLMMessage[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: userMessage }
   ];
 
   let lastError: unknown;
   const attemptErrors: string[] = [];
+  let attempt = 0;
 
-  for (const strategy of TRADER_STRATEGIES) {
-    // Try with and without temperature
-    for (const useTemp of [true, false]) {
-      const start = Date.now();
-      const attempt = attemptErrors.length + 1;
+  for (const strategy of TRADER_ATTEMPT_STRATEGIES) {
+    attempt += 1;
+    const start = Date.now();
 
+    try {
+      const result = await runXaiAgentLoop({
+        model: bot.traderModelIdentifier,
+        systemPrompt,
+        userMessage,
+        tools,
+        temperature: strategy.useTemperature ? configuredTemperature : undefined,
+        responseFormat: strategy.responseFormat,
+        maxIterations: 6
+      });
+
+      if (result.finishReason === "tool_iterations_exhausted") {
+        throw new Error(
+          `Trader exhausted tool iterations (${result.iterations}) without producing a final decision`
+        );
+      }
+
+      if (!result.content || !result.content.trim()) {
+        throw new Error("Trader returned empty final response");
+      }
+
+      const jsonText = extractJson(result.content);
+      let decision: TradingDecision;
       try {
-        const response = await provider.chat({
-          model: bot.traderModelIdentifier,
-          messages,
-          responseFormat: strategy.format,
-          temperature: useTemp ? temperature : undefined
-        });
+        decision = tradingDecisionSchema.parse(JSON.parse(jsonText));
+      } catch (parseError) {
+        throw new DecisionParseError(
+          `Invalid JSON decision (strategy: ${strategy.label})`,
+          result.content,
+          { cause: parseError }
+        );
+      }
 
-        const jsonText = extractJson(response.content);
-        let decision: TradingDecision;
-        try {
-          decision = tradingDecisionSchema.parse(JSON.parse(jsonText));
-        } catch (parseError) {
-          throw new DecisionParseError(
-            `Invalid JSON decision (strategy: ${strategy.label})`,
-            response.content,
-            { cause: parseError }
-          );
-        }
-
-        // Log successful call
-        if (runId) {
-          void storeLLMCall({
-            runId,
-            phase: "trader",
-            provider: provider.name,
-            model: response.model,
-            inputMessages: messages,
-            outputText: response.content,
-            inputTokens: response.usage?.inputTokens ?? null,
-            outputTokens: response.usage?.outputTokens ?? null,
-            latencyMs: Date.now() - start,
-            attempt,
-            strategy: strategy.label,
-            error: null
-          });
-        }
-
-        return {
-          rawText: response.content,
-          decision,
+      if (runId) {
+        void storeLLMCall({
+          runId,
+          phase: "trader",
           provider: provider.name,
-          model: response.model
-        };
-      } catch (error) {
-        lastError = error;
-        if (error instanceof DecisionParseError) {
-          // Log and rethrow parse errors — they contain the raw text for debugging
-          if (runId) {
-            void storeLLMCall({
-              runId,
-              phase: "trader",
-              provider: provider.name,
-              model: bot.traderModelIdentifier,
-              inputMessages: messages,
-              outputText: error.rawText,
-              inputTokens: null,
-              outputTokens: null,
-              latencyMs: Date.now() - start,
-              attempt,
-              strategy: strategy.label,
-              error: error.message
-            });
-          }
-          throw error;
-        }
+          model: result.model,
+          inputMessages: {
+            messages: loggedMessages,
+            tools: tools.map((t) => ({ name: t.name, description: t.description })),
+            toolCalls: result.toolCalls,
+            iterations: result.iterations
+          } as unknown,
+          outputText: result.content,
+          inputTokens: result.usage?.inputTokens ?? null,
+          outputTokens: result.usage?.outputTokens ?? null,
+          latencyMs: Date.now() - start,
+          attempt,
+          strategy: strategy.label,
+          error: null
+        });
+      }
 
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        attemptErrors.push(`${strategy.label}/${useTemp ? "temp" : "no-temp"}: ${errorMessage}`);
-
-        // Log failed call
+      return {
+        rawText: result.content,
+        decision,
+        provider: provider.name,
+        model: result.model,
+        toolCalls: result.toolCalls,
+        iterations: result.iterations
+      };
+    } catch (error) {
+      lastError = error;
+      if (error instanceof DecisionParseError) {
         if (runId) {
           void storeLLMCall({
             runId,
             phase: "trader",
             provider: provider.name,
             model: bot.traderModelIdentifier,
-            inputMessages: messages,
-            outputText: null,
+            inputMessages: loggedMessages,
+            outputText: error.rawText,
             inputTokens: null,
             outputTokens: null,
             latencyMs: Date.now() - start,
             attempt,
             strategy: strategy.label,
-            error: errorMessage
+            error: error.message
           });
         }
+        throw error;
+      }
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      attemptErrors.push(`${strategy.label}: ${errorMessage}`);
+
+      if (runId) {
+        void storeLLMCall({
+          runId,
+          phase: "trader",
+          provider: provider.name,
+          model: bot.traderModelIdentifier,
+          inputMessages: loggedMessages,
+          outputText: null,
+          inputTokens: null,
+          outputTokens: null,
+          latencyMs: Date.now() - start,
+          attempt,
+          strategy: strategy.label,
+          error: errorMessage
+        });
       }
     }
   }
