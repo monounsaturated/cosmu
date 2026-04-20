@@ -85,6 +85,13 @@ export const runResearchAgent = async (input: {
     { role: "user", content: userMessage }
   ];
 
+  // Enable Live Search on xAI so Grok can actually browse X / web / news
+  // instead of hallucinating catalysts and prices. Providers that don't
+  // understand the `searchParameters` field will ignore it.
+  const searchParameters = provider.name === "xai"
+    ? { mode: "auto" as const, return_citations: true }
+    : undefined;
+
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -93,7 +100,8 @@ export const runResearchAgent = async (input: {
       const response = await provider.chat({
         model: bot.modelIdentifier,
         messages,
-        temperature
+        temperature,
+        ...(searchParameters ? { searchParameters } : {})
       });
 
       // Log successful call

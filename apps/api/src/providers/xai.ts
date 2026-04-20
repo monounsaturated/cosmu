@@ -8,6 +8,7 @@ import { env } from "../env.js";
 import type { BotSetup } from "../lib/store.js";
 import type { LLMProvider, LLMChatInput, LLMResponse, LLMMessage } from "./llm.js";
 import type { ToolInputSchema } from "../mcp/types.js";
+import { toOpenAITools } from "./tool-adapters.js";
 
 const client = new OpenAI({
   apiKey: env.XAI_API_KEY,
@@ -23,7 +24,8 @@ export const xaiProvider: LLMProvider = {
       model: input.model,
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
       messages: input.messages.map((m) => ({ role: m.role, content: m.content })),
-      ...(input.responseFormat ? { response_format: input.responseFormat } : {})
+      ...(input.responseFormat ? { response_format: input.responseFormat } : {}),
+      ...(input.searchParameters ? { search_parameters: input.searchParameters } : {})
     } as Parameters<typeof client.chat.completions.create>[0]);
 
     if (!("choices" in completion)) {
@@ -353,16 +355,6 @@ export type AgenticChatResult = {
   finishReason: "stop" | "tool_iterations_exhausted" | "empty";
 };
 
-const toolCallsToOpenAI = (tools: AgenticTool[]) =>
-  tools.map((t) => ({
-    type: "function" as const,
-    function: {
-      name: t.name,
-      description: t.description,
-      parameters: t.inputSchema as unknown as Record<string, unknown>
-    }
-  }));
-
 /**
  * Run a tool-use agent loop against xAI (OpenAI-compatible).
  * The model can call tools between turns; we execute them and feed results back.
@@ -380,7 +372,7 @@ export const runXaiAgentLoop = async (input: {
 }): Promise<AgenticChatResult> => {
   const max = input.maxIterations ?? 6;
   const toolMap = new Map(input.tools.map((t) => [t.name, t]));
-  const openAiTools = toolCallsToOpenAI(input.tools);
+  const openAiTools = toOpenAITools(input.tools);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const conversation: any[] = [

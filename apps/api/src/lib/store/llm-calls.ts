@@ -43,7 +43,9 @@ export const getLLMCallsForRun = async (runId: string) =>
       output_tokens as "outputTokens",
       latency_ms as "latencyMs",
       attempt, strategy, error,
-      created_at as "createdAt"
+      created_at as "createdAt",
+      input_messages -> 'toolCalls' as "toolCalls",
+      input_messages -> 'iterations' as "iterations"
     from run_llm_calls
     where run_id = ${runId}
     order by created_at asc

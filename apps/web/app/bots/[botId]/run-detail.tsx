@@ -15,6 +15,14 @@ type Run = {
   validationResult?: { accepted: boolean; issues: string[] } | null;
 };
 
+type ToolCall = {
+  tool: string;
+  input: unknown;
+  output: unknown;
+  latencyMs: number;
+  error: string | null;
+};
+
 type LLMCall = {
   id: string;
   phase: string;
@@ -27,6 +35,8 @@ type LLMCall = {
   strategy: string | null;
   error: string | null;
   createdAt: string;
+  toolCalls: ToolCall[] | null;
+  iterations: number | null;
 };
 
 /* ── Phase splitting ── */
@@ -236,6 +246,65 @@ function InputBreakdown({ systemPrompt, userContext, phaseLabel, phaseColor, raw
 }
 
 
+function formatJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function ToolCallsList({ calls }: { calls: ToolCall[] }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div style={{ marginTop: "6px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <span style={{ fontSize: "11px", fontWeight: 600, color: "#60a5fa" }}>
+          Tool calls ({calls.length})
+        </span>
+        <ToggleButton visible={expanded} onClick={() => setExpanded((v) => !v)} />
+      </div>
+      {expanded && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "6px" }}>
+          {calls.map((c, i) => (
+            <div
+              key={i}
+              style={{
+                background: "#1e1e21",
+                border: "1px solid #27272a",
+                borderRadius: "4px",
+                padding: "8px 10px",
+                fontSize: "11px",
+                borderLeft: c.error ? "3px solid #ef4444" : "3px solid #60a5fa"
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                <span style={{ fontWeight: 600, fontFamily: "monospace" }}>{c.tool}</span>
+                <span className="muted">{c.latencyMs}ms</span>
+              </div>
+              <div style={{ marginBottom: "4px" }}>
+                <span className="muted" style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Input</span>
+                <pre style={{ ...preStyle, maxHeight: "160px", fontSize: "11px", marginTop: "2px" }}>
+                  {formatJson(c.input)}
+                </pre>
+              </div>
+              <div>
+                <span className="muted" style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Output</span>
+                <pre style={{ ...preStyle, maxHeight: "240px", fontSize: "11px", marginTop: "2px" }}>
+                  {formatJson(c.output)}
+                </pre>
+              </div>
+              {c.error && (
+                <div style={{ color: "#ef4444", marginTop: "4px", fontSize: "11px" }}>{c.error}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LLMCallsPanel({ runId }: { runId: string }) {
   const [calls, setCalls] = useState<LLMCall[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -283,14 +352,18 @@ function LLMCallsPanel({ runId }: { runId: string }) {
                     </span>
                     <span className="muted">{call.provider}/{call.model}</span>
                   </div>
-                  <div style={{ display: "flex", gap: "16px", color: "#a1a1aa" }}>
+                  <div style={{ display: "flex", gap: "16px", color: "#a1a1aa", flexWrap: "wrap" }}>
                     {call.inputTokens != null && <span>In: {call.inputTokens.toLocaleString()} tok</span>}
                     {call.outputTokens != null && <span>Out: {call.outputTokens.toLocaleString()} tok</span>}
                     {call.latencyMs != null && <span>{(call.latencyMs / 1000).toFixed(1)}s</span>}
                     {call.strategy && <span>Strategy: {call.strategy}</span>}
+                    {call.iterations != null && <span>Iterations: {call.iterations}</span>}
                   </div>
                   {call.error && (
                     <div style={{ color: "#ef4444", marginTop: "4px", fontSize: "11px" }}>{call.error}</div>
+                  )}
+                  {Array.isArray(call.toolCalls) && call.toolCalls.length > 0 && (
+                    <ToolCallsList calls={call.toolCalls} />
                   )}
                 </div>
               ))}
