@@ -51,7 +51,8 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
       const res = await fetch(`/api/bots/${botId}/run`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Run failed");
-      setFeedback({ type: "success", text: `Run ${data.status} (${data.runId.slice(0, 8)})` });
+      const idSuffix = data.runId ? ` (${data.runId.slice(0, 8)})` : "";
+      setFeedback({ type: "success", text: `Run ${data.status}${idSuffix}` });
       router.refresh();
     } catch (e) {
       setFeedback({ type: "error", text: e instanceof Error ? e.message : "Run failed" });

@@ -5,6 +5,7 @@ import { BotControls } from "../../bot-controls";
 import { AutoRefresh } from "../../live-refresh";
 import { LocalTime } from "../../local-time";
 import { RunDetail } from "./run-detail";
+import { LivePositions } from "./live-positions";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 export const dynamic = "force-dynamic";
@@ -77,7 +78,8 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
           <BotControls botId={botId} isActive={setup.runtimeConfig.enabled} />
         </div>
       </div>
-      <AutoRefresh intervalMs={30000} />
+      <AutoRefresh intervalMs={15000} />
+      <LivePositions botId={botId} />
 
       <div className="grid" style={{ marginBottom: "24px", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
         <div className="panel">

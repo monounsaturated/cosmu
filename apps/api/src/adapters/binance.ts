@@ -119,12 +119,12 @@ const binanceFetch = async (
   throw new Error(`Binance ${path} exceeded retry budget`);
 };
 
-const normalizeSymbol = (value: string) => value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+export const normalizeSymbol = (value: string) => value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
 
 const toNumber = (value: string | number | undefined, fallback = 0) =>
   value === undefined ? fallback : Number(value);
 
-const roundToStep = (value: number, step: number) => {
+export const roundToStep = (value: number, step: number) => {
   if (!Number.isFinite(step) || step <= 0) {
     return value;
   }
@@ -134,7 +134,7 @@ const roundToStep = (value: number, step: number) => {
   return Number(rounded.toFixed(precision));
 };
 
-const roundToTick = (value: number, tickSize: number) => {
+export const roundToTick = (value: number, tickSize: number) => {
   if (!Number.isFinite(tickSize) || tickSize <= 0) return value;
   const precision = tickSize.toString().includes(".") ? tickSize.toString().split(".")[1]!.length : 0;
   const rounded = Math.round(value / tickSize) * tickSize;
@@ -686,32 +686,33 @@ const ensureStableQuoteLiquidity = async (input: {
   }
 };
 
-const placeOcoSellOrder = async (input: {
+/**
+ * Place a single STOP_LOSS order on Binance that acts as a "disaster stop" —
+ * a wider safety net than the app-managed SL. The guardian loop normally fires
+ * first and cancels this order; the stop only triggers if the app is down or
+ * delayed past the safety threshold. Works on any spot symbol (no OCO support
+ * required).
+ */
+export const placeSafetyStopOrder = async (input: {
   mode: RuntimeConfig["mode"];
-  runId: string;
-  index: number;
   symbol: string;
   quantity: number;
-  takeProfitPrice: number;
-  stopLossPrice: number;
-}): Promise<{ ocoOrderListId: string; rawResponse: unknown }> => {
+  stopPrice: number;
+  clientOrderId: string;
+}): Promise<{ orderId: string; rawResponse: unknown }> => {
   const params = new URLSearchParams({
     symbol: input.symbol,
     side: "SELL",
+    type: "STOP_LOSS",
     quantity: input.quantity.toString(),
-    aboveType: "LIMIT_MAKER",
-    abovePrice: input.takeProfitPrice.toString(),
-    belowType: "STOP_LOSS_LIMIT",
-    belowPrice: input.stopLossPrice.toString(),
-    belowStopPrice: input.stopLossPrice.toString(),
-    belowTimeInForce: "GTC",
-    newOrderRespType: "FULL",
-    listClientOrderId: `${input.runId.replace(/-/g, "").slice(0, 16)}-oco-${input.index + 1}`
+    stopPrice: input.stopPrice.toString(),
+    newClientOrderId: input.clientOrderId.slice(0, 36),
+    newOrderRespType: "RESULT"
   });
 
   const rawResponse = await binanceFetch(
     input.mode,
-    "/v3/orderList/oco",
+    "/v3/order",
     {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -721,17 +722,216 @@ const placeOcoSellOrder = async (input: {
   );
 
   return {
-    ocoOrderListId: String(rawResponse.orderListId ?? ""),
+    orderId: String(rawResponse.orderId ?? ""),
     rawResponse
   };
+};
+
+export const cancelSafetyStopOrder = async (
+  mode: RuntimeConfig["mode"],
+  symbol: string,
+  orderId: string
+): Promise<"cancelled" | "not_found"> => {
+  const params = new URLSearchParams({
+    symbol: normalizeSymbol(symbol),
+    orderId,
+    timestamp: Date.now().toString(),
+    recvWindow: "5000"
+  });
+  params.set("signature", signParams(params, mode));
+
+  const response = await fetch(`${getBaseUrl(mode)}/v3/order?${params.toString()}`, {
+    method: "DELETE",
+    headers: { "X-MBX-APIKEY": getApiKey(mode) }
+  });
+
+  if (response.ok) return "cancelled";
+
+  const text = await response.text();
+  let code: number | undefined;
+  try {
+    code = JSON.parse(text)?.code;
+  } catch {
+    /* ignore */
+  }
+  // -2011: unknown order (already filled/cancelled/never existed) — treat as "not there".
+  if (response.status === 400 && code === -2011) return "not_found";
+  throw new Error(`Binance cancel order failed for ${symbol}/${orderId}: ${response.status} ${text}`);
+};
+
+export const getBinanceOrderStatus = async (
+  mode: RuntimeConfig["mode"],
+  symbol: string,
+  orderId: string
+): Promise<{
+  status: string;
+  executedQty: number;
+  avgPrice: number | null;
+  fills: unknown[];
+  raw: any;
+} | null> => {
+  const params = new URLSearchParams({
+    symbol: normalizeSymbol(symbol),
+    orderId,
+    timestamp: Date.now().toString(),
+    recvWindow: "5000"
+  });
+  params.set("signature", signParams(params, mode));
+
+  const response = await fetch(`${getBaseUrl(mode)}/v3/order?${params.toString()}`, {
+    method: "GET",
+    headers: { "X-MBX-APIKEY": getApiKey(mode) }
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    let code: number | undefined;
+    try {
+      code = JSON.parse(text)?.code;
+    } catch {
+      /* ignore */
+    }
+    if (response.status === 400 && code === -2013) return null; // order does not exist
+    throw new Error(`Binance getOrder failed for ${symbol}/${orderId}: ${response.status} ${text}`);
+  }
+
+  const raw = await response.json();
+  const executedQty = Number(raw.executedQty ?? 0);
+  const cumQuote = Number(raw.cummulativeQuoteQty ?? 0);
+  return {
+    status: String(raw.status ?? ""),
+    executedQty,
+    avgPrice: executedQty > 0 ? cumQuote / executedQty : null,
+    fills: raw.fills ?? [],
+    raw
+  };
+};
+
+/**
+ * Fire a MARKET SELL for the given qty and return an ExecutionRecord.
+ * Used by the guardian loop (SL/TP fire) and kill-bot fallback paths that
+ * bypass the main `executeOrders` flow.
+ */
+export const placeMarketSell = async (input: {
+  mode: RuntimeConfig["mode"];
+  venue: RuntimeConfig["venue"];
+  assetClass: RuntimeConfig["assetClass"];
+  symbol: string;
+  quantity: number;
+  clientOrderIdPrefix: string;
+  stopLossPrice: number | null;
+  takeProfitPrice: number | null;
+}): Promise<ExecutionRecord> => {
+  const symbol = normalizeSymbol(input.symbol);
+  const params = new URLSearchParams({
+    symbol,
+    side: "SELL",
+    type: "MARKET",
+    quantity: input.quantity.toString(),
+    newClientOrderId: `${input.clientOrderIdPrefix}-${Date.now().toString(36)}`.slice(0, 36),
+    newOrderRespType: "FULL"
+  });
+
+  try {
+    const rawVenueResponse = await binanceFetch(
+      input.mode,
+      "/v3/order",
+      {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: params.toString()
+      },
+      true
+    );
+
+    const fills = rawVenueResponse.fills ?? [];
+    const feeAmount = fills.reduce((sum: number, fill: any) => sum + Number(fill.commission ?? 0), 0);
+    const feeAsset = fills[0]?.commissionAsset ?? null;
+    const averageFillPrice =
+      fills.length > 0
+        ? fills.reduce((sum: number, fill: any) => sum + Number(fill.price) * Number(fill.qty), 0) /
+          fills.reduce((sum: number, fill: any) => sum + Number(fill.qty), 0)
+        : rawVenueResponse.price
+          ? Number(rawVenueResponse.price)
+          : null;
+    const executedQuantity = Number(rawVenueResponse.executedQty ?? input.quantity);
+    const executedNotionalUsd =
+      averageFillPrice === null ? null : Number((executedQuantity * averageFillPrice).toFixed(8));
+
+    return executionRecordSchema.parse({
+      assetClass: input.assetClass,
+      venue: input.venue,
+      status: "success",
+      symbol,
+      side: "sell",
+      orderType: "market",
+      requestedQuantity: input.quantity,
+      executedQuantity,
+      requestedLimitPrice: null,
+      averageFillPrice,
+      executedNotionalUsd,
+      feeAmount,
+      feeAsset,
+      feeAssetUsdPrice: null,
+      feeUsd: null,
+      slippagePct: null,
+      stopLossPrice: input.stopLossPrice,
+      takeProfitPrice: input.takeProfitPrice,
+      ocoOrderId: null,
+      orderIntent: {
+        symbol,
+        side: "sell",
+        type: "market",
+        quantity: input.quantity,
+        limitPrice: null,
+        stopLossPrice: null,
+        takeProfitPrice: null,
+        rationale: "Guardian-triggered market sell (SL/TP or safety)"
+      },
+      rawVenueResponse
+    });
+  } catch (error) {
+    return executionRecordSchema.parse({
+      assetClass: input.assetClass,
+      venue: input.venue,
+      status: "uncertain",
+      symbol,
+      side: "sell",
+      orderType: "market",
+      requestedQuantity: input.quantity,
+      executedQuantity: null,
+      requestedLimitPrice: null,
+      averageFillPrice: null,
+      executedNotionalUsd: null,
+      feeAmount: null,
+      feeAsset: null,
+      feeAssetUsdPrice: null,
+      feeUsd: null,
+      slippagePct: null,
+      stopLossPrice: input.stopLossPrice,
+      takeProfitPrice: input.takeProfitPrice,
+      ocoOrderId: null,
+      orderIntent: {
+        symbol,
+        side: "sell",
+        type: "market",
+        quantity: input.quantity,
+        limitPrice: null,
+        stopLossPrice: null,
+        takeProfitPrice: null,
+        rationale: "Guardian-triggered market sell (SL/TP or safety)"
+      },
+      rawVenueResponse: {
+        error: error instanceof Error ? error.message : "Unknown Binance market sell error"
+      }
+    });
+  }
 };
 
 const buildExecutionRecord = (input: {
   runtimeConfig: RuntimeConfig;
   order: OrderIntent & { symbol: string; quantity: number; limitPrice: number | null; stopLossPrice: number | null; takeProfitPrice: number | null };
   rawVenueResponse: any;
-  ocoOrderId: string | null;
-  ocoError?: string | null;
 }): ExecutionRecord => {
   const fills = input.rawVenueResponse.fills ?? [];
   const feeAmount = fills.reduce((sum: number, fill: any) => sum + Number(fill.commission ?? 0), 0);
@@ -747,22 +947,10 @@ const buildExecutionRecord = (input: {
   const executedNotionalUsd =
     averageFillPrice === null ? null : Number((executedQuantity * averageFillPrice).toFixed(8));
 
-  // If a buy filled but OCO SL/TP didn't attach, the position is unprotected —
-  // mark the execution uncertain so the dashboard flags it instead of showing
-  // a clean "success".
-  const isBuy = input.order.side === "buy";
-  const hasOcoIntent = Boolean(input.order.stopLossPrice && input.order.takeProfitPrice);
-  const ocoMissing = isBuy && hasOcoIntent && !input.ocoOrderId;
-  const status = ocoMissing ? "uncertain" : "success";
-
-  const rawResponseWithMeta = input.ocoError
-    ? { ...input.rawVenueResponse, ocoError: input.ocoError }
-    : input.rawVenueResponse;
-
   return executionRecordSchema.parse({
     assetClass: input.runtimeConfig.assetClass,
     venue: input.runtimeConfig.venue,
-    status,
+    status: "success",
     symbol: input.order.symbol,
     side: input.order.side,
     orderType: input.order.type,
@@ -778,9 +966,9 @@ const buildExecutionRecord = (input: {
     slippagePct: null,
     stopLossPrice: input.order.stopLossPrice,
     takeProfitPrice: input.order.takeProfitPrice,
-    ocoOrderId: input.ocoOrderId,
+    ocoOrderId: null,
     orderIntent: input.order,
-    rawVenueResponse: rawResponseWithMeta
+    rawVenueResponse: input.rawVenueResponse
   });
 };
 
@@ -843,47 +1031,13 @@ export const executeOrders = async (input: {
         true
       );
 
-      let ocoOrderId: string | null = null;
-      let ocoError: string | null = null;
-
-      // After a BUY fills, place an OCO sell for SL/TP protection.
-      // If this fails, the buy stays filled WITHOUT protection — we mark the
-      // record `uncertain` below so it surfaces in the dashboard instead of
-      // being silently logged.
-      if (order.side === "buy" && order.stopLossPrice && order.takeProfitPrice) {
-        const executedQty = Number(rawVenueResponse.executedQty ?? order.quantity);
-        const rules = input.venueContext.symbolRules[order.symbol];
-        const ocoQty = rules ? roundToStep(executedQty, rules.stepSize) : executedQty;
-
-        if (ocoQty <= 0) {
-          ocoError = "Executed quantity rounds to 0 after stepSize — cannot place OCO";
-          console.error(`[binance] OCO SL/TP skipped for ${order.symbol}: ${ocoError}`);
-        } else {
-          try {
-            const ocoResult = await placeOcoSellOrder({
-              mode: input.runtimeConfig.mode,
-              runId: input.runId,
-              index,
-              symbol: order.symbol,
-              quantity: ocoQty,
-              takeProfitPrice: order.takeProfitPrice,
-              stopLossPrice: order.stopLossPrice
-            });
-            ocoOrderId = ocoResult.ocoOrderListId;
-            console.log(`[binance] OCO SL/TP placed for ${order.symbol}: SL=${order.stopLossPrice} TP=${order.takeProfitPrice} ocoId=${ocoOrderId}`);
-          } catch (err) {
-            ocoError = err instanceof Error ? err.message : String(err);
-            console.error(`[binance] OCO SL/TP failed for ${order.symbol}:`, ocoError);
-          }
-        }
-      }
-
+      // SL/TP are now enforced in-app by the guardian loop and protected by a
+      // separate Binance "safety stop" placed post-fill in run-bot.ts (so the
+      // execution adapter stays purely about placing the primary order).
       const record = buildExecutionRecord({
         runtimeConfig: input.runtimeConfig,
         order,
-        rawVenueResponse,
-        ocoOrderId,
-        ocoError
+        rawVenueResponse
       });
 
       const feeAssetUsdPrice = await getUsdPriceForAsset(input.runtimeConfig.mode, record.feeAsset, input.venueContext);

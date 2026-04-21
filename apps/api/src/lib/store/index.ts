@@ -27,6 +27,17 @@ export {
 } from "./runs.js";
 
 export { storeExecutionRecords } from "./executions.js";
+export type { StoredExecution } from "./executions.js";
+
+export {
+  openPosition,
+  listActivePositions,
+  listActivePositionsForBotSymbol,
+  closePosition,
+  updateSafetyStop,
+  applySellToOpenPositions
+} from "./positions.js";
+export type { BotPosition, PositionCloseReason } from "./positions.js";
 export { storePortfolioSnapshot } from "./snapshots.js";
 
 export {

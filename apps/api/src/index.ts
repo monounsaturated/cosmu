@@ -24,16 +24,18 @@ import {
   listTraderPrompts,
   createTraderPrompt,
   touchResearchPromptUsage,
-  touchTraderPromptUsage
+  touchTraderPromptUsage,
+  listActivePositions
 } from "./lib/store.js";
 import { getDashboard } from "./services/dashboard.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
 import { listXaiModels } from "./providers/xai.js";
 import { BOOTSTRAP_XAI_PROFILES, bootstrapModelProfiles, getVenueSymbols, syncProviderModels } from "./services/catalog.js";
-import { getAccountBalance } from "./adapters/binance.js";
+import { getAccountBalance, getAllTickerPrices, normalizeSymbol } from "./adapters/binance.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
 import { killBotAndLiquidate } from "./services/kill-bot.js";
+import { startGuardian } from "./services/guardian.js";
 import { listTools } from "./mcp/index.js";
 
 const app = express();
@@ -271,6 +273,60 @@ app.get("/bots/:botId/details", async (request, response, next) => {
     const { getBotPrePromptContext } = await import("./lib/store.js");
     const details = await getBotPrePromptContext({ botId: request.params.botId, pastTradesLookback: 100 });
     response.json(details);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/bots/:botId/positions", async (request, response, next) => {
+  try {
+    const bot = await getBotSetupById(request.params.botId);
+    if (!bot) {
+      response.status(404).json({ error: "Bot not found" });
+      return;
+    }
+    const positions = await listActivePositions(bot.id);
+    if (positions.length === 0) {
+      response.json({ positions: [] });
+      return;
+    }
+
+    const priceMap: Record<string, number> = {};
+    try {
+      const tickers = await getAllTickerPrices(bot.runtimeConfig.mode);
+      if (Array.isArray(tickers)) {
+        for (const t of tickers as Array<{ symbol: string; price: string }>) {
+          priceMap[normalizeSymbol(String(t.symbol ?? ""))] = Number(t.price);
+        }
+      }
+    } catch (err) {
+      console.warn(`[positions] ticker fetch failed for bot ${bot.id}:`, err instanceof Error ? err.message : err);
+    }
+
+    response.json({
+      positions: positions.map((p) => {
+        const currentPrice = priceMap[normalizeSymbol(p.symbol)] ?? null;
+        const pnlPct = currentPrice && p.avgEntryPrice > 0
+          ? ((currentPrice - p.avgEntryPrice) / p.avgEntryPrice) * 100
+          : null;
+        const unrealizedPnlUsd = currentPrice
+          ? (currentPrice - p.avgEntryPrice) * p.quantity
+          : null;
+        return {
+          id: p.id,
+          symbol: p.symbol,
+          quantity: p.quantity,
+          avgEntryPrice: p.avgEntryPrice,
+          stopLossPrice: p.stopLossPrice,
+          takeProfitPrice: p.takeProfitPrice,
+          safetyStopPrice: p.safetyStopPrice,
+          openedAt: p.openedAt,
+          currentPrice,
+          pnlPct,
+          unrealizedPnlUsd
+        };
+      })
+    });
   } catch (error) {
     next(error);
   }
@@ -707,5 +763,6 @@ const startSchedulerLoop = () => {
 app.listen(env.API_PORT, "0.0.0.0", () => {
   startCatalogSyncLoop();
   startSchedulerLoop();
+  startGuardian();
   console.log(`API listening on http://0.0.0.0:${env.API_PORT}`);
 });

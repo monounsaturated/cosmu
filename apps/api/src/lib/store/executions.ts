@@ -14,12 +14,19 @@ const isLegacyExecutionColumnsError = (error: unknown) => {
   );
 };
 
-export const storeExecutionRecords = async (runId: string, executionRecords: ExecutionRecord[]) => {
+export type StoredExecution = { id: string; record: ExecutionRecord };
+
+export const storeExecutionRecords = async (
+  runId: string,
+  executionRecords: ExecutionRecord[]
+): Promise<StoredExecution[]> => {
+  const stored: StoredExecution[] = [];
+
   for (const execution of executionRecords) {
     const parsed = executionRecordSchema.parse(execution);
 
     const insertWithFullColumns = async () =>
-      sql`
+      sql<{ id: string }[]>`
         insert into executions (
           run_id, asset_class, venue, status, symbol, side, order_type,
           requested_quantity, executed_quantity, requested_limit_price,
@@ -38,10 +45,11 @@ export const storeExecutionRecords = async (runId: string, executionRecords: Exe
           ${sql.json(parsed.orderIntent)},
           ${sql.json(parsed.rawVenueResponse as JsonValue)}
         )
+        returning id
       `;
 
     const insertLegacy = async () =>
-      sql`
+      sql<{ id: string }[]>`
         insert into executions (
           run_id, asset_class, venue, status, symbol, side, order_type,
           requested_quantity, executed_quantity, requested_limit_price,
@@ -58,20 +66,25 @@ export const storeExecutionRecords = async (runId: string, executionRecords: Exe
           ${sql.json(parsed.orderIntent)},
           ${sql.json(parsed.rawVenueResponse as JsonValue)}
         )
+        returning id
       `;
 
-    if (executionColumnsMode === "legacy") {
-      await insertLegacy();
-      continue;
-    }
+    const runInsert = async () => {
+      if (executionColumnsMode === "legacy") return insertLegacy();
+      try {
+        const rows = await insertWithFullColumns();
+        executionColumnsMode = "full";
+        return rows;
+      } catch (error) {
+        if (!isLegacyExecutionColumnsError(error)) throw error;
+        executionColumnsMode = "legacy";
+        return insertLegacy();
+      }
+    };
 
-    try {
-      await insertWithFullColumns();
-      executionColumnsMode = "full";
-    } catch (error) {
-      if (!isLegacyExecutionColumnsError(error)) throw error;
-      executionColumnsMode = "legacy";
-      await insertLegacy();
-    }
+    const [row] = await runInsert();
+    stored.push({ id: row.id, record: parsed });
   }
+
+  return stored;
 };

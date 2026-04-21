@@ -7,6 +7,7 @@ import {
   storeDecision,
   storeExecutionRecords,
   storePortfolioSnapshot,
+  applySellToOpenPositions,
   type BotSetup
 } from "../lib/store.js";
 import {
@@ -152,7 +153,28 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
       });
     }
 
-    await storeExecutionRecords(runId, executions);
+    const storedExecutions = await storeExecutionRecords(runId, executions);
+
+    // Kill-mode sells also need to FIFO-close positions so the ledger stays consistent.
+    for (const { id: executionId, record } of storedExecutions) {
+      if (record.status !== "success" || record.side !== "sell") continue;
+      const qty = record.executedQuantity ?? 0;
+      const price = record.averageFillPrice ?? record.requestedLimitPrice ?? null;
+      if (qty <= 0 || !price) continue;
+      try {
+        await applySellToOpenPositions({
+          botId: bot.id,
+          symbol: record.symbol,
+          sellQuantity: qty,
+          sellPrice: price,
+          sellFeeUsd: record.feeUsd ?? 0,
+          closeExecutionId: executionId,
+          closeReason: "manual"
+        });
+      } catch (err) {
+        console.error(`[kill-bot] applySellToOpenPositions failed for ${record.symbol}:`, err);
+      }
+    }
 
     // After snapshot
     const afterLedger = await listBotExecutionLedger(bot.id);

@@ -5,7 +5,13 @@
  * Uses the new pipeline, MCP tools, and LLM call logging.
  */
 
-import { loadVenueContext, executeOrders } from "../adapters/binance.js";
+import {
+  loadVenueContext,
+  executeOrders,
+  placeSafetyStopOrder,
+  roundToStep,
+  roundToTick
+} from "../adapters/binance.js";
 import {
   createRun,
   finishRun,
@@ -18,6 +24,9 @@ import {
   storeTraderOutput,
   updateRunPrompts,
   storePortfolioSnapshot,
+  openPosition,
+  applySellToOpenPositions,
+  updateSafetyStop,
   type BotSetup
 } from "../lib/store.js";
 import {
@@ -215,7 +224,82 @@ export const runBot = async (bot: BotSetup) => {
       venueContext: decisionVenueContext
     });
 
-    await storeExecutionRecords(runId, executions);
+    const storedExecutions = await storeExecutionRecords(runId, executions);
+
+    // ── 6b. Update per-bot position ledger ───────────────────────────
+    // Buy with SL/TP and a real fill → open a position row.
+    // Sell with a real fill → FIFO-close open positions for that symbol.
+    for (const { id: executionId, record } of storedExecutions) {
+      if (record.status !== "success") continue;
+      const qty = record.executedQuantity ?? 0;
+      const price = record.averageFillPrice ?? record.requestedLimitPrice ?? null;
+      if (qty <= 0 || !price) continue;
+
+      if (record.side === "buy" && record.stopLossPrice && record.takeProfitPrice) {
+        const feeUsd = record.feeUsd ?? 0;
+        const costBasisUsd = qty * price + feeUsd;
+        let createdPositionId: string | null = null;
+        try {
+          const pos = await openPosition({
+            botId: bot.id,
+            symbol: record.symbol,
+            quantity: qty,
+            avgEntryPrice: price,
+            costBasisUsd,
+            stopLossPrice: record.stopLossPrice,
+            takeProfitPrice: record.takeProfitPrice,
+            buyExecutionId: executionId
+          });
+          createdPositionId = pos.id;
+        } catch (err) {
+          console.error(`[run-bot] openPosition failed for ${record.symbol}:`, err);
+        }
+
+        // Place Binance "safety stop" — a wider STOP_LOSS that protects us if
+        // the app is down when the app-SL triggers. Guardian normally fires
+        // first and cancels this order before selling.
+        if (createdPositionId) {
+          const safetyPct = 0.10; // 10% wider than app SL
+          const rules = decisionVenueContext.symbolRules[record.symbol];
+          const rawSafety = record.stopLossPrice * (1 - safetyPct);
+          const safetyPrice = rules ? roundToTick(rawSafety, rules.tickSize) : rawSafety;
+          const safetyQty = rules ? roundToStep(qty, rules.stepSize) : qty;
+          if (safetyPrice > 0 && safetyQty > 0 && (!rules || safetyQty >= rules.minQty)) {
+            try {
+              const result = await placeSafetyStopOrder({
+                mode: bot.runtimeConfig.mode,
+                symbol: record.symbol,
+                quantity: safetyQty,
+                stopPrice: safetyPrice,
+                clientOrderId: `safety-${createdPositionId.replace(/-/g, "").slice(0, 12)}-${Date.now().toString(36)}`
+              });
+              await updateSafetyStop(createdPositionId, safetyPrice, result.orderId);
+            } catch (err) {
+              console.error(`[run-bot] safety stop placement failed for ${record.symbol}:`, err instanceof Error ? err.message : err);
+            }
+          }
+        }
+      } else if (record.side === "sell") {
+        try {
+          const result = await applySellToOpenPositions({
+            botId: bot.id,
+            symbol: record.symbol,
+            sellQuantity: qty,
+            sellPrice: price,
+            sellFeeUsd: record.feeUsd ?? 0,
+            closeExecutionId: executionId,
+            closeReason: "run_sell"
+          });
+          if (result.unmatchedQuantity > 1e-8) {
+            console.warn(
+              `[run-bot] sell ${record.symbol} left ${result.unmatchedQuantity} unmatched (no open position)`
+            );
+          }
+        } catch (err) {
+          console.error(`[run-bot] applySellToOpenPositions failed for ${record.symbol}:`, err);
+        }
+      }
+    }
 
     // ── 7. After snapshot ────────────────────────────────────────────
     const afterLedger = await listBotExecutionLedger(bot.id);
