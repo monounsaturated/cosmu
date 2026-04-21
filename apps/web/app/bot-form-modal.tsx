@@ -86,6 +86,35 @@ BUY SOLUSDT qty=2.5 @ 142.80 → success`,
   },
 };
 
+// Research grounding block — only appended for xAI providers (matches
+// `RESEARCH_GROUNDING_BLOCK` in apps/api/src/services/prompt-context.ts).
+// Keep the text in sync with the backend.
+const RESEARCH_GROUNDING_PREVIEW = {
+  label: "Grounding Rules (xAI only)",
+  preview: `---
+GROUNDING RULES (critical — your output feeds live trading decisions):
+• Today's date is ${new Date().toISOString().slice(0, 10)}. Any cited news, tweet, or price MUST come from a search you actually ran this turn — you have web_search and x_search tools available.
+• For ANY claim about recent prices, news, tweets, or market events: call a search tool first. Never cite a date, username, or headline you did not just retrieve.
+• If a search returns no results or the tools are unavailable for some reason, say so explicitly ("unable to retrieve live data for X") and do NOT invent content to fill the gap. A short, honest report beats a detailed fabricated one.
+• When quoting tweets/posts, include the exact retrieved timestamp. When citing prices, state the source and time. Do not round timestamps to "today" unless they actually are today.`,
+};
+
+// Non-negotiable constraints appended to every trader system prompt (matches
+// `NON_NEGOTIABLE_CONSTRAINTS_BLOCK` in apps/api/src/services/prompt-context.ts).
+// Keep the text in sync with the backend.
+const TRADER_NON_NEGOTIABLE_PREVIEW = {
+  label: "Non-Negotiable Constraints",
+  preview: `---
+NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):
+• Every BUY order MUST include stopLossPrice (strictly below entry) AND takeProfitPrice (strictly above entry).
+  The entry reference is the currentPrice returned by \`binance_symbol_lookup\` for that symbol — NOT any price mentioned in the upstream research.
+  After a buy fills, an OCO SELL is automatically placed at those two levels. Buys missing SL/TP, or with SL/TP on the wrong side of currentPrice, are silently dropped.
+• For SELL orders: set stopLossPrice and takeProfitPrice to null.
+• Never place a buy for a symbol you have not verified tradable via \`binance_symbol_lookup\` in this turn. If tradable:false, drop that candidate.
+• No defensible trade? Return mode='hold' with an empty orders array.
+• Final reply (after all tool calls) MUST be one JSON object matching TradingDecision — no markdown fences, no prose outside the JSON.`,
+};
+
 // Always-injected sections for the trader prompt (non-toggleable)
 const ALWAYS_INJECTED_TRADER: { label: string; preview: string }[] = [
   {
@@ -130,6 +159,7 @@ SOLUSDT: 142.80`,
     preview: `=== TRADING SCOPE ===
 You may trade ANY stable-quoted spot pair available on Binance (USDT or USDC; USDT preferred, USDC fallback). Pick your symbols based on your own analysis.`,
   },
+  TRADER_NON_NEGOTIABLE_PREVIEW,
 ];
 
 type Prompt = {
@@ -1419,7 +1449,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
               onSaveNewVersion={handleSaveResearchVersion}
               savingVersion={researchSavingVersion}
               loadingBody={false}
-              alwaysInjected={[]}
+              alwaysInjected={selectedResearchProvider === "xai" ? [RESEARCH_GROUNDING_PREVIEW] : []}
               nextPromptNumber={nextResearchPromptNumber}
               providerOptions={providerOptions}
               selectedProvider={selectedResearchProvider}

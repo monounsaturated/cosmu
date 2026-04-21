@@ -220,7 +220,13 @@ type BuildPromptContextInput = {
 export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildPromptContextInput) => {
   const { runtimeConfig } = bot;
 
-  const systemPrompt = [bot.promptBody.trim(), RESEARCH_GROUNDING_BLOCK].join("\n\n");
+  // Grounding block is xAI-specific: only xAI research runs through the Responses
+  // API with web_search/x_search, so only xAI needs the "cite only what you just
+  // retrieved" guardrails. Other providers don't have browsing wired in and the
+  // block would mislead them.
+  const parts = [bot.promptBody.trim()];
+  if (bot.modelProvider === "xai") parts.push(RESEARCH_GROUNDING_BLOCK);
+  const systemPrompt = parts.join("\n\n");
   const userMessage = "Analyze the market now. Identify any trading opportunities worth exploring.";
 
   const compactContext: Record<string, unknown> = {
