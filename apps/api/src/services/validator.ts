@@ -99,6 +99,14 @@ export const validateDecision = async (input: {
         if (!normalized.stopLossPrice || !normalized.takeProfitPrice) {
           throw new Error(`Buy order for ${normalized.symbol} must include both stopLossPrice and takeProfitPrice`);
         }
+
+        // 7b. Refuse buys on symbols that can't carry an OCO SL/TP — the
+        // SL/TP contract is enforced via a post-buy OCO SELL, so if the
+        // symbol doesn't support it we'd place an unprotected long.
+        const symRules = input.venueContext.symbolRules[normalized.symbol];
+        if (symRules && !symRules.ocoAllowed) {
+          throw new Error(`Symbol ${normalized.symbol} does not support OCO on Binance; cannot attach SL/TP after buy`);
+        }
         if (referencePrice) {
           if (normalized.stopLossPrice >= referencePrice) {
             throw new Error(`stopLossPrice (${normalized.stopLossPrice}) must be below current price (${referencePrice}) for ${normalized.symbol}`);

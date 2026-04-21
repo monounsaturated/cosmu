@@ -17,6 +17,11 @@ type SymbolRules = {
   symbol: string;
   status: string;
   orderTypes: string[];
+  // `ocoAllowed` (Binance exchangeInfo flag) tells us whether we can attach
+  // a post-buy OCO SELL for SL/TP. Some symbols (esp. newer meme/leveraged
+  // pairs) lack it — we must refuse buys on those since the NON_NEGOTIABLE
+  // contract says every buy gets SL/TP protection.
+  ocoAllowed: boolean;
   stepSize: number;
   minQty: number;
   minNotional: number;
@@ -145,6 +150,7 @@ const parseSymbolRules = (exchangeInfo: any): SymbolRules => {
     symbol: exchangeInfo.symbol,
     status: exchangeInfo.status,
     orderTypes: exchangeInfo.orderTypes ?? [],
+    ocoAllowed: Boolean(exchangeInfo.ocoAllowed ?? exchangeInfo.otoAllowed ?? false),
     stepSize: toNumber(lotSize?.stepSize, 0.000001),
     minQty: toNumber(lotSize?.minQty, 0),
     minNotional: toNumber(minNotional?.minNotional, 0),
@@ -725,6 +731,7 @@ const buildExecutionRecord = (input: {
   order: OrderIntent & { symbol: string; quantity: number; limitPrice: number | null; stopLossPrice: number | null; takeProfitPrice: number | null };
   rawVenueResponse: any;
   ocoOrderId: string | null;
+  ocoError?: string | null;
 }): ExecutionRecord => {
   const fills = input.rawVenueResponse.fills ?? [];
   const feeAmount = fills.reduce((sum: number, fill: any) => sum + Number(fill.commission ?? 0), 0);
@@ -740,10 +747,22 @@ const buildExecutionRecord = (input: {
   const executedNotionalUsd =
     averageFillPrice === null ? null : Number((executedQuantity * averageFillPrice).toFixed(8));
 
+  // If a buy filled but OCO SL/TP didn't attach, the position is unprotected —
+  // mark the execution uncertain so the dashboard flags it instead of showing
+  // a clean "success".
+  const isBuy = input.order.side === "buy";
+  const hasOcoIntent = Boolean(input.order.stopLossPrice && input.order.takeProfitPrice);
+  const ocoMissing = isBuy && hasOcoIntent && !input.ocoOrderId;
+  const status = ocoMissing ? "uncertain" : "success";
+
+  const rawResponseWithMeta = input.ocoError
+    ? { ...input.rawVenueResponse, ocoError: input.ocoError }
+    : input.rawVenueResponse;
+
   return executionRecordSchema.parse({
     assetClass: input.runtimeConfig.assetClass,
     venue: input.runtimeConfig.venue,
-    status: "success",
+    status,
     symbol: input.order.symbol,
     side: input.order.side,
     orderType: input.order.type,
@@ -761,7 +780,7 @@ const buildExecutionRecord = (input: {
     takeProfitPrice: input.order.takeProfitPrice,
     ocoOrderId: input.ocoOrderId,
     orderIntent: input.order,
-    rawVenueResponse: input.rawVenueResponse
+    rawVenueResponse: rawResponseWithMeta
   });
 };
 
@@ -825,14 +844,21 @@ export const executeOrders = async (input: {
       );
 
       let ocoOrderId: string | null = null;
+      let ocoError: string | null = null;
 
-      // After a BUY fills, place an OCO sell for SL/TP protection
+      // After a BUY fills, place an OCO sell for SL/TP protection.
+      // If this fails, the buy stays filled WITHOUT protection — we mark the
+      // record `uncertain` below so it surfaces in the dashboard instead of
+      // being silently logged.
       if (order.side === "buy" && order.stopLossPrice && order.takeProfitPrice) {
         const executedQty = Number(rawVenueResponse.executedQty ?? order.quantity);
         const rules = input.venueContext.symbolRules[order.symbol];
         const ocoQty = rules ? roundToStep(executedQty, rules.stepSize) : executedQty;
 
-        if (ocoQty > 0) {
+        if (ocoQty <= 0) {
+          ocoError = "Executed quantity rounds to 0 after stepSize — cannot place OCO";
+          console.error(`[binance] OCO SL/TP skipped for ${order.symbol}: ${ocoError}`);
+        } else {
           try {
             const ocoResult = await placeOcoSellOrder({
               mode: input.runtimeConfig.mode,
@@ -845,8 +871,9 @@ export const executeOrders = async (input: {
             });
             ocoOrderId = ocoResult.ocoOrderListId;
             console.log(`[binance] OCO SL/TP placed for ${order.symbol}: SL=${order.stopLossPrice} TP=${order.takeProfitPrice} ocoId=${ocoOrderId}`);
-          } catch (ocoError) {
-            console.error(`[binance] OCO SL/TP failed for ${order.symbol}:`, ocoError instanceof Error ? ocoError.message : ocoError);
+          } catch (err) {
+            ocoError = err instanceof Error ? err.message : String(err);
+            console.error(`[binance] OCO SL/TP failed for ${order.symbol}:`, ocoError);
           }
         }
       }
@@ -855,7 +882,8 @@ export const executeOrders = async (input: {
         runtimeConfig: input.runtimeConfig,
         order,
         rawVenueResponse,
-        ocoOrderId
+        ocoOrderId,
+        ocoError
       });
 
       const feeAssetUsdPrice = await getUsdPriceForAsset(input.runtimeConfig.mode, record.feeAsset, input.venueContext);

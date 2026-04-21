@@ -67,7 +67,7 @@ export const DEFAULT_FORMATTER_BODY = [
   "- globalRationale: <=4000 chars tying research + tool-returned facts to orders (or explaining why flat).",
   "- confidence: number in [0,1].",
   "- timeHorizon: short string or null.",
-  "- orders: array (<= max orders/run). Each: symbol, side buy|sell, type market|limit, quantity (>0), limitPrice (null unless limit), stopLossPrice, takeProfitPrice, rationale.",
+  "- orders: array. Each: symbol, side buy|sell, type market|limit, quantity (>0), limitPrice (null unless limit), stopLossPrice, takeProfitPrice, rationale. If execution rules are enforced, respect the max orders/run and max notional/order stated above; otherwise size the basket yourself.",
   "- targetAllocations: usually []."
 ].join("\n");
 
@@ -93,20 +93,29 @@ const buildSessionSection = (bot: BotSetup) => [
 ].join("\n");
 
 const buildExecRulesSection = (exec: BotSetup["runtimeConfig"]["execution"]) => {
+  // When rules are disabled, deliberately do NOT surface the configured
+  // max-orders-per-run / max-notional numbers: the model will anchor on them
+  // and produce baskets of exactly that size even though nothing is enforced.
+  // Only mention the caps when they're actually live.
+  if (!exec.enabled) {
+    return [
+      "=== EXECUTION RULES ===",
+      "Rules enforced: NO (relaxed) — no order-count or per-order notional caps.",
+      "Size and count of orders are up to your judgment. Total spend is still bounded by the bot's budget and by available wallet balance; Binance tradability rules (min notional, lot size) still apply.",
+      "Allowed order types: MARKET, LIMIT"
+    ].join("\n");
+  }
+
   const allowedTypes = [exec.allowMarketOrders && "MARKET", exec.allowLimitOrders && "LIMIT"]
     .filter(Boolean)
     .join(", ");
   return [
     "=== EXECUTION RULES ===",
-    `Rules enforced: ${exec.enabled ? "YES" : "NO (relaxed)"}`,
-    exec.enabled
-      ? `Max orders/run: ${exec.maxOrdersPerRun} | Max notional/order: $${exec.maxNotionalPerOrderUsd}`
-      : `Configured caps (not enforced while relaxed): max ${exec.maxOrdersPerRun} orders/run, $${exec.maxNotionalPerOrderUsd}/order — total spend still cannot exceed budget and venue rules apply.`,
-    exec.enabled ? `Cash reserve (untouchable): $${exec.minCashReserveUsd}` : "",
+    "Rules enforced: YES",
+    `Max orders/run: ${exec.maxOrdersPerRun} | Max notional/order: $${exec.maxNotionalPerOrderUsd}`,
+    `Cash reserve (untouchable): $${exec.minCashReserveUsd}`,
     `Allowed types: ${allowedTypes}`
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].join("\n");
 };
 
 const buildTradingScopeSection = (runtimeConfig: BotSetup["runtimeConfig"]) => {
