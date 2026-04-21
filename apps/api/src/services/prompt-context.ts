@@ -11,6 +11,23 @@ const fmtUsd = (n: number) =>
 const fmtNum = (n: number) =>
   n.toLocaleString("en-US", { maximumSignificantDigits: 8, useGrouping: false });
 
+/**
+ * Anti-hallucination guardrail appended to every research system prompt.
+ *
+ * Grok fabricates confidently when asked for "latest tweets" without browsing — it
+ * will invent plausible posts dated months/years ago. Research runs on xAI's
+ * Responses API with `web_search` + `x_search` enabled, so the model CAN browse;
+ * this block tells it that it must, and must flag the turn if it can't.
+ */
+export const RESEARCH_GROUNDING_BLOCK = [
+  "---",
+  "GROUNDING RULES (critical — your output feeds live trading decisions):",
+  `• Today's date is ${new Date().toISOString().slice(0, 10)}. Any cited news, tweet, or price MUST come from a search you actually ran this turn — you have web_search and x_search tools available.`,
+  "• For ANY claim about recent prices, news, tweets, or market events: call a search tool first. Never cite a date, username, or headline you did not just retrieve.",
+  "• If a search returns no results or the tools are unavailable for some reason, say so explicitly (\"unable to retrieve live data for X\") and do NOT invent content to fill the gap. A short, honest report beats a detailed fabricated one.",
+  "• When quoting tweets/posts, include the exact retrieved timestamp. When citing prices, state the source and time. Do not round timestamps to \"today\" unless they actually are today."
+].join("\n");
+
 export const NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
   "---",
   "NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):",
@@ -203,7 +220,7 @@ type BuildPromptContextInput = {
 export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildPromptContextInput) => {
   const { runtimeConfig } = bot;
 
-  const systemPrompt = bot.promptBody.trim();
+  const systemPrompt = [bot.promptBody.trim(), RESEARCH_GROUNDING_BLOCK].join("\n\n");
   const userMessage = "Analyze the market now. Identify any trading opportunities worth exploring.";
 
   const compactContext: Record<string, unknown> = {

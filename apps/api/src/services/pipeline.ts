@@ -14,7 +14,13 @@ import {
 } from "@cosmu/shared";
 import type { BotSetup } from "../lib/store/bots.js";
 import { storeLLMCall } from "../lib/store/llm-calls.js";
-import { getProvider, runXaiAgentLoop, type AgenticTool, type AgentToolCallLog } from "../providers/xai.js";
+import {
+  getProvider,
+  runXaiAgentLoop,
+  runXaiResearchWithBrowsing,
+  type AgenticTool,
+  type AgentToolCallLog
+} from "../providers/xai.js";
 import type { LLMProvider, LLMMessage } from "../providers/llm.js";
 import { getAgentFacingTools } from "../mcp/index.js";
 import type { ToolContext } from "../mcp/types.js";
@@ -85,45 +91,68 @@ export const runResearchAgent = async (input: {
     { role: "user", content: userMessage }
   ];
 
+  // xAI research goes through the Responses API so the model can actually browse
+  // (web_search + x_search). Chat Completions on xAI doesn't support those tools,
+  // which is what caused Grok to fabricate tweets. Other providers use chat().
+  const useXaiBrowsing = provider.name === "xai";
+  const strategyLabel = useXaiBrowsing ? "responses_api+browsing" : "text";
+
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     const start = Date.now();
     try {
-      const response = await provider.chat({
-        model: bot.modelIdentifier,
-        messages,
-        temperature
-      });
+      let rawText: string;
+      let model: string;
+      let usage: { inputTokens: number; outputTokens: number } | null;
 
-      // Log successful call
+      if (useXaiBrowsing) {
+        const result = await runXaiResearchWithBrowsing({
+          model: bot.modelIdentifier,
+          systemPrompt,
+          userMessage,
+          temperature
+        });
+        rawText = result.rawText;
+        model = result.model;
+        usage = result.usage;
+      } else {
+        const response = await provider.chat({
+          model: bot.modelIdentifier,
+          messages,
+          temperature
+        });
+        rawText = response.content;
+        model = response.model;
+        usage = response.usage;
+      }
+
       if (runId) {
         void storeLLMCall({
           runId,
           phase: "research",
           provider: provider.name,
-          model: response.model,
+          model,
           inputMessages: messages,
-          outputText: response.content,
-          inputTokens: response.usage?.inputTokens ?? null,
-          outputTokens: response.usage?.outputTokens ?? null,
+          outputText: rawText,
+          inputTokens: usage?.inputTokens ?? null,
+          outputTokens: usage?.outputTokens ?? null,
           latencyMs: Date.now() - start,
           attempt,
-          strategy: response.strategy,
+          strategy: strategyLabel,
           error: null
         });
       }
 
       return {
-        rawText: response.content,
+        rawText,
         provider: provider.name,
-        model: response.model
+        model
       };
     } catch (error) {
       lastError = error;
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      // Log failed call
       if (runId) {
         void storeLLMCall({
           runId,
@@ -136,7 +165,7 @@ export const runResearchAgent = async (input: {
           outputTokens: null,
           latencyMs: Date.now() - start,
           attempt,
-          strategy: "text",
+          strategy: strategyLabel,
           error: errorMessage
         });
       }

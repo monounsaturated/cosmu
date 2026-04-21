@@ -16,12 +16,12 @@ const client = new OpenAI({
 });
 
 // Note on server-hosted search (X / web):
-// As of 2026-04, xAI's Chat Completions endpoint does NOT accept `x_search`/`web_search`
-// tool entries — those are Responses-API-only — and `live_search` on Chat Completions is
-// deprecated. Attempting any of them yields 422 "unknown variant". If we want browsing in
-// research later, the path is: swap research calls to xAI's Responses API (separate client
-// shape), leaving the trader loop on Chat Completions. For now, research relies on the
-// prompt + model's training data; no server-side browsing.
+// xAI's Chat Completions endpoint does NOT accept `x_search`/`web_search` tool entries —
+// those are Responses-API-only — and `live_search` on Chat Completions is deprecated.
+// So: research phase runs on /v1/responses (see `runXaiResearchWithBrowsing` below) to get
+// real web + X search; trader phase stays on Chat Completions (function tools only, no
+// server tools) because its local `binance_symbol_lookup` function is not supported on the
+// Responses API path with the current tool-adapter shape.
 const XAI_SERVER_TOOLS: Array<{ type: string }> = [];
 
 // ─── LLM Provider Interface Implementation ──────────────────────────
@@ -64,6 +64,98 @@ export const xaiProvider: LLMProvider = {
         : "text"
     };
   }
+};
+
+// ─── xAI Responses API (research phase — real browsing) ─────────────
+//
+// xAI's /v1/responses endpoint supports the server-hosted tools `web_search`,
+// `x_search`, `code_interpreter`, `file_search`, and `mcp`. These are NOT
+// available on /v1/chat/completions (422 "unknown variant"). We use the
+// Responses API exclusively for the research phase so the model can actually
+// fetch live web + X content instead of hallucinating dates/tweets/prices.
+//
+// Notes:
+// - `client.responses.create` exists in the openai SDK and is forwarded to
+//   xAI's compatible endpoint via baseURL. Some xAI-specific tool types
+//   (`x_search`) are not in the SDK's typed `Tool` union, so we cast to
+//   `any` to pass them through raw.
+// - Token usage on Responses API lives at `response.usage.{input_tokens,output_tokens}`.
+// - Final text is extracted by walking `response.output` for message items
+//   containing `output_text` content parts. We also fall back to
+//   `response.output_text` (the SDK's convenience concatenation) if present.
+
+type XaiResearchResult = {
+  rawText: string;
+  model: string;
+  usage: { inputTokens: number; outputTokens: number } | null;
+};
+
+const extractResponsesApiText = (response: unknown): string => {
+  // Prefer the SDK's pre-concatenated `output_text` convenience field when present.
+  const convenience = (response as { output_text?: unknown }).output_text;
+  if (typeof convenience === "string" && convenience.trim().length > 0) {
+    return convenience;
+  }
+  // Fallback: walk the structured output array.
+  const output = (response as { output?: unknown }).output;
+  if (!Array.isArray(output)) return "";
+  const parts: string[] = [];
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue;
+    const content = (item as { content?: unknown }).content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (!part || typeof part !== "object") continue;
+      const type = (part as { type?: unknown }).type;
+      const text = (part as { text?: unknown }).text;
+      if (type === "output_text" && typeof text === "string") parts.push(text);
+    }
+  }
+  return parts.join("\n").trim();
+};
+
+export const runXaiResearchWithBrowsing = async (input: {
+  model: string;
+  systemPrompt: string;
+  userMessage: string;
+  temperature?: number;
+}): Promise<XaiResearchResult> => {
+  // Tools supported by xAI's Responses API. `x_search` is xAI-specific (not in
+  // OpenAI SDK types), so we cast. `web_search` is the SDK-typed name.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tools: any[] = [{ type: "web_search" }, { type: "x_search" }];
+
+  const params: Record<string, unknown> = {
+    model: input.model,
+    input: [
+      { role: "system", content: input.systemPrompt },
+      { role: "user", content: input.userMessage }
+    ],
+    tools
+  };
+  if (input.temperature !== undefined) params.temperature = input.temperature;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const response: any = await client.responses.create(params as any);
+
+  const rawText = extractResponsesApiText(response);
+  if (!rawText || !rawText.trim()) {
+    throw new Error(`xAI Responses API returned empty research text (model: ${input.model})`);
+  }
+
+  const usageRaw = (response as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+  const usage = usageRaw
+    ? {
+        inputTokens: usageRaw.input_tokens ?? 0,
+        outputTokens: usageRaw.output_tokens ?? 0
+      }
+    : null;
+
+  return {
+    rawText,
+    model: (response as { model?: string }).model ?? input.model,
+    usage
+  };
 };
 
 // ─── Provider Factory ────────────────────────────────────────────────

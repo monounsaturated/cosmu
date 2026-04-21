@@ -32,9 +32,11 @@ Cash = USDT + USDC at 1:1. Non-obvious details:
 
 Live implementation in [apps/api/src/providers/xai.ts](apps/api/src/providers/xai.ts).
 
-- **Browsing / X search is not available on Chat Completions** as of 2026-04. `x_search` / `web_search` are Responses-API only; `live_search` on Chat Completions is deprecated. Sending any of them yields `422 unknown variant`. `XAI_SERVER_TOOLS` is intentionally empty — to enable browsing later, migrate the research call to xAI's Responses API (not the whole pipeline).
-- Research uses a straight chat call with fallback models + temperature toggle ([xai.ts:requestResearchPhase](apps/api/src/providers/xai.ts)) — the trader uses the agent loop.
-- Trader agent loop merges local function tools (via [providers/tool-adapters.ts:toOpenAITools](apps/api/src/providers/tool-adapters.ts)) with `XAI_SERVER_TOOLS`. Because the latter is empty, adding entries currently breaks — gate behind a feature check if you bring it back.
+- **Research and trader use different xAI endpoints.** Research calls [xai.ts:runXaiResearchWithBrowsing](apps/api/src/providers/xai.ts) against `/v1/responses` with `web_search` + `x_search` server tools so the model can actually browse. Trader uses `/v1/chat/completions` via [xai.ts:runXaiAgentLoop](apps/api/src/providers/xai.ts) because that's where OpenAI-style function tools work (our `binance_symbol_lookup` is a local function tool).
+- **Do not add server tools to Chat Completions.** `x_search` / `web_search` are Responses-API only; `live_search` is deprecated. Sending them yields `422 unknown variant`. `XAI_SERVER_TOOLS` is intentionally empty and gated — leave it that way on the trader path.
+- Responses-API text extraction: prefer `response.output_text`, fall back to walking `response.output[].content[]` for `type === "output_text"` parts. Usage lives at `response.usage.{input_tokens, output_tokens}` (snake_case — different shape from Chat Completions).
+- `x_search` is xAI-specific (not in the OpenAI SDK's `Tool` union), so the tools array is cast to `any` when passed through.
+- Anti-hallucination guard: [prompt-context.ts:RESEARCH_GROUNDING_BLOCK](apps/api/src/services/prompt-context.ts) is appended to every research system prompt. It injects today's date and forbids citing prices/tweets/news that weren't just retrieved via the tools. Without it, Grok confidently fabricates tweets with plausible past dates (observed 2024-dated fake tweets in 2026 runs before this was added).
 
 ## MCP tools (local registry, MCP-shaped)
 
