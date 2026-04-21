@@ -10,7 +10,7 @@ import {
   createRun,
   finishRun,
   listBotExecutionLedger,
-  markRunStarted,
+  claimRun,
   recentTradeAlerts,
   storeDecision,
   storeExecutionRecords,
@@ -46,18 +46,19 @@ const symbolsForPricing = (
   researchCandidates: string[]
 ): string[] => {
   const set = new Set<string>();
-  for (const h of held) {
-    const n = normalizePricingSymbol(h);
-    if (n && n !== "USDTUSDT") set.add(n);
-  }
+  const add = (raw: string) => {
+    const n = normalizePricingSymbol(raw);
+    if (!n || n === "USDTUSDT" || n === "USDCUSDC") return;
+    set.add(n);
+  };
+  for (const h of held) add(h);
   for (const c of researchCandidates) {
     const n = normalizePricingSymbol(c);
-    if (n && n.endsWith("USDT") && n !== "USDTUSDT") set.add(n);
+    if (n && (n.endsWith("USDT") || n.endsWith("USDC"))) set.add(n);
   }
   for (const s of runtime.contextSymbols) {
     if (s === ALL_SYMBOLS_TOKEN) continue;
-    const n = normalizePricingSymbol(s);
-    if (n && n !== "USDTUSDT") set.add(n);
+    add(s);
   }
   return Array.from(set);
 };
@@ -69,7 +70,13 @@ const summarizeTrades = async (runId: string) => {
 };
 
 export const runBot = async (bot: BotSetup) => {
-  await markRunStarted(bot.runtimeConfigId);
+  // Atomic claim: if another tick/source already started this cycle, bail out
+  // silently. Protects against double-firing from overlapping scheduler sources
+  // (internal 15s loop + external /internal/scheduler/tick cron).
+  const claimed = await claimRun(bot.runtimeConfigId);
+  if (!claimed) {
+    return { runId: null, status: "skipped" as const };
+  }
 
   let runId: string | null = null;
 

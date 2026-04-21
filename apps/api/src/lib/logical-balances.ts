@@ -2,13 +2,22 @@ import { portfolioSnapshotSchema, type RuntimeConfig } from "@cosmu/shared";
 import type { BotExecutionLedgerEntry } from "./store.js";
 
 export type LogicalBalances = {
+  // Combined USDT + USDC cash (1:1). Displayed as dollars.
   usdt: number;
   assets: Record<string, number>;
 };
 
+const STABLE_SUFFIXES = ["USDT", "USDC"] as const;
+const STABLE_ASSETS = new Set<string>(["USDT", "USDC"]);
+
 export const baseAssetFromSymbol = (symbol: string) => {
-  const base = symbol.replace(/USDT$/i, "").trim().toUpperCase();
-  return base.length > 0 ? base : null;
+  const up = symbol.trim().toUpperCase();
+  for (const suffix of STABLE_SUFFIXES) {
+    if (up.endsWith(suffix) && up.length > suffix.length) {
+      return up.slice(0, -suffix.length);
+    }
+  }
+  return up.length > 0 ? up : null;
 };
 
 export const computeLogicalBalances = (
@@ -23,7 +32,7 @@ export const computeLogicalBalances = (
     const feeAmount = execution.feeAmount ?? 0;
     const feeAsset = execution.feeAsset?.toUpperCase() ?? null;
     const baseAsset = baseAssetFromSymbol(execution.symbol);
-    if (!baseAsset) continue;
+    if (!baseAsset || STABLE_ASSETS.has(baseAsset)) continue;
 
     if (!(baseAsset in balances.assets)) {
       balances.assets[baseAsset] = 0;
@@ -38,7 +47,7 @@ export const computeLogicalBalances = (
     }
 
     if (feeAmount > 0 && feeAsset) {
-      if (feeAsset === "USDT") {
+      if (STABLE_ASSETS.has(feeAsset)) {
         balances.usdt -= feeAmount;
       } else {
         balances.assets[feeAsset] = (balances.assets[feeAsset] ?? 0) - feeAmount;
@@ -49,10 +58,12 @@ export const computeLogicalBalances = (
   return balances;
 };
 
+// Returns held-coin pairs the trader can re-price against. For each held base asset,
+// include both USDT and USDC variants so the pricing loader can resolve either.
 export const getHeldSymbols = (logical: LogicalBalances) =>
   Object.entries(logical.assets)
     .filter(([asset, qty]) => asset.length > 0 && Math.abs(qty) > 1e-8)
-    .map(([asset]) => `${asset}USDT`);
+    .flatMap(([asset]) => [`${asset}USDT`, `${asset}USDC`]);
 
 export const buildLogicalSnapshot = (input: {
   runtimeConfig: RuntimeConfig;
@@ -69,7 +80,8 @@ export const buildLogicalSnapshot = (input: {
     ...Object.entries(input.logical.assets)
       .filter(([, qty]) => Math.abs(qty) > 1e-8)
       .map(([asset, quantity]) => {
-        const price = input.priceMap[`${asset}USDT`];
+        const price =
+          input.priceMap[`${asset}USDT`] ?? input.priceMap[`${asset}USDC`] ?? null;
         return {
           asset,
           free: quantity,

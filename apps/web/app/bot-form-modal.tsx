@@ -17,20 +17,20 @@ Strategy:
 - If no clear opportunity exists right now, hold and wait
 
 Position management:
-- Keep at least 30% of budget in USDT as dry powder
+- Keep at least 30% of budget in stablecoins (USDT or USDC) as dry powder
 - Maximum 3 open positions at any time
 - Cut losers quickly, let winners run
 
 Rules:
 - Do not invent balances, prices, or symbols
-- Only propose orders for symbols that can plausibly trade against USDT
+- Only propose orders for symbols that can plausibly trade against a stablecoin (USDT or USDC)
 - Keep the order list lean — quality over quantity
 - Every order must include a concise rationale`;
 
-const DEFAULT_TRADER_PROMPT = `You are the execution stage (phase 2) for one autonomous Binance USDT spot bot.
+const DEFAULT_TRADER_PROMPT = `You are the execution stage (phase 2) for one autonomous Binance spot bot (quoted in USDT or USDC — both count as cash).
 
 Inputs (in the user message):
-- UPSTREAM RESEARCH: qualitative thesis from phase 1 — symbols may be informal; normalize to valid *USDT pairs only when you place orders.
+- UPSTREAM RESEARCH: qualitative thesis from phase 1 — symbols may be informal; normalize to bases and let the lookup tool pick USDT or USDC.
 - SESSION / EXECUTION RULES / WALLET / AUTHORIZED PAIRS: hard facts — never contradict them.
 - LIVE MARKET PRICES: authoritative reference for sizing stops and limits on buys.
 
@@ -46,7 +46,7 @@ Output: exactly one JSON object (no markdown fences, no prose) matching TradingD
 Order logic:
 - BUY: every buy MUST set stopLossPrice strictly below the live reference price for that symbol and takeProfitPrice strictly above. Omit trades you cannot justify with the given prices.
 - SELL: set stopLossPrice and takeProfitPrice to null.
-- Respect authorized pair list when present; otherwise any Binance USDT spot pair is allowed if grounded in research + prices.
+- Respect authorized pair list when present; otherwise any Binance USDT or USDC spot pair is allowed if grounded in research + prices.
 - Stay within wallet + execution caps; prefer fewer, higher-conviction orders over many small ones.
 - If research conflicts with prices, scope, or risk limits, prefer mode hold with orders: [].`;
 
@@ -104,15 +104,16 @@ Budget: $1,000.00 — you must stay within this allocation`,
     label: "Execution Rules",
     preview: `=== EXECUTION RULES ===
 Rules enforced: YES
-Max orders/run: 3 | Max notional/order: 250 USDT
-Cash reserve (untouchable): 25 USDT
+Max orders/run: 3 | Max notional/order: $250
+Cash reserve (untouchable): $25
 Allowed types: MARKET, LIMIT`,
   },
   {
     label: "Wallet",
     preview: `=== WALLET ===
 Total: $1,072.50
-USDT: 750.20 free ($750.20)
+USDT: 500.00 free ($500.00)
+USDC: 250.20 free ($250.20)
 BTC: 0.0012 free ($82.14)
 ETH: 0.15 free ($361.50)`,
   },
@@ -127,7 +128,7 @@ SOLUSDT: 142.80`,
   {
     label: "Trading Scope",
     preview: `=== TRADING SCOPE ===
-You may trade ANY USDT spot pair available on Binance. Pick your symbols based on your own analysis.`,
+You may trade ANY stable-quoted spot pair available on Binance (USDT or USDC; USDT preferred, USDC fallback). Pick your symbols based on your own analysis.`,
   },
 ];
 
@@ -802,7 +803,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       if (!res.ok) return [];
       const data = await res.json();
       return ((data.symbols ?? []) as Array<{ symbol: string; status: string; isSpotTradingAllowed: boolean; quoteAsset: string }>)
-        .filter((s) => s.status === "TRADING" && s.isSpotTradingAllowed !== false && s.quoteAsset === "USDT")
+        .filter((s) => s.status === "TRADING" && s.isSpotTradingAllowed !== false && (s.quoteAsset === "USDT" || s.quoteAsset === "USDC"))
         .map((s) => s.symbol)
         .sort();
     } catch {
@@ -1283,14 +1284,14 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                   </label>
                   {venueBalance && (
                     <span className="venue-balance">
-                      {loadingBalance ? "..." : `${venueBalance.totalFreeUsdt.toFixed(2)} USDT on account`}
+                      {loadingBalance ? "..." : `$${venueBalance.totalFreeUsdt.toFixed(2)} cash on account (USDT+USDC)`}
                     </span>
                   )}
                 </div>
 
                 <div className="form-row">
                   <label>
-                    Budget (USDT)
+                    Budget ($)
                     <input
                       type="number"
                       min={10}
@@ -1301,7 +1302,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                     />
                   </label>
                   <span className="field-help">
-                    Max USDT this bot can use.
+                    Max cash this bot can use (USDT or USDC — auto-swapped when needed).
                   </span>
                 </div>
 

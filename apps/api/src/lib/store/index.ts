@@ -5,7 +5,7 @@ export type { BotSetup, BotExecutionLedgerEntry } from "./bots.js";
 export {
   getDueBots,
   getBotSetupById,
-  markRunStarted,
+  claimRun,
   getBotEnabledState,
   killBot,
   createBot,

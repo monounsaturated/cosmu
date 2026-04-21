@@ -311,11 +311,11 @@ export const runTraderAgent = async (input: {
 
 export const extractCandidateSymbols = (rawText: string, venueSymbols: string[]): string[] => {
   const venueSet = new Set(venueSymbols.map((s) => s.toUpperCase()));
-  const matches = rawText.match(/[A-Z]{2,10}USDT/g);
+  const matches = rawText.match(/[A-Z]{2,10}USD[TC]/g);
   if (!matches) return [];
   const unique = new Set<string>();
   for (const m of matches) {
-    if (venueSet.has(m) && m !== "USDTUSDT") unique.add(m);
+    if (venueSet.has(m) && m !== "USDTUSDT" && m !== "USDCUSDC") unique.add(m);
   }
   return Array.from(unique);
 };

@@ -15,6 +15,15 @@ const client = new OpenAI({
   baseURL: "https://api.x.ai/v1"
 });
 
+// xAI Agent Tools API — server-hosted tools that execute on xAI's side (no local schemas).
+// Adding these to the `tools` array of a chat completion lets Grok browse X and the web.
+// The model decides when to invoke them; they're always available, never forced.
+// Ref: https://docs.x.ai/docs/guides/tools/overview
+const XAI_SERVER_TOOLS = [
+  { type: "x_search" },
+  { type: "web_search" }
+];
+
 // ─── LLM Provider Interface Implementation ──────────────────────────
 
 export const xaiProvider: LLMProvider = {
@@ -24,6 +33,9 @@ export const xaiProvider: LLMProvider = {
       model: input.model,
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
       messages: input.messages.map((m) => ({ role: m.role, content: m.content })),
+      // Always expose xAI's server-hosted search tools to research-phase calls so Grok
+      // can actually browse X / the web when the prompt asks for current news.
+      tools: XAI_SERVER_TOOLS as unknown as Parameters<typeof client.chat.completions.create>[0]["tools"],
       ...(input.responseFormat ? { response_format: input.responseFormat } : {})
     } as Parameters<typeof client.chat.completions.create>[0]);
 
@@ -258,11 +270,11 @@ export const requestDecision = async ({
 
 export const extractCandidateSymbols = (rawText: string, venueSymbols: string[]): string[] => {
   const venueSet = new Set(venueSymbols.map((s) => s.toUpperCase()));
-  const matches = rawText.match(/[A-Z]{2,10}USDT/g);
+  const matches = rawText.match(/[A-Z]{2,10}USD[TC]/g);
   if (!matches) return [];
   const unique = new Set<string>();
   for (const m of matches) {
-    if (venueSet.has(m) && m !== "USDTUSDT") unique.add(m);
+    if (venueSet.has(m) && m !== "USDTUSDT" && m !== "USDCUSDC") unique.add(m);
   }
   return Array.from(unique);
 };
@@ -371,7 +383,13 @@ export const runXaiAgentLoop = async (input: {
 }): Promise<AgenticChatResult> => {
   const max = input.maxIterations ?? 6;
   const toolMap = new Map(input.tools.map((t) => [t.name, t]));
-  const openAiTools = toOpenAITools(input.tools);
+  // Merge local function tools with xAI's server-hosted tools so the trader can optionally
+  // call x_search / web_search when it needs fresh info (e.g. unknown ticker, news check).
+  // The model decides when — server tools execute on xAI's side with no local handler.
+  const openAiTools = [
+    ...toOpenAITools(input.tools),
+    ...(XAI_SERVER_TOOLS as unknown as ReturnType<typeof toOpenAITools>)
+  ];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const conversation: any[] = [

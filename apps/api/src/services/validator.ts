@@ -16,7 +16,7 @@ import { validationResultSchema, type RuntimeConfig, type TradingDecision } from
 import { validateTradability, type VenueContext } from "../adapters/binance.js";
 import { isGlobalKillSwitchOn } from "../lib/store/settings.js";
 
-const getBaseAsset = (symbol: string) => symbol.replace(/USDT$/i, "");
+const getBaseAsset = (symbol: string) => symbol.replace(/USD[TC]$/i, "");
 
 type SnapshotBalance = VenueContext["snapshot"]["balances"][number];
 
@@ -114,13 +114,14 @@ export const validateDecision = async (input: {
           throw new Error(`Buy ${normalized.symbol} ($${requiredUsd.toFixed(2)}) would exceed bot budget of $${budget} (already spent $${spentUsd.toFixed(2)})`);
         }
 
-        // 5. Balance sufficiency
-        const cash = balances.get("USDT");
+        // 5. Balance sufficiency — combined USDT + USDC (peg-guarded swap happens at execution)
+        const cashFree =
+          (balances.get("USDT")?.free ?? 0) + (balances.get("USDC")?.free ?? 0);
         const cashAvailable = rulesEnabled
-          ? (cash?.free ?? 0) - input.runtimeConfig.execution.minCashReserveUsd
-          : cash?.free ?? 0;
+          ? cashFree - input.runtimeConfig.execution.minCashReserveUsd
+          : cashFree;
         if (requiredUsd > cashAvailable) {
-          throw new Error(`Insufficient USDT for ${normalized.symbol}`);
+          throw new Error(`Insufficient USDT/USDC cash for ${normalized.symbol}`);
         }
 
         spentUsd += requiredUsd;

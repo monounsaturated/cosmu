@@ -152,11 +152,32 @@ const parseSymbolRules = (exchangeInfo: any): SymbolRules => {
   };
 };
 
-const isTradableSpotUsdtSymbol = (exchangeSymbol: any) =>
+const STABLE_QUOTES = ["USDT", "USDC"] as const;
+type StableQuote = (typeof STABLE_QUOTES)[number];
+
+const isStableQuote = (asset: string): asset is StableQuote =>
+  (STABLE_QUOTES as readonly string[]).includes(asset);
+
+const isTradableSpotStableSymbol = (exchangeSymbol: any) =>
   exchangeSymbol?.symbol &&
   exchangeSymbol?.status === "TRADING" &&
   exchangeSymbol?.isSpotTradingAllowed !== false &&
-  exchangeSymbol?.quoteAsset === "USDT";
+  typeof exchangeSymbol?.quoteAsset === "string" &&
+  isStableQuote(exchangeSymbol.quoteAsset);
+
+// Kept as an alias for any call sites that still expect USDT-only semantics.
+// Prefer `isTradableSpotStableSymbol` for new code.
+const isTradableSpotUsdtSymbol = isTradableSpotStableSymbol;
+
+const splitBaseAndQuote = (symbol: string): { base: string; quote: StableQuote | null } => {
+  const normalized = normalizeSymbol(symbol);
+  for (const quote of STABLE_QUOTES) {
+    if (normalized.endsWith(quote) && normalized.length > quote.length) {
+      return { base: normalized.slice(0, -quote.length), quote };
+    }
+  }
+  return { base: normalized, quote: null };
+};
 
 const requestPublicJson = async (path: string) => {
   const response = await fetch(`${LIVE_BASE_URL}${path}`);
@@ -181,9 +202,19 @@ export const getAccountBalance = async (mode: RuntimeConfig["mode"]) => {
       locked: Number(b.locked)
     }));
   const usdt = balances.find((b: { asset: string }) => b.asset === "USDT");
+  const usdc = balances.find((b: { asset: string }) => b.asset === "USDC");
+  const freeUsdt = usdt?.free ?? 0;
+  const lockedUsdt = usdt?.locked ?? 0;
+  const freeUsdc = usdc?.free ?? 0;
+  const lockedUsdc = usdc?.locked ?? 0;
   return {
-    totalFreeUsdt: usdt?.free ?? 0,
-    totalLockedUsdt: usdt?.locked ?? 0,
+    // Cash is USDT + USDC at 1:1 (display as dollars — actual peg guard happens at swap time)
+    totalFreeUsdt: freeUsdt + freeUsdc,
+    totalLockedUsdt: lockedUsdt + lockedUsdc,
+    freeUsdt,
+    lockedUsdt,
+    freeUsdc,
+    lockedUsdc,
     balances
   };
 };
@@ -241,6 +272,8 @@ export const cancelAllOpenOrdersForSymbol = async (
 export type SymbolLookupEntry =
   | {
       tradable: true;
+      symbol: string;
+      quoteAsset: StableQuote;
       currentPrice: number | null;
       minQty: number;
       minNotional: number;
@@ -255,33 +288,42 @@ export type SymbolLookupEntry =
     };
 
 /**
- * Targeted lookup: for a small set of symbols, return tradability + live price + rules.
+ * Targeted lookup: for a small set of base tickers, return the best tradable stable-quoted
+ * spot pair on Binance (USDT preferred, USDC fallback). Input can be a bare base ("NEIRO"),
+ * a USDT pair ("NEIROUSDT"), or a USDC pair ("NEIROUSDC") — the query key in the returned
+ * record always matches the caller's input verbatim (after normalization).
  * Does NOT fetch account data. Cheap to call mid-agent-loop.
  */
 export const lookupBinanceSymbols = async (
   mode: RuntimeConfig["mode"],
   rawSymbols: string[]
 ): Promise<Record<string, SymbolLookupEntry>> => {
-  const symbols = Array.from(
-    new Set(
-      rawSymbols
-        .map((s) => normalizeSymbol(String(s ?? "")))
-        .filter((s) => s.length > 0 && s !== "USDTUSDT")
-    )
-  );
-  if (symbols.length === 0) return {};
+  const queries = rawSymbols
+    .map((s) => normalizeSymbol(String(s ?? "")))
+    .filter((s) => s.length > 0 && s !== "USDTUSDT" && s !== "USDCUSDC");
+
+  const uniqueQueries = Array.from(new Set(queries));
+  if (uniqueQueries.length === 0) return {};
+
+  // Candidate pairs to probe: for each query, try both USDT and USDC variants.
+  const candidatePairs = new Set<string>();
+  for (const q of uniqueQueries) {
+    const { base } = splitBaseAndQuote(q);
+    if (!base) continue;
+    candidatePairs.add(`${base}USDT`);
+    candidatePairs.add(`${base}USDC`);
+  }
 
   const [exchangeInfoResponse, tickerPrices] = await Promise.all([
     getAllExchangeInfo(mode),
     getAllTickerPrices(mode)
   ]);
 
-  const wanted = new Set(symbols);
   const rulesMap: Record<string, SymbolRules> = {};
   for (const raw of exchangeInfoResponse.symbols ?? []) {
     const sym = normalizeSymbol(String(raw.symbol ?? ""));
-    if (!wanted.has(sym)) continue;
-    if (!isTradableSpotUsdtSymbol(raw)) continue;
+    if (!candidatePairs.has(sym)) continue;
+    if (!isTradableSpotStableSymbol(raw)) continue;
     rulesMap[sym] = parseSymbolRules(raw);
   }
 
@@ -291,30 +333,58 @@ export const lookupBinanceSymbols = async (
     price: string;
   }>) {
     const sym = normalizeSymbol(String(p.symbol ?? ""));
-    if (wanted.has(sym)) priceMap[sym] = Number(p.price);
+    if (candidatePairs.has(sym)) priceMap[sym] = Number(p.price);
   }
 
   const out: Record<string, SymbolLookupEntry> = {};
-  for (const sym of symbols) {
-    const rules = rulesMap[sym];
-    if (!rules || rules.status !== "TRADING") {
-      out[sym] = {
+  for (const q of uniqueQueries) {
+    const { base, quote: requestedQuote } = splitBaseAndQuote(q);
+    if (!base) {
+      out[q] = {
         tradable: false,
         currentPrice: null,
-        reason: rules
-          ? `Symbol ${sym} is not in TRADING status on Binance spot`
-          : `Symbol ${sym} is not a tradable USDT spot pair on Binance`
+        reason: `Could not parse ticker: ${q}`
       };
       continue;
     }
-    out[sym] = {
+
+    // Probe order: requested quote first (if the caller was specific), then USDT, then USDC.
+    const probeOrder: StableQuote[] = [];
+    if (requestedQuote) probeOrder.push(requestedQuote);
+    for (const q2 of STABLE_QUOTES) {
+      if (!probeOrder.includes(q2)) probeOrder.push(q2);
+    }
+
+    let chosen: { quote: StableQuote; rules: SymbolRules } | null = null;
+    for (const quote of probeOrder) {
+      const sym = `${base}${quote}`;
+      const rules = rulesMap[sym];
+      if (rules && rules.status === "TRADING") {
+        chosen = { quote, rules };
+        break;
+      }
+    }
+
+    if (!chosen) {
+      out[q] = {
+        tradable: false,
+        currentPrice: null,
+        reason: `No tradable ${base}/USDT or ${base}/USDC spot pair found on Binance`
+      };
+      continue;
+    }
+
+    const canonicalSymbol = `${base}${chosen.quote}`;
+    out[q] = {
       tradable: true,
-      currentPrice: priceMap[sym] ?? null,
-      minQty: rules.minQty,
-      minNotional: rules.minNotional,
-      tickSize: rules.tickSize,
-      stepSize: rules.stepSize,
-      orderTypes: rules.orderTypes
+      symbol: canonicalSymbol,
+      quoteAsset: chosen.quote,
+      currentPrice: priceMap[canonicalSymbol] ?? null,
+      minQty: chosen.rules.minQty,
+      minNotional: chosen.rules.minNotional,
+      tickSize: chosen.rules.tickSize,
+      stepSize: chosen.rules.stepSize,
+      orderTypes: chosen.rules.orderTypes
     };
   }
   return out;
@@ -327,7 +397,7 @@ export const listVenueSymbols = async () => {
 
   const response = await requestPublicJson("/v3/exchangeInfo");
   const symbols = (response.symbols ?? [])
-    .filter(isTradableSpotUsdtSymbol)
+    .filter(isTradableSpotStableSymbol)
     .map((symbol: any) => normalizeSymbol(symbol.symbol))
     .sort((left: string, right: string) => left.localeCompare(right));
 
@@ -352,23 +422,33 @@ export const loadVenueContext = async (
     return Number(balance.free) > 0 || Number(balance.locked) > 0;
   });
 
+  // For each non-stable balance asset, include both USDT and USDC pairs as candidates; the
+  // one that resolves to a live price will be used for USD valuation.
   const balanceSymbols = balances
-    .map((balance: any) => normalizeSymbol(`${balance.asset}USDT`))
-    .filter((symbol: string) => symbol !== "USDTUSDT");
+    .flatMap((balance: any) => {
+      const asset = String(balance.asset ?? "").trim().toUpperCase();
+      if (!asset || isStableQuote(asset)) return [];
+      return [`${asset}USDT`, `${asset}USDC`];
+    });
   const selectedSymbols = contextSymbols
     .map(normalizeSymbol)
-    .filter((symbol) => symbol !== ALL_SYMBOLS_TOKEN && symbol !== "USDTUSDT");
+    .filter(
+      (symbol) =>
+        symbol !== ALL_SYMBOLS_TOKEN &&
+        symbol !== "USDTUSDT" &&
+        symbol !== "USDCUSDC"
+    );
 
   const exchangeInfoResponse = await getAllExchangeInfo(runtimeConfig.mode);
   const exchangeSymbols = exchangeInfoResponse.symbols ?? [];
   const allTradableSpotSymbols = exchangeSymbols
-    .filter(isTradableSpotUsdtSymbol)
+    .filter(isTradableSpotStableSymbol)
     .map((symbol: any) => normalizeSymbol(symbol.symbol));
 
   const derivedSymbols = new Set(
     runtimeConfig.symbolScope === "all"
-      ? [...allTradableSpotSymbols, ...balanceSymbols]
-      : [...balanceSymbols, ...selectedSymbols]
+      ? [...allTradableSpotSymbols, ...balanceSymbols, "USDCUSDT"]
+      : [...balanceSymbols, ...selectedSymbols, "USDCUSDT"]
   );
 
   const allPrices = await getAllTickerPrices(runtimeConfig.mode);
@@ -385,9 +465,10 @@ export const loadVenueContext = async (
   );
 
   const normalizedBalances = balances.map((balance: any) => {
-    const asset = balance.asset;
-    const quoteSymbol = normalizeSymbol(`${asset}USDT`);
-    const usdPrice = asset === "USDT" ? 1 : priceMap[quoteSymbol] ?? null;
+    const asset = String(balance.asset ?? "").trim().toUpperCase();
+    const usdPrice = isStableQuote(asset)
+      ? 1
+      : priceMap[`${asset}USDT`] ?? priceMap[`${asset}USDC`] ?? null;
     const total = Number(balance.free) + Number(balance.locked);
 
     return {
@@ -481,26 +562,122 @@ const getUsdPriceForAsset = async (
   }
 
   const normalizedAsset = normalizeSymbol(asset);
-  if (normalizedAsset === "USDT") {
+  if (isStableQuote(normalizedAsset)) {
     return 1;
   }
 
-  const cachedPrice = venueContext.priceMap[`${normalizedAsset}USDT`];
-  if (cachedPrice) {
-    return cachedPrice;
-  }
+  const cachedUsdt = venueContext.priceMap[`${normalizedAsset}USDT`];
+  if (cachedUsdt) return cachedUsdt;
+  const cachedUsdc = venueContext.priceMap[`${normalizedAsset}USDC`];
+  if (cachedUsdc) return cachedUsdc;
 
-  try {
-    const ticker = await getTickerPrice(mode, `${normalizedAsset}USDT`);
-    const usdPrice = Number(ticker.price);
-    if (Number.isFinite(usdPrice) && usdPrice > 0) {
-      return usdPrice;
+  for (const quote of STABLE_QUOTES) {
+    try {
+      const ticker = await getTickerPrice(mode, `${normalizedAsset}${quote}`);
+      const usdPrice = Number(ticker.price);
+      if (Number.isFinite(usdPrice) && usdPrice > 0) return usdPrice;
+    } catch {
+      // try next quote
     }
-  } catch {
-    return null;
   }
 
   return null;
+};
+
+const PEG_GUARD_PCT = 0.2;
+
+/**
+ * Ensures the account has enough of `quoteAsset` to cover `requiredQuoteAmount` for an
+ * upcoming order on `<BASE><quoteAsset>`. If short, market-swaps the other stablecoin via
+ * USDCUSDT — but only if the pair's price is within PEG_GUARD_PCT of 1:1.
+ * Never swaps USDT → USDC unless the target order explicitly requires USDC (and vice versa).
+ * No-op (returns null) when no swap is needed or when the peg guard trips.
+ */
+const ensureStableQuoteLiquidity = async (input: {
+  mode: RuntimeConfig["mode"];
+  quoteAsset: StableQuote;
+  requiredQuoteAmount: number;
+  venueContext: VenueContext;
+}): Promise<{ swapped: boolean; reason?: string; rawResponse?: unknown }> => {
+  const { mode, quoteAsset, requiredQuoteAmount, venueContext } = input;
+  const getFree = (asset: string) => {
+    const balance = venueContext.snapshot.balances.find(
+      (b) => b.asset.toUpperCase() === asset
+    );
+    return balance ? Number(balance.free) : 0;
+  };
+
+  const haveTarget = getFree(quoteAsset);
+  if (haveTarget >= requiredQuoteAmount) {
+    return { swapped: false, reason: "sufficient" };
+  }
+
+  const otherAsset: StableQuote = quoteAsset === "USDT" ? "USDC" : "USDT";
+  const haveOther = getFree(otherAsset);
+  const shortfall = requiredQuoteAmount - haveTarget;
+  if (haveOther < shortfall) {
+    return { swapped: false, reason: "insufficient_combined" };
+  }
+
+  // USDCUSDT: price ≈ 1 (USDC in USDT). Peg guard: abort if > PEG_GUARD_PCT off.
+  const pegSymbol = "USDCUSDT";
+  const pegPrice =
+    venueContext.priceMap[pegSymbol] ??
+    Number((await getTickerPrice(mode, pegSymbol)).price ?? NaN);
+  if (!Number.isFinite(pegPrice) || pegPrice <= 0) {
+    return { swapped: false, reason: "peg_price_unavailable" };
+  }
+  const deviationPct = Math.abs(pegPrice - 1) * 100;
+  if (deviationPct > PEG_GUARD_PCT) {
+    return { swapped: false, reason: `peg_deviation_${deviationPct.toFixed(2)}pct` };
+  }
+
+  const pegRules = venueContext.symbolRules[pegSymbol] ?? null;
+
+  // Direction: need USDC → buy USDC with USDT on USDCUSDT. Need USDT → sell USDC on USDCUSDT.
+  const side: "BUY" | "SELL" = quoteAsset === "USDC" ? "BUY" : "SELL";
+
+  const params = new URLSearchParams({
+    symbol: pegSymbol,
+    side,
+    type: "MARKET",
+    newOrderRespType: "FULL"
+  });
+
+  if (side === "BUY") {
+    // quoteOrderQty spends exactly this much USDT to buy USDC.
+    const spend = shortfall; // 1:1 with small spread; we buy slightly less USDC than shortfall
+    params.set("quoteOrderQty", spend.toFixed(2));
+  } else {
+    // Sell exactly `shortfall` USDC for USDT.
+    const qty = pegRules ? roundToStep(shortfall, pegRules.stepSize) : Number(shortfall.toFixed(6));
+    if (pegRules && qty < pegRules.minQty) {
+      return { swapped: false, reason: `below_min_qty_${pegRules.minQty}` };
+    }
+    params.set("quantity", qty.toString());
+  }
+
+  try {
+    const rawResponse = await binanceFetch(
+      mode,
+      "/v3/order",
+      {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: params.toString()
+      },
+      true
+    );
+    console.log(
+      `[binance] stablecoin swap ${side} USDCUSDT (shortfall=${shortfall.toFixed(2)} ${quoteAsset}, peg=${pegPrice.toFixed(4)})`
+    );
+    return { swapped: true, rawResponse };
+  } catch (error) {
+    return {
+      swapped: false,
+      reason: `swap_failed:${error instanceof Error ? error.message : "unknown"}`
+    };
+  }
 };
 
 const placeOcoSellOrder = async (input: {
@@ -598,6 +775,24 @@ export const executeOrders = async (input: {
 
   for (const [index, rawOrder] of input.orders.entries()) {
     const order = await validateTradability(input.runtimeConfig, rawOrder, input.venueContext);
+
+    // Pre-trade liquidity check: if buying a <BASE>/USDC pair but the account holds
+    // primarily USDT (or vice versa), swap the stablecoin first on USDCUSDT with a peg guard.
+    if (order.side === "buy") {
+      const { quote: orderQuote } = splitBaseAndQuote(order.symbol);
+      if (orderQuote) {
+        const priceForSizing = input.venueContext.priceMap[order.symbol] ?? order.limitPrice ?? 0;
+        const requiredQuote = order.quantity * priceForSizing;
+        if (requiredQuote > 0) {
+          await ensureStableQuoteLiquidity({
+            mode: input.runtimeConfig.mode,
+            quoteAsset: orderQuote,
+            requiredQuoteAmount: requiredQuote * 1.001, // small buffer for rounding/fees
+            venueContext: input.venueContext
+          });
+        }
+      }
+    }
 
     const params = new URLSearchParams({
       symbol: order.symbol,

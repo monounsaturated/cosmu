@@ -246,13 +246,27 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
   return parseBotRow(row);
 };
 
-export const markRunStarted = async (runtimeConfigId: string) => {
-  await sql`
+/**
+ * Atomically claim the current scheduled run for this bot.
+ *
+ * Returns true if we won the race and the run should proceed, false if another
+ * tick/source (internal scheduler, external cron, manual trigger) already
+ * claimed this cycle. Dedup is enforced by the same frequency window used in
+ * `getDueBots`, so two ticks firing within a single cycle can only win once.
+ */
+export const claimRun = async (runtimeConfigId: string): Promise<boolean> => {
+  const rows = await sql<{ id: string }[]>`
     update bot_runtime_configs
     set last_run_started_at = now(),
         updated_at = now()
     where id = ${runtimeConfigId}
+      and (
+        last_run_started_at is null
+        or last_run_started_at <= now() - make_interval(secs => (frequency_minutes * 60) - 10)
+      )
+    returning id
   `;
+  return rows.length > 0;
 };
 
 export const getBotEnabledState = async (botId: string) => {

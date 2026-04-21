@@ -135,7 +135,8 @@ export const getDashboard = async () => {
     const portfolio = virtualPortfolios.get(exec.bot_id);
     if (!portfolio) continue;
 
-    const baseAsset = exec.symbol.replace("USDT", "");
+    // Strip either USDT or USDC from the pair — both count as cash.
+    const baseAsset = String(exec.symbol).replace(/USD[TC]$/i, "");
     if (!portfolio.assets[baseAsset]) portfolio.assets[baseAsset] = 0;
 
     if (exec.side === "buy") {
@@ -147,7 +148,7 @@ export const getDashboard = async () => {
     }
 
     if (exec.feeAsset && exec.feeAmount > 0) {
-      if (exec.feeAsset === "USDT") {
+      if (exec.feeAsset === "USDT" || exec.feeAsset === "USDC") {
         portfolio.usdt -= exec.feeAmount;
       } else {
         if (!portfolio.assets[exec.feeAsset]) portfolio.assets[exec.feeAsset] = 0;
@@ -171,8 +172,8 @@ export const getDashboard = async () => {
     let currentPortfolioUsd = portfolio.usdt;
     for (const [asset, qty] of Object.entries(portfolio.assets)) {
       if (qty > 0.00000001 || qty < -0.00000001) {
-        if (asset === "USDT") currentPortfolioUsd += qty;
-        else currentPortfolioUsd += qty * (priceMap[`${asset}USDT`] ?? 0);
+        if (asset === "USDT" || asset === "USDC") currentPortfolioUsd += qty;
+        else currentPortfolioUsd += qty * (priceMap[`${asset}USDT`] ?? priceMap[`${asset}USDC`] ?? 0);
       }
     }
 
@@ -279,7 +280,7 @@ export const getDashboard = async () => {
           asset,
           free: qty,
           locked: 0,
-          usdValue: qty * (priceMap[`${asset}USDT`] ?? 0)
+          usdValue: qty * (priceMap[`${asset}USDT`] ?? priceMap[`${asset}USDC`] ?? 0)
         });
       }
     }

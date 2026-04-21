@@ -4,7 +4,6 @@ import {
   finishRun,
   killBot,
   listBotExecutionLedger,
-  markRunStarted,
   storeDecision,
   storeExecutionRecords,
   storePortfolioSnapshot,
@@ -42,8 +41,8 @@ const buildKillDecision = (orders: TradingDecision["orders"]): TradingDecision =
  */
 export const killBotAndLiquidate = async (bot: BotSetup) => {
   // ── Step 1: disable the bot immediately ──────────────────────────────
+  // killBot flips enabled=false so the scheduler can never pick it up again; no claim needed.
   await killBot(bot.id);
-  await markRunStarted(bot.runtimeConfigId);
 
   // ── Step 2: best-effort liquidation ──────────────────────────────────
   let runId: string | null = null;

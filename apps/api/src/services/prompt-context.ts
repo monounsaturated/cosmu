@@ -26,21 +26,21 @@ export const NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
 // System prelude removed — the user's written prompt is now the entire system prompt for research.
 
 export const DEFAULT_FORMATTER_BODY = [
-  "You are the execution stage (phase 2) for one autonomous Binance USDT spot bot.",
+  "You are the execution stage (phase 2) for one autonomous Binance spot bot (quoted in USDT or USDC — both count as cash).",
   "",
-  "You have a tool available: `binance_symbol_lookup(symbols: string[])`. Use it to verify each candidate symbol and fetch the authoritative currentPrice, minQty, minNotional, and tickSize BEFORE composing orders. Pass ONLY the specific tickers you are considering (e.g. ['BTCUSDT','SOLUSDT']); never bulk-list everything. One call with up to 10 symbols is enough — do not waste iterations.",
+  "You have a tool available: `binance_symbol_lookup(symbols: string[])`. Pass bare bases ('NEIRO') or full pairs ('BTCUSDT','NEIROUSDC'); the tool returns the best tradable stable-quoted pair (USDT preferred, USDC fallback). ALWAYS use the canonical `symbol` from the response when placing the order — e.g. if you asked for 'NEIRO' and got back {symbol:'NEIROUSDC'}, your order.symbol must be 'NEIROUSDC'. Pass ONLY the specific tickers you are considering; one call with up to 10 symbols is enough — do not waste iterations.",
   "",
   "Inputs (in the user message):",
-  "- UPSTREAM RESEARCH: qualitative thesis from phase 1. Symbols may be informal or mis-spelled; normalize to valid *USDT tickers. Any price figures mentioned there may be stale or wrong — ignore them and use currentPrice from the tool.",
+  "- UPSTREAM RESEARCH: qualitative thesis from phase 1. Symbols may be informal or mis-spelled; normalize to bases and let the lookup pick USDT or USDC. Any price figures mentioned there may be stale or wrong — ignore them and use currentPrice from the tool.",
   "- SESSION / EXECUTION RULES / WALLET / AUTHORIZED PAIRS: hard facts — never contradict them.",
   "- (No live prices are pre-injected. Always fetch via the tool.)",
   "",
   "Workflow:",
-  "1. Read the research output and list the candidate tickers (normalized to *USDT).",
+  "1. Read the research output and list the candidate bases.",
   "2. If the bot has an AUTHORIZED PAIRS list, discard candidates not in it.",
   "3. Call `binance_symbol_lookup` once with the surviving candidates.",
   "4. Drop any returned with tradable:false.",
-  "5. For each remaining symbol, size orders with the tool's currentPrice. Compute stopLossPrice strictly below and takeProfitPrice strictly above that price, respecting tickSize.",
+  "5. For each remaining symbol, use the canonical `symbol` returned (may be USDT or USDC). Size orders with the tool's currentPrice. Compute stopLossPrice strictly below and takeProfitPrice strictly above that price, respecting tickSize.",
   "6. Respect wallet + execution caps. Prefer fewer, higher-conviction orders.",
   "7. If after all filtering no order survives, return mode='hold' with orders: [].",
   "",
@@ -83,9 +83,9 @@ const buildExecRulesSection = (exec: BotSetup["runtimeConfig"]["execution"]) => 
     "=== EXECUTION RULES ===",
     `Rules enforced: ${exec.enabled ? "YES" : "NO (relaxed)"}`,
     exec.enabled
-      ? `Max orders/run: ${exec.maxOrdersPerRun} | Max notional/order: ${exec.maxNotionalPerOrderUsd} USDT`
-      : `Configured caps (not enforced while relaxed): max ${exec.maxOrdersPerRun} orders/run, ${exec.maxNotionalPerOrderUsd} USDT/order — total spend still cannot exceed budget and venue rules apply.`,
-    exec.enabled ? `Cash reserve (untouchable): ${exec.minCashReserveUsd} USDT` : "",
+      ? `Max orders/run: ${exec.maxOrdersPerRun} | Max notional/order: $${exec.maxNotionalPerOrderUsd}`
+      : `Configured caps (not enforced while relaxed): max ${exec.maxOrdersPerRun} orders/run, $${exec.maxNotionalPerOrderUsd}/order — total spend still cannot exceed budget and venue rules apply.`,
+    exec.enabled ? `Cash reserve (untouchable): $${exec.minCashReserveUsd}` : "",
     `Allowed types: ${allowedTypes}`
   ]
     .filter(Boolean)
@@ -96,7 +96,7 @@ const buildTradingScopeSection = (runtimeConfig: BotSetup["runtimeConfig"]) => {
   if (runtimeConfig.symbolScope === "selected" && runtimeConfig.contextSymbols.length > 0) {
     return ["=== AUTHORIZED PAIRS — trade ONLY these ===", runtimeConfig.contextSymbols.join(", ")].join("\n");
   }
-  return "=== TRADING SCOPE ===\nYou may trade ANY USDT spot pair available on Binance. Pick your symbols based on your own analysis.";
+  return "=== TRADING SCOPE ===\nYou may trade ANY stable-quoted spot pair available on Binance (USDT or USDC; USDT preferred, USDC fallback). Pick your symbols based on your own analysis.";
 };
 
 // Live prices are no longer pre-injected into the trader prompt.
