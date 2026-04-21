@@ -15,14 +15,14 @@ const client = new OpenAI({
   baseURL: "https://api.x.ai/v1"
 });
 
-// xAI Agent Tools API — server-hosted tools that execute on xAI's side (no local schemas).
-// Adding these to the `tools` array of a chat completion lets Grok browse X and the web.
-// The model decides when to invoke them; they're always available, never forced.
-// Ref: https://docs.x.ai/docs/guides/tools/overview
-const XAI_SERVER_TOOLS = [
-  { type: "x_search" },
-  { type: "web_search" }
-];
+// Note on server-hosted search (X / web):
+// As of 2026-04, xAI's Chat Completions endpoint does NOT accept `x_search`/`web_search`
+// tool entries — those are Responses-API-only — and `live_search` on Chat Completions is
+// deprecated. Attempting any of them yields 422 "unknown variant". If we want browsing in
+// research later, the path is: swap research calls to xAI's Responses API (separate client
+// shape), leaving the trader loop on Chat Completions. For now, research relies on the
+// prompt + model's training data; no server-side browsing.
+const XAI_SERVER_TOOLS: Array<{ type: string }> = [];
 
 // ─── LLM Provider Interface Implementation ──────────────────────────
 
@@ -33,9 +33,9 @@ export const xaiProvider: LLMProvider = {
       model: input.model,
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
       messages: input.messages.map((m) => ({ role: m.role, content: m.content })),
-      // Always expose xAI's server-hosted search tools to research-phase calls so Grok
-      // can actually browse X / the web when the prompt asks for current news.
-      tools: XAI_SERVER_TOOLS as unknown as Parameters<typeof client.chat.completions.create>[0]["tools"],
+      ...(XAI_SERVER_TOOLS.length > 0
+        ? { tools: XAI_SERVER_TOOLS as unknown as Parameters<typeof client.chat.completions.create>[0]["tools"] }
+        : {}),
       ...(input.responseFormat ? { response_format: input.responseFormat } : {})
     } as Parameters<typeof client.chat.completions.create>[0]);
 
