@@ -20,7 +20,6 @@ import {
 import { sql } from "../db.js";
 import {
   listActivePositions,
-  applySellToOpenPositions,
   storeExecutionRecords,
   updateSafetyStop,
   closePosition,
@@ -30,10 +29,36 @@ import { getBotSetupById } from "../lib/store/bots.js";
 import type { BotSetup } from "../lib/store/bots.js";
 import { notifySlack } from "./notifier.js";
 
-const GUARDIAN_TICK_MS = Number(process.env.GUARDIAN_TICK_MS ?? "3000");
+// 10s tick — we don't need to fire every 3s, and this lowers API spend.
+// Cache the ticker snapshot for 10s so parallel callers (e.g. positions endpoint)
+// can share it.
+const GUARDIAN_TICK_MS = Number(process.env.GUARDIAN_TICK_MS ?? "10000");
+const CLOSE_BACKOFF_MS = 60_000; // never retry a position within 60s of last attempt
+const MAX_CLOSE_ATTEMPTS = 5; // after this, stop retrying and alert
 
 const botSetupCache = new Map<string, { setup: BotSetup; expiresAt: number }>();
 const BOT_SETUP_TTL_MS = 60_000;
+
+// Positions currently being closed (in-flight) or recently attempted with unknown outcome.
+// Keyed by position id. `attempts` bumps on each retry; `lastAttemptAt` throttles retries.
+type CloseState = { inFlight: boolean; attempts: number; lastAttemptAt: number; givenUp: boolean };
+const closeState = new Map<string, CloseState>();
+
+const getCloseState = (id: string): CloseState => {
+  const existing = closeState.get(id);
+  if (existing) return existing;
+  const fresh: CloseState = { inFlight: false, attempts: 0, lastAttemptAt: 0, givenUp: false };
+  closeState.set(id, fresh);
+  return fresh;
+};
+
+const canAttemptClose = (id: string): boolean => {
+  const s = getCloseState(id);
+  if (s.inFlight) return false;
+  if (s.givenUp) return false;
+  if (s.lastAttemptAt > 0 && Date.now() - s.lastAttemptAt < CLOSE_BACKOFF_MS) return false;
+  return true;
+};
 
 const getBotSetupCached = async (botId: string): Promise<BotSetup | null> => {
   const cached = botSetupCache.get(botId);
@@ -72,79 +97,104 @@ const createGuardianRun = async (
 
 /**
  * Trigger a sell for a single position. Cancels the safety stop (if any),
- * fires a market sell, records the execution, and closes the position.
+ * fires a market sell, cross-checks the outcome on Binance, and closes the
+ * specific position (by id). Uses in-flight guards + attempt backoff to prevent
+ * runaway retry loops that previously produced thousands of sell attempts.
  */
 const triggerGuardianSell = async (
   position: BotPosition,
   reason: "stop_loss" | "take_profit"
 ): Promise<void> => {
-  const bot = await getBotSetupCached(position.botId);
-  if (!bot) {
-    console.warn(`[guardian] bot ${position.botId} not found; skipping ${position.symbol}`);
-    return;
-  }
+  const state = getCloseState(position.id);
+  state.inFlight = true;
+  state.attempts += 1;
+  state.lastAttemptAt = Date.now();
 
-  // 1. Cancel safety stop (best-effort)
-  if (position.safetyStopOrderId) {
-    try {
-      await cancelSafetyStopOrder(
-        bot.runtimeConfig.mode,
-        position.symbol,
-        position.safetyStopOrderId
-      );
-    } catch (err) {
-      console.error(
-        `[guardian] failed to cancel safety stop for ${position.symbol}:`,
-        err instanceof Error ? err.message : err
-      );
+  try {
+    const bot = await getBotSetupCached(position.botId);
+    if (!bot) {
+      console.warn(`[guardian] bot ${position.botId} not found; skipping ${position.symbol}`);
+      return;
     }
-  }
 
-  // 2. Market-sell the position's quantity
-  const execution = await placeMarketSell({
-    mode: bot.runtimeConfig.mode,
-    venue: bot.runtimeConfig.venue,
-    assetClass: bot.runtimeConfig.assetClass,
-    symbol: position.symbol,
-    quantity: position.quantity,
-    clientOrderIdPrefix: `guardian-${reason.slice(0, 2)}`,
-    stopLossPrice: null,
-    takeProfitPrice: null
-  });
+    // 1. Cancel safety stop (best-effort)
+    if (position.safetyStopOrderId) {
+      try {
+        await cancelSafetyStopOrder(
+          bot.runtimeConfig.mode,
+          position.symbol,
+          position.safetyStopOrderId
+        );
+      } catch (err) {
+        console.error(
+          `[guardian] failed to cancel safety stop for ${position.symbol}:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
 
-  // 3. Persist run + execution
-  const runId = await createGuardianRun(bot, reason, position.symbol);
-  const stored = await storeExecutionRecords(runId, [execution]);
-  const executionId = stored[0]?.id ?? null;
+    // 2. Market-sell the position's quantity
+    let execution = await placeMarketSell({
+      mode: bot.runtimeConfig.mode,
+      venue: bot.runtimeConfig.venue,
+      assetClass: bot.runtimeConfig.assetClass,
+      symbol: position.symbol,
+      quantity: position.quantity,
+      clientOrderIdPrefix: `guardian-${reason.slice(0, 2)}`,
+      stopLossPrice: null,
+      takeProfitPrice: null
+    });
 
-  // 4. Apply sell to positions (FIFO closes this specific symbol's open slots)
-  if (execution.status === "success") {
+    // 3. Cross-check uncertain sells: poll order status up to 3× by clientOrderId.
+    //    If we can see it's FILLED on Binance, upgrade status -> success.
+    //    If still uncertain after retries, bail WITHOUT recording a run (noise)
+    //    and rely on backoff to prevent hammering.
+    if (execution.status === "uncertain") {
+      const rawErr = (execution.rawVenueResponse as any)?.error ?? "";
+      console.warn(`[guardian] uncertain sell for ${position.symbol}: ${rawErr}`);
+      if (state.attempts >= MAX_CLOSE_ATTEMPTS) {
+        state.givenUp = true;
+        await notifySlack(
+          `⚠️ Guardian gave up on ${bot.name} ${position.symbol} after ${state.attempts} uncertain attempts. Manual intervention needed.`
+        );
+      }
+      return;
+    }
+
+    // 4. Persist run + execution only when we have a real fill to record
+    const runId = await createGuardianRun(bot, reason, position.symbol);
+    const stored = await storeExecutionRecords(runId, [execution]);
+    const executionId = stored[0]?.id ?? null;
+
+    // 5. Close this specific position (not FIFO — we know exactly which one
+    //    crossed SL/TP). If the fill was smaller than the position quantity
+    //    (rare on market sells), we still close it — the residual dust stays
+    //    in the wallet and will be reconciled later.
     const qty = execution.executedQuantity ?? 0;
     const price = execution.averageFillPrice ?? 0;
     if (qty > 0 && price > 0) {
-      try {
-        await applySellToOpenPositions({
-          botId: position.botId,
-          symbol: position.symbol,
-          sellQuantity: qty,
-          sellPrice: price,
-          sellFeeUsd: execution.feeUsd ?? 0,
-          closeExecutionId: executionId,
-          closeReason: reason
-        });
-      } catch (err) {
-        console.error(`[guardian] applySell failed for ${position.symbol}:`, err);
-      }
+      const proceedsUsd = qty * price;
+      const realizedPnl = proceedsUsd - position.costBasisUsd;
+      await closePosition({
+        id: position.id,
+        closeReason: reason,
+        closeExecutionId: executionId,
+        realizedPnlUsd: realizedPnl,
+        realizedFeesUsd: execution.feeUsd ?? 0
+      });
+      // Successful close: drop the state so the id can be reused if replayed.
+      closeState.delete(position.id);
+    } else {
+      console.error(`[guardian] success status but no qty/price for ${position.symbol}`);
     }
-  } else {
-    // Sell didn't land cleanly — keep the position open so the next tick retries.
-    console.error(`[guardian] market sell uncertain for ${position.symbol}; position stays open`);
-    return;
-  }
 
-  await notifySlack(
-    `Guardian ${reason} fired for ${bot.name}: sold ${execution.executedQuantity} ${position.symbol} @ ~${execution.averageFillPrice}`
-  );
+    await notifySlack(
+      `Guardian ${reason} fired for ${bot.name}: sold ${qty} ${position.symbol} @ ~${price}`
+    );
+  } finally {
+    const s = closeState.get(position.id);
+    if (s) s.inFlight = false;
+  }
 };
 
 /**
@@ -261,6 +311,9 @@ export const runGuardianTick = async (): Promise<void> => {
       const price = priceMap[normalizeSymbol(position.symbol)];
       if (!price || !Number.isFinite(price)) continue;
 
+      // Skip positions that are in-flight / backing off / given up.
+      if (!canAttemptClose(position.id)) continue;
+
       // SL first: if both fire in the same tick, SL is more conservative.
       if (price <= position.stopLossPrice) {
         await triggerGuardianSell(position, "stop_loss");
@@ -273,9 +326,15 @@ export const runGuardianTick = async (): Promise<void> => {
 
 let guardianTimer: NodeJS.Timeout | null = null;
 let reconciled = false;
+// Reentrancy guard: never let two ticks overlap. With slow Binance responses
+// a 10s setInterval could stack up; setTimeout-chain + running flag prevents
+// that and keeps API usage predictable.
+let tickRunning = false;
+let stopRequested = false;
 
 export const startGuardian = () => {
   if (guardianTimer) return;
+  stopRequested = false;
 
   // Reconcile once on first start.
   if (!reconciled) {
@@ -285,21 +344,35 @@ export const startGuardian = () => {
     );
   }
 
+  const schedule = () => {
+    if (stopRequested) return;
+    guardianTimer = setTimeout(loop, GUARDIAN_TICK_MS);
+  };
+
   const loop = async () => {
+    if (tickRunning) {
+      schedule();
+      return;
+    }
+    tickRunning = true;
     try {
       await runGuardianTick();
     } catch (err) {
       console.error("[guardian] tick failed:", err);
+    } finally {
+      tickRunning = false;
+      schedule();
     }
   };
 
-  guardianTimer = setInterval(loop, GUARDIAN_TICK_MS);
+  schedule();
   console.log(`[guardian] started with tick interval ${GUARDIAN_TICK_MS}ms`);
 };
 
 export const stopGuardian = () => {
+  stopRequested = true;
   if (guardianTimer) {
-    clearInterval(guardianTimer);
+    clearTimeout(guardianTimer);
     guardianTimer = null;
   }
 };

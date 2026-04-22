@@ -154,7 +154,22 @@ export const getRunDetail = async (runId: string) => {
   };
 };
 
-export const getBotRuns = async (botId: string) => {
+export const getBotRuns = async (
+  botId: string,
+  options: { limit?: number; offset?: number; includeGuardian?: boolean } = {}
+) => {
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+  const offset = Math.max(options.offset ?? 0, 0);
+  // Guardian runs are synthetic rows created by the SL/TP guardian loop; they
+  // pollute the "Recent Runs" UI with near-empty entries. Exclude by default.
+  const includeGuardian = options.includeGuardian ?? false;
+
+  const [{ total }] = await sql<{ total: number }[]>`
+    select count(*)::int as total from runs r
+    where r.bot_id = ${botId}
+    ${includeGuardian ? sql`` : sql`and coalesce(r.compact_context->>'source', '') <> 'guardian'`}
+  `;
+
   const rows = await sql<
     {
       id: string;
@@ -186,15 +201,21 @@ export const getBotRuns = async (botId: string) => {
     join bots b on b.id = r.bot_id
     left join venue_prompt_versions vpv on vpv.id = r.formatter_prompt_version_id
     where r.bot_id = ${botId}
+    ${includeGuardian ? sql`` : sql`and coalesce(r.compact_context->>'source', '') <> 'guardian'`}
     order by r.created_at desc
-    limit 20
+    limit ${limit} offset ${offset}
   `;
-  return rows.map((row) => ({
-    ...row,
-    startedAt: row.startedAt.toISOString(),
-    finishedAt: row.finishedAt?.toISOString() ?? null,
-    parsedDecision: typeof row.parsedDecision === "string" ? JSON.parse(row.parsedDecision) : row.parsedDecision,
-    validationResult: typeof row.validationResult === "string" ? JSON.parse(row.validationResult) : row.validationResult,
-    compactContext: typeof row.compactContext === "string" ? JSON.parse(row.compactContext) : row.compactContext
-  }));
+  return {
+    total,
+    limit,
+    offset,
+    runs: rows.map((row) => ({
+      ...row,
+      startedAt: row.startedAt.toISOString(),
+      finishedAt: row.finishedAt?.toISOString() ?? null,
+      parsedDecision: typeof row.parsedDecision === "string" ? JSON.parse(row.parsedDecision) : row.parsedDecision,
+      validationResult: typeof row.validationResult === "string" ? JSON.parse(row.validationResult) : row.validationResult,
+      compactContext: typeof row.compactContext === "string" ? JSON.parse(row.compactContext) : row.compactContext
+    }))
+  };
 };

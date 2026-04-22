@@ -331,8 +331,11 @@ app.get("/bots/:botId/positions", async (request, response, next) => {
 app.get("/bots/:botId/runs", async (request, response, next) => {
   try {
     const { getBotRuns } = await import("./lib/store.js");
-    const runs = await getBotRuns(request.params.botId);
-    response.json(runs);
+    const limit = request.query.limit ? Number(request.query.limit) : undefined;
+    const offset = request.query.offset ? Number(request.query.offset) : undefined;
+    const includeGuardian = request.query.includeGuardian === "true";
+    const result = await getBotRuns(request.params.botId, { limit, offset, includeGuardian });
+    response.json(result);
   } catch (error) {
     next(error);
   }

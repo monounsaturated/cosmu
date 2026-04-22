@@ -4,8 +4,8 @@ import { PerformanceChart } from "../../performance-chart";
 import { BotControls } from "../../bot-controls";
 import { AutoRefresh } from "../../live-refresh";
 import { LocalTime } from "../../local-time";
-import { RunDetail } from "./run-detail";
 import { LivePositions } from "./live-positions";
+import { RecentRuns } from "./recent-runs";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 export const dynamic = "force-dynamic";
@@ -43,10 +43,10 @@ async function fetchApi(path: string) {
 export default async function BotPage({ params }: { params: Promise<{ botId: string }> }) {
   const { botId } = await params;
 
-  const [setup, details, runs, dashboard] = await Promise.all([
+  const [setup, details, runsResponse, dashboard] = await Promise.all([
     fetchApi(`/bots/${botId}/setup`),
     fetchApi(`/bots/${botId}/details`),
-    fetchApi(`/bots/${botId}/runs`),
+    fetchApi(`/bots/${botId}/runs?limit=20&offset=0`),
     fetchApi(`/dashboard`)
   ]);
 
@@ -78,7 +78,7 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
           <BotControls botId={botId} isActive={setup.runtimeConfig.enabled} />
         </div>
       </div>
-      <AutoRefresh intervalMs={15000} />
+      <AutoRefresh intervalMs={60000} />
       <LivePositions botId={botId} />
 
       <div className="grid" style={{ marginBottom: "24px", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
@@ -297,16 +297,8 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
       <div className="grid" style={{ display: 'block', marginBottom: '32px' }}>
         <div className="panel">
           <h3>Recent Execution Runs</h3>
-          <p className="muted" style={{ marginBottom: "16px" }}>Click to expand for full input/output logs.</p>
-          {runs && runs.length > 0 ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {runs.map((run: any) => (
-                <RunDetail key={run.id} run={run} />
-              ))}
-            </div>
-          ) : (
-            <p className="muted">No execution runs yet.</p>
-          )}
+          <p className="muted" style={{ marginBottom: "16px" }}>Click to expand for full input/output logs. Guardian (SL/TP) runs are hidden by default.</p>
+          <RecentRuns botId={botId} initialData={runsResponse} />
         </div>
       </div>
 

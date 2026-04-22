@@ -81,6 +81,7 @@ export function LivePositions({ botId }: { botId: string }) {
               <th>Qty</th>
               <th>Entry</th>
               <th>Current</th>
+              <th>Value USD</th>
               <th>P&amp;L %</th>
               <th>P&amp;L USD</th>
               <th>SL</th>
@@ -92,12 +93,14 @@ export function LivePositions({ botId }: { botId: string }) {
             {positions.map((p) => {
               const pnlColor =
                 p.pnlPct === null ? undefined : p.pnlPct >= 0 ? "#22c55e" : "#ef4444";
+              const valueUsd = p.currentPrice !== null ? p.currentPrice * p.quantity : null;
               return (
                 <tr key={p.id}>
                   <td>{p.symbol}</td>
                   <td>{p.quantity}</td>
                   <td>${p.avgEntryPrice}</td>
                   <td>{p.currentPrice !== null ? `$${p.currentPrice}` : "—"}</td>
+                  <td>{valueUsd !== null ? `$${valueUsd.toFixed(2)}` : "—"}</td>
                   <td style={{ color: pnlColor, fontWeight: 600 }}>{fmtPct(p.pnlPct)}</td>
                   <td style={{ color: pnlColor }}>{fmtUsd(p.unrealizedPnlUsd)}</td>
                   <td>${p.stopLossPrice}</td>
