@@ -37,6 +37,27 @@ export type VenueContext = {
 
 let venueSymbolsCache: { expiresAt: number; symbols: string[] } | null = null;
 
+const accountPermissionsCache = new Map<RuntimeConfig["mode"], { expiresAt: number; perms: Set<string> }>();
+
+const getAccountPermissions = async (mode: RuntimeConfig["mode"]): Promise<Set<string>> => {
+  const cached = accountPermissionsCache.get(mode);
+  if (cached && cached.expiresAt > Date.now()) return cached.perms;
+  try {
+    const acct = await getAccount(mode);
+    const perms = new Set<string>(
+      Array.isArray(acct?.permissions) ? acct.permissions.filter((p: unknown) => typeof p === "string") : []
+    );
+    // Binance omits SPOT when permissions is non-empty for some regional accounts, but canTrade
+    // implies spot access — add SPOT so baseline pairs (no TRD_GRP_* restriction) still pass.
+    if (acct?.canTrade) perms.add("SPOT");
+    accountPermissionsCache.set(mode, { expiresAt: Date.now() + 10 * 60 * 1000, perms });
+    return perms;
+  } catch (err) {
+    console.warn(`[binance] getAccountPermissions(${mode}) failed:`, err instanceof Error ? err.message : err);
+    return new Set<string>();
+  }
+};
+
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const getBaseUrl = (mode: RuntimeConfig["mode"]) => (mode === "live" ? LIVE_BASE_URL : TESTNET_BASE_URL);
@@ -164,12 +185,29 @@ type StableQuote = (typeof STABLE_QUOTES)[number];
 const isStableQuote = (asset: string): asset is StableQuote =>
   (STABLE_QUOTES as readonly string[]).includes(asset);
 
-const isTradableSpotStableSymbol = (exchangeSymbol: any) =>
+// Binance intersection rule: account can trade a symbol iff `accountPermissions`
+// has at least one permission in common with at least one `permissionSets` subArray.
+// When `accountPermissions` is undefined, skip the check (public calls, testnet baseline).
+const accountCanTrade = (exchangeSymbol: any, accountPermissions?: Set<string>) => {
+  if (!accountPermissions) return true;
+  const sets: unknown = exchangeSymbol?.permissionSets;
+  if (!Array.isArray(sets) || sets.length === 0) return true;
+  for (const set of sets) {
+    if (!Array.isArray(set)) continue;
+    for (const perm of set) {
+      if (typeof perm === "string" && accountPermissions.has(perm)) return true;
+    }
+  }
+  return false;
+};
+
+const isTradableSpotStableSymbol = (exchangeSymbol: any, accountPermissions?: Set<string>) =>
   exchangeSymbol?.symbol &&
   exchangeSymbol?.status === "TRADING" &&
   exchangeSymbol?.isSpotTradingAllowed !== false &&
   typeof exchangeSymbol?.quoteAsset === "string" &&
-  isStableQuote(exchangeSymbol.quoteAsset);
+  isStableQuote(exchangeSymbol.quoteAsset) &&
+  accountCanTrade(exchangeSymbol, accountPermissions);
 
 // Kept as an alias for any call sites that still expect USDT-only semantics.
 // Prefer `isTradableSpotStableSymbol` for new code.
@@ -342,25 +380,31 @@ export const lookupBinanceSymbols = async (
   // testnet but only TAOUSDC on live in some regions). Intersecting means
   // testnet sims mirror what live would allow.
   const needLiveCheck = mode === "testnet";
-  const [exchangeInfoResponse, tickerPrices, liveExchangeInfo] = await Promise.all([
+  const [exchangeInfoResponse, tickerPrices, liveExchangeInfo, accountPerms, livePerms] = await Promise.all([
     getAllExchangeInfo(mode),
     getAllTickerPrices(mode),
-    needLiveCheck ? getAllExchangeInfo("live") : Promise.resolve(null)
+    needLiveCheck ? getAllExchangeInfo("live") : Promise.resolve(null),
+    getAccountPermissions(mode),
+    needLiveCheck ? getAccountPermissions("live") : Promise.resolve(null)
   ]);
 
+  // For testnet: use LIVE account permissions when intersecting with live exchangeInfo
+  // (the goal is to mirror what the user could actually trade on live).
+  const livePermsForIntersect = livePerms ?? undefined;
   const liveTradable = new Set<string>();
   if (liveExchangeInfo) {
     for (const raw of liveExchangeInfo.symbols ?? []) {
-      if (!isTradableSpotStableSymbol(raw)) continue;
+      if (!isTradableSpotStableSymbol(raw, livePermsForIntersect)) continue;
       liveTradable.add(normalizeSymbol(String(raw.symbol ?? "")));
     }
   }
 
+  const permsForMode = mode === "live" ? accountPerms : undefined;
   const rulesMap: Record<string, SymbolRules> = {};
   for (const raw of exchangeInfoResponse.symbols ?? []) {
     const sym = normalizeSymbol(String(raw.symbol ?? ""));
     if (!candidatePairs.has(sym)) continue;
-    if (!isTradableSpotStableSymbol(raw)) continue;
+    if (!isTradableSpotStableSymbol(raw, permsForMode)) continue;
     if (needLiveCheck && !liveTradable.has(sym)) continue;
     rulesMap[sym] = parseSymbolRules(raw);
   }
@@ -386,10 +430,14 @@ export const lookupBinanceSymbols = async (
       continue;
     }
 
-    // Probe order: requested quote first (if the caller was specific), then USDT, then USDC.
+    // Probe order: requested quote first (if the caller was specific), then the
+    // quote order appropriate for the account region. On live (Binance FR and
+    // similar regional restrictions), USDC pairs carry wider permission groups
+    // than USDT (TRD_GRP_011 etc.), so prefer USDC first. Testnet mirrors live.
+    const defaultQuoteOrder: StableQuote[] = ["USDC", "USDT"];
     const probeOrder: StableQuote[] = [];
     if (requestedQuote) probeOrder.push(requestedQuote);
-    for (const q2 of STABLE_QUOTES) {
+    for (const q2 of defaultQuoteOrder) {
       if (!probeOrder.includes(q2)) probeOrder.push(q2);
     }
 
@@ -479,8 +527,16 @@ export const loadVenueContext = async (
 
   const exchangeInfoResponse = await getAllExchangeInfo(runtimeConfig.mode);
   const exchangeSymbols = exchangeInfoResponse.symbols ?? [];
+  // Re-use the account permissions already implied by `rawAccountResponse` to
+  // filter exchangeInfo to what this account can actually trade.
+  const accountPerms = new Set<string>(
+    Array.isArray(rawAccountResponse?.permissions)
+      ? rawAccountResponse.permissions.filter((p: unknown) => typeof p === "string")
+      : []
+  );
+  if (rawAccountResponse?.canTrade) accountPerms.add("SPOT");
   const allTradableSpotSymbols = exchangeSymbols
-    .filter(isTradableSpotStableSymbol)
+    .filter((sym: any) => isTradableSpotStableSymbol(sym, accountPerms))
     .map((symbol: any) => normalizeSymbol(symbol.symbol));
 
   const derivedSymbols = new Set(

@@ -115,14 +115,20 @@ export const validateDecision = async (input: {
           throw new Error(`Buy ${normalized.symbol} ($${requiredUsd.toFixed(2)}) would exceed bot budget of $${budget} (already spent $${spentUsd.toFixed(2)})`);
         }
 
-        // 5. Balance sufficiency — combined USDT + USDC (peg-guarded swap happens at execution)
+        // 5. Balance sufficiency — combined USDT + USDC (peg-guarded swap happens at execution).
+        // Must include `spentUsd` in the LHS: within a single run the trader can emit several
+        // buys back-to-back; if we compare each order in isolation the snapshot cash is
+        // re-used for every order and the run can overspend available cash (seen in bot #57
+        // where 3 parallel $200 buys against a $399 logical USDT balance all passed).
         const cashFree =
           (balances.get("USDT")?.free ?? 0) + (balances.get("USDC")?.free ?? 0);
         const cashAvailable = rulesEnabled
           ? cashFree - input.runtimeConfig.execution.minCashReserveUsd
           : cashFree;
-        if (requiredUsd > cashAvailable) {
-          throw new Error(`Insufficient USDT/USDC cash for ${normalized.symbol}`);
+        if (spentUsd + requiredUsd > cashAvailable) {
+          throw new Error(
+            `Insufficient USDT/USDC cash for ${normalized.symbol} (have $${cashAvailable.toFixed(2)}, already queued $${spentUsd.toFixed(2)}, need $${requiredUsd.toFixed(2)})`
+          );
         }
 
         spentUsd += requiredUsd;
