@@ -231,6 +231,22 @@ export const getAllTickerPrices = (mode: RuntimeConfig["mode"]) =>
 const getTickerPrice = (mode: RuntimeConfig["mode"], symbol: string) =>
   binanceFetch(mode, `/v3/ticker/price?symbol=${encodeURIComponent(symbol)}`, { method: "GET" });
 
+export const getTickerPricesForSymbols = async (
+  mode: RuntimeConfig["mode"],
+  symbolsInput: string[]
+): Promise<Record<string, number>> => {
+  const symbols = Array.from(new Set(symbolsInput.map(normalizeSymbol).filter(Boolean)));
+  if (symbols.length === 0) return {};
+  const encoded = encodeURIComponent(JSON.stringify(symbols));
+  const data = (await binanceFetch(mode, `/v3/ticker/price?symbols=${encoded}`, { method: "GET" })) as
+    | Array<{ symbol: string; price: string }>
+    | { symbol: string; price: string };
+  const arr = Array.isArray(data) ? data : [data];
+  const out: Record<string, number> = {};
+  for (const t of arr) out[normalizeSymbol(String(t.symbol ?? ""))] = Number(t.price);
+  return out;
+};
+
 const getAllExchangeInfo = (mode: RuntimeConfig["mode"]) =>
   binanceFetch(mode, "/v3/exchangeInfo", { method: "GET" });
 
@@ -320,16 +336,32 @@ export const lookupBinanceSymbols = async (
     candidatePairs.add(`${base}USDC`);
   }
 
-  const [exchangeInfoResponse, tickerPrices] = await Promise.all([
+  // In testnet mode, we ALSO fetch live exchangeInfo and intersect: testnet
+  // has a broader / different symbol universe than live, so a testnet run can
+  // pick symbols that don't exist on live Binance (e.g., TAOUSDT exists on
+  // testnet but only TAOUSDC on live in some regions). Intersecting means
+  // testnet sims mirror what live would allow.
+  const needLiveCheck = mode === "testnet";
+  const [exchangeInfoResponse, tickerPrices, liveExchangeInfo] = await Promise.all([
     getAllExchangeInfo(mode),
-    getAllTickerPrices(mode)
+    getAllTickerPrices(mode),
+    needLiveCheck ? getAllExchangeInfo("live") : Promise.resolve(null)
   ]);
+
+  const liveTradable = new Set<string>();
+  if (liveExchangeInfo) {
+    for (const raw of liveExchangeInfo.symbols ?? []) {
+      if (!isTradableSpotStableSymbol(raw)) continue;
+      liveTradable.add(normalizeSymbol(String(raw.symbol ?? "")));
+    }
+  }
 
   const rulesMap: Record<string, SymbolRules> = {};
   for (const raw of exchangeInfoResponse.symbols ?? []) {
     const sym = normalizeSymbol(String(raw.symbol ?? ""));
     if (!candidatePairs.has(sym)) continue;
     if (!isTradableSpotStableSymbol(raw)) continue;
+    if (needLiveCheck && !liveTradable.has(sym)) continue;
     rulesMap[sym] = parseSymbolRules(raw);
   }
 
@@ -699,16 +731,40 @@ export const placeSafetyStopOrder = async (input: {
   quantity: number;
   stopPrice: number;
   clientOrderId: string;
-}): Promise<{ orderId: string; rawResponse: unknown }> => {
+  orderTypes?: string[];
+  tickSize?: number;
+}): Promise<{ orderId: string; rawResponse: unknown; type: "STOP_LOSS" | "STOP_LOSS_LIMIT" }> => {
+  // Binance spot: STOP_LOSS (market-on-trigger) is NOT supported on most pairs —
+  // exchangeInfo.orderTypes for a typical symbol usually lists STOP_LOSS_LIMIT
+  // but not STOP_LOSS. Prefer STOP_LOSS when allowed, fall back to STOP_LOSS_LIMIT
+  // with a limit price 0.5% below stopPrice so it almost always fills.
+  const supportsStopLoss = input.orderTypes?.includes("STOP_LOSS") ?? false;
+  const supportsStopLossLimit = input.orderTypes?.includes("STOP_LOSS_LIMIT") ?? true;
+
+  const useMarket = supportsStopLoss;
+  if (!useMarket && !supportsStopLossLimit) {
+    throw new Error(`Symbol ${input.symbol} supports neither STOP_LOSS nor STOP_LOSS_LIMIT`);
+  }
+
+  const orderType: "STOP_LOSS" | "STOP_LOSS_LIMIT" = useMarket ? "STOP_LOSS" : "STOP_LOSS_LIMIT";
+
   const params = new URLSearchParams({
     symbol: input.symbol,
     side: "SELL",
-    type: "STOP_LOSS",
+    type: orderType,
     quantity: input.quantity.toString(),
     stopPrice: input.stopPrice.toString(),
     newClientOrderId: input.clientOrderId.slice(0, 36),
     newOrderRespType: "RESULT"
   });
+
+  if (orderType === "STOP_LOSS_LIMIT") {
+    // Place the limit slightly below stopPrice so it fills immediately on trigger.
+    const limitRaw = input.stopPrice * 0.995;
+    const limitPrice = input.tickSize ? roundToTick(limitRaw, input.tickSize) : limitRaw;
+    params.set("price", limitPrice.toString());
+    params.set("timeInForce", "GTC");
+  }
 
   const rawResponse = await binanceFetch(
     input.mode,
@@ -723,7 +779,8 @@ export const placeSafetyStopOrder = async (input: {
 
   return {
     orderId: String(rawResponse.orderId ?? ""),
-    rawResponse
+    rawResponse,
+    type: orderType
   };
 };
 

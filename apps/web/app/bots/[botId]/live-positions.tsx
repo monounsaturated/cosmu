@@ -28,18 +28,25 @@ const fmtPct = (v: number | null | undefined) => {
 
 export function LivePositions({ botId }: { botId: string }) {
   const [positions, setPositions] = useState<Position[] | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
       try {
-        const res = await fetch(`/api/bots/${botId}/positions`, { cache: "no-store" });
-        if (!res.ok) return;
+        const res = await fetch(`/api/bots/${botId}/positions?t=${Date.now()}`, { cache: "no-store" });
+        if (!res.ok) {
+          console.warn(`[live-positions] fetch failed ${res.status}`);
+          return;
+        }
         const data = await res.json();
-        if (!cancelled) setPositions(data.positions ?? []);
-      } catch {
-        /* ignore transient errors */
+        if (!cancelled) {
+          setPositions(data.positions ?? []);
+          setLastUpdated(Date.now());
+        }
+      } catch (err) {
+        console.warn("[live-positions] fetch error:", err);
       }
     };
 
@@ -56,7 +63,14 @@ export function LivePositions({ botId }: { botId: string }) {
   return (
     <div className="grid" style={{ display: "block", marginBottom: "32px" }}>
       <div className="panel">
-        <h3>Open Positions</h3>
+        <h3>
+          Open Positions
+          {lastUpdated && (
+            <span className="muted" style={{ fontSize: "12px", fontWeight: "normal", marginLeft: "12px" }}>
+              updated {Math.round((Date.now() - lastUpdated) / 1000)}s ago
+            </span>
+          )}
+        </h3>
         <p className="muted" style={{ marginBottom: "16px" }}>
           Live prices refresh every 5s. SL/TP fire via the app guardian; safety stop is a wider Binance STOP_LOSS that triggers only if the app is down.
         </p>

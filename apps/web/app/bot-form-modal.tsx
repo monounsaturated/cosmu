@@ -89,7 +89,7 @@ BUY SOLUSDT qty=2.5 @ 142.80 → success`,
 // Research grounding block — only appended for xAI providers (matches
 // `RESEARCH_GROUNDING_BLOCK` in apps/api/src/services/prompt-context.ts).
 // Keep the text in sync with the backend.
-const RESEARCH_GROUNDING_PREVIEW = {
+const buildResearchGroundingPreview = () => ({
   label: "Grounding Rules (xAI only)",
   preview: `---
 GROUNDING RULES (critical — your output feeds live trading decisions):
@@ -97,7 +97,7 @@ GROUNDING RULES (critical — your output feeds live trading decisions):
 • For ANY claim about recent prices, news, tweets, or market events: call a search tool first. Never cite a date, username, or headline you did not just retrieve.
 • If a search returns no results or the tools are unavailable for some reason, say so explicitly ("unable to retrieve live data for X") and do NOT invent content to fill the gap. A short, honest report beats a detailed fabricated one.
 • When quoting tweets/posts, include the exact retrieved timestamp. When citing prices, state the source and time. Do not round timestamps to "today" unless they actually are today.`,
-};
+});
 
 // Non-negotiable constraints appended to every trader system prompt (matches
 // `NON_NEGOTIABLE_CONSTRAINTS_BLOCK` in apps/api/src/services/prompt-context.ts).
@@ -1449,7 +1449,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
               onSaveNewVersion={handleSaveResearchVersion}
               savingVersion={researchSavingVersion}
               loadingBody={false}
-              alwaysInjected={selectedResearchProvider === "xai" ? [RESEARCH_GROUNDING_PREVIEW] : []}
+              alwaysInjected={selectedResearchProvider === "xai" ? [buildResearchGroundingPreview()] : []}
               nextPromptNumber={nextResearchPromptNumber}
               providerOptions={providerOptions}
               selectedProvider={selectedResearchProvider}

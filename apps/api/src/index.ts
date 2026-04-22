@@ -31,7 +31,7 @@ import { getDashboard } from "./services/dashboard.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
 import { listXaiModels } from "./providers/xai.js";
 import { BOOTSTRAP_XAI_PROFILES, bootstrapModelProfiles, getVenueSymbols, syncProviderModels } from "./services/catalog.js";
-import { getAccountBalance, getAllTickerPrices, normalizeSymbol } from "./adapters/binance.js";
+import { getAccountBalance, getTickerPricesForSymbols, normalizeSymbol } from "./adapters/binance.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
 import { killBotAndLiquidate } from "./services/kill-bot.js";
@@ -247,7 +247,7 @@ app.post("/bots/:botId/run", async (request, response, next) => {
       return;
     }
 
-    const result = await runBot(bot);
+    const result = await runBot(bot, { manual: true });
     response.json(result);
   } catch (error) {
     next(error);
@@ -291,14 +291,10 @@ app.get("/bots/:botId/positions", async (request, response, next) => {
       return;
     }
 
-    const priceMap: Record<string, number> = {};
+    let priceMap: Record<string, number> = {};
     try {
-      const tickers = await getAllTickerPrices(bot.runtimeConfig.mode);
-      if (Array.isArray(tickers)) {
-        for (const t of tickers as Array<{ symbol: string; price: string }>) {
-          priceMap[normalizeSymbol(String(t.symbol ?? ""))] = Number(t.price);
-        }
-      }
+      const symbols = positions.map((p) => normalizeSymbol(p.symbol));
+      priceMap = await getTickerPricesForSymbols(bot.runtimeConfig.mode, symbols);
     } catch (err) {
       console.warn(`[positions] ticker fetch failed for bot ${bot.id}:`, err instanceof Error ? err.message : err);
     }

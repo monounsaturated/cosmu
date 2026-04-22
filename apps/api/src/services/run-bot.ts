@@ -78,13 +78,16 @@ const summarizeTrades = async (runId: string) => {
   return trades.map((trade) => `${trade.side} ${trade.symbol} (${trade.status})`).join(", ");
 };
 
-export const runBot = async (bot: BotSetup) => {
+export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => {
   // Atomic claim: if another tick/source already started this cycle, bail out
   // silently. Protects against double-firing from overlapping scheduler sources
   // (internal 15s loop + external /internal/scheduler/tick cron).
-  const claimed = await claimRun(bot.runtimeConfigId);
-  if (!claimed) {
-    return { runId: null, status: "skipped" as const };
+  // Manual triggers (Run Now button) bypass the claim to always fire.
+  if (!opts.manual) {
+    const claimed = await claimRun(bot.runtimeConfigId);
+    if (!claimed) {
+      return { runId: null, status: "skipped" as const };
+    }
   }
 
   let runId: string | null = null;
@@ -271,12 +274,17 @@ export const runBot = async (bot: BotSetup) => {
                 symbol: record.symbol,
                 quantity: safetyQty,
                 stopPrice: safetyPrice,
-                clientOrderId: `safety-${createdPositionId.replace(/-/g, "").slice(0, 12)}-${Date.now().toString(36)}`
+                clientOrderId: `safety-${createdPositionId.replace(/-/g, "").slice(0, 12)}-${Date.now().toString(36)}`,
+                orderTypes: rules?.orderTypes,
+                tickSize: rules?.tickSize
               });
               await updateSafetyStop(createdPositionId, safetyPrice, result.orderId);
+              console.log(`[run-bot] safety stop placed for ${record.symbol} (${result.type}) @ ${safetyPrice}`);
             } catch (err) {
               console.error(`[run-bot] safety stop placement failed for ${record.symbol}:`, err instanceof Error ? err.message : err);
             }
+          } else {
+            console.warn(`[run-bot] safety stop skipped for ${record.symbol}: price=${safetyPrice} qty=${safetyQty} minQty=${rules?.minQty}`);
           }
         }
       } else if (record.side === "sell") {

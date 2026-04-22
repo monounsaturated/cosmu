@@ -19,7 +19,7 @@ const fmtNum = (n: number) =>
  * Responses API with `web_search` + `x_search` enabled, so the model CAN browse;
  * this block tells it that it must, and must flag the turn if it can't.
  */
-export const RESEARCH_GROUNDING_BLOCK = [
+export const buildResearchGroundingBlock = () => [
   "---",
   "GROUNDING RULES (critical — your output feeds live trading decisions):",
   `• Today's date is ${new Date().toISOString().slice(0, 10)}. Any cited news, tweet, or price MUST come from a search you actually ran this turn — you have web_search and x_search tools available.`,
@@ -234,7 +234,7 @@ export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildProm
   // retrieved" guardrails. Other providers don't have browsing wired in and the
   // block would mislead them.
   const parts = [bot.promptBody.trim()];
-  if (bot.modelProvider === "xai") parts.push(RESEARCH_GROUNDING_BLOCK);
+  if (bot.modelProvider === "xai") parts.push(buildResearchGroundingBlock());
   const systemPrompt = parts.join("\n\n");
   const userMessage = "Analyze the market now. Identify any trading opportunities worth exploring.";
 

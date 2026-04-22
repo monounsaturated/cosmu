@@ -87,10 +87,37 @@ type ParsedInput = {
   sections: { label: string; content: string }[];
 };
 
-/** System prompt is just the user's written prompt (no preamble). */
-function parseSystemPrompt(text: string | null): string | null {
-  if (!text) return null;
-  return text.trim() || null;
+/** Split the system prompt into the written body and any appended injected blocks
+ *  (e.g. the xAI grounding rules for research, or the non-negotiable constraints for trader).
+ *  These are blocks we know the backend appends after the user-authored body, separated by `\n\n---\n`. */
+function parseSystemPrompt(text: string | null): { writtenPrompt: string | null; systemSections: { label: string; content: string }[] } {
+  if (!text) return { writtenPrompt: null, systemSections: [] };
+  const trimmed = text.trim();
+  if (!trimmed) return { writtenPrompt: null, systemSections: [] };
+
+  const INJECTED_MARKERS: { label: string; headerRegex: RegExp }[] = [
+    { label: "Grounding Rules", headerRegex: /^GROUNDING RULES\b/m },
+    { label: "Non-Negotiable Constraints", headerRegex: /^NON-NEGOTIABLE CONSTRAINTS\b/m }
+  ];
+
+  const systemSections: { label: string; content: string }[] = [];
+  let remaining = trimmed;
+
+  while (true) {
+    const sepIdx = remaining.indexOf("\n---\n");
+    if (sepIdx === -1) break;
+    const after = remaining.slice(sepIdx + 5);
+    const match = INJECTED_MARKERS.find((m) => m.headerRegex.test(after));
+    if (!match) break;
+    // Find the next separator so we can stop this section
+    const nextSep = after.indexOf("\n---\n");
+    const content = (nextSep === -1 ? after : after.slice(0, nextSep)).trim();
+    systemSections.push({ label: match.label, content });
+    remaining = remaining.slice(0, sepIdx).trim();
+    if (nextSep !== -1) remaining = `${remaining}\n---\n${after.slice(nextSep + 5)}`;
+  }
+
+  return { writtenPrompt: remaining.trim() || null, systemSections };
 }
 
 /** Split user context into labelled sections (SESSION, WALLET, etc.) */
@@ -192,8 +219,9 @@ function InputBreakdown({ systemPrompt, userContext, phaseLabel, phaseColor, raw
 }) {
   const [showSections, setShowSections] = useState(false);
 
-  const writtenPrompt = parseSystemPrompt(systemPrompt);
-  const { sections } = parseUserContext(userContext);
+  const { writtenPrompt, systemSections } = parseSystemPrompt(systemPrompt);
+  const { sections: userSections } = parseUserContext(userContext);
+  const sections = [...systemSections, ...userSections];
 
   return (
     <div style={{ marginTop: "20px" }}>
