@@ -18,11 +18,6 @@ export function KillSwitch() {
   const toggle = async () => {
     if (isOn === null || toggling) return;
     const newState = !isOn;
-
-    if (newState && !confirm("Are you sure you want to enable the global kill switch? This will halt ALL bot executions immediately.")) {
-      return;
-    }
-
     setToggling(true);
     try {
       const res = await fetch("/api/settings/kill-switch", {

@@ -96,10 +96,10 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
     // ── 1. Build "before" state ──────────────────────────────────────
     const beforeLedger = await listBotExecutionLedger(bot.id);
     const beforeLogical = computeLogicalBalances(bot.runtimeConfig.budgetUsdt, beforeLedger);
-    const initialSymbols = symbolsForPricing(bot.runtimeConfig, getHeldSymbols(beforeLogical), []);
+    const initialSymbols = symbolsForPricing(bot.runtimeConfig, getHeldSymbols(beforeLogical, bot.runtimeConfig), []);
     const beforeVenueRaw = await loadVenueContext(
       bot.runtimeConfig,
-      initialSymbols.length > 0 ? initialSymbols : [...bot.runtimeConfig.contextSymbols, ...getHeldSymbols(beforeLogical)]
+      initialSymbols.length > 0 ? initialSymbols : [...bot.runtimeConfig.contextSymbols, ...getHeldSymbols(beforeLogical, bot.runtimeConfig)]
     );
     const beforeVenueContext = {
       ...beforeVenueRaw,
@@ -314,7 +314,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
     const afterLogical = computeLogicalBalances(bot.runtimeConfig.budgetUsdt, afterLedger);
     const afterVenueRaw = await loadVenueContext(bot.runtimeConfig, [
       ...bot.runtimeConfig.contextSymbols,
-      ...getHeldSymbols(afterLogical)
+      ...getHeldSymbols(afterLogical, bot.runtimeConfig)
     ]);
     const afterVenueContext = {
       ...afterVenueRaw,

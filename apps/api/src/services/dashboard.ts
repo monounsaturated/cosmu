@@ -273,7 +273,10 @@ export const getDashboard = async () => {
     const portfolio = virtualPortfolios.get(bot.id) ?? { usdt: bot.budgetUsdt, assets: {} };
     const priceMap = bot.mode === "testnet" ? testnetPriceMap : livePriceMap;
     
-    const balances = [{ asset: "USDT", free: portfolio.usdt, locked: 0, usdValue: portfolio.usdt }];
+    // Label cash by venue: live binance has no USDT pairs, so the bot's logical
+    // cash is held as USDC. Mirrors buildLogicalSnapshot for display consistency.
+    const cashAsset = bot.mode === "live" ? "USDC" : "USDT";
+    const balances = [{ asset: cashAsset, free: portfolio.usdt, locked: 0, usdValue: portfolio.usdt }];
     for (const [asset, qty] of Object.entries(portfolio.assets)) {
       if (qty > 0.00000001 || qty < -0.00000001) {
         balances.push({

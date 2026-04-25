@@ -1,4 +1,4 @@
-import type { VenueContext } from "../adapters/binance.js";
+import { isUsdcOnlyVenue, type VenueContext } from "../adapters/binance.js";
 import {
   getBotPrePromptContext,
   getActiveFormatterPrompt,
@@ -43,9 +43,9 @@ export const NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
 // System prelude removed — the user's written prompt is now the entire system prompt for research.
 
 export const DEFAULT_FORMATTER_BODY = [
-  "You are the execution stage (phase 2) for one autonomous Binance spot bot (quoted in USDT or USDC — both count as cash).",
+  "You are the execution stage (phase 2) for one autonomous Binance spot bot. On Binance live (France), USDT pairs are NOT available — every order must be a USDC pair. On testnet/dev, both USDT and USDC pairs are tradable. Either way, treat USDT and USDC at 1:1 as cash.",
   "",
-  "You have a tool available: `binance_symbol_lookup(symbols: string[])`. Pass bare bases ('NEIRO') or full pairs ('BTCUSDT','NEIROUSDC'); the tool returns the best tradable stable-quoted pair (USDT preferred, USDC fallback). ALWAYS use the canonical `symbol` from the response when placing the order — e.g. if you asked for 'NEIRO' and got back {symbol:'NEIROUSDC'}, your order.symbol must be 'NEIROUSDC'. Pass ONLY the specific tickers you are considering; one call with up to 10 symbols is enough — do not waste iterations.",
+  "You have a tool available: `binance_symbol_lookup(symbols: string[])`. Pass bare bases ('NEIRO') or full pairs ('BTCUSDC'); the tool returns the best tradable stable-quoted pair allowed for this venue (USDC-only on live, USDC-preferred elsewhere). ALWAYS use the canonical `symbol` from the response when placing the order — e.g. if you asked for 'NEIRO' and got back {symbol:'NEIROUSDC'}, your order.symbol must be 'NEIROUSDC'. Pass ONLY the specific tickers you are considering; one call with up to 10 symbols is enough — do not waste iterations.",
   "",
   "Inputs (in the user message):",
   "- UPSTREAM RESEARCH: qualitative thesis from phase 1. Symbols may be informal or mis-spelled; normalize to bases and let the lookup pick USDT or USDC. Any price figures mentioned there may be stale or wrong — ignore them and use currentPrice from the tool.",
@@ -122,7 +122,10 @@ const buildTradingScopeSection = (runtimeConfig: BotSetup["runtimeConfig"]) => {
   if (runtimeConfig.symbolScope === "selected" && runtimeConfig.contextSymbols.length > 0) {
     return ["=== AUTHORIZED PAIRS — trade ONLY these ===", runtimeConfig.contextSymbols.join(", ")].join("\n");
   }
-  return "=== TRADING SCOPE ===\nYou may trade ANY stable-quoted spot pair available on Binance (USDT or USDC; USDT preferred, USDC fallback). Pick your symbols based on your own analysis.";
+  const scope = isUsdcOnlyVenue(runtimeConfig)
+    ? "any USDC-quoted spot pair available on Binance live (USDT pairs are NOT tradable in this region — use USDC only)"
+    : "any stable-quoted spot pair available on Binance (USDC preferred, USDT fallback)";
+  return `=== TRADING SCOPE ===\nYou may trade ${scope}. Pick your symbols based on your own analysis.`;
 };
 
 // Live prices are no longer pre-injected into the trader prompt.

@@ -185,6 +185,17 @@ type StableQuote = (typeof STABLE_QUOTES)[number];
 const isStableQuote = (asset: string): asset is StableQuote =>
   (STABLE_QUOTES as readonly string[]).includes(asset);
 
+// Binance France (live) no longer offers USDT pairs — restrict to USDC only.
+// Testnet keeps both quotes since dev/sim flows still need USDT pairs.
+// Other venues (when added) keep dual-stable behavior.
+export const isUsdcOnlyVenue = (cfg: { venue: RuntimeConfig["venue"]; mode: RuntimeConfig["mode"] }) =>
+  cfg.venue === "binance" && cfg.mode === "live";
+
+const allowedStableQuotesFor = (cfg: {
+  venue: RuntimeConfig["venue"];
+  mode: RuntimeConfig["mode"];
+}): readonly StableQuote[] => (isUsdcOnlyVenue(cfg) ? ["USDC"] : STABLE_QUOTES);
+
 // Binance intersection rule: account can trade a symbol iff `accountPermissions`
 // has at least one permission in common with at least one `permissionSets` subArray.
 // When `accountPermissions` is undefined, skip the check (public calls, testnet baseline).
@@ -365,13 +376,15 @@ export const lookupBinanceSymbols = async (
   const uniqueQueries = Array.from(new Set(queries));
   if (uniqueQueries.length === 0) return {};
 
-  // Candidate pairs to probe: for each query, try both USDT and USDC variants.
+  // Candidate pairs to probe: respect venue-allowed quotes (USDC-only on live binance).
+  const allowedQuotes = allowedStableQuotesFor({ venue: "binance", mode });
   const candidatePairs = new Set<string>();
   for (const q of uniqueQueries) {
     const { base } = splitBaseAndQuote(q);
     if (!base) continue;
-    candidatePairs.add(`${base}USDT`);
-    candidatePairs.add(`${base}USDC`);
+    for (const quote of allowedQuotes) {
+      candidatePairs.add(`${base}${quote}`);
+    }
   }
 
   // In testnet mode, we ALSO fetch live exchangeInfo and intersect: testnet
@@ -430,14 +443,13 @@ export const lookupBinanceSymbols = async (
       continue;
     }
 
-    // Probe order: requested quote first (if the caller was specific), then the
-    // quote order appropriate for the account region. On live (Binance FR and
-    // similar regional restrictions), USDC pairs carry wider permission groups
-    // than USDT (TRD_GRP_011 etc.), so prefer USDC first. Testnet mirrors live.
-    const defaultQuoteOrder: StableQuote[] = ["USDC", "USDT"];
+    // Probe order: requested quote first (if it's allowed for this venue), then
+    // venue-allowed defaults. Binance live = USDC only; testnet keeps both.
     const probeOrder: StableQuote[] = [];
-    if (requestedQuote) probeOrder.push(requestedQuote);
-    for (const q2 of defaultQuoteOrder) {
+    if (requestedQuote && allowedQuotes.includes(requestedQuote)) {
+      probeOrder.push(requestedQuote);
+    }
+    for (const q2 of allowedQuotes) {
       if (!probeOrder.includes(q2)) probeOrder.push(q2);
     }
 
@@ -452,10 +464,11 @@ export const lookupBinanceSymbols = async (
     }
 
     if (!chosen) {
+      const allowedLabel = allowedQuotes.map((qq) => `${base}/${qq}`).join(" or ");
       out[q] = {
         tradable: false,
         currentPrice: null,
-        reason: `No tradable ${base}/USDT or ${base}/USDC spot pair found on Binance`
+        reason: `No tradable ${allowedLabel} spot pair found on Binance`
       };
       continue;
     }
@@ -508,22 +521,25 @@ export const loadVenueContext = async (
     return Number(balance.free) > 0 || Number(balance.locked) > 0;
   });
 
-  // For each non-stable balance asset, include both USDT and USDC pairs as candidates; the
+  // For each non-stable balance asset, include venue-allowed stable pairs as candidates; the
   // one that resolves to a live price will be used for USD valuation.
+  const allowedQuotes = allowedStableQuotesFor(runtimeConfig);
+  const usdcOnly = isUsdcOnlyVenue(runtimeConfig);
   const balanceSymbols = balances
     .flatMap((balance: any) => {
       const asset = String(balance.asset ?? "").trim().toUpperCase();
       if (!asset || isStableQuote(asset)) return [];
-      return [`${asset}USDT`, `${asset}USDC`];
+      return allowedQuotes.map((q) => `${asset}${q}`);
     });
   const selectedSymbols = contextSymbols
     .map(normalizeSymbol)
-    .filter(
-      (symbol) =>
-        symbol !== ALL_SYMBOLS_TOKEN &&
-        symbol !== "USDTUSDT" &&
-        symbol !== "USDCUSDC"
-    );
+    .filter((symbol) => {
+      if (symbol === ALL_SYMBOLS_TOKEN || symbol === "USDTUSDT" || symbol === "USDCUSDC") return false;
+      // Drop any selection on a quote we don't allow for this venue.
+      const { quote } = splitBaseAndQuote(symbol);
+      if (quote && !allowedQuotes.includes(quote)) return false;
+      return true;
+    });
 
   const exchangeInfoResponse = await getAllExchangeInfo(runtimeConfig.mode);
   const exchangeSymbols = exchangeInfoResponse.symbols ?? [];
@@ -536,13 +552,19 @@ export const loadVenueContext = async (
   );
   if (rawAccountResponse?.canTrade) accountPerms.add("SPOT");
   const allTradableSpotSymbols = exchangeSymbols
-    .filter((sym: any) => isTradableSpotStableSymbol(sym, accountPerms))
+    .filter((sym: any) => {
+      if (!isTradableSpotStableSymbol(sym, accountPerms)) return false;
+      const quote = String(sym.quoteAsset ?? "").toUpperCase();
+      return allowedQuotes.includes(quote as StableQuote);
+    })
     .map((symbol: any) => normalizeSymbol(symbol.symbol));
 
+  // USDCUSDT is the peg-swap pair — only useful when both stables are allowed.
+  const pegSymbols = usdcOnly ? [] : ["USDCUSDT"];
   const derivedSymbols = new Set(
     runtimeConfig.symbolScope === "all"
-      ? [...allTradableSpotSymbols, ...balanceSymbols, "USDCUSDT"]
-      : [...balanceSymbols, ...selectedSymbols, "USDCUSDT"]
+      ? [...allTradableSpotSymbols, ...balanceSymbols, ...pegSymbols]
+      : [...balanceSymbols, ...selectedSymbols, ...pegSymbols]
   );
 
   const allPrices = await getAllTickerPrices(runtimeConfig.mode);
@@ -1096,9 +1118,9 @@ export const executeOrders = async (input: {
   for (const [index, rawOrder] of input.orders.entries()) {
     const order = await validateTradability(input.runtimeConfig, rawOrder, input.venueContext);
 
-    // Pre-trade liquidity check: if buying a <BASE>/USDC pair but the account holds
-    // primarily USDT (or vice versa), swap the stablecoin first on USDCUSDT with a peg guard.
-    if (order.side === "buy") {
+    // Pre-trade liquidity check: peg-swap between USDT and USDC when both are tradable
+    // on this venue. Disabled on Binance live (USDC-only — no USDT pairs to swap into).
+    if (order.side === "buy" && !isUsdcOnlyVenue(input.runtimeConfig)) {
       const { quote: orderQuote } = splitBaseAndQuote(order.symbol);
       if (orderQuote) {
         const priceForSizing = input.venueContext.priceMap[order.symbol] ?? order.limitPrice ?? 0;
@@ -1107,7 +1129,7 @@ export const executeOrders = async (input: {
           await ensureStableQuoteLiquidity({
             mode: input.runtimeConfig.mode,
             quoteAsset: orderQuote,
-            requiredQuoteAmount: requiredQuote * 1.001, // small buffer for rounding/fees
+            requiredQuoteAmount: requiredQuote * 1.001,
             venueContext: input.venueContext
           });
         }

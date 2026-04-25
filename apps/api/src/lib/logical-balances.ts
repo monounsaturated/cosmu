@@ -1,4 +1,5 @@
 import { portfolioSnapshotSchema, type RuntimeConfig } from "@cosmu/shared";
+import { isUsdcOnlyVenue } from "../adapters/binance.js";
 import type { BotExecutionLedgerEntry } from "./store.js";
 
 export type LogicalBalances = {
@@ -59,20 +60,28 @@ export const computeLogicalBalances = (
 };
 
 // Returns held-coin pairs the trader can re-price against. For each held base asset,
-// include both USDT and USDC variants so the pricing loader can resolve either.
-export const getHeldSymbols = (logical: LogicalBalances) =>
-  Object.entries(logical.assets)
+// include venue-allowed quote variants so the pricing loader can resolve them.
+export const getHeldSymbols = (logical: LogicalBalances, runtimeConfig?: RuntimeConfig) => {
+  const usdcOnly = runtimeConfig ? isUsdcOnlyVenue(runtimeConfig) : false;
+  const quotes = usdcOnly ? ["USDC"] : ["USDT", "USDC"];
+  return Object.entries(logical.assets)
     .filter(([asset, qty]) => asset.length > 0 && Math.abs(qty) > 1e-8)
-    .flatMap(([asset]) => [`${asset}USDT`, `${asset}USDC`]);
+    .flatMap(([asset]) => quotes.map((q) => `${asset}${q}`));
+};
 
 export const buildLogicalSnapshot = (input: {
   runtimeConfig: RuntimeConfig;
   logical: LogicalBalances;
   priceMap: Record<string, number>;
 }) => {
+  // Cash label: the logical layer carries combined stable-cash under `usdt`, but on
+  // venues where USDT isn't tradable (binance live = USDC-only) labelling it "USDT"
+  // makes the validator look for USDT free-balance and underflow. Use the actual
+  // tradable stable for those venues.
+  const cashAsset = isUsdcOnlyVenue(input.runtimeConfig) ? "USDC" : "USDT";
   const balances = [
     {
-      asset: "USDT",
+      asset: cashAsset,
       free: input.logical.usdt,
       locked: 0,
       usdValue: input.logical.usdt

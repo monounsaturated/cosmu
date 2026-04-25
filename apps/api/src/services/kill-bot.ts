@@ -1,4 +1,4 @@
-import { executeOrders, loadVenueContext, cancelAllOpenOrdersForSymbol } from "../adapters/binance.js";
+import { executeOrders, isUsdcOnlyVenue, loadVenueContext, cancelAllOpenOrdersForSymbol } from "../adapters/binance.js";
 import {
   createRun,
   finishRun,
@@ -51,7 +51,7 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
   try {
     const beforeLedger = await listBotExecutionLedger(bot.id);
     const beforeLogical = computeLogicalBalances(bot.runtimeConfig.budgetUsdt, beforeLedger);
-    const heldSymbols = getHeldSymbols(beforeLogical);
+    const heldSymbols = getHeldSymbols(beforeLogical, bot.runtimeConfig);
     const beforeVenueRaw = await loadVenueContext(bot.runtimeConfig, [
       ...bot.runtimeConfig.contextSymbols,
       ...heldSymbols
@@ -107,11 +107,20 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
       })
     };
 
-    // Build sell orders from logical balances — only what this bot actually bought
+    // Build sell orders from logical balances — only what this bot actually bought.
+    // Quote selection: USDC on live binance (no USDT pairs in FR); otherwise prefer
+    // whichever quote actually has a tradable pair in the fresh venue context.
+    const usdcOnly = isUsdcOnlyVenue(bot.runtimeConfig);
+    const pickQuote = (asset: string): "USDT" | "USDC" => {
+      if (usdcOnly) return "USDC";
+      if (freshVenueContext.symbolRules[`${asset}USDT`]) return "USDT";
+      if (freshVenueContext.symbolRules[`${asset}USDC`]) return "USDC";
+      return "USDT";
+    };
     const sellOrders = Object.entries(beforeLogical.assets)
       .filter(([asset, qty]) => asset.length > 0 && qty > 1e-8)
       .map(([asset, qty]) => ({
-        symbol: `${asset}USDT`,
+        symbol: `${asset}${pickQuote(asset)}`,
         side: "sell" as const,
         type: "market" as const,
         quantity: qty,
@@ -181,7 +190,7 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
     const afterLogical = computeLogicalBalances(bot.runtimeConfig.budgetUsdt, afterLedger);
     const afterVenueRaw = await loadVenueContext(bot.runtimeConfig, [
       ...bot.runtimeConfig.contextSymbols,
-      ...getHeldSymbols(afterLogical)
+      ...getHeldSymbols(afterLogical, bot.runtimeConfig)
     ]);
     const afterVenueContext = {
       ...afterVenueRaw,
