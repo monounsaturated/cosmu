@@ -5,7 +5,7 @@ import { RecentRunsTable } from "./run-detail-row";
 import { BotTable } from "./bot-table";
 import { AutoRefresh } from "./live-refresh";
 import { LocalTime } from "./local-time";
-import { KillSwitch } from "./kill-switch";
+import { KillAllBotsButton } from "./kill-all-bots";
 import { VenueOverview } from "./venue-overview";
 import { RecentExecutions } from "./recent-executions";
 import { PortfolioState } from "./portfolio-state";
@@ -65,7 +65,7 @@ export default async function HomePage() {
           <p>One bot, one real loop, clear decision and execution traceability.</p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
-          <KillSwitch />
+          <KillAllBotsButton />
           <span className="badge">Updated <LocalTime value={dashboard.generatedAt} /></span>
           <DashboardActions hasNoBots={dashboard.bots.length === 0} />
         </div>

@@ -2,19 +2,17 @@
  * Cosmu v2 Deterministic Validator
  *
  * Non-LLM validation of trading decisions. Checks:
- * 1. Global kill switch
- * 2. Venue authorization
- * 3. Authorized pairs (if symbol scope is "selected")
- * 4. Budget limits
- * 5. Balance sufficiency
- * 6. Tradability (symbol rules, lot sizes, min notional)
- * 7. SL/TP enforcement for buys
- * 8. Order count / notional limits
+ * 1. Venue authorization
+ * 2. Authorized pairs (if symbol scope is "selected")
+ * 3. Budget limits
+ * 4. Balance sufficiency
+ * 5. Tradability (symbol rules, lot sizes, min notional)
+ * 6. SL/TP enforcement for buys
+ * 7. Order count / notional limits
  */
 
 import { validationResultSchema, type RuntimeConfig, type TradingDecision } from "@cosmu/shared";
 import { isUsdcOnlyVenue, validateTradability, type VenueContext } from "../adapters/binance.js";
-import { isGlobalKillSwitchOn } from "../lib/store/settings.js";
 
 const getBaseAsset = (symbol: string) => symbol.replace(/USD[TC]$/i, "");
 
@@ -41,17 +39,7 @@ export const validateDecision = async (input: {
   const rulesEnabled = input.runtimeConfig.execution.enabled;
   const effectiveMaxOrders = rulesEnabled ? input.runtimeConfig.execution.maxOrdersPerRun : input.decision.orders.length;
 
-  // ── 1. Global kill switch ────────────────────────────────────────
-  const killSwitchOn = await isGlobalKillSwitchOn();
-  if (killSwitchOn) {
-    return validationResultSchema.parse({
-      accepted: false,
-      issues: ["Global kill switch is ON — all executions are blocked"],
-      normalizedOrders: []
-    });
-  }
-
-  // ── 2. Venue authorization ───────────────────────────────────────
+  // ── 1. Venue authorization ───────────────────────────────────────
   // Bot venue must be a recognized venue
   const validVenues = ["binance", "binance-testnet"];
   if (!validVenues.includes(input.runtimeConfig.venue)) {

@@ -18,12 +18,3 @@ export const setAppSetting = async (key: string, value: string) => {
     on conflict (key) do update set value = excluded.value, updated_at = now()
   `;
 };
-
-export const isGlobalKillSwitchOn = async (): Promise<boolean> => {
-  const value = await getAppSetting("global_kill_switch");
-  return value === "on";
-};
-
-export const setGlobalKillSwitch = async (on: boolean) => {
-  await setAppSetting("global_kill_switch", on ? "on" : "off");
-};

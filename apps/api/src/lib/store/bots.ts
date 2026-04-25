@@ -186,6 +186,64 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
   return rows.map(parseBotRow);
 };
 
+export const getAllEnabledBotSetups = async (): Promise<BotSetup[]> => {
+  const rows = await sql<BotSetup[]>`
+    with prompt_order as (
+      select id, row_number() over (order by created_at asc) as prompt_number
+      from research_prompts
+    ),
+    trader_prompt_order as (
+      select id, row_number() over (order by created_at asc) as prompt_number
+      from trader_prompts
+    )
+    select
+      b.id,
+      b.bot_number as "botNumber",
+      b.name,
+      b.slug,
+      pv.id as "promptVersionId",
+      pv.body as "promptBody",
+      concat('Research Prompt #', prompt_order.prompt_number) as "promptVersionLabel",
+      tpv.id as "traderPromptVersionId",
+      tpv.body as "traderPromptBody",
+      case when tp.id is not null then concat('Trader Prompt #', trader_prompt_order.prompt_number) else null end as "traderPromptVersionLabel",
+      mp.id as "modelProfileId",
+      mp.name as "modelProfileName",
+      mp.provider as "modelProvider",
+      mp.model as "modelIdentifier",
+      mp.settings as "modelSettings",
+      coalesce(tmp.id, mp.id) as "traderModelProfileId",
+      coalesce(tmp.name, mp.name) as "traderModelProfileName",
+      coalesce(tmp.provider, mp.provider) as "traderModelProvider",
+      coalesce(tmp.model, mp.model) as "traderModelIdentifier",
+      coalesce(tmp.settings, mp.settings) as "traderModelSettings",
+      b.prompt_config as "promptConfig",
+      b.trader_config as "traderConfig",
+      brc.id as "runtimeConfigId",
+      brc.enabled,
+      brc.venue,
+      brc.frequency_minutes as "frequencyMinutes",
+      brc.mode,
+      brc.asset_class as "assetClass",
+      brc.execution_config as "executionConfig",
+      brc.context_symbols as "contextSymbols",
+      brc.budget_usdt::float8 as "budgetUsdt"
+    from bots b
+    join research_prompt_versions pv on pv.id = b.active_prompt_version_id
+    join research_prompts p on p.id = pv.prompt_id
+    join prompt_order on prompt_order.id = p.id
+    join model_profiles mp on mp.id = b.active_model_profile_id
+    left join model_profiles tmp on tmp.id = b.active_trader_model_profile_id
+    join bot_runtime_configs brc on brc.bot_id = b.id
+    left join trader_prompt_versions tpv on tpv.id = b.active_trader_prompt_version_id
+    left join trader_prompts tp on tp.id = tpv.prompt_id
+    left join trader_prompt_order on trader_prompt_order.id = tp.id
+    where brc.enabled = true
+    order by b.created_at asc
+  `;
+  return rows.map(parseBotRow);
+};
+
 export const getBotSetupById = async (botId: string): Promise<BotSetup | null> => {
   const rows = await sql<BotSetup[]>`
     with prompt_order as (

@@ -4,6 +4,7 @@
 export type { BotSetup, BotExecutionLedgerEntry } from "./bots.js";
 export {
   getDueBots,
+  getAllEnabledBotSetups,
   getBotSetupById,
   claimRun,
   getBotEnabledState,
@@ -66,7 +67,7 @@ export {
 } from "./trader-prompts.js";
 
 export { storeLLMCall, getLLMCallsForRun } from "./llm-calls.js";
-export { getAppSetting, setAppSetting, isGlobalKillSwitchOn, setGlobalKillSwitch } from "./settings.js";
+export { getAppSetting, setAppSetting } from "./settings.js";
 
 export type { JsonValue } from "./helpers.js";
 export { parseJson, toIsoString, buildRuntimeConfig } from "./helpers.js";

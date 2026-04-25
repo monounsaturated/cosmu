@@ -9,6 +9,7 @@ import {
   createPrompt,
   getBotSetupById,
   getDueBots,
+  getAllEnabledBotSetups,
   getRunDetail,
   getPromptVersionBody,
   listModelProfiles,
@@ -18,8 +19,6 @@ import {
   getAllActiveFormatterPrompts,
   createFormatterPromptVersion,
   listFormatterPromptVersions,
-  isGlobalKillSwitchOn,
-  setGlobalKillSwitch,
   getLLMCallsForRun,
   listTraderPrompts,
   createTraderPrompt,
@@ -657,31 +656,35 @@ app.patch("/bots/:botId", async (request, response, next) => {
   }
 });
 
-// ── v2: Kill Switch ──────────────────────────────────────────────────
+// ── v2: Kill All Bots (one-shot panic) ───────────────────────────────
 
-app.get("/settings/kill-switch", async (_request, response, next) => {
+app.post("/bots/kill-all", async (_request, response, next) => {
   try {
-    const on = await isGlobalKillSwitchOn();
-    response.json({ killSwitch: on ? "on" : "off" });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.put("/settings/kill-switch", async (request, response, next) => {
-  try {
-    const { enabled } = request.body as { enabled?: boolean };
-    if (typeof enabled !== "boolean") {
-      response.status(400).json({ error: "enabled (boolean) is required" });
+    const bots = await getAllEnabledBotSetups();
+    if (bots.length === 0) {
+      response.json({ killed: 0, results: [] });
       return;
     }
-    await setGlobalKillSwitch(enabled);
-    if (enabled) {
-      await notifySlack("GLOBAL KILL SWITCH ACTIVATED — all bot executions are now blocked.");
-    } else {
-      await notifySlack("Global kill switch deactivated — bot executions are allowed again.");
+
+    await notifySlack(`KILL ALL BOTS triggered — liquidating ${bots.length} active bot(s).`);
+
+    const results = [];
+    for (const bot of bots) {
+      try {
+        const result = await killBotAndLiquidate(bot);
+        results.push({ botId: bot.id, name: bot.name, ...result });
+      } catch (error) {
+        results.push({
+          botId: bot.id,
+          name: bot.name,
+          status: "failure" as const,
+          killed: true as const,
+          error: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
     }
-    response.json({ killSwitch: enabled ? "on" : "off" });
+
+    response.json({ killed: bots.length, results });
   } catch (error) {
     next(error);
   }
@@ -736,10 +739,6 @@ const SCHEDULER_INTERVAL_MS = 15 * 1000; // 15 seconds to ensure we don't miss t
 const startSchedulerLoop = () => {
   const runScheduler = async () => {
     try {
-      // v2: Check global kill switch before running any bots
-      const killSwitchOn = await isGlobalKillSwitchOn();
-      if (killSwitchOn) return;
-
       const dueBots = await getDueBots();
       for (const bot of dueBots) {
         try {
