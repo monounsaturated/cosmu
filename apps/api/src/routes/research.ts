@@ -36,7 +36,8 @@ import {
   listResearchMemories,
   updateResearchMemory,
   setCandidatePaperBot,
-  updateResearchExperiment
+  updateResearchExperiment,
+  updateResearchDataSource
 } from "../lib/store.js";
 import { runResearchExperiment } from "../research/orchestrator.js";
 import {
@@ -486,6 +487,27 @@ researchRouter.post("/research/data-sources", async (request, response, next) =>
       enabled: typeof body.enabled === "boolean" ? body.enabled : true,
       config: body.config ?? {}
     });
+    response.json({ dataSource });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.patch("/research/data-sources/:sourceId", async (request, response, next) => {
+  try {
+    const body = request.body as { name?: unknown; kind?: unknown; enabled?: unknown; config?: unknown };
+    const input = {
+      id: request.params.sourceId,
+      name: typeof body.name === "string" && body.name.trim() ? body.name.trim() : undefined,
+      kind: body.kind === undefined ? undefined : dataSourceKindSchema.parse(body.kind),
+      enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+      config: body.config
+    };
+    const dataSource = await updateResearchDataSource(input);
+    if (!dataSource) {
+      response.status(404).json({ error: "Data source not found" });
+      return;
+    }
     response.json({ dataSource });
   } catch (error) {
     next(error);

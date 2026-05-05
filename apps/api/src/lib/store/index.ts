@@ -91,6 +91,7 @@ export {
   listResearchExperiments,
   listResearchDataSources,
   createResearchDataSource,
+  updateResearchDataSource,
   createResearchCandidate,
   getResearchCandidate,
   getPendingLivePromotionApprovalForCandidate,

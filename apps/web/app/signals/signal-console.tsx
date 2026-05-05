@@ -30,6 +30,7 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
   const [observations, setObservations] = useState(initialObservations);
   const [sourceKind, setSourceKind] = useState<RawObservation["sourceKind"]>("manual");
   const [sourceName, setSourceName] = useState("Manual QA");
+  const [sourceUrl, setSourceUrl] = useState("");
   const [title, setTitle] = useState(initialCommand);
   const [content, setContent] = useState(initialCommand);
   const [asset, setAsset] = useState("BTC");
@@ -37,10 +38,14 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
   const [direction, setDirection] = useState<StandardizedSignal["direction"]>("neutral");
   const [confidence, setConfidence] = useState(0.65);
   const [urgency, setUrgency] = useState<StandardizedSignal["urgency"]>("medium");
+  const [horizon, setHorizon] = useState("intraday");
   const [summary, setSummary] = useState("");
   const [useLLMFormat, setUseLLMFormat] = useState(Boolean(initialCommand));
+  const [statusFilter, setStatusFilter] = useState<StandardizedSignal["status"] | "all">("all");
+  const [assetFilter, setAssetFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [updatingSignalId, setUpdatingSignalId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const stats = useMemo(() => {
@@ -51,6 +56,36 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
       : signals.reduce((sum, signal) => sum + signal.confidence, 0) / signals.length;
     return { watch, highUrgency, avgConfidence };
   }, [signals]);
+
+  const visibleSignals = useMemo(() => {
+    const cleanAsset = assetFilter.trim().toUpperCase();
+    return signals.filter((signal) => {
+      if (statusFilter !== "all" && signal.status !== statusFilter) return false;
+      if (cleanAsset && signal.asset.toUpperCase() !== cleanAsset && signal.symbol?.toUpperCase() !== cleanAsset) return false;
+      return true;
+    });
+  }, [assetFilter, signals, statusFilter]);
+
+  const updateSignalStatus = async (signal: StandardizedSignal, status: StandardizedSignal["status"]) => {
+    setUpdatingSignalId(signal.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/signals/${signal.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Signal update failed");
+      if (data.signal) {
+        setSignals((current) => current.map((item) => item.id === signal.id ? data.signal : item));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Signal update failed");
+    } finally {
+      setUpdatingSignalId(null);
+    }
+  };
 
   const submitSignal = async (event: FormEvent) => {
     event.preventDefault();
@@ -65,6 +100,7 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
       const observationPayload = {
         sourceKind,
         sourceName: sourceName.trim() || "Manual QA",
+        sourceUrl: sourceUrl.trim() || null,
         title: cleanTitle,
         content: cleanContent
       };
@@ -83,7 +119,7 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
                 sentimentScore: direction === "bullish" ? 0.55 : direction === "bearish" ? -0.55 : 0,
                 confidence,
                 urgency,
-                horizon: "intraday",
+                horizon,
                 summary: cleanSummary,
                 evidenceJson: [{ title: cleanTitle, source: sourceName.trim() || "Manual QA" }],
                 reasoningSummary: "Manual QA signal. Replace with LLM formatter output in automated runs."
@@ -97,6 +133,7 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
       setTitle("");
       setContent("");
       setSummary("");
+      setSourceUrl("");
       startTransition(() => router.refresh());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signal capture failed");
@@ -147,16 +184,42 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
             </div>
             <span className="badge badge-neutral">{signals.length}</span>
           </div>
+          <div className="table-toolbar">
+            <input
+              className="table-search"
+              value={assetFilter}
+              onChange={(event) => setAssetFilter(event.target.value)}
+              placeholder="Filter by asset or symbol..."
+            />
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StandardizedSignal["status"] | "all")}>
+              <option value="all">All statuses</option>
+              <option value="new">New</option>
+              <option value="watching">Watching</option>
+              <option value="used">Used</option>
+              <option value="dismissed">Dismissed</option>
+            </select>
+          </div>
           <div className="signal-feed">
-            {signals.length === 0 && <p className="muted">No signals yet. Capture one manually or wire the Sentinel scheduler.</p>}
-            {signals.map((signal) => (
+            {visibleSignals.length === 0 && <p className="muted">No signals match this view. Capture one manually or clear filters.</p>}
+            {visibleSignals.map((signal) => (
               <article key={signal.id} className={`signal-card ${toneForDirection(signal.direction)}`}>
                 <div className="signal-card-head">
                   <div>
                     <strong>{signal.asset}{signal.symbol ? ` · ${signal.symbol}` : ""}</strong>
                     <span className="muted">{signal.topic}</span>
                   </div>
-                  <span className="badge badge-neutral">{signal.status}</span>
+                  <select
+                    className="status-select"
+                    value={signal.status}
+                    onChange={(event) => void updateSignalStatus(signal, event.target.value as StandardizedSignal["status"])}
+                    disabled={updatingSignalId === signal.id}
+                    aria-label={`Status for ${signal.topic}`}
+                  >
+                    <option value="new">new</option>
+                    <option value="watching">watching</option>
+                    <option value="used">used</option>
+                    <option value="dismissed">dismissed</option>
+                  </select>
                 </div>
                 <p>{signal.summary}</p>
                 <div className="signal-metrics">
@@ -164,6 +227,18 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
                   <span>sentiment {scoreLabel(signal.sentimentScore)}</span>
                   <span>confidence {signal.confidence.toFixed(2)}</span>
                   <span>{signal.urgency}</span>
+                  {signal.horizon && <span>{signal.horizon}</span>}
+                </div>
+                <div className="candidate-actions">
+                  <button type="button" className="btn btn-xs" onClick={() => void updateSignalStatus(signal, "watching")}>
+                    Watch
+                  </button>
+                  <button type="button" className="btn btn-xs" onClick={() => router.push(`/research?command=${encodeURIComponent(signal.summary)}`)}>
+                    Send to Research
+                  </button>
+                  <button type="button" className="btn btn-xs" onClick={() => void updateSignalStatus(signal, "dismissed")}>
+                    Dismiss
+                  </button>
                 </div>
                 {signal.reasoningSummary && (
                   <details className="signal-audit">
@@ -211,6 +286,10 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
               <span>Observation title</span>
               <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="ETF inflow spike, X narrative, funding shift..." />
             </label>
+            <label className="field">
+              <span>Source URL</span>
+              <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="Optional link for audit trail" />
+            </label>
             <textarea value={content} onChange={(event) => setContent(event.target.value)} rows={4} placeholder="Raw observation text or pasted source excerpt" />
             {!useLLMFormat && (
             <div className="form-grid-two">
@@ -238,6 +317,10 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
                   <option value="medium">medium</option>
                   <option value="high">high</option>
                 </select>
+              </label>
+              <label className="field">
+                <span>Horizon</span>
+                <input value={horizon} onChange={(event) => setHorizon(event.target.value)} placeholder="intraday, swing, multi-week" />
               </label>
             </div>
             )}

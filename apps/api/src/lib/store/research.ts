@@ -188,6 +188,38 @@ export const createResearchDataSource = async (input: {
   return mapDataSource(row);
 };
 
+export const updateResearchDataSource = async (input: {
+  id: string;
+  name?: string;
+  kind?: DataSourceKind;
+  enabled?: boolean;
+  config?: unknown;
+}) => {
+  const [row] = await sql<ResearchDataSourceRow[]>`
+    update research_data_sources
+    set name = coalesce(${input.name ?? null}, name),
+        kind = coalesce(${input.kind ?? null}, kind),
+        enabled = coalesce(${input.enabled ?? null}, enabled),
+        config = case
+          when ${input.config === undefined} then config
+          else ${sql.json((input.config ?? {}) as JsonValue)}
+        end,
+        updated_at = now()
+    where id = ${input.id}
+    returning
+      id,
+      name,
+      kind,
+      enabled,
+      config,
+      health_status as "healthStatus",
+      last_checked_at as "lastCheckedAt",
+      created_at as "createdAt",
+      updated_at as "updatedAt"
+  `;
+  return row ? mapDataSource(row) : null;
+};
+
 export const createResearchCandidate = async (input: {
   experimentId: string;
   name: string;

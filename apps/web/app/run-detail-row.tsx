@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import { LocalTime } from "./local-time";
 
 type RunRow = {
@@ -463,9 +463,8 @@ export function RecentRunsTable({ runs }: { runs: RunRow[] }) {
       </thead>
       <tbody>
         {runs.map((run) => (
-          <>
+          <Fragment key={run.id}>
             <tr
-              key={run.id}
               className={`run-row ${expandedId === run.id ? "run-row-expanded" : ""}`}
               onClick={() => setExpandedId(expandedId === run.id ? null : run.id)}
               style={{ cursor: "pointer" }}
@@ -484,7 +483,7 @@ export function RecentRunsTable({ runs }: { runs: RunRow[] }) {
                 </td>
               </tr>
             )}
-          </>
+          </Fragment>
         ))}
       </tbody>
     </table>
