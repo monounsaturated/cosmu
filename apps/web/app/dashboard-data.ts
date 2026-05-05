@@ -23,6 +23,7 @@ export const getDashboard = async () => {
 
     const response = await fetch(`${apiBaseUrl}/dashboard`, {
       cache: "no-store",
+      signal: AbortSignal.timeout(10000),
       headers: {
         "x-api-key": apiSecretKey
       }

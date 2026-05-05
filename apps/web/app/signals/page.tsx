@@ -20,7 +20,12 @@ async function fetchApi(path: string) {
   }
 }
 
-export default async function SignalsPage() {
+export default async function SignalsPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ command?: string }>;
+}) {
+  const params = await searchParams;
   const [signalsRaw, observationsRaw] = await Promise.all([
     fetchApi("/signals?limit=80"),
     fetchApi("/signals/observations?limit=40")
@@ -31,7 +36,11 @@ export default async function SignalsPage() {
 
   return (
     <main className="page page-wide">
-      <SignalConsole initialSignals={signals} initialObservations={observations} />
+      <SignalConsole
+        initialSignals={signals}
+        initialObservations={observations}
+        initialCommand={params?.command ?? ""}
+      />
     </main>
   );
 }

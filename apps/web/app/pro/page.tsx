@@ -14,7 +14,8 @@ async function fetchApi(path: string) {
   try {
     const response = await fetch(`${apiBaseUrl}${path}`, {
       cache: "no-store",
-      headers: { "x-api-key": apiSecretKey }
+      headers: { "x-api-key": apiSecretKey },
+      signal: AbortSignal.timeout(6000)
     });
     if (!response.ok) return null;
     return response.json();
@@ -35,8 +36,8 @@ export default async function ProPage() {
     <main className="page page-wide">
       <section className="command-panel">
         <div>
-          <p className="muted">Cosmu Pro</p>
-          <h1>Agentic live trading control</h1>
+          <p className="eyebrow">Cosmu Pro</p>
+          <h1>Live control, approval first.</h1>
           <p className="field-help">
             Pro is the live-eligible workspace. Approved Research candidates land here as Pro bots, gated by the
             shared deterministic validator and the global kill switch. Light bots and unpromoted research bots are

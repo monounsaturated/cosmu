@@ -100,24 +100,22 @@ export const getDashboard = async () => {
     where e.status = 'success'
   `;
 
-  let testnetPrices: any[] = [];
-  let testnetBalance: any = null;
-  let livePrices: any[] = [];
-  let liveBalance: any = null;
+  const [testnetPricesResult, testnetBalanceResult, livePricesResult, liveBalanceResult] = await Promise.allSettled([
+    getAllTickerPrices("testnet"),
+    getAccountBalance("testnet"),
+    getAllTickerPrices("live"),
+    getAccountBalance("live")
+  ]);
 
-  try {
-    testnetPrices = await getAllTickerPrices("testnet");
-    testnetBalance = await getAccountBalance("testnet");
-  } catch (e) {
-    console.warn("Failed to fetch testnet context", e);
-  }
+  const testnetPrices: any[] = testnetPricesResult.status === "fulfilled" ? testnetPricesResult.value : [];
+  const testnetBalance: any = testnetBalanceResult.status === "fulfilled" ? testnetBalanceResult.value : null;
+  const livePrices: any[] = livePricesResult.status === "fulfilled" ? livePricesResult.value : [];
+  const liveBalance: any = liveBalanceResult.status === "fulfilled" ? liveBalanceResult.value : null;
 
-  try {
-    livePrices = await getAllTickerPrices("live");
-    liveBalance = await getAccountBalance("live");
-  } catch (e) {
-    console.warn("Failed to fetch live context", e);
-  }
+  if (testnetPricesResult.status === "rejected") console.warn("Failed to fetch testnet prices", testnetPricesResult.reason);
+  if (testnetBalanceResult.status === "rejected") console.warn("Failed to fetch testnet balance", testnetBalanceResult.reason);
+  if (livePricesResult.status === "rejected") console.warn("Failed to fetch live prices", livePricesResult.reason);
+  if (liveBalanceResult.status === "rejected") console.warn("Failed to fetch live balance", liveBalanceResult.reason);
 
   const getPriceMap = (prices: any[]) => {
     if (!Array.isArray(prices)) return {};

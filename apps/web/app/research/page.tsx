@@ -33,21 +33,14 @@ export default async function ResearchPage({
   searchParams?: Promise<{ command?: string }>;
 }) {
   const params = await searchParams;
-  const [experimentsRaw, dataSourcesRaw, candidatesRaw, datasetsRaw, sessionsRaw, memoriesRaw] = await Promise.all([
-    fetchApi("/research/experiments"),
-    fetchApi("/research/data-sources"),
-    fetchApi("/research/candidates"),
-    fetchApi("/research/datasets"),
-    fetchApi("/research/sessions"),
-    fetchApi("/research/memory")
-  ]);
+  const pageData = await fetchApi("/research/page-data");
 
-  const experiments = researchExperimentSchema.array().catch([]).parse(experimentsRaw?.experiments ?? []);
-  const dataSources = researchDataSourceSchema.array().catch([]).parse(dataSourcesRaw?.dataSources ?? []);
-  const candidates = researchCandidateSchema.array().catch([]).parse(candidatesRaw?.candidates ?? []);
-  const datasets = datasetSchema.array().catch([]).parse(datasetsRaw?.datasets ?? []);
-  const sessions = researchSessionSchema.array().catch([]).parse(sessionsRaw?.sessions ?? []);
-  const memories = researchMemorySchema.array().catch([]).parse(memoriesRaw?.memories ?? []);
+  const experiments = researchExperimentSchema.array().catch([]).parse(pageData?.experiments ?? []);
+  const dataSources = researchDataSourceSchema.array().catch([]).parse(pageData?.dataSources ?? []);
+  const candidates = researchCandidateSchema.array().catch([]).parse(pageData?.candidates ?? []);
+  const datasets = datasetSchema.array().catch([]).parse(pageData?.datasets ?? []);
+  const sessions = researchSessionSchema.array().catch([]).parse(pageData?.sessions ?? []);
+  const memories = researchMemorySchema.array().catch([]).parse(pageData?.memories ?? []);
 
   return (
     <main className="page page-wide">

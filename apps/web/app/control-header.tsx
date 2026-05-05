@@ -17,17 +17,17 @@ type Summary = {
 };
 
 const MODES = [
-  { href: "/", label: "Light" },
+  { href: "/", label: "Trader" },
   { href: "/signals", label: "Signals" },
-  { href: "/research", label: "Research" },
+  { href: "/research", label: "Lab" },
   { href: "/pro", label: "Pro" }
 ];
 
 const labelForPath = (path: string) => {
   if (path.startsWith("/signals")) return "Signals";
-  if (path.startsWith("/research")) return "Research";
+  if (path.startsWith("/research")) return "Lab";
   if (path.startsWith("/pro")) return "Pro";
-  return "Light";
+  return "Trader";
 };
 
 export function ControlHeader() {
@@ -72,7 +72,8 @@ export function ControlHeader() {
     event.preventDefault();
     const q = command.trim();
     if (!q) return;
-    router.push(`/research?command=${encodeURIComponent(q)}`);
+    const target = /\b(signal|x|news|web|tweet|hot data)\b/i.test(q) ? "/signals" : "/research";
+    router.push(`${target}?command=${encodeURIComponent(q)}`);
     setCommand("");
   };
 

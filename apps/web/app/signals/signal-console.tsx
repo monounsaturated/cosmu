@@ -9,6 +9,7 @@ import { LocalTime } from "../local-time";
 type Props = {
   initialSignals: StandardizedSignal[];
   initialObservations: RawObservation[];
+  initialCommand?: string;
 };
 
 const toneForDirection = (direction: StandardizedSignal["direction"]) => {
@@ -23,21 +24,21 @@ const scoreLabel = (value: number) => {
   return `${signed}${value.toFixed(2)}`;
 };
 
-export function SignalConsole({ initialSignals, initialObservations }: Props) {
+export function SignalConsole({ initialSignals, initialObservations, initialCommand = "" }: Props) {
   const router = useRouter();
   const [signals, setSignals] = useState(initialSignals);
   const [observations, setObservations] = useState(initialObservations);
   const [sourceKind, setSourceKind] = useState<RawObservation["sourceKind"]>("manual");
   const [sourceName, setSourceName] = useState("Manual QA");
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
+  const [title, setTitle] = useState(initialCommand);
+  const [content, setContent] = useState(initialCommand);
   const [asset, setAsset] = useState("BTC");
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [direction, setDirection] = useState<StandardizedSignal["direction"]>("neutral");
   const [confidence, setConfidence] = useState(0.65);
   const [urgency, setUrgency] = useState<StandardizedSignal["urgency"]>("medium");
   const [summary, setSummary] = useState("");
-  const [useLLMFormat, setUseLLMFormat] = useState(false);
+  const [useLLMFormat, setUseLLMFormat] = useState(Boolean(initialCommand));
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [, startTransition] = useTransition();
@@ -108,8 +109,8 @@ export function SignalConsole({ initialSignals, initialObservations }: Props) {
     <div className="signals-layout">
       <section className="signal-hero">
         <div>
-          <p className="muted">Signal Sentinel</p>
-          <h1>Hot data into decision-grade signals</h1>
+          <p className="eyebrow">Signal Sentinel</p>
+          <h1>Hot data, made tradable.</h1>
           <p>
             Collect X, web, news, and market observations. Quantify them into a small typed format the trading
             agents can consume without reading a noisy feed.

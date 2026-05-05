@@ -3,22 +3,23 @@ import { FormatterPromptSettings } from "./formatter-prompt-settings";
 
 export default function SettingsPage() {
   return (
-    <main className="page">
+    <main className="page page-wide">
       <section className="hero">
         <div>
-          <Link href="/" className="muted" style={{ display: "inline-block", marginBottom: "16px", textDecoration: "none" }}>
-            ← Back to Dashboard
-          </Link>
-          <h1>Settings</h1>
+          <p className="eyebrow">Control room</p>
+          <h1>Settings without the noise.</h1>
           <p className="muted">
-            The formatter prompt converts free-form research from phase 1 into executable
-            TradingDecision JSON. Each edit is versioned so you can study what worked.
+            Keep defaults simple. Advanced prompt and execution behavior stays here, versioned and inspectable.
           </p>
         </div>
+        <Link href="/" className="btn btn-secondary">Back to Trader</Link>
       </section>
 
-      <section className="panel" style={{ marginBottom: "1.5rem" }}>
-        <h2 style={{ marginTop: 0, fontSize: "1.15rem" }}>Formatter / execution prompt (per venue)</h2>
+      <section className="panel">
+        <h2 style={{ marginTop: 0, fontSize: "1.15rem" }}>Formatter / execution prompt</h2>
+        <p className="muted" style={{ marginBottom: "16px" }}>
+          Converts free-form research into executable TradingDecision JSON per venue.
+        </p>
         <FormatterPromptSettings />
       </section>
     </main>

@@ -334,8 +334,8 @@ export function ResearchConsole({
     <div className="research-layout">
       <section className="command-panel">
         <div>
-          <p className="muted">Cosmu Research</p>
-          <h1>Strategy lab</h1>
+          <p className="eyebrow">Strategy Lab</p>
+          <h1>Research, but bounded.</h1>
           <p className="field-help">
             Keep this quiet: bounded sessions, visible steps, simulated evaluations. Hot qualitative data now belongs
             in Signals; Research is for slower strategy design.

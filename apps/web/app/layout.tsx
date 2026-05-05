@@ -5,7 +5,7 @@ import { ControlHeader } from "./control-header";
 
 export const metadata = {
   title: "cosmu",
-  description: "Internal V1 trading dashboard"
+  description: "Lean AI trading cockpit and signal sentinel"
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

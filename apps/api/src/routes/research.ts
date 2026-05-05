@@ -53,6 +53,22 @@ const titleFromHypothesis = (hypothesis: string) => {
   return trimmed.length > 72 ? `${trimmed.slice(0, 69)}...` : trimmed;
 };
 
+researchRouter.get("/research/page-data", async (_request, response, next) => {
+  try {
+    const [experiments, dataSources, candidates, datasets, sessions, memories] = await Promise.all([
+      listResearchExperiments(),
+      listResearchDataSources(),
+      listResearchCandidates(),
+      listDatasets(),
+      listResearchSessions(),
+      listResearchMemories()
+    ]);
+    response.json({ experiments, dataSources, candidates, datasets, sessions, memories });
+  } catch (error) {
+    next(error);
+  }
+});
+
 researchRouter.get("/research/experiments", async (_request, response, next) => {
   try {
     response.json({ experiments: await listResearchExperiments() });
