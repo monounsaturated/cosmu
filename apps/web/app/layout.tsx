@@ -1,6 +1,5 @@
 import "./globals.css";
 import type { ReactNode } from "react";
-import { Sidebar } from "./sidebar";
 import { ControlHeader } from "./control-header";
 
 export const metadata = {
@@ -20,11 +19,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <div className="app-shell">
-          <Sidebar />
-          <div className="app-content">
-            <ControlHeader />
-            {children}
-          </div>
+          <ControlHeader />
+          {children}
         </div>
       </body>
     </html>

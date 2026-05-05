@@ -11,8 +11,6 @@ import type {
   ExperimentSpec,
   ResearchCandidate,
   ResearchDataSource,
-  ResearchExperiment,
-  ResearchMemory,
   ResearchSession
 } from "@cosmu/shared";
 import { AgentTimeline } from "../agent-timeline";
@@ -20,12 +18,10 @@ import { LocalTime } from "../local-time";
 
 type Props = {
   initialCommand?: string;
-  initialExperiments: ResearchExperiment[];
   initialDataSources: ResearchDataSource[];
   initialCandidates: ResearchCandidate[];
   initialDatasets: Dataset[];
   initialSessions: ResearchSession[];
-  initialMemories: ResearchMemory[];
 };
 
 type CandidateAction = "paper-bot" | "promote";
@@ -84,15 +80,12 @@ const candidateMetrics = (candidate: ResearchCandidate): Array<[string, string]>
 
 export function ResearchConsole({
   initialCommand = "",
-  initialExperiments,
   initialDataSources,
   initialCandidates,
   initialDatasets,
-  initialSessions,
-  initialMemories
+  initialSessions
 }: Props) {
   const router = useRouter();
-  const [hypothesis, setHypothesis] = useState(initialCommand);
   const [objective, setObjective] = useState(initialCommand);
   const [engine, setEngine] = useState<ResearchSession["engine"]>("native");
   const [autonomyMode, setAutonomyMode] = useState<ResearchSession["autonomyMode"]>("assisted");
@@ -111,24 +104,19 @@ export function ResearchConsole({
   const [sourceEnabled, setSourceEnabled] = useState(true);
   const [sourceConfigJson, setSourceConfigJson] = useState("{}");
 
-  const [experiments, setExperiments] = useState(initialExperiments);
   const [dataSources, setDataSources] = useState(initialDataSources);
   const [candidates, setCandidates] = useState(initialCandidates);
   const [datasets, setDatasets] = useState(initialDatasets);
   const [sessions, setSessions] = useState(initialSessions);
-  const [memories, setMemories] = useState(initialMemories);
   const [models, setModels] = useState<ModelProfile[]>([]);
   const [datasetVersionsByDataset, setDatasetVersionsByDataset] = useState<Record<string, DatasetVersion[]>>({});
   const [selectedDatasetVersionIds, setSelectedDatasetVersionIds] = useState<string[]>([]);
   const [loadingDatasetVersions, setLoadingDatasetVersions] = useState<Record<string, boolean>>({});
   const [specDrafts, setSpecDrafts] = useState<Record<string, string>>({});
   const [specStatuses, setSpecStatuses] = useState<Record<string, ExperimentSpec["status"]>>({});
-  const [memoryDrafts, setMemoryDrafts] = useState<Record<string, string>>({});
   const [sourceDrafts, setSourceDrafts] = useState<Record<string, string>>({});
 
   const [selectedSessionId, setSelectedSessionId] = useState(initialSessions[0]?.id ?? null);
-  const [selectedExperimentId, setSelectedExperimentId] = useState(initialExperiments[0]?.id ?? null);
-  const [selectedSteps, setSelectedSteps] = useState<AgentStep[] | null>(null);
 
   const [sessionDetails, setSessionDetails] = useState<Record<string, {
     specs: ExperimentSpec[];
@@ -138,22 +126,18 @@ export function ResearchConsole({
     error?: string;
   }>>({});
 
-  const [submitting, setSubmitting] = useState(false);
   const [sessionSubmitting, setSessionSubmitting] = useState(false);
   const [datasetSubmitting, setDatasetSubmitting] = useState(false);
   const [sourceSubmitting, setSourceSubmitting] = useState(false);
   const [savingSpecId, setSavingSpecId] = useState<string | null>(null);
-  const [savingMemoryId, setSavingMemoryId] = useState<string | null>(null);
   const [savingSourceId, setSavingSourceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingCandidate, setPendingCandidate] = useState<{ id: string; action: CandidateAction } | null>(null);
   const [actionFeedback, setActionFeedback] = useState<{ id: string; tone: "success" | "error"; message: string } | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
     if (!initialCommand) return;
-    setHypothesis(initialCommand);
     setObjective(initialCommand);
   }, [initialCommand]);
 
@@ -204,10 +188,6 @@ export function ResearchConsole({
     );
   };
 
-  const selectedExperiment = useMemo(
-    () => experiments.find((experiment) => experiment.id === selectedExperimentId) ?? null,
-    [experiments, selectedExperimentId]
-  );
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionId) ?? null,
     [sessions, selectedSessionId]
@@ -245,36 +225,6 @@ export function ResearchConsole({
         }));
       });
   }, [selectedSessionId, sessionDetails]);
-
-  const submitLegacyExperiment = async (event: FormEvent) => {
-    event.preventDefault();
-    const text = hypothesis.trim();
-    if (!text) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/research/experiments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hypothesis: text, run: true })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Research request failed");
-      if (data.experiment) {
-        setExperiments((current) => [data.experiment, ...current.filter((item) => item.id !== data.experiment.id)]);
-        setSelectedExperimentId(data.experiment.id);
-      }
-      if (data.candidate) {
-        setCandidates((current) => [data.candidate, ...current]);
-      }
-      setSelectedSteps(Array.isArray(data.steps) ? data.steps : null);
-      setHypothesis("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Research request failed");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const submitSession = async (event: FormEvent) => {
     event.preventDefault();
@@ -481,30 +431,6 @@ export function ResearchConsole({
     }
   };
 
-  const saveMemory = async (memory: ResearchMemory, patch: Partial<Pick<ResearchMemory, "active" | "confidence">> = {}) => {
-    setSavingMemoryId(memory.id);
-    setError(null);
-    try {
-      const res = await fetch(`/api/research/memory/${memory.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          memoryText: memoryDrafts[memory.id] ?? memory.memoryText,
-          ...patch
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Memory update failed");
-      if (data.memory) {
-        setMemories((current) => current.map((item) => item.id === memory.id ? data.memory : item));
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Memory update failed");
-    } finally {
-      setSavingMemoryId(null);
-    }
-  };
-
   const runCandidateAction = async (candidate: ResearchCandidate, action: CandidateAction) => {
     setPendingCandidate({ id: candidate.id, action });
     setActionFeedback(null);
@@ -564,15 +490,11 @@ export function ResearchConsole({
           <p className="eyebrow">Strategy Lab</p>
           <h1>Research, but bounded.</h1>
           <p className="field-help">
-            Keep this quiet: bounded sessions, visible steps, simulated evaluations. Hot qualitative data now belongs
-            in Signals; Research is for slower strategy design.
+            Start with a clear thesis, choose the model and data it can use, then evaluate the result before it becomes a bot.
           </p>
           <div className="inline-actions" style={{ marginTop: "14px" }}>
             <button className="btn btn-secondary" type="button" onClick={() => router.push("/signals")}>
-              Open Signals
-            </button>
-            <button className="btn btn-secondary" type="button" onClick={() => setShowAdvanced((value) => !value)}>
-              {showAdvanced ? "Hide advanced lab" : "Show advanced lab"}
+              Capture signal first
             </button>
           </div>
         </div>
@@ -707,23 +629,7 @@ export function ResearchConsole({
             </button>
           </div>
         </form>
-        {showAdvanced && (
-          <form className="research-command" onSubmit={submitLegacyExperiment}>
-            <textarea
-              value={hypothesis}
-              onChange={(event) => setHypothesis(event.target.value)}
-              placeholder="Legacy /research/experiments flow (compatibility)"
-              rows={3}
-            />
-            <div className="command-panel-footer">
-              <button className="btn btn-secondary" type="submit" disabled={submitting || hypothesis.trim().length < 5}>
-                {submitting ? "Running..." : "Run legacy experiment"}
-              </button>
-            </div>
-            {error && <p className="feedback feedback-error">{error}</p>}
-          </form>
-        )}
-        {error && !showAdvanced && <p className="feedback feedback-error">{error}</p>}
+        {error && <p className="feedback feedback-error">{error}</p>}
       </section>
 
       <section className="ops-grid">
@@ -763,37 +669,6 @@ export function ResearchConsole({
           </div>
         </article>
 
-        {showAdvanced && (
-          <article className="panel">
-            <div className="section-header">
-              <h3>Legacy experiments</h3>
-              <span className="muted">{experiments.length}</span>
-            </div>
-            <div className="dense-list">
-              {experiments.length === 0 && <p className="muted">No legacy experiments yet.</p>}
-              {experiments.map((experiment) => (
-                <button
-                  key={experiment.id}
-                  className={`dense-row ${selectedExperimentId === experiment.id ? "dense-row-active" : ""}`}
-                  type="button"
-                  onClick={() => {
-                    setSelectedExperimentId(experiment.id);
-                    setSelectedSteps(null);
-                  }}
-                >
-                  <span>
-                    <strong>{experiment.title}</strong>
-                    <span className="muted">
-                      <LocalTime value={experiment.createdAt} />
-                      {experiment.skepticVerdict ? ` · skeptic: ${experiment.skepticVerdict}` : ""}
-                    </span>
-                  </span>
-                  <span className={`badge ${statusBadge(experiment.status)}`}>{experiment.status}</span>
-                </button>
-              ))}
-            </div>
-          </article>
-        )}
       </section>
 
       {selectedSession && (
@@ -892,25 +767,6 @@ export function ResearchConsole({
         </section>
       )}
 
-      {showAdvanced && selectedExperiment && (
-        <section className="panel">
-          <div className="section-header">
-            <div>
-              <h3 style={{ marginBottom: "4px" }}>{selectedExperiment.title}</h3>
-              <p className="muted">{selectedExperiment.hypothesis}</p>
-            </div>
-            <span className={`badge ${statusBadge(selectedExperiment.status)}`}>{selectedExperiment.status}</span>
-          </div>
-          <AgentTimeline
-            scopeType="research_experiment"
-            scopeId={selectedExperiment.id}
-            title="Legacy experiment timeline"
-            initialSteps={selectedSteps ?? undefined}
-          />
-        </section>
-      )}
-
-      {showAdvanced && (
       <section className="panel">
         <div className="section-header">
           <h3>Datasets</h3>
@@ -995,9 +851,8 @@ export function ResearchConsole({
           })}
         </div>
       </section>
-      )}
 
-      {showAdvanced && (
+      {candidates.length > 0 && (
       <section className="panel">
         <div className="section-header">
           <h3>Paper candidates</h3>
@@ -1062,70 +917,10 @@ export function ResearchConsole({
       </section>
       )}
 
-      {showAdvanced && (
       <section className="panel">
         <div className="section-header">
-          <h3>Research memory</h3>
-          <span className="muted">{memories.length}</span>
-        </div>
-        <div className="dense-list">
-          {memories.length === 0 && <p className="muted">No memories yet.</p>}
-          {memories.map((memory) => (
-            <details key={memory.id} className="editable-card">
-              <summary>
-                <span>
-                  <strong>{memory.title}</strong>
-                  <span className="muted">{memory.scopeType}:{memory.scopeKey} · confidence {memory.confidence.toFixed(2)}</span>
-                </span>
-                <span className={`badge ${memory.active ? "badge-success" : "badge-neutral"}`}>
-                  {memory.active ? "active" : "inactive"}
-                </span>
-              </summary>
-              <textarea
-                value={memoryDrafts[memory.id] ?? memory.memoryText}
-                onChange={(event) => setMemoryDrafts((current) => ({ ...current, [memory.id]: event.target.value }))}
-                rows={4}
-              />
-              <div className="form-grid-two">
-                <label className="field">
-                  <span>Confidence</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={memory.confidence}
-                    onChange={(event) => saveMemory(memory, { confidence: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={memory.active}
-                    onChange={(event) => saveMemory(memory, { active: event.target.checked })}
-                  />
-                  <span>Active memory</span>
-                </label>
-              </div>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => saveMemory(memory)}
-                disabled={savingMemoryId === memory.id}
-              >
-                {savingMemoryId === memory.id ? "Saving..." : "Save memory"}
-              </button>
-            </details>
-          ))}
-        </div>
-      </section>
-      )}
-
-      {showAdvanced && (
-      <section className="panel">
-        <div className="section-header">
-          <h3>Data source registry</h3>
-          <span className="muted">Connector status</span>
+          <h3>Data sources</h3>
+          <span className="muted">What Research can read</span>
         </div>
         <form className="research-command" onSubmit={submitDataSource}>
           <div className="form-grid-two">
@@ -1215,7 +1010,6 @@ export function ResearchConsole({
           ))}
         </div>
       </section>
-      )}
     </div>
   );
 }

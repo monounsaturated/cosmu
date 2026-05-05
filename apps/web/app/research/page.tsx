@@ -1,9 +1,7 @@
 import {
   datasetSchema,
-  researchMemorySchema,
   researchCandidateSchema,
   researchDataSourceSchema,
-  researchExperimentSchema,
   researchSessionSchema
 } from "@cosmu/shared";
 import { ResearchConsole } from "./research-console";
@@ -35,23 +33,19 @@ export default async function ResearchPage({
   const params = await searchParams;
   const pageData = await fetchApi("/research/page-data");
 
-  const experiments = researchExperimentSchema.array().catch([]).parse(pageData?.experiments ?? []);
   const dataSources = researchDataSourceSchema.array().catch([]).parse(pageData?.dataSources ?? []);
   const candidates = researchCandidateSchema.array().catch([]).parse(pageData?.candidates ?? []);
   const datasets = datasetSchema.array().catch([]).parse(pageData?.datasets ?? []);
   const sessions = researchSessionSchema.array().catch([]).parse(pageData?.sessions ?? []);
-  const memories = researchMemorySchema.array().catch([]).parse(pageData?.memories ?? []);
 
   return (
     <main className="page page-wide">
       <ResearchConsole
         initialCommand={params?.command ?? ""}
-        initialExperiments={experiments}
         initialDataSources={dataSources}
         initialCandidates={candidates}
         initialDatasets={datasets}
         initialSessions={sessions}
-        initialMemories={memories}
       />
     </main>
   );

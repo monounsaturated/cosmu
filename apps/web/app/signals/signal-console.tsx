@@ -146,11 +146,10 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
     <div className="signals-layout">
       <section className="signal-hero">
         <div>
-          <p className="eyebrow">Signal Sentinel</p>
-          <h1>Hot data, made tradable.</h1>
+          <p className="eyebrow">Signals</p>
+          <h1>Turn market noise into decisions.</h1>
           <p>
-            Collect X, web, news, and market observations. Quantify them into a small typed format the trading
-            agents can consume without reading a noisy feed.
+            Capture one observation, standardize it, then either watch it, dismiss it, or send it to Research.
           </p>
         </div>
         <div className="signal-kpis">
@@ -169,18 +168,12 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
         </div>
       </section>
 
-      <section className="signal-pipeline">
-        {["Observe", "Standardize", "Validate", "Feed agents"].map((step) => (
-          <span key={step}>{step}</span>
-        ))}
-      </section>
-
       <section className="ops-grid">
         <article className="panel">
           <div className="section-header">
             <div>
-              <h3>Live Signal Feed</h3>
-              <p className="muted">Small, typed, and auditable. No raw feed noise by default.</p>
+              <h3>Signal inbox</h3>
+              <p className="muted">Triage what matters. Send only useful signals downstream.</p>
             </div>
             <span className="badge badge-neutral">{signals.length}</span>
           </div>
@@ -255,8 +248,8 @@ export function SignalConsole({ initialSignals, initialObservations, initialComm
         <article className="panel">
           <div className="section-header">
             <div>
-              <h3>QA Capture</h3>
-              <p className="muted">Manual path for testing the standardized format before automation.</p>
+              <h3>Capture</h3>
+              <p className="muted">Paste a source, pick formatter mode, and store the standardized signal.</p>
             </div>
           </div>
           <form className="research-command" onSubmit={submitSignal}>

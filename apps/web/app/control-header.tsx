@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import type { FormEvent, MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, AlertTriangle, CheckCircle2, Command, FlaskConical, Shield } from "lucide-react";
+import { Activity, AlertTriangle, Bot, Command, FlaskConical, Radio, Settings, ShieldCheck } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 
 type Summary = {
@@ -17,16 +17,23 @@ type Summary = {
 };
 
 const MODES = [
-  { href: "/", label: "Trader" },
-  { href: "/signals", label: "Signals" },
-  { href: "/research", label: "Lab" },
-  { href: "/pro", label: "Pro" }
+  { href: "/", label: "Trader", description: "bots and PnL", icon: Activity },
+  { href: "/signals", label: "Signals", description: "capture and triage", icon: Radio },
+  { href: "/research", label: "Research", description: "test a thesis", icon: FlaskConical },
+  { href: "/bots", label: "Agents", description: "configure bots", icon: Bot }
+];
+
+const UTILITY_LINKS = [
+  { href: "/pro", label: "Approvals" },
+  { href: "/prompts", label: "Prompts" },
+  { href: "/settings", label: "Settings" }
 ];
 
 const labelForPath = (path: string) => {
   if (path.startsWith("/signals")) return "Signals";
-  if (path.startsWith("/research")) return "Lab";
-  if (path.startsWith("/pro")) return "Pro";
+  if (path.startsWith("/research")) return "Research";
+  if (path.startsWith("/bots")) return "Agents";
+  if (path.startsWith("/pro")) return "Approvals";
   return "Trader";
 };
 
@@ -79,52 +86,70 @@ export function ControlHeader() {
 
   return (
     <header className={`control-header ${isPending ? "control-header-pending" : ""}`}>
-      <div className="mode-switch" aria-label="Workspace mode">
-        {MODES.map((mode) => {
-          const isActive = activeMode === mode.label;
-          const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
-            if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-            if (pathname === mode.href) return;
-            event.preventDefault();
-            setPendingPath(mode.href);
-            startTransition(() => router.push(mode.href));
-          };
-          return (
-            <Link
-              key={mode.href}
-              href={mode.href}
-              prefetch
-              onMouseEnter={() => router.prefetch(mode.href)}
-              onClick={handleClick}
-              className={`mode-tab ${isActive ? "mode-tab-active" : ""} ${pendingPath === mode.href ? "mode-tab-pending" : ""}`}
-            >
-              {mode.label}
+      <div className="control-topline">
+        <Link href="/" className="control-brand" aria-label="Cosmu home">
+          <strong>cosmu</strong>
+          <span>signal to strategy to bot</span>
+        </Link>
+        <div className="control-utilities">
+          {UTILITY_LINKS.map((link) => (
+            <Link key={link.href} href={link.href} className={pathname.startsWith(link.href) ? "utility-link utility-link-active" : "utility-link"}>
+              {link.href === "/settings" && <Settings size={14} />}
+              {link.label}
             </Link>
-          );
-        })}
+          ))}
+          <ThemeToggle />
+        </div>
       </div>
 
-      <form className="command-bar" onSubmit={submitCommand}>
-        <Command size={16} />
-        <input
-          value={command}
-          onChange={(event) => setCommand(event.target.value)}
-          placeholder="Ask Cosmu to test a thesis, inspect agents, or turn hot data into a signal..."
-        />
-      </form>
+      <div className="control-mainline">
+        <nav className="mode-switch" aria-label="Primary workflow">
+          {MODES.map((mode) => {
+            const Icon = mode.icon;
+            const isActive = activeMode === mode.label;
+            const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+              if (pathname === mode.href) return;
+              event.preventDefault();
+              setPendingPath(mode.href);
+              startTransition(() => router.push(mode.href));
+            };
+            return (
+              <Link
+                key={mode.href}
+                href={mode.href}
+                prefetch
+                onMouseEnter={() => router.prefetch(mode.href)}
+                onClick={handleClick}
+                className={`mode-tab ${isActive ? "mode-tab-active" : ""} ${pendingPath === mode.href ? "mode-tab-pending" : ""}`}
+              >
+                <Icon size={16} />
+                <span>
+                  <strong>{mode.label}</strong>
+                  <small>{mode.description}</small>
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
 
-      <div className="control-status">
-        <span title="Running agents"><Activity size={15} />{summary?.runningAgents ?? 0}</span>
-        <span title="Running research jobs"><FlaskConical size={15} />{summary?.runningResearch ?? 0}</span>
-        <span title="Failed agents in the last 24h" className={(summary?.failedAgents ?? 0) > 0 ? "status-danger" : ""}>
-          <AlertTriangle size={15} />{summary?.failedAgents ?? 0}
-        </span>
-        <span title="Pending approvals"><Shield size={15} />{summary?.pendingApprovals ?? 0}</span>
-        <span title={summary?.cappedAutoliveEnabled ? "Capped auto-live is enabled" : "Live actions approval-gated"}>
-          <CheckCircle2 size={15} />
-          {summary?.cappedAutoliveEnabled ? "Auto-live" : summary?.liveActionsGated === false ? "Ungated" : "Gated"}
-        </span>
-        <ThemeToggle />
+        <form className="command-bar" onSubmit={submitCommand}>
+          <Command size={16} />
+          <input
+            value={command}
+            onChange={(event) => setCommand(event.target.value)}
+            placeholder="Paste a market observation or thesis..."
+          />
+        </form>
+
+        <div className="control-status">
+          <span title="Running agents"><Activity size={15} />{summary?.runningAgents ?? 0}</span>
+          <span title="Running research jobs"><FlaskConical size={15} />{summary?.runningResearch ?? 0}</span>
+          <span title="Failed agents in the last 24h" className={(summary?.failedAgents ?? 0) > 0 ? "status-danger" : ""}>
+            <AlertTriangle size={15} />{summary?.failedAgents ?? 0}
+          </span>
+          <span title="Pending approvals"><ShieldCheck size={15} />{summary?.pendingApprovals ?? 0}</span>
+        </div>
       </div>
     </header>
   );
