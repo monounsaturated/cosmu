@@ -4,130 +4,69 @@ import { useState, useEffect, useMemo, useTransition } from "react";
 import type { MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, BarChart3, Bot, FlaskConical, Radio, Settings, ShieldCheck, ScrollText } from "lucide-react";
+import { Menu, X, BarChart3, Bot, FlaskConical, Radio, Settings, ShieldCheck, ScrollText } from "lucide-react";
 
-const NAV_GROUPS = [
-  {
-    label: "Operate",
-    items: [
-      { href: "/", label: "Trader", description: "Light bots", icon: BarChart3 },
-      { href: "/signals", label: "Signals", description: "Hot data", icon: Radio },
-      { href: "/research", label: "Research", description: "Strategy lab", icon: FlaskConical },
-      { href: "/pro", label: "Pro", description: "Live approvals", icon: ShieldCheck }
-    ]
-  },
-  {
-    label: "Configure",
-    items: [
-      { href: "/bots", label: "Agents", description: "All bot configs", icon: Bot },
-      { href: "/prompts", label: "Prompts", description: "Versioned text", icon: ScrollText },
-      { href: "/settings", label: "Settings", description: "Defaults", icon: Settings }
-    ]
-  }
+const NAV_ITEMS = [
+  { href: "/", label: "Trader", description: "Portfolio + automation", icon: BarChart3 },
+  { href: "/signals", label: "Signals", description: "Capture & triage", icon: Radio },
+  { href: "/research", label: "Research", description: "Experiment workflows", icon: FlaskConical },
+  { href: "/pro", label: "Approvals", description: "Human-in-the-loop", icon: ShieldCheck },
+  { href: "/bots", label: "Agents", description: "Configure everything", icon: Bot },
+  { href: "/prompts", label: "Prompts", description: "Versioned instructions", icon: ScrollText },
+  { href: "/settings", label: "Settings", description: "Models + defaults", icon: Settings }
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [collapsed, setCollapsed] = useState(false);
+  const [open, setOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
-    if (pendingHref && pathname.startsWith(pendingHref)) setPendingHref(null);
-  }, [pathname, pendingHref]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("sidebar-collapsed");
-    if (saved === "true") setCollapsed(true);
-  }, []);
-
-  const toggle = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    localStorage.setItem("sidebar-collapsed", String(next));
-  };
-
-  const isActive = (href: string) => {
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
-  };
-
-  const isBotDetailPage = pathname.startsWith("/bots/");
-  const activeSection = useMemo(() => {
-    if (pathname.startsWith("/signals")) return "Signal Sentinel";
-    if (pathname.startsWith("/research")) return "Research Lab";
-    if (pathname.startsWith("/pro")) return "Cosmu Pro";
-    if (pathname.startsWith("/bots")) return "Agent Config";
-    if (pathname.startsWith("/prompts")) return "Prompt Library";
-    if (pathname.startsWith("/settings")) return "Control Room";
-    return "Trader Cockpit";
+    setOpen(false);
+    setPendingHref(null);
   }, [pathname]);
 
+  const activeSection = useMemo(() => NAV_ITEMS.find((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href))), [pathname]);
+
+  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+
   return (
-    <aside className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
-      <div className="sidebar-header">
-        {!collapsed && (
-          <Link href="/" className="sidebar-logo">
-            cosmu
-          </Link>
-        )}
-        <button className="sidebar-toggle" onClick={toggle} aria-label="Toggle sidebar">
-          {collapsed ? "▸" : "◂"}
-        </button>
-      </div>
+    <>
+      <button className="mobile-drawer-btn" onClick={() => setOpen((v) => !v)} aria-label="Toggle navigation">
+        {open ? <X size={18} /> : <Menu size={18} />} {open ? "Close" : "Menu"}
+      </button>
+      <aside className={`sidebar-modern ${open ? "sidebar-open" : ""}`}>
+        <Link href="/" className="sidebar-logo-modern">cosmu</Link>
+        <p className="sidebar-subtitle">A cleaner operator-first cockpit.</p>
 
-      <nav className="sidebar-nav">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label} className="sidebar-group">
-            {!collapsed && <span className="sidebar-group-label">{group.label}</span>}
-            {group.items.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(item.href) || pendingHref === item.href;
-              const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
-                if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-                if (pathname === item.href) return;
-                event.preventDefault();
-                setPendingHref(item.href);
-                startTransition(() => router.push(item.href));
-              };
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  prefetch
-                  onMouseEnter={() => router.prefetch(item.href)}
-                  onClick={handleClick}
-                  className={`sidebar-link ${active ? "sidebar-link-active" : ""}`}
-                  title={collapsed ? `${item.label} - ${item.description}` : undefined}
-                >
-                  <span className="sidebar-icon"><Icon size={17} /></span>
-                  {!collapsed && (
-                    <span className="sidebar-link-copy">
-                      <strong>{item.label}</strong>
-                      <small>{item.description}</small>
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+        <nav className="sidebar-list">
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.href) || pendingHref === item.href;
+            const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+              if (pathname === item.href) return;
+              event.preventDefault();
+              setPendingHref(item.href);
+              startTransition(() => router.push(item.href));
+            };
+            return (
+              <Link key={item.href} href={item.href} onClick={handleClick} className={`sidebar-item ${active ? "sidebar-item-active" : ""}`}>
+                <Icon size={16} />
+                <span><strong>{item.label}</strong><small>{item.description}</small></span>
+              </Link>
+            );
+          })}
+        </nav>
 
-        {isBotDetailPage && (
-          <div className="sidebar-link sidebar-link-active" title={collapsed ? "Agent Detail" : undefined}>
-            <span className="sidebar-icon"><Activity size={17} /></span>
-            {!collapsed && <span>Agent Detail</span>}
-          </div>
-        )}
-      </nav>
-      {!collapsed && (
-        <div className="sidebar-context">
-          <span>Now viewing</span>
-          <strong>{activeSection}</strong>
-          <small>Use the top command bar to send a thesis to Signals or Research.</small>
+        <div className="sidebar-footer-modern">
+          <span>Current view</span>
+          <strong>{activeSection?.label ?? "Trader"}</strong>
         </div>
-      )}
-    </aside>
+      </aside>
+      {open ? <button className="sidebar-backdrop" aria-label="Close navigation" onClick={() => setOpen(false)} /> : null}
+    </>
   );
 }
