@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 import { CreateBotModal } from "./create-bot-modal";
 
 type DashboardActionsProps = {
@@ -20,7 +21,8 @@ export function DashboardActions({ hasNoBots }: DashboardActionsProps) {
   return (
     <>
       <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
-        + Create agent
+        <Plus size={16} />
+        Create agent
       </button>
 
       {hasNoBots && (

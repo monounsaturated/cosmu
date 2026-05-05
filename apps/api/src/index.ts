@@ -3,6 +3,12 @@ import express from "express";
 import { env } from "./env.js";
 import { sql } from "./db.js";
 import {
+  ALL_SYMBOLS_TOKEN,
+  prePromptConfigSchema,
+  runtimeConfigSchema,
+  traderConfigSchema
+} from "@cosmu/shared";
+import {
   addPromptVersion,
   createBot,
   createModelProfile,
@@ -665,22 +671,30 @@ app.post("/bots", async (request, response, next) => {
 
 app.patch("/bots/:botId", async (request, response, next) => {
   try {
-    const { name, enabled, promptVersionId, modelProfileId, frequencyMinutes, mode, contextSymbols, execution } =
-      request.body;
-
-    if (
-      promptVersionId !== undefined ||
-      modelProfileId !== undefined ||
-      frequencyMinutes !== undefined ||
-      mode !== undefined ||
-      contextSymbols !== undefined ||
-      execution !== undefined
-    ) {
-      response.status(409).json({
-        error: "Bot strategy is immutable after creation. Create a new bot to test another prompt, model, or settings."
-      });
+    const current = await getBotSetupById(request.params.botId);
+    if (!current) {
+      response.status(404).json({ error: "Bot not found" });
       return;
     }
+
+    const {
+      name,
+      enabled,
+      promptVersionId,
+      traderPromptVersionId,
+      modelProfileId,
+      traderModelProfileId,
+      promptConfig,
+      traderConfig,
+      runtimeConfig,
+      venue,
+      frequencyMinutes,
+      mode,
+      budgetUsdt,
+      symbolScope,
+      contextSymbols,
+      execution
+    } = request.body;
 
     if (enabled !== undefined) {
       response.status(409).json({
@@ -689,10 +703,54 @@ app.patch("/bots/:botId", async (request, response, next) => {
       return;
     }
 
+    const runtimePatchRequested =
+      runtimeConfig !== undefined ||
+      venue !== undefined ||
+      frequencyMinutes !== undefined ||
+      mode !== undefined ||
+      budgetUsdt !== undefined ||
+      symbolScope !== undefined ||
+      contextSymbols !== undefined ||
+      execution !== undefined;
+
+    const nextRuntimeConfig = runtimePatchRequested
+      ? runtimeConfigSchema.parse({
+          ...current.runtimeConfig,
+          ...(runtimeConfig ?? {}),
+          venue: venue ?? runtimeConfig?.venue ?? current.runtimeConfig.venue,
+          frequencyMinutes: frequencyMinutes ?? runtimeConfig?.frequencyMinutes ?? current.runtimeConfig.frequencyMinutes,
+          mode:
+            mode ??
+            runtimeConfig?.mode ??
+            ((venue ?? runtimeConfig?.venue) === "binance-testnet" ? "testnet" : current.runtimeConfig.mode),
+          budgetUsdt: budgetUsdt ?? runtimeConfig?.budgetUsdt ?? current.runtimeConfig.budgetUsdt,
+          symbolScope: symbolScope ?? runtimeConfig?.symbolScope ?? current.runtimeConfig.symbolScope,
+          contextSymbols:
+            contextSymbols ??
+            runtimeConfig?.contextSymbols ??
+            (current.runtimeConfig.symbolScope === "all" ? [ALL_SYMBOLS_TOKEN] : current.runtimeConfig.contextSymbols),
+          execution: execution ?? runtimeConfig?.execution ?? current.runtimeConfig.execution
+        })
+      : undefined;
+
+    if (nextRuntimeConfig?.symbolScope === "all") {
+      nextRuntimeConfig.contextSymbols = [ALL_SYMBOLS_TOKEN];
+    }
+
     await updateBotConfig(request.params.botId, {
       name,
-      enabled
+      promptVersionId,
+      traderPromptVersionId,
+      modelProfileId,
+      traderModelProfileId,
+      promptConfig: promptConfig === undefined ? undefined : prePromptConfigSchema.parse(promptConfig),
+      traderConfig: traderConfig === undefined ? undefined : traderConfigSchema.parse(traderConfig),
+      runtimeConfig: nextRuntimeConfig
     });
+
+    if (promptVersionId) void touchResearchPromptUsage(promptVersionId).catch(() => {});
+    if (traderPromptVersionId) void touchTraderPromptUsage(traderPromptVersionId).catch(() => {});
+
     response.json({ ok: true });
   } catch (error) {
     next(error);

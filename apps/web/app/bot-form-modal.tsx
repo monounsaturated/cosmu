@@ -218,7 +218,11 @@ type BotSetup = {
   id: string;
   name: string;
   promptVersionId: string;
+  traderPromptVersionId: string | null;
   modelProfileId: string;
+  modelProvider: string;
+  traderModelProfileId: string | null;
+  traderModelProvider: string | null;
   promptConfig: {
     modules: {
       includeCurrentPositions: boolean;
@@ -917,8 +921,11 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       if (mode === "edit" && botRes.data) {
         const setup = botRes.data;
         const botModel = (modelsRes.data ?? []).find((m) => m.id === setup.modelProfileId);
+        const traderModel = (modelsRes.data ?? []).find((m) => m.id === (setup.traderModelProfileId ?? setup.modelProfileId));
         if (botModel?.provider) setSelectedResearchProvider(botModel.provider);
-        if (botModel?.provider) setSelectedTraderProvider(botModel.provider);
+        else if (setup.modelProvider) setSelectedResearchProvider(setup.modelProvider);
+        if (traderModel?.provider) setSelectedTraderProvider(traderModel.provider);
+        else if (setup.traderModelProvider ?? setup.modelProvider) setSelectedTraderProvider(setup.traderModelProvider ?? setup.modelProvider);
 
         const mergedVenue: "binance" | "binance-testnet" =
           setup.runtimeConfig.venue === "binance-testnet" || setup.runtimeConfig.mode === "testnet"
@@ -931,12 +938,12 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
           existingPromptVersionId: setup.promptVersionId,
           newResearchName: "",
           newResearchBody: DEFAULT_RESEARCH_PROMPT,
-          traderStrategy: "existing",
-          existingTraderVersionId: "",
+          traderStrategy: setup.traderPromptVersionId ? "existing" : "new",
+          existingTraderVersionId: setup.traderPromptVersionId ?? "",
           newTraderName: "",
           newTraderBody: DEFAULT_TRADER_PROMPT,
           researchModelProfileId: setup.modelProfileId,
-          traderModelProfileId: setup.modelProfileId,
+          traderModelProfileId: setup.traderModelProfileId ?? setup.modelProfileId,
           modelProfileId: setup.modelProfileId,
           promptConfig: { ...setup.promptConfig },
           venue: mergedVenue,
@@ -1181,6 +1188,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       let traderPromptVersionId: string | null = null;
       if (formData.traderStrategy === "existing") {
         traderPromptVersionId = formData.existingTraderVersionId || null;
+        if (!traderPromptVersionId) throw new Error("Choose a trader prompt or create a new one");
       } else if (formData.newTraderBody.trim()) {
         const traderRes = await fetch("/api/trader-prompts", {
           method: "POST",
@@ -1232,7 +1240,24 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
         const res = await fetch(`/api/bots/${botId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: formData.name.trim() })
+          body: JSON.stringify({
+            name: formData.name.trim(),
+            promptVersionId,
+            modelProfileId: researchModelId,
+            traderModelProfileId: traderModelId,
+            traderPromptVersionId,
+            promptConfig: formData.promptConfig,
+            runtimeConfig: {
+              venue: formData.venue,
+              frequencyMinutes: Number(formData.frequencyMinutes),
+              mode: formData.venue === "binance-testnet" ? "testnet" : "live",
+              assetClass: "spot",
+              budgetUsdt: formData.budgetUsdt,
+              symbolScope: formData.symbolScope,
+              execution: formData.execution,
+              contextSymbols
+            }
+          })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Failed to update bot");
@@ -1264,7 +1289,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     <div className="modal-overlay">
       <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>{mode === "create" ? "Create Bot" : "Rename Bot"}</h2>
+          <h2>{mode === "create" ? "Create Agent" : "Edit Agent"}</h2>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
 
@@ -1273,11 +1298,11 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
         ) : (
           <form className="modal-form" onSubmit={handleSubmit}>
 
-            {/* ── Bot Name ── */}
+            {/* ── Agent Name ── */}
             <div className="form-section">
               <div className="form-row">
                 <label>
-                  Bot Name
+                  Agent Name
                   <input
                     type="text"
                     value={formData.name}
@@ -1306,7 +1331,6 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                     <select
                       value={formData.venue}
                       onChange={(e) => setFormData({ ...formData, venue: e.target.value as "binance" | "binance-testnet" })}
-                      disabled={mode !== "create"}
                     >
                       <option value="binance-testnet">Binance Testnet</option>
                       <option value="binance">Binance</option>
@@ -1328,7 +1352,6 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                       step={10}
                       value={formData.budgetUsdt}
                       onChange={(e) => setFormData({ ...formData, budgetUsdt: Math.max(10, Number(e.target.value)) })}
-                      disabled={mode !== "create"}
                     />
                   </label>
                   <span className="field-help">
@@ -1342,7 +1365,6 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                     <select
                       value={formData.frequencyMinutes}
                       onChange={(e) => setFormData({ ...formData, frequencyMinutes: e.target.value })}
-                      disabled={mode !== "create"}
                     >
                       {FREQUENCY_OPTIONS.map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1376,7 +1398,6 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                           if (formData.symbolScope !== "all" && !symbolSearch) setSymbolSearch("");
                         }}
                         readOnly={formData.symbolScope === "all"}
-                        disabled={mode !== "create"}
                       />
                       {pairsOpen && (
                         <div className="pairs-dropdown">
@@ -1461,7 +1482,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
               selectedModelId={formData.researchModelProfileId}
               onModelChange={(id) => setFormData((cur) => ({ ...cur, researchModelProfileId: id }))}
               dataLoaded={dataLoaded}
-              disabled={mode !== "create"}
+              disabled={false}
             />
 
             {/* ── Trader Prompt ── */}
@@ -1505,7 +1526,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
               selectedModelId={formData.traderModelProfileId}
               onModelChange={(id) => setFormData((cur) => ({ ...cur, traderModelProfileId: id }))}
               dataLoaded={dataLoaded}
-              disabled={mode !== "create"}
+              disabled={false}
             />
 
             {/* ── Deterministic Settings ── */}
@@ -1618,7 +1639,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving
                   ? mode === "create" ? "Creating..." : "Saving..."
-                  : mode === "create" ? "Create Bot" : "Save Changes"}
+                  : mode === "create" ? "Create Agent" : "Save Changes"}
               </button>
             </div>
           </form>

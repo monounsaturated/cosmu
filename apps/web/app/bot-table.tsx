@@ -283,7 +283,7 @@ export function BotTable({
         accountLabel(bot.mode)
       ].some((value) => value.toLowerCase().includes(search));
     });
-  }, [accountFilter, dashboard.bots, qualityFilter, query, statusFilter]);
+  }, [accountFilter, qualityFilter, query, scopedBots, statusFilter]);
 
   const sortedBots = useMemo(() => {
     const column = COLUMN_DEFS.find((item) => item.id === sortField);

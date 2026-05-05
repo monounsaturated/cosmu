@@ -401,14 +401,46 @@ export const createBot = async (input: {
 
 export const updateBotConfig = async (
   botId: string,
-  input: { name?: string; enabled?: boolean }
+  input: {
+    name?: string;
+    enabled?: boolean;
+    promptVersionId?: string;
+    traderPromptVersionId?: string | null;
+    modelProfileId?: string;
+    traderModelProfileId?: string | null;
+    promptConfig?: PrePromptConfig;
+    traderConfig?: TraderConfig;
+    runtimeConfig?: RuntimeConfig;
+  }
 ) => {
-  if (input.name !== undefined) {
-    await sql`update bots set name = ${input.name.trim()} where id = ${botId}`;
+  const botUpdates: Record<string, unknown> = {};
+  if (input.name !== undefined) botUpdates.name = input.name.trim();
+  if (input.promptVersionId !== undefined) botUpdates.active_prompt_version_id = input.promptVersionId;
+  if (input.traderPromptVersionId !== undefined) botUpdates.active_trader_prompt_version_id = input.traderPromptVersionId;
+  if (input.modelProfileId !== undefined) botUpdates.active_model_profile_id = input.modelProfileId;
+  if (input.traderModelProfileId !== undefined) botUpdates.active_trader_model_profile_id = input.traderModelProfileId;
+  if (input.promptConfig !== undefined) botUpdates.prompt_config = sql.json(input.promptConfig);
+  if (input.traderConfig !== undefined) botUpdates.trader_config = sql.json(input.traderConfig);
+
+  if (Object.keys(botUpdates).length > 0) {
+    await sql`
+      update bots
+      set ${sql(botUpdates)}
+      where id = ${botId}
+    `;
   }
 
   const runtimeUpdates: Record<string, unknown> = {};
   if (input.enabled !== undefined) runtimeUpdates.enabled = input.enabled;
+  if (input.runtimeConfig !== undefined) {
+    runtimeUpdates.venue = input.runtimeConfig.venue;
+    runtimeUpdates.frequency_minutes = input.runtimeConfig.frequencyMinutes;
+    runtimeUpdates.mode = input.runtimeConfig.mode;
+    runtimeUpdates.asset_class = input.runtimeConfig.assetClass;
+    runtimeUpdates.budget_usdt = input.runtimeConfig.budgetUsdt;
+    runtimeUpdates.execution_config = sql.json(input.runtimeConfig.execution);
+    runtimeUpdates.context_symbols = sql.json(input.runtimeConfig.contextSymbols);
+  }
 
   if (Object.keys(runtimeUpdates).length > 0) {
     await sql`

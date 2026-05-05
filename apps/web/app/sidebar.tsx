@@ -4,17 +4,30 @@ import { useState, useEffect, useMemo, useTransition } from "react";
 import type { MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, BarChart3, Bot, FlaskConical, Radio, Settings, ShieldCheck, ScrollText } from "lucide-react";
+import {
+  BadgeCheck,
+  BarChart3,
+  Bot,
+  FlaskConical,
+  Menu,
+  Radio,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  X
+} from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Trader", description: "Portfolio + automation", icon: BarChart3 },
-  { href: "/signals", label: "Signals", description: "Capture & triage", icon: Radio },
-  { href: "/research", label: "Research", description: "Experiment workflows", icon: FlaskConical },
-  { href: "/pro", label: "Approvals", description: "Human-in-the-loop", icon: ShieldCheck },
-  { href: "/bots", label: "Agents", description: "Configure everything", icon: Bot },
-  { href: "/prompts", label: "Prompts", description: "Versioned instructions", icon: ScrollText },
-  { href: "/settings", label: "Settings", description: "Models + defaults", icon: Settings }
+  { href: "/", label: "Command", description: "portfolio and runs", icon: BarChart3, group: "Operate" },
+  { href: "/signals", label: "Signals", description: "capture and triage", icon: Radio, group: "Build" },
+  { href: "/research", label: "Research", description: "test a thesis", icon: FlaskConical, group: "Build" },
+  { href: "/bots", label: "Agents", description: "models, prompts, risk", icon: Bot, group: "Operate" },
+  { href: "/pro", label: "Review", description: "live approvals", icon: ShieldCheck, group: "Govern" },
+  { href: "/prompts", label: "Prompts", description: "version history", icon: BadgeCheck, group: "Govern" },
+  { href: "/settings", label: "Settings", description: "sources and defaults", icon: Settings, group: "System" }
 ];
+
+const GROUPS = ["Operate", "Build", "Govern", "System"] as const;
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -35,35 +48,46 @@ export function Sidebar() {
   return (
     <>
       <button className="mobile-drawer-btn" onClick={() => setOpen((v) => !v)} aria-label="Toggle navigation">
-        {open ? <X size={18} /> : <Menu size={18} />} {open ? "Close" : "Menu"}
+        {open ? <X size={18} /> : <Menu size={18} />}
+        <span>{open ? "Close" : "Menu"}</span>
       </button>
       <aside className={`sidebar-modern ${open ? "sidebar-open" : ""}`}>
-        <Link href="/" className="sidebar-logo-modern">cosmu</Link>
-        <p className="sidebar-subtitle">A cleaner operator-first cockpit.</p>
+        <Link href="/" className="sidebar-logo-modern" aria-label="Cosmu command">
+          <span className="sidebar-mark"><Sparkles size={17} /></span>
+          <span>
+            <strong>cosmu</strong>
+            <small>agent trading OS</small>
+          </span>
+        </Link>
 
-        <nav className="sidebar-list">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.href) || pendingHref === item.href;
-            const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
-              if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
-              if (pathname === item.href) return;
-              event.preventDefault();
-              setPendingHref(item.href);
-              startTransition(() => router.push(item.href));
-            };
-            return (
-              <Link key={item.href} href={item.href} onClick={handleClick} className={`sidebar-item ${active ? "sidebar-item-active" : ""}`}>
-                <Icon size={16} />
-                <span><strong>{item.label}</strong><small>{item.description}</small></span>
-              </Link>
-            );
-          })}
+        <nav className="sidebar-list" aria-label="Product">
+          {GROUPS.map((group) => (
+            <div className="sidebar-nav-group" key={group}>
+              <span className="sidebar-group-title">{group}</span>
+              {NAV_ITEMS.filter((item) => item.group === group).map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.href) || pendingHref === item.href;
+                const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                  if (pathname === item.href) return;
+                  event.preventDefault();
+                  setPendingHref(item.href);
+                  startTransition(() => router.push(item.href));
+                };
+                return (
+                  <Link key={item.href} href={item.href} onClick={handleClick} className={`sidebar-item ${active ? "sidebar-item-active" : ""}`}>
+                    <Icon size={17} />
+                    <span><strong>{item.label}</strong><small>{item.description}</small></span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="sidebar-footer-modern">
           <span>Current view</span>
-          <strong>{activeSection?.label ?? "Trader"}</strong>
+          <strong>{activeSection?.label ?? "Command"}</strong>
         </div>
       </aside>
       {open ? <button className="sidebar-backdrop" aria-label="Close navigation" onClick={() => setOpen(false)} /> : null}

@@ -1,19 +1,20 @@
-import Link from "next/link";
 import { FormatterPromptSettings } from "./formatter-prompt-settings";
+import { SettingsConsole } from "./settings-console";
 
 export default function SettingsPage() {
   return (
     <main className="page page-wide">
-      <section className="hero">
+      <section className="command-hero">
         <div>
-          <p className="eyebrow">Control room</p>
-          <h1>Settings without the noise.</h1>
+          <p className="eyebrow">System</p>
+          <h1>Models, data sources, and execution defaults.</h1>
           <p className="muted">
-            Keep defaults simple. Advanced prompt and execution behavior stays here, versioned and inspectable.
+            Configure the pieces every agent depends on before you let it research, trade, or ask for live approval.
           </p>
         </div>
-        <Link href="/" className="btn btn-secondary">Back to Trader</Link>
       </section>
+
+      <SettingsConsole />
 
       <section className="panel">
         <h2 style={{ marginTop: 0, fontSize: "1.15rem" }}>Formatter / execution prompt</h2>

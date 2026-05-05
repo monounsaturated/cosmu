@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ArrowRight, Bot, FlaskConical, Radio, ShieldCheck } from "lucide-react";
 import { DashboardActions } from "./dashboard-actions";
 import { PerformanceChart } from "./performance-chart";
 import { RecentRunsTable } from "./run-detail-row";
@@ -19,26 +21,49 @@ export default async function HomePage() {
   const activeLightBots = lightBots.filter((bot) => bot.enabled).length;
   const totalLightPnl = lightBots.reduce((sum, bot) => sum + (bot.netPnlUsd ?? 0), 0);
   const recentFailures = dashboard.recentRuns.filter((run) => run.status === "failure").length;
+  const liveExposure = dashboard.venueOverview.live?.allocatedAmount ?? 0;
+  const testExposure = dashboard.venueOverview.testnet?.allocatedAmount ?? 0;
 
   return (
     <main className="page page-wide">
       <AutoRefresh intervalMs={30000} />
-      <section className="hero hero-cockpit">
+      <section className="command-hero">
         <div>
-          <p className="eyebrow">Cosmu Light</p>
-          <h1>Agent trading, kept calm.</h1>
+          <p className="eyebrow">Command</p>
+          <h1>Know what is running, why, and what can trade next.</h1>
           <p>
-            Research, trader, validator, execution, and guardian in one focused cockpit.
-            Signals feed the loop; every prompt and tool call stays inspectable.
+            One operator surface for paper and live agents. Signals become research, research becomes agents,
+            and every prompt, model, data source, run, order, and approval stays inspectable.
           </p>
         </div>
-        <div className="hero-actions">
+        <div className="hero-actions command-actions">
           <span className="badge badge-neutral">Updated <LocalTime value={dashboard.generatedAt} /></span>
           <div className="hero-action-row">
             <KillAllBotsButton />
             <DashboardActions hasNoBots={dashboard.bots.length === 0} />
           </div>
         </div>
+      </section>
+
+      <section className="product-flow" aria-label="Primary workflow">
+        {[
+          { href: "/signals", label: "Capture", body: "Market notes and observations", icon: Radio },
+          { href: "/research", label: "Research", body: "Bounded experiments and data", icon: FlaskConical },
+          { href: "/bots", label: "Deploy", body: "Models, prompts, pairs, risk", icon: Bot },
+          { href: "/pro", label: "Review", body: "Human approval for live", icon: ShieldCheck }
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link href={item.href} className="flow-step" key={item.href}>
+              <Icon size={18} />
+              <span>
+                <strong>{item.label}</strong>
+                <small>{item.body}</small>
+              </span>
+              <ArrowRight size={16} />
+            </Link>
+          );
+        })}
       </section>
 
       <section className="metric-strip">
@@ -64,33 +89,22 @@ export default async function HomePage() {
           <strong>{dashboard.recentRuns.length}</strong>
           <small>audit ready</small>
         </article>
-      </section>
-
-      <VenueOverview venueOverview={dashboard.venueOverview} />
-
-      <section className="focus-section">
-        <BotTable
-          dashboard={dashboard}
-          workspaceMode="light"
-          title="Light Agents"
-          description="Lean operational loop: research → trader → validator → execution on Binance. Light is intentionally separate from Research and Pro — Research bots and Pro bots will not appear here."
-          emptyMessage="No Light agents yet. Use Create Bot to add a fast iteration agent."
-        />
-      </section>
-
-      <section className="stack">
-        <article className="panel">
-          <h3>Performance Comparison</h3>
-          <PerformanceChart series={dashboard.performanceSeries} />
+        <article>
+          <span>Allocated</span>
+          <strong>${(liveExposure + testExposure).toFixed(0)}</strong>
+          <small>${liveExposure.toFixed(0)} live / ${testExposure.toFixed(0)} paper</small>
         </article>
+      </section>
 
+      <section className="command-grid">
+        <VenueOverview venueOverview={dashboard.venueOverview} />
         <article className="panel">
           <h3>Recent Runs</h3>
-          <p className="field-help">Click a row to see the exact prompt sent and LLM response.</p>
+          <p className="field-help">Open any row to inspect prompt, response, tools, and validator output.</p>
           {dashboard.recentRuns.length === 0 ? (
-            <p className="muted">No runs yet. Use Run Now to trigger the first one.</p>
+            <p className="muted">No runs yet. Create an agent, then run it from the table.</p>
           ) : (
-            <RecentRunsTable runs={dashboard.recentRuns.map((r) => ({
+            <RecentRunsTable runs={dashboard.recentRuns.slice(0, 8).map((r) => ({
               id: r.id,
               botName: r.botName,
               status: r.status,
@@ -99,6 +113,23 @@ export default async function HomePage() {
               rationaleSummary: r.rationaleSummary
             }))} />
           )}
+        </article>
+      </section>
+
+      <section className="focus-section">
+        <BotTable
+          dashboard={dashboard}
+          workspaceMode="light"
+          title="Paper and light agents"
+          description="Edit each agent's model, prompts, pairs, budget, cadence, and execution rules. Click a row for holdings, prompts, runs, and trades."
+          emptyMessage="No agents yet. Create one to start with a paper strategy."
+        />
+      </section>
+
+      <section className="stack command-stack">
+        <article className="panel">
+          <h3>Performance Comparison</h3>
+          <PerformanceChart series={dashboard.performanceSeries} />
         </article>
 
         <RecentExecutions executions={dashboard.recentExecutions} />

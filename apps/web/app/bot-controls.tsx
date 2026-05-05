@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Play, Settings2, StopCircle } from "lucide-react";
+import { EditBotModal } from "./edit-bot-modal";
 
 type BotControlsProps = {
   botId: string;
@@ -13,6 +15,7 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
   const [isActive, setIsActive] = useState(initialIsActive);
   const [loading, setLoading] = useState<"kill" | "run" | null>(null);
   const [confirmKillOpen, setConfirmKillOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
@@ -66,10 +69,19 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
     <div className="bot-controls">
       <div className="bot-controls-buttons">
         <button
+          className="btn btn-secondary"
+          onClick={() => setEditOpen(true)}
+          disabled={loading !== null}
+        >
+          <Settings2 size={15} />
+          Edit
+        </button>
+        <button
           className="btn btn-warn"
           onClick={() => setConfirmKillOpen(true)}
           disabled={!isActive || loading !== null}
         >
+          <StopCircle size={15} />
           {loading === "kill" ? "Stopping..." : "Stop"}
         </button>
         <button
@@ -77,6 +89,7 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
           onClick={triggerRun}
           disabled={!isActive || loading !== null}
         >
+          <Play size={15} />
           {loading === "run" ? "Running..." : "Run"}
         </button>
       </div>
@@ -104,6 +117,16 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
             </div>
           </div>
         </div>
+      )}
+      {editOpen && (
+        <EditBotModal
+          botId={botId}
+          onClose={() => setEditOpen(false)}
+          onSuccess={() => {
+            setEditOpen(false);
+            router.refresh();
+          }}
+        />
       )}
     </div>
   );
