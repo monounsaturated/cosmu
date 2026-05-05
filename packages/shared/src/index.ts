@@ -342,11 +342,26 @@ export const researchCandidateSchema = z.object({
   thesis: z.string(),
   metrics: z.unknown().nullable(),
   riskNotes: z.string().nullable(),
+  promotedBotId: z.string().uuid().nullable().default(null),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime()
 });
 
 export type ResearchCandidate = z.infer<typeof researchCandidateSchema>;
+
+export const approvalRequestSchema = z.object({
+  id: z.string().uuid(),
+  requestType: z.enum(["live_promotion", "dangerous_action", "connector_permission"]),
+  status: z.enum(["pending", "approved", "rejected", "cancelled"]),
+  title: z.string(),
+  body: z.string().nullable(),
+  payload: z.unknown(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  resolvedAt: z.string().datetime().nullable()
+});
+
+export type ApprovalRequest = z.infer<typeof approvalRequestSchema>;
 
 export const botSummarySchema = z.object({
   id: z.string().uuid(),
@@ -354,6 +369,7 @@ export const botSummarySchema = z.object({
   name: z.string(),
   slug: z.string(),
   enabled: z.boolean(),
+  workspaceMode: workspaceModeSchema.default("light"),
   venue: venueSchema,
   frequencyMinutes: z.number(),
   mode: executionModeSchema,

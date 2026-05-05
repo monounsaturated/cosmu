@@ -52,7 +52,9 @@ export {
   createFormatterPromptVersion,
   listFormatterPromptVersions,
   getAllActiveFormatterPrompts,
-  touchResearchPromptUsage
+  touchResearchPromptUsage,
+  getLatestResearchPromptVersion,
+  getLatestModelProfile
 } from "./prompts.js";
 
 export { getBotPrePromptContext } from "./dashboard.js";
@@ -74,8 +76,13 @@ export {
   finishAgentStep,
   recordAgentStep,
   listAgentSteps,
-  getAgentControlSummary
+  getAgentControlSummary,
+  createApprovalRequest,
+  listApprovalRequests,
+  getApprovalRequest,
+  updateApprovalStatus
 } from "./agent-steps.js";
+export type { ApprovalRequest } from "./agent-steps.js";
 
 export {
   createResearchExperiment,
@@ -85,6 +92,9 @@ export {
   listResearchDataSources,
   createResearchDataSource,
   createResearchCandidate,
+  getResearchCandidate,
+  setCandidatePromotedBot,
+  setCandidatePaperBot,
   listResearchCandidates
 } from "./research.js";
 

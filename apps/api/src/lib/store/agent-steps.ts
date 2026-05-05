@@ -137,6 +137,136 @@ export const listAgentSteps = async (input: {
   return rows.map(mapAgentStep);
 };
 
+export type ApprovalRequest = {
+  id: string;
+  requestType: "live_promotion" | "dangerous_action" | "connector_permission";
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  title: string;
+  body: string | null;
+  payload: unknown;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+};
+
+type ApprovalRequestRow = Omit<ApprovalRequest, "createdAt" | "updatedAt" | "resolvedAt"> & {
+  createdAt: Date;
+  updatedAt: Date;
+  resolvedAt: Date | null;
+};
+
+const mapApproval = (row: ApprovalRequestRow): ApprovalRequest => ({
+  ...row,
+  payload: typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload,
+  createdAt: row.createdAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString(),
+  resolvedAt: row.resolvedAt?.toISOString() ?? null
+});
+
+export const createApprovalRequest = async (input: {
+  requestType: ApprovalRequest["requestType"];
+  title: string;
+  body?: string | null;
+  payload?: unknown;
+}) => {
+  const [row] = await sql<ApprovalRequestRow[]>`
+    insert into approval_requests (request_type, title, body, payload)
+    values (
+      ${input.requestType}, ${input.title}, ${input.body ?? null},
+      ${sql.json((input.payload ?? {}) as JsonValue)}
+    )
+    returning
+      id,
+      request_type as "requestType",
+      status,
+      title,
+      body,
+      payload,
+      created_at as "createdAt",
+      updated_at as "updatedAt",
+      resolved_at as "resolvedAt"
+  `;
+  return mapApproval(row);
+};
+
+export const listApprovalRequests = async (filter?: { status?: ApprovalRequest["status"] }) => {
+  const rows = filter?.status
+    ? await sql<ApprovalRequestRow[]>`
+        select
+          id,
+          request_type as "requestType",
+          status,
+          title,
+          body,
+          payload,
+          created_at as "createdAt",
+          updated_at as "updatedAt",
+          resolved_at as "resolvedAt"
+        from approval_requests
+        where status = ${filter.status}
+        order by created_at desc
+        limit 100
+      `
+    : await sql<ApprovalRequestRow[]>`
+        select
+          id,
+          request_type as "requestType",
+          status,
+          title,
+          body,
+          payload,
+          created_at as "createdAt",
+          updated_at as "updatedAt",
+          resolved_at as "resolvedAt"
+        from approval_requests
+        order by created_at desc
+        limit 100
+      `;
+  return rows.map(mapApproval);
+};
+
+export const getApprovalRequest = async (id: string) => {
+  const [row] = await sql<ApprovalRequestRow[]>`
+    select
+      id,
+      request_type as "requestType",
+      status,
+      title,
+      body,
+      payload,
+      created_at as "createdAt",
+      updated_at as "updatedAt",
+      resolved_at as "resolvedAt"
+    from approval_requests
+    where id = ${id}
+  `;
+  return row ? mapApproval(row) : null;
+};
+
+export const updateApprovalStatus = async (input: {
+  id: string;
+  status: Extract<ApprovalRequest["status"], "approved" | "rejected" | "cancelled">;
+}) => {
+  const [row] = await sql<ApprovalRequestRow[]>`
+    update approval_requests
+    set status = ${input.status},
+        updated_at = now(),
+        resolved_at = now()
+    where id = ${input.id}
+    returning
+      id,
+      request_type as "requestType",
+      status,
+      title,
+      body,
+      payload,
+      created_at as "createdAt",
+      updated_at as "updatedAt",
+      resolved_at as "resolvedAt"
+  `;
+  return row ? mapApproval(row) : null;
+};
+
 export const getAgentControlSummary = async () => {
   const [row] = await sql<{
     runningAgents: number;

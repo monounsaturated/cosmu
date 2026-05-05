@@ -33,6 +33,7 @@ type Props = {
   title?: string;
   description?: string;
   emptyMessage?: string;
+  workspaceMode?: "light" | "research" | "pro";
 };
 
 const venueLabel = (venue: "binance" | "binance-testnet") =>
@@ -223,8 +224,13 @@ export function BotTable({
   dashboard,
   title = "Agent Performance",
   description = "Compare every active and stopped strategy from one shared table. Sort, filter, and choose columns here; every mode uses the same surface.",
-  emptyMessage = "No agents created yet."
+  emptyMessage = "No agents created yet.",
+  workspaceMode
 }: Props) {
+  const scopedBots = useMemo(() => {
+    if (!workspaceMode) return dashboard.bots;
+    return dashboard.bots.filter((bot) => (bot.workspaceMode ?? "light") === workspaceMode);
+  }, [dashboard.bots, workspaceMode]);
   const router = useRouter();
   const [sortField, setSortField] = useState<ColumnId>("returnPct");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
@@ -256,7 +262,7 @@ export function BotTable({
 
   const filteredBots = useMemo(() => {
     const search = query.trim().toLowerCase();
-    return dashboard.bots.filter((bot) => {
+    return scopedBots.filter((bot) => {
       if (statusFilter === "active" && !bot.enabled) return false;
       if (statusFilter === "stopped" && bot.enabled) return false;
       if (statusFilter === "errors" && !bot.latestError) return false;
@@ -307,16 +313,16 @@ export function BotTable({
   const visibleColumnDefs = COLUMN_DEFS.filter((column) => visibleColumns.includes(column.id));
 
   const overview = useMemo(() => {
-    const active = dashboard.bots.filter((bot) => bot.enabled).length;
-    const totalValue = dashboard.bots.reduce((sum, bot) => sum + (bot.currentPortfolioUsd ?? 0), 0);
-    const netPnl = dashboard.bots.reduce((sum, bot) => sum + (bot.netPnlUsd ?? 0), 0);
-    const best = dashboard.bots.reduce<BotRow | null>((current, bot) => {
+    const active = scopedBots.filter((bot) => bot.enabled).length;
+    const totalValue = scopedBots.reduce((sum, bot) => sum + (bot.currentPortfolioUsd ?? 0), 0);
+    const netPnl = scopedBots.reduce((sum, bot) => sum + (bot.netPnlUsd ?? 0), 0);
+    const best = scopedBots.reduce<BotRow | null>((current, bot) => {
       if (getReturnPct(bot) === null) return current;
       if (!current || (getReturnPct(bot) ?? -Infinity) > (getReturnPct(current) ?? -Infinity)) return bot;
       return current;
     }, null);
     return { active, totalValue, netPnl, best };
-  }, [dashboard.bots]);
+  }, [scopedBots]);
 
   const SortIndicator = ({ field }: { field: ColumnId }) => {
     if (sortField !== field) return <span style={{ opacity: 0.25 }}>↕</span>;
@@ -331,7 +337,7 @@ export function BotTable({
           <p className="muted">{description}</p>
         </div>
         <div className="performance-summary">
-          <span><strong>{dashboard.bots.length}</strong> total</span>
+          <span><strong>{scopedBots.length}</strong> total</span>
           <span><strong>{overview.active}</strong> active</span>
           <span><strong>{formatUsd(overview.totalValue)}</strong> value</span>
           <span className={valueTone(overview.netPnl)}><strong>{formatUsd(overview.netPnl, { signed: true })}</strong> net</span>
@@ -420,7 +426,7 @@ export function BotTable({
 
       {sortedBots.length === 0 && (
         <p className="muted table-empty">
-          {dashboard.bots.length === 0 ? emptyMessage : "No agents match the current filters."}
+          {scopedBots.length === 0 ? emptyMessage : "No agents match the current filters."}
         </p>
       )}
     </section>

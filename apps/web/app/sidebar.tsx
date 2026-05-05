@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useTransition } from "react";
+import type { MouseEvent } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Activity, Settings, ScrollText } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -12,7 +13,14 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (pendingHref && pathname.startsWith(pendingHref)) setPendingHref(null);
+  }, [pathname, pendingHref]);
 
   useEffect(() => {
     const saved = localStorage.getItem("sidebar-collapsed");
@@ -48,11 +56,22 @@ export function Sidebar() {
       <nav className="sidebar-nav">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
+          const active = isActive(item.href) || pendingHref === item.href;
+          const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+            if (pathname === item.href) return;
+            event.preventDefault();
+            setPendingHref(item.href);
+            startTransition(() => router.push(item.href));
+          };
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`sidebar-link ${isActive(item.href) ? "sidebar-link-active" : ""}`}
+              prefetch
+              onMouseEnter={() => router.prefetch(item.href)}
+              onClick={handleClick}
+              className={`sidebar-link ${active ? "sidebar-link-active" : ""}`}
               title={collapsed ? item.label : undefined}
             >
               <span className="sidebar-icon"><Icon size={17} /></span>

@@ -52,6 +52,26 @@ export const listModelProfiles = async (provider?: string) => {
   `;
 };
 
+export const getLatestResearchPromptVersion = async () => {
+  const [row] = await sql<{ versionId: string; promptId: string }[]>`
+    select pv.id as "versionId", pv.prompt_id as "promptId"
+    from research_prompt_versions pv
+    order by pv.created_at desc
+    limit 1
+  `;
+  return row ?? null;
+};
+
+export const getLatestModelProfile = async () => {
+  const [row] = await sql<{ id: string; provider: string; model: string }[]>`
+    select id, provider, model
+    from model_profiles
+    order by created_at desc
+    limit 1
+  `;
+  return row ?? null;
+};
+
 export const getPromptVersionBody = async (versionId: string) => {
   const [row] = await sql<{ id: string; body: string; version: number; promptId: string; promptName: string }[]>`
     select pv.id, pv.body, pv.version, p.id as "promptId", p.name as "promptName"

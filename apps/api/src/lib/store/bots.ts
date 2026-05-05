@@ -358,20 +358,26 @@ export const createBot = async (input: {
   traderConfig?: TraderConfig;
   traderPromptVersionId?: string | null;
   parentBotId?: string | null;
+  workspaceMode?: "light" | "research" | "pro";
+  enabled?: boolean;
   runtimeConfig: Omit<RuntimeConfig, "enabled">;
 }) => {
   const effectiveName = input.name.trim();
+  const workspaceMode = input.workspaceMode ?? "light";
+  const scheduledEnabled = input.enabled ?? (workspaceMode === "pro" ? false : true);
   const [bot] = await sql<{ id: string }[]>`
     insert into bots (
       name, slug, active_prompt_version_id, active_model_profile_id,
       active_trader_model_profile_id,
-      active_trader_prompt_version_id, parent_bot_id, prompt_config, trader_config
+      active_trader_prompt_version_id, parent_bot_id, prompt_config, trader_config,
+      workspace_mode
     ) values (
       ${effectiveName}, ${input.slug}, ${input.promptVersionId}, ${input.modelProfileId},
       ${input.traderModelProfileId ?? input.modelProfileId},
       ${input.traderPromptVersionId ?? null}, ${input.parentBotId ?? null},
       ${sql.json(input.promptConfig)},
-      ${sql.json(input.traderConfig ?? traderConfigSchema.parse({}))}
+      ${sql.json(input.traderConfig ?? traderConfigSchema.parse({}))},
+      ${workspaceMode}
     )
     returning id
   `;
@@ -381,7 +387,7 @@ export const createBot = async (input: {
       bot_id, enabled, venue, frequency_minutes, mode, asset_class,
       budget_usdt, execution_config, context_symbols
     ) values (
-      ${bot.id}, true, ${input.runtimeConfig.venue}, ${input.runtimeConfig.frequencyMinutes},
+      ${bot.id}, ${scheduledEnabled}, ${input.runtimeConfig.venue}, ${input.runtimeConfig.frequencyMinutes},
       ${input.runtimeConfig.mode}, ${input.runtimeConfig.assetClass},
       ${input.runtimeConfig.budgetUsdt ?? 1000},
       ${sql.json(input.runtimeConfig.execution)},

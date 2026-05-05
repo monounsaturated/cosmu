@@ -37,8 +37,10 @@ export default async function HomePage() {
       <section className="grid" style={{ display: "block", marginBottom: "32px" }}>
         <BotTable
           dashboard={dashboard}
+          workspaceMode="light"
           title="Light Agents"
-          description="Operational agents share the same performance table used by Research and Pro: compare returns, inspect models, filter the view, and open any row for traceability."
+          description="Lean operational loop: research → trader → validator → execution on Binance. Light is intentionally separate from Research and Pro — Research bots and Pro bots will not appear here."
+          emptyMessage="No Light agents yet. Use Create Bot to add a fast iteration agent."
         />
       </section>
 

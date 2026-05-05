@@ -1,11 +1,35 @@
 import { ShieldCheck, Zap } from "lucide-react";
+import { approvalRequestSchema } from "@cosmu/shared";
 import { BotTable } from "../bot-table";
 import { getDashboard } from "../dashboard-data";
+import { ProApprovals } from "./pro-approvals";
 
 export const dynamic = "force-dynamic";
 
+const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
+
+async function fetchApi(path: string) {
+  const apiSecretKey = process.env.API_SECRET_KEY;
+  if (!apiSecretKey) return null;
+  try {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      cache: "no-store",
+      headers: { "x-api-key": apiSecretKey }
+    });
+    if (!response.ok) return null;
+    return response.json();
+  } catch {
+    return null;
+  }
+}
+
 export default async function ProPage() {
-  const dashboard = await getDashboard();
+  const [dashboard, approvalsRaw] = await Promise.all([
+    getDashboard(),
+    fetchApi("/agent-control/approvals?status=pending")
+  ]);
+
+  const approvals = approvalRequestSchema.array().catch([]).parse(approvalsRaw?.approvals ?? []);
 
   return (
     <main className="page page-wide">
@@ -14,7 +38,9 @@ export default async function ProPage() {
           <p className="muted">Cosmu Pro</p>
           <h1>Agentic live trading control</h1>
           <p className="field-help">
-            Pro will combine Research outputs, multi-agent review, risk gating, deterministic validation, and live approval.
+            Pro is the live-eligible workspace. Approved Research candidates land here as Pro bots, gated by the
+            shared deterministic validator and the global kill switch. Light bots and unpromoted research bots are
+            never visible here.
           </p>
         </div>
         <div className="pro-readiness">
@@ -25,36 +51,39 @@ export default async function ProPage() {
 
       <section className="ops-grid">
         <article className="panel">
-          <h3>Pro V1 Pipeline</h3>
+          <h3>Pro V1 pipeline</h3>
           <div className="pipeline-strip">
             {["Analysts", "Bear Review", "Trader", "Risk Review", "Validator", "Execution"].map((step) => (
               <span key={step}>{step}</span>
             ))}
           </div>
-          <p className="muted" style={{ marginTop: "16px" }}>
-            This mode is intentionally gated until Research and observability prove stable.
+          <p className="muted" style={{ marginTop: "12px", fontSize: "12px" }}>
+            The validator and execution stages are shared with Light. Pro bots inherit the same deterministic
+            checks and global kill switch the rest of the platform uses.
           </p>
         </article>
         <article className="panel">
-          <h3>Live Safety Defaults</h3>
+          <h3>Live safety defaults</h3>
           <ul className="clean-list">
-            <li>Human approval before live promotion.</li>
-            <li>Existing deterministic validator remains mandatory.</li>
-            <li>Global kill switch stays shared with Light.</li>
-            <li>Paper evidence required before live eligibility.</li>
+            <li>Human approval before any live promotion.</li>
+            <li>Promoted bots start with execution disabled — a human enables order placement.</li>
+            <li>Validator and global kill switch are mandatory and shared with Light.</li>
+            <li>Paper evidence and skeptic pass are required before live eligibility.</li>
           </ul>
         </article>
       </section>
 
+      <ProApprovals initialApprovals={approvals} />
+
       <div style={{ marginTop: "20px" }}>
         <BotTable
           dashboard={dashboard}
-          title="Pro Agents"
-          description="Pro uses the same agent table and performance vocabulary before anything can graduate to live. Live promotion remains approval-gated."
-          emptyMessage="No Pro agents yet. Promote a proven paper candidate before enabling live control."
+          workspaceMode="pro"
+          title="Pro live agents"
+          description="Live agents promoted from Research. Each row is a strategy that cleared paper review and explicit human approval. Light bots and research paper bots never appear here."
+          emptyMessage="No Pro agents yet. Approve a Research promotion request above to spawn one."
         />
       </div>
     </main>
   );
 }
-

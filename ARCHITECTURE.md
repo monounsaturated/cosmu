@@ -17,11 +17,17 @@ One run = Research → Trader → Validator → Execution, orchestrated in
 
 Cosmu is being extended into three modes without removing the current loop:
 
-- **Light** — the current operational Binance loop. This remains the production baseline.
-- **Research** — natural-language experiments, data-source tests, paper candidates, anti-overfit review, and memory. It must never place live orders.
-- **Pro** — future opt-in multi-agent live trading that uses Research outputs, risk review, deterministic validation, approvals, and existing execution safeguards.
+- **Light** — the current operational Binance loop. The production baseline and a quick-iteration tool. Light bots are segregated and never appear in Research or Pro.
+- **Research** — natural-language experiments, data-source tests, paper candidates, anti-overfit review, paper bots, and memory. Research bots are pinned to `binance-testnet` and never place live orders.
+- **Pro** — opt-in multi-agent live trading. Pro bots only exist by promotion from Research candidates and only after explicit human approval. They share the deterministic validator and global kill switch with Light.
+
+Workspace segregation is enforced by `bots.workspace_mode` (`light` | `research` | `pro`), exposed on `BotSummary.workspaceMode` and used by `BotTable` to filter rows on the Light, Research, and Pro pages.
+
+The promotion path is one-directional: Research → approval inbox → Pro. `research_candidates.promoted_bot_id` records the resulting bot. Approving a `live_promotion` request creates a Pro bot with `execution.enabled = false`, so a human still has to flip on order placement — approval alone does not enable live trading.
 
 The first cross-mode primitive is `agent_steps`: a product-level timeline for every visible agent/tool phase. `run_llm_calls` stays as low-level provider telemetry.
+
+**End-state automation goal.** Cosmu Pro should eventually run the full loop autonomously — propose hypotheses, test them in Research, promote what survives review, trade within capped limits, review outcomes, update lessons, and self-improve. AI agents working in this codebase should help us get there incrementally without bypassing the deterministic validator, the global kill switch, or the approval gate.
 
 ## Triple-run / double-fire protection
 

@@ -49,6 +49,7 @@ export const getDashboard = async () => {
       b.name,
       b.slug,
       b.created_at as "startedAt",
+      coalesce(b.workspace_mode, 'light') as "workspaceMode",
       brc.enabled,
       brc.venue,
       brc.frequency_minutes as "frequencyMinutes",

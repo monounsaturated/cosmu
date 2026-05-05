@@ -69,10 +69,13 @@ Current posture:
 
 Current evolution direction:
 - Cosmu is becoming a three-mode agentic platform while keeping the current live-capable loop intact.
-- **Cosmu Light** is the current lean Binance spot trading loop and must remain available as a simple baseline.
-- **Cosmu Research** is the autonomous paper-only research lab for natural-language experiments, data-source testing, backtests, anti-noise review, candidate bots, and lessons.
-- **Cosmu Pro** is the future full agentic live trader that will use Research outputs, multi-agent review, risk gating, deterministic validation, approval flows, and eventually capped auto-live operation.
-- The frontend must become the command center for observing and controlling bots, agents, research jobs, data sources, approvals, and failures.
+- **Cosmu Light** is the current lean Binance spot trading loop and must remain available as a simple, reliable baseline. Light is a fast iteration tool — it is not where new strategies are discovered.
+- **Cosmu Research** is the autonomous paper-only research lab for natural-language experiments, data-source testing, backtests, anti-noise review, paper bots, and lessons. Research bots stay on testnet.
+- **Cosmu Pro** is the agentic live trader. Pro bots only exist by promotion from Research candidates and only after explicit approval. Light bots and unpromoted research bots never appear in Pro.
+- The three modes are segregated: each mode lists its own bots only. A bot's `workspace_mode` (`light` | `research` | `pro`) is the source of truth for which workspace can see and act on it.
+- The end goal is a fully autonomous Cosmu Pro: it should propose hypotheses, test them in Research, promote what survives review, trade within capped limits, review outcomes, and improve itself — all observable, interruptible, and reversible from the frontend.
+- The frontend must remain the command center for observing and controlling bots, agents, research jobs, data sources, approvals, and failures.
+- AI agents browsing this codebase should treat full autonomy as the destination but never bypass the approval gate, the deterministic validator, or the global kill switch on the way there.
 - See `docs/AGENTIC_PLATFORM_PLAN.md`, `docs/ROADMAP.md`, `docs/DECISIONS.md`, and `docs/AGENT_OPERATING_GUIDE.md` before changing this direction.
 
 Why this posture:

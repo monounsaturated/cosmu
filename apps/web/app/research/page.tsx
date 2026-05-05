@@ -53,9 +53,10 @@ export default async function ResearchPage({
       <div style={{ marginTop: "20px" }}>
         <BotTable
           dashboard={dashboard}
-          title="Research Agents"
-          description="Research and paper candidates use the same benchmark view as Light. Today this includes the operational agents; paper agents will appear here as Research creates them."
-          emptyMessage="No research agents yet. Run a hypothesis to create a paper candidate."
+          workspaceMode="research"
+          title="Research paper bots"
+          description="Paper bots created from research candidates. They run on Binance testnet only — promotion to Cosmu Pro is the only path to live trading. Light bots are segregated and never appear here."
+          emptyMessage="No research paper bots yet. Approve a candidate above to create one."
         />
       </div>
     </main>

@@ -4,6 +4,18 @@
 
 Cosmu will use Light / Research / Pro modes in one app rather than separate products. This keeps operation simple and lets observability, memory, data sources, and approvals be shared.
 
+## 2026-05-05: Workspaces Are Segregated, Not Layered
+
+Each workspace lists its own bots. A bot's `workspace_mode` (`light` | `research` | `pro`) is the source of truth — Light bots are not visible in Research or Pro, research bots are not visible in Light, and Pro only shows bots that came through promotion. Research → Pro is the only promotion path, and it always passes through the approval inbox.
+
+## 2026-05-05: Promotion Creates a Disabled Pro Bot
+
+Approving a `live_promotion` request creates a Pro bot with `execution.enabled = false`. A human still has to flip on order placement on the bot detail page. This keeps approval and execution as two separate gates so an autonomous future scheduler still has a clean place to insert capped auto-live policies later.
+
+## 2026-05-05: End State Is Full Autonomy, Not Magic
+
+Cosmu Pro will eventually run the full loop autonomously. The path is incremental: Research stays paper-only until backtest, skeptic, and cost-realism evidence is mature; Pro stays human-approved until promotion thresholds and capped auto-live are configured from the frontend. Agents working on Cosmu must help us get there without bypassing the validator, kill switch, or approval gate.
+
 ## 2026-05-05: Preserve Light
 
 The existing Light loop stays the production baseline. Research and Pro may evolve quickly, but Light must remain simple and live-capable.

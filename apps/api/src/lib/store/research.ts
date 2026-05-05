@@ -21,7 +21,8 @@ type ResearchDataSourceRow = Omit<ResearchDataSource, "createdAt" | "updatedAt" 
   lastCheckedAt: Date | null;
 };
 
-type ResearchCandidateRow = Omit<ResearchCandidate, "createdAt" | "updatedAt"> & {
+type ResearchCandidateRow = Omit<ResearchCandidate, "createdAt" | "updatedAt" | "promotedBotId"> & {
+  promotedBotId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -45,6 +46,7 @@ const mapDataSource = (row: ResearchDataSourceRow): ResearchDataSource => ({
 const mapCandidate = (row: ResearchCandidateRow): ResearchCandidate => ({
   ...row,
   metrics: row.metrics == null ? null : parseJson(row.metrics),
+  promotedBotId: row.promotedBotId ?? null,
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString()
 });
@@ -207,10 +209,49 @@ export const createResearchCandidate = async (input: {
       thesis,
       metrics,
       risk_notes as "riskNotes",
+      promoted_bot_id::text as "promotedBotId",
       created_at as "createdAt",
       updated_at as "updatedAt"
   `;
   return mapCandidate(row);
+};
+
+export const getResearchCandidate = async (id: string) => {
+  const [row] = await sql<ResearchCandidateRow[]>`
+    select
+      id,
+      experiment_id::text as "experimentId",
+      name,
+      status,
+      thesis,
+      metrics,
+      risk_notes as "riskNotes",
+      promoted_bot_id::text as "promotedBotId",
+      created_at as "createdAt",
+      updated_at as "updatedAt"
+    from research_candidates
+    where id = ${id}
+  `;
+  return row ? mapCandidate(row) : null;
+};
+
+export const setCandidatePromotedBot = async (input: { candidateId: string; botId: string }) => {
+  await sql`
+    update research_candidates
+    set promoted_bot_id = ${input.botId},
+        status = 'live_candidate',
+        updated_at = now()
+    where id = ${input.candidateId}
+  `;
+};
+
+export const setCandidatePaperBot = async (input: { candidateId: string; botId: string }) => {
+  await sql`
+    update research_candidates
+    set metrics = coalesce(metrics, '{}'::jsonb) || jsonb_build_object('paperBotId', ${input.botId}::text),
+        updated_at = now()
+    where id = ${input.candidateId}
+  `;
 };
 
 export const listResearchCandidates = async (limit = 50) => {
@@ -223,6 +264,7 @@ export const listResearchCandidates = async (limit = 50) => {
       thesis,
       metrics,
       risk_notes as "riskNotes",
+      promoted_bot_id::text as "promotedBotId",
       created_at as "createdAt",
       updated_at as "updatedAt"
     from research_candidates

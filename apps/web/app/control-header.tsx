@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import type { FormEvent, MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Activity, AlertTriangle, CheckCircle2, Command, FlaskConical, Shield } from "lucide-react";
@@ -20,11 +20,19 @@ const MODES = [
   { href: "/pro", label: "Pro" }
 ];
 
+const labelForPath = (path: string) => {
+  if (path.startsWith("/research")) return "Research";
+  if (path.startsWith("/pro")) return "Pro";
+  return "Light";
+};
+
 export function ControlHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [command, setCommand] = useState("");
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     let cancelled = false;
@@ -46,11 +54,15 @@ export function ControlHeader() {
     };
   }, []);
 
-  const activeMode = useMemo(() => {
-    if (pathname.startsWith("/research")) return "Research";
-    if (pathname.startsWith("/pro")) return "Pro";
-    return "Light";
-  }, [pathname]);
+  const currentMode = useMemo(() => labelForPath(pathname), [pathname]);
+  const activeMode = useMemo(
+    () => (pendingPath ? labelForPath(pendingPath) : currentMode),
+    [pendingPath, currentMode]
+  );
+
+  useEffect(() => {
+    if (pendingPath && pathname === pendingPath) setPendingPath(null);
+  }, [pathname, pendingPath]);
 
   const submitCommand = (event: FormEvent) => {
     event.preventDefault();
@@ -61,17 +73,30 @@ export function ControlHeader() {
   };
 
   return (
-    <header className="control-header">
+    <header className={`control-header ${isPending ? "control-header-pending" : ""}`}>
       <div className="mode-switch" aria-label="Workspace mode">
-        {MODES.map((mode) => (
-          <Link
-            key={mode.href}
-            href={mode.href}
-            className={`mode-tab ${activeMode === mode.label ? "mode-tab-active" : ""}`}
-          >
-            {mode.label}
-          </Link>
-        ))}
+        {MODES.map((mode) => {
+          const isActive = activeMode === mode.label;
+          const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+            if (pathname === mode.href) return;
+            event.preventDefault();
+            setPendingPath(mode.href);
+            startTransition(() => router.push(mode.href));
+          };
+          return (
+            <Link
+              key={mode.href}
+              href={mode.href}
+              prefetch
+              onMouseEnter={() => router.prefetch(mode.href)}
+              onClick={handleClick}
+              className={`mode-tab ${isActive ? "mode-tab-active" : ""} ${pendingPath === mode.href ? "mode-tab-pending" : ""}`}
+            >
+              {mode.label}
+            </Link>
+          );
+        })}
       </div>
 
       <form className="command-bar" onSubmit={submitCommand}>
