@@ -7,8 +7,6 @@ import {
   researchSessionSchema
 } from "@cosmu/shared";
 import { ResearchConsole } from "./research-console";
-import { BotTable } from "../bot-table";
-import { getDashboard } from "../dashboard-data";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 export const dynamic = "force-dynamic";
@@ -19,7 +17,8 @@ async function fetchApi(path: string) {
   try {
     const response = await fetch(`${apiBaseUrl}${path}`, {
       cache: "no-store",
-      headers: { "x-api-key": apiSecretKey }
+      headers: { "x-api-key": apiSecretKey },
+      signal: AbortSignal.timeout(6000)
     });
     if (!response.ok) return null;
     return response.json();
@@ -34,14 +33,13 @@ export default async function ResearchPage({
   searchParams?: Promise<{ command?: string }>;
 }) {
   const params = await searchParams;
-  const [experimentsRaw, dataSourcesRaw, candidatesRaw, datasetsRaw, sessionsRaw, memoriesRaw, dashboard] = await Promise.all([
+  const [experimentsRaw, dataSourcesRaw, candidatesRaw, datasetsRaw, sessionsRaw, memoriesRaw] = await Promise.all([
     fetchApi("/research/experiments"),
     fetchApi("/research/data-sources"),
     fetchApi("/research/candidates"),
     fetchApi("/research/datasets"),
     fetchApi("/research/sessions"),
-    fetchApi("/research/memory"),
-    getDashboard()
+    fetchApi("/research/memory")
   ]);
 
   const experiments = researchExperimentSchema.array().catch([]).parse(experimentsRaw?.experiments ?? []);
@@ -62,15 +60,6 @@ export default async function ResearchPage({
         initialSessions={sessions}
         initialMemories={memories}
       />
-      <div style={{ marginTop: "20px" }}>
-        <BotTable
-          dashboard={dashboard}
-          workspaceMode="research"
-          title="Research paper bots"
-          description="Research workspace bots created from candidates. They stay segregated from Light and Pro."
-          emptyMessage="No research paper bots yet. Approve a candidate above to create one."
-        />
-      </div>
     </main>
   );
 }

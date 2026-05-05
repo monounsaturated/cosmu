@@ -95,6 +95,7 @@ export function ResearchConsole({
   const [error, setError] = useState<string | null>(null);
   const [pendingCandidate, setPendingCandidate] = useState<{ id: string; action: CandidateAction } | null>(null);
   const [actionFeedback, setActionFeedback] = useState<{ id: string; tone: "success" | "error"; message: string } | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
@@ -334,11 +335,19 @@ export function ResearchConsole({
       <section className="command-panel">
         <div>
           <p className="muted">Cosmu Research</p>
-          <h1>Modular research core</h1>
+          <h1>Strategy lab</h1>
           <p className="field-help">
-            Command runs bounded sessions. Datasets are explicit. Evaluations stay simulated and reproducible.
-            External engines are optional sidecars; Cosmu owns evidence and promotion gates.
+            Keep this quiet: bounded sessions, visible steps, simulated evaluations. Hot qualitative data now belongs
+            in Signals; Research is for slower strategy design.
           </p>
+          <div className="inline-actions" style={{ marginTop: "14px" }}>
+            <button className="btn btn-secondary" type="button" onClick={() => router.push("/signals")}>
+              Open Signals
+            </button>
+            <button className="btn btn-secondary" type="button" onClick={() => setShowAdvanced((value) => !value)}>
+              {showAdvanced ? "Hide advanced lab" : "Show advanced lab"}
+            </button>
+          </div>
         </div>
         <form className="research-command" onSubmit={submitSession}>
           <textarea
@@ -376,20 +385,22 @@ export function ResearchConsole({
             </button>
           </div>
         </form>
-        <form className="research-command" onSubmit={submitLegacyExperiment}>
-          <textarea
-            value={hypothesis}
-            onChange={(event) => setHypothesis(event.target.value)}
-            placeholder="Legacy /research/experiments flow (compatibility)"
-            rows={3}
-          />
-          <div className="command-panel-footer">
-            <button className="btn btn-secondary" type="submit" disabled={submitting || hypothesis.trim().length < 5}>
-              {submitting ? "Running..." : "Run legacy experiment"}
-            </button>
-          </div>
-          {error && <p className="feedback feedback-error">{error}</p>}
-        </form>
+        {showAdvanced && (
+          <form className="research-command" onSubmit={submitLegacyExperiment}>
+            <textarea
+              value={hypothesis}
+              onChange={(event) => setHypothesis(event.target.value)}
+              placeholder="Legacy /research/experiments flow (compatibility)"
+              rows={3}
+            />
+            <div className="command-panel-footer">
+              <button className="btn btn-secondary" type="submit" disabled={submitting || hypothesis.trim().length < 5}>
+                {submitting ? "Running..." : "Run legacy experiment"}
+              </button>
+            </div>
+            {error && <p className="feedback feedback-error">{error}</p>}
+          </form>
+        )}
       </section>
 
       <section className="ops-grid">
@@ -429,35 +440,37 @@ export function ResearchConsole({
           </div>
         </article>
 
-        <article className="panel">
-          <div className="section-header">
-            <h3>Experiments</h3>
-            <span className="muted">{experiments.length}</span>
-          </div>
-          <div className="dense-list">
-            {experiments.length === 0 && <p className="muted">No legacy experiments yet.</p>}
-            {experiments.map((experiment) => (
-              <button
-                key={experiment.id}
-                className={`dense-row ${selectedExperimentId === experiment.id ? "dense-row-active" : ""}`}
-                type="button"
-                onClick={() => {
-                  setSelectedExperimentId(experiment.id);
-                  setSelectedSteps(null);
-                }}
-              >
-                <span>
-                  <strong>{experiment.title}</strong>
-                  <span className="muted">
-                    <LocalTime value={experiment.createdAt} />
-                    {experiment.skepticVerdict ? ` · skeptic: ${experiment.skepticVerdict}` : ""}
+        {showAdvanced && (
+          <article className="panel">
+            <div className="section-header">
+              <h3>Legacy experiments</h3>
+              <span className="muted">{experiments.length}</span>
+            </div>
+            <div className="dense-list">
+              {experiments.length === 0 && <p className="muted">No legacy experiments yet.</p>}
+              {experiments.map((experiment) => (
+                <button
+                  key={experiment.id}
+                  className={`dense-row ${selectedExperimentId === experiment.id ? "dense-row-active" : ""}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedExperimentId(experiment.id);
+                    setSelectedSteps(null);
+                  }}
+                >
+                  <span>
+                    <strong>{experiment.title}</strong>
+                    <span className="muted">
+                      <LocalTime value={experiment.createdAt} />
+                      {experiment.skepticVerdict ? ` · skeptic: ${experiment.skepticVerdict}` : ""}
+                    </span>
                   </span>
-                </span>
-                <span className={`badge ${statusBadge(experiment.status)}`}>{experiment.status}</span>
-              </button>
-            ))}
-          </div>
-        </article>
+                  <span className={`badge ${statusBadge(experiment.status)}`}>{experiment.status}</span>
+                </button>
+              ))}
+            </div>
+          </article>
+        )}
       </section>
 
       {selectedSession && (
@@ -523,7 +536,7 @@ export function ResearchConsole({
         </section>
       )}
 
-      {selectedExperiment && (
+      {showAdvanced && selectedExperiment && (
         <section className="panel">
           <div className="section-header">
             <div>
@@ -541,6 +554,7 @@ export function ResearchConsole({
         </section>
       )}
 
+      {showAdvanced && (
       <section className="panel">
         <div className="section-header">
           <h3>Datasets</h3>
@@ -591,7 +605,9 @@ export function ResearchConsole({
           ))}
         </div>
       </section>
+      )}
 
+      {showAdvanced && (
       <section className="panel">
         <div className="section-header">
           <h3>Paper candidates</h3>
@@ -654,7 +670,9 @@ export function ResearchConsole({
           })}
         </div>
       </section>
+      )}
 
+      {showAdvanced && (
       <section className="panel">
         <div className="section-header">
           <h3>Research memory</h3>
@@ -675,7 +693,9 @@ export function ResearchConsole({
           ))}
         </div>
       </section>
+      )}
 
+      {showAdvanced && (
       <section className="panel">
         <div className="section-header">
           <h3>Data source registry</h3>
@@ -695,6 +715,7 @@ export function ResearchConsole({
           ))}
         </div>
       </section>
+      )}
     </div>
   );
 }

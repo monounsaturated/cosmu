@@ -45,6 +45,7 @@ import { startGuardian } from "./services/guardian.js";
 import { listTools } from "./mcp/index.js";
 import { agentsRouter } from "./routes/agents.js";
 import { researchRouter } from "./routes/research.js";
+import { signalsRouter } from "./routes/signals.js";
 
 const app = express();
 
@@ -68,6 +69,7 @@ app.use((request, response, next) => {
 
 app.use(agentsRouter);
 app.use(researchRouter);
+app.use(signalsRouter);
 
 app.get("/health", async (_request, response) => {
   response.json({

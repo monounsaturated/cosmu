@@ -18,11 +18,13 @@ type Summary = {
 
 const MODES = [
   { href: "/", label: "Light" },
+  { href: "/signals", label: "Signals" },
   { href: "/research", label: "Research" },
   { href: "/pro", label: "Pro" }
 ];
 
 const labelForPath = (path: string) => {
+  if (path.startsWith("/signals")) return "Signals";
   if (path.startsWith("/research")) return "Research";
   if (path.startsWith("/pro")) return "Pro";
   return "Light";
@@ -106,7 +108,7 @@ export function ControlHeader() {
         <input
           value={command}
           onChange={(event) => setCommand(event.target.value)}
-          placeholder="Ask Cosmu to test a hypothesis, inspect agents, or create a paper bot..."
+          placeholder="Ask Cosmu to test a thesis, inspect agents, or turn hot data into a signal..."
         />
       </form>
 

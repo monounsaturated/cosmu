@@ -126,5 +126,13 @@ export {
   updateResearchMemory
 } from "./research-kernel.js";
 
+export {
+  listRawObservations,
+  listStandardizedSignals,
+  createRawObservation,
+  createStandardizedSignal,
+  updateStandardizedSignalStatus
+} from "./signals.js";
+
 export type { JsonValue } from "./helpers.js";
 export { parseJson, toIsoString, buildRuntimeConfig } from "./helpers.js";

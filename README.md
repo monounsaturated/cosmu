@@ -4,14 +4,15 @@ Lean autonomous trading and research platform built from `SYSTEM.md`.
 
 ## What is built
 
-- `apps/api`: Node API for Light trading, Research experiments, agent observability, and Pro approvals
-- `apps/web`: internal command center with `Light | Research | Pro` modes
+- `apps/api`: Node API for Light trading, Signal Sentinel, Research experiments, agent observability, and Pro approvals
+- `apps/web`: internal command center with `Light | Signals | Research | Pro` modes
 - `packages/shared`: shared decision, runtime, execution, and dashboard contracts
 - `apps/api/sql`: schema, seeds, agentic foundation, and workspace-mode migrations
 
 ## Product Modes
 
 - **Cosmu Light** keeps the current Binance spot loop: research prompt, trader prompt, deterministic validator, execution, guardian, dashboard.
+- **Cosmu Signals** converts hot observations from X, web, news, market, or manual QA into small standardized signals that agents can consume.
 - **Cosmu Research** is the paper-only lab: natural-language experiments, data-source scouting, candidate creation, testnet paper bots, and anti-noise review.
 - **Cosmu Pro** is the approval-gated live workspace: Research candidates can be promoted into disabled-live Pro bots, then manually enabled when risk policy allows it.
 
@@ -34,7 +35,14 @@ Lean autonomous trading and research platform built from `SYSTEM.md`.
 2. Install dependencies with `pnpm install`.
 3. Apply SQL files in order from `apps/api/sql`. For the current three-mode branch, make sure `017_agentic_foundation.sql` and `018_workspace_mode.sql` have been applied.
 4. Start API + web together with `pnpm dev`, or separately with `pnpm --filter @cosmu/api dev` and `pnpm --filter @cosmu/web dev`.
-5. Open the web app and test the path: Light dashboard → Research hypothesis → paper candidate → paper bot → Pro approval.
+5. Open the web app and test the path: Light dashboard → Signals QA capture → Research session → paper candidate → Pro approval.
+
+QA helper:
+
+```bash
+pnpm typecheck
+pnpm build:all
+```
 
 SQL helper:
 

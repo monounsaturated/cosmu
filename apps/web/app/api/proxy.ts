@@ -17,7 +17,13 @@ export const proxyApi = async (path: string, init: RequestInit = {}) => {
     },
     cache: "no-store"
   });
-  const data = await res.json();
+  const text = await res.text();
+  let data: unknown;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text || `API request failed with ${res.status}` };
+  }
   return NextResponse.json(data, { status: res.status });
 };
 

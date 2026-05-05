@@ -4,9 +4,10 @@ import { useState, useEffect, useTransition } from "react";
 import type { MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, Settings, ScrollText } from "lucide-react";
+import { Activity, Radio, Settings, ScrollText } from "lucide-react";
 
 const NAV_ITEMS = [
+  { href: "/signals", label: "Signals", icon: Radio },
   { href: "/prompts", label: "Prompts", icon: ScrollText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
