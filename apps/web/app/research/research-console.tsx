@@ -118,9 +118,11 @@ export function ResearchConsole({
             item.id === candidate.id
               ? {
                   ...item,
+                  status: "paper_running",
                   metrics: {
                     ...((item.metrics ?? {}) as Record<string, unknown>),
-                    paperBotId: data.botId
+                    paperBotId: data.botId,
+                    paperBotStatus: "created_testnet_disabled"
                   }
                 }
               : item

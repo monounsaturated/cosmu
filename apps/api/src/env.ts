@@ -23,10 +23,33 @@ const repoRoot = findRepoRoot();
 dotenv.config({ path: path.join(repoRoot, ".env") });
 dotenv.config({ path: path.join(repoRoot, ".env.local"), override: true });
 
+const optionalNonEmptyString = z.preprocess(
+  (value) => {
+    if (typeof value === "string" && value.trim().length === 0) return undefined;
+    return value;
+  },
+  z.string().min(1).optional()
+);
+
+const optionalUrlString = z.preprocess(
+  (value) => {
+    if (typeof value === "string" && value.trim().length === 0) return undefined;
+    return value;
+  },
+  z.string().url().optional()
+);
+
 const envSchema = z.object({
   API_PORT: z.coerce.number().optional(),
   PORT: z.coerce.number().optional(),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  DATABASE_SSL: z.preprocess(
+    (value) => {
+      if (value === undefined || value === "") return undefined;
+      return String(value).trim().toLowerCase();
+    },
+    z.enum(["true", "false"]).optional()
+  ),
   WEB_BASE_URL: z.preprocess(
     (value) => {
       if (typeof value === "string" && value.trim().length === 0) {
@@ -63,12 +86,14 @@ const envSchema = z.object({
     },
     z.enum(["true", "false"]).optional()
   ),
-  XAI_API_KEY: z.string().min(1, "XAI_API_KEY is required"),
-  BINANCE_API_KEY: z.string().min(1, "BINANCE_API_KEY is required"),
-  BINANCE_API_SECRET: z.string().min(1, "BINANCE_API_SECRET is required"),
-  BINANCE_TESTNET_API_KEY: z.string().optional(),
-  BINANCE_TESTNET_API_SECRET: z.string().optional(),
-  SLACK_WEBHOOK_URL: z.string().url().optional(),
+  XAI_API_KEY: optionalNonEmptyString,
+  NOUS_API_KEY: optionalNonEmptyString,
+  NOUS_BASE_URL: optionalUrlString,
+  BINANCE_API_KEY: optionalNonEmptyString,
+  BINANCE_API_SECRET: optionalNonEmptyString,
+  BINANCE_TESTNET_API_KEY: optionalNonEmptyString,
+  BINANCE_TESTNET_API_SECRET: optionalNonEmptyString,
+  SLACK_WEBHOOK_URL: optionalUrlString,
   API_SECRET_KEY: z.string().min(32, "API_SECRET_KEY must be at least 32 characters")
 });
 

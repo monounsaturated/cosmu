@@ -253,6 +253,7 @@ export const updateApprovalStatus = async (input: {
         updated_at = now(),
         resolved_at = now()
     where id = ${input.id}
+      and status = 'pending'
     returning
       id,
       request_type as "requestType",
@@ -280,6 +281,10 @@ export const getAgentControlSummary = async () => {
       (select count(*)::int from approval_requests where status = 'pending') as "pendingApprovals",
       (select count(*)::int from research_experiments where status = 'running') as "runningResearch"
   `;
-  return row ?? { runningAgents: 0, failedAgents: 0, pendingApprovals: 0, runningResearch: 0 };
+  return {
+    ...(row ?? { runningAgents: 0, failedAgents: 0, pendingApprovals: 0, runningResearch: 0 }),
+    liveActionsGated: true,
+    cappedAutoliveEnabled: false
+  };
 };
 

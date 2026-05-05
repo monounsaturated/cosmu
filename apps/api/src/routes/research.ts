@@ -7,13 +7,15 @@ import {
   createResearchExperiment,
   getLatestModelProfile,
   getLatestResearchPromptVersion,
+  getPendingLivePromotionApprovalForCandidate,
   getResearchCandidate,
   getResearchExperiment,
   listAgentSteps,
   listResearchCandidates,
   listResearchDataSources,
   listResearchExperiments,
-  setCandidatePaperBot
+  setCandidatePaperBot,
+  updateResearchExperiment
 } from "../lib/store.js";
 import { runResearchExperiment } from "../research/orchestrator.js";
 
@@ -137,6 +139,10 @@ researchRouter.post("/research/candidates/:candidateId/paper-bot", async (reques
       response.status(409).json({ error: "Paper bot already exists for this candidate", botId: existingPaperBotId });
       return;
     }
+    if (candidate.promotedBotId) {
+      response.status(409).json({ error: "Candidate is already promoted to Pro", botId: candidate.promotedBotId });
+      return;
+    }
 
     const prompt = await getLatestResearchPromptVersion();
     const model = await getLatestModelProfile();
@@ -174,6 +180,7 @@ researchRouter.post("/research/candidates/:candidateId/paper-bot", async (reques
     });
 
     await setCandidatePaperBot({ candidateId: candidate.id, botId });
+    await updateResearchExperiment({ id: candidate.experimentId, promotionStatus: "paper_auto" });
     response.json({ ok: true, botId });
   } catch (error) {
     next(error);
@@ -185,6 +192,16 @@ researchRouter.post("/research/candidates/:candidateId/promote-to-pro", async (r
     const candidate = await getResearchCandidate(request.params.candidateId);
     if (!candidate) {
       response.status(404).json({ error: "Candidate not found" });
+      return;
+    }
+    if (candidate.promotedBotId) {
+      response.status(409).json({ error: "Candidate is already promoted to Pro", botId: candidate.promotedBotId });
+      return;
+    }
+
+    const existingApproval = await getPendingLivePromotionApprovalForCandidate(candidate.id);
+    if (existingApproval) {
+      response.json({ ok: true, approval: existingApproval, alreadyPending: true });
       return;
     }
 
@@ -201,6 +218,12 @@ researchRouter.post("/research/candidates/:candidateId/promote-to-pro", async (r
         suggestedMode: "live",
         suggestedVenue: "binance"
       }
+    });
+
+    await updateResearchExperiment({
+      id: candidate.experimentId,
+      status: "live_candidate",
+      promotionStatus: "live_pending_approval"
     });
 
     response.json({ ok: true, approval });

@@ -248,10 +248,54 @@ export const setCandidatePromotedBot = async (input: { candidateId: string; botI
 export const setCandidatePaperBot = async (input: { candidateId: string; botId: string }) => {
   await sql`
     update research_candidates
-    set metrics = coalesce(metrics, '{}'::jsonb) || jsonb_build_object('paperBotId', ${input.botId}::text),
+    set status = 'paper_running',
+        metrics = coalesce(metrics, '{}'::jsonb) || jsonb_build_object(
+          'paperBotId', ${input.botId}::text,
+          'paperBotStatus', 'created_testnet_disabled'
+        ),
         updated_at = now()
     where id = ${input.candidateId}
   `;
+};
+
+export const getPendingLivePromotionApprovalForCandidate = async (candidateId: string) => {
+  const [row] = await sql<{
+    id: string;
+    requestType: "live_promotion";
+    status: "pending";
+    title: string;
+    body: string | null;
+    payload: unknown;
+    createdAt: Date;
+    updatedAt: Date;
+    resolvedAt: Date | null;
+  }[]>`
+    select
+      id,
+      request_type as "requestType",
+      status,
+      title,
+      body,
+      payload,
+      created_at as "createdAt",
+      updated_at as "updatedAt",
+      resolved_at as "resolvedAt"
+    from approval_requests
+    where request_type = 'live_promotion'
+      and status = 'pending'
+      and payload->>'candidateId' = ${candidateId}
+    order by created_at desc
+    limit 1
+  `;
+
+  if (!row) return null;
+  return {
+    ...row,
+    payload: typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    resolvedAt: row.resolvedAt?.toISOString() ?? null
+  };
 };
 
 export const listResearchCandidates = async (limit = 50) => {

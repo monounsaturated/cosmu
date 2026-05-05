@@ -57,7 +57,7 @@ Current posture:
 - GitHub for workflow and history
 - Binance first
 - spot only in V1
-- testnet and live only in V1
+- exchange execution modes are testnet and live only in V1
 - internal frontend first
 - Slack only in V1
 - REST market data as the current default for V1
@@ -294,11 +294,13 @@ Why:
 - V1 should stay simple
 - the data model should not force a rebuild later
 
-### 5.8 Execution modes
+### 5.8 Execution modes and research paper bots
 
 Locked:
-- V1 supports testnet and live only
-- paper mode is excluded from V1
+- V1 exchange execution supports testnet and live only
+- Light uses the existing testnet/live runtime path
+- Research paper bots are represented as `workspace_mode = 'research'` bots pinned to `binance-testnet`, `mode = 'testnet'`, and `execution.enabled = false` by default
+- do not add a separate third exchange execution enum called `paper`
 
 Testnet means:
 - real exchange integration path
@@ -311,7 +313,7 @@ Live means:
 Why:
 - testnet exercises the real path without real capital
 - live capability is part of V1 seriousness
-- paper mode adds another operating path that is not the chosen V1 model
+- Research needs paper-only product semantics, but adding a separate paper execution path would create a second trading engine too early
 
 ### 5.9 Notifications
 
@@ -1044,7 +1046,7 @@ Avoid:
 - premature enterprise auth or permission systems
 - speculative signal frameworks in V1
 - Telegram or Discord notifications in V1
-- paper mode added as a third V1 mode
+- paper added as a third exchange execution enum in V1
 
 Important nuance:
 - Avoid is not the same as Later

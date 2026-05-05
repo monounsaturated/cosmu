@@ -1,13 +1,19 @@
-# cosmu
+# Cosmu
 
-Lean V1 autonomous trading loop built from `SYSTEM.md`.
+Lean autonomous trading and research platform built from `SYSTEM.md`.
 
 ## What is built
 
-- `apps/api`: Node API with one real run loop
-- `apps/web`: internal read-only dashboard
+- `apps/api`: Node API for Light trading, Research experiments, agent observability, and Pro approvals
+- `apps/web`: internal command center with `Light | Research | Pro` modes
 - `packages/shared`: shared decision, runtime, execution, and dashboard contracts
-- `apps/api/sql`: minimum serious V1 schema plus one seed bot
+- `apps/api/sql`: schema, seeds, agentic foundation, and workspace-mode migrations
+
+## Product Modes
+
+- **Cosmu Light** keeps the current Binance spot loop: research prompt, trader prompt, deterministic validator, execution, guardian, dashboard.
+- **Cosmu Research** is the paper-only lab: natural-language experiments, data-source scouting, candidate creation, testnet paper bots, and anti-noise review.
+- **Cosmu Pro** is the approval-gated live workspace: Research candidates can be promoted into disabled-live Pro bots, then manually enabled when risk policy allows it.
 
 ## Current loop
 
@@ -22,16 +28,22 @@ Lean V1 autonomous trading loop built from `SYSTEM.md`.
 9. dashboard reads the latest state from the API
 10. Slack gets non-blocking run alerts
 
-## Setup
+## Local Setup
 
-1. Copy `.env.example` to `.env` and fill in real values.
-2. Create the database schema with `apps/api/sql/001_init.sql`.
-3. Seed the first prompt, model profile, bot, and runtime config with `apps/api/sql/002_seed.sql`.
-4. Apply follow-up schema changes with `apps/api/sql/003_bot_experiments.sql`.
-5. Apply catalog cache changes with `apps/api/sql/004_catalog_cache.sql`.
-6. Install dependencies with `pnpm install`.
-7. Start the API with `pnpm --filter @cosmu/api dev`.
-8. Start the dashboard with `pnpm --filter @cosmu/web dev`.
+1. Copy `.env.example` to `.env.local` and fill in the values needed for the surface you want to test.
+2. Install dependencies with `pnpm install`.
+3. Apply SQL files in order from `apps/api/sql`. For the current three-mode branch, make sure `017_agentic_foundation.sql` and `018_workspace_mode.sql` have been applied.
+4. Start API + web together with `pnpm dev`, or separately with `pnpm --filter @cosmu/api dev` and `pnpm --filter @cosmu/web dev`.
+5. Open the web app and test the path: Light dashboard → Research hypothesis → paper candidate → paper bot → Pro approval.
+
+SQL helper:
+
+```bash
+set -a && source .env.local && set +a && node scripts/apply-sql.mjs apps/api/sql/017_agentic_foundation.sql
+set -a && source .env.local && set +a && node scripts/apply-sql.mjs apps/api/sql/018_workspace_mode.sql
+```
+
+Set `DATABASE_SSL=false` in `.env.local` for local non-SSL Postgres. Leave it empty/true for Supabase pooler.
 
 ## Deploy (Railway now, Vercel later)
 
@@ -43,11 +55,23 @@ Lean V1 autonomous trading loop built from `SYSTEM.md`.
 ## Environment
 
 - `DATABASE_URL`: Supabase Postgres connection string
-- `XAI_API_KEY`: xAI API key for the decision step
-- `BINANCE_API_KEY`: Binance Spot API key
-- `BINANCE_API_SECRET`: Binance Spot API secret
+- `DATABASE_SSL`: optional, set `false` for local Postgres
+- `XAI_API_KEY`: optional xAI API key for Light/Research model profiles using `provider = 'xai'`
+- `NOUS_API_KEY`: optional Nous Portal API key for model profiles using `provider = 'nous'`
+- `NOUS_BASE_URL`: optional Nous/OpenAI-compatible base URL, defaults to `https://portal.nousresearch.com/v1`
+- `BINANCE_TESTNET_API_KEY`: Binance Spot testnet key for Research paper bots and testnet Light runs
+- `BINANCE_TESTNET_API_SECRET`: Binance Spot testnet secret
+- `BINANCE_API_KEY`: Binance Spot live key for live Light/Pro
+- `BINANCE_API_SECRET`: Binance Spot live secret
 - `SLACK_WEBHOOK_URL`: optional Slack webhook
 - `API_SECRET_KEY`: shared secret between the Next.js BFF routes and this API (header `x-api-key`)
+
+Minimum useful local tests:
+
+- Dashboard shell only: `DATABASE_URL`, `API_SECRET_KEY`
+- Research with real LLM: add `XAI_API_KEY` or `NOUS_API_KEY`
+- Testnet bot run: add Binance testnet keys
+- Live Light run: add Binance live keys and keep execution limits conservative
 
 ### CORS (API ↔ dashboard on Vercel)
 
@@ -66,5 +90,6 @@ If Postman gets an auth / HTML challenge from `*.vercel.app`, that is usually **
 
 - Runtime behavior lives in `bot_runtime_configs`, not in prompt text or scheduler code.
 - Binance-specific request signing and payload handling stay inside `apps/api/src/adapters/binance.ts`.
-- `testnet` and `live` are the only supported modes.
+- `testnet` and `live` are the only exchange execution modes. Research paper bots use testnet and stay in the Research workspace.
 - `spot` is the only supported asset class in V1.
+- External repos are references, not runtime owners. See `docs/EXTERNAL_REPOS.md`.

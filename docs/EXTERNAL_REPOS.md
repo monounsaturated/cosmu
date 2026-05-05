@@ -2,6 +2,8 @@
 
 Cosmu borrows patterns from these repos without coupling the live runtime to their internal code.
 
+Current implementation status: these repos are pinned references in `external-repos.lock.json`. They are not cloned into the repo, imported by the API, or allowed to own live trading behavior.
+
 ## TradingAgents
 
 - Repo: https://github.com/TauricResearch/TradingAgents
@@ -25,6 +27,12 @@ Cosmu borrows patterns from these repos without coupling the live runtime to the
 - Repo: https://github.com/NousResearch/hermes-agent
 - Use: skills, toolsets, scheduled automations, self-improving agent patterns.
 - Avoid: replacing Cosmu's product-specific workflows with a general agent framework.
+
+## Nous Portal
+
+- Models page: https://portal.nousresearch.com/models
+- Use: optional OpenAI-compatible LLM provider via `provider = 'nous'` model profiles.
+- Avoid: making Nous/Hermes a required runtime dependency for Light. Start in Research, then promote only after local QA.
 
 ## Reference Workflow
 

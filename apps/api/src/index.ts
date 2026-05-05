@@ -29,7 +29,14 @@ import {
 import { getDashboard } from "./services/dashboard.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
 import { listXaiModels } from "./providers/xai.js";
-import { BOOTSTRAP_XAI_PROFILES, bootstrapModelProfiles, getVenueSymbols, syncProviderModels } from "./services/catalog.js";
+import { listNousModels } from "./providers/nous.js";
+import {
+  BOOTSTRAP_NOUS_PROFILES,
+  BOOTSTRAP_XAI_PROFILES,
+  bootstrapModelProfiles,
+  getVenueSymbols,
+  syncProviderModels
+} from "./services/catalog.js";
 import { getAccountBalance, getTickerPricesForSymbols, normalizeSymbol } from "./adapters/binance.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
@@ -88,12 +95,25 @@ app.get("/internal/diagnostics", async (_request, response) => {
   } catch (e) { result.promptsDbError = String(e); }
 
   try {
-    const xaiRes = await fetch("https://api.x.ai/v1/models", {
-      headers: { Authorization: `Bearer ${env.XAI_API_KEY}` },
-      signal: AbortSignal.timeout(5000)
-    });
-    result.xaiApi = xaiRes.ok ? `ok (${xaiRes.status})` : `error (${xaiRes.status})`;
+    if (env.XAI_API_KEY) {
+      const xaiRes = await fetch("https://api.x.ai/v1/models", {
+        headers: { Authorization: `Bearer ${env.XAI_API_KEY}` },
+        signal: AbortSignal.timeout(5000)
+      });
+      result.xaiApi = xaiRes.ok ? `ok (${xaiRes.status})` : `error (${xaiRes.status})`;
+    } else {
+      result.xaiApi = "missing XAI_API_KEY";
+    }
   } catch (e) { result.xaiApi = `unreachable: ${String(e)}`; }
+
+  try {
+    if (env.NOUS_API_KEY) {
+      const models = await listNousModels();
+      result.nousApi = `ok (${models.length} models)`;
+    } else {
+      result.nousApi = "missing NOUS_API_KEY";
+    }
+  } catch (e) { result.nousApi = `unreachable: ${String(e)}`; }
 
   try {
     const binRes = await fetch("https://api.binance.com/api/v3/ping", {
@@ -122,7 +142,12 @@ app.get("/internal/qa/status", async (_request, response) => {
       database: Boolean(env.DATABASE_URL),
       apiSecretConfigured: env.API_SECRET_KEY.length >= 32,
       xaiConfigured: Boolean(env.XAI_API_KEY),
-      binanceConfigured: Boolean(env.BINANCE_API_KEY && env.BINANCE_API_SECRET),
+      nousConfigured: Boolean(env.NOUS_API_KEY),
+      binanceLiveConfigured: Boolean(env.BINANCE_API_KEY && env.BINANCE_API_SECRET),
+      binanceTestnetConfigured: Boolean(
+        (env.BINANCE_TESTNET_API_KEY && env.BINANCE_TESTNET_API_SECRET)
+          || (env.BINANCE_API_KEY && env.BINANCE_API_SECRET)
+      ),
       slackConfigured: Boolean(env.SLACK_WEBHOOK_URL),
       webBaseUrlConfigured: Boolean(env.WEB_BASE_URL)
     }
@@ -465,19 +490,23 @@ app.get("/models", async (request, response, next) => {
     const provider = typeof request.query.provider === "string" ? request.query.provider : undefined;
     let liveXaiModelIds: Set<string> | null = null;
     let liveXaiModels: Array<{ id: string; created: number | null }> = [];
+    const providersToSync = provider ? [provider] : ["xai", "nous"];
+
+    for (const providerName of providersToSync) {
+      try {
+        await syncProviderModels(providerName);
+      } catch (syncError) {
+        console.warn(`${providerName} sync failed:`, String(syncError));
+      }
+    }
+
+    try {
+      await bootstrapModelProfiles();
+    } catch (bootstrapError) {
+      console.warn("Model bootstrap failed:", String(bootstrapError));
+    }
 
     if (!provider || provider === "xai") {
-      try {
-        await syncProviderModels("xai");
-      } catch (syncError) {
-        console.warn("xAI sync failed:", String(syncError));
-      }
-      try {
-        await bootstrapModelProfiles();
-      } catch (bootstrapError) {
-        console.warn("Model bootstrap failed:", String(bootstrapError));
-      }
-
       try {
         liveXaiModels = await listXaiModels();
         liveXaiModelIds = new Set(liveXaiModels.map((model) => model.id));
@@ -508,7 +537,13 @@ app.get("/models", async (request, response, next) => {
         provider: "xai",
         model: p.model,
         settings: { temperature: 0.2 }
-      }));
+      })).concat(BOOTSTRAP_NOUS_PROFILES.map((p) => ({
+        id: `fallback:nous:${p.model}`,
+        name: p.name,
+        provider: "nous",
+        model: p.model,
+        settings: { temperature: 0.2 }
+      })));
       response.json(fallback);
       return;
     }
@@ -544,13 +579,14 @@ app.post("/models", async (request, response, next) => {
 app.post("/internal/catalog/sync", async (request, response, next) => {
   try {
     const force = request.query.force === "true";
+    const provider = typeof request.query.provider === "string" ? request.query.provider : "xai";
     let syncResult = { synced: false, count: 0, inserted: 0, updated: 0, message: "" };
     let bootstrapResult = { count: 0, inserted: 0, updated: 0 };
 
     try {
-      syncResult = await syncProviderModels("xai", force);
+      syncResult = await syncProviderModels(provider, force);
     } catch (syncError) {
-      console.warn("xAI sync failed:", String(syncError));
+      console.warn(`${provider} sync failed:`, String(syncError));
       syncResult.message = String(syncError);
     }
 
@@ -560,11 +596,11 @@ app.post("/internal/catalog/sync", async (request, response, next) => {
       console.warn("Model bootstrap failed:", String(bootstrapError));
     }
 
-    const models = await listModelProfiles("xai");
+    const models = await listModelProfiles(provider);
 
     response.json({
       ok: true,
-      provider: "xai",
+      provider,
       modelCount: models.length,
       syncedAt: new Date().toISOString(),
       sync: syncResult,

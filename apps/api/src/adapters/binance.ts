@@ -66,14 +66,16 @@ const getApiKey = (mode: RuntimeConfig["mode"]) => {
   if (mode === "testnet" && env.BINANCE_TESTNET_API_KEY) {
     return env.BINANCE_TESTNET_API_KEY;
   }
-  return env.BINANCE_API_KEY;
+  if (env.BINANCE_API_KEY) return env.BINANCE_API_KEY;
+  throw new Error(`${mode === "testnet" ? "BINANCE_TESTNET_API_KEY or " : ""}BINANCE_API_KEY is not configured`);
 };
 
 const getApiSecret = (mode: RuntimeConfig["mode"]) => {
   if (mode === "testnet" && env.BINANCE_TESTNET_API_SECRET) {
     return env.BINANCE_TESTNET_API_SECRET;
   }
-  return env.BINANCE_API_SECRET;
+  if (env.BINANCE_API_SECRET) return env.BINANCE_API_SECRET;
+  throw new Error(`${mode === "testnet" ? "BINANCE_TESTNET_API_SECRET or " : ""}BINANCE_API_SECRET is not configured`);
 };
 
 const signParams = (params: URLSearchParams, mode: RuntimeConfig["mode"]) =>

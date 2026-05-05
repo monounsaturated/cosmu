@@ -93,6 +93,7 @@ export {
   createResearchDataSource,
   createResearchCandidate,
   getResearchCandidate,
+  getPendingLivePromotionApprovalForCandidate,
   setCandidatePromotedBot,
   setCandidatePaperBot,
   listResearchCandidates

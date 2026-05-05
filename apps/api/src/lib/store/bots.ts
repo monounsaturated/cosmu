@@ -177,6 +177,7 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
     left join trader_prompts tp on tp.id = tpv.prompt_id
     left join trader_prompt_order on trader_prompt_order.id = tp.id
     where brc.enabled = true
+      and coalesce(b.workspace_mode, 'light') = 'light'
       and (
         brc.last_run_started_at is null
         or brc.last_run_started_at <= now() - make_interval(secs => (brc.frequency_minutes * 60) - 10)

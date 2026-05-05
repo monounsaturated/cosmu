@@ -15,3 +15,8 @@ alter table research_candidates
   add column if not exists promoted_bot_id uuid references bots(id) on delete set null;
 
 create index if not exists research_candidates_promoted_bot_idx on research_candidates (promoted_bot_id);
+
+-- Fast lookup and idempotency guard for candidate promotion requests.
+create index if not exists approval_requests_live_promotion_candidate_idx
+  on approval_requests ((payload->>'candidateId'))
+  where request_type = 'live_promotion';

@@ -9,11 +9,18 @@ import type { BotSetup } from "../lib/store.js";
 import type { LLMProvider, LLMChatInput, LLMResponse, LLMMessage } from "./llm.js";
 import type { ToolInputSchema } from "../mcp/types.js";
 import { toOpenAITools } from "./tool-adapters.js";
+import { nousProvider } from "./nous.js";
 
 const client = new OpenAI({
-  apiKey: env.XAI_API_KEY,
+  apiKey: env.XAI_API_KEY ?? "missing-xai-api-key",
   baseURL: "https://api.x.ai/v1"
 });
+
+const requireXaiApiKey = () => {
+  if (!env.XAI_API_KEY) {
+    throw new Error("XAI_API_KEY is not configured");
+  }
+};
 
 // Note on server-hosted search (X / web):
 // xAI's Chat Completions endpoint does NOT accept `x_search`/`web_search` tool entries —
@@ -29,6 +36,7 @@ const XAI_SERVER_TOOLS: Array<{ type: string }> = [];
 export const xaiProvider: LLMProvider = {
   name: "xai",
   chat: async (input: LLMChatInput): Promise<LLMResponse> => {
+    requireXaiApiKey();
     const completion = await client.chat.completions.create({
       model: input.model,
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
@@ -120,6 +128,7 @@ export const runXaiResearchWithBrowsing = async (input: {
   userMessage: string;
   temperature?: number;
 }): Promise<XaiResearchResult> => {
+  requireXaiApiKey();
   // Tools supported by xAI's Responses API. `x_search` is xAI-specific (not in
   // OpenAI SDK types), so we cast. `web_search` is the SDK-typed name.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -161,7 +170,8 @@ export const runXaiResearchWithBrowsing = async (input: {
 // ─── Provider Factory ────────────────────────────────────────────────
 
 const providers: Record<string, LLMProvider> = {
-  xai: xaiProvider
+  xai: xaiProvider,
+  nous: nousProvider
 };
 
 export const getProvider = (name: string): LLMProvider => {
@@ -473,6 +483,7 @@ export const runXaiAgentLoop = async (input: {
   responseFormat?: Record<string, unknown>;
   maxIterations?: number;
 }): Promise<AgenticChatResult> => {
+  requireXaiApiKey();
   const max = input.maxIterations ?? 6;
   const toolMap = new Map(input.tools.map((t) => [t.name, t]));
   // Merge local function tools with xAI's server-hosted tools so the trader can optionally
@@ -612,6 +623,7 @@ export const runXaiAgentLoop = async (input: {
 };
 
 export const listXaiModels = async () => {
+  requireXaiApiKey();
   const response = await fetch("https://api.x.ai/v1/models", {
     headers: { Authorization: `Bearer ${env.XAI_API_KEY}` },
     signal: AbortSignal.timeout(5000)

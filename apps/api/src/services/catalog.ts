@@ -1,6 +1,7 @@
 import { sql } from "../db.js";
 import { listVenueSymbols } from "../adapters/binance.js";
 import { listXaiModels } from "../providers/xai.js";
+import { listNousModels } from "../providers/nous.js";
 
 type CatalogUpsertResult = {
   count: number;
@@ -22,14 +23,25 @@ export const BOOTSTRAP_XAI_PROFILES: { name: string; model: string }[] = [
   { name: "xAI grok-3-mini-fast", model: "grok-3-mini-fast" },
 ];
 
+export const BOOTSTRAP_NOUS_PROFILES: { name: string; model: string }[] = [
+  { name: "Nous Hermes 4 70B", model: "nousresearch/hermes-4-70b" },
+  { name: "Nous Hermes 4 405B", model: "nousresearch/hermes-4-405b" },
+  { name: "Nous minimax-m2.7", model: "minimax/minimax-m2.7" }
+];
+
 export const bootstrapModelProfiles = async (): Promise<CatalogUpsertResult> => {
   let inserted = 0;
   let updated = 0;
 
-  for (const profile of BOOTSTRAP_XAI_PROFILES) {
+  const profiles = [
+    ...BOOTSTRAP_XAI_PROFILES.map((profile) => ({ ...profile, provider: "xai" })),
+    ...BOOTSTRAP_NOUS_PROFILES.map((profile) => ({ ...profile, provider: "nous" }))
+  ];
+
+  for (const profile of profiles) {
     const result = await sql`
       insert into model_profiles (name, provider, model, settings)
-      values (${profile.name}, 'xai', ${profile.model}, '{"temperature":0.2}'::jsonb)
+      values (${profile.name}, ${profile.provider}, ${profile.model}, '{"temperature":0.2}'::jsonb)
       on conflict (name) do update
       set
         provider = excluded.provider,
@@ -43,8 +55,8 @@ export const bootstrapModelProfiles = async (): Promise<CatalogUpsertResult> => 
     }
   }
 
-  console.log(`[catalog] Bootstrapped ${BOOTSTRAP_XAI_PROFILES.length} models (${inserted} new, ${updated} updated)`);
-  return { count: BOOTSTRAP_XAI_PROFILES.length, inserted, updated };
+  console.log(`[catalog] Bootstrapped ${profiles.length} models (${inserted} new, ${updated} updated)`);
+  return { count: profiles.length, inserted, updated };
 };
 
 const HOURS_12_MS = 12 * 60 * 60 * 1000;
@@ -65,7 +77,7 @@ const shouldRefreshProvider = async (provider: string) => {
 };
 
 export const syncProviderModels = async (provider: string, force = false): Promise<ProviderSyncResult> => {
-  if (provider !== "xai") {
+  if (provider !== "xai" && provider !== "nous") {
     return { synced: false, count: 0, inserted: 0, updated: 0, message: "Provider not supported" };
   }
 
@@ -81,17 +93,17 @@ export const syncProviderModels = async (provider: string, force = false): Promi
   }
 
   console.log(`[catalog] Fetching models from ${provider} API...`);
-  const models = await listXaiModels();
+  const models = provider === "xai" ? await listXaiModels() : await listNousModels();
   console.log(`[catalog] Found ${models.length} models from ${provider}`);
 
   let inserted = 0;
   let updated = 0;
 
   for (const model of models) {
-    const profileName = `xAI ${model.id}`;
+    const profileName = provider === "xai" ? `xAI ${model.id}` : `Nous ${model.id}`;
     const result = await sql`
       insert into model_profiles (name, provider, model, settings)
-      values (${profileName}, 'xai', ${model.id}, '{"temperature":0.2}'::jsonb)
+      values (${profileName}, ${provider}, ${model.id}, '{"temperature":0.2}'::jsonb)
       on conflict (name) do update
       set
         provider = excluded.provider,

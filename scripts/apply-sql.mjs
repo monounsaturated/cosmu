@@ -26,7 +26,10 @@ if (!file) {
 
 const sql = readFileSync(file, "utf8");
 
-const client = postgres(url, { max: 1, ssl: "require" });
+const client = postgres(url, {
+  max: 1,
+  ssl: process.env.DATABASE_SSL === "false" ? false : "require"
+});
 
 try {
   await client.unsafe(sql);

@@ -12,6 +12,8 @@ type Summary = {
   failedAgents: number;
   pendingApprovals: number;
   runningResearch: number;
+  liveActionsGated?: boolean;
+  cappedAutoliveEnabled?: boolean;
 };
 
 const MODES = [
@@ -115,7 +117,10 @@ export function ControlHeader() {
           <AlertTriangle size={15} />{summary?.failedAgents ?? 0}
         </span>
         <span title="Pending approvals"><Shield size={15} />{summary?.pendingApprovals ?? 0}</span>
-        <span title="Live actions approval-gated"><CheckCircle2 size={15} />Gated</span>
+        <span title={summary?.cappedAutoliveEnabled ? "Capped auto-live is enabled" : "Live actions approval-gated"}>
+          <CheckCircle2 size={15} />
+          {summary?.cappedAutoliveEnabled ? "Auto-live" : summary?.liveActionsGated === false ? "Ungated" : "Gated"}
+        </span>
         <ThemeToggle />
       </div>
     </header>
