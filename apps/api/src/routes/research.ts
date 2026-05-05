@@ -1,5 +1,12 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { dataSourceKindSchema, prePromptConfigSchema, traderConfigSchema } from "@cosmu/shared";
+import {
+  dataSourceKindSchema,
+  evaluationKindSchema,
+  prePromptConfigSchema,
+  researchAutonomyModeSchema,
+  researchEngineSchema,
+  traderConfigSchema
+} from "@cosmu/shared";
 import {
   createApprovalRequest,
   createBot,
@@ -10,14 +17,34 @@ import {
   getPendingLivePromotionApprovalForCandidate,
   getResearchCandidate,
   getResearchExperiment,
+  getResearchSession,
+  getEvaluationJob,
   listAgentSteps,
   listResearchCandidates,
   listResearchDataSources,
   listResearchExperiments,
+  listDatasets,
+  createDataset,
+  createDatasetVersion,
+  listDatasetVersions,
+  listResearchSessions,
+  listResearchEngineRuns,
+  listExperimentSpecs,
+  getExperimentSpec,
+  updateExperimentSpec,
+  listEvaluationJobs,
+  listResearchMemories,
+  updateResearchMemory,
   setCandidatePaperBot,
   updateResearchExperiment
 } from "../lib/store.js";
 import { runResearchExperiment } from "../research/orchestrator.js";
+import {
+  enqueueEvaluationJob,
+  getLatestSpecForSession,
+  runNativeSession,
+  runEvaluationJob
+} from "../research/modular-core.js";
 
 export const researchRouter: ExpressRouter = Router();
 
@@ -29,6 +56,336 @@ const titleFromHypothesis = (hypothesis: string) => {
 researchRouter.get("/research/experiments", async (_request, response, next) => {
   try {
     response.json({ experiments: await listResearchExperiments() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.get("/research/datasets", async (_request, response, next) => {
+  try {
+    response.json({ datasets: await listDatasets() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.post("/research/datasets", async (request, response, next) => {
+  try {
+    const body = request.body as {
+      name?: unknown;
+      sourceKind?: unknown;
+      description?: unknown;
+      tags?: unknown;
+      version?: unknown;
+    };
+    if (typeof body.name !== "string" || body.name.trim().length < 2) {
+      response.status(400).json({ error: "name is required" });
+      return;
+    }
+    const sourceKind = typeof body.sourceKind === "string"
+      && ["upload", "binance_ohlcv", "external_api", "manual"].includes(body.sourceKind)
+      ? body.sourceKind as "upload" | "binance_ohlcv" | "external_api" | "manual"
+      : "manual";
+    const tags = Array.isArray(body.tags) ? body.tags.map((item) => String(item)) : [];
+    const dataset = await createDataset({
+      name: body.name.trim(),
+      sourceKind,
+      description: typeof body.description === "string" ? body.description : null,
+      tags
+    });
+
+    let version = null;
+    if (body.version && typeof body.version === "object") {
+      const payload = body.version as {
+        schemaJson?: unknown;
+        metadataJson?: unknown;
+        rowCount?: unknown;
+        startAt?: unknown;
+        endAt?: unknown;
+        contentJson?: unknown;
+        contentHash?: unknown;
+      };
+      version = await createDatasetVersion({
+        datasetId: dataset.id,
+        schemaJson: payload.schemaJson ?? {},
+        metadataJson: payload.metadataJson ?? {},
+        rowCount: typeof payload.rowCount === "number" ? payload.rowCount : null,
+        startAt: typeof payload.startAt === "string" ? payload.startAt : null,
+        endAt: typeof payload.endAt === "string" ? payload.endAt : null,
+        contentJson: payload.contentJson ?? null,
+        contentHash: typeof payload.contentHash === "string" ? payload.contentHash : null
+      });
+    }
+
+    response.json({ dataset, version });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.get("/research/datasets/:datasetId/versions", async (request, response, next) => {
+  try {
+    response.json({ versions: await listDatasetVersions(request.params.datasetId) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.post("/research/datasets/:datasetId/versions", async (request, response, next) => {
+  try {
+    const body = request.body as {
+      schemaJson?: unknown;
+      metadataJson?: unknown;
+      rowCount?: unknown;
+      startAt?: unknown;
+      endAt?: unknown;
+      contentJson?: unknown;
+      contentHash?: unknown;
+    };
+    const version = await createDatasetVersion({
+      datasetId: request.params.datasetId,
+      schemaJson: body.schemaJson ?? {},
+      metadataJson: body.metadataJson ?? {},
+      rowCount: typeof body.rowCount === "number" ? body.rowCount : null,
+      startAt: typeof body.startAt === "string" ? body.startAt : null,
+      endAt: typeof body.endAt === "string" ? body.endAt : null,
+      contentJson: body.contentJson ?? null,
+      contentHash: typeof body.contentHash === "string" ? body.contentHash : null
+    });
+    response.json({ version });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.get("/research/sessions", async (_request, response, next) => {
+  try {
+    response.json({ sessions: await listResearchSessions() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.post("/research/sessions", async (request, response, next) => {
+  try {
+    const body = request.body as {
+      title?: unknown;
+      objective?: unknown;
+      hypothesis?: unknown;
+      engine?: unknown;
+      autonomyMode?: unknown;
+      datasetVersionIds?: unknown;
+      maxIterations?: unknown;
+      maxRuntimeMinutes?: unknown;
+      maxCostUsd?: unknown;
+      allowedTools?: unknown;
+      modelProfileId?: unknown;
+    };
+    const objective = typeof body.objective === "string" ? body.objective.trim() : "";
+    const hypothesis = typeof body.hypothesis === "string" ? body.hypothesis.trim() : objective;
+    if (objective.length < 5) {
+      response.status(400).json({ error: "objective is required" });
+      return;
+    }
+    const title = typeof body.title === "string" && body.title.trim().length > 0
+      ? body.title.trim()
+      : titleFromHypothesis(objective);
+    const engine = researchEngineSchema.parse(typeof body.engine === "string" ? body.engine : "native");
+    const autonomyMode = researchAutonomyModeSchema.parse(
+      typeof body.autonomyMode === "string" ? body.autonomyMode : "assisted"
+    );
+    const datasetVersionIds = Array.isArray(body.datasetVersionIds)
+      ? body.datasetVersionIds.map((id) => String(id))
+      : [];
+    const allowedTools = Array.isArray(body.allowedTools)
+      ? body.allowedTools.map((tool) => String(tool))
+      : [];
+
+    const result = await runNativeSession({
+      title,
+      objective,
+      hypothesis,
+      engine,
+      autonomyMode,
+      datasetVersionIds,
+      maxIterations: typeof body.maxIterations === "number" ? body.maxIterations : undefined,
+      maxRuntimeMinutes: typeof body.maxRuntimeMinutes === "number" ? body.maxRuntimeMinutes : undefined,
+      maxCostUsd: typeof body.maxCostUsd === "number" ? body.maxCostUsd : undefined,
+      allowedTools,
+      modelProfileId: typeof body.modelProfileId === "string" ? body.modelProfileId : null
+    });
+
+    response.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.get("/research/sessions/:sessionId", async (request, response, next) => {
+  try {
+    const session = await getResearchSession(request.params.sessionId);
+    if (!session) {
+      response.status(404).json({ error: "Session not found" });
+      return;
+    }
+    const [engineRuns, specs, evaluations, memories, steps] = await Promise.all([
+      listResearchEngineRuns(session.id),
+      listExperimentSpecs(session.id),
+      listEvaluationJobs(session.id),
+      listResearchMemories(session.id),
+      listAgentSteps({ scopeType: "research_experiment", scopeId: session.id })
+    ]);
+    response.json({ session, engineRuns, specs, evaluations, memories, steps });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.post("/research/sessions/:sessionId/run-engine", async (request, response, next) => {
+  try {
+    const session = await getResearchSession(request.params.sessionId);
+    if (!session) {
+      response.status(404).json({ error: "Session not found" });
+      return;
+    }
+    const latestSpec = await getLatestSpecForSession(session.id);
+    response.json({
+      ok: true,
+      session,
+      message: "Session engines run at creation in v1. Re-run pipeline will be added in next step.",
+      latestSpec
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.get("/research/engine-runs/:runId", async (request, response, next) => {
+  try {
+    const sessionId = typeof request.query.sessionId === "string" ? request.query.sessionId : null;
+    if (!sessionId) {
+      response.status(400).json({ error: "sessionId query is required" });
+      return;
+    }
+    const runs = await listResearchEngineRuns(sessionId);
+    const run = runs.find((item) => item.id === request.params.runId) ?? null;
+    if (!run) {
+      response.status(404).json({ error: "Engine run not found for this session" });
+      return;
+    }
+    response.json({ run });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.get("/research/specs/:specId", async (request, response, next) => {
+  try {
+    const spec = await getExperimentSpec(request.params.specId);
+    if (!spec) {
+      response.status(404).json({ error: "Spec not found" });
+      return;
+    }
+    response.json({ spec });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.patch("/research/specs/:specId", async (request, response, next) => {
+  try {
+    const body = request.body as { specJson?: unknown; status?: unknown };
+    const status = typeof body.status === "string"
+      && ["draft", "locked", "superseded"].includes(body.status)
+      ? body.status as "draft" | "locked" | "superseded"
+      : undefined;
+    const spec = await updateExperimentSpec({
+      id: request.params.specId,
+      specJson: body.specJson,
+      status
+    });
+    if (!spec) {
+      response.status(404).json({ error: "Spec not found" });
+      return;
+    }
+    response.json({ spec });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.post("/research/evaluations", async (request, response, next) => {
+  try {
+    const body = request.body as {
+      sessionId?: unknown;
+      specId?: unknown;
+      engineRunId?: unknown;
+      datasetVersionIds?: unknown;
+      kind?: unknown;
+      configJson?: unknown;
+      runNow?: unknown;
+    };
+    if (typeof body.sessionId !== "string" || typeof body.specId !== "string") {
+      response.status(400).json({ error: "sessionId and specId are required" });
+      return;
+    }
+    const kind = evaluationKindSchema.parse(typeof body.kind === "string" ? body.kind : "paper_backtest");
+    const datasetVersionIds = Array.isArray(body.datasetVersionIds)
+      ? body.datasetVersionIds.map((id) => String(id))
+      : [];
+    const job = await enqueueEvaluationJob({
+      sessionId: body.sessionId,
+      specId: body.specId,
+      engineRunId: typeof body.engineRunId === "string" ? body.engineRunId : null,
+      datasetVersionIds,
+      kind,
+      configJson: typeof body.configJson === "object" && body.configJson ? body.configJson as Record<string, unknown> : {}
+    });
+    if (body.runNow === true) {
+      await runEvaluationJob(job.id);
+    }
+    response.json({ job: await getEvaluationJob(job.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.get("/research/evaluations/:jobId", async (request, response, next) => {
+  try {
+    const job = await getEvaluationJob(request.params.jobId);
+    if (!job) {
+      response.status(404).json({ error: "Evaluation job not found" });
+      return;
+    }
+    response.json({ job });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.get("/research/memory", async (request, response, next) => {
+  try {
+    const sessionId = typeof request.query.sessionId === "string" ? request.query.sessionId : undefined;
+    response.json({ memories: await listResearchMemories(sessionId) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+researchRouter.patch("/research/memory/:memoryId", async (request, response, next) => {
+  try {
+    const body = request.body as { active?: unknown; memoryText?: unknown; confidence?: unknown };
+    const memory = await updateResearchMemory({
+      id: request.params.memoryId,
+      active: typeof body.active === "boolean" ? body.active : undefined,
+      memoryText: typeof body.memoryText === "string" ? body.memoryText : undefined,
+      confidence: typeof body.confidence === "number" ? body.confidence : undefined
+    });
+    if (!memory) {
+      response.status(404).json({ error: "Memory not found" });
+      return;
+    }
+    response.json({ memory });
   } catch (error) {
     next(error);
   }

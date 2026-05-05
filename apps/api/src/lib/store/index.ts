@@ -99,5 +99,32 @@ export {
   listResearchCandidates
 } from "./research.js";
 
+export {
+  listDatasets,
+  createDataset,
+  createDatasetVersion,
+  listDatasetVersions,
+  getDatasetVersion,
+  createResearchSession,
+  listResearchSessions,
+  getResearchSession,
+  updateResearchSession,
+  createResearchEngineRun,
+  listResearchEngineRuns,
+  updateResearchEngineRun,
+  createExperimentSpec,
+  listExperimentSpecs,
+  getExperimentSpec,
+  updateExperimentSpec,
+  createEvaluationResult,
+  createEvaluationJob,
+  updateEvaluationJob,
+  listEvaluationJobs,
+  getEvaluationJob,
+  createResearchMemory,
+  listResearchMemories,
+  updateResearchMemory
+} from "./research-kernel.js";
+
 export type { JsonValue } from "./helpers.js";
 export { parseJson, toIsoString, buildRuntimeConfig } from "./helpers.js";

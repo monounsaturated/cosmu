@@ -5,9 +5,14 @@ import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import type {
   AgentStep,
+  Dataset,
+  EvaluationJob,
+  ExperimentSpec,
   ResearchCandidate,
   ResearchDataSource,
-  ResearchExperiment
+  ResearchExperiment,
+  ResearchMemory,
+  ResearchSession
 } from "@cosmu/shared";
 import { AgentTimeline } from "../agent-timeline";
 import { LocalTime } from "../local-time";
@@ -17,20 +22,23 @@ type Props = {
   initialExperiments: ResearchExperiment[];
   initialDataSources: ResearchDataSource[];
   initialCandidates: ResearchCandidate[];
+  initialDatasets: Dataset[];
+  initialSessions: ResearchSession[];
+  initialMemories: ResearchMemory[];
 };
 
 type CandidateAction = "paper-bot" | "promote";
 
 const statusBadge = (status: string) => {
-  if (status.includes("candidate") || status.includes("ready")) return "badge-success";
+  if (status.includes("candidate") || status.includes("ready") || status.includes("success")) return "badge-success";
   if (status.includes("rejected") || status.includes("failure")) return "badge-failure";
-  if (status.includes("running")) return "badge-running";
+  if (status.includes("running") || status.includes("queued")) return "badge-running";
   return "badge-neutral";
 };
 
 const formatMetricValue = (value: unknown): string => {
   if (value === null || value === undefined) return "—";
-  if (typeof value === "number") return Number.isFinite(value) ? value.toString() : "—";
+  if (typeof value === "number") return Number.isFinite(value) ? value.toFixed(2) : "—";
   if (typeof value === "boolean") return value ? "yes" : "no";
   if (typeof value === "string") return value;
   return JSON.stringify(value);
@@ -49,15 +57,41 @@ export function ResearchConsole({
   initialCommand = "",
   initialExperiments,
   initialDataSources,
-  initialCandidates
+  initialCandidates,
+  initialDatasets,
+  initialSessions,
+  initialMemories
 }: Props) {
   const router = useRouter();
   const [hypothesis, setHypothesis] = useState(initialCommand);
+  const [objective, setObjective] = useState(initialCommand);
+  const [engine, setEngine] = useState<ResearchSession["engine"]>("native");
+  const [autonomyMode, setAutonomyMode] = useState<ResearchSession["autonomyMode"]>("assisted");
+  const [datasetName, setDatasetName] = useState("");
+  const [datasetSourceKind, setDatasetSourceKind] = useState<Dataset["sourceKind"]>("manual");
+  const [datasetRowsJson, setDatasetRowsJson] = useState("");
+
   const [experiments, setExperiments] = useState(initialExperiments);
   const [candidates, setCandidates] = useState(initialCandidates);
+  const [datasets, setDatasets] = useState(initialDatasets);
+  const [sessions, setSessions] = useState(initialSessions);
+  const [memories] = useState(initialMemories);
+
+  const [selectedSessionId, setSelectedSessionId] = useState(initialSessions[0]?.id ?? null);
   const [selectedExperimentId, setSelectedExperimentId] = useState(initialExperiments[0]?.id ?? null);
   const [selectedSteps, setSelectedSteps] = useState<AgentStep[] | null>(null);
+
+  const [sessionDetails, setSessionDetails] = useState<Record<string, {
+    specs: ExperimentSpec[];
+    evaluations: EvaluationJob[];
+    steps: AgentStep[];
+    loading: boolean;
+    error?: string;
+  }>>({});
+
   const [submitting, setSubmitting] = useState(false);
+  const [sessionSubmitting, setSessionSubmitting] = useState(false);
+  const [datasetSubmitting, setDatasetSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingCandidate, setPendingCandidate] = useState<{ id: string; action: CandidateAction } | null>(null);
   const [actionFeedback, setActionFeedback] = useState<{ id: string; tone: "success" | "error"; message: string } | null>(null);
@@ -66,14 +100,52 @@ export function ResearchConsole({
   useEffect(() => {
     if (!initialCommand) return;
     setHypothesis(initialCommand);
+    setObjective(initialCommand);
   }, [initialCommand]);
 
   const selectedExperiment = useMemo(
     () => experiments.find((experiment) => experiment.id === selectedExperimentId) ?? null,
     [experiments, selectedExperimentId]
   );
+  const selectedSession = useMemo(
+    () => sessions.find((session) => session.id === selectedSessionId) ?? null,
+    [sessions, selectedSessionId]
+  );
+  const selectedSessionDetail = selectedSessionId ? sessionDetails[selectedSessionId] : undefined;
 
-  const submit = async (event: FormEvent) => {
+  useEffect(() => {
+    const sessionId = selectedSessionId;
+    if (!sessionId || sessionDetails[sessionId]) return;
+    setSessionDetails((current) => ({ ...current, [sessionId]: { specs: [], evaluations: [], steps: [], loading: true } }));
+    fetch(`/api/research/sessions/${sessionId}`, { cache: "no-store" })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Failed to load session");
+        setSessionDetails((current) => ({
+          ...current,
+          [sessionId]: {
+            specs: Array.isArray(data.specs) ? data.specs : [],
+            evaluations: Array.isArray(data.evaluations) ? data.evaluations : [],
+            steps: Array.isArray(data.steps) ? data.steps : [],
+            loading: false
+          }
+        }));
+      })
+      .catch((err) => {
+        setSessionDetails((current) => ({
+          ...current,
+          [sessionId]: {
+            specs: [],
+            evaluations: [],
+            steps: [],
+            loading: false,
+            error: err instanceof Error ? err.message : "Failed to load session"
+          }
+        }));
+      });
+  }, [selectedSessionId, sessionDetails]);
+
+  const submitLegacyExperiment = async (event: FormEvent) => {
     event.preventDefault();
     const text = hypothesis.trim();
     if (!text) return;
@@ -100,6 +172,108 @@ export function ResearchConsole({
       setError(err instanceof Error ? err.message : "Research request failed");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const submitSession = async (event: FormEvent) => {
+    event.preventDefault();
+    const objectiveText = objective.trim();
+    if (objectiveText.length < 5) return;
+    setSessionSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/research/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: objectiveText,
+          objective: objectiveText,
+          hypothesis: objectiveText,
+          engine,
+          autonomyMode,
+          datasetVersionIds: []
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Session creation failed");
+      if (data.session) {
+        setSessions((current) => [data.session, ...current.filter((item) => item.id !== data.session.id)]);
+        setSelectedSessionId(data.session.id);
+      }
+      setObjective("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Session creation failed");
+    } finally {
+      setSessionSubmitting(false);
+    }
+  };
+
+  const submitDataset = async (event: FormEvent) => {
+    event.preventDefault();
+    const name = datasetName.trim();
+    if (name.length < 2) return;
+    setDatasetSubmitting(true);
+    setError(null);
+    try {
+      const parsedRows = datasetRowsJson.trim().length > 0 ? JSON.parse(datasetRowsJson) : null;
+      const res = await fetch("/api/research/datasets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          sourceKind: datasetSourceKind,
+          version: parsedRows
+            ? {
+                schemaJson: { columns: ["ts", "close"] },
+                metadataJson: { uploadedFromUi: true },
+                rowCount: Array.isArray(parsedRows) ? parsedRows.length : null,
+                contentJson: parsedRows
+              }
+            : undefined
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Dataset creation failed");
+      if (data.dataset) {
+        setDatasets((current) => [data.dataset, ...current.filter((item) => item.id !== data.dataset.id)]);
+      }
+      setDatasetName("");
+      setDatasetRowsJson("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Dataset creation failed");
+    } finally {
+      setDatasetSubmitting(false);
+    }
+  };
+
+  const runEvaluation = async () => {
+    if (!selectedSession || !selectedSessionDetail || selectedSessionDetail.specs.length === 0) return;
+    const latestSpec = selectedSessionDetail.specs[0];
+    try {
+      const res = await fetch("/api/research/evaluations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: selectedSession.id,
+          specId: latestSpec.id,
+          datasetVersionIds: selectedSession.datasetVersionIds,
+          kind: "paper_backtest",
+          runNow: true
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Evaluation failed");
+      const job = data.job as EvaluationJob;
+      setSessionDetails((current) => ({
+        ...current,
+        [selectedSession.id]: {
+          ...(current[selectedSession.id] ?? { specs: [], evaluations: [], steps: [], loading: false }),
+          evaluations: [job, ...(current[selectedSession.id]?.evaluations ?? [])]
+        }
+      }));
+      startTransition(() => router.refresh());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Evaluation failed");
     }
   };
 
@@ -131,7 +305,7 @@ export function ResearchConsole({
         setActionFeedback({
           id: candidate.id,
           tone: "success",
-          message: "Paper bot created on testnet. Open the bot detail page to enable execution when you're ready."
+          message: "Research bot created in workspace."
         });
         startTransition(() => router.refresh());
       } else {
@@ -141,7 +315,7 @@ export function ResearchConsole({
         setActionFeedback({
           id: candidate.id,
           tone: "success",
-          message: "Promotion request created. Review it on Cosmu Pro to spawn a live agent."
+          message: "Promotion request created. Review it on Cosmu Pro."
         });
       }
     } catch (err) {
@@ -160,29 +334,58 @@ export function ResearchConsole({
       <section className="command-panel">
         <div>
           <p className="muted">Cosmu Research</p>
-          <h1>Autonomous research lab</h1>
+          <h1>Modular research core</h1>
           <p className="field-help">
-            Research is the hypothesis lab. Each idea runs through Planner → Data Scout → Feature Builder → Skeptic →
-            Summary. Approved ideas become paper candidates here. Promotion to Cosmu Pro creates an approval request,
-            never a direct live trade.
+            Command runs bounded sessions. Datasets are explicit. Evaluations stay simulated and reproducible.
+            External engines are optional sidecars; Cosmu owns evidence and promotion gates.
           </p>
-          <ul className="research-rules">
-            <li>Paper-only by default — research bots stay on Binance testnet.</li>
-            <li>Light bots are not visible here; Light is a quick-iteration tool kept separate.</li>
-            <li>Backtests, leakage checks, multiple-testing penalties, and cost realism gate any promotion.</li>
-          </ul>
         </div>
-        <form className="research-command" onSubmit={submit}>
+        <form className="research-command" onSubmit={submitSession}>
+          <textarea
+            value={objective}
+            onChange={(event) => setObjective(event.target.value)}
+            placeholder="Session objective: find robust BTC volatility regime strategy with walk-forward validation"
+            rows={3}
+          />
+          <div className="form-grid-two">
+            <label className="field">
+              <span>Engine</span>
+              <select value={engine} onChange={(event) => setEngine(event.target.value as ResearchSession["engine"])}>
+                <option value="native">native</option>
+                <option value="hermes">hermes (sidecar)</option>
+                <option value="autoresearch">autoresearch (sidecar)</option>
+                <option value="openclaw">openclaw (sidecar)</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Autonomy</span>
+              <select
+                value={autonomyMode}
+                onChange={(event) => setAutonomyMode(event.target.value as ResearchSession["autonomyMode"])}
+              >
+                <option value="manual">manual</option>
+                <option value="assisted">assisted</option>
+                <option value="autonomous">autonomous</option>
+              </select>
+            </label>
+          </div>
+          <div className="command-panel-footer">
+            <span className="field-help">Start a bounded session with visible steps, specs, and evaluations.</span>
+            <button className="btn btn-primary" type="submit" disabled={sessionSubmitting || objective.trim().length < 5}>
+              {sessionSubmitting ? "Starting..." : "Start session"}
+            </button>
+          </div>
+        </form>
+        <form className="research-command" onSubmit={submitLegacyExperiment}>
           <textarea
             value={hypothesis}
             onChange={(event) => setHypothesis(event.target.value)}
-            placeholder="Example: test whether weather anomalies in mining hubs predict 24h BTC volatility, with strict anti-overfit review"
-            rows={4}
+            placeholder="Legacy /research/experiments flow (compatibility)"
+            rows={3}
           />
           <div className="command-panel-footer">
-            <span className="field-help">Paper-only. Promotion to Cosmu Pro is approval-gated.</span>
-            <button className="btn btn-primary" type="submit" disabled={submitting || hypothesis.trim().length < 5}>
-              {submitting ? "Running..." : "Run research"}
+            <button className="btn btn-secondary" type="submit" disabled={submitting || hypothesis.trim().length < 5}>
+              {submitting ? "Running..." : "Run legacy experiment"}
             </button>
           </div>
           {error && <p className="feedback feedback-error">{error}</p>}
@@ -192,13 +395,47 @@ export function ResearchConsole({
       <section className="ops-grid">
         <article className="panel">
           <div className="section-header">
-            <h3>Experiments</h3>
-            <span className="muted">{experiments.length} total</span>
+            <h3>Sessions</h3>
+            <span className="muted">{sessions.length}</span>
           </div>
           <div className="dense-list">
-            {experiments.length === 0 && (
-              <p className="muted">No experiments yet. Run a hypothesis to start.</p>
-            )}
+            {sessions.length === 0 && <p className="muted">No sessions yet.</p>}
+            {sessions.map((session) => (
+              <button
+                key={session.id}
+                className={`dense-row ${selectedSessionId === session.id ? "dense-row-active" : ""}`}
+                type="button"
+                onClick={() => setSelectedSessionId(session.id)}
+              >
+                <span>
+                  <strong>{session.title}</strong>
+                  <span className="muted">
+                    {session.engine} · {session.autonomyMode} · <LocalTime value={session.createdAt} />
+                  </span>
+                </span>
+                <span className={`badge ${statusBadge(session.status)}`}>{session.status}</span>
+              </button>
+            ))}
+          </div>
+          <div className="inline-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={runEvaluation}
+              disabled={!selectedSessionDetail || selectedSessionDetail.specs.length === 0}
+            >
+              Run evaluation
+            </button>
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="section-header">
+            <h3>Experiments</h3>
+            <span className="muted">{experiments.length}</span>
+          </div>
+          <div className="dense-list">
+            {experiments.length === 0 && <p className="muted">No legacy experiments yet.</p>}
             {experiments.map((experiment) => (
               <button
                 key={experiment.id}
@@ -221,74 +458,70 @@ export function ResearchConsole({
             ))}
           </div>
         </article>
-
-        <article className="panel">
-          <div className="section-header">
-            <h3>Paper candidates</h3>
-            <span className="muted">{candidates.length} total</span>
-          </div>
-          <div className="dense-list">
-            {candidates.length === 0 && (
-              <p className="muted">No paper candidates yet. Approved hypotheses appear here.</p>
-            )}
-            {candidates.map((candidate) => {
-              const metrics = candidateMetrics(candidate);
-              const feedback = actionFeedback?.id === candidate.id ? actionFeedback : null;
-              const isPaperBotPending = pendingCandidate?.id === candidate.id && pendingCandidate.action === "paper-bot";
-              const isPromotePending = pendingCandidate?.id === candidate.id && pendingCandidate.action === "promote";
-              const hasPaperBot = Boolean(
-                (candidate.metrics as { paperBotId?: string } | null)?.paperBotId
-              );
-              const hasProBot = Boolean(candidate.promotedBotId);
-              return (
-                <div key={candidate.id} className="candidate-card">
-                  <div className="candidate-card-head">
-                    <span>
-                      <strong>{candidate.name}</strong>
-                      <span className="muted">{candidate.thesis}</span>
-                    </span>
-                    <span className={`badge ${statusBadge(candidate.status)}`}>{candidate.status}</span>
-                  </div>
-                  {metrics.length > 0 && (
-                    <dl className="candidate-metrics">
-                      {metrics.map(([key, value]) => (
-                        <div key={key}>
-                          <dt>{key}</dt>
-                          <dd>{value}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  )}
-                  {candidate.riskNotes && <p className="muted candidate-risk">{candidate.riskNotes}</p>}
-                  <div className="candidate-actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => runCandidateAction(candidate, "paper-bot")}
-                      disabled={hasPaperBot || isPaperBotPending}
-                    >
-                      {hasPaperBot ? "Paper bot exists" : isPaperBotPending ? "Creating..." : "Create paper bot"}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={() => runCandidateAction(candidate, "promote")}
-                      disabled={isPromotePending || hasProBot}
-                    >
-                      {hasProBot ? "Pro bot exists" : isPromotePending ? "Requesting..." : "Promote to Pro"}
-                    </button>
-                  </div>
-                  {feedback && (
-                    <p className={`feedback ${feedback.tone === "error" ? "feedback-error" : "feedback-success"}`}>
-                      {feedback.message}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </article>
       </section>
+
+      {selectedSession && (
+        <section className="panel">
+          <div className="section-header">
+            <div>
+              <h3 style={{ marginBottom: "4px" }}>Session detail</h3>
+              <p className="muted">{selectedSession.objective}</p>
+            </div>
+            <span className={`badge ${statusBadge(selectedSession.status)}`}>{selectedSession.status}</span>
+          </div>
+          {selectedSessionDetail?.loading && <p className="muted">Loading session details...</p>}
+          {selectedSessionDetail?.error && <p className="feedback feedback-error">{selectedSessionDetail.error}</p>}
+          {selectedSessionDetail && !selectedSessionDetail.loading && (
+            <div className="ops-grid">
+              <article className="panel panel-sub">
+                <div className="section-header">
+                  <h4>Specs</h4>
+                  <span className="muted">{selectedSessionDetail.specs.length}</span>
+                </div>
+                <div className="dense-list">
+                  {selectedSessionDetail.specs.map((spec) => (
+                    <div key={spec.id} className="dense-row">
+                      <span>
+                        <strong>v{spec.versionNumber}</strong>
+                        <span className="muted">{spec.hypothesis}</span>
+                      </span>
+                      <span className={`badge ${statusBadge(spec.status)}`}>{spec.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+              <article className="panel panel-sub">
+                <div className="section-header">
+                  <h4>Evaluations</h4>
+                  <span className="muted">{selectedSessionDetail.evaluations.length}</span>
+                </div>
+                <div className="dense-list">
+                  {selectedSessionDetail.evaluations.length === 0 && <p className="muted">No evaluations yet.</p>}
+                  {selectedSessionDetail.evaluations.map((job) => (
+                    <div key={job.id} className="dense-row">
+                      <span>
+                        <strong>{job.kind}</strong>
+                        <span className="muted">
+                          {job.result && typeof job.result.metricsJson === "object"
+                            ? `avg: ${String((job.result.metricsJson as Record<string, unknown>).avgReturnPct ?? "—")} · sharpe: ${String((job.result.metricsJson as Record<string, unknown>).sharpe ?? "—")}`
+                            : "queued"}
+                        </span>
+                      </span>
+                      <span className={`badge ${statusBadge(job.status)}`}>{job.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            </div>
+          )}
+          <AgentTimeline
+            scopeType="research_experiment"
+            scopeId={selectedSession.id}
+            title="Session agent debate"
+            initialSteps={selectedSessionDetail?.steps}
+          />
+        </section>
+      )}
 
       {selectedExperiment && (
         <section className="panel">
@@ -302,7 +535,7 @@ export function ResearchConsole({
           <AgentTimeline
             scopeType="research_experiment"
             scopeId={selectedExperiment.id}
-            title="Research agent timeline"
+            title="Legacy experiment timeline"
             initialSteps={selectedSteps ?? undefined}
           />
         </section>
@@ -310,8 +543,143 @@ export function ResearchConsole({
 
       <section className="panel">
         <div className="section-header">
-          <h3>Data sources</h3>
-          <span className="muted">Read/paper-only in Research v1</span>
+          <h3>Datasets</h3>
+          <span className="muted">{datasets.length}</span>
+        </div>
+        <form className="research-command" onSubmit={submitDataset}>
+          <div className="form-grid-two">
+            <label className="field">
+              <span>Name</span>
+              <input value={datasetName} onChange={(event) => setDatasetName(event.target.value)} placeholder="BTC 1h OHLCV" />
+            </label>
+            <label className="field">
+              <span>Source</span>
+              <select
+                value={datasetSourceKind}
+                onChange={(event) => setDatasetSourceKind(event.target.value as Dataset["sourceKind"])}
+              >
+                <option value="manual">manual</option>
+                <option value="upload">upload</option>
+                <option value="binance_ohlcv">binance_ohlcv</option>
+                <option value="external_api">external_api</option>
+              </select>
+            </label>
+          </div>
+          <textarea
+            value={datasetRowsJson}
+            onChange={(event) => setDatasetRowsJson(event.target.value)}
+            placeholder='Optional JSON rows: [{"ts":1711900800000,"close":70000}]'
+            rows={3}
+          />
+          <div className="command-panel-footer">
+            <button className="btn btn-secondary" type="submit" disabled={datasetSubmitting || datasetName.trim().length < 2}>
+              {datasetSubmitting ? "Saving..." : "Add dataset"}
+            </button>
+          </div>
+        </form>
+        <div className="data-source-grid">
+          {datasets.map((dataset) => (
+            <div key={dataset.id} className="data-source-tile">
+              <div>
+                <strong>{dataset.name}</strong>
+                <span className="muted">{dataset.sourceKind}</span>
+              </div>
+              <span className={`badge ${dataset.active ? "badge-success" : "badge-inactive"}`}>
+                {dataset.active ? "active" : "off"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="section-header">
+          <h3>Paper candidates</h3>
+          <span className="muted">{candidates.length}</span>
+        </div>
+        <div className="dense-list">
+          {candidates.length === 0 && <p className="muted">No paper candidates yet.</p>}
+          {candidates.map((candidate) => {
+            const metrics = candidateMetrics(candidate);
+            const feedback = actionFeedback?.id === candidate.id ? actionFeedback : null;
+            const isPaperBotPending = pendingCandidate?.id === candidate.id && pendingCandidate.action === "paper-bot";
+            const isPromotePending = pendingCandidate?.id === candidate.id && pendingCandidate.action === "promote";
+            const hasPaperBot = Boolean((candidate.metrics as { paperBotId?: string } | null)?.paperBotId);
+            const hasProBot = Boolean(candidate.promotedBotId);
+            return (
+              <div key={candidate.id} className="candidate-card">
+                <div className="candidate-card-head">
+                  <span>
+                    <strong>{candidate.name}</strong>
+                    <span className="muted">{candidate.thesis}</span>
+                  </span>
+                  <span className={`badge ${statusBadge(candidate.status)}`}>{candidate.status}</span>
+                </div>
+                {metrics.length > 0 && (
+                  <dl className="candidate-metrics">
+                    {metrics.map(([key, value]) => (
+                      <div key={key}>
+                        <dt>{key}</dt>
+                        <dd>{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                {candidate.riskNotes && <p className="muted candidate-risk">{candidate.riskNotes}</p>}
+                <div className="candidate-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => runCandidateAction(candidate, "paper-bot")}
+                    disabled={hasPaperBot || isPaperBotPending}
+                  >
+                    {hasPaperBot ? "Research bot exists" : isPaperBotPending ? "Creating..." : "Create research bot"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => runCandidateAction(candidate, "promote")}
+                    disabled={isPromotePending || hasProBot}
+                  >
+                    {hasProBot ? "Pro bot exists" : isPromotePending ? "Requesting..." : "Promote to Pro"}
+                  </button>
+                </div>
+                {feedback && (
+                  <p className={`feedback ${feedback.tone === "error" ? "feedback-error" : "feedback-success"}`}>
+                    {feedback.message}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="section-header">
+          <h3>Research memory</h3>
+          <span className="muted">{memories.length}</span>
+        </div>
+        <div className="dense-list">
+          {memories.length === 0 && <p className="muted">No memories yet.</p>}
+          {memories.map((memory) => (
+            <div key={memory.id} className="dense-row">
+              <span>
+                <strong>{memory.title}</strong>
+                <span className="muted">{memory.scopeType}:{memory.scopeKey} · confidence {memory.confidence.toFixed(2)}</span>
+              </span>
+              <span className={`badge ${memory.active ? "badge-success" : "badge-neutral"}`}>
+                {memory.active ? "active" : "inactive"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="section-header">
+          <h3>Data source registry</h3>
+          <span className="muted">Connector status</span>
         </div>
         <div className="data-source-grid">
           {initialDataSources.map((source) => (

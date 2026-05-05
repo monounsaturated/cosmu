@@ -1,7 +1,10 @@
 import {
+  datasetSchema,
+  researchMemorySchema,
   researchCandidateSchema,
   researchDataSourceSchema,
-  researchExperimentSchema
+  researchExperimentSchema,
+  researchSessionSchema
 } from "@cosmu/shared";
 import { ResearchConsole } from "./research-console";
 import { BotTable } from "../bot-table";
@@ -31,16 +34,22 @@ export default async function ResearchPage({
   searchParams?: Promise<{ command?: string }>;
 }) {
   const params = await searchParams;
-  const [experimentsRaw, dataSourcesRaw, candidatesRaw, dashboard] = await Promise.all([
+  const [experimentsRaw, dataSourcesRaw, candidatesRaw, datasetsRaw, sessionsRaw, memoriesRaw, dashboard] = await Promise.all([
     fetchApi("/research/experiments"),
     fetchApi("/research/data-sources"),
     fetchApi("/research/candidates"),
+    fetchApi("/research/datasets"),
+    fetchApi("/research/sessions"),
+    fetchApi("/research/memory"),
     getDashboard()
   ]);
 
   const experiments = researchExperimentSchema.array().catch([]).parse(experimentsRaw?.experiments ?? []);
   const dataSources = researchDataSourceSchema.array().catch([]).parse(dataSourcesRaw?.dataSources ?? []);
   const candidates = researchCandidateSchema.array().catch([]).parse(candidatesRaw?.candidates ?? []);
+  const datasets = datasetSchema.array().catch([]).parse(datasetsRaw?.datasets ?? []);
+  const sessions = researchSessionSchema.array().catch([]).parse(sessionsRaw?.sessions ?? []);
+  const memories = researchMemorySchema.array().catch([]).parse(memoriesRaw?.memories ?? []);
 
   return (
     <main className="page page-wide">
@@ -49,13 +58,16 @@ export default async function ResearchPage({
         initialExperiments={experiments}
         initialDataSources={dataSources}
         initialCandidates={candidates}
+        initialDatasets={datasets}
+        initialSessions={sessions}
+        initialMemories={memories}
       />
       <div style={{ marginTop: "20px" }}>
         <BotTable
           dashboard={dashboard}
           workspaceMode="research"
           title="Research paper bots"
-          description="Paper bots created from research candidates. They run on Binance testnet only — promotion to Cosmu Pro is the only path to live trading. Light bots are segregated and never appear here."
+          description="Research workspace bots created from candidates. They stay segregated from Light and Pro."
           emptyMessage="No research paper bots yet. Approve a candidate above to create one."
         />
       </div>
