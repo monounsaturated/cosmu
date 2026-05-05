@@ -33,7 +33,7 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
       setIsActive(false);
       setFeedback({
         type: "success",
-        text: data.runId ? `Bot killed (${data.runId.slice(0, 8)})` : "Bot killed"
+        text: data.runId ? `Agent stopped (${data.runId.slice(0, 8)})` : "Agent stopped"
       });
       router.refresh();
     } catch (e) {
@@ -70,14 +70,14 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
           onClick={() => setConfirmKillOpen(true)}
           disabled={!isActive || loading !== null}
         >
-          {loading === "kill" ? "Killing..." : "Kill Bot"}
+          {loading === "kill" ? "Stopping..." : "Stop"}
         </button>
         <button
           className="btn btn-primary"
           onClick={triggerRun}
           disabled={!isActive || loading !== null}
         >
-          {loading === "run" ? "Running..." : "Run Now"}
+          {loading === "run" ? "Running..." : "Run"}
         </button>
       </div>
       {feedback && (
@@ -87,11 +87,11 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: "460px" }}>
             <div className="modal-header">
-              <h2>Kill Bot?</h2>
+              <h2>Stop agent?</h2>
               <button className="modal-close" onClick={() => setConfirmKillOpen(false)}>✕</button>
             </div>
             <p className="muted" style={{ marginBottom: "16px", lineHeight: 1.5 }}>
-              This will cancel open orders, sell all current positions, and permanently stop the bot.
+              This will cancel open orders, sell all current positions, and permanently stop the agent.
               It cannot be restarted.
             </p>
             <div className="form-actions">
@@ -99,7 +99,7 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
                 Cancel
               </button>
               <button className="btn btn-warn" onClick={kill} disabled={loading !== null}>
-                {loading === "kill" ? "Killing..." : "Yes, kill bot"}
+                {loading === "kill" ? "Stopping..." : "Yes, stop agent"}
               </button>
             </div>
           </div>

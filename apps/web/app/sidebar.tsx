@@ -3,13 +3,9 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, FlaskConical, LayoutDashboard, Settings, ScrollText, Zap } from "lucide-react";
+import { Activity, Settings, ScrollText } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Light", icon: LayoutDashboard },
-  { href: "/bots", label: "Bots", icon: Bot },
-  { href: "/research", label: "Research", icon: FlaskConical },
-  { href: "/pro", label: "Pro", icon: Zap },
   { href: "/prompts", label: "Prompts", icon: ScrollText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -34,7 +30,7 @@ export function Sidebar() {
     return pathname.startsWith(href);
   };
 
-  const isBotPage = pathname.startsWith("/bots/");
+  const isBotDetailPage = pathname.startsWith("/bots/");
 
   return (
     <aside className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
@@ -56,7 +52,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`sidebar-link ${isActive(item.href) && !isBotPage ? "sidebar-link-active" : ""}`}
+              className={`sidebar-link ${isActive(item.href) ? "sidebar-link-active" : ""}`}
               title={collapsed ? item.label : undefined}
             >
               <span className="sidebar-icon"><Icon size={17} /></span>
@@ -65,10 +61,10 @@ export function Sidebar() {
           );
         })}
 
-        {isBotPage && !isActive("/bots") && (
-          <div className="sidebar-link sidebar-link-active" title={collapsed ? "Bot Detail" : undefined}>
-            <span className="sidebar-icon"><Bot size={17} /></span>
-            {!collapsed && <span>Bot Detail</span>}
+        {isBotDetailPage && (
+          <div className="sidebar-link sidebar-link-active" title={collapsed ? "Agent Detail" : undefined}>
+            <span className="sidebar-icon"><Activity size={17} /></span>
+            {!collapsed && <span>Agent Detail</span>}
           </div>
         )}
       </nav>

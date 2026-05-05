@@ -1,6 +1,12 @@
 import { ShieldCheck, Zap } from "lucide-react";
+import { BotTable } from "../bot-table";
+import { getDashboard } from "../dashboard-data";
 
-export default function ProPage() {
+export const dynamic = "force-dynamic";
+
+export default async function ProPage() {
+  const dashboard = await getDashboard();
+
   return (
     <main className="page page-wide">
       <section className="command-panel">
@@ -39,6 +45,15 @@ export default function ProPage() {
           </ul>
         </article>
       </section>
+
+      <div style={{ marginTop: "20px" }}>
+        <BotTable
+          dashboard={dashboard}
+          title="Pro Agents"
+          description="Pro uses the same agent table and performance vocabulary before anything can graduate to live. Live promotion remains approval-gated."
+          emptyMessage="No Pro agents yet. Promote a proven paper candidate before enabling live control."
+        />
+      </div>
     </main>
   );
 }

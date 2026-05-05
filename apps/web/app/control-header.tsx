@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Activity, AlertTriangle, CheckCircle2, Command, FlaskConical, Shield } from "lucide-react";
+import { ThemeToggle } from "./theme-toggle";
 
 type Summary = {
   runningAgents: number;
@@ -90,6 +91,7 @@ export function ControlHeader() {
         </span>
         <span title="Pending approvals"><Shield size={15} />{summary?.pendingApprovals ?? 0}</span>
         <span title="Live actions approval-gated"><CheckCircle2 size={15} />Gated</span>
+        <ThemeToggle />
       </div>
     </header>
   );

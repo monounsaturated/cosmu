@@ -20,12 +20,12 @@ export function DashboardActions({ hasNoBots }: DashboardActionsProps) {
   return (
     <>
       <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
-        + Create Bot
+        + Create agent
       </button>
 
       {hasNoBots && (
         <p className="muted" style={{ marginTop: "8px", fontSize: "14px" }}>
-          No bots yet. Create your first bot to get started.
+          No agents yet. Create the first paper or live strategy to get started.
         </p>
       )}
 

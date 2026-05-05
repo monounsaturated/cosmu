@@ -1,4 +1,3 @@
-import { dashboardSchema } from "@cosmu/shared";
 import { DashboardActions } from "./dashboard-actions";
 import { PerformanceChart } from "./performance-chart";
 import { RecentRunsTable } from "./run-detail-row";
@@ -10,47 +9,9 @@ import { VenueOverview } from "./venue-overview";
 import { RecentExecutions } from "./recent-executions";
 import { PortfolioState } from "./portfolio-state";
 import { PromptSnapshots } from "./prompt-snapshots";
-
-const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
+import { getDashboard } from "./dashboard-data";
 
 export const dynamic = "force-dynamic";
-
-const emptyDashboard = () =>
-  dashboardSchema.parse({
-    generatedAt: new Date().toISOString(),
-    venueOverview: { live: null, testnet: null },
-    bots: [],
-    performanceSeries: [],
-    recentRuns: [],
-    recentExecutions: [],
-    latestSnapshots: [],
-    promptVersions: []
-  });
-
-const getDashboard = async () => {
-  try {
-    const apiSecretKey = process.env.API_SECRET_KEY;
-    if (!apiSecretKey) {
-      throw new Error("API_SECRET_KEY is required");
-    }
-
-    const response = await fetch(`${apiBaseUrl}/dashboard`, {
-      cache: "no-store",
-      headers: {
-        "x-api-key": apiSecretKey
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Dashboard request failed: ${response.status}`);
-    }
-
-    return dashboardSchema.parse(await response.json());
-  } catch (error) {
-    console.error("Dashboard fetch failed, rendering empty state", error);
-    return emptyDashboard();
-  }
-};
 
 export default async function HomePage() {
   const dashboard = await getDashboard();
@@ -61,8 +22,8 @@ export default async function HomePage() {
       <section className="hero">
         <div>
           <p className="muted">Cosmu V1</p>
-          <h1>Autonomous Loop Dashboard</h1>
-          <p>One bot, one real loop, clear decision and execution traceability.</p>
+          <h1>Light mode</h1>
+          <p>Fast operational view for the current research, trade, validation, and execution loop.</p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
           <KillAllBotsButton />
@@ -73,8 +34,12 @@ export default async function HomePage() {
 
       <VenueOverview venueOverview={dashboard.venueOverview} />
 
-      <section className="grid" style={{ display: 'block', marginBottom: '32px' }}>
-        <BotTable dashboard={dashboard} />
+      <section className="grid" style={{ display: "block", marginBottom: "32px" }}>
+        <BotTable
+          dashboard={dashboard}
+          title="Light Agents"
+          description="Operational agents share the same performance table used by Research and Pro: compare returns, inspect models, filter the view, and open any row for traceability."
+        />
       </section>
 
       <section className="stack">
