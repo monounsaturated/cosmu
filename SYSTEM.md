@@ -67,6 +67,14 @@ Current posture:
 - per-LLM-call tracing via `run_llm_calls` table
 - global kill switch for emergency halt
 
+Current evolution direction:
+- Cosmu is becoming a three-mode agentic platform while keeping the current live-capable loop intact.
+- **Cosmu Light** is the current lean Binance spot trading loop and must remain available as a simple baseline.
+- **Cosmu Research** is the autonomous paper-only research lab for natural-language experiments, data-source testing, backtests, anti-noise review, candidate bots, and lessons.
+- **Cosmu Pro** is the future full agentic live trader that will use Research outputs, multi-agent review, risk gating, deterministic validation, approval flows, and eventually capped auto-live operation.
+- The frontend must become the command center for observing and controlling bots, agents, research jobs, data sources, approvals, and failures.
+- See `docs/AGENTIC_PLATFORM_PLAN.md`, `docs/ROADMAP.md`, `docs/DECISIONS.md`, and `docs/AGENT_OPERATING_GUIDE.md` before changing this direction.
+
 Why this posture:
 - it is fast to ship
 - easy to operate

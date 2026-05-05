@@ -36,6 +36,8 @@ import { runBot } from "./services/run-bot.js";
 import { killBotAndLiquidate } from "./services/kill-bot.js";
 import { startGuardian } from "./services/guardian.js";
 import { listTools } from "./mcp/index.js";
+import { agentsRouter } from "./routes/agents.js";
+import { researchRouter } from "./routes/research.js";
 
 const app = express();
 
@@ -56,6 +58,9 @@ app.use((request, response, next) => {
 
   next();
 });
+
+app.use(agentsRouter);
+app.use(researchRouter);
 
 app.get("/health", async (_request, response) => {
   response.json({

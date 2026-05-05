@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { ReactNode } from "react";
 import { Sidebar } from "./sidebar";
+import { ControlHeader } from "./control-header";
 
 export const metadata = {
   title: "cosmu",
@@ -13,7 +14,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <div className="app-shell">
           <Sidebar />
-          <div className="app-content">{children}</div>
+          <div className="app-content">
+            <ControlHeader />
+            {children}
+          </div>
         </div>
       </body>
     </html>

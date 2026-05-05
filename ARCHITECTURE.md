@@ -13,6 +13,16 @@ One run = Research → Trader → Validator → Execution, orchestrated in
 - **Validator** ([services/validator.ts](apps/api/src/services/validator.ts)) — deterministic, non-LLM. Invalid *orders* are silently dropped (added to `issues` as `"Dropped SYMBOL side: reason"`); the whole decision is only rejected for kill-switch / unknown venue.
 - **Execution** ([adapters/binance.ts:executeOrders](apps/api/src/adapters/binance.ts)) — places MARKET/LIMIT, then OCO (LIMIT_MAKER above / STOP_LOSS_LIMIT below) for SL/TP on buys.
 
+## Agentic platform direction
+
+Cosmu is being extended into three modes without removing the current loop:
+
+- **Light** — the current operational Binance loop. This remains the production baseline.
+- **Research** — natural-language experiments, data-source tests, paper candidates, anti-overfit review, and memory. It must never place live orders.
+- **Pro** — future opt-in multi-agent live trading that uses Research outputs, risk review, deterministic validation, approvals, and existing execution safeguards.
+
+The first cross-mode primitive is `agent_steps`: a product-level timeline for every visible agent/tool phase. `run_llm_calls` stays as low-level provider telemetry.
+
 ## Triple-run / double-fire protection
 
 Runs are atomically claimed in [lib/store/bots.ts:claimRun](apps/api/src/lib/store/bots.ts): a single `UPDATE … WHERE last_run_started_at IS NULL OR last_run_started_at <= now() - (frequency_minutes*60 - 10s) RETURNING id`. If another tick source (internal 15s loop, Railway cron, manual trigger) already claimed the window, `runBot` bails with `{runId:null, status:"skipped"}`. **Do not** add a separate "last_run_at" write anywhere — the UPDATE is the claim.

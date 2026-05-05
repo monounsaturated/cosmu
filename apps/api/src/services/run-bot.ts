@@ -27,6 +27,7 @@ import {
   openPosition,
   applySellToOpenPositions,
   updateSafetyStop,
+  recordAgentStep,
   type BotSetup
 } from "../lib/store.js";
 import {
@@ -76,6 +77,42 @@ const summarizeTrades = async (runId: string) => {
   const trades = await recentTradeAlerts(runId);
   if (trades.length === 0) return "No executions";
   return trades.map((trade) => `${trade.side} ${trade.symbol} (${trade.status})`).join(", ");
+};
+
+const safeRecordLightStep = async (input: {
+  runId: string;
+  agentKey: string;
+  agentLabel: string;
+  inputJson?: unknown;
+  outputText?: string | null;
+  outputJson?: unknown;
+  toolCalls?: unknown;
+  modelProvider?: string | null;
+  model?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  error?: string | null;
+}) => {
+  try {
+    await recordAgentStep({
+      scopeType: "light_run",
+      scopeId: input.runId,
+      agentKey: input.agentKey,
+      agentLabel: input.agentLabel,
+      inputJson: input.inputJson,
+      outputText: input.outputText,
+      outputJson: input.outputJson,
+      toolCalls: input.toolCalls,
+      modelProvider: input.modelProvider,
+      model: input.model,
+      inputTokens: input.inputTokens,
+      outputTokens: input.outputTokens,
+      error: input.error,
+      status: input.error ? "failure" : "success"
+    });
+  } catch (error) {
+    console.warn("[run-bot] failed to record agent step:", error instanceof Error ? error.message : error);
+  }
 };
 
 export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => {
@@ -142,6 +179,22 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
     });
 
     await storeResearchOutput(runId, researchResult.rawText);
+    await safeRecordLightStep({
+      runId,
+      agentKey: "research",
+      agentLabel: "Research",
+      inputJson: {
+        strategy: "research_prompt",
+        promptVersionId: bot.promptVersionId
+      },
+      outputText: researchResult.rawText,
+      outputJson: {
+        provider: researchResult.provider,
+        model: researchResult.model
+      },
+      modelProvider: researchResult.provider,
+      model: researchResult.model
+    });
 
     // ── 3. Prepare Trader context ────────────────────────────────────
     // We still compute candidateSymbols from the research output for logging/debugging
@@ -194,12 +247,37 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
     });
 
     await storeTraderOutput(runId, traderResult.rawText);
+    await safeRecordLightStep({
+      runId,
+      agentKey: "trader",
+      agentLabel: "Trader",
+      inputJson: {
+        candidateSymbols,
+        traderPromptVersionId: formatterCtx.formatterPromptVersionId
+      },
+      outputText: traderResult.rawText,
+      outputJson: traderResult.decision,
+      toolCalls: traderResult.toolCalls,
+      modelProvider: traderResult.provider,
+      model: traderResult.model
+    });
 
     // ── 5. Deterministic Validator ───────────────────────────────────
     const validationResult = await validateDecision({
       decision: traderResult.decision,
       runtimeConfig: bot.runtimeConfig,
       venueContext: decisionVenueContext
+    });
+    await safeRecordLightStep({
+      runId,
+      agentKey: "validator",
+      agentLabel: "Validator",
+      inputJson: traderResult.decision,
+      outputText: validationResult.accepted
+        ? "Decision accepted by deterministic validator"
+        : `Decision rejected: ${validationResult.issues.join("; ")}`,
+      outputJson: validationResult,
+      error: validationResult.accepted ? null : validationResult.issues.join("; ")
     });
 
     await storeDecision({
@@ -225,6 +303,23 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
       runtimeConfig: bot.runtimeConfig,
       orders: validationResult.normalizedOrders,
       venueContext: decisionVenueContext
+    });
+    await safeRecordLightStep({
+      runId,
+      agentKey: "execution",
+      agentLabel: "Execution",
+      inputJson: {
+        normalizedOrders: validationResult.normalizedOrders
+      },
+      outputText: executions.length > 0
+        ? executions.map((execution) => `${execution.side} ${execution.symbol} ${execution.status}`).join(", ")
+        : "No executions",
+      outputJson: {
+        executions
+      },
+      error: executions.some((execution) => execution.status === "failure")
+        ? "At least one execution failed"
+        : null
     });
 
     const storedExecutions = await storeExecutionRecords(runId, executions);
@@ -354,6 +449,14 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
       if (error instanceof DecisionParseError) {
         await storeTraderOutput(runId, error.rawText);
       }
+      await safeRecordLightStep({
+        runId,
+        agentKey: "run_failure",
+        agentLabel: "Run Failure",
+        outputText: errorMessage,
+        outputJson: { message: errorMessage },
+        error: errorMessage
+      });
       await finishRun({
         runId,
         runtimeConfigId: bot.runtimeConfigId,

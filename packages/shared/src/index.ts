@@ -11,6 +11,36 @@ export const executionStatusSchema = z.enum(["success", "failure", "uncertain"])
 export const decisionModeSchema = z.enum(["rebalance", "enter", "exit", "hold", "adjust"]);
 export const symbolScopeSchema = z.enum(["selected", "all"]);
 export const sampleQualitySchema = z.enum(["low", "medium", "high"]);
+export const workspaceModeSchema = z.enum(["light", "research", "pro"]);
+export const agentStepStatusSchema = z.enum(["queued", "running", "success", "failure", "skipped"]);
+export const agentScopeTypeSchema = z.enum(["light_run", "research_experiment", "paper_bot_run", "pro_run"]);
+export const researchExperimentStatusSchema = z.enum([
+  "draft",
+  "running",
+  "rejected",
+  "paper_candidate",
+  "live_candidate"
+]);
+export const promotionStatusSchema = z.enum([
+  "none",
+  "paper_auto",
+  "live_pending_approval",
+  "live_approved",
+  "live_rejected"
+]);
+export const dataSourceKindSchema = z.enum([
+  "market",
+  "news",
+  "web",
+  "social",
+  "weather",
+  "astro",
+  "tradingview",
+  "csv",
+  "custom_api",
+  "ibkr",
+  "polymarket"
+]);
 
 export const prePromptModulesSchema = z.object({
   includeCurrentPositions: z.boolean().default(true),
@@ -251,6 +281,72 @@ export const executionRecordSchema = z.object({
 });
 
 export type ExecutionRecord = z.infer<typeof executionRecordSchema>;
+
+export const agentStepSchema = z.object({
+  id: z.string().uuid(),
+  scopeType: agentScopeTypeSchema,
+  scopeId: z.string().uuid(),
+  agentKey: z.string(),
+  agentLabel: z.string(),
+  status: agentStepStatusSchema,
+  inputJson: z.unknown().nullable(),
+  outputText: z.string().nullable(),
+  outputJson: z.unknown().nullable(),
+  toolCalls: z.unknown().nullable(),
+  modelProvider: z.string().nullable(),
+  model: z.string().nullable(),
+  inputTokens: z.number().nullable(),
+  outputTokens: z.number().nullable(),
+  latencyMs: z.number().nullable(),
+  error: z.string().nullable(),
+  startedAt: z.string().datetime(),
+  finishedAt: z.string().datetime().nullable()
+});
+
+export type AgentStep = z.infer<typeof agentStepSchema>;
+
+export const researchDataSourceSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  kind: dataSourceKindSchema,
+  enabled: z.boolean(),
+  config: z.unknown(),
+  healthStatus: z.enum(["unknown", "ok", "warning", "error"]),
+  lastCheckedAt: z.string().datetime().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+export type ResearchDataSource = z.infer<typeof researchDataSourceSchema>;
+
+export const researchExperimentSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  hypothesis: z.string(),
+  status: researchExperimentStatusSchema,
+  promotionStatus: promotionStatusSchema,
+  planJson: z.unknown().nullable(),
+  resultJson: z.unknown().nullable(),
+  skepticVerdict: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+export type ResearchExperiment = z.infer<typeof researchExperimentSchema>;
+
+export const researchCandidateSchema = z.object({
+  id: z.string().uuid(),
+  experimentId: z.string().uuid(),
+  name: z.string(),
+  status: z.enum(["paper_ready", "paper_running", "paper_rejected", "live_candidate"]),
+  thesis: z.string(),
+  metrics: z.unknown().nullable(),
+  riskNotes: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime()
+});
+
+export type ResearchCandidate = z.infer<typeof researchCandidateSchema>;
 
 export const botSummarySchema = z.object({
   id: z.string().uuid(),

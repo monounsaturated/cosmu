@@ -69,5 +69,24 @@ export {
 export { storeLLMCall, getLLMCallsForRun } from "./llm-calls.js";
 export { getAppSetting, setAppSetting } from "./settings.js";
 
+export {
+  createAgentStep,
+  finishAgentStep,
+  recordAgentStep,
+  listAgentSteps,
+  getAgentControlSummary
+} from "./agent-steps.js";
+
+export {
+  createResearchExperiment,
+  updateResearchExperiment,
+  getResearchExperiment,
+  listResearchExperiments,
+  listResearchDataSources,
+  createResearchDataSource,
+  createResearchCandidate,
+  listResearchCandidates
+} from "./research.js";
+
 export type { JsonValue } from "./helpers.js";
 export { parseJson, toIsoString, buildRuntimeConfig } from "./helpers.js";

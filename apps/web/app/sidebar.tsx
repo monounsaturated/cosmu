@@ -3,12 +3,15 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Bot, FlaskConical, LayoutDashboard, Settings, ScrollText, Zap } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: "◈" },
-  { href: "/bots", label: "Bots", icon: "⬡" },
-  { href: "/prompts", label: "Prompts", icon: "✎" },
-  { href: "/settings", label: "Settings", icon: "⚙" },
+  { href: "/", label: "Light", icon: LayoutDashboard },
+  { href: "/bots", label: "Bots", icon: Bot },
+  { href: "/research", label: "Research", icon: FlaskConical },
+  { href: "/pro", label: "Pro", icon: Zap },
+  { href: "/prompts", label: "Prompts", icon: ScrollText },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -47,21 +50,24 @@ export function Sidebar() {
       </div>
 
       <nav className="sidebar-nav">
-        {NAV_ITEMS.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`sidebar-link ${isActive(item.href) && !isBotPage ? "sidebar-link-active" : ""}`}
-            title={collapsed ? item.label : undefined}
-          >
-            <span className="sidebar-icon">{item.icon}</span>
-            {!collapsed && <span>{item.label}</span>}
-          </Link>
-        ))}
+        {NAV_ITEMS.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`sidebar-link ${isActive(item.href) && !isBotPage ? "sidebar-link-active" : ""}`}
+              title={collapsed ? item.label : undefined}
+            >
+              <span className="sidebar-icon"><Icon size={17} /></span>
+              {!collapsed && <span>{item.label}</span>}
+            </Link>
+          );
+        })}
 
         {isBotPage && !isActive("/bots") && (
           <div className="sidebar-link sidebar-link-active" title={collapsed ? "Bot Detail" : undefined}>
-            <span className="sidebar-icon">⬡</span>
+            <span className="sidebar-icon"><Bot size={17} /></span>
             {!collapsed && <span>Bot Detail</span>}
           </div>
         )}

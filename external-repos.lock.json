@@ -1,0 +1,30 @@
+{
+  "reviewedAt": "2026-05-05",
+  "repos": [
+    {
+      "name": "TradingAgents",
+      "url": "https://github.com/TauricResearch/TradingAgents.git",
+      "commit": "7e9e7b83c7fcc18d941300b253c6ed24d985788d",
+      "purpose": "Multi-agent analyst, debate, risk, and decision-log patterns."
+    },
+    {
+      "name": "autoresearch",
+      "url": "https://github.com/karpathy/autoresearch.git",
+      "commit": "228791fb499afffb54b46200aca536f79142f117",
+      "purpose": "Bounded autonomous experiment loops and keep/discard research discipline."
+    },
+    {
+      "name": "MemPalace",
+      "url": "https://github.com/MemPalace/mempalace.git",
+      "commit": "1888b671e2051565480c70e1bab699c1796eef7f",
+      "purpose": "Scoped memory, diaries, and retrieval concepts."
+    },
+    {
+      "name": "Hermes Agent",
+      "url": "https://github.com/NousResearch/hermes-agent.git",
+      "commit": "601e5f1d57cfd4ceefee50a6df05a860a1a602e8",
+      "purpose": "Skills, toolsets, automations, and self-improving agent patterns."
+    }
+  ]
+}
+

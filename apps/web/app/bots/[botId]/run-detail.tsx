@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { LocalTime } from "../../local-time";
+import { AgentTimeline } from "../../agent-timeline";
 
 type Run = {
   id: string;
@@ -509,6 +510,8 @@ export function RunDetail({ run }: { run: Run }) {
           />
         </>
       )}
+
+      <AgentTimeline scopeType="light_run" scopeId={run.id} title="Light Agent Timeline" />
 
       {/* LLM Calls */}
       <LLMCallsPanel runId={run.id} />

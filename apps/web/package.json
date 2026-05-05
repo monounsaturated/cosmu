@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@cosmu/shared": "workspace:*",
+    "lucide-react": "^1.14.0",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"
