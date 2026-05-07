@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { ModalShell } from "./modal-shell";
 
 const ALL_SYMBOLS_TOKEN = "__ALL__";
 
@@ -445,6 +446,7 @@ function PromptSection({
         <button
           type="button"
           className={`segmented-option ${strategy === "new" ? "segmented-option-active" : ""}`}
+          aria-pressed={strategy === "new"}
           onClick={() => onStrategyChange("new")}
         >
           New Prompt
@@ -452,6 +454,7 @@ function PromptSection({
         <button
           type="button"
           className={`segmented-option ${strategy === "existing" ? "segmented-option-active" : ""}`}
+          aria-pressed={strategy === "existing"}
           onClick={() => onStrategyChange("existing")}
           disabled={promptOptions.length === 0}
         >
@@ -718,6 +721,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   const [isSyncing, setIsSyncing] = useState(false);
   const [venueBalance, setVenueBalance] = useState<{ totalFreeUsdt: number; allocatedUsdt: number; availableUsdt: number } | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
+  const pairsListId = useId();
 
   const providerOptions = useMemo(() => {
     const fromApi = Array.from(new Set(models.map((m) => m.provider))).sort();
@@ -1286,17 +1290,16 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>{mode === "create" ? "Create Agent" : "Edit Agent"}</h2>
-          <button className="modal-close" onClick={onClose}>&times;</button>
-        </div>
-
-        {loading ? (
-          <p className="muted">Loading configuration...</p>
-        ) : (
-          <form className="modal-form" onSubmit={handleSubmit}>
+    <ModalShell
+      title={mode === "create" ? "Create Agent" : "Edit Agent"}
+      description="Configure prompts, models, account, pairs, budget, cadence, and deterministic execution controls."
+      wide
+      onClose={onClose}
+    >
+      {loading ? (
+        <p className="muted">Loading configuration...</p>
+      ) : (
+        <form className="modal-form" onSubmit={handleSubmit}>
 
             {/* ── Agent Name ── */}
             <div className="form-section">
@@ -1392,6 +1395,9 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                           if (formData.symbolScope !== "all") setSymbolSearch(e.target.value);
                         }}
                         placeholder={formData.symbolScope === "all" ? "" : "Search pairs..."}
+                        aria-expanded={pairsOpen}
+                        aria-controls={pairsOpen ? pairsListId : undefined}
+                        aria-label="Authorized pairs"
                         onFocus={() => {
                           setPairsOpen(true);
                           // Clear "N pairs selected" when focusing to type
@@ -1400,7 +1406,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                         readOnly={formData.symbolScope === "all"}
                       />
                       {pairsOpen && (
-                        <div className="pairs-dropdown">
+                        <div className="pairs-dropdown" id={pairsListId} role="group" aria-label="Authorized pair choices">
                           <label className="pairs-row pairs-row-all">
                             <input
                               type="checkbox"
@@ -1617,7 +1623,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
             </div>
 
             {error && (
-              <div className="form-error">
+              <div className="form-error" role="alert" aria-live="assertive">
                 <p>{error}</p>
                 {error.includes("models") && (
                   <div style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -1642,9 +1648,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                   : mode === "create" ? "Create Agent" : "Save Changes"}
               </button>
             </div>
-          </form>
-        )}
-      </div>
-    </div>
+        </form>
+      )}
+    </ModalShell>
   );
 }

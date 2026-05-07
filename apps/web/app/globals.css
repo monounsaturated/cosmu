@@ -3447,3 +3447,487 @@ body::before {
     padding: 8px;
   }
 }
+
+/* Mobile-first modal and agent form polish. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.62)),
+    rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(16px) saturate(1.08);
+  overscroll-behavior: contain;
+}
+
+.modal-content,
+.modal-content-wide {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(960px, 100%);
+  max-width: none;
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 98%, transparent), color-mix(in srgb, var(--bg) 96%, transparent));
+  box-shadow: -32px 0 90px rgba(0, 0, 0, 0.34);
+}
+
+.modal-content:not(.modal-content-wide) {
+  width: min(480px, 100%);
+}
+
+.modal-grabber {
+  display: none;
+}
+
+.modal-header {
+  position: relative;
+  top: auto;
+  z-index: 8;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0;
+  padding: 22px 24px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  backdrop-filter: var(--glass-blur);
+}
+
+.modal-title-block {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.modal-title-block h2 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 22px;
+  font-weight: 790;
+  line-height: 1.1;
+}
+
+.modal-title-block p {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.modal-close {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  color: var(--muted);
+}
+
+.modal-close:hover {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.modal-content > .muted,
+.modal-warning-copy {
+  padding: 18px 24px 0;
+}
+
+.modal-content > .form-actions {
+  padding: 18px 24px 24px;
+}
+
+.modal-form {
+  flex: 1;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-height: 0;
+  padding: 18px 22px 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-bottom: 120px;
+}
+
+.modal-form > .form-actions {
+  position: sticky;
+  right: 0;
+  bottom: -24px;
+  left: 0;
+  z-index: 9;
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(160px, 1.2fr);
+  gap: 10px;
+  justify-content: stretch;
+  margin: 6px -22px -24px;
+  padding: 14px 22px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  backdrop-filter: var(--glass-blur);
+}
+
+.modal-form > .form-actions .btn {
+  width: 100%;
+  min-height: 46px;
+}
+
+.modal-form > .form-section:last-of-type {
+  margin-bottom: 96px;
+}
+
+.modal-form > .form-actions .btn-primary {
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-3));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--accent-3));
+}
+
+.modal-form > .form-actions .btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--accent-hover), var(--accent-3));
+}
+
+.form-section {
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 76%, transparent), color-mix(in srgb, var(--surface) 66%, transparent));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.form-section h3 {
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 770;
+}
+
+.section-header {
+  align-items: flex-start;
+}
+
+.form-row label {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.form-row input,
+.form-row select,
+.form-row textarea,
+.pairs-search {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 74%, var(--surface-subtle));
+  color: var(--text-strong);
+  font-size: 14px;
+  line-height: 1.35;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.form-row textarea,
+.prompt-body-textarea,
+.prompt-composer-textarea {
+  line-height: 1.55;
+}
+
+.form-row input:focus,
+.form-row select:focus,
+.form-row textarea:focus,
+.pairs-search:focus,
+.prompt-body-textarea:focus,
+.prompt-composer-textarea:focus,
+.command-bar input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.btn:focus-visible,
+.segmented-option:focus-visible,
+.checkbox-label:focus-within,
+.pairs-row:focus-within,
+.modal-close:focus-visible,
+.column-picker summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 72%, white);
+  outline-offset: 2px;
+}
+
+.form-grid,
+.form-grid-two,
+.form-grid-three,
+.form-grid-3col {
+  gap: 12px;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 58%, transparent);
+}
+
+.segmented-option {
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 740;
+}
+
+.segmented-option:hover:not(:disabled) {
+  color: var(--text-strong);
+  background: var(--surface-subtle);
+}
+
+.segmented-option-active,
+.segmented-option[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 20%, transparent), color-mix(in srgb, var(--accent-3) 12%, transparent));
+  color: var(--text-strong);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07);
+}
+
+.checkbox-row,
+.modules-grid {
+  gap: 8px;
+}
+
+.checkbox-label {
+  min-height: 42px;
+  align-items: center;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.checkbox-label:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.checkbox-label:has(input:checked) {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text-strong);
+}
+
+.checkbox-label input[type="checkbox"],
+.pairs-row input[type="checkbox"],
+.column-picker-option input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.pairs-picker {
+  z-index: 12;
+}
+
+.pairs-dropdown {
+  z-index: 40;
+  max-height: min(310px, 48dvh);
+  margin-top: 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elevated) 98%, transparent);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.34);
+}
+
+.pairs-row {
+  min-height: 42px;
+  padding: 10px 12px;
+}
+
+.pairs-row-all {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
+}
+
+.selected-symbols {
+  margin-top: 8px;
+}
+
+.badge-button {
+  min-height: 28px;
+  border-radius: 8px;
+}
+
+.prompt-composer,
+.prompt-body-panel,
+.prompt-howto {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 72%, var(--surface-subtle));
+}
+
+.prompt-composer-textarea,
+.prompt-body-textarea {
+  min-height: 220px;
+  font-size: 13px;
+}
+
+.prompt-body-preview {
+  max-height: 320px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.prompt-body-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+}
+
+.injected-separator-label {
+  color: var(--accent-3);
+}
+
+.injected-block-header {
+  min-height: 40px;
+}
+
+.injected-block-preview {
+  color: color-mix(in srgb, var(--accent-3) 70%, var(--muted));
+}
+
+.form-error {
+  display: grid;
+  gap: 10px;
+  border-radius: 8px;
+}
+
+.form-error p {
+  margin: 0;
+}
+
+@media (min-width: 1040px) {
+  .modal-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .modal-form > .form-section,
+  .modal-form > .form-error,
+  .modal-form > .form-actions {
+    grid-column: 1 / -1;
+  }
+
+  .modal-form > .form-section:nth-of-type(3),
+  .modal-form > .form-section:nth-of-type(4) {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .modal-overlay {
+    align-items: flex-end;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.58);
+  }
+
+  .modal-content,
+  .modal-content-wide,
+  .modal-content:not(.modal-content-wide) {
+    width: 100%;
+    height: min(94dvh, 100dvh);
+    max-height: 94dvh;
+    border: 1px solid var(--border);
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -24px 70px rgba(0, 0, 0, 0.42);
+  }
+
+  .modal-grabber {
+    display: block;
+    width: 42px;
+    height: 4px;
+    margin: 8px auto 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--muted) 42%, transparent);
+  }
+
+  .modal-header {
+    padding: 12px 14px 13px;
+  }
+
+  .modal-title-block h2 {
+    font-size: 18px;
+  }
+
+  .modal-title-block p {
+    font-size: 12px;
+  }
+
+  .modal-close {
+    width: 36px;
+    height: 36px;
+  }
+
+  .modal-form {
+    gap: 10px;
+    padding: 12px 10px 18px;
+  }
+
+  .modal-form > .form-section:last-of-type {
+    margin-bottom: 82px;
+  }
+
+  .modal-form > .form-actions {
+    bottom: -18px;
+    grid-template-columns: 1fr 1fr;
+    margin: 4px -10px -18px;
+    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .form-section {
+    padding: 14px;
+  }
+
+  .form-section h3 {
+    font-size: 14px;
+  }
+
+  .prompt-composer-textarea,
+  .prompt-body-textarea {
+    min-height: 180px;
+  }
+
+  .prompt-body-preview {
+    max-height: 220px;
+  }
+
+  .pairs-dropdown {
+    max-height: min(280px, 44dvh);
+  }
+
+  .modal-content > .form-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}

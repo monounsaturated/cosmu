@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Play, Settings2, StopCircle } from "lucide-react";
 import { EditBotModal } from "./edit-bot-modal";
+import { ModalShell } from "./modal-shell";
 
 type BotControlsProps = {
   botId: string;
@@ -97,26 +98,23 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
         <p className={`feedback feedback-${feedback.type}`}>{feedback.text}</p>
       )}
       {confirmKillOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: "460px" }}>
-            <div className="modal-header">
-              <h2>Stop agent?</h2>
-              <button className="modal-close" onClick={() => setConfirmKillOpen(false)}>✕</button>
-            </div>
-            <p className="muted" style={{ marginBottom: "16px", lineHeight: 1.5 }}>
-              This will cancel open orders, sell all current positions, and permanently stop the agent.
-              It cannot be restarted.
-            </p>
-            <div className="form-actions">
-              <button className="btn" onClick={() => setConfirmKillOpen(false)} disabled={loading !== null}>
-                Cancel
-              </button>
-              <button className="btn btn-warn" onClick={kill} disabled={loading !== null}>
-                {loading === "kill" ? "Stopping..." : "Yes, stop agent"}
-              </button>
-            </div>
+        <ModalShell
+          title="Stop agent?"
+          description="This will cancel open orders, sell all current positions, and permanently stop the agent."
+          onClose={() => setConfirmKillOpen(false)}
+        >
+          <p className="muted modal-warning-copy">
+            This cannot be restarted. Use this only when the strategy should leave the market now.
+          </p>
+          <div className="form-actions">
+            <button className="btn" type="button" onClick={() => setConfirmKillOpen(false)} disabled={loading !== null}>
+              Cancel
+            </button>
+            <button className="btn btn-warn" type="button" onClick={kill} disabled={loading !== null}>
+              {loading === "kill" ? "Stopping..." : "Yes, stop agent"}
+            </button>
           </div>
-        </div>
+        </ModalShell>
       )}
       {editOpen && (
         <EditBotModal
