@@ -89,6 +89,13 @@ const envSchema = z.object({
   XAI_API_KEY: optionalNonEmptyString,
   NOUS_API_KEY: optionalNonEmptyString,
   NOUS_BASE_URL: optionalUrlString,
+  OPENAI_API_KEY: optionalNonEmptyString,
+  OPENAI_BASE_URL: optionalUrlString,
+  ANTHROPIC_API_KEY: optionalNonEmptyString,
+  ANTHROPIC_BASE_URL: optionalUrlString,
+  HUGGINGFACE_API_KEY: optionalNonEmptyString,
+  HF_TOKEN: optionalNonEmptyString,
+  HUGGINGFACE_BASE_URL: optionalUrlString,
   BINANCE_API_KEY: optionalNonEmptyString,
   BINANCE_API_SECRET: optionalNonEmptyString,
   BINANCE_TESTNET_API_KEY: optionalNonEmptyString,
@@ -101,5 +108,6 @@ const parsedEnv = envSchema.parse(process.env);
 
 export const env = {
   ...parsedEnv,
+  HUGGINGFACE_API_KEY: parsedEnv.HUGGINGFACE_API_KEY ?? parsedEnv.HF_TOKEN,
   API_PORT: parsedEnv.PORT ?? parsedEnv.API_PORT ?? 4000
 };

@@ -30,13 +30,18 @@ import {
   createTraderPrompt,
   touchResearchPromptUsage,
   touchTraderPromptUsage,
-  listActivePositions
+  listActivePositions,
+  getAppSettings,
+  setAppSettings
 } from "./lib/store.js";
 import { getDashboard } from "./services/dashboard.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
 import { listXaiModels } from "./providers/xai.js";
 import { listNousModels } from "./providers/nous.js";
 import {
+  BOOTSTRAP_ANTHROPIC_PROFILES,
+  BOOTSTRAP_HUGGINGFACE_PROFILES,
+  BOOTSTRAP_OPENAI_PROFILES,
   BOOTSTRAP_NOUS_PROFILES,
   BOOTSTRAP_XAI_PROFILES,
   bootstrapModelProfiles,
@@ -188,6 +193,22 @@ app.get("/dashboard", async (_request, response, next) => {
 app.get("/settings/formatter-prompt", async (_request, response, next) => {
   try {
     response.json({ formatterPrompts: await getAllActiveFormatterPrompts() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/settings/app", async (_request, response, next) => {
+  try {
+    response.json(await getAppSettings());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/settings/app", async (request, response, next) => {
+  try {
+    response.json(await setAppSettings(request.body));
   } catch (error) {
     next(error);
   }
@@ -498,7 +519,7 @@ app.get("/models", async (request, response, next) => {
     const provider = typeof request.query.provider === "string" ? request.query.provider : undefined;
     let liveXaiModelIds: Set<string> | null = null;
     let liveXaiModels: Array<{ id: string; created: number | null }> = [];
-    const providersToSync = provider ? [provider] : ["xai", "nous"];
+    const providersToSync = provider ? [provider] : ["xai", "nous", "openai", "anthropic", "huggingface"];
 
     for (const providerName of providersToSync) {
       try {
@@ -549,6 +570,24 @@ app.get("/models", async (request, response, next) => {
         id: `fallback:nous:${p.model}`,
         name: p.name,
         provider: "nous",
+        model: p.model,
+        settings: { temperature: 0.2 }
+      }))).concat(BOOTSTRAP_OPENAI_PROFILES.map((p) => ({
+        id: `fallback:openai:${p.model}`,
+        name: p.name,
+        provider: "openai",
+        model: p.model,
+        settings: { temperature: 0.2 }
+      }))).concat(BOOTSTRAP_ANTHROPIC_PROFILES.map((p) => ({
+        id: `fallback:anthropic:${p.model}`,
+        name: p.name,
+        provider: "anthropic",
+        model: p.model,
+        settings: { temperature: 0.2 }
+      }))).concat(BOOTSTRAP_HUGGINGFACE_PROFILES.map((p) => ({
+        id: `fallback:huggingface:${p.model}`,
+        name: p.name,
+        provider: "huggingface",
         model: p.model,
         settings: { temperature: 0.2 }
       })));
@@ -652,11 +691,11 @@ app.post("/bots", async (request, response, next) => {
       promptVersionId,
       modelProfileId,
       traderModelProfileId: traderModelProfileId ?? null,
-      promptConfig,
-      traderConfig,
+      promptConfig: prePromptConfigSchema.parse(promptConfig ?? {}),
+      traderConfig: traderConfig === undefined ? undefined : traderConfigSchema.parse(traderConfig),
       traderPromptVersionId: traderPromptVersionId ?? null,
       parentBotId,
-      runtimeConfig
+      runtimeConfig: runtimeConfigSchema.parse(runtimeConfig)
     });
 
     // Track prompt usage

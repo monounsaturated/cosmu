@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Bot, FlaskConical, Radio, ShieldCheck } from "lucide-react";
+import { ArrowRight, BarChart3, Bot, Settings } from "lucide-react";
 import { DashboardActions } from "./dashboard-actions";
 import { PerformanceChart } from "./performance-chart";
 import { RecentRunsTable } from "./run-detail-row";
@@ -32,8 +32,8 @@ export default async function HomePage() {
           <p className="eyebrow">Command</p>
           <h1>Know what is running, why, and what can trade next.</h1>
           <p>
-            One operator surface for paper and live agents. Signals become research, research becomes agents,
-            and every prompt, model, data source, run, order, and approval stays inspectable.
+            One focused surface for creating agents, tracking performance, and tuning prompts, models,
+            pairs, budget, cadence, and execution rules.
           </p>
         </div>
         <div className="hero-actions command-actions">
@@ -47,10 +47,9 @@ export default async function HomePage() {
 
       <section className="product-flow" aria-label="Primary workflow">
         {[
-          { href: "/signals", label: "Capture", body: "Market notes and observations", icon: Radio },
-          { href: "/research", label: "Research", body: "Bounded experiments and data", icon: FlaskConical },
-          { href: "/bots", label: "Deploy", body: "Models, prompts, pairs, risk", icon: Bot },
-          { href: "/pro", label: "Review", body: "Human approval for live", icon: ShieldCheck }
+          { href: "/bots", label: "Create", body: "Launch a lean paper agent", icon: Bot },
+          { href: "/", label: "Monitor", body: "Runs, PnL, holdings, errors", icon: BarChart3 },
+          { href: "/settings", label: "Tune", body: "Defaults, models, data toggles", icon: Settings }
         ].map((item) => {
           const Icon = item.icon;
           return (

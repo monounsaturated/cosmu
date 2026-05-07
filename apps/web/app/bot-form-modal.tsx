@@ -194,12 +194,81 @@ type Model = {
   model: string;
 };
 
+type AppSettings = {
+  agentDefaults: {
+    research: {
+      provider: "xai" | "nous" | "openai" | "anthropic" | "huggingface";
+      modelProfileId: string | null;
+      prompt: { mode: "new" | "saved"; versionId: string | null };
+    };
+    trader: {
+      provider: "xai" | "nous" | "openai" | "anthropic" | "huggingface";
+      modelProfileId: string | null;
+      prompt: { mode: "new" | "saved"; versionId: string | null };
+    };
+    runtime: {
+      venue: "binance" | "binance-testnet";
+      frequencyMinutes: number;
+      budgetUsdt: number;
+      symbolScope: "selected" | "all";
+      execution: {
+        enabled: boolean;
+        allowMarketOrders: boolean;
+        allowLimitOrders: boolean;
+        maxOrdersPerRun: number;
+        maxNotionalPerOrderUsd: number;
+        minCashReserveUsd: number;
+      };
+    };
+  };
+  featureToggles: {
+    signals: boolean;
+    researchLab: boolean;
+    proReview: boolean;
+    promptLibrary: boolean;
+  };
+};
+
 const FALLBACK_XAI_MODELS: Model[] = [
   { id: "fallback:xai:grok-3", name: "xAI grok-3", provider: "xai", model: "grok-3" },
   { id: "fallback:xai:grok-3-fast", name: "xAI grok-3-fast", provider: "xai", model: "grok-3-fast" },
   { id: "fallback:xai:grok-3-mini", name: "xAI grok-3-mini", provider: "xai", model: "grok-3-mini" },
   { id: "fallback:xai:grok-3-mini-fast", name: "xAI grok-3-mini-fast", provider: "xai", model: "grok-3-mini-fast" },
 ];
+
+const FALLBACK_MODELS: Model[] = [
+  ...FALLBACK_XAI_MODELS,
+  { id: "fallback:openai:gpt-4.1", name: "OpenAI GPT-4.1", provider: "openai", model: "gpt-4.1" },
+  { id: "fallback:openai:gpt-4.1-mini", name: "OpenAI GPT-4.1 mini", provider: "openai", model: "gpt-4.1-mini" },
+  { id: "fallback:anthropic:claude-sonnet-4-5", name: "Anthropic Claude Sonnet 4.5", provider: "anthropic", model: "claude-sonnet-4-5" },
+  { id: "fallback:anthropic:claude-haiku-4-5", name: "Anthropic Claude Haiku 4.5", provider: "anthropic", model: "claude-haiku-4-5" },
+  { id: "fallback:huggingface:deepseek-ai/DeepSeek-R1:fastest", name: "Hugging Face DeepSeek R1 fastest", provider: "huggingface", model: "deepseek-ai/DeepSeek-R1:fastest" },
+  { id: "fallback:nous:nousresearch/hermes-4-70b", name: "Nous Hermes 4 70B", provider: "nous", model: "nousresearch/hermes-4-70b" },
+];
+
+const PROVIDER_ORDER = ["xai", "openai", "anthropic", "huggingface", "nous"];
+
+const DEFAULT_APP_SETTINGS: AppSettings = {
+  agentDefaults: {
+    research: { provider: "xai", modelProfileId: null, prompt: { mode: "new", versionId: null } },
+    trader: { provider: "xai", modelProfileId: null, prompt: { mode: "saved", versionId: null } },
+    runtime: {
+      venue: "binance-testnet",
+      frequencyMinutes: 30,
+      budgetUsdt: 1000,
+      symbolScope: "all",
+      execution: {
+        enabled: false,
+        allowMarketOrders: true,
+        allowLimitOrders: true,
+        maxOrdersPerRun: 3,
+        maxNotionalPerOrderUsd: 250,
+        minCashReserveUsd: 25
+      }
+    }
+  },
+  featureToggles: { signals: false, researchLab: false, proReview: false, promptLibrary: false }
+};
 
 const pickBestModel = (models: Model[]): Model | undefined => {
   const checks: Array<(m: Model) => boolean> = [
@@ -225,6 +294,7 @@ type BotSetup = {
   traderModelProfileId: string | null;
   traderModelProvider: string | null;
   promptConfig: {
+    extraLoopPrompt?: string;
     modules: {
       includeCurrentPositions: boolean;
       includePastTrades: boolean;
@@ -324,6 +394,7 @@ const buildDefaultState = () => {
       minCashReserveUsd: 25
     },
     promptConfig: {
+      extraLoopPrompt: "",
       modules: {
         includeCurrentPositions: true,
         includePastTrades: false,
@@ -724,22 +795,27 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   const pairsListId = useId();
 
   const providerOptions = useMemo(() => {
-    const fromApi = Array.from(new Set(models.map((m) => m.provider))).sort();
-    return fromApi.length > 0 ? fromApi : ["xai"];
+    const fromApi = Array.from(new Set(models.map((m) => m.provider)));
+    return Array.from(new Set([...PROVIDER_ORDER, ...fromApi])).sort((a, b) => {
+      const ai = PROVIDER_ORDER.indexOf(a);
+      const bi = PROVIDER_ORDER.indexOf(b);
+      if (ai === -1 && bi === -1) return a.localeCompare(b);
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
   }, [models]);
 
   const researchAvailableModels = useMemo(() => {
     const fromApi = models.filter((m) => m.provider === selectedResearchProvider);
     if (fromApi.length > 0) return fromApi;
-    if (selectedResearchProvider === "xai") return FALLBACK_XAI_MODELS;
-    return [];
+    return FALLBACK_MODELS.filter((m) => m.provider === selectedResearchProvider);
   }, [models, selectedResearchProvider]);
 
   const traderAvailableModels = useMemo(() => {
     const fromApi = models.filter((m) => m.provider === selectedTraderProvider);
     if (fromApi.length > 0) return fromApi;
-    if (selectedTraderProvider === "xai") return FALLBACK_XAI_MODELS;
-    return [];
+    return FALLBACK_MODELS.filter((m) => m.provider === selectedTraderProvider);
   }, [models, selectedTraderProvider]);
 
   // Research prompt options — sorted by last used (most recent first), then by creation date
@@ -881,19 +957,21 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       setDataLoaded(false);
       setError(null);
 
-      const [promptsRes, modelsRes, symbolsRes, botRes, traderPromptsRes, numbersRes] = await Promise.all([
+      const [promptsRes, modelsRes, symbolsRes, botRes, traderPromptsRes, numbersRes, appSettingsRes] = await Promise.all([
         safeFetch<Prompt[]>("/api/prompts"),
         safeFetch<Model[]>("/api/models"),
         safeFetch<SymbolResponse>("/api/venues/binance/symbols"),
         mode === "edit" && botId ? safeFetch<BotSetup>(`/api/bots/${botId}`) : Promise.resolve({ data: null, error: null }),
         safeFetch<TraderPrompt[]>("/api/trader-prompts"),
         safeFetch<{ nextBotNumber: number; nextResearchPromptNumber: number; nextTraderPromptNumber: number }>("/api/next-numbers"),
+        safeFetch<AppSettings>("/api/settings/app"),
       ]);
 
       if (cancelled) return;
 
       if (promptsRes.data) setPrompts(promptsRes.data);
-      if (modelsRes.data && modelsRes.data.length > 0) setModels(modelsRes.data);
+      const loadedModels = modelsRes.data && modelsRes.data.length > 0 ? modelsRes.data : FALLBACK_MODELS;
+      setModels(loadedModels);
       if (traderPromptsRes.data) setTraderPrompts(traderPromptsRes.data);
       if (numbersRes.data) {
         setNextBotNumber(numbersRes.data.nextBotNumber);
@@ -908,7 +986,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       if (cancelled) return;
 
       const errors: string[] = [];
-      if (!modelsRes.data || modelsRes.data.length === 0) errors.push("models");
+      if (loadedModels.length === 0) errors.push("models");
       if (resolvedSymbols.length === 0) errors.push("symbols");
       if (mode === "edit" && botId && !botRes.data) errors.push("bot config");
 
@@ -949,7 +1027,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
           researchModelProfileId: setup.modelProfileId,
           traderModelProfileId: setup.traderModelProfileId ?? setup.modelProfileId,
           modelProfileId: setup.modelProfileId,
-          promptConfig: { ...setup.promptConfig },
+          promptConfig: { ...setup.promptConfig, extraLoopPrompt: setup.promptConfig.extraLoopPrompt ?? "" },
           venue: mergedVenue,
           frequencyMinutes: String(setup.runtimeConfig.frequencyMinutes),
           budgetUsdt: setup.runtimeConfig.budgetUsdt ?? 1000,
@@ -957,16 +1035,47 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
           contextSymbols: setup.runtimeConfig.contextSymbols,
           execution: setup.runtimeConfig.execution
         });
-      } else if (modelsRes.data && modelsRes.data.length > 0) {
-        const bestModel = pickBestModel(modelsRes.data);
-        if (bestModel) {
-          setSelectedResearchProvider(bestModel.provider);
-          setSelectedTraderProvider(bestModel.provider);
+      } else {
+        const settings = appSettingsRes.data ?? DEFAULT_APP_SETTINGS;
+        const researchDefault = settings.agentDefaults.research;
+        const traderDefault = settings.agentDefaults.trader;
+        const runtimeDefault = settings.agentDefaults.runtime;
+        const researchModels = loadedModels.filter((m) => m.provider === researchDefault.provider);
+        const traderModels = loadedModels.filter((m) => m.provider === traderDefault.provider);
+        const researchModel =
+          loadedModels.find((m) => m.id === researchDefault.modelProfileId) ??
+          pickBestModel(researchModels.length > 0 ? researchModels : loadedModels);
+        const traderModel =
+          loadedModels.find((m) => m.id === traderDefault.modelProfileId) ??
+          pickBestModel(traderModels.length > 0 ? traderModels : loadedModels);
+        const savedResearchPromptExists = promptsRes.data?.some((prompt) => prompt.latestVersionId === researchDefault.prompt.versionId) ?? false;
+        const savedTraderPromptExists = traderPromptsRes.data?.some((prompt) => prompt.latestVersionId === traderDefault.prompt.versionId) ?? false;
+        const hasAnyResearchPrompt = (promptsRes.data ?? []).some((prompt) => Boolean(prompt.latestVersionId));
+        const hasAnyTraderPrompt = (traderPromptsRes.data ?? []).some((prompt) => Boolean(prompt.latestVersionId));
+
+        if (researchModel || traderModel) {
+          setSelectedResearchProvider(researchModel?.provider ?? researchDefault.provider);
+          setSelectedTraderProvider(traderModel?.provider ?? traderDefault.provider);
           setFormData((cur) => ({
             ...cur,
-            researchModelProfileId: cur.researchModelProfileId || bestModel.id,
-            traderModelProfileId: cur.traderModelProfileId || bestModel.id,
-            modelProfileId: cur.modelProfileId || bestModel.id,
+            researchStrategy:
+              researchDefault.prompt.mode === "saved" && (savedResearchPromptExists || hasAnyResearchPrompt)
+                ? "existing"
+                : "new",
+            existingPromptVersionId: savedResearchPromptExists ? researchDefault.prompt.versionId ?? "" : cur.existingPromptVersionId,
+            traderStrategy:
+              traderDefault.prompt.mode === "saved" && (savedTraderPromptExists || hasAnyTraderPrompt)
+                ? "existing"
+                : "new",
+            existingTraderVersionId: savedTraderPromptExists ? traderDefault.prompt.versionId ?? "" : cur.existingTraderVersionId,
+            researchModelProfileId: cur.researchModelProfileId || researchModel?.id || "",
+            traderModelProfileId: cur.traderModelProfileId || traderModel?.id || researchModel?.id || "",
+            modelProfileId: cur.modelProfileId || researchModel?.id || "",
+            venue: runtimeDefault.venue,
+            frequencyMinutes: String(runtimeDefault.frequencyMinutes),
+            budgetUsdt: runtimeDefault.budgetUsdt,
+            symbolScope: runtimeDefault.symbolScope,
+            execution: { ...runtimeDefault.execution },
             name: cur.name || "",
           }));
         }
@@ -1490,6 +1599,33 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
               dataLoaded={dataLoaded}
               disabled={false}
             />
+
+            <div className="form-section loop-prompt-section">
+              <div className="section-header">
+                <h3>Loop Prompt</h3>
+                <span className="badge badge-neutral">optional</span>
+              </div>
+              <p className="field-help">
+                A short operator note passed with the research output before the trader decides. Keep it tactical.
+              </p>
+              <div className="form-row">
+                <label>
+                  Extra instruction
+                  <textarea
+                    value={formData.promptConfig.extraLoopPrompt ?? ""}
+                    onChange={(event) =>
+                      setFormData((cur) => ({
+                        ...cur,
+                        promptConfig: { ...cur.promptConfig, extraLoopPrompt: event.target.value.slice(0, 2000) }
+                      }))
+                    }
+                    rows={3}
+                    maxLength={2000}
+                    placeholder="Example: Avoid chasing candles after a 5% move; prefer setups with clear liquidity and stop placement."
+                  />
+                </label>
+              </div>
+            </div>
 
             {/* ── Trader Prompt ── */}
             <PromptSection

@@ -191,6 +191,7 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
               <SettingPill label="Performance Stats" on={!!setup.promptConfig?.modules?.includePerformanceStats} />
               <SettingPill label="Bot Ranking" on={!!setup.promptConfig?.modules?.includeBotRanking} />
               <SettingPill label="Wallet Overview" on={!!setup.promptConfig?.modules?.includeWalletOverview} />
+              <SettingPill label="Loop Prompt" on={!!setup.promptConfig?.extraLoopPrompt?.trim()} />
             </div>
           </div>
 

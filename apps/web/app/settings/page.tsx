@@ -7,9 +7,9 @@ export default function SettingsPage() {
       <section className="command-hero">
         <div>
           <p className="eyebrow">System</p>
-          <h1>Models, data sources, and execution defaults.</h1>
+          <h1>Defaults for a focused agent product.</h1>
           <p className="muted">
-            Configure the pieces every agent depends on before you let it research, trade, or ask for live approval.
+            Pick default prompts, providers, models, runtime settings, and future data source toggles from one place.
           </p>
         </div>
       </section>

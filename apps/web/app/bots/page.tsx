@@ -13,9 +13,9 @@ export default async function BotsPage() {
       <section className="hero hero-compact">
         <div>
           <p className="eyebrow">Agents</p>
-          <h1>One place for every bot.</h1>
+          <h1>Build and tune every agent.</h1>
           <p>
-            Create, inspect, and compare Light, Research, and Pro agents without hunting through separate pages.
+            Create, inspect, and compare the core Cosmu trading agents from one table.
           </p>
         </div>
         <div className="hero-actions">

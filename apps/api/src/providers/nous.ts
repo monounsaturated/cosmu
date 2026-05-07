@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { env } from "../env.js";
 import type { LLMChatInput, LLMProvider, LLMResponse } from "./llm.js";
+import { runOpenAiCompatibleAgentLoop } from "./openai-compatible.js";
 
 const getNousBaseUrl = () => env.NOUS_BASE_URL ?? "https://portal.nousresearch.com/v1";
 
@@ -73,3 +74,7 @@ export const listNousModels = async () => {
     }))
     .filter((row) => row.id.length > 0);
 };
+
+export const runNousAgentLoop = (
+  input: Omit<Parameters<typeof runOpenAiCompatibleAgentLoop>[0], "provider">
+) => runOpenAiCompatibleAgentLoop({ provider: "nous", ...input });

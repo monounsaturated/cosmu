@@ -103,6 +103,7 @@ export const prePromptModulesSchema = z.object({
 export const prePromptConfigSchema = z
   .object({
     preset: z.string().optional(),
+    extraLoopPrompt: z.string().max(2000).optional().default(""),
     modules: prePromptModulesSchema.default({
       includeCurrentPositions: true,
       includePastTrades: false,
@@ -113,6 +114,7 @@ export const prePromptConfigSchema = z
     })
   })
   .transform((val) => ({
+    extraLoopPrompt: val.extraLoopPrompt.trim(),
     modules: val.modules
   }));
 
@@ -123,6 +125,84 @@ export const traderConfigSchema = z.object({
 
 export type PrePromptConfig = z.infer<typeof prePromptConfigSchema>;
 export type TraderConfig = z.infer<typeof traderConfigSchema>;
+
+export const llmProviderSchema = z.enum(["xai", "nous", "openai", "anthropic", "huggingface"]);
+export type LlmProvider = z.infer<typeof llmProviderSchema>;
+
+const DEFAULT_PROMPT_DEFAULT = { mode: "new", versionId: null } as const;
+const DEFAULT_SAVED_PROMPT_DEFAULT = { mode: "saved", versionId: null } as const;
+const DEFAULT_PHASE_DEFAULT = { provider: "xai", modelProfileId: null, prompt: DEFAULT_PROMPT_DEFAULT } as const;
+const DEFAULT_TRADER_PHASE_DEFAULT = { provider: "xai", modelProfileId: null, prompt: DEFAULT_SAVED_PROMPT_DEFAULT } as const;
+const DEFAULT_RUNTIME_EXECUTION = {
+  enabled: false,
+  allowMarketOrders: true,
+  allowLimitOrders: true,
+  maxOrdersPerRun: 3,
+  maxNotionalPerOrderUsd: 250,
+  minCashReserveUsd: 25
+} as const;
+const DEFAULT_RUNTIME_DEFAULTS = {
+  venue: "binance-testnet",
+  frequencyMinutes: 30,
+  budgetUsdt: 1000,
+  symbolScope: "all",
+  execution: DEFAULT_RUNTIME_EXECUTION
+} as const;
+const DEFAULT_FEATURE_TOGGLES = {
+  signals: false,
+  researchLab: false,
+  proReview: false,
+  promptLibrary: false
+} as const;
+
+export const promptDefaultSchema = z.object({
+  mode: z.enum(["new", "saved"]).default("new"),
+  versionId: z.string().uuid().nullable().default(null)
+}).default(DEFAULT_PROMPT_DEFAULT);
+
+export const phaseDefaultSchema = z.object({
+  provider: llmProviderSchema.default("xai"),
+  modelProfileId: z.string().uuid().nullable().default(null),
+  prompt: promptDefaultSchema
+}).default(DEFAULT_PHASE_DEFAULT);
+
+export const agentRuntimeDefaultsSchema = z.object({
+  venue: venueSchema.default("binance-testnet"),
+  frequencyMinutes: z.number().int().positive().default(30),
+  budgetUsdt: z.number().positive().default(1000),
+  symbolScope: symbolScopeSchema.default("all"),
+  execution: z.object({
+    enabled: z.boolean().default(false),
+    allowMarketOrders: z.boolean().default(true),
+    allowLimitOrders: z.boolean().default(true),
+    maxOrdersPerRun: z.number().int().positive().max(20).default(3),
+    maxNotionalPerOrderUsd: z.number().positive().default(250),
+    minCashReserveUsd: z.number().nonnegative().default(25)
+  }).default(DEFAULT_RUNTIME_EXECUTION)
+}).default(DEFAULT_RUNTIME_DEFAULTS);
+
+export const featureTogglesSchema = z.object({
+  signals: z.boolean().default(false),
+  researchLab: z.boolean().default(false),
+  proReview: z.boolean().default(false),
+  promptLibrary: z.boolean().default(false)
+}).default(DEFAULT_FEATURE_TOGGLES);
+
+export const appSettingsSchema = z.object({
+  agentDefaults: z.object({
+    research: phaseDefaultSchema.default(DEFAULT_PHASE_DEFAULT),
+    trader: phaseDefaultSchema.default(DEFAULT_TRADER_PHASE_DEFAULT),
+    runtime: agentRuntimeDefaultsSchema.default(DEFAULT_RUNTIME_DEFAULTS)
+  }).default({
+    research: DEFAULT_PHASE_DEFAULT,
+    trader: DEFAULT_TRADER_PHASE_DEFAULT,
+    runtime: DEFAULT_RUNTIME_DEFAULTS
+  }),
+  featureToggles: featureTogglesSchema.default(DEFAULT_FEATURE_TOGGLES)
+});
+
+export type AppSettings = z.infer<typeof appSettingsSchema>;
+export const defaultAppSettings: AppSettings = appSettingsSchema.parse({});
 
 export const runtimeConfigSchema = z.object({
   enabled: z.boolean(),

@@ -42,6 +42,12 @@ export function ModalShell({ title, description, wide, children, onClose }: Moda
     body.style.overflow = "hidden";
 
     window.setTimeout(() => {
+      const touchViewport =
+        window.matchMedia?.("(pointer: coarse)").matches || window.innerWidth <= 760;
+      if (touchViewport) {
+        dialogRef.current?.focus();
+        return;
+      }
       const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(focusableSelector);
       (firstFocusable ?? dialogRef.current)?.focus();
     }, 0);

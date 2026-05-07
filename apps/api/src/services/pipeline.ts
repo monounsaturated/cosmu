@@ -21,6 +21,10 @@ import {
   type AgenticTool,
   type AgentToolCallLog
 } from "../providers/xai.js";
+import { runNousAgentLoop } from "../providers/nous.js";
+import { runOpenAIAgentLoop } from "../providers/openai.js";
+import { runAnthropicAgentLoop } from "../providers/anthropic.js";
+import { runHuggingFaceAgentLoop } from "../providers/huggingface.js";
 import type { LLMProvider, LLMMessage } from "../providers/llm.js";
 import { getAgentFacingTools } from "../mcp/index.js";
 import type { ToolContext } from "../mcp/types.js";
@@ -196,6 +200,28 @@ const buildAgenticTools = (toolContext: ToolContext): AgenticTool[] =>
     execute: (input: unknown) => tool.execute(input, toolContext)
   }));
 
+const runAgentLoop = (input: {
+  providerName: string;
+  model: string;
+  systemPrompt: string;
+  userMessage: string;
+  tools: AgenticTool[];
+  temperature?: number;
+  responseFormat?: Record<string, unknown>;
+  maxIterations?: number;
+}) => {
+  const { providerName, ...rest } = input;
+  if (providerName === "xai") return runXaiAgentLoop(rest);
+  if (providerName === "nous") return runNousAgentLoop(rest);
+  if (providerName === "openai") return runOpenAIAgentLoop(rest);
+  if (providerName === "huggingface") return runHuggingFaceAgentLoop(rest);
+  if (providerName === "anthropic") {
+    const { responseFormat: _responseFormat, ...anthropicInput } = rest;
+    return runAnthropicAgentLoop(anthropicInput);
+  }
+  throw new Error(`Provider ${providerName} does not support trader tool loops yet`);
+};
+
 export const runTraderAgent = async (input: {
   bot: BotSetup;
   systemPrompt: string;
@@ -223,7 +249,8 @@ export const runTraderAgent = async (input: {
     const start = Date.now();
 
     try {
-      const result = await runXaiAgentLoop({
+      const result = await runAgentLoop({
+        providerName: provider.name,
         model: bot.traderModelIdentifier,
         systemPrompt,
         userMessage,

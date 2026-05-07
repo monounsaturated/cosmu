@@ -2,6 +2,9 @@ import { sql } from "../db.js";
 import { listVenueSymbols } from "../adapters/binance.js";
 import { listXaiModels } from "../providers/xai.js";
 import { listNousModels } from "../providers/nous.js";
+import { listOpenAIModels } from "../providers/openai.js";
+import { listAnthropicModels } from "../providers/anthropic.js";
+import { listHuggingFaceModels } from "../providers/huggingface.js";
 
 type CatalogUpsertResult = {
   count: number;
@@ -29,13 +32,32 @@ export const BOOTSTRAP_NOUS_PROFILES: { name: string; model: string }[] = [
   { name: "Nous minimax-m2.7", model: "minimax/minimax-m2.7" }
 ];
 
+export const BOOTSTRAP_OPENAI_PROFILES: { name: string; model: string }[] = [
+  { name: "OpenAI GPT-4.1", model: "gpt-4.1" },
+  { name: "OpenAI GPT-4.1 mini", model: "gpt-4.1-mini" },
+  { name: "OpenAI GPT-4o mini", model: "gpt-4o-mini" }
+];
+
+export const BOOTSTRAP_ANTHROPIC_PROFILES: { name: string; model: string }[] = [
+  { name: "Anthropic Claude Sonnet 4.5", model: "claude-sonnet-4-5" },
+  { name: "Anthropic Claude Haiku 4.5", model: "claude-haiku-4-5" }
+];
+
+export const BOOTSTRAP_HUGGINGFACE_PROFILES: { name: string; model: string }[] = [
+  { name: "Hugging Face DeepSeek R1 fastest", model: "deepseek-ai/DeepSeek-R1:fastest" },
+  { name: "Hugging Face Qwen3 Coder cheapest", model: "Qwen/Qwen3-Coder-480B-A35B-Instruct:cheapest" }
+];
+
 export const bootstrapModelProfiles = async (): Promise<CatalogUpsertResult> => {
   let inserted = 0;
   let updated = 0;
 
   const profiles = [
     ...BOOTSTRAP_XAI_PROFILES.map((profile) => ({ ...profile, provider: "xai" })),
-    ...BOOTSTRAP_NOUS_PROFILES.map((profile) => ({ ...profile, provider: "nous" }))
+    ...BOOTSTRAP_NOUS_PROFILES.map((profile) => ({ ...profile, provider: "nous" })),
+    ...BOOTSTRAP_OPENAI_PROFILES.map((profile) => ({ ...profile, provider: "openai" })),
+    ...BOOTSTRAP_ANTHROPIC_PROFILES.map((profile) => ({ ...profile, provider: "anthropic" })),
+    ...BOOTSTRAP_HUGGINGFACE_PROFILES.map((profile) => ({ ...profile, provider: "huggingface" }))
   ];
 
   for (const profile of profiles) {
@@ -77,7 +99,7 @@ const shouldRefreshProvider = async (provider: string) => {
 };
 
 export const syncProviderModels = async (provider: string, force = false): Promise<ProviderSyncResult> => {
-  if (provider !== "xai" && provider !== "nous") {
+  if (provider !== "xai" && provider !== "nous" && provider !== "openai" && provider !== "anthropic" && provider !== "huggingface") {
     return { synced: false, count: 0, inserted: 0, updated: 0, message: "Provider not supported" };
   }
 
@@ -93,14 +115,25 @@ export const syncProviderModels = async (provider: string, force = false): Promi
   }
 
   console.log(`[catalog] Fetching models from ${provider} API...`);
-  const models = provider === "xai" ? await listXaiModels() : await listNousModels();
+  const models =
+    provider === "xai" ? await listXaiModels()
+      : provider === "nous" ? await listNousModels()
+        : provider === "openai" ? await listOpenAIModels()
+          : provider === "anthropic" ? await listAnthropicModels()
+            : await listHuggingFaceModels();
   console.log(`[catalog] Found ${models.length} models from ${provider}`);
 
   let inserted = 0;
   let updated = 0;
 
   for (const model of models) {
-    const profileName = provider === "xai" ? `xAI ${model.id}` : `Nous ${model.id}`;
+    const providerLabel =
+      provider === "xai" ? "xAI"
+        : provider === "nous" ? "Nous"
+          : provider === "openai" ? "OpenAI"
+            : provider === "anthropic" ? "Anthropic"
+              : "Hugging Face";
+    const profileName = `${providerLabel} ${model.id}`;
     const result = await sql`
       insert into model_profiles (name, provider, model, settings)
       values (${profileName}, ${provider}, ${model.id}, '{"temperature":0.2}'::jsonb)

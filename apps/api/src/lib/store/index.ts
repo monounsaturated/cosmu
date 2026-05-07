@@ -69,7 +69,7 @@ export {
 } from "./trader-prompts.js";
 
 export { storeLLMCall, getLLMCallsForRun } from "./llm-calls.js";
-export { getAppSetting, setAppSetting } from "./settings.js";
+export { getAppSetting, setAppSetting, getAppSettings, setAppSettings } from "./settings.js";
 
 export {
   createAgentStep,

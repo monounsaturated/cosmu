@@ -10,6 +10,9 @@ import type { LLMProvider, LLMChatInput, LLMResponse, LLMMessage } from "./llm.j
 import type { ToolInputSchema } from "../mcp/types.js";
 import { toOpenAITools } from "./tool-adapters.js";
 import { nousProvider } from "./nous.js";
+import { openaiProvider } from "./openai.js";
+import { anthropicProvider } from "./anthropic.js";
+import { huggingFaceProvider } from "./huggingface.js";
 
 const client = new OpenAI({
   apiKey: env.XAI_API_KEY ?? "missing-xai-api-key",
@@ -171,7 +174,10 @@ export const runXaiResearchWithBrowsing = async (input: {
 
 const providers: Record<string, LLMProvider> = {
   xai: xaiProvider,
-  nous: nousProvider
+  nous: nousProvider,
+  openai: openaiProvider,
+  anthropic: anthropicProvider,
+  huggingface: huggingFaceProvider
 };
 
 export const getProvider = (name: string): LLMProvider => {

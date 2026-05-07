@@ -211,6 +211,10 @@ const buildFormatterUserSections = (input: {
   sections.push(
     ["=== UPSTREAM RESEARCH (phase 1 analysis) ===", researchRawText].join("\n")
   );
+  const loopPrompt = bot.promptConfig.extraLoopPrompt?.trim();
+  if (loopPrompt) {
+    sections.push(["=== OPERATOR LOOP PROMPT ===", loopPrompt].join("\n"));
+  }
   sections.push(buildSessionSection(bot));
   sections.push(buildExecRulesSection(runtimeConfig.execution));
   sections.push(buildWalletSection(snapshot));
