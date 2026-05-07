@@ -719,6 +719,13 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   const [venueBalance, setVenueBalance] = useState<{ totalFreeUsdt: number; allocatedUsdt: number; availableUsdt: number } | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
 
+  useEffect(() => {
+    document.body.classList.add("bot-form-open");
+    return () => {
+      document.body.classList.remove("bot-form-open");
+    };
+  }, []);
+
   const providerOptions = useMemo(() => {
     const fromApi = Array.from(new Set(models.map((m) => m.provider))).sort();
     return fromApi.length > 0 ? fromApi : ["xai"];
