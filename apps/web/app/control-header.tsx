@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, AlertTriangle, Command, FlaskConical, Radio, Search, ShieldCheck } from "lucide-react";
+import { Activity, AlertTriangle, Search } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 
 type Summary = {
@@ -12,8 +12,6 @@ type Summary = {
   failedAgents: number;
   pendingApprovals: number;
   runningResearch: number;
-  liveActionsGated?: boolean;
-  cappedAutoliveEnabled?: boolean;
 };
 
 type FeatureToggles = {
@@ -31,13 +29,14 @@ const DEFAULT_TOGGLES: FeatureToggles = {
 };
 
 const labelForPath = (path: string) => {
+  if (path.startsWith("/trading-agents")) return "AI Hedge Fund";
   if (path.startsWith("/signals")) return "Signals";
   if (path.startsWith("/research")) return "Research";
   if (path.startsWith("/bots")) return "Agents";
   if (path.startsWith("/pro")) return "Review";
   if (path.startsWith("/prompts")) return "Prompts";
   if (path.startsWith("/settings")) return "Settings";
-  return "Command";
+  return "Dashboard";
 };
 
 export function ControlHeader() {
@@ -61,19 +60,12 @@ export function ControlHeader() {
     const load = () => {
       fetch("/api/agent-control/summary", { cache: "no-store" })
         .then((res) => res.ok ? res.json() : null)
-        .then((data) => {
-          if (!cancelled && data) setSummary(data);
-        })
-        .catch(() => {
-          if (!cancelled) setSummary(null);
-        });
+        .then((data) => { if (!cancelled && data) setSummary(data); })
+        .catch(() => { if (!cancelled) setSummary(null); });
     };
     load();
     const timer = window.setInterval(load, 15000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, []);
 
   const currentMode = useMemo(() => labelForPath(pathname), [pathname]);
@@ -101,25 +93,26 @@ export function ControlHeader() {
         </Link>
 
         <form className="command-bar" onSubmit={submitCommand}>
-          <Search size={16} />
+          <Search size={15} />
           <input
             value={command}
             onChange={(event) => setCommand(event.target.value)}
-            placeholder="Search agents or paste a trading thesis..."
+            placeholder="Search or paste a thesis..."
           />
-          <button type="submit" aria-label="Send command">
-            <Command size={15} />
-          </button>
         </form>
 
         <div className="control-status">
-          <span title="Running agents"><Activity size={15} />{summary?.runningAgents ?? 0} agents</span>
-          {featureToggles.researchLab && <span title="Running research jobs"><FlaskConical size={15} />{summary?.runningResearch ?? 0} labs</span>}
-          <span title="Failed agents in the last 24h" className={(summary?.failedAgents ?? 0) > 0 ? "status-danger" : ""}>
-            <AlertTriangle size={15} />{summary?.failedAgents ?? 0} fails
+          <span title="Running agents">
+            <Activity size={14} />
+            {summary?.runningAgents ?? 0} active
           </span>
-          {featureToggles.signals && <Link href="/signals" title="Signals"><Radio size={15} />Signals</Link>}
-          {featureToggles.proReview && <Link href="/pro" title="Pending approvals"><ShieldCheck size={15} />{summary?.pendingApprovals ?? 0} review</Link>}
+          <span
+            title="Failed agents"
+            className={(summary?.failedAgents ?? 0) > 0 ? "status-danger" : ""}
+          >
+            <AlertTriangle size={14} />
+            {summary?.failedAgents ?? 0} fails
+          </span>
           <ThemeToggle />
         </div>
       </div>
