@@ -3447,3 +3447,101 @@ body::before {
     padding: 8px;
   }
 }
+
+/* Mobile UX refresh (2026): denser sticky header, safer scrolling, clearer forms. */
+@media (max-width: 900px) {
+  .control-header {
+    top: max(8px, env(safe-area-inset-top));
+    border-radius: 16px;
+    padding: 8px 10px;
+    background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+  }
+
+  .control-topline {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .command-bar {
+    min-height: 44px;
+    border-radius: 12px;
+    padding: 8px 12px;
+  }
+
+  .command-bar input {
+    font-size: 16px; /* prevent iOS zoom */
+  }
+
+  .page {
+    scroll-padding-top: 92px;
+  }
+
+  .metric-strip {
+    gap: 10px;
+  }
+}
+
+@media (max-width: 760px) {
+  .control-header {
+    top: 0;
+    width: calc(100% - 12px);
+    margin: 6px 6px 0;
+    padding: calc(8px + env(safe-area-inset-top)) 8px 8px;
+    border-radius: 14px;
+  }
+
+  .command-bar {
+    min-height: 46px;
+  }
+
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-content,
+  .modal-content-wide {
+    width: 100%;
+    max-width: 100%;
+    max-height: 92dvh;
+    border-radius: 20px 20px 0 0;
+    border-right: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+    border-bottom: none;
+    padding: 14px 12px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .modal-header {
+    top: 0;
+    margin: -2px -2px 10px;
+    padding: 8px 6px 10px;
+  }
+
+  .form-section {
+    border-radius: 14px;
+    padding: 14px;
+  }
+
+  .form-row input,
+  .form-row select,
+  .form-row textarea {
+    min-height: 46px;
+    font-size: 16px;
+    border-radius: 12px;
+  }
+
+  .segmented-control {
+    padding: 4px;
+    border-radius: 12px;
+  }
+
+  .segmented-option {
+    min-height: 42px;
+    border-radius: 10px;
+  }
+
+  .field-help {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+}
