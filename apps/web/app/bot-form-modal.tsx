@@ -730,9 +730,7 @@ function PromptSection({
       {optionalModules && optionalModules.length > 0 && (
         <div className="injected-data-section">
           <h4>Injected Data</h4>
-          <p className="field-help">
-            Tick modules to append live data to the trader prompt at every run. Toggle a module to preview how it appears.
-          </p>
+          <p className="field-help">Live data appended to the trader prompt each run</p>
           <div className="modules-grid">
             <label className="checkbox-label" style={{ opacity: 0.6 }}>
               <input type="checkbox" checked disabled />
@@ -1144,14 +1142,18 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     }
   }, [traderAvailableModels, formData.traderModelProfileId]);
 
-  // Close pairs dropdown on outside click
+  // Close pairs dropdown on outside click/touch
   useEffect(() => {
     if (!pairsOpen) return;
-    const handle = (e: MouseEvent) => {
+    const handle = (e: MouseEvent | TouchEvent) => {
       if (pairsRef.current && !pairsRef.current.contains(e.target as Node)) setPairsOpen(false);
     };
     document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
+    document.addEventListener("touchstart", handle, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handle);
+      document.removeEventListener("touchstart", handle);
+    };
   }, [pairsOpen]);
 
   // Auto-select first research prompt
@@ -1413,8 +1415,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
 
   return (
     <ModalShell
-      title={mode === "create" ? "Create Agent" : "Edit Agent"}
-      description="Configure prompts, models, account, pairs, budget, cadence, and deterministic execution controls."
+      title={mode === "create" ? "New Agent" : "Edit Agent"}
       wide
       onClose={onClose}
     >
@@ -1479,9 +1480,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                       onChange={(e) => setFormData({ ...formData, budgetUsdt: Math.max(10, Number(e.target.value)) })}
                     />
                   </label>
-                  <span className="field-help">
-                    Max cash this bot can use (USDT or USDC — auto-swapped when needed).
-                  </span>
+                  <span className="field-help">USDT or USDC — auto-swapped</span>
                 </div>
 
                 <div className="form-row">
@@ -1501,47 +1500,61 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 {/* Authorized Pairs */}
                 <div className="form-row">
                   <label>
-                    Authorized Pairs
+                    Pairs
                     <div className="pairs-picker" ref={pairsRef}>
-                      <input
-                        type="text"
-                        className="pairs-search"
-                        value={formData.symbolScope === "all"
-                          ? `All ${VENUE_LABELS[formData.venue] ?? formData.venue} Pairs`
-                          : symbolSearch
-                            ? symbolSearch
-                            : formData.contextSymbols.length > 0
-                              ? `${formData.contextSymbols.length} pairs selected`
-                              : ""}
-                        onChange={(e) => {
-                          if (formData.symbolScope !== "all") setSymbolSearch(e.target.value);
-                        }}
-                        placeholder={formData.symbolScope === "all" ? "" : "Search pairs..."}
-                        aria-expanded={pairsOpen}
-                        aria-controls={pairsOpen ? pairsListId : undefined}
-                        aria-label="Authorized pairs"
-                        onFocus={() => {
-                          setPairsOpen(true);
-                          // Clear "N pairs selected" when focusing to type
-                          if (formData.symbolScope !== "all" && !symbolSearch) setSymbolSearch("");
-                        }}
-                        readOnly={formData.symbolScope === "all"}
-                      />
+                      <div className="pairs-trigger-row">
+                        {formData.symbolScope === "all" ? (
+                          <button
+                            type="button"
+                            className="pairs-trigger"
+                            onClick={() => setPairsOpen(!pairsOpen)}
+                            aria-expanded={pairsOpen}
+                            aria-controls={pairsOpen ? pairsListId : undefined}
+                          >
+                            <span>All {VENUE_LABELS[formData.venue] ?? formData.venue} pairs</span>
+                            <span className="pairs-trigger-chevron">{pairsOpen ? "▾" : "▸"}</span>
+                          </button>
+                        ) : (
+                          <div className="pairs-search-wrap">
+                            <input
+                              type="text"
+                              className="pairs-search"
+                              value={symbolSearch}
+                              onChange={(e) => setSymbolSearch(e.target.value)}
+                              placeholder="Search pairs..."
+                              aria-expanded={pairsOpen}
+                              aria-controls={pairsOpen ? pairsListId : undefined}
+                              aria-label="Authorized pairs"
+                              onFocus={() => setPairsOpen(true)}
+                            />
+                            {!pairsOpen && formData.contextSymbols.length > 0 && !symbolSearch && (
+                              <button
+                                type="button"
+                                className="pairs-count-badge"
+                                onClick={() => setPairsOpen(true)}
+                              >
+                                {formData.contextSymbols.length} selected
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       {pairsOpen && (
                         <div className="pairs-dropdown" id={pairsListId} role="group" aria-label="Authorized pair choices">
                           <label className="pairs-row pairs-row-all">
                             <input
                               type="checkbox"
                               checked={formData.symbolScope === "all"}
-                              onChange={(e) =>
+                              onChange={(e) => {
                                 setFormData({
                                   ...formData,
                                   symbolScope: e.target.checked ? "all" : "selected",
                                   contextSymbols: e.target.checked ? [] : formData.contextSymbols
-                                })
-                              }
+                                });
+                                if (e.target.checked) setPairsOpen(false);
+                              }}
                             />
-                            <span>All {VENUE_LABELS[formData.venue] ?? formData.venue} Pairs</span>
+                            <span>All {VENUE_LABELS[formData.venue] ?? formData.venue} pairs</span>
                           </label>
                           {filteredSymbols.map((symbol) => (
                             <label
@@ -1568,7 +1581,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                     <div className="selected-symbols">
                       {formData.contextSymbols.map((symbol) => (
                         <button key={symbol} type="button" className="badge badge-button" onClick={() => toggleSymbol(symbol)}>
-                          {symbol} &times;
+                          {symbol} ×
                         </button>
                       ))}
                     </div>
@@ -1618,9 +1631,6 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 <h3>Loop Prompt</h3>
                 <span className="badge badge-neutral">optional</span>
               </div>
-              <p className="field-help">
-                A short operator note passed with the research output before the trader decides. Keep it tactical.
-              </p>
               <div className="form-row">
                 <label>
                   Extra instruction
@@ -1697,7 +1707,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 />
                 <span>Enable execution rules</span>
               </label>
-              <p className="field-help">When off, only venue tradability and wallet sanity checks apply.</p>
+              <p className="field-help">Caps and order-type rules applied before execution</p>
 
               <div className="checkbox-row">
                 <label className="checkbox-label">

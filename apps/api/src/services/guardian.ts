@@ -25,7 +25,7 @@ import {
   closePosition,
   type BotPosition
 } from "../lib/store.js";
-import { getBotSetupById } from "../lib/store/bots.js";
+import { getBotSetupById, getBotEnabledState } from "../lib/store/bots.js";
 import type { BotSetup } from "../lib/store/bots.js";
 import { notifySlack } from "./notifier.js";
 
@@ -283,10 +283,22 @@ export const runGuardianTick = async (): Promise<void> => {
   if (positions.length === 0) return;
 
   // Group positions by mode (testnet vs live) since ticker endpoint differs.
+  // Skip positions for disabled/killed bots — they produce false "gave up" alerts.
   const positionsByMode = new Map<"testnet" | "live", BotPosition[]>();
   for (const position of positions) {
     const bot = await getBotSetupCached(position.botId);
     if (!bot) continue;
+
+    const enabledState = await getBotEnabledState(position.botId);
+    if (!enabledState || !enabledState.enabled) {
+      const state = getCloseState(position.id);
+      if (!state.givenUp) {
+        state.givenUp = true;
+        console.log(`[guardian] skipping position ${position.symbol} — bot "${enabledState?.name ?? position.botId}" is disabled`);
+      }
+      continue;
+    }
+
     const mode = bot.runtimeConfig.mode;
     const arr = positionsByMode.get(mode) ?? [];
     arr.push(position);
