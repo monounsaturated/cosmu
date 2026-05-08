@@ -53,12 +53,61 @@ set -a && source .env.local && set +a && node scripts/apply-sql.mjs apps/api/sql
 
 Set `DATABASE_SSL=false` in `.env.local` for local non-SSL Postgres. Leave it empty/true for Supabase pooler.
 
-## Deploy (Railway now, Vercel later)
+## Deploy on Railway
 
-- Root deploys are API-first: Railway can build and start from repo root without custom commands using `pnpm build` and `pnpm start`.
-- Root `build` compiles shared + API only, so Railway does not require Next.js web env vars for backend deploys.
-- If you also want web on Railway, create a second service with root directory `apps/web` (its own `build`/`start` scripts already exist).
-- If you later move frontend to Vercel, keep Railway on root/API (or `apps/api`) and point Vercel at `apps/web`.
+Railway auto-deploys on every push to `main`. No infra to manage.
+
+### 1. API (trading agents backend)
+
+```
+railway login
+railway init          # or link to existing project
+railway up            # first deploy — uses railway.toml
+```
+
+Then in Railway dashboard → Settings → Source:
+- Connect your GitHub repo
+- Branch: `main`
+- Root directory: `/` (monorepo root)
+- Auto-deploy: ON
+
+Add these env vars in Railway dashboard (Variables tab):
+
+```
+DATABASE_URL=<supabase-connection-string>
+DATABASE_SSL=true
+API_SECRET_KEY=<32+-char-secret>
+XAI_API_KEY=<your-key>
+BINANCE_TESTNET_API_KEY=<your-key>
+BINANCE_TESTNET_API_SECRET=<your-secret>
+BINANCE_API_KEY=<your-key>           # for live trading
+BINANCE_API_SECRET=<your-secret>
+SLACK_WEBHOOK_URL=<your-webhook>
+SCHEDULER_ENABLED=true
+GUARDIAN_ENABLED=true
+```
+
+### 2. Web (dashboard)
+
+Create a second service in the same Railway project:
+- Root directory: `apps/web`
+- Build: `pnpm install && pnpm build`
+- Start: `pnpm start`
+- Add `NEXT_PUBLIC_API_URL` pointing to your API service URL
+
+Or deploy to Vercel (free tier) — just point it at `apps/web`.
+
+### 3. TradingAgents (optional Python AI hedge fund)
+
+If using the Python TradingAgents wrapper:
+- Create a third Railway service
+- Root directory: `apps/trading-agents`
+- Uses its own `Dockerfile` (Python 3.12, FastAPI on port 8100)
+- Add `TRADING_AGENTS_URL` to the API service pointing to this service
+
+### GitHub auto-deploy
+
+Once connected, every `git push origin main` triggers a new deploy automatically. Railway builds, health-checks (`/health`), and swaps with zero downtime. Rollback from the dashboard if needed.
 
 ## Environment
 
