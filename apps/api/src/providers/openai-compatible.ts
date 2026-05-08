@@ -5,7 +5,7 @@ import { toOpenAITools } from "./tool-adapters.js";
 import type { LLMChatInput, LLMProvider, LLMResponse } from "./llm.js";
 import type { AgenticTool, AgenticChatResult, AgentToolCallLog } from "./xai.js";
 
-type ProviderName = "openai" | "huggingface" | "nous";
+type ProviderName = "openai" | "huggingface" | "nous" | "google" | "mistral";
 
 type ProviderConfig = {
   apiKey: string | undefined;
@@ -28,6 +28,20 @@ const getProviderConfig = (provider: ProviderName): ProviderConfig => {
       label: "Hugging Face"
     };
   }
+  if (provider === "google") {
+    return {
+      apiKey: env.GOOGLE_API_KEY,
+      baseURL: env.GOOGLE_BASE_URL ?? "https://generativelanguage.googleapis.com/v1beta/openai/",
+      label: "Google"
+    };
+  }
+  if (provider === "mistral") {
+    return {
+      apiKey: env.MISTRAL_API_KEY,
+      baseURL: env.MISTRAL_BASE_URL ?? "https://api.mistral.ai/v1",
+      label: "Mistral"
+    };
+  }
   return {
     apiKey: env.NOUS_API_KEY,
     baseURL: env.NOUS_BASE_URL ?? "https://portal.nousresearch.com/v1",
@@ -38,7 +52,7 @@ const getProviderConfig = (provider: ProviderName): ProviderConfig => {
 const createClient = (provider: ProviderName) => {
   const config = getProviderConfig(provider);
   if (!config.apiKey) {
-    throw new Error(`${provider.toUpperCase()}_API_KEY is not configured`);
+    throw new Error(`${config.label} API key is not configured`);
   }
   return new OpenAI({
     apiKey: config.apiKey,

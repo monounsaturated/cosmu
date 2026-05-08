@@ -126,7 +126,7 @@ export const traderConfigSchema = z.object({
 export type PrePromptConfig = z.infer<typeof prePromptConfigSchema>;
 export type TraderConfig = z.infer<typeof traderConfigSchema>;
 
-export const llmProviderSchema = z.enum(["xai", "nous", "openai", "anthropic", "huggingface"]);
+export const llmProviderSchema = z.enum(["xai", "nous", "openai", "anthropic", "huggingface", "google", "mistral"]);
 export type LlmProvider = z.infer<typeof llmProviderSchema>;
 
 const DEFAULT_PROMPT_DEFAULT = { mode: "new", versionId: null } as const;
@@ -677,12 +677,24 @@ const venueOverviewEntrySchema = z.object({
   spareAmount: z.number()
 });
 
+const accountOverviewEntrySchema = venueOverviewEntrySchema.extend({
+  id: z.string(),
+  label: z.string(),
+  venue: z.string(),
+  mode: z.string(),
+  connected: z.boolean(),
+  configuredAgents: z.number().int().nonnegative(),
+  activeAgents: z.number().int().nonnegative(),
+  status: z.enum(["connected", "configured", "unconfigured", "error"])
+});
+
 export const dashboardSchema = z.object({
   generatedAt: z.string().datetime(),
   venueOverview: z.object({
     live: venueOverviewEntrySchema.nullable(),
     testnet: venueOverviewEntrySchema.nullable()
   }),
+  accounts: z.array(accountOverviewEntrySchema).default([]),
   bots: z.array(botSummarySchema),
   performanceSeries: z.array(botPerformanceSeriesSchema),
   recentRuns: z.array(

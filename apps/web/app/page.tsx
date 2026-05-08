@@ -21,8 +21,9 @@ export default async function HomePage() {
   const activeLightBots = lightBots.filter((bot) => bot.enabled).length;
   const totalLightPnl = lightBots.reduce((sum, bot) => sum + (bot.netPnlUsd ?? 0), 0);
   const recentFailures = dashboard.recentRuns.filter((run) => run.status === "failure").length;
-  const liveExposure = dashboard.venueOverview.live?.allocatedAmount ?? 0;
-  const testExposure = dashboard.venueOverview.testnet?.allocatedAmount ?? 0;
+  const totalAccountBalance = dashboard.accounts.reduce((sum, account) => sum + account.accountBalance, 0);
+  const totalAllocated = dashboard.accounts.reduce((sum, account) => sum + account.allocatedAmount, 0);
+  const freeCapacity = dashboard.accounts.reduce((sum, account) => sum + account.spareAmount, 0);
   const importantLightBots = [...lightBots]
     .sort((a, b) => {
       const aScore =
@@ -45,11 +46,10 @@ export default async function HomePage() {
       <AutoRefresh intervalMs={30000} />
       <section className="command-hero">
         <div>
-          <p className="eyebrow">Command</p>
-          <h1>Know what is running, why, and what can trade next.</h1>
+          <p className="eyebrow">Trading desk</p>
+          <h1>Agent balance sheet</h1>
           <p>
-            One focused surface for creating agents, tracking performance, and tuning prompts, models,
-            pairs, budget, cadence, and execution rules.
+            Accounts, active risk, PnL, and execution flow in one focused dashboard.
           </p>
         </div>
         <div className="hero-actions command-actions">
@@ -87,6 +87,23 @@ export default async function HomePage() {
           <strong>{activeLightBots}</strong>
           <small>{lightBots.length} configured</small>
         </article>
+        <article className="metric-card-emphasis">
+          <span>Equity</span>
+          <strong>{totalAccountBalance.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</strong>
+          <small>{dashboard.accounts.filter((account) => account.connected).length}/{dashboard.accounts.length} connected</small>
+        </article>
+        <article>
+          <span>Allocated</span>
+          <strong>{totalAllocated.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</strong>
+          <small>across live, paper, future accounts</small>
+        </article>
+        <article>
+          <span>Free cash</span>
+          <strong className={freeCapacity < 0 ? "value-red" : "value-green"}>
+            {freeCapacity.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}
+          </strong>
+          <small>unallocated capacity</small>
+        </article>
         <article>
           <span>Net PnL</span>
           <strong className={totalLightPnl >= 0 ? "value-green" : "value-red"}>
@@ -99,27 +116,22 @@ export default async function HomePage() {
           <strong className={recentFailures > 0 ? "value-red" : ""}>{recentFailures}</strong>
           <small>last dashboard window</small>
         </article>
-        <article>
-          <span>Latest runs</span>
-          <strong>{dashboard.recentRuns.length}</strong>
-          <small>audit ready</small>
-        </article>
-        <article>
-          <span>Allocated</span>
-          <strong>${(liveExposure + testExposure).toFixed(0)}</strong>
-          <small>${liveExposure.toFixed(0)} live / ${testExposure.toFixed(0)} paper</small>
-        </article>
       </section>
 
       <section className="command-grid">
-        <VenueOverview venueOverview={dashboard.venueOverview} />
+        <VenueOverview accounts={dashboard.accounts} venueOverview={dashboard.venueOverview} />
         <article className="panel">
-          <h3>Recent Runs</h3>
-          <p className="field-help">Open any row to inspect prompt, response, tools, and validator output.</p>
+          <div className="panel-table-header">
+            <div>
+              <h3>Recent runs</h3>
+              <p className="field-help">Expand rows for prompts, tool calls, and validation.</p>
+            </div>
+            <span className="badge badge-neutral">{dashboard.recentRuns.length}</span>
+          </div>
           {dashboard.recentRuns.length === 0 ? (
             <p className="muted">No runs yet. Create an agent, then run it from the table.</p>
           ) : (
-            <RecentRunsTable runs={dashboard.recentRuns.slice(0, 5).map((r) => ({
+            <RecentRunsTable runs={dashboard.recentRuns.map((r) => ({
               id: r.id,
               botName: r.botName,
               status: r.status,
@@ -149,9 +161,9 @@ export default async function HomePage() {
           <PerformanceChart series={dashboard.performanceSeries} />
         </article>
 
-        <RecentExecutions executions={dashboard.recentExecutions.slice(0, 6)} />
-        <PortfolioState snapshots={dashboard.latestSnapshots.slice(0, 6)} />
-        <PromptSnapshots versions={dashboard.promptVersions.slice(0, 6)} />
+        <RecentExecutions executions={dashboard.recentExecutions} />
+        <PortfolioState snapshots={dashboard.latestSnapshots} />
+        <PromptSnapshots versions={dashboard.promptVersions} />
       </section>
     </main>
   );

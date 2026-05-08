@@ -22,12 +22,12 @@ type PromptProfile = {
 type AppSettings = {
   agentDefaults: {
     research: {
-      provider: "xai" | "nous" | "openai" | "anthropic" | "huggingface";
+      provider: "xai" | "nous" | "openai" | "anthropic" | "huggingface" | "google" | "mistral";
       modelProfileId: string | null;
       prompt: { mode: "new" | "saved"; versionId: string | null };
     };
     trader: {
-      provider: "xai" | "nous" | "openai" | "anthropic" | "huggingface";
+      provider: "xai" | "nous" | "openai" | "anthropic" | "huggingface" | "google" | "mistral";
       modelProfileId: string | null;
       prompt: { mode: "new" | "saved"; versionId: string | null };
     };
@@ -56,13 +56,24 @@ type AppSettings = {
   };
 };
 
-const PROVIDERS = ["xai", "openai", "anthropic", "huggingface", "nous"] as const;
+type Diagnostics = {
+  webEnv?: { apiBaseUrl?: string; hasKey?: boolean };
+  backend?: {
+    modelProviderKeys?: Record<string, boolean>;
+    tradingAccountKeys?: Record<string, boolean>;
+  };
+  backendError?: string;
+};
+
+const PROVIDERS = ["xai", "openai", "anthropic", "google", "mistral", "huggingface", "nous"] as const;
 
 const PROVIDER_LABELS: Record<string, string> = {
   xai: "xAI",
   openai: "OpenAI",
   anthropic: "Anthropic",
   huggingface: "Hugging Face",
+  google: "Google",
+  mistral: "Mistral",
   nous: "Nous"
 };
 
@@ -195,6 +206,7 @@ export function SettingsConsole() {
   const [modelName, setModelName] = useState("");
   const [modelProvider, setModelProvider] = useState("xai");
   const [modelIdentifier, setModelIdentifier] = useState("");
+  const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [sourceName, setSourceName] = useState("");
   const [sourceKind, setSourceKind] = useState<ResearchDataSource["kind"]>("market");
   const [loading, setLoading] = useState(true);
@@ -219,24 +231,27 @@ export function SettingsConsole() {
     setLoading(true);
     setMessage(null);
     try {
-      const [modelRes, sourceRes, settingsRes, promptsRes, traderPromptsRes] = await Promise.all([
+      const [modelRes, sourceRes, settingsRes, promptsRes, traderPromptsRes, diagnosticsRes] = await Promise.all([
         fetch("/api/models", { cache: "no-store" }),
         fetch("/api/research/data-sources", { cache: "no-store" }),
         fetch("/api/settings/app", { cache: "no-store" }),
         fetch("/api/prompts", { cache: "no-store" }),
-        fetch("/api/trader-prompts", { cache: "no-store" })
+        fetch("/api/trader-prompts", { cache: "no-store" }),
+        fetch("/api/internal/diagnostics", { cache: "no-store" })
       ]);
       const modelData = modelRes.ok ? await modelRes.json() : [];
       const sourceData = sourceRes.ok ? await sourceRes.json() : [];
       const settingsData = settingsRes.ok ? await settingsRes.json() : DEFAULT_APP_SETTINGS;
       const promptData = promptsRes.ok ? await promptsRes.json() : [];
       const traderPromptData = traderPromptsRes.ok ? await traderPromptsRes.json() : [];
+      const diagnosticsData = diagnosticsRes.ok ? await diagnosticsRes.json() : null;
 
       setModels(Array.isArray(modelData) ? modelData : []);
       setSources(Array.isArray(sourceData) ? sourceData : sourceData.dataSources ?? []);
       setSettings(mergeAppSettings(settingsData));
       setPrompts(Array.isArray(promptData) ? promptData : []);
       setTraderPrompts(Array.isArray(traderPromptData) ? traderPromptData : []);
+      setDiagnostics(diagnosticsData);
     } catch (error) {
       setMessage({ tone: "error", text: error instanceof Error ? error.message : "Settings load failed" });
     } finally {
@@ -280,13 +295,25 @@ export function SettingsConsole() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Model sync failed");
       await load();
-      setMessage({ tone: "success", text: `${providerLabel(provider)} catalog synced` });
+      setMessage({ tone: "success", text: provider === "all" ? "All model catalogs synced" : `${providerLabel(provider)} catalog synced` });
     } catch (error) {
       setMessage({ tone: "error", text: error instanceof Error ? error.message : "Model sync failed" });
     } finally {
       setSyncing(null);
     }
   };
+
+  const modelProviderKeys = diagnostics?.backend?.modelProviderKeys ?? {};
+  const tradingAccountKeys = diagnostics?.backend?.tradingAccountKeys ?? {};
+  const providerKeyRows = PROVIDERS.map((provider) => ({
+    key: provider,
+    label: providerLabel(provider),
+    configured: Boolean(modelProviderKeys[provider])
+  }));
+  const accountKeyRows = [
+    { key: "binanceLive", label: "Binance live", configured: Boolean(tradingAccountKeys.binanceLive) },
+    { key: "binanceTestnet", label: "Binance testnet", configured: Boolean(tradingAccountKeys.binanceTestnet) }
+  ];
 
   const createModel = async () => {
     const provider = modelProvider.trim();
@@ -618,7 +645,7 @@ export function SettingsConsole() {
         <div className="section-header">
           <div>
             <h3>Secrets and keys</h3>
-            <p className="muted">API keys should stay in server environment variables for now. The database stores only non-secret model profiles, defaults, and feature switches.</p>
+            <p className="muted">Secrets stay in environment variables. The database stores only model profiles, defaults, prompt versions, and switches.</p>
           </div>
           <span className="badge badge-success">env based</span>
         </div>
@@ -640,18 +667,51 @@ export function SettingsConsole() {
             </span>
           </div>
         </div>
+        <div className="env-readiness-grid">
+          <div className="settings-group">
+            <span className="label">LLM access</span>
+            {providerKeyRows.map((row) => (
+              <div className="settings-row" key={row.key}>
+                <span>
+                  <strong>{row.label}</strong>
+                  <small>{row.configured ? "key detected on backend" : "add key in deployment env"}</small>
+                </span>
+                <span className={`badge ${row.configured ? "badge-success" : "badge-inactive"}`}>{row.configured ? "ready" : "missing"}</span>
+              </div>
+            ))}
+          </div>
+          <div className="settings-group">
+            <span className="label">Trading accounts</span>
+            {accountKeyRows.map((row) => (
+              <div className="settings-row" key={row.key}>
+                <span>
+                  <strong>{row.label}</strong>
+                  <small>{row.configured ? "API key and secret detected" : "add key pair in deployment env"}</small>
+                </span>
+                <span className={`badge ${row.configured ? "badge-success" : "badge-inactive"}`}>{row.configured ? "ready" : "missing"}</span>
+              </div>
+            ))}
+            {diagnostics?.backendError ? <p className="feedback feedback-error">{diagnostics.backendError}</p> : null}
+          </div>
+        </div>
       </section>
 
       <section className="panel">
         <div className="section-header">
           <div>
             <h3>Model catalog</h3>
-            <p className="muted">Profiles are selectable by the research and trader phases.</p>
+            <p className="muted">Catalogs refresh from provider APIs, then fall back to known large models when a provider key is missing.</p>
           </div>
-          <button className="btn btn-secondary" type="button" onClick={() => void syncModels()} disabled={Boolean(syncing)}>
-            <RefreshCw size={15} />
-            {syncing ? "Syncing" : `Sync ${providerLabel(modelProvider)}`}
-          </button>
+          <div className="settings-action-row">
+            <button className="btn btn-secondary" type="button" onClick={() => void syncModels(modelProvider)} disabled={Boolean(syncing)}>
+              <RefreshCw size={15} />
+              {syncing === modelProvider ? "Syncing" : `Sync ${providerLabel(modelProvider)}`}
+            </button>
+            <button className="btn btn-primary" type="button" onClick={() => void syncModels("all")} disabled={Boolean(syncing)}>
+              <RefreshCw size={15} />
+              {syncing === "all" ? "Syncing" : "Sync all labs"}
+            </button>
+          </div>
         </div>
 
         <div className="settings-model-grid">

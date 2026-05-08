@@ -11,9 +11,12 @@ export async function POST(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const force = searchParams.get("force") === "true";
-    const targetUrl = `${apiBaseUrl}/internal/catalog/sync${force ? "?force=true" : ""}`;
+    const provider = searchParams.get("provider");
+    const upstream = new URL(`${apiBaseUrl}/internal/catalog/sync`);
+    if (force) upstream.searchParams.set("force", "true");
+    if (provider) upstream.searchParams.set("provider", provider);
 
-    const res = await fetch(targetUrl, {
+    const res = await fetch(upstream.toString(), {
       method: "POST",
       headers: {
         "x-api-key": apiSecretKey,

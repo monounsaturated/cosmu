@@ -446,47 +446,58 @@ function RunDetailExpanded({ runId }: { runId: string }) {
   );
 }
 
-export function RecentRunsTable({ runs }: { runs: RunRow[] }) {
+export function RecentRunsTable({ runs, initialRows = 5 }: { runs: RunRow[]; initialRows?: number }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const visibleRuns = showAll ? runs : runs.slice(0, initialRows);
 
   return (
-    <table className="table">
-      <thead>
-        <tr>
-          <th>Bot</th>
-          <th>Status</th>
-          <th>Started</th>
-          <th>Mode</th>
-          <th>Summary</th>
-          <th style={{ width: 40 }} />
-        </tr>
-      </thead>
-      <tbody>
-        {runs.map((run) => (
-          <Fragment key={run.id}>
-            <tr
-              className={`run-row ${expandedId === run.id ? "run-row-expanded" : ""}`}
-              onClick={() => setExpandedId(expandedId === run.id ? null : run.id)}
-              style={{ cursor: "pointer" }}
-            >
-              <td>{run.botName}</td>
-              <td><span className={`badge badge-${run.status}`}>{run.status}</span></td>
-              <td><LocalTime value={run.startedAt} /></td>
-              <td>{run.decisionMode ?? "-"}</td>
-              <td className="run-summary-cell">{run.rationaleSummary ?? "-"}</td>
-              <td className="run-expand-icon">{expandedId === run.id ? "▾" : "▸"}</td>
+    <>
+      <div className={`data-table-scroll ${showAll ? "data-table-scroll-expanded" : ""}`}>
+        <table className="table table-compact">
+          <thead>
+            <tr>
+              <th>Bot</th>
+              <th>Status</th>
+              <th>Started</th>
+              <th>Mode</th>
+              <th>Summary</th>
+              <th style={{ width: 40 }} />
             </tr>
-            {expandedId === run.id && (
-              <tr key={`${run.id}-detail`} className="run-detail-row">
-                <td colSpan={6}>
-                  <RunDetailExpanded runId={run.id} />
-                </td>
-              </tr>
-            )}
-          </Fragment>
-        ))}
-      </tbody>
-    </table>
+          </thead>
+          <tbody>
+            {visibleRuns.map((run) => (
+              <Fragment key={run.id}>
+                <tr
+                  className={`run-row ${expandedId === run.id ? "run-row-expanded" : ""}`}
+                  onClick={() => setExpandedId(expandedId === run.id ? null : run.id)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <td data-label="Bot">{run.botName}</td>
+                  <td data-label="Status"><span className={`badge badge-${run.status}`}>{run.status}</span></td>
+                  <td data-label="Started"><LocalTime value={run.startedAt} /></td>
+                  <td data-label="Mode">{run.decisionMode ?? "-"}</td>
+                  <td data-label="Summary" className="run-summary-cell">{run.rationaleSummary ?? "-"}</td>
+                  <td data-label="Details" className="run-expand-icon">{expandedId === run.id ? "▾" : "▸"}</td>
+                </tr>
+                {expandedId === run.id && (
+                  <tr key={`${run.id}-detail`} className="run-detail-row">
+                    <td data-label="Run detail" colSpan={6}>
+                      <RunDetailExpanded runId={run.id} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {runs.length > initialRows ? (
+        <button type="button" className="btn btn-secondary btn-small table-expand-toggle" onClick={() => setShowAll((value) => !value)}>
+          {showAll ? "Show less" : `Show all ${runs.length}`}
+        </button>
+      ) : null}
+    </>
   );
 }
 

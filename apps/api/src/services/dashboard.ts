@@ -156,8 +156,10 @@ export const getDashboard = async () => {
     }
   }
 
-  let liveAllocatedAmount = 0;
-  let testnetAllocatedAmount = 0;
+  const allocatedByMode = new Map<string, number>([
+    ["live", 0],
+    ["testnet", 0]
+  ]);
 
   const bots = botRows.map((row) => {
     const startedAt = row.startedAt.toISOString();
@@ -177,11 +179,7 @@ export const getDashboard = async () => {
     }
 
     if (row.enabled) {
-      if (row.mode === "live") {
-        liveAllocatedAmount += currentPortfolioUsd;
-      } else {
-        testnetAllocatedAmount += currentPortfolioUsd;
-      }
+      allocatedByMode.set(row.mode, (allocatedByMode.get(row.mode) ?? 0) + currentPortfolioUsd);
     }
 
     const netPnlUsd = currentPortfolioUsd - budgetUsdt;
@@ -201,11 +199,51 @@ export const getDashboard = async () => {
     });
   });
 
-  const hasLive = liveBalance || bots.some(b => b.mode === "live");
-  const hasTestnet = testnetBalance || bots.some(b => b.mode === "testnet");
-
   const liveAccountBalance = (liveBalance?.totalFreeUsdt ?? 0) + (liveBalance?.totalLockedUsdt ?? 0);
   const testnetAccountBalance = (testnetBalance?.totalFreeUsdt ?? 0) + (testnetBalance?.totalLockedUsdt ?? 0);
+  const accountConfigs = [
+    {
+      id: "binance-live",
+      label: "Binance Live",
+      venue: "binance",
+      mode: "live",
+      balance: liveAccountBalance,
+      connected: Boolean(liveBalance)
+    },
+    {
+      id: "binance-testnet",
+      label: "Binance Testnet",
+      venue: "binance-testnet",
+      mode: "testnet",
+      balance: testnetAccountBalance,
+      connected: Boolean(testnetBalance)
+    }
+  ];
+  const accounts = accountConfigs.map((account) => {
+    const configuredAgents = bots.filter((bot) => bot.mode === account.mode).length;
+    const activeAgents = bots.filter((bot) => bot.mode === account.mode && bot.enabled).length;
+    const allocatedAmount = allocatedByMode.get(account.mode) ?? 0;
+    const status = account.connected
+      ? "connected"
+      : configuredAgents > 0
+        ? "configured"
+        : "unconfigured";
+    return {
+      id: account.id,
+      label: account.label,
+      venue: account.venue,
+      mode: account.mode,
+      accountBalance: account.balance,
+      allocatedAmount,
+      spareAmount: account.balance - allocatedAmount,
+      connected: account.connected,
+      configuredAgents,
+      activeAgents,
+      status
+    };
+  });
+  const liveAccount = accounts.find((account) => account.mode === "live") ?? null;
+  const testnetAccount = accounts.find((account) => account.mode === "testnet") ?? null;
 
   // Recent Runs
   const recentRuns = await sql`
@@ -308,17 +346,18 @@ export const getDashboard = async () => {
   return dashboardSchema.parse({
     generatedAt: new Date().toISOString(),
     venueOverview: {
-      live: hasLive ? {
-        accountBalance: liveAccountBalance,
-        allocatedAmount: liveAllocatedAmount,
-        spareAmount: liveAccountBalance - liveAllocatedAmount
+      live: liveAccount ? {
+        accountBalance: liveAccount.accountBalance,
+        allocatedAmount: liveAccount.allocatedAmount,
+        spareAmount: liveAccount.spareAmount
       } : null,
-      testnet: hasTestnet ? {
-        accountBalance: testnetAccountBalance,
-        allocatedAmount: testnetAllocatedAmount,
-        spareAmount: testnetAccountBalance - testnetAllocatedAmount
+      testnet: testnetAccount ? {
+        accountBalance: testnetAccount.accountBalance,
+        allocatedAmount: testnetAccount.allocatedAmount,
+        spareAmount: testnetAccount.spareAmount
       } : null
     },
+    accounts,
     bots,
     performanceSeries: [], // Simplify: skip historical performance chart points or reconstruct them later
     recentRuns: recentRuns.map((row) => ({

@@ -5,6 +5,8 @@ import { listNousModels } from "../providers/nous.js";
 import { listOpenAIModels } from "../providers/openai.js";
 import { listAnthropicModels } from "../providers/anthropic.js";
 import { listHuggingFaceModels } from "../providers/huggingface.js";
+import { listGoogleModels } from "../providers/google.js";
+import { listMistralModels } from "../providers/mistral.js";
 
 type CatalogUpsertResult = {
   count: number;
@@ -16,6 +18,19 @@ export type ProviderSyncResult = CatalogUpsertResult & {
   synced: boolean;
   message: string;
 };
+
+export const SUPPORTED_MODEL_PROVIDERS = ["xai", "openai", "anthropic", "google", "mistral", "huggingface", "nous"] as const;
+export type SupportedModelProvider = (typeof SUPPORTED_MODEL_PROVIDERS)[number];
+
+export const modelProviderLabel = (provider: string) =>
+  provider === "xai" ? "xAI"
+    : provider === "nous" ? "Nous"
+      : provider === "openai" ? "OpenAI"
+        : provider === "anthropic" ? "Anthropic"
+          : provider === "huggingface" ? "Hugging Face"
+            : provider === "google" ? "Google"
+              : provider === "mistral" ? "Mistral"
+                : provider;
 
 // Known working xAI model profiles — used as seed fallback when xAI API is unreachable.
 // These match the canonical names used by the sync so there are no duplicates.
@@ -33,14 +48,32 @@ export const BOOTSTRAP_NOUS_PROFILES: { name: string; model: string }[] = [
 ];
 
 export const BOOTSTRAP_OPENAI_PROFILES: { name: string; model: string }[] = [
+  { name: "OpenAI GPT-5.2", model: "gpt-5.2" },
+  { name: "OpenAI GPT-5.2 Pro", model: "gpt-5.2-pro" },
+  { name: "OpenAI GPT-5.1", model: "gpt-5.1" },
   { name: "OpenAI GPT-4.1", model: "gpt-4.1" },
   { name: "OpenAI GPT-4.1 mini", model: "gpt-4.1-mini" },
   { name: "OpenAI GPT-4o mini", model: "gpt-4o-mini" }
 ];
 
 export const BOOTSTRAP_ANTHROPIC_PROFILES: { name: string; model: string }[] = [
-  { name: "Anthropic Claude Sonnet 4.5", model: "claude-sonnet-4-5" },
-  { name: "Anthropic Claude Haiku 4.5", model: "claude-haiku-4-5" }
+  { name: "Anthropic Claude Opus 4.5", model: "claude-opus-4-5-20251101" },
+  { name: "Anthropic Claude Opus 4.1", model: "claude-opus-4-1-20250805" },
+  { name: "Anthropic Claude Sonnet 4.5", model: "claude-sonnet-4-5-20250929" },
+  { name: "Anthropic Claude Sonnet 4.5 alias", model: "claude-sonnet-4-5" },
+  { name: "Anthropic Claude Haiku 4.5 alias", model: "claude-haiku-4-5" }
+];
+
+export const BOOTSTRAP_GOOGLE_PROFILES: { name: string; model: string }[] = [
+  { name: "Google Gemini 3 Pro Preview", model: "gemini-3-pro-preview" },
+  { name: "Google Gemini 3 Flash Preview", model: "gemini-3-flash-preview" },
+  { name: "Google Gemini Flash Latest", model: "gemini-flash-latest" }
+];
+
+export const BOOTSTRAP_MISTRAL_PROFILES: { name: string; model: string }[] = [
+  { name: "Mistral Large 3", model: "mistral-large-2512" },
+  { name: "Mistral Medium 3.5", model: "mistral-medium-latest" },
+  { name: "Mistral Small 4", model: "mistral-small-latest" }
 ];
 
 export const BOOTSTRAP_HUGGINGFACE_PROFILES: { name: string; model: string }[] = [
@@ -57,6 +90,8 @@ export const bootstrapModelProfiles = async (): Promise<CatalogUpsertResult> => 
     ...BOOTSTRAP_NOUS_PROFILES.map((profile) => ({ ...profile, provider: "nous" })),
     ...BOOTSTRAP_OPENAI_PROFILES.map((profile) => ({ ...profile, provider: "openai" })),
     ...BOOTSTRAP_ANTHROPIC_PROFILES.map((profile) => ({ ...profile, provider: "anthropic" })),
+    ...BOOTSTRAP_GOOGLE_PROFILES.map((profile) => ({ ...profile, provider: "google" })),
+    ...BOOTSTRAP_MISTRAL_PROFILES.map((profile) => ({ ...profile, provider: "mistral" })),
     ...BOOTSTRAP_HUGGINGFACE_PROFILES.map((profile) => ({ ...profile, provider: "huggingface" }))
   ];
 
@@ -99,7 +134,7 @@ const shouldRefreshProvider = async (provider: string) => {
 };
 
 export const syncProviderModels = async (provider: string, force = false): Promise<ProviderSyncResult> => {
-  if (provider !== "xai" && provider !== "nous" && provider !== "openai" && provider !== "anthropic" && provider !== "huggingface") {
+  if (!SUPPORTED_MODEL_PROVIDERS.includes(provider as SupportedModelProvider)) {
     return { synced: false, count: 0, inserted: 0, updated: 0, message: "Provider not supported" };
   }
 
@@ -120,19 +155,16 @@ export const syncProviderModels = async (provider: string, force = false): Promi
       : provider === "nous" ? await listNousModels()
         : provider === "openai" ? await listOpenAIModels()
           : provider === "anthropic" ? await listAnthropicModels()
-            : await listHuggingFaceModels();
+            : provider === "google" ? await listGoogleModels()
+              : provider === "mistral" ? await listMistralModels()
+                : await listHuggingFaceModels();
   console.log(`[catalog] Found ${models.length} models from ${provider}`);
 
   let inserted = 0;
   let updated = 0;
 
   for (const model of models) {
-    const providerLabel =
-      provider === "xai" ? "xAI"
-        : provider === "nous" ? "Nous"
-          : provider === "openai" ? "OpenAI"
-            : provider === "anthropic" ? "Anthropic"
-              : "Hugging Face";
+    const providerLabel = modelProviderLabel(provider);
     const profileName = `${providerLabel} ${model.id}`;
     const result = await sql`
       insert into model_profiles (name, provider, model, settings)

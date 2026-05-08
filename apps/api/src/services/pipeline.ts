@@ -25,6 +25,8 @@ import { runNousAgentLoop } from "../providers/nous.js";
 import { runOpenAIAgentLoop } from "../providers/openai.js";
 import { runAnthropicAgentLoop } from "../providers/anthropic.js";
 import { runHuggingFaceAgentLoop } from "../providers/huggingface.js";
+import { runGoogleAgentLoop } from "../providers/google.js";
+import { runMistralAgentLoop } from "../providers/mistral.js";
 import type { LLMProvider, LLMMessage } from "../providers/llm.js";
 import { getAgentFacingTools } from "../mcp/index.js";
 import type { ToolContext } from "../mcp/types.js";
@@ -215,6 +217,8 @@ const runAgentLoop = (input: {
   if (providerName === "nous") return runNousAgentLoop(rest);
   if (providerName === "openai") return runOpenAIAgentLoop(rest);
   if (providerName === "huggingface") return runHuggingFaceAgentLoop(rest);
+  if (providerName === "google") return runGoogleAgentLoop(rest);
+  if (providerName === "mistral") return runMistralAgentLoop(rest);
   if (providerName === "anthropic") {
     const { responseFormat: _responseFormat, ...anthropicInput } = rest;
     return runAnthropicAgentLoop(anthropicInput);

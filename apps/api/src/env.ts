@@ -106,6 +106,12 @@ const envSchema = z.object({
   HUGGINGFACE_API_KEY: optionalNonEmptyString,
   HF_TOKEN: optionalNonEmptyString,
   HUGGINGFACE_BASE_URL: optionalUrlString,
+  GOOGLE_API_KEY: optionalNonEmptyString,
+  GEMINI_API_KEY: optionalNonEmptyString,
+  GOOGLE_BASE_URL: optionalUrlString,
+  GEMINI_BASE_URL: optionalUrlString,
+  MISTRAL_API_KEY: optionalNonEmptyString,
+  MISTRAL_BASE_URL: optionalUrlString,
   BINANCE_API_KEY: optionalNonEmptyString,
   BINANCE_API_SECRET: optionalNonEmptyString,
   BINANCE_TESTNET_API_KEY: optionalNonEmptyString,
@@ -120,6 +126,8 @@ const parsedEnv = envSchema.parse(process.env);
 export const env = {
   ...parsedEnv,
   HUGGINGFACE_API_KEY: parsedEnv.HUGGINGFACE_API_KEY ?? parsedEnv.HF_TOKEN,
+  GOOGLE_API_KEY: parsedEnv.GOOGLE_API_KEY ?? parsedEnv.GEMINI_API_KEY,
+  GOOGLE_BASE_URL: parsedEnv.GOOGLE_BASE_URL ?? parsedEnv.GEMINI_BASE_URL,
   API_PORT: parsedEnv.PORT ?? parsedEnv.API_PORT ?? 4000,
   SCHEDULER_ENABLED: parsedEnv.SCHEDULER_ENABLED === "true",
   GUARDIAN_ENABLED: parsedEnv.GUARDIAN_ENABLED === "true"

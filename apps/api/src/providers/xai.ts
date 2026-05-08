@@ -13,6 +13,8 @@ import { nousProvider } from "./nous.js";
 import { openaiProvider } from "./openai.js";
 import { anthropicProvider } from "./anthropic.js";
 import { huggingFaceProvider } from "./huggingface.js";
+import { googleProvider } from "./google.js";
+import { mistralProvider } from "./mistral.js";
 
 const client = new OpenAI({
   apiKey: env.XAI_API_KEY ?? "missing-xai-api-key",
@@ -177,7 +179,9 @@ const providers: Record<string, LLMProvider> = {
   nous: nousProvider,
   openai: openaiProvider,
   anthropic: anthropicProvider,
-  huggingface: huggingFaceProvider
+  huggingface: huggingFaceProvider,
+  google: googleProvider,
+  mistral: mistralProvider
 };
 
 export const getProvider = (name: string): LLMProvider => {

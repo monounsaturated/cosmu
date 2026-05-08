@@ -197,12 +197,12 @@ type Model = {
 type AppSettings = {
   agentDefaults: {
     research: {
-      provider: "xai" | "nous" | "openai" | "anthropic" | "huggingface";
+      provider: "xai" | "nous" | "openai" | "anthropic" | "huggingface" | "google" | "mistral";
       modelProfileId: string | null;
       prompt: { mode: "new" | "saved"; versionId: string | null };
     };
     trader: {
-      provider: "xai" | "nous" | "openai" | "anthropic" | "huggingface";
+      provider: "xai" | "nous" | "openai" | "anthropic" | "huggingface" | "google" | "mistral";
       modelProfileId: string | null;
       prompt: { mode: "new" | "saved"; versionId: string | null };
     };
@@ -242,13 +242,17 @@ const FALLBACK_MODELS: Model[] = [
   ...FALLBACK_XAI_MODELS,
   { id: "fallback:openai:gpt-4.1", name: "OpenAI GPT-4.1", provider: "openai", model: "gpt-4.1" },
   { id: "fallback:openai:gpt-4.1-mini", name: "OpenAI GPT-4.1 mini", provider: "openai", model: "gpt-4.1-mini" },
+  { id: "fallback:google:gemini-3-pro-preview", name: "Google Gemini 3 Pro Preview", provider: "google", model: "gemini-3-pro-preview" },
+  { id: "fallback:google:gemini-3-flash-preview", name: "Google Gemini 3 Flash Preview", provider: "google", model: "gemini-3-flash-preview" },
+  { id: "fallback:mistral:mistral-large-2512", name: "Mistral Large 3", provider: "mistral", model: "mistral-large-2512" },
+  { id: "fallback:mistral:mistral-medium-latest", name: "Mistral Medium latest", provider: "mistral", model: "mistral-medium-latest" },
   { id: "fallback:anthropic:claude-sonnet-4-5", name: "Anthropic Claude Sonnet 4.5", provider: "anthropic", model: "claude-sonnet-4-5" },
   { id: "fallback:anthropic:claude-haiku-4-5", name: "Anthropic Claude Haiku 4.5", provider: "anthropic", model: "claude-haiku-4-5" },
   { id: "fallback:huggingface:deepseek-ai/DeepSeek-R1:fastest", name: "Hugging Face DeepSeek R1 fastest", provider: "huggingface", model: "deepseek-ai/DeepSeek-R1:fastest" },
   { id: "fallback:nous:nousresearch/hermes-4-70b", name: "Nous Hermes 4 70B", provider: "nous", model: "nousresearch/hermes-4-70b" },
 ];
 
-const PROVIDER_ORDER = ["xai", "openai", "anthropic", "huggingface", "nous"];
+const PROVIDER_ORDER = ["xai", "openai", "anthropic", "google", "mistral", "huggingface", "nous"];
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
   agentDefaults: {

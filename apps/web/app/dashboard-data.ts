@@ -6,6 +6,7 @@ const emptyDashboard = () =>
   dashboardSchema.parse({
     generatedAt: new Date().toISOString(),
     venueOverview: { live: null, testnet: null },
+    accounts: [],
     bots: [],
     performanceSeries: [],
     recentRuns: [],

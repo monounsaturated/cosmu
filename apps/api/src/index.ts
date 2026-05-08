@@ -40,11 +40,15 @@ import { listXaiModels } from "./providers/xai.js";
 import { listNousModels } from "./providers/nous.js";
 import {
   BOOTSTRAP_ANTHROPIC_PROFILES,
+  BOOTSTRAP_GOOGLE_PROFILES,
   BOOTSTRAP_HUGGINGFACE_PROFILES,
+  BOOTSTRAP_MISTRAL_PROFILES,
   BOOTSTRAP_OPENAI_PROFILES,
   BOOTSTRAP_NOUS_PROFILES,
   BOOTSTRAP_XAI_PROFILES,
+  SUPPORTED_MODEL_PROVIDERS,
   bootstrapModelProfiles,
+  modelProviderLabel,
   getVenueSymbols,
   syncProviderModels
 } from "./services/catalog.js";
@@ -129,6 +133,21 @@ app.get("/internal/diagnostics", async (_request, response) => {
       result.nousApi = "missing NOUS_API_KEY";
     }
   } catch (e) { result.nousApi = `unreachable: ${String(e)}`; }
+
+  result.modelProviderKeys = {
+    xai: Boolean(env.XAI_API_KEY),
+    openai: Boolean(env.OPENAI_API_KEY),
+    anthropic: Boolean(env.ANTHROPIC_API_KEY),
+    google: Boolean(env.GOOGLE_API_KEY),
+    mistral: Boolean(env.MISTRAL_API_KEY),
+    huggingface: Boolean(env.HUGGINGFACE_API_KEY),
+    nous: Boolean(env.NOUS_API_KEY)
+  };
+
+  result.tradingAccountKeys = {
+    binanceLive: Boolean(env.BINANCE_API_KEY && env.BINANCE_API_SECRET),
+    binanceTestnet: Boolean(env.BINANCE_TESTNET_API_KEY && env.BINANCE_TESTNET_API_SECRET)
+  };
 
   try {
     const binRes = await fetch("https://api.binance.com/api/v3/ping", {
@@ -521,7 +540,7 @@ app.get("/models", async (request, response, next) => {
     const provider = typeof request.query.provider === "string" ? request.query.provider : undefined;
     let liveXaiModelIds: Set<string> | null = null;
     let liveXaiModels: Array<{ id: string; created: number | null }> = [];
-    const providersToSync = provider ? [provider] : ["xai", "nous", "openai", "anthropic", "huggingface"];
+    const providersToSync = provider ? [provider] : [...SUPPORTED_MODEL_PROVIDERS];
 
     for (const providerName of providersToSync) {
       try {
@@ -586,6 +605,18 @@ app.get("/models", async (request, response, next) => {
         provider: "anthropic",
         model: p.model,
         settings: { temperature: 0.2 }
+      }))).concat(BOOTSTRAP_GOOGLE_PROFILES.map((p) => ({
+        id: `fallback:google:${p.model}`,
+        name: p.name,
+        provider: "google",
+        model: p.model,
+        settings: { temperature: 0.2 }
+      }))).concat(BOOTSTRAP_MISTRAL_PROFILES.map((p) => ({
+        id: `fallback:mistral:${p.model}`,
+        name: p.name,
+        provider: "mistral",
+        model: p.model,
+        settings: { temperature: 0.2 }
       }))).concat(BOOTSTRAP_HUGGINGFACE_PROFILES.map((p) => ({
         id: `fallback:huggingface:${p.model}`,
         name: p.name,
@@ -628,15 +659,30 @@ app.post("/models", async (request, response, next) => {
 app.post("/internal/catalog/sync", async (request, response, next) => {
   try {
     const force = request.query.force === "true";
-    const provider = typeof request.query.provider === "string" ? request.query.provider : "xai";
-    let syncResult = { synced: false, count: 0, inserted: 0, updated: 0, message: "" };
+    const provider = typeof request.query.provider === "string" ? request.query.provider : "all";
+    const providersToSync = provider === "all" ? [...SUPPORTED_MODEL_PROVIDERS] : [provider];
+    const syncResults = [];
     let bootstrapResult = { count: 0, inserted: 0, updated: 0 };
 
-    try {
-      syncResult = await syncProviderModels(provider, force);
-    } catch (syncError) {
-      console.warn(`${provider} sync failed:`, String(syncError));
-      syncResult.message = String(syncError);
+    for (const providerName of providersToSync) {
+      try {
+        syncResults.push({
+          provider: providerName,
+          label: modelProviderLabel(providerName),
+          ...(await syncProviderModels(providerName, force))
+        });
+      } catch (syncError) {
+        console.warn(`${providerName} sync failed:`, String(syncError));
+        syncResults.push({
+          provider: providerName,
+          label: modelProviderLabel(providerName),
+          synced: false,
+          count: 0,
+          inserted: 0,
+          updated: 0,
+          message: String(syncError)
+        });
+      }
     }
 
     try {
@@ -645,16 +691,16 @@ app.post("/internal/catalog/sync", async (request, response, next) => {
       console.warn("Model bootstrap failed:", String(bootstrapError));
     }
 
-    const models = await listModelProfiles(provider);
+    const models = await listModelProfiles(provider === "all" ? undefined : provider);
 
     response.json({
       ok: true,
       provider,
       modelCount: models.length,
       syncedAt: new Date().toISOString(),
-      sync: syncResult,
+      sync: syncResults,
       bootstrap: bootstrapResult,
-      models: models.map(m => ({ id: m.id, name: m.name, model: m.model }))
+      models: models.map(m => ({ id: m.id, name: m.name, provider: m.provider, model: m.model }))
     });
   } catch (error) {
     next(error);
@@ -863,7 +909,13 @@ const CATALOG_SYNC_INTERVAL_MS = 30 * 60 * 1000;
 const startCatalogSyncLoop = () => {
   const runSync = async () => {
     try {
-      await syncProviderModels("xai");
+      for (const provider of SUPPORTED_MODEL_PROVIDERS) {
+        try {
+          await syncProviderModels(provider);
+        } catch (providerError) {
+          console.warn(`Background ${provider} catalog sync failed:`, String(providerError));
+        }
+      }
       await bootstrapModelProfiles();
     } catch (error) {
       console.warn("Background catalog sync failed:", String(error));

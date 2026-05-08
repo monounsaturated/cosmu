@@ -1,51 +1,116 @@
+import { Activity, CircleDollarSign, PlugZap, WalletCards } from "lucide-react";
 import type { DashboardPayload } from "@cosmu/shared";
 
-type VenueEntry = { accountBalance: number; allocatedAmount: number; spareAmount: number };
+type AccountEntry = DashboardPayload["accounts"][number];
+type VenueOverview = DashboardPayload["venueOverview"];
 
-function VenueCard({ label, data, dotClass, labelColor }: {
-  label: string;
-  data: VenueEntry;
-  dotClass: string;
-  labelColor: string;
+const formatUsd = (value: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: value >= 1000 ? 0 : 2
+  }).format(value);
+
+const fallbackAccounts = (venueOverview: VenueOverview): AccountEntry[] => {
+  const rows: AccountEntry[] = [];
+  if (venueOverview.live) {
+    rows.push({
+      id: "binance-live",
+      label: "Binance Live",
+      venue: "binance",
+      mode: "live",
+      connected: true,
+      configuredAgents: 0,
+      activeAgents: 0,
+      status: "connected",
+      ...venueOverview.live
+    });
+  }
+  if (venueOverview.testnet) {
+    rows.push({
+      id: "binance-testnet",
+      label: "Binance Testnet",
+      venue: "binance-testnet",
+      mode: "testnet",
+      connected: true,
+      configuredAgents: 0,
+      activeAgents: 0,
+      status: "connected",
+      ...venueOverview.testnet
+    });
+  }
+  return rows;
+};
+
+export function VenueOverview({
+  accounts,
+  venueOverview
+}: {
+  accounts: DashboardPayload["accounts"];
+  venueOverview: VenueOverview;
 }) {
-  return (
-    <div className="panel venue-group" style={{ flex: "1 1 340px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
-        <span className={`status-dot ${dotClass}`} style={{ width: "8px", height: "8px" }} />
-        <span className="label" style={{ fontSize: "13px", color: labelColor }}>{label}</span>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
-        <div>
-          <p className="label">Account Balance</p>
-          <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${data.accountBalance.toFixed(2)}</h2>
-        </div>
-        <div>
-          <p className="label">Allocated to Bots</p>
-          <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${data.allocatedAmount.toFixed(2)}</h2>
-        </div>
-        <div>
-          <p className="label">Spare</p>
-          <h2 style={{ margin: "4px 0", fontSize: "20px" }}>${data.spareAmount.toFixed(2)}</h2>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export function VenueOverview({ venueOverview }: { venueOverview: DashboardPayload["venueOverview"] }) {
-  const hasAny = venueOverview.live || venueOverview.testnet;
+  const rows = accounts.length > 0 ? accounts : fallbackAccounts(venueOverview);
 
   return (
-    <section style={{ marginBottom: "32px", display: "flex", gap: "16px", flexWrap: "wrap" }}>
-      {venueOverview.live && (
-        <VenueCard label="Live" data={venueOverview.live} dotClass="status-active" labelColor="#34d399" />
-      )}
-      {venueOverview.testnet && (
-        <VenueCard label="Testnet" data={venueOverview.testnet} dotClass="status-inactive" labelColor="#a1a1aa" />
-      )}
-      {!hasAny && (
-        <div className="panel" style={{ flex: 1 }}>
-          <p className="muted">No venue data available.</p>
+    <section className="panel account-overview-panel">
+      <div className="section-header account-overview-header">
+        <div>
+          <span className="label">Accounts</span>
+          <h3>Cash, allocation, and free capacity</h3>
+        </div>
+        <span className="badge badge-neutral">{rows.length} tracked</span>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="muted">No account data available.</p>
+      ) : (
+        <div className="account-card-grid">
+          {rows.map((account) => {
+            const utilization = account.accountBalance > 0
+              ? Math.min(100, Math.max(0, (account.allocatedAmount / account.accountBalance) * 100))
+              : 0;
+            const spareTone = account.spareAmount < 0 ? "value-red" : account.spareAmount > 0 ? "value-green" : "";
+            return (
+              <article className={`account-card account-card-${account.status}`} key={account.id}>
+                <div className="account-card-top">
+                  <span>
+                    <strong>{account.label}</strong>
+                    <small>{account.venue} / {account.mode}</small>
+                  </span>
+                  <span className={`badge ${account.connected ? "badge-success" : "badge-inactive"}`}>
+                    {account.connected ? "connected" : account.status}
+                  </span>
+                </div>
+
+                <div className="account-balance-row">
+                  <WalletCards size={18} />
+                  <strong className="finance-number">{formatUsd(account.accountBalance)}</strong>
+                </div>
+
+                <div className="account-usage" aria-label={`${account.label} allocation`}>
+                  <span style={{ width: `${utilization}%` }} />
+                </div>
+
+                <div className="account-metrics">
+                  <span>
+                    <CircleDollarSign size={14} />
+                    <small>Allocated</small>
+                    <strong>{formatUsd(account.allocatedAmount)}</strong>
+                  </span>
+                  <span>
+                    <PlugZap size={14} />
+                    <small>Free</small>
+                    <strong className={spareTone}>{formatUsd(account.spareAmount)}</strong>
+                  </span>
+                  <span>
+                    <Activity size={14} />
+                    <small>Agents</small>
+                    <strong>{account.activeAgents}/{account.configuredAgents}</strong>
+                  </span>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
     </section>

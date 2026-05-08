@@ -63,9 +63,10 @@ type VersionInfo = {
 };
 
 const PROVIDERS = [
-  { value: "openai", label: "OpenAI", model: "gpt-4o-mini" },
-  { value: "anthropic", label: "Anthropic", model: "claude-sonnet-4-5" },
-  { value: "google", label: "Google", model: "gemini-2.5-flash" },
+  { value: "openai", label: "OpenAI", model: "gpt-5.2" },
+  { value: "anthropic", label: "Anthropic", model: "claude-sonnet-4-5-20250929" },
+  { value: "google", label: "Google", model: "gemini-3-flash-preview" },
+  { value: "mistral", label: "Mistral", model: "mistral-large-2512" },
   { value: "xai", label: "xAI", model: "grok-3-fast" },
   { value: "deepseek", label: "DeepSeek", model: "deepseek-chat" }
 ];
