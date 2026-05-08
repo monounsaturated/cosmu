@@ -31,6 +31,7 @@
   --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.2);
   --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
   --tab-bar-height: 60px;
+  --sidebar-w: 256px;
 }
 
 :root[data-theme="light"] {
@@ -103,7 +104,7 @@ img { max-width: 100%; display: block; }
 /* ── 3. Layout Shell ── */
 .app-shell {
   display: grid;
-  grid-template-columns: 256px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -294,6 +295,24 @@ img { max-width: 100%; display: block; }
 .sidebar-footer-modern strong {
   color: var(--text-strong);
   font-size: 13px;
+}
+
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 31;
+  transition: background 0.15s;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background: var(--accent);
+  opacity: 0.5;
+  border-radius: 3px;
 }
 
 /* Mobile navigation controls - hidden by default */
@@ -680,10 +699,8 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
 }
 
 .metric-card-emphasis {
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%),
-    var(--bg-elevated) !important;
-  border-color: color-mix(in srgb, var(--accent) 34%, var(--border)) !important;
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
 }
 
 .metric-strip span,
@@ -1446,7 +1463,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
   position: relative;
   display: flex;
   flex-direction: column;
-  width: min(480px, 100%);
+  width: min(420px, 100%);
   max-width: none;
   height: 100dvh;
   max-height: 100dvh;
@@ -1460,7 +1477,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
   box-shadow: -8px 0 32px rgba(0, 0, 0, 0.3);
 }
 
-.modal-content-wide { width: min(900px, 100%); }
+.modal-content-wide { width: min(640px, 100%); }
 
 .modal-grabber { display: none; }
 
@@ -3063,21 +3080,22 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
 
   .command-panel-footer { flex-direction: column; align-items: stretch; }
 
-  /* Mobile modal: full-screen sheet */
+  /* Mobile modal: floating sheet with room */
   .modal-overlay {
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
+    padding: 12px;
   }
 
   .modal-content,
   .modal-content-wide {
     width: 100%;
     max-width: 100vw;
-    height: 100svh;
-    max-height: 100svh;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
+    height: auto;
+    max-height: calc(100svh - 24px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     overflow-x: hidden;
   }
 
@@ -3162,19 +3180,19 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
 
 /* ── 35. Wide desktop modal (≥1040px) ── */
 @media (min-width: 1040px) {
-  .modal-form {
+  .modal-content-wide .modal-form {
     grid-template-columns: repeat(2, 1fr);
     align-items: start;
   }
 
-  .modal-form > .form-section,
-  .modal-form > .form-error,
-  .modal-form > .form-actions {
+  .modal-content-wide .modal-form > .form-section,
+  .modal-content-wide .modal-form > .form-error,
+  .modal-content-wide .modal-form > .form-actions {
     grid-column: 1 / -1;
   }
 
-  .modal-form > .form-section:nth-of-type(3),
-  .modal-form > .form-section:nth-of-type(4) {
+  .modal-content-wide .modal-form > .form-section:nth-of-type(3),
+  .modal-content-wide .modal-form > .form-section:nth-of-type(4) {
     grid-column: auto;
   }
 }

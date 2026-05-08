@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -42,10 +42,54 @@ const MOBILE_TABS = [
 
 const GROUPS = ["Core", "Modules"] as const;
 
+const SIDEBAR_MIN = 200;
+const SIDEBAR_MAX = 400;
+const SIDEBAR_DEFAULT = 256;
+const SIDEBAR_STORAGE_KEY = "cosmu-sidebar-width";
+
 export function Sidebar() {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
+  const dragging = useRef(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+      if (saved) {
+        const w = Number(saved);
+        if (w >= SIDEBAR_MIN && w <= SIDEBAR_MAX) setSidebarWidth(w);
+      }
+    } catch {}
+  }, []);
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current) return;
+      const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, ev.clientX));
+      setSidebarWidth(w);
+    };
+    const onUp = () => {
+      dragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      if (sidebarRef.current) {
+        const finalW = sidebarRef.current.offsetWidth;
+        try { localStorage.setItem(SIDEBAR_STORAGE_KEY, String(finalW)); } catch {}
+      }
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
 
   useEffect(() => {
     setMoreOpen(false);
@@ -65,7 +109,8 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="sidebar-modern">
+      <aside className="sidebar-modern" ref={sidebarRef} style={{ width: sidebarWidth }}>
+        <div className="sidebar-resize-handle" onMouseDown={onDragStart} />
         <Link href="/" className="sidebar-logo-modern" aria-label="Cosmu home">
           <span className="sidebar-mark"><Sparkles size={16} /></span>
           <span>

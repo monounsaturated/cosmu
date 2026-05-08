@@ -1,12 +1,9 @@
-import Link from "next/link";
-import { ArrowRight, BarChart3, Bot, Settings } from "lucide-react";
 import { DashboardActions } from "./dashboard-actions";
 import { PerformanceChart } from "./performance-chart";
 import { RecentRunsTable } from "./run-detail-row";
 import { BotTable } from "./bot-table";
 import { AutoRefresh } from "./live-refresh";
 import { LocalTime } from "./local-time";
-import { KillAllBotsButton } from "./kill-all-bots";
 import { VenueOverview } from "./venue-overview";
 import { RecentExecutions } from "./recent-executions";
 import { PortfolioState } from "./portfolio-state";
@@ -54,31 +51,8 @@ export default async function HomePage() {
         </div>
         <div className="hero-actions command-actions">
           <span className="badge badge-neutral">Updated <LocalTime value={dashboard.generatedAt} /></span>
-          <div className="hero-action-row">
-            <KillAllBotsButton />
-            <DashboardActions hasNoBots={dashboard.bots.length === 0} />
-          </div>
+          <DashboardActions hasNoBots={dashboard.bots.length === 0} />
         </div>
-      </section>
-
-      <section className="product-flow" aria-label="Primary workflow">
-        {[
-          { href: "/bots", label: "Create", body: "Launch a lean paper agent", icon: Bot },
-          { href: "/", label: "Monitor", body: "Runs, PnL, holdings, errors", icon: BarChart3 },
-          { href: "/settings", label: "Tune", body: "Defaults, models, data toggles", icon: Settings }
-        ].map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link href={item.href} className="flow-step" key={item.href}>
-              <Icon size={18} />
-              <span>
-                <strong>{item.label}</strong>
-                <small>{item.body}</small>
-              </span>
-              <ArrowRight size={16} />
-            </Link>
-          );
-        })}
       </section>
 
       <section className="metric-strip">

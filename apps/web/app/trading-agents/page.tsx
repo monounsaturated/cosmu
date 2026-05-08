@@ -63,13 +63,22 @@ type VersionInfo = {
 };
 
 const PROVIDERS = [
-  { value: "openai", label: "OpenAI", model: "gpt-5.2" },
+  { value: "openai", label: "OpenAI", model: "gpt-4o" },
   { value: "anthropic", label: "Anthropic", model: "claude-sonnet-4-5-20250929" },
-  { value: "google", label: "Google", model: "gemini-3-flash-preview" },
-  { value: "mistral", label: "Mistral", model: "mistral-large-2512" },
+  { value: "google", label: "Google", model: "gemini-2.5-flash" },
+  { value: "mistral", label: "Mistral", model: "mistral-large-latest" },
   { value: "xai", label: "xAI", model: "grok-3-fast" },
   { value: "deepseek", label: "DeepSeek", model: "deepseek-chat" }
 ];
+
+const MODELS_BY_PROVIDER: Record<string, string[]> = {
+  openai: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o4-mini", "o3"],
+  anthropic: ["claude-sonnet-4-5-20250929", "claude-opus-4-6", "claude-haiku-4-5-20251001"],
+  google: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"],
+  mistral: ["mistral-large-latest", "mistral-small-latest", "codestral-latest"],
+  xai: ["grok-3-fast", "grok-3", "grok-3-mini-fast"],
+  deepseek: ["deepseek-chat", "deepseek-reasoner"]
+};
 
 const ANALYSTS = [
   { value: "market", label: "Market", description: "Charts and indicators", icon: BarChart3 },
@@ -207,7 +216,7 @@ export default function TradingAgentsPage() {
   const [ticker, setTicker] = useState("NVDA");
   const [date, setDate] = useState("");
   const [provider, setProvider] = useState("openai");
-  const [model, setModel] = useState("gpt-4o-mini");
+  const [model, setModel] = useState("gpt-4o");
   const [selectedAnalysts, setSelectedAnalysts] = useState(["market", "social", "news", "fundamentals"]);
   const [loading, setLoading] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -384,7 +393,11 @@ export default function TradingAgentsPage() {
 
               <label className="field">
                 <span>Model</span>
-                <input value={model} onChange={(event) => setModel(event.target.value)} placeholder={selectedProvider?.model ?? "model"} />
+                <select value={model} onChange={(event) => setModel(event.target.value)}>
+                  {(MODELS_BY_PROVIDER[provider] ?? []).map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
               </label>
             </div>
 
