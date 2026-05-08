@@ -15,6 +15,8 @@ type Summary = {
 };
 
 type FeatureToggles = {
+  promptLab: boolean;
+  sentiment: boolean;
   signals: boolean;
   researchLab: boolean;
   proReview: boolean;
@@ -22,6 +24,8 @@ type FeatureToggles = {
 };
 
 const DEFAULT_TOGGLES: FeatureToggles = {
+  promptLab: false,
+  sentiment: false,
   signals: false,
   researchLab: false,
   proReview: false,

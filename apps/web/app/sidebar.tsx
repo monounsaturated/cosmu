@@ -9,6 +9,10 @@ import {
   BarChart3,
   Bot,
   Brain,
+  Boxes,
+  ChevronUp,
+  CircleDot,
+  Ellipsis,
   FlaskConical,
   Gauge,
   LayoutGrid,
@@ -21,16 +25,16 @@ import {
 } from "lucide-react";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", description: "portfolio and runs", icon: BarChart3, group: "Cosmu" },
-  { href: "/bots", label: "Agents", description: "create and tune", icon: Bot, group: "Cosmu" },
-  { href: "/trading-agents", label: "Trading Agents", description: "AI hedge fund", icon: LayoutGrid, group: "Cosmu" },
-  { href: "/prompt-lab", label: "Prompt Lab", description: "iterate and optimize", icon: Brain, group: "Cosmu" },
-  { href: "/sentiment", label: "Sentiment", description: "market pulse", icon: Gauge, group: "Cosmu" },
+  { href: "/", label: "Dashboard", description: "portfolio and runs", icon: BarChart3, group: "Core" },
+  { href: "/bots", label: "Agents", description: "create and tune", icon: Bot, group: "Core" },
+  { href: "/trading-agents", label: "AI Hedge Fund", description: "TradingAgents", icon: LayoutGrid, group: "Core" },
+  { href: "/settings", label: "Settings", description: "defaults and switches", icon: Settings, group: "Core" },
+  { href: "/prompt-lab", label: "Prompt Lab", description: "iterate and optimize", icon: Brain, group: "Modules", toggleKey: "promptLab" },
+  { href: "/sentiment", label: "Sentiment", description: "market pulse", icon: Gauge, group: "Modules", toggleKey: "sentiment" },
   { href: "/signals", label: "Signals", description: "capture and triage", icon: Radio, group: "Modules", toggleKey: "signals" },
   { href: "/research", label: "Research", description: "test a thesis", icon: FlaskConical, group: "Modules", toggleKey: "researchLab" },
   { href: "/pro", label: "Review", description: "live approvals", icon: ShieldCheck, group: "Modules", toggleKey: "proReview" },
-  { href: "/prompts", label: "Prompts", description: "version history", icon: BadgeCheck, group: "Modules", toggleKey: "promptLibrary" },
-  { href: "/settings", label: "Settings", description: "defaults and sources", icon: Settings, group: "Cosmu" }
+  { href: "/prompts", label: "Prompts", description: "version history", icon: BadgeCheck, group: "Modules", toggleKey: "promptLibrary" }
 ];
 
 const MOBILE_TABS = [
@@ -40,9 +44,11 @@ const MOBILE_TABS = [
   { href: "/settings", label: "Settings", icon: Settings }
 ];
 
-const GROUPS = ["Cosmu", "Modules"] as const;
+const GROUPS = ["Core", "Modules"] as const;
 
 type FeatureToggles = {
+  promptLab: boolean;
+  sentiment: boolean;
   signals: boolean;
   researchLab: boolean;
   proReview: boolean;
@@ -50,6 +56,8 @@ type FeatureToggles = {
 };
 
 const DEFAULT_TOGGLES: FeatureToggles = {
+  promptLab: false,
+  sentiment: false,
   signals: false,
   researchLab: false,
   proReview: false,
@@ -60,6 +68,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [featureToggles, setFeatureToggles] = useState<FeatureToggles>(DEFAULT_TOGGLES);
   const [, startTransition] = useTransition();
@@ -79,6 +88,7 @@ export function Sidebar() {
 
   useEffect(() => {
     setOpen(false);
+    setMoreOpen(false);
     setPendingHref(null);
   }, [pathname]);
 
@@ -87,6 +97,8 @@ export function Sidebar() {
   }, [featureToggles]);
 
   const activeSection = useMemo(() => visibleItems.find((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href))), [pathname, visibleItems]);
+  const enabledModules = useMemo(() => visibleItems.filter((item) => item.group === "Modules"), [visibleItems]);
+  const mobileExtraItems = useMemo(() => visibleItems.filter((item) => !MOBILE_TABS.some((tab) => tab.href === item.href)), [visibleItems]);
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
@@ -112,26 +124,36 @@ export function Sidebar() {
           <span className="sidebar-mark"><Sparkles size={16} /></span>
           <span>
             <strong>cosmu</strong>
-            <small>trading OS</small>
+            <small>agent command</small>
           </span>
         </Link>
 
         <nav className="sidebar-list" aria-label="Navigation">
           {GROUPS.filter((group) => visibleItems.some((item) => item.group === group)).map((group) => (
             <div className="sidebar-nav-group" key={group}>
-              <span className="sidebar-group-title">{group}</span>
+              <span className="sidebar-group-title">{group === "Core" ? "Workspace" : "Enabled"}</span>
               {visibleItems.filter((item) => item.group === group).map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.href) || pendingHref === item.href;
                 return (
                   <Link key={item.href} href={item.href} onClick={handleNavClick(item.href)} className={`sidebar-item ${active ? "sidebar-item-active" : ""}`}>
                     <Icon size={18} />
-                    <span><strong>{item.label}</strong><small>{item.description}</small></span>
+                    <span><strong>{item.label}</strong></span>
+                    {active ? <CircleDot className="sidebar-active-dot" size={10} /> : null}
                   </Link>
                 );
               })}
             </div>
           ))}
+          {enabledModules.length === 0 ? (
+            <div className="sidebar-nav-group sidebar-nav-muted">
+              <span className="sidebar-group-title">Modules</span>
+              <Link href="/settings" onClick={handleNavClick("/settings")} className="sidebar-item sidebar-item-soft">
+                <Boxes size={18} />
+                <span><strong>Enable modules</strong><small>Settings</small></span>
+              </Link>
+            </div>
+          ) : null}
         </nav>
 
         <div className="sidebar-footer-modern">
@@ -155,7 +177,44 @@ export function Sidebar() {
             </Link>
           );
         })}
+        {mobileExtraItems.length > 0 ? (
+          <button
+            type="button"
+            className={`mobile-tab-item mobile-more-trigger ${moreOpen ? "mobile-tab-item-active" : ""}`}
+            onClick={() => setMoreOpen((value) => !value)}
+            aria-expanded={moreOpen}
+            aria-label="More navigation"
+          >
+            {moreOpen ? <ChevronUp size={22} /> : <Ellipsis size={22} />}
+            <span>More</span>
+          </button>
+        ) : null}
       </nav>
+
+      {moreOpen ? (
+        <>
+          <button className="mobile-more-backdrop" aria-label="Close more menu" onClick={() => setMoreOpen(false)} />
+          <div className="mobile-more-sheet">
+            <div className="mobile-more-handle" />
+            <strong>More</strong>
+            <div className="mobile-more-list">
+              {mobileExtraItems.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.href);
+                return (
+                  <Link key={item.href} href={item.href} onClick={handleNavClick(item.href)} className={`mobile-more-item ${active ? "mobile-more-item-active" : ""}`}>
+                    <Icon size={18} />
+                    <span>
+                      <strong>{item.label}</strong>
+                      <small>{item.description}</small>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      ) : null}
     </>
   );
 }

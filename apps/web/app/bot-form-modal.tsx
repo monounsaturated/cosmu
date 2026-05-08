@@ -222,6 +222,8 @@ type AppSettings = {
     };
   };
   featureToggles: {
+    promptLab: boolean;
+    sentiment: boolean;
     signals: boolean;
     researchLab: boolean;
     proReview: boolean;
@@ -267,7 +269,14 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
       }
     }
   },
-  featureToggles: { signals: false, researchLab: false, proReview: false, promptLibrary: false }
+  featureToggles: {
+    promptLab: false,
+    sentiment: false,
+    signals: false,
+    researchLab: false,
+    proReview: false,
+    promptLibrary: false
+  }
 };
 
 const pickBestModel = (models: Model[]): Model | undefined => {

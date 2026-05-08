@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { DatabaseZap, Plus, RefreshCw, Save, Settings2 } from "lucide-react";
+import { DatabaseZap, KeyRound, Plus, RefreshCw, Save, Settings2, SlidersHorizontal } from "lucide-react";
 import type { ResearchDataSource } from "@cosmu/shared";
 
 type ModelProfile = {
@@ -47,6 +47,8 @@ type AppSettings = {
     };
   };
   featureToggles: {
+    promptLab: boolean;
+    sentiment: boolean;
     signals: boolean;
     researchLab: boolean;
     proReview: boolean;
@@ -83,7 +85,55 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
       }
     }
   },
-  featureToggles: { signals: false, researchLab: false, proReview: false, promptLibrary: false }
+  featureToggles: {
+    promptLab: false,
+    sentiment: false,
+    signals: false,
+    researchLab: false,
+    proReview: false,
+    promptLibrary: false
+  }
+};
+
+const mergeAppSettings = (data?: Partial<AppSettings> | null): AppSettings => {
+  const defaults = DEFAULT_APP_SETTINGS;
+  const agentDefaults = data?.agentDefaults;
+  return {
+    ...defaults,
+    ...data,
+    agentDefaults: {
+      ...defaults.agentDefaults,
+      ...agentDefaults,
+      research: {
+        ...defaults.agentDefaults.research,
+        ...agentDefaults?.research,
+        prompt: {
+          ...defaults.agentDefaults.research.prompt,
+          ...agentDefaults?.research?.prompt
+        }
+      },
+      trader: {
+        ...defaults.agentDefaults.trader,
+        ...agentDefaults?.trader,
+        prompt: {
+          ...defaults.agentDefaults.trader.prompt,
+          ...agentDefaults?.trader?.prompt
+        }
+      },
+      runtime: {
+        ...defaults.agentDefaults.runtime,
+        ...agentDefaults?.runtime,
+        execution: {
+          ...defaults.agentDefaults.runtime.execution,
+          ...agentDefaults?.runtime?.execution
+        }
+      }
+    },
+    featureToggles: {
+      ...defaults.featureToggles,
+      ...data?.featureToggles
+    }
+  };
 };
 
 const DATA_SOURCE_KINDS: ResearchDataSource["kind"][] = [
@@ -121,6 +171,19 @@ const promptOptions = (prompts: PromptProfile[], label: "Research" | "Trader") =
       id: prompt.latestVersionId!,
       label: `${label} Prompt #${prompt.promptNumber} - ${prompt.name}`
     }));
+
+const PRODUCT_SWITCHES: Array<{
+  key: keyof AppSettings["featureToggles"];
+  label: string;
+  description: string;
+}> = [
+  { key: "promptLab", label: "Prompt Lab", description: "Prompt history, experiments, and advisor surface." },
+  { key: "sentiment", label: "Sentiment", description: "Market sentiment dashboards and topic scoring." },
+  { key: "signals", label: "Signals", description: "Raw observations converted into standardized signals." },
+  { key: "researchLab", label: "Research lab", description: "Paper-only experiments, data sources, and candidates." },
+  { key: "proReview", label: "Live review", description: "Approval inbox for promoted live candidates." },
+  { key: "promptLibrary", label: "Prompt library", description: "Version history and prompt inspection." }
+];
 
 export function SettingsConsole() {
   const [models, setModels] = useState<ModelProfile[]>([]);
@@ -171,7 +234,7 @@ export function SettingsConsole() {
 
       setModels(Array.isArray(modelData) ? modelData : []);
       setSources(Array.isArray(sourceData) ? sourceData : sourceData.dataSources ?? []);
-      setSettings({ ...DEFAULT_APP_SETTINGS, ...settingsData });
+      setSettings(mergeAppSettings(settingsData));
       setPrompts(Array.isArray(promptData) ? promptData : []);
       setTraderPrompts(Array.isArray(traderPromptData) ? traderPromptData : []);
     } catch (error) {
@@ -200,7 +263,7 @@ export function SettingsConsole() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Settings save failed");
-      setSettings(data);
+      setSettings(mergeAppSettings(data));
       setMessage({ tone: "success", text: "Settings saved" });
     } catch (error) {
       setMessage({ tone: "error", text: error instanceof Error ? error.message : "Settings save failed" });
@@ -525,31 +588,57 @@ export function SettingsConsole() {
         <div className="section-header">
           <div>
             <h3>Product switches</h3>
-            <p className="muted">Advanced surfaces stay hidden until we turn them back on.</p>
+            <p className="muted">Keep the daily workspace lean. Turn on labs only when they are actively useful.</p>
           </div>
-          <span className="badge badge-neutral">off by default</span>
+          <span className="badge badge-neutral">opt-in</span>
         </div>
         <div className="settings-toggle-grid">
-          {[
-            ["signals", "Signals"],
-            ["researchLab", "Research lab"],
-            ["proReview", "Live review"],
-            ["promptLibrary", "Prompt library"]
-          ].map(([key, label]) => (
-            <label className="checkbox-label" key={key}>
+          {PRODUCT_SWITCHES.map((item) => (
+            <label className="checkbox-label settings-toggle-card" key={item.key}>
               <input
                 type="checkbox"
-                checked={settings.featureToggles[key as keyof AppSettings["featureToggles"]]}
+                checked={settings.featureToggles[item.key]}
                 onChange={(event) =>
                   updateSettings((current) => ({
                     ...current,
-                    featureToggles: { ...current.featureToggles, [key]: event.target.checked }
+                    featureToggles: { ...current.featureToggles, [item.key]: event.target.checked }
                   }))
                 }
               />
-              <span>{label}</span>
+              <span>
+                <strong>{item.label}</strong>
+                <small>{item.description}</small>
+              </span>
             </label>
           ))}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="section-header">
+          <div>
+            <h3>Secrets and keys</h3>
+            <p className="muted">API keys should stay in server environment variables for now. The database stores only non-secret model profiles, defaults, and feature switches.</p>
+          </div>
+          <span className="badge badge-success">env based</span>
+        </div>
+        <div className="secret-policy-grid">
+          <div className="secret-policy-card">
+            <KeyRound size={18} />
+            <span>
+              <strong>Provider keys</strong>
+              <small>
+                <code>XAI_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>BINANCE_*</code>, and TradingAgents keys live in <code>.env.local</code> locally and server env in deploys. Keep <code>SCHEDULER_ENABLED</code> and <code>GUARDIAN_ENABLED</code> off unless automation is intentional.
+              </small>
+            </span>
+          </div>
+          <div className="secret-policy-card">
+            <SlidersHorizontal size={18} />
+            <span>
+              <strong>Product config</strong>
+              <small>Model names, defaults, toggles, prompt versions, and data source metadata can stay in Postgres because they are not secrets.</small>
+            </span>
+          </div>
         </div>
       </section>
 

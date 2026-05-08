@@ -1,7 +1,27 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Play, TrendingUp, TrendingDown, Minus, Clock, AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  BarChart3,
+  BookOpen,
+  Brain,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  ExternalLink,
+  GitBranch,
+  Loader2,
+  Minus,
+  Newspaper,
+  Play,
+  RefreshCw,
+  ShieldCheck,
+  TrendingDown,
+  TrendingUp,
+  Users
+} from "lucide-react";
 
 type AnalysisResult = {
   ticker: string;
@@ -25,69 +45,159 @@ type HistoryItem = {
   status: string;
 };
 
+type VersionInfo = {
+  local: {
+    version: string | null;
+    tag: string | null;
+    sourcePath: string | null;
+    present: boolean;
+  };
+  latest: {
+    tag: string | null;
+    name: string | null;
+    publishedAt: string | null;
+    url: string | null;
+  } | null;
+  updateAvailable: boolean;
+  releaseError: string | null;
+};
+
 const PROVIDERS = [
-  { value: "openai", label: "OpenAI" },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "google", label: "Google" },
-  { value: "xai", label: "xAI" },
-  { value: "deepseek", label: "DeepSeek" },
+  { value: "openai", label: "OpenAI", model: "gpt-4o-mini" },
+  { value: "anthropic", label: "Anthropic", model: "claude-sonnet-4-5" },
+  { value: "google", label: "Google", model: "gemini-2.5-flash" },
+  { value: "xai", label: "xAI", model: "grok-3-fast" },
+  { value: "deepseek", label: "DeepSeek", model: "deepseek-chat" }
 ];
 
 const ANALYSTS = [
-  { value: "market", label: "Market Analyst", description: "Technical analysis with indicators" },
-  { value: "social", label: "Sentiment Analyst", description: "Social media sentiment" },
-  { value: "news", label: "News Analyst", description: "Macro news and insider activity" },
-  { value: "fundamentals", label: "Fundamentals Analyst", description: "Financial health metrics" },
+  { value: "market", label: "Market", description: "Charts and indicators", icon: BarChart3 },
+  { value: "social", label: "Sentiment", description: "Social market mood", icon: Users },
+  { value: "news", label: "News", description: "Headlines and macro", icon: Newspaper },
+  { value: "fundamentals", label: "Fundamentals", description: "Financial health", icon: BookOpen }
 ];
 
-function DecisionBadge({ decision }: { decision: string }) {
+const RUN_STEPS = [
+  { label: "Analysts", description: "Market, sentiment, news, fundamentals" },
+  { label: "Debate", description: "Bull and bear research" },
+  { label: "Trader", description: "Action plan" },
+  { label: "Risk", description: "Risk committee" },
+  { label: "Portfolio", description: "Final decision" }
+];
+
+const REPORTS = [
+  { key: "market_report", title: "Market Analysis" },
+  { key: "sentiment_report", title: "Sentiment Analysis" },
+  { key: "news_report", title: "News Analysis" },
+  { key: "fundamentals_report", title: "Fundamentals Analysis" },
+  { key: "investment_plan", title: "Investment Plan" },
+  { key: "trader_decision", title: "Trader Decision" },
+  { key: "final_decision", title: "Portfolio Manager" }
+] as const;
+
+const formatDate = (value?: string | null) => {
+  if (!value) return "Unknown";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+};
+
+const decisionTone = (decision: string) => {
   const d = decision.toLowerCase();
-  if (d === "buy" || d === "overweight") {
+  if (d === "buy" || d === "overweight") return "buy";
+  if (d === "sell" || d === "underweight") return "sell";
+  if (d === "error") return "error";
+  return "neutral";
+};
+
+function DecisionBadge({ decision }: { decision: string }) {
+  const tone = decisionTone(decision);
+  if (tone === "buy") {
     return <span className="badge badge-buy"><TrendingUp size={12} /> {decision}</span>;
   }
-  if (d === "sell" || d === "underweight") {
+  if (tone === "sell") {
     return <span className="badge badge-sell"><TrendingDown size={12} /> {decision}</span>;
   }
-  if (d === "hold") {
-    return <span className="badge badge-neutral"><Minus size={12} /> {decision}</span>;
-  }
-  if (d === "error") {
+  if (tone === "error") {
     return <span className="badge badge-failure"><AlertCircle size={12} /> Error</span>;
   }
-  return <span className="badge badge-running"><Clock size={12} /> {decision}</span>;
+  return <span className="badge badge-neutral"><Minus size={12} /> {decision || "Pending"}</span>;
 }
 
 function ReportPanel({ title, content }: { title: string; content?: string }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(title === "Portfolio Manager");
   if (!content) return null;
   return (
-    <div className="panel" style={{ padding: 0 }}>
-      <button
-        onClick={() => setOpen(!open)}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "12px 16px",
-          background: "transparent",
-          border: "none",
-          color: "var(--text-strong)",
-          cursor: "pointer",
-          font: "inherit",
-          fontSize: 14,
-          fontWeight: 600,
-          textAlign: "left",
-        }}
-      >
+    <section className="ta-report">
+      <button type="button" className="ta-report-head" onClick={() => setOpen((value) => !value)}>
         {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        {title}
+        <span>{title}</span>
       </button>
-      {open && (
-        <pre className="run-detail-pre" style={{ margin: 0, borderRadius: 0, borderTop: "1px solid var(--border)" }}>
-          {content}
-        </pre>
-      )}
+      {open ? <pre className="run-detail-pre ta-report-body">{content}</pre> : null}
+    </section>
+  );
+}
+
+function VersionButton() {
+  const [open, setOpen] = useState(false);
+  const [version, setVersion] = useState<VersionInfo | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const loadVersion = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/trading-agents/version", { cache: "no-store" });
+      const data = await response.json();
+      setVersion(data);
+    } catch {
+      setVersion(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadVersion();
+  }, []);
+
+  return (
+    <div className="ta-version-wrap">
+      <button type="button" className="ta-version-button" onClick={() => setOpen((value) => !value)}>
+        <GitBranch size={13} />
+        <span>{version?.local.tag ?? "version"}</span>
+        {version?.updateAvailable ? <span className="ta-version-dot" /> : null}
+      </button>
+
+      {open ? (
+        <div className="ta-version-popover">
+          <div className="ta-version-popover-head">
+            <strong>TradingAgents</strong>
+            <button type="button" className="ta-icon-button" onClick={loadVersion} aria-label="Refresh TradingAgents version">
+              {loading ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />}
+            </button>
+          </div>
+          <div className="ta-version-row">
+            <span>Local</span>
+            <strong>{version?.local.tag ?? "not found"}</strong>
+          </div>
+          <div className="ta-version-row">
+            <span>Latest</span>
+            <strong>{version?.latest?.tag ?? "unavailable"}</strong>
+          </div>
+          <p className={version?.updateAvailable ? "ta-update-copy ta-update-copy-hot" : "ta-update-copy"}>
+            {version?.updateAvailable
+              ? "A newer GitHub release is available. Update manually after testing."
+              : version?.releaseError
+                ? version.releaseError
+                : "Local copy is up to date with the latest release."}
+          </p>
+          {version?.latest?.url ? (
+            <a className="ta-release-link" href={version.latest.url} target="_blank" rel="noreferrer">
+              View release <ExternalLink size={13} />
+            </a>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -103,46 +213,66 @@ export default function TradingAgentsPage() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [serviceAvailable, setServiceAvailable] = useState<boolean | null>(null);
+  const [serviceError, setServiceError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/trading-agents/health")
-      .then(r => r.json())
-      .then(d => setServiceAvailable(d.status === "ok"))
-      .catch(() => setServiceAvailable(false));
+  const selectedProvider = PROVIDERS.find((item) => item.value === provider);
 
-    fetch("/api/trading-agents/results")
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setHistory(d); })
-      .catch(() => {});
+  const loadHealth = useCallback(async () => {
+    try {
+      const response = await fetch("/api/trading-agents/health", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) {
+        setServiceAvailable(false);
+        setServiceError("Start the TradingAgents wrapper on port 8100.");
+        return;
+      }
+      setServiceAvailable(data.status === "ok");
+      setServiceError(data.status === "ok" ? null : "Start the TradingAgents wrapper on port 8100.");
+    } catch {
+      setServiceAvailable(false);
+      setServiceError("Start the TradingAgents wrapper on port 8100.");
+    }
   }, []);
 
+  const loadHistory = useCallback(async () => {
+    try {
+      const response = await fetch("/api/trading-agents/results", { cache: "no-store" });
+      const data = await response.json();
+      setHistory(Array.isArray(data) ? data : []);
+    } catch {
+      setHistory([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadHealth();
+    void loadHistory();
+  }, [loadHealth, loadHistory]);
+
   const pollStatus = useCallback((rid: string) => {
-    const interval = setInterval(() => {
-      fetch(`/api/trading-agents/status/${rid}`)
-        .then(r => r.json())
-        .then(data => {
+    const interval = window.setInterval(() => {
+      fetch(`/api/trading-agents/status/${rid}`, { cache: "no-store" })
+        .then((response) => response.json())
+        .then((data) => {
           if (data.status === "completed" || data.status === "error") {
-            clearInterval(interval);
+            window.clearInterval(interval);
             setResult(data);
             setLoading(false);
-            fetch("/api/trading-agents/results")
-              .then(r => r.json())
-              .then(d => { if (Array.isArray(d)) setHistory(d); })
-              .catch(() => {});
+            void loadHistory();
           }
         })
         .catch(() => {});
     }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    return () => window.clearInterval(interval);
+  }, [loadHistory]);
 
   const runAnalysis = async () => {
     setLoading(true);
     setError(null);
     setResult(null);
     try {
-      const res = await fetch("/api/trading-agents/analyze", {
+      const response = await fetch("/api/trading-agents/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -151,215 +281,240 @@ export default function TradingAgentsPage() {
           llm_provider: provider,
           deep_think_llm: model,
           quick_think_llm: model,
-          analysts: selectedAnalysts,
-        }),
+          analysts: selectedAnalysts
+        })
       });
-      const data = await res.json();
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Failed to start analysis");
       if (data.request_id) {
         setRequestId(data.request_id);
         pollStatus(data.request_id);
       } else {
-        setError("Failed to start analysis");
-        setLoading(false);
+        throw new Error("TradingAgents did not return a request id");
       }
-    } catch (e) {
-      setError(String(e));
+    } catch (runError) {
+      setError(runError instanceof Error ? runError.message : "Failed to start analysis");
       setLoading(false);
     }
   };
 
   const toggleAnalyst = (value: string) => {
-    setSelectedAnalysts(prev =>
-      prev.includes(value) ? prev.filter(a => a !== value) : [...prev, value]
+    setSelectedAnalysts((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
     );
   };
 
+  const reportCount = useMemo(() => {
+    if (!result) return 0;
+    return REPORTS.filter((report) => Boolean(result[report.key])).length;
+  }, [result]);
+
   return (
-    <main className="page page-wide">
-      <section className="hero">
-        <div>
+    <main className="page page-wide ta-page">
+      <section className="ta-hero">
+        <div className="ta-hero-main">
           <p className="eyebrow">AI Hedge Fund</p>
-          <h1>Multi-agent stock analysis.</h1>
+          <h1>Run TradingAgents without leaving Cosmu.</h1>
           <p>
-            Powered by TradingAgents — 12 specialized AI agents analyze any stock through debate,
-            risk management, and portfolio management to produce actionable recommendations.
+            A clean front end for the local TauricResearch TradingAgents engine: analysts, debate,
+            risk review, and a final portfolio-manager recommendation.
           </p>
         </div>
-        <div className="hero-actions">
-          {serviceAvailable === true && <span className="badge badge-success">Service online</span>}
-          {serviceAvailable === false && <span className="badge badge-failure">Service offline</span>}
-          {serviceAvailable === null && <span className="badge badge-neutral">Checking...</span>}
+        <div className="ta-hero-actions">
+          <VersionButton />
+          {serviceAvailable === true ? <span className="badge badge-success">Service online</span> : null}
+          {serviceAvailable === false ? <span className="badge badge-failure">Service offline</span> : null}
+          {serviceAvailable === null ? <span className="badge badge-neutral">Checking</span> : null}
         </div>
       </section>
 
-      <div style={{ display: "grid", gridTemplateColumns: result ? "380px 1fr" : "1fr", gap: 16 }}>
-        {/* Analysis Form */}
-        <section className="panel">
-          <h3>Run Analysis</h3>
-
-          {serviceAvailable === false && (
-            <div className="form-error" style={{ marginBottom: 12 }}>
-              <p>TradingAgents service is not running.</p>
-              <p style={{ fontSize: 12, color: "var(--muted)" }}>
-                Start it with: <code>cd apps/trading-agents && pip install -r requirements.txt && python main.py</code>
-              </p>
+      <div className="ta-layout">
+        <aside className="ta-run-panel">
+          <section className="panel ta-sticky">
+            <div className="section-header">
+              <div>
+                <h3>New analysis</h3>
+                <p className="muted">Stocks only. Results are research output, not execution.</p>
+              </div>
+              <button type="button" className="ta-icon-button" onClick={loadHealth} aria-label="Refresh TradingAgents service status">
+                <RefreshCw size={15} />
+              </button>
             </div>
-          )}
 
-          <div style={{ display: "grid", gap: 12, marginTop: 8 }}>
-            <div className="form-row">
-              <label>
-                Ticker Symbol
+            {serviceAvailable === false ? (
+              <div className="ta-service-warning">
+                <AlertCircle size={16} />
+                <span>
+                  <strong>Service is not running</strong>
+                  <small>{serviceError ?? "Start the TradingAgents wrapper on port 8100."}</small>
+                </span>
+              </div>
+            ) : null}
+
+            <div className="ta-form-grid">
+              <label className="field">
+                <span>Ticker</span>
                 <input
                   type="text"
                   value={ticker}
-                  onChange={e => setTicker(e.target.value)}
-                  placeholder="e.g. NVDA, AAPL, TSLA"
+                  onChange={(event) => setTicker(event.target.value.toUpperCase())}
+                  placeholder="NVDA"
                 />
               </label>
-            </div>
 
-            <div className="form-row">
-              <label>
-                Analysis Date (optional)
-                <input
-                  type="date"
-                  value={date}
-                  onChange={e => setDate(e.target.value)}
-                />
+              <label className="field">
+                <span>Date</span>
+                <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
               </label>
-            </div>
 
-            <div className="form-row">
-              <label>
-                LLM Provider
-                <select value={provider} onChange={e => setProvider(e.target.value)}>
-                  {PROVIDERS.map(p => (
-                    <option key={p.value} value={p.value}>{p.label}</option>
-                  ))}
+              <label className="field">
+                <span>Provider</span>
+                <select
+                  value={provider}
+                  onChange={(event) => {
+                    const nextProvider = event.target.value;
+                    setProvider(nextProvider);
+                    setModel(PROVIDERS.find((item) => item.value === nextProvider)?.model ?? model);
+                  }}
+                >
+                  {PROVIDERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
               </label>
-            </div>
 
-            <div className="form-row">
-              <label>
-                Model
-                <input
-                  type="text"
-                  value={model}
-                  onChange={e => setModel(e.target.value)}
-                  placeholder="gpt-4o-mini"
-                />
+              <label className="field">
+                <span>Model</span>
+                <input value={model} onChange={(event) => setModel(event.target.value)} placeholder={selectedProvider?.model ?? "model"} />
               </label>
             </div>
 
-            <div>
-              <span className="label" style={{ marginBottom: 8, display: "block" }}>Analysts</span>
-              <div className="checkbox-row" style={{ flexDirection: "column" }}>
-                {ANALYSTS.map(a => (
-                  <label key={a.value} className={`checkbox-label ${selectedAnalysts.includes(a.value) ? "" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={selectedAnalysts.includes(a.value)}
-                      onChange={() => toggleAnalyst(a.value)}
-                    />
-                    <span style={{ display: "grid", gap: 1 }}>
-                      <strong style={{ fontSize: 13 }}>{a.label}</strong>
-                      <small style={{ color: "var(--muted)", fontSize: 11 }}>{a.description}</small>
-                    </span>
-                  </label>
-                ))}
+            <div className="ta-analysts">
+              <span className="label">Analysts</span>
+              <div className="ta-analyst-grid">
+                {ANALYSTS.map((analyst) => {
+                  const Icon = analyst.icon;
+                  const checked = selectedAnalysts.includes(analyst.value);
+                  return (
+                    <button
+                      key={analyst.value}
+                      type="button"
+                      className={`ta-analyst-option ${checked ? "ta-analyst-option-active" : ""}`}
+                      onClick={() => toggleAnalyst(analyst.value)}
+                      aria-pressed={checked}
+                    >
+                      <Icon size={16} />
+                      <span>
+                        <strong>{analyst.label}</strong>
+                        <small>{analyst.description}</small>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             <button
-              className="btn btn-primary"
+              className="btn btn-primary ta-run-button"
+              type="button"
               onClick={runAnalysis}
-              disabled={loading || !ticker.trim() || serviceAvailable === false}
-              style={{ width: "100%", minHeight: 44 }}
+              disabled={loading || !ticker.trim() || selectedAnalysts.length === 0 || serviceAvailable === false}
             >
-              {loading ? (
-                <>Analyzing {ticker.toUpperCase()}...</>
-              ) : (
-                <><Play size={16} /> Analyze {ticker.toUpperCase()}</>
-              )}
+              {loading ? <><Loader2 size={16} className="spin" /> Running {ticker}</> : <><Play size={16} /> Run analysis</>}
             </button>
 
-            {error && <p className="feedback-error">{error}</p>}
-          </div>
-        </section>
+            {error ? <p className="feedback-error ta-error">{error}</p> : null}
 
-        {/* Results */}
-        {result && (
-          <section style={{ display: "grid", gap: 12, alignContent: "start" }}>
-            <div className="panel" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <span className="label">Final Recommendation</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 6 }}>
-                  <span style={{ fontSize: 28, fontWeight: 700, color: "var(--text-strong)" }}>
-                    {result.ticker}
-                  </span>
-                  <DecisionBadge decision={result.decision} />
-                </div>
-                <span className="muted" style={{ fontSize: 12, marginTop: 4, display: "block" }}>
-                  Analysis date: {result.date}
+            <div className="ta-run-meta">
+              <span><Brain size={14} /> {selectedProvider?.label ?? provider}</span>
+              <span><ShieldCheck size={14} /> {selectedAnalysts.length} analysts</span>
+            </div>
+          </section>
+        </aside>
+
+        <section className="ta-workspace">
+          {loading ? (
+            <section className="panel ta-progress-panel">
+              <div className="ta-progress-head">
+                <Loader2 size={20} className="spin" />
+                <span>
+                  <strong>Running {ticker}</strong>
+                  <small>{requestId ? `Request ${requestId}` : "Waiting for request id"}</small>
                 </span>
               </div>
+              <div className="ta-progress-list">
+                {RUN_STEPS.map((step, index) => (
+                  <div className="ta-progress-step" key={step.label}>
+                    <span className={index === 0 ? "ta-progress-dot ta-progress-dot-active" : "ta-progress-dot"} />
+                    <span>
+                      <strong>{step.label}</strong>
+                      <small>{step.description}</small>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {result ? (
+            <section className="ta-results">
+              <div className="panel ta-result-summary">
+                <div>
+                  <span className="label">Final recommendation</span>
+                  <div className="ta-result-title">
+                    <strong>{result.ticker}</strong>
+                    <DecisionBadge decision={result.decision} />
+                  </div>
+                  <small className="muted">Analysis date: {result.date}</small>
+                </div>
+                <div className="ta-result-stats">
+                  <span><CheckCircle2 size={14} /> {reportCount} reports</span>
+                  <span><Clock size={14} /> {result.status}</span>
+                </div>
+              </div>
+
+              {REPORTS.map((report) => (
+                <ReportPanel key={report.key} title={report.title} content={result[report.key]} />
+              ))}
+            </section>
+          ) : null}
+
+          {!loading && !result ? (
+            <section className="panel ta-empty-state">
+              <TrendingUp size={24} />
+              <span>
+                <strong>Ready when the local engine is online.</strong>
+                <small>Run a ticker to get analyst reports, debate output, risk review, and a final decision in one place.</small>
+              </span>
+            </section>
+          ) : null}
+
+          <section className="panel ta-history-panel">
+            <div className="section-header">
+              <div>
+                <h3>Previous analyses</h3>
+                <p className="muted">Recent TradingAgents outputs from the local service.</p>
+              </div>
+              <span className="badge badge-neutral">{history.length} saved</span>
             </div>
 
-            <ReportPanel title="Market Analysis" content={result.market_report} />
-            <ReportPanel title="Sentiment Analysis" content={result.sentiment_report} />
-            <ReportPanel title="News Analysis" content={result.news_report} />
-            <ReportPanel title="Fundamentals Analysis" content={result.fundamentals_report} />
-            <ReportPanel title="Investment Plan" content={result.investment_plan} />
-            <ReportPanel title="Trader Decision" content={result.trader_decision} />
-            <ReportPanel title="Portfolio Manager Decision" content={result.final_decision} />
-          </section>
-        )}
-
-        {/* Loading state */}
-        {loading && !result && (
-          <section className="panel" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, minHeight: 200 }}>
-            <div style={{ width: 32, height: 32, border: "3px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-            <p style={{ color: "var(--muted)", fontSize: 14 }}>
-              Running multi-agent analysis on {ticker.toUpperCase()}...
-            </p>
-            <p style={{ color: "var(--muted-strong)", fontSize: 12 }}>
-              This takes 1-3 minutes. Analysts are debating.
-            </p>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          </section>
-        )}
-      </div>
-
-      {/* History */}
-      {history.length > 0 && (
-        <section style={{ marginTop: 24 }}>
-          <h3 style={{ color: "var(--text-strong)", marginBottom: 12 }}>Previous Analyses</h3>
-          <div className="table-scroll">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Ticker</th>
-                  <th>Date</th>
-                  <th>Decision</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map(h => (
-                  <tr key={h.request_id}>
-                    <td><strong>{h.ticker}</strong></td>
-                    <td>{h.date}</td>
-                    <td><DecisionBadge decision={h.decision} /></td>
-                    <td><span className={`badge badge-${h.status === "completed" ? "success" : "failure"}`}>{h.status}</span></td>
-                  </tr>
+            {history.length > 0 ? (
+              <div className="ta-history-grid">
+                {history.map((item) => (
+                  <article key={item.request_id} className="ta-history-card">
+                    <span>
+                      <strong>{item.ticker}</strong>
+                      <small>{formatDate(item.date)}</small>
+                    </span>
+                    <DecisionBadge decision={item.decision} />
+                    <small className="muted">{item.status}</small>
+                  </article>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            ) : (
+              <p className="muted">No completed analyses yet.</p>
+            )}
+          </section>
         </section>
-      )}
+      </div>
     </main>
   );
 }

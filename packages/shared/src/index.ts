@@ -149,6 +149,8 @@ const DEFAULT_RUNTIME_DEFAULTS = {
   execution: DEFAULT_RUNTIME_EXECUTION
 } as const;
 const DEFAULT_FEATURE_TOGGLES = {
+  promptLab: false,
+  sentiment: false,
   signals: false,
   researchLab: false,
   proReview: false,
@@ -182,6 +184,8 @@ export const agentRuntimeDefaultsSchema = z.object({
 }).default(DEFAULT_RUNTIME_DEFAULTS);
 
 export const featureTogglesSchema = z.object({
+  promptLab: z.boolean().default(false),
+  sentiment: z.boolean().default(false),
   signals: z.boolean().default(false),
   researchLab: z.boolean().default(false),
   proReview: z.boolean().default(false),
