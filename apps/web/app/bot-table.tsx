@@ -34,6 +34,8 @@ type Props = {
   description?: string;
   emptyMessage?: string;
   workspaceMode?: "light" | "research" | "pro";
+  compact?: boolean;
+  maxRows?: number;
 };
 
 const venueLabel = (venue: "binance" | "binance-testnet") =>
@@ -219,13 +221,16 @@ const COLUMN_DEFS: ColumnDef[] = [
 ];
 
 const DEFAULT_VISIBLE_COLUMNS = COLUMN_DEFS.filter((column) => column.defaultVisible).map((column) => column.id);
+const COMPACT_VISIBLE_COLUMNS: ColumnId[] = ["agent", "status", "account", "value", "netPnl", "actions"];
 
 export function BotTable({
   dashboard,
   title = "Agent Performance",
   description = "Compare every active and stopped strategy from one shared table. Sort, filter, and choose columns here; every mode uses the same surface.",
   emptyMessage = "No agents created yet.",
-  workspaceMode
+  workspaceMode,
+  compact = false,
+  maxRows
 }: Props) {
   const scopedBots = useMemo(() => {
     if (!workspaceMode) return dashboard.bots;
@@ -238,7 +243,7 @@ export function BotTable({
   const [statusFilter, setStatusFilter] = useState<FilterValue>("all");
   const [accountFilter, setAccountFilter] = useState<FilterValue>("all");
   const [qualityFilter, setQualityFilter] = useState<FilterValue>("all");
-  const [visibleColumns, setVisibleColumns] = useState<ColumnId[]>(DEFAULT_VISIBLE_COLUMNS);
+  const [visibleColumns, setVisibleColumns] = useState<ColumnId[]>(compact ? COMPACT_VISIBLE_COLUMNS : DEFAULT_VISIBLE_COLUMNS);
 
   const handleSort = (field: ColumnId) => {
     if (!COLUMN_DEFS.find((column) => column.id === field)?.sortValue) return;
@@ -311,6 +316,7 @@ export function BotTable({
   }, [filteredBots, sortField, sortOrder]);
 
   const visibleColumnDefs = COLUMN_DEFS.filter((column) => visibleColumns.includes(column.id));
+  const displayedBots = typeof maxRows === "number" ? sortedBots.slice(0, maxRows) : sortedBots;
 
   const overview = useMemo(() => {
     const active = scopedBots.filter((bot) => bot.enabled).length;
@@ -403,7 +409,7 @@ export function BotTable({
             </tr>
           </thead>
           <tbody>
-            {sortedBots.map((bot) => (
+            {displayedBots.map((bot) => (
               <tr
                 key={bot.id}
                 className="run-row"
@@ -413,6 +419,7 @@ export function BotTable({
                   <td
                     key={column.id}
                     className={column.align === "right" ? "text-right" : ""}
+                    data-label={column.label || "Actions"}
                     onClick={column.id === "actions" ? (event) => event.stopPropagation() : undefined}
                   >
                     {column.render(bot)}
@@ -429,6 +436,11 @@ export function BotTable({
           {scopedBots.length === 0 ? emptyMessage : "No agents match the current filters."}
         </p>
       )}
+      {typeof maxRows === "number" && sortedBots.length > maxRows ? (
+        <p className="muted table-empty table-more-note">
+          Showing {maxRows} important agents. Open Agents for the full table.
+        </p>
+      ) : null}
     </section>
   );
 }

@@ -23,6 +23,22 @@ export default async function HomePage() {
   const recentFailures = dashboard.recentRuns.filter((run) => run.status === "failure").length;
   const liveExposure = dashboard.venueOverview.live?.allocatedAmount ?? 0;
   const testExposure = dashboard.venueOverview.testnet?.allocatedAmount ?? 0;
+  const importantLightBots = [...lightBots]
+    .sort((a, b) => {
+      const aScore =
+        (a.enabled ? 1000 : 0) +
+        (a.latestError ? 700 : 0) +
+        Math.abs(a.netPnlUsd ?? 0) +
+        (a.currentPortfolioUsd ?? 0) / 100;
+      const bScore =
+        (b.enabled ? 1000 : 0) +
+        (b.latestError ? 700 : 0) +
+        Math.abs(b.netPnlUsd ?? 0) +
+        (b.currentPortfolioUsd ?? 0) / 100;
+      return bScore - aScore;
+    })
+    .slice(0, 6);
+  const focusedDashboard = { ...dashboard, bots: importantLightBots };
 
   return (
     <main className="page page-wide">
@@ -103,7 +119,7 @@ export default async function HomePage() {
           {dashboard.recentRuns.length === 0 ? (
             <p className="muted">No runs yet. Create an agent, then run it from the table.</p>
           ) : (
-            <RecentRunsTable runs={dashboard.recentRuns.slice(0, 8).map((r) => ({
+            <RecentRunsTable runs={dashboard.recentRuns.slice(0, 5).map((r) => ({
               id: r.id,
               botName: r.botName,
               status: r.status,
@@ -117,11 +133,13 @@ export default async function HomePage() {
 
       <section className="focus-section">
         <BotTable
-          dashboard={dashboard}
+          dashboard={focusedDashboard}
           workspaceMode="light"
-          title="Paper and light agents"
-          description="Edit each agent's model, prompts, pairs, budget, cadence, and execution rules. Click a row for holdings, prompts, runs, and trades."
+          title="Important agents"
+          description="Active agents, recent errors, and meaningful exposure only. Open Agents for the full list."
           emptyMessage="No agents yet. Create one to start with a paper strategy."
+          compact
+          maxRows={6}
         />
       </section>
 
@@ -131,9 +149,9 @@ export default async function HomePage() {
           <PerformanceChart series={dashboard.performanceSeries} />
         </article>
 
-        <RecentExecutions executions={dashboard.recentExecutions} />
-        <PortfolioState snapshots={dashboard.latestSnapshots} />
-        <PromptSnapshots versions={dashboard.promptVersions} />
+        <RecentExecutions executions={dashboard.recentExecutions.slice(0, 6)} />
+        <PortfolioState snapshots={dashboard.latestSnapshots.slice(0, 6)} />
+        <PromptSnapshots versions={dashboard.promptVersions.slice(0, 6)} />
       </section>
     </main>
   );

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Play, Settings2, StopCircle } from "lucide-react";
+import { Pencil, Play, Square } from "lucide-react";
 import { EditBotModal } from "./edit-bot-modal";
 import { ModalShell } from "./modal-shell";
 
@@ -70,28 +70,34 @@ export function BotControls({ botId, isActive: initialIsActive }: BotControlsPro
     <div className="bot-controls">
       <div className="bot-controls-buttons">
         <button
-          className="btn btn-secondary"
+          className="btn btn-secondary btn-icon-action btn-icon-edit"
           onClick={() => setEditOpen(true)}
           disabled={loading !== null}
+          aria-label="Edit agent"
+          title="Edit agent"
         >
-          <Settings2 size={15} />
-          Edit
+          <Pencil size={15} />
+          <span className="sr-only">Edit</span>
         </button>
         <button
-          className="btn btn-warn"
+          className="btn btn-warn btn-icon-action btn-icon-stop"
           onClick={() => setConfirmKillOpen(true)}
           disabled={!isActive || loading !== null}
+          aria-label={loading === "kill" ? "Stopping agent" : "Stop agent"}
+          title={loading === "kill" ? "Stopping agent" : "Stop agent"}
         >
-          <StopCircle size={15} />
-          {loading === "kill" ? "Stopping..." : "Stop"}
+          <Square size={15} />
+          <span className="sr-only">{loading === "kill" ? "Stopping" : "Stop"}</span>
         </button>
         <button
-          className="btn btn-primary"
+          className="btn btn-primary btn-icon-action btn-icon-run"
           onClick={triggerRun}
           disabled={!isActive || loading !== null}
+          aria-label={loading === "run" ? "Running agent" : "Run agent"}
+          title={loading === "run" ? "Running agent" : "Run agent"}
         >
           <Play size={15} />
-          {loading === "run" ? "Running..." : "Run"}
+          <span className="sr-only">{loading === "run" ? "Running" : "Run"}</span>
         </button>
       </div>
       {feedback && (
