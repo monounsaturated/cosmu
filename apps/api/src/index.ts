@@ -64,6 +64,7 @@ import { signalsRouter } from "./routes/signals.js";
 import { tradingAgentsRouter } from "./routes/trading-agents.js";
 
 const app = express();
+const botCreateRuntimeConfigSchema = runtimeConfigSchema.omit({ enabled: true });
 
 const corsOptions = buildCorsOptions();
 app.use(corsOptions ? cors(corsOptions) : cors());
@@ -731,7 +732,7 @@ app.post("/trader-prompts", async (request, response, next) => {
 
 app.post("/bots", async (request, response, next) => {
   try {
-    const { name, slug, promptVersionId, modelProfileId, traderModelProfileId, promptConfig, traderConfig, traderPromptVersionId, parentBotId, runtimeConfig } =
+    const { name, slug, promptVersionId, modelProfileId, traderModelProfileId, promptConfig, traderConfig, traderPromptVersionId, parentBotId, enabled, runtimeConfig } =
       request.body;
     const id = await createBot({
       name,
@@ -743,7 +744,8 @@ app.post("/bots", async (request, response, next) => {
       traderConfig: traderConfig === undefined ? undefined : traderConfigSchema.parse(traderConfig),
       traderPromptVersionId: traderPromptVersionId ?? null,
       parentBotId,
-      runtimeConfig: runtimeConfigSchema.parse(runtimeConfig)
+      enabled: typeof enabled === "boolean" ? enabled : undefined,
+      runtimeConfig: botCreateRuntimeConfigSchema.parse(runtimeConfig)
     });
 
     // Track prompt usage
