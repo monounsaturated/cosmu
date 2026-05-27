@@ -13,30 +13,55 @@ import {
   Ellipsis,
   FlaskConical,
   Gauge,
-  LayoutGrid,
   Radio,
   Settings,
   ShieldCheck,
   Sparkles
 } from "lucide-react";
 
+type FeatureToggles = {
+  promptLab: boolean;
+  sentiment: boolean;
+  signals: boolean;
+  researchLab: boolean;
+  proReview: boolean;
+  promptLibrary: boolean;
+};
+
+type NavItem = {
+  href: string;
+  label: string;
+  description: string;
+  icon: typeof BarChart3;
+  group: "Core" | "Modules";
+  featureKey?: keyof FeatureToggles;
+};
+
+const DEFAULT_FEATURE_TOGGLES: FeatureToggles = {
+  promptLab: false,
+  sentiment: false,
+  signals: false,
+  researchLab: false,
+  proReview: false,
+  promptLibrary: false
+};
+
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", description: "portfolio and runs", icon: BarChart3, group: "Core" },
-  { href: "/bots", label: "Agents", description: "create and tune", icon: Bot, group: "Core" },
-  { href: "/trading-agents", label: "AI Hedge Fund", description: "TradingAgents", icon: LayoutGrid, group: "Core" },
-  { href: "/settings", label: "Settings", description: "defaults and switches", icon: Settings, group: "Core" },
-  { href: "/prompt-lab", label: "Prompt Lab", description: "iterate and optimize", icon: Brain, group: "Modules" },
-  { href: "/sentiment", label: "Sentiment", description: "market pulse", icon: Gauge, group: "Modules" },
-  { href: "/signals", label: "Signals", description: "capture and triage", icon: Radio, group: "Modules" },
-  { href: "/research", label: "Research", description: "test a thesis", icon: FlaskConical, group: "Modules" },
-  { href: "/pro", label: "Review", description: "live approvals", icon: ShieldCheck, group: "Modules" },
-  { href: "/prompts", label: "Prompts", description: "version history", icon: BadgeCheck, group: "Modules" }
-];
+  { href: "/", label: "Dashboard", description: "runs and portfolio", icon: BarChart3, group: "Core" },
+  { href: "/bots", label: "Agents", description: "create and compare", icon: Bot, group: "Core" },
+  { href: "/prompts", label: "Prompts", description: "research and trader prompts", icon: BadgeCheck, group: "Core" },
+  { href: "/settings", label: "Settings", description: "models, defaults, keys", icon: Settings, group: "Core" },
+  { href: "/prompt-lab", label: "Prompt Lab", description: "prompt experiments", icon: Brain, group: "Modules", featureKey: "promptLab" },
+  { href: "/sentiment", label: "Sentiment", description: "market pulse", icon: Gauge, group: "Modules", featureKey: "sentiment" },
+  { href: "/signals", label: "Signals", description: "capture and triage", icon: Radio, group: "Modules", featureKey: "signals" },
+  { href: "/research", label: "Research", description: "paper experiments", icon: FlaskConical, group: "Modules", featureKey: "researchLab" },
+  { href: "/pro", label: "Review", description: "live approvals", icon: ShieldCheck, group: "Modules", featureKey: "proReview" }
+] satisfies NavItem[];
 
 const MOBILE_TABS = [
   { href: "/", label: "Home", icon: BarChart3 },
   { href: "/bots", label: "Agents", icon: Bot },
-  { href: "/trading-agents", label: "AI Fund", icon: LayoutGrid },
+  { href: "/prompts", label: "Prompts", icon: BadgeCheck },
   { href: "/settings", label: "Settings", icon: Settings }
 ];
 
@@ -52,6 +77,7 @@ export function Sidebar() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
+  const [featureToggles, setFeatureToggles] = useState<FeatureToggles>(DEFAULT_FEATURE_TOGGLES);
   const dragging = useRef(false);
   const sidebarRef = useRef<HTMLElement>(null);
 
@@ -63,6 +89,25 @@ export function Sidebar() {
         if (w >= SIDEBAR_MIN && w <= SIDEBAR_MAX) setSidebarWidth(w);
       }
     } catch {}
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/settings/app", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        setFeatureToggles({
+          ...DEFAULT_FEATURE_TOGGLES,
+          ...(data?.featureToggles ?? {})
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setFeatureToggles(DEFAULT_FEATURE_TOGGLES);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const onDragStart = useCallback((e: React.MouseEvent) => {
@@ -96,8 +141,14 @@ export function Sidebar() {
     setPendingHref(null);
   }, [pathname]);
 
-  const visibleItems = NAV_ITEMS;
-  const activeSection = useMemo(() => visibleItems.find((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href))), [pathname, visibleItems]);
+  const visibleItems = useMemo(
+    () => NAV_ITEMS.filter((item) => !item.featureKey || featureToggles[item.featureKey]),
+    [featureToggles]
+  );
+  const activeSection = useMemo(
+    () => NAV_ITEMS.find((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href))),
+    [pathname]
+  );
   const mobileExtraItems = useMemo(() => visibleItems.filter((item) => !MOBILE_TABS.some((tab) => tab.href === item.href)), [visibleItems]);
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
@@ -115,7 +166,7 @@ export function Sidebar() {
           <span className="sidebar-mark"><Sparkles size={16} /></span>
           <span>
             <strong>cosmu</strong>
-            <small>agent command</small>
+            <small>trading agents</small>
           </span>
         </Link>
 

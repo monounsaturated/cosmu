@@ -8,15 +8,23 @@ export const proxyApi = async (path: string, init: RequestInit = {}) => {
     return NextResponse.json({ error: "API_SECRET_KEY is required" }, { status: 500 });
   }
 
-  const res = await fetch(`${apiBaseUrl}${path}`, {
-    ...init,
-    headers: {
-      "x-api-key": apiSecretKey,
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...(init.headers ?? {})
-    },
-    cache: "no-store"
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${apiBaseUrl}${path}`, {
+      ...init,
+      headers: {
+        "x-api-key": apiSecretKey,
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...(init.headers ?? {})
+      },
+      cache: "no-store"
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "API request failed" },
+      { status: 502 }
+    );
+  }
   const text = await res.text();
   let data: unknown;
   try {
@@ -26,4 +34,3 @@ export const proxyApi = async (path: string, init: RequestInit = {}) => {
   }
   return NextResponse.json(data, { status: res.status });
 };
-

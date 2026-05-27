@@ -208,7 +208,7 @@ const COLUMN_DEFS: ColumnDef[] = [
   {
     id: "lastDecision",
     label: "Latest Decision",
-    defaultVisible: false,
+    defaultVisible: true,
     sortValue: (bot) => bot.latestDecisionSummary ?? "",
     render: (bot) => <span className="table-truncate">{bot.latestDecisionSummary ?? bot.latestError ?? "—"}</span>
   },

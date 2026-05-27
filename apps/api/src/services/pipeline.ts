@@ -9,6 +9,7 @@
  */
 
 import {
+  tradingDecisionJsonSchema,
   tradingDecisionSchema,
   type TradingDecision
 } from "@cosmu/shared";
@@ -79,6 +80,49 @@ const getTraderProvider = (bot: BotSetup): LLMProvider => {
   return getProvider(bot.traderModelProvider);
 };
 
+const XAI_STABLE_FALLBACK_MODELS = [
+  "grok-4.20-reasoning",
+  "grok-3",
+  "grok-3-fast",
+  "grok-3-mini",
+  "grok-3-mini-fast"
+];
+
+const buildModelCandidates = (providerName: string, primaryModel: string) => {
+  if (providerName !== "xai") return [primaryModel];
+
+  const candidates = [primaryModel];
+  if (/-multi-agent/i.test(primaryModel)) {
+    candidates.push(primaryModel.replace(/-multi-agent.*$/i, "-reasoning"));
+  }
+  candidates.push(...XAI_STABLE_FALLBACK_MODELS);
+  return Array.from(new Set(candidates.filter(Boolean)));
+};
+
+const toErrorMessage = (error: unknown) => {
+  if (!(error instanceof Error)) return String(error);
+
+  const details: string[] = [];
+  const status = (error as { status?: unknown }).status;
+  const code = (error as { code?: unknown }).code;
+  const type = (error as { type?: unknown }).type;
+  const payload = (error as { error?: unknown }).error;
+
+  if (typeof status === "number") details.push(`status=${status}`);
+  if (typeof code === "string" && code.length > 0) details.push(`code=${code}`);
+  if (typeof type === "string" && type.length > 0) details.push(`type=${type}`);
+  if (payload !== undefined) {
+    try {
+      const serialized = JSON.stringify(payload);
+      if (serialized !== "{}") details.push(`payload=${serialized}`);
+    } catch {
+      details.push("payload=[unserializable]");
+    }
+  }
+
+  return details.length > 0 ? `${error.message} (${details.join(", ")})` : error.message;
+};
+
 // ─── Research Agent ──────────────────────────────────────────────────
 
 export const runResearchAgent = async (input: {
@@ -101,12 +145,17 @@ export const runResearchAgent = async (input: {
   // (web_search + x_search). Chat Completions on xAI doesn't support those tools,
   // which is what caused Grok to fabricate tweets. Other providers use chat().
   const useXaiBrowsing = provider.name === "xai";
-  const strategyLabel = useXaiBrowsing ? "responses_api+browsing" : "text";
+  const baseStrategyLabel = useXaiBrowsing ? "responses_api+browsing" : "text";
+  const modelCandidates = buildModelCandidates(provider.name, bot.modelIdentifier);
 
   let lastError: unknown;
+  const attemptErrors: string[] = [];
+  let attempt = 0;
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (const modelCandidate of modelCandidates) {
+    attempt += 1;
     const start = Date.now();
+    const strategyLabel = `${baseStrategyLabel}/${modelCandidate}`;
     try {
       let rawText: string;
       let model: string;
@@ -114,7 +163,7 @@ export const runResearchAgent = async (input: {
 
       if (useXaiBrowsing) {
         const result = await runXaiResearchWithBrowsing({
-          model: bot.modelIdentifier,
+          model: modelCandidate,
           systemPrompt,
           userMessage,
           temperature
@@ -124,7 +173,7 @@ export const runResearchAgent = async (input: {
         usage = result.usage;
       } else {
         const response = await provider.chat({
-          model: bot.modelIdentifier,
+          model: modelCandidate,
           messages,
           temperature
         });
@@ -157,14 +206,15 @@ export const runResearchAgent = async (input: {
       };
     } catch (error) {
       lastError = error;
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = toErrorMessage(error);
+      attemptErrors.push(`${modelCandidate}: ${errorMessage}`);
 
       if (runId) {
         void storeLLMCall({
           runId,
           phase: "research",
           provider: provider.name,
-          model: bot.modelIdentifier,
+          model: modelCandidate,
           inputMessages: messages,
           outputText: null,
           inputTokens: null,
@@ -178,7 +228,13 @@ export const runResearchAgent = async (input: {
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error("Research request failed");
+  const recentFailures = attemptErrors.slice(-3).join(" | ");
+  throw lastError instanceof Error
+    ? new Error(
+        `Research request failed for ${bot.modelIdentifier}. Recent: ${recentFailures || lastError.message}`,
+        { cause: lastError }
+      )
+    : new Error("Research request failed");
 };
 
 // ─── Trader Agent (agentic — uses tool-use loop) ─────────────────────
@@ -190,6 +246,18 @@ type TraderAttemptStrategy = {
 };
 
 const TRADER_ATTEMPT_STRATEGIES: TraderAttemptStrategy[] = [
+  {
+    label: "tools+json_schema",
+    useTemperature: false,
+    responseFormat: {
+      type: "json_schema",
+      json_schema: {
+        name: "TradingDecision",
+        schema: tradingDecisionJsonSchema,
+        strict: true
+      }
+    }
+  },
   { label: "tools+json_object", useTemperature: false, responseFormat: { type: "json_object" } },
   { label: "tools+no_format", useTemperature: false }
 ];
@@ -245,122 +313,118 @@ export const runTraderAgent = async (input: {
   ];
 
   let lastError: unknown;
+  let lastRawText = "";
   const attemptErrors: string[] = [];
   let attempt = 0;
+  const modelCandidates = buildModelCandidates(provider.name, bot.traderModelIdentifier);
 
-  for (const strategy of TRADER_ATTEMPT_STRATEGIES) {
-    attempt += 1;
-    const start = Date.now();
+  for (const modelCandidate of modelCandidates) {
+    for (const strategy of TRADER_ATTEMPT_STRATEGIES) {
+      attempt += 1;
+      const start = Date.now();
+      const strategyLabel = `${strategy.label}/${modelCandidate}`;
 
-    try {
-      const result = await runAgentLoop({
-        providerName: provider.name,
-        model: bot.traderModelIdentifier,
-        systemPrompt,
-        userMessage,
-        tools,
-        temperature: strategy.useTemperature ? configuredTemperature : undefined,
-        responseFormat: strategy.responseFormat,
-        maxIterations: 6
-      });
-
-      if (result.finishReason === "tool_iterations_exhausted") {
-        throw new Error(
-          `Trader exhausted tool iterations (${result.iterations}) without producing a final decision`
-        );
-      }
-
-      if (!result.content || !result.content.trim()) {
-        throw new Error("Trader returned empty final response");
-      }
-
-      const jsonText = extractJson(result.content);
-      let decision: TradingDecision;
       try {
-        decision = tradingDecisionSchema.parse(JSON.parse(jsonText));
-      } catch (parseError) {
-        throw new DecisionParseError(
-          `Invalid JSON decision (strategy: ${strategy.label})`,
-          result.content,
-          { cause: parseError }
-        );
-      }
-
-      if (runId) {
-        void storeLLMCall({
-          runId,
-          phase: "trader",
-          provider: provider.name,
-          model: result.model,
-          inputMessages: {
-            messages: loggedMessages,
-            tools: tools.map((t) => ({ name: t.name, description: t.description })),
-            toolCalls: result.toolCalls,
-            iterations: result.iterations
-          } as unknown,
-          outputText: result.content,
-          inputTokens: result.usage?.inputTokens ?? null,
-          outputTokens: result.usage?.outputTokens ?? null,
-          latencyMs: Date.now() - start,
-          attempt,
-          strategy: strategy.label,
-          error: null
+        const result = await runAgentLoop({
+          providerName: provider.name,
+          model: modelCandidate,
+          systemPrompt,
+          userMessage,
+          tools,
+          temperature: strategy.useTemperature ? configuredTemperature : undefined,
+          responseFormat: strategy.responseFormat,
+          maxIterations: 6
         });
-      }
 
-      return {
-        rawText: result.content,
-        decision,
-        provider: provider.name,
-        model: result.model,
-        toolCalls: result.toolCalls,
-        iterations: result.iterations
-      };
-    } catch (error) {
-      lastError = error;
-      if (error instanceof DecisionParseError) {
+        if (result.finishReason === "tool_iterations_exhausted") {
+          throw new Error(
+            `Trader exhausted tool iterations (${result.iterations}) without producing a final decision`
+          );
+        }
+
+        if (!result.content || !result.content.trim()) {
+          throw new Error("Trader returned empty final response");
+        }
+
+        lastRawText = result.content;
+        const jsonText = extractJson(result.content);
+        let decision: TradingDecision;
+        try {
+          decision = tradingDecisionSchema.parse(JSON.parse(jsonText));
+        } catch (parseError) {
+          throw new DecisionParseError(
+            `Invalid JSON decision (strategy: ${strategyLabel})`,
+            result.content,
+            { cause: parseError }
+          );
+        }
+
         if (runId) {
           void storeLLMCall({
             runId,
             phase: "trader",
             provider: provider.name,
-            model: bot.traderModelIdentifier,
+            model: result.model,
+            inputMessages: {
+              messages: loggedMessages,
+              tools: tools.map((t) => ({ name: t.name, description: t.description })),
+              toolCalls: result.toolCalls,
+              iterations: result.iterations
+            } as unknown,
+            outputText: result.content,
+            inputTokens: result.usage?.inputTokens ?? null,
+            outputTokens: result.usage?.outputTokens ?? null,
+            latencyMs: Date.now() - start,
+            attempt,
+            strategy: strategyLabel,
+            error: null
+          });
+        }
+
+        return {
+          rawText: result.content,
+          decision,
+          provider: provider.name,
+          model: result.model,
+          toolCalls: result.toolCalls,
+          iterations: result.iterations
+        };
+      } catch (error) {
+        lastError = error;
+        const errorMessage = error instanceof DecisionParseError ? error.message : toErrorMessage(error);
+        if (error instanceof DecisionParseError) {
+          lastRawText = error.rawText;
+        }
+        attemptErrors.push(`${strategyLabel}: ${errorMessage}`);
+
+        if (runId) {
+          void storeLLMCall({
+            runId,
+            phase: "trader",
+            provider: provider.name,
+            model: modelCandidate,
             inputMessages: loggedMessages,
-            outputText: error.rawText,
+            outputText: error instanceof DecisionParseError ? error.rawText : null,
             inputTokens: null,
             outputTokens: null,
             latencyMs: Date.now() - start,
             attempt,
-            strategy: strategy.label,
-            error: error.message
+            strategy: strategyLabel,
+            error: errorMessage
           });
         }
-        throw error;
-      }
-
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      attemptErrors.push(`${strategy.label}: ${errorMessage}`);
-
-      if (runId) {
-        void storeLLMCall({
-          runId,
-          phase: "trader",
-          provider: provider.name,
-          model: bot.traderModelIdentifier,
-          inputMessages: loggedMessages,
-          outputText: null,
-          inputTokens: null,
-          outputTokens: null,
-          latencyMs: Date.now() - start,
-          attempt,
-          strategy: strategy.label,
-          error: errorMessage
-        });
       }
     }
   }
 
   const recentFailures = attemptErrors.slice(-3).join(" | ");
+  if (lastError instanceof DecisionParseError) {
+    throw new DecisionParseError(
+      `All trader attempts returned invalid decisions for ${bot.traderModelIdentifier}. Recent: ${recentFailures}`,
+      lastRawText || lastError.rawText,
+      { cause: lastError }
+    );
+  }
   throw new Error(
     `All trader attempts failed for ${bot.traderModelIdentifier}. Recent: ${recentFailures}`,
     { cause: lastError }

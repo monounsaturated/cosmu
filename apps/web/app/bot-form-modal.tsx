@@ -1412,6 +1412,26 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     includePastTrades: formData.promptConfig.modules.includePastTrades,
     includeBotRanking: formData.promptConfig.modules.includeBotRanking,
   };
+  const selectedResearchModel = researchAvailableModels.find((model) => model.id === formData.researchModelProfileId);
+  const selectedTraderModel = traderAvailableModels.find((model) => model.id === formData.traderModelProfileId);
+  const selectedResearchPrompt =
+    formData.researchStrategy === "existing"
+      ? researchPromptOptions.find((prompt) => prompt.id === formData.existingPromptVersionId)
+      : null;
+  const selectedTraderPrompt =
+    formData.traderStrategy === "existing"
+      ? traderPromptOptions.find((prompt) => prompt.id === formData.existingTraderVersionId)
+      : null;
+  const enabledDataSources = [
+    "Binance account cash, balances, and current positions",
+    "Binance symbol lookup and live spot prices before any order",
+    formData.researchStrategy === "existing" ? "Saved research prompt version" : "New research prompt saved at creation",
+    formData.traderStrategy === "existing" ? "Saved trader prompt version" : "New trader prompt saved at creation",
+    formData.promptConfig.modules.includePastTrades ? `Past trades, last ${formData.promptConfig.modules.pastTradesLookback}` : null,
+    formData.promptConfig.modules.includePerformanceStats ? "Agent performance statistics" : null,
+    formData.promptConfig.modules.includeBotRanking ? "Comparison against other agents" : null,
+    selectedResearchProvider === "xai" ? "xAI web and X search grounding for fresh research" : null
+  ].filter(Boolean) as string[];
 
   return (
     <ModalShell
@@ -1590,111 +1610,183 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
               </div>
             </div>
 
-            {/* ── Research Prompt ── */}
-            <PromptSection
-              phase="research"
-              phaseColor="#60a5fa"
-              strategy={formData.researchStrategy}
-              onStrategyChange={(s) => setFormData({ ...formData, researchStrategy: s })}
-              promptOptions={researchPromptOptions}
-              selectedVersionId={formData.existingPromptVersionId}
-              onVersionChange={(id) => setFormData({ ...formData, existingPromptVersionId: id })}
-              promptName={formData.newResearchName}
-              onNameChange={(n) => setFormData({ ...formData, newResearchName: n })}
-              promptBody={formData.newResearchBody}
-              onBodyChange={(b) => setFormData({ ...formData, newResearchBody: b })}
-              savedBody={researchSavedBody}
-              showBodyEditor={researchShowEditor}
-              onToggleEditor={setResearchShowEditor}
-              editedBody={researchEditedBody}
-              onEditedBodyChange={setResearchEditedBody}
-              onSaveNewVersion={handleSaveResearchVersion}
-              savingVersion={researchSavingVersion}
-              loadingBody={false}
-              alwaysInjected={selectedResearchProvider === "xai" ? [buildResearchGroundingPreview()] : []}
-              nextPromptNumber={nextResearchPromptNumber}
-              providerOptions={providerOptions}
-              selectedProvider={selectedResearchProvider}
-              onProviderChange={(p) => {
-                setSelectedResearchProvider(p);
-                setFormData((cur) => ({ ...cur, researchModelProfileId: "" }));
-              }}
-              availableModels={researchAvailableModels}
-              selectedModelId={formData.researchModelProfileId}
-              onModelChange={(id) => setFormData((cur) => ({ ...cur, researchModelProfileId: id }))}
-              dataLoaded={dataLoaded}
-              disabled={false}
-            />
-
-            <div className="form-section loop-prompt-section">
+            <div className="form-section setup-summary-section">
               <div className="section-header">
-                <h3>Loop Prompt</h3>
-                <span className="badge badge-neutral">optional</span>
+                <h3>Agent setup</h3>
+                <span className="badge badge-neutral">editable below</span>
               </div>
-              <div className="form-row">
-                <label>
-                  Extra instruction
-                  <textarea
-                    value={formData.promptConfig.extraLoopPrompt ?? ""}
-                    onChange={(event) =>
-                      setFormData((cur) => ({
-                        ...cur,
-                        promptConfig: { ...cur.promptConfig, extraLoopPrompt: event.target.value.slice(0, 2000) }
-                      }))
-                    }
-                    rows={3}
-                    maxLength={2000}
-                    placeholder="Example: Avoid chasing candles after a 5% move; prefer setups with clear liquidity and stop placement."
-                  />
-                </label>
+              <div className="setup-summary-grid">
+                <div className="setup-summary-card">
+                  <span>Research</span>
+                  <strong>{selectedResearchModel?.name ?? "Select a model"}</strong>
+                  <small>
+                    {formData.researchStrategy === "existing"
+                      ? selectedResearchPrompt?.label ?? "Saved prompt"
+                      : formData.newResearchName || "New research prompt"}
+                  </small>
+                </div>
+                <div className="setup-summary-card">
+                  <span>Trader</span>
+                  <strong>{selectedTraderModel?.name ?? "Select a model"}</strong>
+                  <small>
+                    {formData.traderStrategy === "existing"
+                      ? selectedTraderPrompt?.label ?? "Saved prompt"
+                      : formData.newTraderName || "New trader prompt"}
+                  </small>
+                </div>
+                <div className="setup-summary-card">
+                  <span>Execution guardrails</span>
+                  <strong>{formData.execution.enabled ? "On" : "Paper decisions only"}</strong>
+                  <small>
+                    {formData.execution.enabled
+                      ? `${formData.execution.maxOrdersPerRun} orders/run, $${formData.execution.maxNotionalPerOrderUsd} max/order`
+                      : "Orders are validated and recorded without live execution"}
+                  </small>
+                </div>
               </div>
             </div>
 
-            {/* ── Trader Prompt ── */}
-            <PromptSection
-              phase="trader"
-              phaseColor="#a78bfa"
-              strategy={formData.traderStrategy}
-              onStrategyChange={(s) => setFormData({ ...formData, traderStrategy: s })}
-              promptOptions={traderPromptOptions}
-              selectedVersionId={formData.existingTraderVersionId}
-              onVersionChange={(id) => setFormData({ ...formData, existingTraderVersionId: id })}
-              promptName={formData.newTraderName}
-              onNameChange={(n) => setFormData({ ...formData, newTraderName: n })}
-              promptBody={formData.newTraderBody}
-              onBodyChange={(b) => setFormData({ ...formData, newTraderBody: b })}
-              savedBody={traderSavedBody}
-              showBodyEditor={traderShowEditor}
-              onToggleEditor={setTraderShowEditor}
-              editedBody={traderEditedBody}
-              onEditedBodyChange={setTraderEditedBody}
-              onSaveNewVersion={handleSaveTraderVersion}
-              savingVersion={traderSavingVersion}
-              loadingBody={false}
-              alwaysInjected={ALWAYS_INJECTED_TRADER}
-              optionalModules={optionalModules}
-              activeModules={activeModules}
-              onToggleModule={updateModule}
-              pastTradesLookback={formData.promptConfig.modules.pastTradesLookback}
-              onLookbackChange={(n) => setFormData((cur) => ({
-                ...cur,
-                promptConfig: { ...cur.promptConfig, modules: { ...cur.promptConfig.modules, pastTradesLookback: n } }
-              }))}
-              nextPromptNumber={nextTraderPromptNumber}
-              providerOptions={providerOptions}
-              selectedProvider={selectedTraderProvider}
-              onProviderChange={(p) => {
-                setSelectedTraderProvider(p);
-                setFormData((cur) => ({ ...cur, traderModelProfileId: "" }));
-              }}
-              availableModels={traderAvailableModels}
-              selectedModelId={formData.traderModelProfileId}
-              onModelChange={(id) => setFormData((cur) => ({ ...cur, traderModelProfileId: id }))}
-              dataLoaded={dataLoaded}
-              disabled={false}
-            />
+            <div className="form-section trust-section">
+              <div className="section-header">
+                <h3>Data used by this agent</h3>
+                <span className="badge badge-success">grounded</span>
+              </div>
+              <div className="trust-source-list">
+                {enabledDataSources.map((source) => (
+                  <span key={source}>{source}</span>
+                ))}
+              </div>
+            </div>
 
-            {/* ── Deterministic Settings ── */}
+            <details className="advanced-section">
+              <summary>
+                <span>
+                  <strong>Research prompt and model</strong>
+                  <small>{selectedResearchModel?.name ?? selectedResearchProvider}</small>
+                </span>
+              </summary>
+              <PromptSection
+                phase="research"
+                phaseColor="#60a5fa"
+                strategy={formData.researchStrategy}
+                onStrategyChange={(s) => setFormData({ ...formData, researchStrategy: s })}
+                promptOptions={researchPromptOptions}
+                selectedVersionId={formData.existingPromptVersionId}
+                onVersionChange={(id) => setFormData({ ...formData, existingPromptVersionId: id })}
+                promptName={formData.newResearchName}
+                onNameChange={(n) => setFormData({ ...formData, newResearchName: n })}
+                promptBody={formData.newResearchBody}
+                onBodyChange={(b) => setFormData({ ...formData, newResearchBody: b })}
+                savedBody={researchSavedBody}
+                showBodyEditor={researchShowEditor}
+                onToggleEditor={setResearchShowEditor}
+                editedBody={researchEditedBody}
+                onEditedBodyChange={setResearchEditedBody}
+                onSaveNewVersion={handleSaveResearchVersion}
+                savingVersion={researchSavingVersion}
+                loadingBody={false}
+                alwaysInjected={selectedResearchProvider === "xai" ? [buildResearchGroundingPreview()] : []}
+                nextPromptNumber={nextResearchPromptNumber}
+                providerOptions={providerOptions}
+                selectedProvider={selectedResearchProvider}
+                onProviderChange={(p) => {
+                  setSelectedResearchProvider(p);
+                  setFormData((cur) => ({ ...cur, researchModelProfileId: "" }));
+                }}
+                availableModels={researchAvailableModels}
+                selectedModelId={formData.researchModelProfileId}
+                onModelChange={(id) => setFormData((cur) => ({ ...cur, researchModelProfileId: id }))}
+                dataLoaded={dataLoaded}
+                disabled={false}
+              />
+            </details>
+
+            <details className="advanced-section">
+              <summary>
+                <span>
+                  <strong>Loop instruction</strong>
+                  <small>{formData.promptConfig.extraLoopPrompt?.trim() ? "Custom instruction set" : "Optional per-agent instruction"}</small>
+                </span>
+              </summary>
+              <div className="form-section loop-prompt-section">
+                <div className="form-row">
+                  <label>
+                    Extra instruction
+                    <textarea
+                      value={formData.promptConfig.extraLoopPrompt ?? ""}
+                      onChange={(event) =>
+                        setFormData((cur) => ({
+                          ...cur,
+                          promptConfig: { ...cur.promptConfig, extraLoopPrompt: event.target.value.slice(0, 2000) }
+                        }))
+                      }
+                      rows={3}
+                      maxLength={2000}
+                      placeholder="Example: Avoid chasing candles after a 5% move; prefer setups with clear liquidity and stop placement."
+                    />
+                  </label>
+                </div>
+              </div>
+            </details>
+
+            <details className="advanced-section">
+              <summary>
+                <span>
+                  <strong>Trader prompt, model, and data modules</strong>
+                  <small>{selectedTraderModel?.name ?? selectedTraderProvider}</small>
+                </span>
+              </summary>
+              <PromptSection
+                phase="trader"
+                phaseColor="#a78bfa"
+                strategy={formData.traderStrategy}
+                onStrategyChange={(s) => setFormData({ ...formData, traderStrategy: s })}
+                promptOptions={traderPromptOptions}
+                selectedVersionId={formData.existingTraderVersionId}
+                onVersionChange={(id) => setFormData({ ...formData, existingTraderVersionId: id })}
+                promptName={formData.newTraderName}
+                onNameChange={(n) => setFormData({ ...formData, newTraderName: n })}
+                promptBody={formData.newTraderBody}
+                onBodyChange={(b) => setFormData({ ...formData, newTraderBody: b })}
+                savedBody={traderSavedBody}
+                showBodyEditor={traderShowEditor}
+                onToggleEditor={setTraderShowEditor}
+                editedBody={traderEditedBody}
+                onEditedBodyChange={setTraderEditedBody}
+                onSaveNewVersion={handleSaveTraderVersion}
+                savingVersion={traderSavingVersion}
+                loadingBody={false}
+                alwaysInjected={ALWAYS_INJECTED_TRADER}
+                optionalModules={optionalModules}
+                activeModules={activeModules}
+                onToggleModule={updateModule}
+                pastTradesLookback={formData.promptConfig.modules.pastTradesLookback}
+                onLookbackChange={(n) => setFormData((cur) => ({
+                  ...cur,
+                  promptConfig: { ...cur.promptConfig, modules: { ...cur.promptConfig.modules, pastTradesLookback: n } }
+                }))}
+                nextPromptNumber={nextTraderPromptNumber}
+                providerOptions={providerOptions}
+                selectedProvider={selectedTraderProvider}
+                onProviderChange={(p) => {
+                  setSelectedTraderProvider(p);
+                  setFormData((cur) => ({ ...cur, traderModelProfileId: "" }));
+                }}
+                availableModels={traderAvailableModels}
+                selectedModelId={formData.traderModelProfileId}
+                onModelChange={(id) => setFormData((cur) => ({ ...cur, traderModelProfileId: id }))}
+                dataLoaded={dataLoaded}
+                disabled={false}
+              />
+            </details>
+
+            <details className="advanced-section">
+              <summary>
+                <span>
+                  <strong>Execution guardrails</strong>
+                  <small>{formData.execution.enabled ? "Caps enforced before orders" : "Execution disabled by default"}</small>
+                </span>
+              </summary>
             <div className="form-section">
               <h3>Deterministic Settings</h3>
               <label className="checkbox-label">
@@ -1780,6 +1872,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 </div>
               </div>
             </div>
+            </details>
 
             {error && (
               <div className="form-error" role="alert" aria-live="assertive">
