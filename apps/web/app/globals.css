@@ -1650,9 +1650,9 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
   flex: 1;
   display: grid;
   align-content: start;
-  gap: 12px;
+  gap: 10px;
   min-height: 0;
-  padding: 16px 20px 20px;
+  padding: 14px 18px 18px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -1931,7 +1931,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
 
 .prompt-body-textarea {
   width: 100%;
-  min-height: 200px;
+  min-height: 160px;
   padding: 12px;
   background: var(--bg);
   border: none;
@@ -1960,7 +1960,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
 
 .prompt-composer-textarea {
   width: 100%;
-  min-height: 200px;
+  min-height: 160px;
   padding: 12px;
   background: transparent;
   border: none;
@@ -1972,10 +1972,11 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
 }
 
 .prompt-composer-textarea:focus { outline: none; }
+.prompt-composer-textarea::placeholder { color: var(--muted); opacity: 0.58; }
 .prompt-composer-injected { border-top: 2px dashed var(--border-strong); background: var(--bg-card); }
 
 .injected-separator { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg-card); }
-.injected-separator-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent-3); white-space: nowrap; }
+.injected-separator-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); white-space: nowrap; }
 
 .injected-block { border-top: 1px solid var(--border); }
 .injected-block-header { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 38px; padding: 6px 12px; background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 13px; font-family: inherit; transition: background 0.15s; text-align: left; }
@@ -1983,7 +1984,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
 .injected-block-label { display: flex; align-items: center; gap: 6px; }
 .injected-always-badge { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted-strong); background: var(--surface-hover); border-radius: 4px; padding: 1px 5px; }
 .injected-block-chevron { color: var(--muted-strong); font-size: 11px; }
-.injected-block-preview { margin: 0; padding: 8px 12px 12px; font-size: 12px; line-height: 1.5; color: rgba(59, 130, 246, 0.55); font-family: var(--font-mono); white-space: pre-wrap; word-break: break-word; background: var(--bg); border-top: 1px solid var(--border); }
+.injected-block-preview { margin: 0; padding: 8px 12px 12px; font-size: 12px; line-height: 1.5; color: var(--muted); font-family: var(--font-mono); white-space: pre-wrap; word-break: break-word; background: var(--bg); border-top: 1px solid var(--border); }
 .injected-data-section { border-top: 1px solid var(--border); padding-top: 12px; }
 .injected-data-section h4 { margin: 0 0 4px; font-size: 14px; font-weight: 600; color: var(--text); }
 
@@ -2336,6 +2337,28 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
   font-size: 13px;
   resize: vertical;
 }
+.settings-wide-field { margin-top: 12px; }
+.settings-wide-field textarea,
+.settings-injected-template textarea {
+  width: 100%;
+  min-height: 132px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.settings-injected-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.settings-injected-template { display: grid; gap: 8px; align-content: start; }
+.settings-injected-template summary { margin-bottom: 8px; }
+.execution-cap-toggle {
+  align-self: start;
+  min-height: 70px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+.execution-cap-toggle > span { display: grid; gap: 3px; }
+.execution-cap-toggle small { color: var(--muted); font-size: 12px; line-height: 1.35; }
 
 .settings-create-row { display: grid; grid-template-columns: repeat(3, 1fr) auto; gap: 8px; align-items: end; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 .settings-create-row-compact { grid-template-columns: minmax(200px, 1fr) minmax(140px, 0.4fr) auto; }
@@ -3190,6 +3213,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
   .settings-phase-grid,
   .settings-runtime-grid,
   .settings-toggle-grid,
+  .settings-injected-grid,
   .settings-create-row,
   .settings-create-row-compact,
   .settings-model-grid,

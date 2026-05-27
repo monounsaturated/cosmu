@@ -2,6 +2,7 @@ import { isUsdcOnlyVenue, type VenueContext } from "../adapters/binance.js";
 import {
   getBotPrePromptContext,
   getActiveFormatterPrompt,
+  getAppSettings,
   type BotSetup
 } from "../lib/store.js";
 
@@ -11,24 +12,13 @@ const fmtUsd = (n: number) =>
 const fmtNum = (n: number) =>
   n.toLocaleString("en-US", { maximumSignificantDigits: 8, useGrouping: false });
 
-/**
- * Anti-hallucination guardrail appended to every research system prompt.
- *
- * Grok fabricates confidently when asked for "latest tweets" without browsing — it
- * will invent plausible posts dated months/years ago. Research runs on xAI's
- * Responses API with `web_search` + `x_search` enabled, so the model CAN browse;
- * this block tells it that it must, and must flag the turn if it can't.
- */
-export const buildResearchGroundingBlock = () => [
-  "---",
-  "GROUNDING RULES (critical — your output feeds live trading decisions):",
-  `• Today's date is ${new Date().toISOString().slice(0, 10)}. Any cited news, tweet, or price MUST come from a search you actually ran this turn — you have web_search and x_search tools available.`,
-  "• For ANY claim about recent prices, news, tweets, or market events: call a search tool first. Never cite a date, username, or headline you did not just retrieve.",
-  "• If a search returns no results or the tools are unavailable for some reason, say so explicitly (\"unable to retrieve live data for X\") and do NOT invent content to fill the gap. A short, honest report beats a detailed fabricated one.",
-  "• When quoting tweets/posts, include the exact retrieved timestamp. When citing prices, state the source and time. Do not round timestamps to \"today\" unless they actually are today."
-].join("\n");
+export const renderRuntimeTemplate = (template: string) =>
+  template.replaceAll("{date}", new Date().toISOString().slice(0, 10));
 
-export const NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
+const heading = (label: string | undefined, fallback: string) =>
+  `=== ${(label?.trim() || fallback).toUpperCase()} ===`;
+
+export const DEFAULT_NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
   "---",
   "NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):",
   "• Every BUY order MUST include stopLossPrice (strictly below entry) AND takeProfitPrice (strictly above entry).",
@@ -75,8 +65,8 @@ type HistoryContext = Awaited<ReturnType<typeof getBotPrePromptContext>>;
 
 /** Shared helpers for building wallet and price sections used by both phases. */
 
-const buildWalletSection = (snapshot: VenueContext["snapshot"]) => {
-  const lines = ["=== WALLET ===", `Total: ${fmtUsd(snapshot.totalUsdValue)}`];
+const buildWalletSection = (snapshot: VenueContext["snapshot"], label?: string) => {
+  const lines = [heading(label, "WALLET"), `Total: ${fmtUsd(snapshot.totalUsdValue)}`];
   for (const b of snapshot.balances) {
     const usd = b.usdValue != null ? ` (${fmtUsd(b.usdValue)})` : "";
     const locked = b.locked > 0 ? ` + ${fmtNum(b.locked)} locked` : "";
@@ -85,21 +75,21 @@ const buildWalletSection = (snapshot: VenueContext["snapshot"]) => {
   return lines.join("\n");
 };
 
-const buildSessionSection = (bot: BotSetup) => [
-  "=== SESSION ===",
+const buildSessionSection = (bot: BotSetup, label?: string) => [
+  heading(label, "SESSION"),
   `Bot: ${bot.name} (#${bot.botNumber}) | Model: ${bot.traderModelProfileName}`,
   `Mode: ${bot.runtimeConfig.mode} | Venue: Binance Spot | Frequency: every ${bot.runtimeConfig.frequencyMinutes}min`,
   `Budget: ${fmtUsd(bot.runtimeConfig.budgetUsdt)} — you must stay within this allocation`
 ].join("\n");
 
-const buildExecRulesSection = (exec: BotSetup["runtimeConfig"]["execution"]) => {
+const buildExecRulesSection = (exec: BotSetup["runtimeConfig"]["execution"], label?: string) => {
   // When rules are disabled, deliberately do NOT surface the configured
   // max-orders-per-run / max-notional numbers: the model will anchor on them
   // and produce baskets of exactly that size even though nothing is enforced.
   // Only mention the caps when they're actually live.
   if (!exec.enabled) {
     return [
-      "=== EXECUTION RULES ===",
+      heading(label, "EXECUTION RULES"),
       "Rules enforced: NO (relaxed) — no order-count or per-order notional caps.",
       "Size and count of orders are up to your judgment. Total spend is still bounded by the bot's budget and by available wallet balance; Binance tradability rules (min notional, lot size) still apply.",
       "Allowed order types: MARKET, LIMIT"
@@ -110,7 +100,7 @@ const buildExecRulesSection = (exec: BotSetup["runtimeConfig"]["execution"]) => 
     .filter(Boolean)
     .join(", ");
   return [
-    "=== EXECUTION RULES ===",
+    heading(label, "EXECUTION RULES"),
     "Rules enforced: YES",
     `Max orders/run: ${exec.maxOrdersPerRun} | Max notional/order: $${exec.maxNotionalPerOrderUsd}`,
     `Cash reserve (untouchable): $${exec.minCashReserveUsd}`,
@@ -119,14 +109,14 @@ const buildExecRulesSection = (exec: BotSetup["runtimeConfig"]["execution"]) => 
   ].join("\n");
 };
 
-const buildTradingScopeSection = (runtimeConfig: BotSetup["runtimeConfig"]) => {
+const buildTradingScopeSection = (runtimeConfig: BotSetup["runtimeConfig"], label?: string) => {
   if (runtimeConfig.symbolScope === "selected" && runtimeConfig.contextSymbols.length > 0) {
-    return ["=== AUTHORIZED PAIRS — trade ONLY these ===", runtimeConfig.contextSymbols.join(", ")].join("\n");
+    return [heading(label, "AUTHORIZED PAIRS - trade ONLY these"), runtimeConfig.contextSymbols.join(", ")].join("\n");
   }
   const scope = isUsdcOnlyVenue(runtimeConfig)
     ? "any USDC-quoted spot pair available on Binance live (USDT pairs are NOT tradable in this region — use USDC only)"
     : "any stable-quoted spot pair available on Binance (USDC preferred, USDT fallback)";
-  return `=== TRADING SCOPE ===\nYou may trade ${scope}. Pick your symbols based on your own analysis.`;
+  return `${heading(label, "TRADING SCOPE")}\nYou may trade ${scope}. Pick your symbols based on your own analysis.`;
 };
 
 // Live prices are no longer pre-injected into the trader prompt.
@@ -148,8 +138,9 @@ const buildOptionalModuleSections = (input: {
   bot: BotSetup;
   venueContext: VenueContext;
   historyContext: HistoryContext;
+  templates: Record<string, { label: string }>;
 }) => {
-  const { bot, venueContext, historyContext } = input;
+  const { bot, venueContext, historyContext, templates } = input;
   const modules = bot.promptConfig.modules;
   const { snapshot } = venueContext;
 
@@ -162,7 +153,7 @@ const buildOptionalModuleSections = (input: {
     const pnlNet = p.netPnlUsd != null ? ` | Net PnL: ${fmtUsd(p.netPnlUsd)}` : "";
     sections.push(
       [
-        "=== PORTFOLIO OVERVIEW ===",
+        heading(templates.includeWalletOverview?.label, "PORTFOLIO OVERVIEW"),
         `Started: ${start} | Now: ${now}${pnlNet}`,
         `Runs: ${p.runCount ?? 0} | Trades: ${p.tradeCount ?? 0} | Fees: ${fmtUsd(p.totalFeesUsd ?? 0)}`
       ].join("\n")
@@ -171,7 +162,7 @@ const buildOptionalModuleSections = (input: {
 
   if (modules.includePerformanceStats && historyContext.performance) {
     sections.push(
-      ["=== PERFORMANCE STATS ===", JSON.stringify(historyContext.performance, null, 2)].join("\n")
+      [heading(templates.includePerformanceStats?.label, "PERFORMANCE STATS"), JSON.stringify(historyContext.performance, null, 2)].join("\n")
     );
   }
 
@@ -181,7 +172,7 @@ const buildOptionalModuleSections = (input: {
         `${String(t.side ?? "").toUpperCase()} ${t.symbol} qty=${t.executedQuantity ?? t.requestedQuantity} @ ${t.averageFillPrice ?? "?"} → ${t.status}`
     );
     sections.push(
-      [`=== RECENT TRADES (last ${modules.pastTradesLookback}) ===`, ...tradeLines].join("\n")
+      [heading(templates.includePastTrades?.label, "RECENT TRADES"), `Lookback: last ${modules.pastTradesLookback}`, ...tradeLines].join("\n")
     );
   }
 
@@ -189,7 +180,7 @@ const buildOptionalModuleSections = (input: {
     const rankLines = (historyContext.ranking as Array<Record<string, unknown>>)
       .slice(0, 10)
       .map((r, i) => `${i + 1}. ${r.botName ?? r.name ?? "Bot"}: ${fmtUsd(Number(r.netPnlUsd ?? 0))} net PnL`);
-    sections.push(["=== BOT RANKINGS ===", ...rankLines].join("\n"));
+    sections.push([heading(templates.includeBotRanking?.label, "BOT RANKINGS"), ...rankLines].join("\n"));
   }
 
   return sections;
@@ -202,23 +193,24 @@ const buildFormatterUserSections = (input: {
   venueContext: VenueContext;
   researchRawText: string;
   historyContext: HistoryContext;
+  templates: Record<string, { label: string }>;
 }) => {
-  const { bot, venueContext, researchRawText, historyContext } = input;
+  const { bot, venueContext, researchRawText, historyContext, templates } = input;
   const { runtimeConfig } = bot;
   const { snapshot } = venueContext;
 
   const sections: string[] = [];
 
   sections.push(
-    ["=== UPSTREAM RESEARCH (phase 1 analysis) ===", researchRawText].join("\n")
+    [heading(templates.traderResearchOutput?.label, "UPSTREAM RESEARCH (phase 1 analysis)"), researchRawText].join("\n")
   );
-  sections.push(buildSessionSection(bot));
-  sections.push(buildExecRulesSection(runtimeConfig.execution));
-  sections.push(buildWalletSection(snapshot));
-  sections.push(buildTradingScopeSection(runtimeConfig));
+  sections.push(buildSessionSection(bot, templates.traderSession?.label));
+  sections.push(buildExecRulesSection(runtimeConfig.execution, templates.traderExecutionRules?.label));
+  sections.push(buildWalletSection(snapshot, templates.traderWallet?.label));
+  sections.push(buildTradingScopeSection(runtimeConfig, templates.traderTradingScope?.label));
 
   // Append optional data modules (toggled on bot creation form)
-  const moduleSections = buildOptionalModuleSections({ bot, venueContext, historyContext });
+  const moduleSections = buildOptionalModuleSections({ bot, venueContext, historyContext, templates });
   sections.push(...moduleSections);
 
   return sections.join("\n\n");
@@ -232,13 +224,11 @@ type BuildPromptContextInput = {
 /** Phase 1: pure written prompt — no injected data. */
 export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildPromptContextInput) => {
   const { runtimeConfig } = bot;
+  const appSettings = await getAppSettings();
+  const groundingBlock = renderRuntimeTemplate(appSettings.promptRuntime.researchGroundingRules).trim();
 
-  // Grounding block is xAI-specific: only xAI research runs through the Responses
-  // API with web_search/x_search, so only xAI needs the "cite only what you just
-  // retrieved" guardrails. Other providers don't have browsing wired in and the
-  // block would mislead them.
   const parts = [bot.promptBody.trim()];
-  if (bot.modelProvider === "xai") parts.push(buildResearchGroundingBlock());
+  if (groundingBlock) parts.push(groundingBlock);
   const systemPrompt = parts.join("\n\n");
   const userMessage = "Analyze the market now. Identify any trading opportunities worth exploring.";
 
@@ -266,6 +256,7 @@ export const buildFormatterPhaseContext = async ({
 }) => {
   const { runtimeConfig, promptConfig } = bot;
   const modules = promptConfig.modules;
+  const appSettings = await getAppSettings();
 
   const historyContext = await getBotPrePromptContext({
     botId: bot.id,
@@ -287,13 +278,16 @@ export const buildFormatterPhaseContext = async ({
     formatterPromptVersionId = activeFormatter?.id ?? null;
   }
 
-  const systemPrompt = [formatterBody, NON_NEGOTIABLE_CONSTRAINTS_BLOCK].join("\n\n");
+  const nonNegotiable = appSettings.promptRuntime.injectedDataTemplates.traderNonNegotiable.preview.trim() ||
+    DEFAULT_NON_NEGOTIABLE_CONSTRAINTS_BLOCK;
+  const systemPrompt = [formatterBody, renderRuntimeTemplate(nonNegotiable)].join("\n\n");
 
   const userMessage = buildFormatterUserSections({
     bot,
     venueContext,
     researchRawText,
-    historyContext
+    historyContext,
+    templates: appSettings.promptRuntime.injectedDataTemplates
   });
 
   const compactContext: Record<string, unknown> = {

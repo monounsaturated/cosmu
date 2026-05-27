@@ -51,7 +51,15 @@ Order logic:
 - Stay within wallet + execution caps; prefer fewer, higher-conviction orders over many small ones.
 - If research conflicts with prices, scope, or risk limits, prefer mode hold with orders: [].`;
 
-// Example injected data previews — matches the exact format produced by prompt-context.ts.
+const DEFAULT_RESEARCH_GROUNDING_RULES = `---
+GROUNDING RULES (critical - your output feeds live trading decisions):
+- Today's date is {date}. Use the available tools and injected data before making current-market claims.
+- For recent or time-sensitive claims about prices, liquidity, volume, news, social posts/tweets, filings, macro events, or market structure: search or query an available tool first.
+- Justify every material claim with the retrieved source, timestamp, or data point. If you cannot verify something, say that it is unverified and do not use it as a reason to trade.
+- Do not invent headlines, tweet/post authors, dates, prices, or catalysts. A short, honest report with uncertainty is better than a confident fabrication.
+- Distinguish facts retrieved this run from your interpretation. Keep speculation clearly labeled.`;
+
+// Example injected data previews — mirrors the runtime sections and can be overridden from Settings.
 const INJECTED_DATA_EXAMPLES: Record<string, { label: string; preview: string }> = {
   includeWalletOverview: {
     label: "Portfolio Overview",
@@ -88,13 +96,8 @@ BUY SOLUSDT qty=2.5 @ 142.80 -> success`,
 };
 
 const buildResearchGroundingPreview = () => ({
-  label: "Grounding Rules (xAI only)",
-  preview: `---
-GROUNDING RULES (critical - your output feeds live trading decisions):
-- Today's date is ${new Date().toISOString().slice(0, 10)}. Any cited news, tweet, or price MUST come from a search you actually ran this turn.
-- For ANY claim about recent prices, news, tweets, or market events: call a search tool first.
-- If a search returns no results or tools are unavailable, say so explicitly and do NOT invent content.
-- When quoting posts, include the exact retrieved timestamp. When citing prices, state the source and time.`,
+  label: "Grounding Rules",
+  preview: DEFAULT_RESEARCH_GROUNDING_RULES,
 });
 
 const TRADER_NON_NEGOTIABLE_PREVIEW = {
@@ -214,6 +217,22 @@ type AppSettings = {
     proReview: boolean;
     promptLibrary: boolean;
   };
+  promptRuntime: {
+    researchGroundingRules: string;
+    injectedDataTemplates: {
+      researchGrounding: { label: string; preview: string };
+      traderResearchOutput: { label: string; preview: string };
+      traderSession: { label: string; preview: string };
+      traderExecutionRules: { label: string; preview: string };
+      traderWallet: { label: string; preview: string };
+      traderTradingScope: { label: string; preview: string };
+      traderNonNegotiable: { label: string; preview: string };
+      includeWalletOverview: { label: string; preview: string };
+      includePerformanceStats: { label: string; preview: string };
+      includeBotRanking: { label: string; preview: string };
+      includePastTrades: { label: string; preview: string };
+    };
+  };
 };
 
 const FALLBACK_XAI_MODELS: Model[] = [
@@ -242,7 +261,7 @@ const PROVIDER_ORDER = ["xai", "openai", "anthropic", "google", "mistral", "hugg
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
   agentDefaults: {
-    research: { provider: "xai", modelProfileId: null, prompt: { mode: "new", versionId: null } },
+    research: { provider: "xai", modelProfileId: null, prompt: { mode: "saved", versionId: null } },
     trader: { provider: "xai", modelProfileId: null, prompt: { mode: "saved", versionId: null } },
     runtime: {
       venue: "binance-testnet",
@@ -267,7 +286,75 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     researchLab: false,
     proReview: false,
     promptLibrary: false
+  },
+  promptRuntime: {
+    researchGroundingRules: DEFAULT_RESEARCH_GROUNDING_RULES,
+    injectedDataTemplates: {
+      researchGrounding: buildResearchGroundingPreview(),
+      traderResearchOutput: ALWAYS_INJECTED_TRADER[0]!,
+      traderSession: ALWAYS_INJECTED_TRADER[1]!,
+      traderExecutionRules: ALWAYS_INJECTED_TRADER[2]!,
+      traderWallet: ALWAYS_INJECTED_TRADER[3]!,
+      traderTradingScope: ALWAYS_INJECTED_TRADER[4]!,
+      traderNonNegotiable: ALWAYS_INJECTED_TRADER[5]!,
+      includeWalletOverview: INJECTED_DATA_EXAMPLES.includeWalletOverview,
+      includePerformanceStats: INJECTED_DATA_EXAMPLES.includePerformanceStats,
+      includeBotRanking: INJECTED_DATA_EXAMPLES.includeBotRanking,
+      includePastTrades: INJECTED_DATA_EXAMPLES.includePastTrades
+    }
   }
+};
+
+const renderRuntimeTemplate = (template: string) =>
+  template.replaceAll("{date}", new Date().toISOString().slice(0, 10));
+
+const mergeAppSettings = (data?: Partial<AppSettings> | null): AppSettings => {
+  const defaults = DEFAULT_APP_SETTINGS;
+  const templates = data?.promptRuntime?.injectedDataTemplates;
+  return {
+    ...defaults,
+    ...data,
+    agentDefaults: {
+      ...defaults.agentDefaults,
+      ...data?.agentDefaults,
+      research: {
+        ...defaults.agentDefaults.research,
+        ...data?.agentDefaults?.research,
+        prompt: {
+          ...defaults.agentDefaults.research.prompt,
+          ...data?.agentDefaults?.research?.prompt
+        }
+      },
+      trader: {
+        ...defaults.agentDefaults.trader,
+        ...data?.agentDefaults?.trader,
+        prompt: {
+          ...defaults.agentDefaults.trader.prompt,
+          ...data?.agentDefaults?.trader?.prompt
+        }
+      },
+      runtime: {
+        ...defaults.agentDefaults.runtime,
+        ...data?.agentDefaults?.runtime,
+        execution: {
+          ...defaults.agentDefaults.runtime.execution,
+          ...data?.agentDefaults?.runtime?.execution
+        }
+      }
+    },
+    featureToggles: {
+      ...defaults.featureToggles,
+      ...data?.featureToggles
+    },
+    promptRuntime: {
+      ...defaults.promptRuntime,
+      ...data?.promptRuntime,
+      injectedDataTemplates: {
+        ...defaults.promptRuntime.injectedDataTemplates,
+        ...templates
+      }
+    }
+  };
 };
 
 const pickBestModel = (models: Model[]): Model | undefined => {
@@ -367,15 +454,15 @@ const buildDefaultState = () => {
   return {
     name: "",
     // Research prompt
-    researchStrategy: "new" as "new" | "existing",
+    researchStrategy: "existing" as "new" | "existing",
     existingPromptVersionId: "",
     newResearchName: "",
-    newResearchBody: DEFAULT_RESEARCH_PROMPT,
+    newResearchBody: "",
     // Trader prompt
     traderStrategy: "existing" as "new" | "existing",
     existingTraderVersionId: "",
     newTraderName: "",
-    newTraderBody: DEFAULT_TRADER_PROMPT,
+    newTraderBody: "",
     // Per-phase model selection
     researchModelProfileId: "",
     traderModelProfileId: "",
@@ -443,6 +530,7 @@ function PromptSection({
   onNameChange,
   promptBody,
   onBodyChange,
+  promptBodyPlaceholder,
   savedBody,
   showBodyEditor,
   onToggleEditor,
@@ -478,6 +566,7 @@ function PromptSection({
   onNameChange: (n: string) => void;
   promptBody: string;
   onBodyChange: (b: string) => void;
+  promptBodyPlaceholder: string;
   savedBody: string | null;
   showBodyEditor: boolean;
   onToggleEditor: (v: boolean) => void;
@@ -622,6 +711,7 @@ function PromptSection({
                 className="prompt-composer-textarea"
                 value={promptBody}
                 onChange={(e) => onBodyChange(e.target.value)}
+                placeholder={promptBodyPlaceholder}
                 rows={10}
                 required
               />
@@ -767,6 +857,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   const pairsRef = useRef<HTMLDivElement>(null);
   const [selectedResearchProvider, setSelectedResearchProvider] = useState("xai");
   const [selectedTraderProvider, setSelectedTraderProvider] = useState("xai");
+  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
   const [formData, setFormData] = useState(buildDefaultState());
   const [nextBotNumber, setNextBotNumber] = useState<number | null>(null);
   const [nextResearchPromptNumber, setNextResearchPromptNumber] = useState<number | null>(null);
@@ -827,11 +918,11 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       }));
 
     return opts.sort((a, b) => {
-      if (a.isDefault && !b.isDefault) return -1;
-      if (!a.isDefault && b.isDefault) return 1;
       if (a.lastUsedAt && b.lastUsedAt) return b.lastUsedAt.localeCompare(a.lastUsedAt);
       if (a.lastUsedAt && !b.lastUsedAt) return -1;
       if (!a.lastUsedAt && b.lastUsedAt) return 1;
+      if (a.isDefault && !b.isDefault) return -1;
+      if (!a.isDefault && b.isDefault) return 1;
       return b.createdAt.localeCompare(a.createdAt);
     });
   }, [prompts]);
@@ -972,6 +1063,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
         setNextResearchPromptNumber(numbersRes.data.nextResearchPromptNumber);
         setNextTraderPromptNumber(numbersRes.data.nextTraderPromptNumber);
       }
+      const mergedAppSettings = mergeAppSettings(appSettingsRes.data ?? DEFAULT_APP_SETTINGS);
+      setAppSettings(mergedAppSettings);
 
       let resolvedSymbols: string[] = symbolsRes.data?.symbols ?? [];
       if (resolvedSymbols.length === 0) resolvedSymbols = await fetchSymbolsDirect();
@@ -1013,11 +1106,11 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
           researchStrategy: "existing",
           existingPromptVersionId: setup.promptVersionId,
           newResearchName: "",
-          newResearchBody: DEFAULT_RESEARCH_PROMPT,
+          newResearchBody: "",
           traderStrategy: setup.traderPromptVersionId ? "existing" : "new",
           existingTraderVersionId: setup.traderPromptVersionId ?? "",
           newTraderName: "",
-          newTraderBody: DEFAULT_TRADER_PROMPT,
+          newTraderBody: "",
           researchModelProfileId: setup.modelProfileId,
           traderModelProfileId: setup.traderModelProfileId ?? setup.modelProfileId,
           modelProfileId: setup.modelProfileId,
@@ -1033,7 +1126,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
           }
         });
       } else {
-        const settings = appSettingsRes.data ?? DEFAULT_APP_SETTINGS;
+        const settings = mergedAppSettings;
         const researchDefault = settings.agentDefaults.research;
         const traderDefault = settings.agentDefaults.trader;
         const runtimeDefault = settings.agentDefaults.runtime;
@@ -1081,6 +1174,9 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       // If trader defaults to "existing" but no saved prompts exist, fall back to "new"
       if (mode === "create" && (!traderPromptsRes.data || traderPromptsRes.data.filter(tp => tp.latestVersionId).length === 0)) {
         setFormData((cur) => ({ ...cur, traderStrategy: "new" }));
+      }
+      if (mode === "create" && (!promptsRes.data || promptsRes.data.filter((p) => p.latestVersionId).length === 0)) {
+        setFormData((cur) => ({ ...cur, researchStrategy: "new" }));
       }
 
       setDataLoaded(true);
@@ -1393,10 +1489,31 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     }
   };
 
-  const optionalModules = Object.entries(INJECTED_DATA_EXAMPLES).map(([key, val]) => ({
-    key,
-    label: val.label,
-    preview: val.preview,
+  const templates = appSettings.promptRuntime.injectedDataTemplates;
+  const optionalModules = ([
+    "includeWalletOverview",
+    "includePerformanceStats",
+    "includeBotRanking",
+    "includePastTrades"
+  ] as const).map((key) => {
+    const val = templates[key];
+    return {
+      key,
+      label: val.label,
+      preview: renderRuntimeTemplate(val.preview),
+    };
+  });
+
+  const alwaysInjectedTrader = [
+    templates.traderResearchOutput,
+    templates.traderSession,
+    templates.traderExecutionRules,
+    templates.traderWallet,
+    templates.traderTradingScope,
+    templates.traderNonNegotiable
+  ].map((item) => ({
+    label: item.label,
+    preview: renderRuntimeTemplate(item.preview)
   }));
 
   const activeModules: Record<string, boolean> = {
@@ -1417,21 +1534,6 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       ) : (
         <form className="modal-form" onSubmit={handleSubmit}>
 
-            {/* ── Agent Name ── */}
-            <div className="form-section">
-              <div className="form-row">
-                <label>
-                  Agent Name
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder={nextBotNumber ? `#${nextBotNumber}` : "My Strategy"}
-                  />
-                </label>
-              </div>
-            </div>
-
             {/* ── Core Settings ── */}
             <div className="form-section">
               <div className="section-header">
@@ -1443,7 +1545,18 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 )}
               </div>
               <div className="form-grid form-grid-3col">
-                {/* Row 1: Venue, Budget, Frequency */}
+                <div className="form-row">
+                  <label>
+                    Agent name
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder={nextBotNumber ? `#${nextBotNumber}` : "My Strategy"}
+                    />
+                  </label>
+                </div>
+
                 <div className="form-row">
                   <label>
                     Venue
@@ -1608,6 +1721,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 onNameChange={(n) => setFormData({ ...formData, newResearchName: n })}
                 promptBody={formData.newResearchBody}
                 onBodyChange={(b) => setFormData({ ...formData, newResearchBody: b })}
+                promptBodyPlaceholder={DEFAULT_RESEARCH_PROMPT}
                 savedBody={researchSavedBody}
                 showBodyEditor={researchShowEditor}
                 onToggleEditor={setResearchShowEditor}
@@ -1616,7 +1730,10 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 onSaveNewVersion={handleSaveResearchVersion}
                 savingVersion={researchSavingVersion}
                 loadingBody={false}
-                alwaysInjected={selectedResearchProvider === "xai" ? [buildResearchGroundingPreview()] : []}
+                alwaysInjected={[{
+                  label: appSettings.promptRuntime.injectedDataTemplates.researchGrounding.label,
+                  preview: renderRuntimeTemplate(appSettings.promptRuntime.researchGroundingRules)
+                }]}
                 nextPromptNumber={nextResearchPromptNumber}
                 providerOptions={providerOptions}
                 selectedProvider={selectedResearchProvider}
@@ -1645,6 +1762,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 onNameChange={(n) => setFormData({ ...formData, newTraderName: n })}
                 promptBody={formData.newTraderBody}
                 onBodyChange={(b) => setFormData({ ...formData, newTraderBody: b })}
+                promptBodyPlaceholder={DEFAULT_TRADER_PROMPT}
                 savedBody={traderSavedBody}
                 showBodyEditor={traderShowEditor}
                 onToggleEditor={setTraderShowEditor}
@@ -1653,7 +1771,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 onSaveNewVersion={handleSaveTraderVersion}
                 savingVersion={traderSavingVersion}
                 loadingBody={false}
-                alwaysInjected={ALWAYS_INJECTED_TRADER}
+                alwaysInjected={alwaysInjectedTrader}
                 optionalModules={optionalModules}
                 activeModules={activeModules}
                 onToggleModule={updateModule}
@@ -1679,59 +1797,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
 
             <div className="form-section">
               <h3>Deterministic settings</h3>
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={formData.execution.enabled}
-                  onChange={(e) =>
-                    setFormData({ ...formData, execution: { ...formData.execution, enabled: e.target.checked } })
-                  }
-                />
-                <span>Enable execution rules</span>
-              </label>
-              <p className="field-help">Caps, order types, and stop conditions applied by code.</p>
-
-              <div className="checkbox-row">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={formData.execution.allowMarketOrders}
-                    onChange={(e) =>
-                      setFormData({ ...formData, execution: { ...formData.execution, allowMarketOrders: e.target.checked } })
-                    }
-                    disabled={!formData.execution.enabled}
-                  />
-                  <span>Market orders</span>
-                </label>
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={formData.execution.allowLimitOrders}
-                    onChange={(e) =>
-                      setFormData({ ...formData, execution: { ...formData.execution, allowLimitOrders: e.target.checked } })
-                    }
-                    disabled={!formData.execution.enabled}
-                  />
-                  <span>Limit orders</span>
-                </label>
-              </div>
-
               <div className="form-grid">
-                <div className="form-row">
-                  <label>
-                    Max orders / run
-                    <input
-                      type="number"
-                      min={1}
-                      max={20}
-                      value={formData.execution.maxOrdersPerRun}
-                      onChange={(e) =>
-                        setFormData({ ...formData, execution: { ...formData.execution, maxOrdersPerRun: Number(e.target.value) } })
-                      }
-                      disabled={!formData.execution.enabled}
-                    />
-                  </label>
-                </div>
                 <div className="form-row">
                   <label>
                     Max drawdown before kill (%)
@@ -1753,38 +1819,93 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                     />
                   </label>
                   <span className="field-help">
-                    From starting budget. A $1,000 bot with 10% max drawdown is killed at $900.
+                    Always enforced. A $1,000 bot with 10% max drawdown is killed at $900.
                   </span>
                 </div>
-                <div className="form-row">
-                  <label>
-                    Max notional / order (USD)
-                    <input
-                      type="number"
-                      min={1}
-                      value={formData.execution.maxNotionalPerOrderUsd}
-                      onChange={(e) =>
-                        setFormData({ ...formData, execution: { ...formData.execution, maxNotionalPerOrderUsd: Number(e.target.value) } })
-                      }
-                      disabled={!formData.execution.enabled}
-                    />
-                  </label>
-                </div>
-                <div className="form-row">
-                  <label>
-                    Min cash reserve (USD)
-                    <input
-                      type="number"
-                      min={0}
-                      value={formData.execution.minCashReserveUsd}
-                      onChange={(e) =>
-                        setFormData({ ...formData, execution: { ...formData.execution, minCashReserveUsd: Number(e.target.value) } })
-                      }
-                      disabled={!formData.execution.enabled}
-                    />
-                  </label>
-                </div>
+                <label className="checkbox-label execution-cap-toggle">
+                  <input
+                    type="checkbox"
+                    checked={formData.execution.enabled}
+                    onChange={(e) =>
+                      setFormData({ ...formData, execution: { ...formData.execution, enabled: e.target.checked } })
+                    }
+                  />
+                  <span>
+                    <strong>Use strict order caps</strong>
+                    <small>{formData.execution.enabled ? "Order count, size, reserve, and order types are enforced." : "Off: the bot can size within budget, wallet, and venue rules."}</small>
+                  </span>
+                </label>
               </div>
+
+              {formData.execution.enabled && (
+                <>
+                  <div className="checkbox-row">
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={formData.execution.allowMarketOrders}
+                        onChange={(e) =>
+                          setFormData({ ...formData, execution: { ...formData.execution, allowMarketOrders: e.target.checked } })
+                        }
+                      />
+                      <span>Market orders</span>
+                    </label>
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={formData.execution.allowLimitOrders}
+                        onChange={(e) =>
+                          setFormData({ ...formData, execution: { ...formData.execution, allowLimitOrders: e.target.checked } })
+                        }
+                      />
+                      <span>Limit orders</span>
+                    </label>
+                  </div>
+
+                  <div className="form-grid">
+                    <div className="form-row">
+                      <label>
+                        Max orders / run
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={formData.execution.maxOrdersPerRun}
+                          onChange={(e) =>
+                            setFormData({ ...formData, execution: { ...formData.execution, maxOrdersPerRun: Number(e.target.value) } })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className="form-row">
+                      <label>
+                        Max notional / order (USD)
+                        <input
+                          type="number"
+                          min={1}
+                          value={formData.execution.maxNotionalPerOrderUsd}
+                          onChange={(e) =>
+                            setFormData({ ...formData, execution: { ...formData.execution, maxNotionalPerOrderUsd: Number(e.target.value) } })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className="form-row">
+                      <label>
+                        Min cash reserve (USD)
+                        <input
+                          type="number"
+                          min={0}
+                          value={formData.execution.minCashReserveUsd}
+                          onChange={(e) =>
+                            setFormData({ ...formData, execution: { ...formData.execution, minCashReserveUsd: Number(e.target.value) } })
+                          }
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {error && (

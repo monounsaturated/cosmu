@@ -27,7 +27,32 @@ export const getAppSettings = async (): Promise<AppSettings> => {
   if (!raw) return defaultAppSettings;
 
   try {
-    return appSettingsSchema.parse(JSON.parse(raw));
+    const parsedRaw = JSON.parse(raw);
+    const parsed = appSettingsSchema.parse(parsedRaw);
+    const legacyWithoutPromptRuntime =
+      parsedRaw &&
+      typeof parsedRaw === "object" &&
+      !Array.isArray(parsedRaw) &&
+      !("promptRuntime" in parsedRaw);
+
+    if (
+      legacyWithoutPromptRuntime &&
+      parsed.agentDefaults.research.prompt.mode === "new" &&
+      parsed.agentDefaults.research.prompt.versionId === null
+    ) {
+      return {
+        ...parsed,
+        agentDefaults: {
+          ...parsed.agentDefaults,
+          research: {
+            ...parsed.agentDefaults.research,
+            prompt: { mode: "saved", versionId: null }
+          }
+        }
+      };
+    }
+
+    return parsed;
   } catch (error) {
     console.warn("Invalid app settings, falling back to defaults:", String(error));
     return defaultAppSettings;

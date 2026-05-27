@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { DatabaseZap, KeyRound, Plus, RefreshCw, Save, Settings2, SlidersHorizontal } from "lucide-react";
-import type { ResearchDataSource } from "@cosmu/shared";
+import { DEFAULT_INJECTED_DATA_TEMPLATES, DEFAULT_RESEARCH_GROUNDING_RULES, type ResearchDataSource } from "@cosmu/shared";
 
 type ModelProfile = {
   id: string;
@@ -17,6 +17,9 @@ type PromptProfile = {
   latestVersionId: string | null;
   latestBody: string | null;
   promptNumber: number;
+  latestVersionCreatedAt?: string | null;
+  createdAt?: string;
+  lastUsedAt?: string | null;
 };
 
 type AppSettings = {
@@ -55,6 +58,12 @@ type AppSettings = {
     proReview: boolean;
     promptLibrary: boolean;
   };
+  promptRuntime: {
+    researchGroundingRules: string;
+    injectedDataTemplates: {
+      [K in keyof typeof DEFAULT_INJECTED_DATA_TEMPLATES]: { label: string; preview: string };
+    };
+  };
 };
 
 type Diagnostics = {
@@ -80,7 +89,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
   agentDefaults: {
-    research: { provider: "xai", modelProfileId: null, prompt: { mode: "new", versionId: null } },
+    research: { provider: "xai", modelProfileId: null, prompt: { mode: "saved", versionId: null } },
     trader: { provider: "xai", modelProfileId: null, prompt: { mode: "saved", versionId: null } },
     runtime: {
       venue: "binance-testnet",
@@ -105,6 +114,10 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
     researchLab: false,
     proReview: false,
     promptLibrary: false
+  },
+  promptRuntime: {
+    researchGroundingRules: DEFAULT_RESEARCH_GROUNDING_RULES,
+    injectedDataTemplates: DEFAULT_INJECTED_DATA_TEMPLATES
   }
 };
 
@@ -145,6 +158,14 @@ const mergeAppSettings = (data?: Partial<AppSettings> | null): AppSettings => {
     featureToggles: {
       ...defaults.featureToggles,
       ...data?.featureToggles
+    },
+    promptRuntime: {
+      ...defaults.promptRuntime,
+      ...data?.promptRuntime,
+      injectedDataTemplates: {
+        ...defaults.promptRuntime.injectedDataTemplates,
+        ...data?.promptRuntime?.injectedDataTemplates
+      }
     }
   };
 };
@@ -180,6 +201,12 @@ const providerLabel = (provider: string) => PROVIDER_LABELS[provider] ?? (provid
 const promptOptions = (prompts: PromptProfile[], label: "Research" | "Trader") =>
   prompts
     .filter((prompt) => Boolean(prompt.latestVersionId))
+    .sort((a, b) => {
+      if (a.lastUsedAt && b.lastUsedAt) return b.lastUsedAt.localeCompare(a.lastUsedAt);
+      if (a.lastUsedAt && !b.lastUsedAt) return -1;
+      if (!a.lastUsedAt && b.lastUsedAt) return 1;
+      return (b.latestVersionCreatedAt ?? b.createdAt ?? "").localeCompare(a.latestVersionCreatedAt ?? a.createdAt ?? "");
+    })
     .map((prompt) => ({
       id: prompt.latestVersionId!,
       label: `${label} Prompt #${prompt.promptNumber} - ${prompt.name}`
@@ -405,6 +432,25 @@ export function SettingsConsole() {
     }
   };
 
+  const updateInjectedTemplate = (
+    key: keyof AppSettings["promptRuntime"]["injectedDataTemplates"],
+    patch: Partial<{ label: string; preview: string }>
+  ) => {
+    updateSettings((current) => ({
+      ...current,
+      promptRuntime: {
+        ...current.promptRuntime,
+        injectedDataTemplates: {
+          ...current.promptRuntime.injectedDataTemplates,
+          [key]: {
+            ...current.promptRuntime.injectedDataTemplates[key],
+            ...patch
+          }
+        }
+      }
+    }));
+  };
+
   const phaseDefaults = (phase: "research" | "trader") => {
     const phaseSettings = settings.agentDefaults[phase];
     const options = phase === "research" ? researchPromptOptions : traderPromptOptions;
@@ -482,8 +528,8 @@ export function SettingsConsole() {
                 }))
               }
             >
-              <option value="new">New from template</option>
               <option value="saved">Saved prompt</option>
+              <option value="new">New blank prompt</option>
             </select>
           </label>
           <label className="field">
@@ -635,6 +681,72 @@ export function SettingsConsole() {
               }
             />
           </label>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="section-header">
+          <div>
+            <h3>Prompt runtime</h3>
+            <p className="muted">Universal grounding and injected-data blocks used by the creation form and runtime prompts.</p>
+          </div>
+          <button className="btn btn-primary" type="button" onClick={saveSettings} disabled={saving === "app-settings"}>
+            <Save size={15} />
+            {saving === "app-settings" ? "Saving" : "Save settings"}
+          </button>
+        </div>
+
+        <div className="form-grid-two settings-wide-field">
+          <label className="field">
+            <span>Grounding label</span>
+            <input
+              value={settings.promptRuntime.injectedDataTemplates.researchGrounding.label}
+              onChange={(event) => updateInjectedTemplate("researchGrounding", { label: event.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Applies to</span>
+            <input value="Every research provider" readOnly />
+          </label>
+        </div>
+        <label className="field settings-wide-field">
+          <span>Universal research grounding rules</span>
+          <textarea
+            value={settings.promptRuntime.researchGroundingRules}
+            onChange={(event) =>
+              updateSettings((current) => ({
+                ...current,
+                promptRuntime: { ...current.promptRuntime, researchGroundingRules: event.target.value }
+              }))
+            }
+            rows={7}
+          />
+          <small className="field-help">Use {"{date}"} where the current run date should be inserted. This is injected for every research provider.</small>
+        </label>
+
+        <div className="settings-injected-grid">
+          {(Object.entries(settings.promptRuntime.injectedDataTemplates) as Array<[
+            keyof AppSettings["promptRuntime"]["injectedDataTemplates"],
+            { label: string; preview: string }
+          ]>).filter(([key]) => key !== "researchGrounding").map(([key, template]) => (
+            <details key={key} className="settings-source settings-injected-template">
+              <summary>
+                <span>
+                  <strong>{template.label}</strong>
+                  <small>{key}</small>
+                </span>
+                <span className="badge badge-neutral">injected</span>
+              </summary>
+              <label className="field">
+                <span>Label</span>
+                <input value={template.label} onChange={(event) => updateInjectedTemplate(key, { label: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>Preview / static block</span>
+                <textarea value={template.preview} onChange={(event) => updateInjectedTemplate(key, { preview: event.target.value })} rows={6} />
+              </label>
+            </details>
+          ))}
         </div>
       </section>
 
