@@ -6,3 +6,7 @@ node_modules
 .turbo
 coverage
 .external
+
+# macOS
+.DS_Store
+**/.DS_Store
