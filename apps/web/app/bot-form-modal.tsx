@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ModalShell } from "./modal-shell";
 
 const ALL_SYMBOLS_TOKEN = "__ALL__";
@@ -50,6 +50,102 @@ Order logic:
 - Respect authorized pair list when present; otherwise any Binance USDT or USDC spot pair is allowed if grounded in research + prices.
 - Stay within wallet + execution caps; prefer fewer, higher-conviction orders over many small ones.
 - If research conflicts with prices, scope, or risk limits, prefer mode hold with orders: [].`;
+
+// Example injected data previews — matches the exact format produced by prompt-context.ts.
+const INJECTED_DATA_EXAMPLES: Record<string, { label: string; preview: string }> = {
+  includeWalletOverview: {
+    label: "Portfolio Overview",
+    preview: `=== PORTFOLIO OVERVIEW ===
+Started: $1,000.00 | Now: $1,072.50 | Net PnL: $72.50
+Runs: 24 | Trades: 18 | Fees: $3.40`,
+  },
+  includePerformanceStats: {
+    label: "Performance Stats",
+    preview: `=== PERFORMANCE STATS ===
+{
+  "runCount": 24,
+  "tradeCount": 18,
+  "totalFeesUsd": 3.40,
+  "firstPortfolioUsd": 1000,
+  "currentPortfolioUsd": 1072.50,
+  "netPnlUsd": 72.50
+}`,
+  },
+  includeBotRanking: {
+    label: "Bot Rankings",
+    preview: `=== BOT RANKINGS ===
+1. Alpha Momentum: $142.30 net PnL
+2. Swing Macro: $72.50 net PnL
+3. This Bot: $45.20 net PnL`,
+  },
+  includePastTrades: {
+    label: "Past Trades",
+    preview: `=== RECENT TRADES (last 10) ===
+BUY BTCUSDT qty=0.0012 @ 68450 -> success
+SELL ETHUSDT qty=0.15 @ 2410 -> success
+BUY SOLUSDT qty=2.5 @ 142.80 -> success`,
+  },
+};
+
+const buildResearchGroundingPreview = () => ({
+  label: "Grounding Rules (xAI only)",
+  preview: `---
+GROUNDING RULES (critical - your output feeds live trading decisions):
+- Today's date is ${new Date().toISOString().slice(0, 10)}. Any cited news, tweet, or price MUST come from a search you actually ran this turn.
+- For ANY claim about recent prices, news, tweets, or market events: call a search tool first.
+- If a search returns no results or tools are unavailable, say so explicitly and do NOT invent content.
+- When quoting posts, include the exact retrieved timestamp. When citing prices, state the source and time.`,
+});
+
+const TRADER_NON_NEGOTIABLE_PREVIEW = {
+  label: "Non-Negotiable Constraints",
+  preview: `---
+NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):
+- Every BUY order MUST include stopLossPrice and takeProfitPrice on the correct side of currentPrice.
+- For SELL orders: set stopLossPrice and takeProfitPrice to null.
+- Never place a buy for a symbol you have not verified tradable via binance_symbol_lookup in this turn.
+- No defensible trade? Return mode='hold' with an empty orders array.
+- Final reply must be one JSON object matching TradingDecision.`,
+};
+
+const ALWAYS_INJECTED_TRADER: { label: string; preview: string }[] = [
+  {
+    label: "Research Output",
+    preview: `=== UPSTREAM RESEARCH (phase 1 analysis) ===
+[The full output from the research agent will appear here.]`,
+  },
+  {
+    label: "Session",
+    preview: `=== SESSION ===
+Bot: My Strategy (#32) | Model: xAI grok-4.3
+Mode: testnet | Venue: Binance Spot | Frequency: every 30min
+Budget: $1,000.00 - you must stay within this allocation`,
+  },
+  {
+    label: "Execution Rules",
+    preview: `=== EXECUTION RULES ===
+Rules enforced: YES
+Max orders/run: 3 | Max notional/order: $250
+Cash reserve (untouchable): $25
+Max drawdown before bot kill: 10%
+Allowed types: MARKET, LIMIT`,
+  },
+  {
+    label: "Wallet",
+    preview: `=== WALLET ===
+Total: $1,072.50
+USDT: 500.00 free ($500.00)
+USDC: 250.20 free ($250.20)
+BTC: 0.0012 free ($82.14)
+ETH: 0.15 free ($361.50)`,
+  },
+  {
+    label: "Trading Scope",
+    preview: `=== TRADING SCOPE ===
+You may trade any authorized stable-quoted spot pair available on Binance.`,
+  },
+  TRADER_NON_NEGOTIABLE_PREVIEW,
+];
 
 type Prompt = {
   id: string;
@@ -312,6 +408,28 @@ const buildDefaultState = () => {
   };
 };
 
+function InjectedPreviewBlock({ label, preview, alwaysOn }: { label: string; preview: string; alwaysOn?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="injected-block">
+      <button
+        type="button"
+        className="injected-block-header"
+        onClick={() => setOpen(!open)}
+      >
+        <span className="injected-block-label">
+          {alwaysOn && <span className="injected-always-badge">always</span>}
+          {label}
+        </span>
+        <span className="injected-block-chevron">{open ? "v" : ">"}</span>
+      </button>
+      {open && (
+        <pre className="injected-block-preview">{preview}</pre>
+      )}
+    </div>
+  );
+}
+
 // ── Prompt Section Component ────────────────────────────────────────────
 function PromptSection({
   phase,
@@ -333,6 +451,12 @@ function PromptSection({
   onSaveNewVersion,
   savingVersion,
   loadingBody,
+  alwaysInjected,
+  optionalModules,
+  activeModules,
+  onToggleModule,
+  pastTradesLookback,
+  onLookbackChange,
   nextPromptNumber,
   providerOptions,
   selectedProvider,
@@ -362,6 +486,12 @@ function PromptSection({
   onSaveNewVersion: () => void;
   savingVersion: boolean;
   loadingBody: boolean;
+  alwaysInjected: { label: string; preview: string }[];
+  optionalModules?: { key: string; label: string; preview: string }[];
+  activeModules?: Record<string, boolean>;
+  onToggleModule?: (key: string, value: boolean) => void;
+  pastTradesLookback?: number;
+  onLookbackChange?: (n: number) => void;
   nextPromptNumber?: number | null;
   // Provider/Model per prompt section
   providerOptions?: string[];
@@ -495,6 +625,19 @@ function PromptSection({
                 rows={10}
                 required
               />
+              {alwaysInjected.length > 0 && (
+                <div className="prompt-composer-injected">
+                  <div className="injected-separator">
+                    <span className="injected-separator-label">Injected Data (auto-appended at runtime)</span>
+                  </div>
+                  {alwaysInjected.map((item) => (
+                    <InjectedPreviewBlock key={item.label} label={item.label} preview={item.preview} alwaysOn />
+                  ))}
+                  {optionalModules?.filter((m) => activeModules?.[m.key]).map((m) => (
+                    <InjectedPreviewBlock key={m.key} label={m.label} preview={m.preview} />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -548,11 +691,62 @@ function PromptSection({
                   <pre className="prompt-body-preview">
                     {loadingBody ? "Loading..." : (savedBody ?? "\u2014")}
                   </pre>
+                  {alwaysInjected.length > 0 && (
+                    <div className="prompt-composer-injected">
+                      <div className="injected-separator">
+                        <span className="injected-separator-label">Injected Data (auto-appended at runtime)</span>
+                      </div>
+                      {alwaysInjected.map((item) => (
+                        <InjectedPreviewBlock key={item.label} label={item.label} preview={item.preview} alwaysOn />
+                      ))}
+                      {optionalModules?.filter((m) => activeModules?.[m.key]).map((m) => (
+                        <InjectedPreviewBlock key={m.key} label={m.label} preview={m.preview} />
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
             </div>
           )}
         </>
+      )}
+
+      {optionalModules && optionalModules.length > 0 && (
+        <div className="injected-data-section">
+          <h4>Injected Data</h4>
+          <p className="field-help">Live data appended to the trader prompt each run.</p>
+          <div className="modules-grid">
+            <label className="checkbox-label" style={{ opacity: 0.6 }}>
+              <input type="checkbox" checked disabled />
+              <span>Wallet &amp; held positions <span className="field-help">(always included)</span></span>
+            </label>
+            {optionalModules.map((m) => (
+              <label key={m.key} className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={activeModules?.[m.key] ?? false}
+                  onChange={(e) => onToggleModule?.(m.key, e.target.checked)}
+                />
+                <span>{m.label}</span>
+              </label>
+            ))}
+          </div>
+
+          {activeModules?.includePastTrades && pastTradesLookback !== undefined && (
+            <div className="form-row" style={{ maxWidth: 200, marginTop: 8 }}>
+              <label>
+                Lookback (trades)
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={pastTradesLookback}
+                  onChange={(e) => onLookbackChange?.(Number(e.target.value))}
+                />
+              </label>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -569,6 +763,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   const [error, setError] = useState<string | null>(null);
   const [loadTrigger, setLoadTrigger] = useState(0);
   const [symbolSearch, setSymbolSearch] = useState("");
+  const [pairsOpen, setPairsOpen] = useState(false);
+  const pairsRef = useRef<HTMLDivElement>(null);
   const [selectedResearchProvider, setSelectedResearchProvider] = useState("xai");
   const [selectedTraderProvider, setSelectedTraderProvider] = useState("xai");
   const [formData, setFormData] = useState(buildDefaultState());
@@ -934,6 +1130,26 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     }
   }, [traderAvailableModels, formData.traderModelProfileId]);
 
+  useEffect(() => {
+    if (!pairsOpen) return;
+    const handlePointer = (event: MouseEvent | TouchEvent) => {
+      if (pairsRef.current && !pairsRef.current.contains(event.target as Node)) {
+        setPairsOpen(false);
+      }
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPairsOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("touchstart", handlePointer, { passive: true });
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("touchstart", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [pairsOpen]);
+
   // Auto-select first research prompt
   useEffect(() => {
     if (!formData.existingPromptVersionId && researchPromptOptions[0]?.id) {
@@ -1045,6 +1261,16 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       contextSymbols: cur.contextSymbols.includes(symbol)
         ? cur.contextSymbols.filter((s) => s !== symbol)
         : [...cur.contextSymbols, symbol]
+    }));
+  };
+
+  const updateModule = (key: string, value: boolean) => {
+    setFormData((cur) => ({
+      ...cur,
+      promptConfig: {
+        ...cur.promptConfig,
+        modules: { ...cur.promptConfig.modules, [key]: value }
+      }
     }));
   };
 
@@ -1167,6 +1393,19 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     }
   };
 
+  const optionalModules = Object.entries(INJECTED_DATA_EXAMPLES).map(([key, val]) => ({
+    key,
+    label: val.label,
+    preview: val.preview,
+  }));
+
+  const activeModules: Record<string, boolean> = {
+    includeWalletOverview: formData.promptConfig.modules.includeWalletOverview,
+    includePerformanceStats: formData.promptConfig.modules.includePerformanceStats,
+    includePastTrades: formData.promptConfig.modules.includePastTrades,
+    includeBotRanking: formData.promptConfig.modules.includeBotRanking,
+  };
+
   return (
     <ModalShell
       title={mode === "create" ? "New Agent" : "Edit Agent"}
@@ -1255,15 +1494,17 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 <div className="form-row pairs-field">
                   <label>
                     Pairs
-                    <div className="pairs-picker pairs-picker-inline">
+                    <div className="pairs-picker pairs-picker-inline" ref={pairsRef}>
                       <div className="segmented-control">
                         <button
                           type="button"
                           className={`segmented-option ${formData.symbolScope === "all" ? "segmented-option-active" : ""}`}
                           aria-pressed={formData.symbolScope === "all"}
-                          onClick={() =>
-                            setFormData({ ...formData, symbolScope: "all", contextSymbols: [] })
-                          }
+                          onClick={() => {
+                            setPairsOpen(false);
+                            setSymbolSearch("");
+                            setFormData({ ...formData, symbolScope: "all", contextSymbols: [] });
+                          }}
                         >
                           All pairs
                         </button>
@@ -1271,7 +1512,10 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                           type="button"
                           className={`segmented-option ${formData.symbolScope === "selected" ? "segmented-option-active" : ""}`}
                           aria-pressed={formData.symbolScope === "selected"}
-                          onClick={() => setFormData({ ...formData, symbolScope: "selected" })}
+                          onClick={() => {
+                            setFormData({ ...formData, symbolScope: "selected" });
+                            setPairsOpen(true);
+                          }}
                         >
                           Selected pairs
                         </button>
@@ -1280,32 +1524,60 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                         <span className="field-help">All {VENUE_LABELS[formData.venue] ?? formData.venue} stable-quoted pairs are authorized.</span>
                       ) : (
                         <>
-                          <input
-                            type="text"
-                            className="pairs-search"
-                            value={symbolSearch}
-                            onChange={(e) => setSymbolSearch(e.target.value)}
-                            placeholder="Search pairs..."
-                            aria-label="Authorized pairs"
-                          />
-                          <div className="pairs-inline-list" role="group" aria-label="Authorized pair choices">
-                          {filteredSymbols.map((symbol) => (
-                            <label
-                              key={symbol}
-                              className="pairs-row"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={formData.contextSymbols.includes(symbol)}
-                                onChange={() => toggleSymbol(symbol)}
-                              />
-                              <span>{symbol}</span>
-                            </label>
-                          ))}
-                          {filteredSymbols.length === 0 && symbols.length > 0 && (
-                            <p className="pairs-empty">No match</p>
-                          )}
+                          <div className="pairs-search-wrap">
+                            <input
+                              type="text"
+                              className="pairs-search"
+                              value={symbolSearch}
+                              onFocus={() => setPairsOpen(true)}
+                              onChange={(e) => {
+                                setSymbolSearch(e.target.value);
+                                setPairsOpen(true);
+                              }}
+                              placeholder={formData.contextSymbols.length > 0 ? `${formData.contextSymbols.length} selected - search pairs...` : "Search pairs..."}
+                              aria-label="Authorized pairs"
+                            />
+                            {formData.contextSymbols.length > 0 && !symbolSearch && (
+                              <button
+                                type="button"
+                                className="pairs-count-badge"
+                                onClick={() => setPairsOpen(true)}
+                              >
+                                {formData.contextSymbols.length} selected
+                              </button>
+                            )}
                           </div>
+                          {pairsOpen && (
+                            <div className="pairs-dropdown" role="group" aria-label="Authorized pair choices">
+                              <div className="pairs-dropdown-toolbar">
+                                <span>{formData.contextSymbols.length} selected</span>
+                                <button type="button" className="btn btn-xs" onClick={() => setPairsOpen(false)}>
+                                  Done
+                                </button>
+                              </div>
+                              <div className="pairs-dropdown-list">
+                                {symbols.length === 0 ? (
+                                  <p className="pairs-empty">{dataLoaded ? "Pair list failed to load." : "Loading pairs..."}</p>
+                                ) : filteredSymbols.length === 0 ? (
+                                  <p className="pairs-empty">No match</p>
+                                ) : (
+                                  filteredSymbols.map((symbol) => (
+                                    <label
+                                      key={symbol}
+                                      className="pairs-row"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={formData.contextSymbols.includes(symbol)}
+                                        onChange={() => toggleSymbol(symbol)}
+                                      />
+                                      <span>{symbol}</span>
+                                    </label>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -1344,6 +1616,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 onSaveNewVersion={handleSaveResearchVersion}
                 savingVersion={researchSavingVersion}
                 loadingBody={false}
+                alwaysInjected={selectedResearchProvider === "xai" ? [buildResearchGroundingPreview()] : []}
                 nextPromptNumber={nextResearchPromptNumber}
                 providerOptions={providerOptions}
                 selectedProvider={selectedResearchProvider}
@@ -1380,6 +1653,15 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 onSaveNewVersion={handleSaveTraderVersion}
                 savingVersion={traderSavingVersion}
                 loadingBody={false}
+                alwaysInjected={ALWAYS_INJECTED_TRADER}
+                optionalModules={optionalModules}
+                activeModules={activeModules}
+                onToggleModule={updateModule}
+                pastTradesLookback={formData.promptConfig.modules.pastTradesLookback}
+                onLookbackChange={(n) => setFormData((cur) => ({
+                  ...cur,
+                  promptConfig: { ...cur.promptConfig, modules: { ...cur.promptConfig.modules, pastTradesLookback: n } }
+                }))}
                 nextPromptNumber={nextTraderPromptNumber}
                 providerOptions={providerOptions}
                 selectedProvider={selectedTraderProvider}
