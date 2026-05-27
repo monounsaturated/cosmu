@@ -35,6 +35,7 @@ export const modelProviderLabel = (provider: string) =>
 // Known working xAI model profiles — used as seed fallback when xAI API is unreachable.
 // These match the canonical names used by the sync so there are no duplicates.
 export const BOOTSTRAP_XAI_PROFILES: { name: string; model: string }[] = [
+  { name: "xAI grok-4.3", model: "grok-4.3" },
   { name: "xAI grok-3", model: "grok-3" },
   { name: "xAI grok-3-fast", model: "grok-3-fast" },
   { name: "xAI grok-3-mini", model: "grok-3-mini" },
@@ -99,10 +100,9 @@ export const bootstrapModelProfiles = async (): Promise<CatalogUpsertResult> => 
     const result = await sql`
       insert into model_profiles (name, provider, model, settings)
       values (${profile.name}, ${profile.provider}, ${profile.model}, '{"temperature":0.2}'::jsonb)
-      on conflict (name) do update
+      on conflict (provider, model) do update
       set
-        provider = excluded.provider,
-        model = excluded.model
+        name = excluded.name
       returning (xmax::text = '0') as inserted
     `;
     if (result[0]?.inserted) {

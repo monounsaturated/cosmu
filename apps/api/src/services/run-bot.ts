@@ -46,6 +46,8 @@ import { getVenueSymbols } from "./catalog.js";
 import { notifySlack } from "./notifier.js";
 import { buildFormatterPhaseContext, buildResearchPhaseContext } from "./prompt-context.js";
 import { validateDecision } from "./validator.js";
+import { killBotAndLiquidate } from "./kill-bot.js";
+import { describeMaxDrawdownBreach, isMaxDrawdownBreached } from "./drawdown.js";
 import { ALL_SYMBOLS_TOKEN, type RuntimeConfig } from "@cosmu/shared";
 
 const normalizePricingSymbol = (value: string) => value.replace(/[^A-Z0-9]/gi, "").toUpperCase();
@@ -146,6 +148,17 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
         priceMap: beforeVenueRaw.priceMap
       })
     };
+
+    if (isMaxDrawdownBreached(bot.runtimeConfig, beforeVenueContext.snapshot.totalUsdValue)) {
+      const detail = describeMaxDrawdownBreach(bot.runtimeConfig, beforeVenueContext.snapshot.totalUsdValue);
+      const killResult = await killBotAndLiquidate(bot, { reason: "max_drawdown", detail });
+      return {
+        runId: killResult.runId,
+        status: killResult.status,
+        killed: true as const,
+        reason: "max_drawdown" as const
+      };
+    }
 
     // ── 2. Research Agent ────────────────────────────────────────────
     const researchCtx = await buildResearchPhaseContext({
@@ -440,6 +453,19 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
 
     const tradeSummary = await summarizeTrades(runId);
     await notifySlack(`Run ${runStatus} for ${bot.name}: ${tradeSummary}`);
+
+    if (isMaxDrawdownBreached(bot.runtimeConfig, afterSnapshot.totalUsdValue)) {
+      const detail = describeMaxDrawdownBreach(bot.runtimeConfig, afterSnapshot.totalUsdValue);
+      const killResult = await killBotAndLiquidate(bot, { reason: "max_drawdown", detail });
+      return {
+        runId,
+        status: runStatus,
+        decision: traderResult.decision,
+        killed: true as const,
+        killRunId: killResult.runId,
+        reason: "max_drawdown" as const
+      };
+    }
 
     return { runId, status: runStatus, decision: traderResult.decision };
   } catch (error) {

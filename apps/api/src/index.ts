@@ -65,6 +65,7 @@ import { tradingAgentsRouter } from "./routes/trading-agents.js";
 
 const app = express();
 const botCreateRuntimeConfigSchema = runtimeConfigSchema.omit({ enabled: true });
+const ALWAYS_KEEP_XAI_MODEL_IDS = new Set(["grok-4.3"]);
 
 const corsOptions = buildCorsOptions();
 app.use(corsOptions ? cors(corsOptions) : cors());
@@ -630,13 +631,13 @@ app.get("/models", async (request, response, next) => {
     }
 
     if (provider === "xai" && liveXaiModelIds && liveXaiModelIds.size > 0) {
-      response.json(profiles.filter((profile) => liveXaiModelIds!.has(String(profile.model))));
+      response.json(profiles.filter((profile) => liveXaiModelIds!.has(String(profile.model)) || ALWAYS_KEEP_XAI_MODEL_IDS.has(String(profile.model))));
       return;
     }
 
     if (!provider && liveXaiModelIds && liveXaiModelIds.size > 0) {
       response.json(
-        profiles.filter((profile) => profile.provider !== "xai" || liveXaiModelIds!.has(String(profile.model)))
+        profiles.filter((profile) => profile.provider !== "xai" || liveXaiModelIds!.has(String(profile.model)) || ALWAYS_KEEP_XAI_MODEL_IDS.has(String(profile.model)))
       );
       return;
     }

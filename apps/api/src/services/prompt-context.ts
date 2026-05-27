@@ -114,6 +114,7 @@ const buildExecRulesSection = (exec: BotSetup["runtimeConfig"]["execution"]) => 
     "Rules enforced: YES",
     `Max orders/run: ${exec.maxOrdersPerRun} | Max notional/order: $${exec.maxNotionalPerOrderUsd}`,
     `Cash reserve (untouchable): $${exec.minCashReserveUsd}`,
+    `Max drawdown before bot kill: ${exec.maxDrawdownPct}%`,
     `Allowed types: ${allowedTypes}`
   ].join("\n");
 };
@@ -211,10 +212,6 @@ const buildFormatterUserSections = (input: {
   sections.push(
     ["=== UPSTREAM RESEARCH (phase 1 analysis) ===", researchRawText].join("\n")
   );
-  const loopPrompt = bot.promptConfig.extraLoopPrompt?.trim();
-  if (loopPrompt) {
-    sections.push(["=== OPERATOR LOOP PROMPT ===", loopPrompt].join("\n"));
-  }
   sections.push(buildSessionSection(bot));
   sections.push(buildExecRulesSection(runtimeConfig.execution));
   sections.push(buildWalletSection(snapshot));

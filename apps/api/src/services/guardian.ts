@@ -20,6 +20,7 @@ import {
 import { sql } from "../db.js";
 import {
   listActivePositions,
+  listBotExecutionLedger,
   storeExecutionRecords,
   updateSafetyStop,
   closePosition,
@@ -28,6 +29,9 @@ import {
 import { getBotSetupById, getBotEnabledState } from "../lib/store/bots.js";
 import type { BotSetup } from "../lib/store/bots.js";
 import { notifySlack } from "./notifier.js";
+import { buildLogicalSnapshot, computeLogicalBalances } from "../lib/logical-balances.js";
+import { killBotAndLiquidate } from "./kill-bot.js";
+import { describeMaxDrawdownBreach, isMaxDrawdownBreached } from "./drawdown.js";
 
 // 10s tick — we don't need to fire every 3s, and this lowers API spend.
 // Cache the ticker snapshot for 10s so parallel callers (e.g. positions endpoint)
@@ -43,6 +47,7 @@ const BOT_SETUP_TTL_MS = 60_000;
 // Keyed by position id. `attempts` bumps on each retry; `lastAttemptAt` throttles retries.
 type CloseState = { inFlight: boolean; attempts: number; lastAttemptAt: number; givenUp: boolean };
 const closeState = new Map<string, CloseState>();
+const killingBots = new Set<string>();
 
 const getCloseState = (id: string): CloseState => {
   const existing = closeState.get(id);
@@ -306,6 +311,7 @@ export const runGuardianTick = async (): Promise<void> => {
   }
 
   for (const [mode, modePositions] of positionsByMode.entries()) {
+    const killedBotIds = new Set<string>();
     let priceMap: Record<string, number> = {};
     try {
       const all = await getAllTickerPrices(mode);
@@ -319,7 +325,37 @@ export const runGuardianTick = async (): Promise<void> => {
       continue;
     }
 
+    const botIds = Array.from(new Set(modePositions.map((position) => position.botId)));
+    for (const botId of botIds) {
+      if (killingBots.has(botId)) {
+        killedBotIds.add(botId);
+        continue;
+      }
+      const bot = await getBotSetupCached(botId);
+      if (!bot) continue;
+
+      const ledger = await listBotExecutionLedger(bot.id);
+      const logical = computeLogicalBalances(bot.runtimeConfig.budgetUsdt, ledger);
+      const snapshot = buildLogicalSnapshot({
+        runtimeConfig: bot.runtimeConfig,
+        logical,
+        priceMap
+      });
+
+      if (!isMaxDrawdownBreached(bot.runtimeConfig, snapshot.totalUsdValue)) continue;
+
+      killingBots.add(botId);
+      killedBotIds.add(botId);
+      try {
+        const detail = describeMaxDrawdownBreach(bot.runtimeConfig, snapshot.totalUsdValue);
+        await killBotAndLiquidate(bot, { reason: "max_drawdown", detail });
+      } finally {
+        killingBots.delete(botId);
+      }
+    }
+
     for (const position of modePositions) {
+      if (killedBotIds.has(position.botId)) continue;
       const price = priceMap[normalizeSymbol(position.symbol)];
       if (!price || !Number.isFinite(price)) continue;
 

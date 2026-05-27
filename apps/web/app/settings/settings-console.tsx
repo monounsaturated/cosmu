@@ -43,6 +43,7 @@ type AppSettings = {
         maxOrdersPerRun: number;
         maxNotionalPerOrderUsd: number;
         minCashReserveUsd: number;
+        maxDrawdownPct: number;
       };
     };
   };
@@ -92,7 +93,8 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
         allowLimitOrders: true,
         maxOrdersPerRun: 3,
         maxNotionalPerOrderUsd: 250,
-        minCashReserveUsd: 25
+        minCashReserveUsd: 25,
+        maxDrawdownPct: 10
       }
     }
   },
@@ -607,6 +609,31 @@ export function SettingsConsole() {
               }
             />
             <span>Execution rules on by default</span>
+          </label>
+          <label className="field">
+            <span>Max drawdown before kill (%)</span>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              step={0.5}
+              value={settings.agentDefaults.runtime.execution.maxDrawdownPct}
+              onChange={(event) =>
+                updateSettings((current) => ({
+                  ...current,
+                  agentDefaults: {
+                    ...current.agentDefaults,
+                    runtime: {
+                      ...current.agentDefaults.runtime,
+                      execution: {
+                        ...current.agentDefaults.runtime.execution,
+                        maxDrawdownPct: Math.min(100, Math.max(1, Number(event.target.value) || 1))
+                      }
+                    }
+                  }
+                }))
+              }
+            />
           </label>
         </div>
       </section>

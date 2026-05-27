@@ -22,11 +22,11 @@ import { type TradingDecision } from "@cosmu/shared";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const buildKillDecision = (orders: TradingDecision["orders"]): TradingDecision => ({
+const buildKillDecision = (orders: TradingDecision["orders"], reasonLabel: string): TradingDecision => ({
   mode: "exit",
-  rationaleSummary: "Kill mode liquidation",
+  rationaleSummary: reasonLabel,
   globalRationale:
-    "Kill mode requested by operator. Liquidating all currently held spot positions and stopping this bot permanently.",
+    `${reasonLabel}. Liquidating all currently held spot positions and stopping this bot permanently.`,
   confidence: 1,
   timeHorizon: null,
   orders,
@@ -40,7 +40,15 @@ const buildKillDecision = (orders: TradingDecision["orders"]): TradingDecision =
  * Liquidation is best-effort — if it fails the bot is still killed.
  * This function never throws; it always returns a result object.
  */
-export const killBotAndLiquidate = async (bot: BotSetup) => {
+export const killBotAndLiquidate = async (
+  bot: BotSetup,
+  opts: { reason?: "manual" | "max_drawdown"; detail?: string } = {}
+) => {
+  const reasonLabel =
+    opts.reason === "max_drawdown"
+      ? `Max drawdown breached${opts.detail ? `: ${opts.detail}` : ""}`
+      : "Kill mode requested by operator";
+
   // ── Step 1: disable the bot immediately ──────────────────────────────
   // killBot flips enabled=false so the scheduler can never pick it up again; no claim needed.
   await killBot(bot.id);
@@ -70,10 +78,10 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
       promptVersionId: bot.promptVersionId,
       modelProfileId: bot.modelProfileId,
       runtimeConfig: bot.runtimeConfig,
-      compactContext: { mode: "kill", reason: "manual liquidate and stop" },
+      compactContext: { mode: "kill", reason: opts.reason ?? "manual", detail: opts.detail ?? null },
       promptSystem:
         "Kill mode execution. No model call. Liquidate all held symbols and permanently disable this bot.",
-      promptUser: "Operator requested kill mode liquidation."
+      promptUser: reasonLabel
     });
 
     await storePortfolioSnapshot(runId, "before", beforeVenueContext.snapshot);
@@ -130,7 +138,7 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
         rationale: "Kill mode liquidation"
       }));
 
-    const decision = buildKillDecision(sellOrders);
+    const decision = buildKillDecision(sellOrders, reasonLabel);
     const validationResult = await validateDecision({
       decision,
       runtimeConfig: bot.runtimeConfig,
@@ -219,7 +227,7 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
       errorState: hasUncertain ? { message: "At least one liquidation execution is uncertain" } : null
     });
 
-    await notifySlack(`Bot ${bot.name} killed. Liquidation run ${runStatus}.`);
+    await notifySlack(`Bot ${bot.name} killed (${reasonLabel}). Liquidation run ${runStatus}.`);
     return { runId, status: runStatus, killed: true as const };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown kill error";
@@ -235,7 +243,7 @@ export const killBotAndLiquidate = async (bot: BotSetup) => {
         // finishRun itself failed — run stays as "running" in DB
       }
     }
-    await notifySlack(`Bot ${bot.name} killed. Liquidation failed: ${errorMessage}`);
+    await notifySlack(`Bot ${bot.name} killed (${reasonLabel}). Liquidation failed: ${errorMessage}`);
     return { runId, status: "failure" as const, killed: true as const };
   }
 };

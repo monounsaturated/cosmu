@@ -191,7 +191,6 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
               <SettingPill label="Performance Stats" on={!!setup.promptConfig?.modules?.includePerformanceStats} />
               <SettingPill label="Bot Ranking" on={!!setup.promptConfig?.modules?.includeBotRanking} />
               <SettingPill label="Wallet Overview" on={!!setup.promptConfig?.modules?.includeWalletOverview} />
-              <SettingPill label="Loop Prompt" on={!!setup.promptConfig?.extraLoopPrompt?.trim()} />
             </div>
           </div>
 
@@ -215,6 +214,10 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
                 <div>
                   <p className="label">Min Cash Reserve</p>
                   <p>${setup.runtimeConfig.execution.minCashReserveUsd}</p>
+                </div>
+                <div>
+                  <p className="label">Max Drawdown Before Kill</p>
+                  <p>{setup.runtimeConfig.execution.maxDrawdownPct}%</p>
                 </div>
               </div>
             )}

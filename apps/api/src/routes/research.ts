@@ -568,7 +568,8 @@ researchRouter.post("/research/candidates/:candidateId/paper-bot", async (reques
           allowLimitOrders: true,
           maxOrdersPerRun: 3,
           maxNotionalPerOrderUsd: 250,
-          minCashReserveUsd: 200
+          minCashReserveUsd: 200,
+          maxDrawdownPct: 10
         },
         contextSymbols: []
       }

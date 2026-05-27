@@ -103,7 +103,6 @@ export const prePromptModulesSchema = z.object({
 export const prePromptConfigSchema = z
   .object({
     preset: z.string().optional(),
-    extraLoopPrompt: z.string().max(2000).optional().default(""),
     modules: prePromptModulesSchema.default({
       includeCurrentPositions: true,
       includePastTrades: false,
@@ -114,7 +113,6 @@ export const prePromptConfigSchema = z
     })
   })
   .transform((val) => ({
-    extraLoopPrompt: val.extraLoopPrompt.trim(),
     modules: val.modules
   }));
 
@@ -139,7 +137,8 @@ const DEFAULT_RUNTIME_EXECUTION = {
   allowLimitOrders: true,
   maxOrdersPerRun: 3,
   maxNotionalPerOrderUsd: 250,
-  minCashReserveUsd: 25
+  minCashReserveUsd: 25,
+  maxDrawdownPct: 10
 } as const;
 const DEFAULT_RUNTIME_DEFAULTS = {
   venue: "binance-testnet",
@@ -179,7 +178,8 @@ export const agentRuntimeDefaultsSchema = z.object({
     allowLimitOrders: z.boolean().default(true),
     maxOrdersPerRun: z.number().int().positive().max(20).default(3),
     maxNotionalPerOrderUsd: z.number().positive().default(250),
-    minCashReserveUsd: z.number().nonnegative().default(25)
+    minCashReserveUsd: z.number().nonnegative().default(25),
+    maxDrawdownPct: z.number().positive().max(100).default(10)
   }).default(DEFAULT_RUNTIME_EXECUTION)
 }).default(DEFAULT_RUNTIME_DEFAULTS);
 
@@ -225,7 +225,8 @@ export const runtimeConfigSchema = z.object({
     allowLimitOrders: z.boolean().default(true),
     maxOrdersPerRun: z.number().int().positive().max(20).default(5),
     maxNotionalPerOrderUsd: z.number().positive().default(500),
-    minCashReserveUsd: z.number().nonnegative().default(50)
+    minCashReserveUsd: z.number().nonnegative().default(50),
+    maxDrawdownPct: z.number().positive().max(100).default(10)
   }),
   contextSymbols: z.array(z.string().min(3).max(20)).max(200).default([])
 });

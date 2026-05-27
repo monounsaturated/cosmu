@@ -81,6 +81,7 @@ const getTraderProvider = (bot: BotSetup): LLMProvider => {
 };
 
 const XAI_STABLE_FALLBACK_MODELS = [
+  "grok-4.3",
   "grok-4.20-reasoning",
   "grok-3",
   "grok-3-fast",

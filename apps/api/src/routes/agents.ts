@@ -124,7 +124,8 @@ agentsRouter.post("/agent-control/approvals/:approvalId/approve", async (request
             allowLimitOrders: true,
             maxOrdersPerRun: 3,
             maxNotionalPerOrderUsd: 250,
-            minCashReserveUsd: 200
+            minCashReserveUsd: 200,
+            maxDrawdownPct: 10
           },
           contextSymbols: []
         }

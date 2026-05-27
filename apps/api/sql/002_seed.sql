@@ -48,7 +48,7 @@ selected_prompt_version as (
 ),
 inserted_model_profile as (
   insert into model_profiles (name, provider, model, settings)
-  values ('Grok Reasoning Default', 'xai', 'grok-4.20-reasoning', '{"temperature":0.2}'::jsonb)
+  values ('Grok 4.3 Default', 'xai', 'grok-4.3', '{"temperature":0.2}'::jsonb)
   on conflict (name) do update set
     provider = excluded.provider,
     model = excluded.model,
@@ -58,7 +58,7 @@ inserted_model_profile as (
 selected_model_profile as (
   select id from inserted_model_profile
   union all
-  select id from model_profiles where name = 'Grok Reasoning Default'
+  select id from model_profiles where name = 'Grok 4.3 Default'
   limit 1
 ),
 inserted_bot as (
@@ -98,7 +98,7 @@ select
   15,
   'testnet',
   'spot',
-  '{"allowMarketOrders":true,"allowLimitOrders":true,"maxOrdersPerRun":3,"maxNotionalPerOrderUsd":250,"minCashReserveUsd":25}'::jsonb,
+  '{"allowMarketOrders":true,"allowLimitOrders":true,"maxOrdersPerRun":3,"maxNotionalPerOrderUsd":250,"minCashReserveUsd":25,"maxDrawdownPct":10}'::jsonb,
   '["BTCUSDT","ETHUSDT","SOLUSDT"]'::jsonb
 from selected_bot sb
 on conflict (bot_id) do update set
