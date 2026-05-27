@@ -752,7 +752,27 @@ app.post("/bots", async (request, response, next) => {
     if (promptVersionId) void touchResearchPromptUsage(promptVersionId).catch(() => {});
     if (traderPromptVersionId) void touchTraderPromptUsage(traderPromptVersionId).catch(() => {});
 
-    response.json({ id });
+    response.json({ id, initialRunQueued: true });
+
+    setImmediate(() => {
+      void (async () => {
+        try {
+          const bot = await getBotSetupById(id);
+          if (!bot) {
+            console.warn(`[create-bot] initial run skipped; bot ${id} not found`);
+            return;
+          }
+          if (!bot.runtimeConfig.enabled) {
+            console.log(`[create-bot] initial run skipped for disabled bot ${id}`);
+            return;
+          }
+          const result = await runBot(bot);
+          console.log(`[create-bot] initial run ${result.status} for bot ${id}${result.runId ? ` (${result.runId})` : ""}`);
+        } catch (error) {
+          console.error(`[create-bot] initial run failed for bot ${id}:`, error);
+        }
+      })();
+    });
   } catch (error) {
     next(error);
   }

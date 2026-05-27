@@ -498,7 +498,7 @@ export const listVenueSymbols = async () => {
 
   const response = await requestPublicJson("/v3/exchangeInfo");
   const symbols = (response.symbols ?? [])
-    .filter(isTradableSpotStableSymbol)
+    .filter((symbol: any) => isTradableSpotStableSymbol(symbol))
     .map((symbol: any) => normalizeSymbol(symbol.symbol))
     .sort((left: string, right: string) => left.localeCompare(right));
 
