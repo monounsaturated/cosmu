@@ -152,9 +152,9 @@ function PipelineSteps({ detail, llmCalls }: { detail: RunDetail; llmCalls: LLMC
               borderRadius: "6px",
               fontSize: "12px",
               fontWeight: 600,
-              background: step.active ? `${step.color}1a` : "#27272a",
-              border: `1px solid ${step.active ? `${step.color}44` : "#3f3f46"}`,
-              color: step.active ? step.color : "#52525b",
+              background: step.active ? `${step.color}1a` : "var(--surface)",
+              border: `1px solid ${step.active ? `${step.color}44` : "var(--border)"}`,
+              color: step.active ? step.color : "var(--muted-strong)",
               opacity: step.active ? 1 : 0.5
             }}
           >
@@ -167,12 +167,12 @@ function PipelineSteps({ detail, llmCalls }: { detail: RunDetail; llmCalls: LLMC
             )}
           </div>
           {i < steps.length - 1 && (
-            <span style={{ color: "#3f3f46", margin: "0 4px", fontSize: "12px" }}>→</span>
+            <span style={{ color: "var(--muted-strong)", margin: "0 4px", fontSize: "12px" }}>→</span>
           )}
         </div>
       ))}
       {totalTokens > 0 && (
-        <span style={{ marginLeft: "12px", fontSize: "11px", color: "#71717a" }}>
+        <span style={{ marginLeft: "12px", fontSize: "11px", color: "var(--muted)" }}>
           {totalTokens.toLocaleString()} total tok
           {totalLatency > 0 && ` · ${(totalLatency / 1000).toFixed(1)}s`}
         </span>
@@ -226,8 +226,8 @@ function ToolCallsList({ calls }: { calls: ToolCall[] }) {
             <div
               key={i}
               style={{
-                background: "#1e1e21",
-                border: "1px solid #27272a",
+                background: "var(--bg-card)",
+                border: "1px solid var(--border)",
                 borderRadius: "4px",
                 padding: "8px 10px",
                 fontSize: "11px",
@@ -241,7 +241,7 @@ function ToolCallsList({ calls }: { calls: ToolCall[] }) {
               <div style={{ marginBottom: "4px" }}>
                 <span className="muted" style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Input</span>
                 <pre style={{
-                  background: "#27272a", padding: "6px 8px", borderRadius: "4px",
+                  background: "var(--bg-card)", padding: "6px 8px", borderRadius: "4px",
                   fontSize: "11px", margin: "2px 0 0", maxHeight: "160px", overflow: "auto",
                   whiteSpace: "pre-wrap"
                 }}>{formatJson(c.input)}</pre>
@@ -249,7 +249,7 @@ function ToolCallsList({ calls }: { calls: ToolCall[] }) {
               <div>
                 <span className="muted" style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Output</span>
                 <pre style={{
-                  background: "#27272a", padding: "6px 8px", borderRadius: "4px",
+                  background: "var(--bg-card)", padding: "6px 8px", borderRadius: "4px",
                   fontSize: "11px", margin: "2px 0 0", maxHeight: "240px", overflow: "auto",
                   whiteSpace: "pre-wrap"
                 }}>{formatJson(c.output)}</pre>
@@ -285,7 +285,7 @@ function LLMCallsPanel({ calls }: { calls: LLMCall[] }) {
             <div
               key={call.id}
               style={{
-                background: "#27272a",
+                background: "var(--bg-card)",
                 padding: "10px 12px",
                 borderRadius: "6px",
                 fontSize: "12px",
@@ -303,7 +303,7 @@ function LLMCallsPanel({ calls }: { calls: LLMCall[] }) {
                 </span>
                 <span className="muted">{call.provider}/{call.model}</span>
               </div>
-              <div style={{ display: "flex", gap: "16px", color: "#a1a1aa", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: "16px", color: "var(--muted)", flexWrap: "wrap" }}>
                 {call.inputTokens != null && <span>In: {call.inputTokens.toLocaleString()} tok</span>}
                 {call.outputTokens != null && <span>Out: {call.outputTokens.toLocaleString()} tok</span>}
                 {call.latencyMs != null && <span>{(call.latencyMs / 1000).toFixed(1)}s</span>}

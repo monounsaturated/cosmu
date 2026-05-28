@@ -311,20 +311,25 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
     }
 
     // ── 6. Execution ─────────────────────────────────────────────────
-    const executions = await executeOrders({
-      runId,
-      runtimeConfig: bot.runtimeConfig,
-      orders: validationResult.normalizedOrders,
-      venueContext: decisionVenueContext
-    });
+    const executions = bot.runtimeConfig.execution.enabled
+      ? await executeOrders({
+          runId,
+          runtimeConfig: bot.runtimeConfig,
+          orders: validationResult.normalizedOrders,
+          venueContext: decisionVenueContext
+        })
+      : [];
     await safeRecordLightStep({
       runId,
       agentKey: "execution",
       agentLabel: "Execution",
       inputJson: {
-        normalizedOrders: validationResult.normalizedOrders
+        normalizedOrders: validationResult.normalizedOrders,
+        executionEnabled: bot.runtimeConfig.execution.enabled
       },
-      outputText: executions.length > 0
+      outputText: !bot.runtimeConfig.execution.enabled
+        ? "Order placement disabled by runtime execution settings"
+        : executions.length > 0
         ? executions.map((execution) => `${execution.side} ${execution.symbol} ${execution.status}`).join(", ")
         : "No executions",
       outputJson: {

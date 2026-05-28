@@ -51,9 +51,17 @@ export default async function HomePage() {
         </div>
         <div className="hero-actions command-actions">
           <span className="badge badge-neutral">Updated <LocalTime value={dashboard.generatedAt} /></span>
-          <DashboardActions hasNoBots={dashboard.bots.length === 0} />
+          <DashboardActions hasNoBots={dashboard.bots.length === 0} dashboardUnavailable={Boolean(dashboard.backendError)} />
         </div>
       </section>
+
+      {dashboard.backendError && (
+        <section className="panel dashboard-error-state">
+          <strong>Dashboard backend unavailable</strong>
+          <p>The agent list could not be loaded from the API. The app is showing an error instead of an empty state.</p>
+          <code>{dashboard.backendError}</code>
+        </section>
+      )}
 
       <section className="metric-strip">
         <article>

@@ -7,9 +7,10 @@ import { CreateBotModal } from "./create-bot-modal";
 
 type DashboardActionsProps = {
   hasNoBots: boolean;
+  dashboardUnavailable?: boolean;
 };
 
-export function DashboardActions({ hasNoBots }: DashboardActionsProps) {
+export function DashboardActions({ hasNoBots, dashboardUnavailable = false }: DashboardActionsProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const router = useRouter();
 
@@ -25,7 +26,7 @@ export function DashboardActions({ hasNoBots }: DashboardActionsProps) {
         Create agent
       </button>
 
-      {hasNoBots && (
+      {hasNoBots && !dashboardUnavailable && (
         <p className="muted" style={{ marginTop: "8px", fontSize: "14px" }}>
           No agents yet. Create the first paper or live strategy to get started.
         </p>

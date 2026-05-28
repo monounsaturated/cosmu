@@ -2,9 +2,10 @@ import { dashboardSchema } from "@cosmu/shared";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
-const emptyDashboard = () =>
+const emptyDashboard = (backendError?: string) =>
   dashboardSchema.parse({
     generatedAt: new Date().toISOString(),
+    backendError,
     venueOverview: { live: null, testnet: null },
     accounts: [],
     bots: [],
@@ -16,15 +17,16 @@ const emptyDashboard = () =>
   });
 
 export const getDashboard = async () => {
-  try {
-    const apiSecretKey = process.env.API_SECRET_KEY;
-    if (!apiSecretKey) {
-      throw new Error("API_SECRET_KEY is required");
-    }
+  const apiSecretKey = process.env.API_SECRET_KEY;
 
+  if (!apiSecretKey) {
+    return emptyDashboard("API_SECRET_KEY is required");
+  }
+
+  try {
     const response = await fetch(`${apiBaseUrl}/dashboard`, {
       cache: "no-store",
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(25000),
       headers: {
         "x-api-key": apiSecretKey
       }
@@ -36,7 +38,8 @@ export const getDashboard = async () => {
 
     return dashboardSchema.parse(await response.json());
   } catch (error) {
-    console.error("Dashboard fetch failed, rendering empty state", error);
-    return emptyDashboard();
+    const message = error instanceof Error ? error.message : "Dashboard request failed";
+    console.error("Dashboard fetch failed", error);
+    return emptyDashboard(message);
   }
 };

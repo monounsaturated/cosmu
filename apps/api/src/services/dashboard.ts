@@ -19,6 +19,7 @@ const getSampleQuality = (daysRunning: number, tradeCount: number) => {
 
 const dashboardFetchWarnings = new Map<string, number>();
 const DASHBOARD_FETCH_WARNING_THROTTLE_MS = 5 * 60 * 1000;
+const DASHBOARD_VENUE_TIMEOUT_MS = 3500;
 
 const describeFetchFailure = (reason: unknown) => {
   const message = reason instanceof Error ? reason.message : String(reason);
@@ -36,6 +37,20 @@ const warnDashboardFetchFailure = (key: string, label: string, reason: unknown) 
   if (now - last < DASHBOARD_FETCH_WARNING_THROTTLE_MS) return;
   dashboardFetchWarnings.set(key, now);
   console.warn(`[dashboard] ${label} unavailable: ${describeFetchFailure(reason)}`);
+};
+
+const withDashboardTimeout = async <T>(label: string, promise: Promise<T>): Promise<T> => {
+  let timeout: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${label} timed out after ${DASHBOARD_VENUE_TIMEOUT_MS}ms`)), DASHBOARD_VENUE_TIMEOUT_MS);
+      })
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 };
 
 export const getDashboard = async () => {
@@ -122,10 +137,10 @@ export const getDashboard = async () => {
   `;
 
   const [testnetPricesResult, testnetBalanceResult, livePricesResult, liveBalanceResult] = await Promise.allSettled([
-    getAllTickerPrices("testnet"),
-    getAccountBalance("testnet"),
-    getAllTickerPrices("live"),
-    getAccountBalance("live")
+    withDashboardTimeout("testnet prices", getAllTickerPrices("testnet")),
+    withDashboardTimeout("testnet balance", getAccountBalance("testnet")),
+    withDashboardTimeout("live prices", getAllTickerPrices("live")),
+    withDashboardTimeout("live balance", getAccountBalance("live"))
   ]);
 
   const testnetPrices: any[] = testnetPricesResult.status === "fulfilled" ? testnetPricesResult.value : [];

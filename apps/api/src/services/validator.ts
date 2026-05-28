@@ -17,13 +17,12 @@ import { isUsdcOnlyVenue, validateTradability, type VenueContext } from "../adap
 const getBaseAsset = (symbol: string) => symbol.replace(/USD[TC]$/i, "");
 
 // Always-on safety buffer for buys: market slippage, taker fees, and rounding all
-// drain real cash beyond the validator's predicted spend. Without this, runs with
-// `execution.enabled=false` (the default) burn straight through `budgetUsdt` and
-// leave bots with negative logical balance once fills + fees settle.
+// drain real cash beyond the validator's predicted spend when order placement is
+// enabled.
 // 1.5% covers Binance taker fee (0.1%) + a generous slippage allowance for thin pairs.
 const SAFETY_BUFFER_PCT = 0.015;
-// Floor on the minimum cash reserve: even when the user has not enabled execution
-// rules, we keep at least $1 of headroom so successive runs cannot zero the account.
+// Floor on the minimum cash reserve: keep at least $1 of headroom so successive
+// executable runs cannot zero the account.
 const FALLBACK_MIN_CASH_RESERVE_USD = 1;
 
 type SnapshotBalance = VenueContext["snapshot"]["balances"][number];
@@ -117,9 +116,7 @@ export const validateDecision = async (input: {
 
         // 5. Balance sufficiency.
         // - Cash pool: USDC-only on live binance (no USDT pairs in FR), combined USDT+USDC elsewhere.
-        // - Reserve: always enforce a minimum (rules enabled → user value, else FALLBACK_MIN_CASH_RESERVE_USD).
-        //   Without an always-on reserve, runs with `execution.enabled=false` could spend the wallet
-        //   to zero and end up negative once fees post (the bug in production).
+        // - Reserve: always enforce a minimum (execution enabled -> user value, else FALLBACK_MIN_CASH_RESERVE_USD).
         // - `spentUsd` accumulates buffered amounts so back-to-back buys in one run cannot
         //   each see the full snapshot cash (bot #57 regression).
         const usdcOnly = isUsdcOnlyVenue(input.runtimeConfig);

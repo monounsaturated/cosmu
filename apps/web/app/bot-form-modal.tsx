@@ -1863,7 +1863,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                   />
                   <span>
                     <strong>Use strict order caps</strong>
-                    <small>{formData.execution.enabled ? "Order count, size, reserve, and order types are enforced." : "Off: the bot can size within budget, wallet, and venue rules."}</small>
+                    <small>{formData.execution.enabled ? "Order placement is enabled with count, size, reserve, and order-type limits." : "Off: the bot researches and records decisions without placing orders."}</small>
                   </span>
                 </label>
               </div>

@@ -351,6 +351,24 @@ export function BotTable({
     return <span>{sortOrder === "asc" ? "↑" : "↓"}</span>;
   };
 
+  if (dashboard.backendError) {
+    return (
+      <section className="panel performance-surface">
+        <div className="performance-header">
+          <div>
+            <h3>{title}</h3>
+            <p className="muted">{description}</p>
+          </div>
+        </div>
+        <div className="dashboard-error-state">
+          <strong>Agents unavailable</strong>
+          <p>The backend dashboard could not be loaded, so the app is not showing an empty agent list.</p>
+          <code>{dashboard.backendError}</code>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="panel performance-surface">
       <div className="performance-header">

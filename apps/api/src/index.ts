@@ -32,7 +32,8 @@ import {
   touchTraderPromptUsage,
   listActivePositions,
   getAppSettings,
-  setAppSettings
+  setAppSettings,
+  ensureBotSchedulerSchema
 } from "./lib/store.js";
 import { getDashboard } from "./services/dashboard.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
@@ -1023,16 +1024,23 @@ const startSchedulerLoop = () => {
 };
 
 app.listen(env.API_PORT, "0.0.0.0", () => {
-  startCatalogSyncLoop();
-  if (env.SCHEDULER_ENABLED) {
-    startSchedulerLoop();
-  } else {
-    console.log("[scheduler] disabled; set SCHEDULER_ENABLED=true to run due bots automatically");
-  }
-  if (env.GUARDIAN_ENABLED) {
-    startGuardian();
-  } else {
-    console.log("[guardian] disabled; set GUARDIAN_ENABLED=true to run position safety checks");
-  }
   console.log(`API listening on http://0.0.0.0:${env.API_PORT}`);
+
+  void (async () => {
+    await ensureBotSchedulerSchema();
+
+    startCatalogSyncLoop();
+    if (env.SCHEDULER_ENABLED) {
+      startSchedulerLoop();
+    } else {
+      console.log("[scheduler] disabled; set SCHEDULER_ENABLED=true to run due bots automatically");
+    }
+    if (env.GUARDIAN_ENABLED) {
+      startGuardian();
+    } else {
+      console.log("[guardian] disabled; set GUARDIAN_ENABLED=true to run position safety checks");
+    }
+  })().catch((error) => {
+    console.error("[startup] failed:", error);
+  });
 });

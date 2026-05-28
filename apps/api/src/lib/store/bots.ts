@@ -309,6 +309,53 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
   return parseBotRow(row);
 };
 
+export const ensureBotSchedulerSchema = async () => {
+  const [column] = await sql<{ exists: boolean }[]>`
+    select exists (
+      select 1
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'bot_runtime_configs'
+        and column_name = 'next_run_at'
+    ) as "exists"
+  `;
+
+  if (!column?.exists) {
+    await sql`
+      alter table bot_runtime_configs
+        add column next_run_at timestamptz
+    `;
+  }
+
+  await sql`
+    update bot_runtime_configs
+    set next_run_at = case
+      when last_run_finished_at is not null then last_run_finished_at + make_interval(secs => frequency_minutes * 60)
+      when last_run_started_at is not null then last_run_started_at + make_interval(secs => frequency_minutes * 60)
+      else created_at
+    end
+    where next_run_at is null
+  `;
+
+  const [index] = await sql<{ exists: boolean }[]>`
+    select exists (
+      select 1
+      from pg_indexes
+      where schemaname = 'public'
+        and tablename = 'bot_runtime_configs'
+        and indexname = 'bot_runtime_configs_due_idx'
+    ) as "exists"
+  `;
+
+  if (!index?.exists) {
+    await sql`
+      create index bot_runtime_configs_due_idx
+        on bot_runtime_configs (enabled, next_run_at)
+        where enabled = true
+    `;
+  }
+};
+
 /**
  * Atomically claim the current scheduled run for this bot.
  *

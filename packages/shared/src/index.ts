@@ -785,6 +785,7 @@ const accountOverviewEntrySchema = venueOverviewEntrySchema.extend({
 
 export const dashboardSchema = z.object({
   generatedAt: z.string().datetime(),
+  backendError: z.string().optional(),
   venueOverview: z.object({
     live: venueOverviewEntrySchema.nullable(),
     testnet: venueOverviewEntrySchema.nullable()

@@ -75,8 +75,7 @@ html {
   overflow-x: hidden;
 }
 
-:root[data-theme="light"] html,
-html:has(:root[data-theme="light"]) {
+html[data-theme="light"] {
   color-scheme: light;
 }
 
@@ -1013,6 +1012,38 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
   font-size: 12px;
 }
 
+.dashboard-error-state {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--text);
+}
+
+.dashboard-error-state strong {
+  color: var(--danger);
+}
+
+.dashboard-error-state p {
+  color: var(--muted);
+}
+
+.dashboard-error-state code {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
 .table-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1710,7 +1741,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
   padding: 12px 14px;
   font-size: 12px;
   line-height: 1.6;
-  color: var(--muted);
+  color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 360px;

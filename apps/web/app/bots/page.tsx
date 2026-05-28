@@ -20,7 +20,7 @@ export default async function BotsPage() {
         </div>
         <div className="hero-actions">
           <span className="badge badge-neutral">{active} active</span>
-          <DashboardActions hasNoBots={dashboard.bots.length === 0} />
+          <DashboardActions hasNoBots={dashboard.bots.length === 0} dashboardUnavailable={Boolean(dashboard.backendError)} />
         </div>
       </section>
 

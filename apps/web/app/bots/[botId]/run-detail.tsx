@@ -165,9 +165,11 @@ function parseUserContext(text: string | null): ParsedInput {
 /* ── Styles ── */
 
 const preStyle = {
-  background: "#27272a",
+  background: "var(--bg-card)",
+  color: "var(--text)",
+  border: "1px solid var(--border)",
   padding: "12px",
-  borderRadius: "4px",
+  borderRadius: "var(--radius-sm)",
   fontSize: "12px",
   overflowX: "auto" as const,
   whiteSpace: "pre-wrap" as const,
@@ -248,8 +250,8 @@ function InputBreakdown({ systemPrompt, userContext, phaseLabel, phaseColor, raw
           {showSections && (
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               {sections.map((section, i) => (
-                <div key={i} style={{ background: "#1e1e21", border: "1px solid #27272a", borderRadius: "6px", overflow: "hidden" }}>
-                  <div style={{ padding: "6px 10px", background: "#27272a", fontSize: "11px", fontWeight: 600, color: "#a1a1aa", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                <div key={i} style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "6px", overflow: "hidden" }}>
+                  <div style={{ padding: "6px 10px", background: "var(--surface)", fontSize: "11px", fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                     {section.label}
                   </div>
                   <pre style={{ ...preStyle, background: "transparent", borderRadius: 0, maxHeight: "200px", margin: 0 }}>
@@ -299,8 +301,8 @@ function ToolCallsList({ calls }: { calls: ToolCall[] }) {
             <div
               key={i}
               style={{
-                background: "#1e1e21",
-                border: "1px solid #27272a",
+                background: "var(--bg-card)",
+                border: "1px solid var(--border)",
                 borderRadius: "4px",
                 padding: "8px 10px",
                 fontSize: "11px",
@@ -367,7 +369,7 @@ function LLMCallsPanel({ runId }: { runId: string }) {
                 <div
                   key={call.id}
                   style={{
-                    background: "#27272a",
+                    background: "var(--bg-card)",
                     padding: "10px 12px",
                     borderRadius: "6px",
                     fontSize: "12px",
@@ -381,7 +383,7 @@ function LLMCallsPanel({ runId }: { runId: string }) {
                     </span>
                     <span className="muted">{call.provider}/{call.model}</span>
                   </div>
-                  <div style={{ display: "flex", gap: "16px", color: "#a1a1aa", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: "16px", color: "var(--muted)", flexWrap: "wrap" }}>
                     {call.inputTokens != null && <span>In: {call.inputTokens.toLocaleString()} tok</span>}
                     {call.outputTokens != null && <span>Out: {call.outputTokens.toLocaleString()} tok</span>}
                     {call.latencyMs != null && <span>{(call.latencyMs / 1000).toFixed(1)}s</span>}
@@ -416,7 +418,7 @@ export function RunDetail({ run }: { run: Run }) {
   const validationFailed = run.validationResult && !run.validationResult.accepted;
 
   return (
-    <details style={{ background: "#18181b", padding: "16px", borderRadius: "8px" }}>
+    <details style={{ background: "var(--bg-card)", border: "1px solid var(--border)", padding: "16px", borderRadius: "8px" }}>
       <summary style={{ cursor: "pointer", fontWeight: "bold" }}>
         <LocalTime value={run.startedAt} /> - <span className={`badge badge-${run.status}`}>{run.status}</span>
         {run.formatterVersion && (
