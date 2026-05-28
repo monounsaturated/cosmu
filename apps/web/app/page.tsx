@@ -8,6 +8,7 @@ import { VenueOverview } from "./venue-overview";
 import { RecentExecutions } from "./recent-executions";
 import { PortfolioState } from "./portfolio-state";
 import { PromptSnapshots } from "./prompt-snapshots";
+import { SpendEstimatePanel } from "./spend-estimate-panel";
 import { getDashboard } from "./dashboard-data";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +52,11 @@ export default async function HomePage() {
         </div>
         <div className="hero-actions command-actions">
           <span className="badge badge-neutral">Updated <LocalTime value={dashboard.generatedAt} /></span>
-          <DashboardActions hasNoBots={dashboard.bots.length === 0} dashboardUnavailable={Boolean(dashboard.backendError)} />
+          <DashboardActions
+            hasNoBots={dashboard.bots.length === 0}
+            activeBotCount={dashboard.bots.filter((bot) => bot.enabled).length}
+            dashboardUnavailable={Boolean(dashboard.backendError)}
+          />
         </div>
       </section>
 
@@ -99,6 +104,8 @@ export default async function HomePage() {
           <small>last dashboard window</small>
         </article>
       </section>
+
+      <SpendEstimatePanel estimate={dashboard.llmSpendEstimate} />
 
       <section className="command-grid">
         <VenueOverview accounts={dashboard.accounts} venueOverview={dashboard.venueOverview} />

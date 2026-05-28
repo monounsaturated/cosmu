@@ -1,6 +1,7 @@
 import { sql } from "../db.js";
 import { getAccountBalance, getAllTickerPrices } from "../adapters/binance.js";
 import { dashboardSchema, botSummarySchema, botPerformanceSeriesSchema, portfolioSnapshotSchema } from "@cosmu/shared";
+import { getLlmSpendEstimate } from "./llm-spend.js";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
@@ -280,6 +281,7 @@ export const getDashboard = async () => {
   });
   const liveAccount = accounts.find((account) => account.mode === "live") ?? null;
   const testnetAccount = accounts.find((account) => account.mode === "testnet") ?? null;
+  const llmSpendEstimate = await getLlmSpendEstimate();
 
   // Recent Runs
   const recentRuns = await sql`
@@ -395,6 +397,7 @@ export const getDashboard = async () => {
     },
     accounts,
     bots,
+    llmSpendEstimate,
     performanceSeries: [], // Simplify: skip historical performance chart points or reconstruct them later
     recentRuns: recentRuns.map((row) => ({
       ...row,

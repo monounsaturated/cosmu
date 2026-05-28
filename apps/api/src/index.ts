@@ -33,7 +33,8 @@ import {
   listActivePositions,
   getAppSettings,
   setAppSettings,
-  ensureBotSchedulerSchema
+  ensureBotSchedulerSchema,
+  killBot
 } from "./lib/store.js";
 import { getDashboard } from "./services/dashboard.js";
 import { buildCorsOptions, corsDiagnostics } from "./cors-options.js";
@@ -99,6 +100,8 @@ app.get("/health", async (_request, response) => {
 });
 
 app.get("/internal/diagnostics", async (_request, response) => {
+  triggerSchedulerWatchdog("diagnostics");
+
   const result: Record<string, unknown> = { checkedAt: new Date().toISOString() };
 
   try {
@@ -166,6 +169,8 @@ app.get("/internal/diagnostics", async (_request, response) => {
 });
 
 app.get("/internal/qa/status", async (_request, response) => {
+  triggerSchedulerWatchdog("diagnostics");
+
   response.json({
     ok: true,
     runtime: {
@@ -210,6 +215,7 @@ app.get("/next-numbers", async (_request, response, next) => {
 
 app.get("/dashboard", async (_request, response, next) => {
   try {
+    triggerSchedulerWatchdog("dashboard");
     response.json(await getDashboard());
   } catch (error) {
     next(error);
@@ -865,6 +871,7 @@ app.post("/bots/kill-all", async (_request, response, next) => {
       return;
     }
 
+    await Promise.all(bots.map((bot) => killBot(bot.id)));
     await notifySlack(`KILL ALL BOTS triggered — liquidating ${bots.length} active bot(s).`);
 
     const results = [];
@@ -916,8 +923,13 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
 });
 
 const CATALOG_SYNC_INTERVAL_MS = 30 * 60 * 1000;
+const BACKGROUND_BOOTSTRAP_RETRY_MS = 15 * 1000;
 
+let catalogSyncLoopStarted = false;
 const startCatalogSyncLoop = () => {
+  if (catalogSyncLoopStarted) return;
+  catalogSyncLoopStarted = true;
+
   const runSync = async () => {
     try {
       for (const provider of SUPPORTED_MODEL_PROVIDERS) {
@@ -940,20 +952,35 @@ const startCatalogSyncLoop = () => {
 };
 
 const SCHEDULER_INTERVAL_MS = 15 * 1000; // 15 seconds to ensure we don't miss the frequency
+const SCHEDULER_WATCHDOG_MIN_INTERVAL_MS = 10 * 1000;
 
 let schedulerLoopStarted = false;
+let schedulerInterval: NodeJS.Timeout | null = null;
 let schedulerTickRunning = false;
 let schedulerLastTickAt: string | null = null;
 let schedulerLastFinishedAt: string | null = null;
 let schedulerLastError: string | null = null;
 let schedulerLastDueBotCount = 0;
 let schedulerLastResultCount = 0;
+let schedulerWatchdogLastTriggeredAt: string | null = null;
+let schedulerWatchdogLastTriggeredMs = 0;
+let backgroundServicesStarted = false;
+let backgroundServicesStarting = false;
+let backgroundBootstrapRetry: NodeJS.Timeout | null = null;
+let backgroundBootstrapLastError: string | null = null;
+let backgroundBootstrapNextRetryAt: string | null = null;
 
 const getSchedulerStatus = () => ({
   enabled: env.SCHEDULER_ENABLED,
+  backgroundServicesStarted,
+  backgroundServicesStarting,
+  backgroundBootstrapLastError,
+  backgroundBootstrapNextRetryAt,
   loopStarted: schedulerLoopStarted,
+  intervalActive: Boolean(schedulerInterval),
   tickRunning: schedulerTickRunning,
   intervalMs: SCHEDULER_INTERVAL_MS,
+  watchdogLastTriggeredAt: schedulerWatchdogLastTriggeredAt,
   lastTickAt: schedulerLastTickAt,
   lastFinishedAt: schedulerLastFinishedAt,
   lastDueBotCount: schedulerLastDueBotCount,
@@ -961,7 +988,7 @@ const getSchedulerStatus = () => ({
   lastError: schedulerLastError
 });
 
-const runSchedulerTick = async (trigger: "startup" | "interval" | "manual") => {
+const runSchedulerTick = async (trigger: "startup" | "interval" | "manual" | "watchdog") => {
   if (schedulerTickRunning) {
     return {
       checkedAt: new Date().toISOString(),
@@ -1015,18 +1042,47 @@ const runSchedulerTick = async (trigger: "startup" | "interval" | "manual") => {
   }
 };
 
+const triggerSchedulerWatchdog = (reason: "dashboard" | "diagnostics" = "dashboard") => {
+  if (!env.SCHEDULER_ENABLED || schedulerTickRunning) return;
+
+  const now = Date.now();
+  if (now - schedulerWatchdogLastTriggeredMs < SCHEDULER_WATCHDOG_MIN_INTERVAL_MS) return;
+
+  schedulerWatchdogLastTriggeredMs = now;
+  schedulerWatchdogLastTriggeredAt = new Date(now).toISOString();
+
+  void runSchedulerTick("watchdog").catch((error) => {
+    console.warn(`[scheduler] ${reason} watchdog tick failed:`, error instanceof Error ? error.message : String(error));
+  });
+};
+
 const startSchedulerLoop = () => {
+  if (schedulerLoopStarted) return;
+
   schedulerLoopStarted = true;
   void runSchedulerTick("startup").catch(() => {});
-  setInterval(() => {
+  schedulerInterval = setInterval(() => {
     void runSchedulerTick("interval").catch(() => {});
   }, SCHEDULER_INTERVAL_MS);
 };
 
-app.listen(env.API_PORT, "0.0.0.0", () => {
-  console.log(`API listening on http://0.0.0.0:${env.API_PORT}`);
+const scheduleBackgroundBootstrapRetry = () => {
+  if (backgroundBootstrapRetry) return;
 
-  void (async () => {
+  const retryAt = new Date(Date.now() + BACKGROUND_BOOTSTRAP_RETRY_MS);
+  backgroundBootstrapNextRetryAt = retryAt.toISOString();
+  backgroundBootstrapRetry = setTimeout(() => {
+    backgroundBootstrapRetry = null;
+    backgroundBootstrapNextRetryAt = null;
+    void startBackgroundServices();
+  }, BACKGROUND_BOOTSTRAP_RETRY_MS);
+};
+
+const startBackgroundServices = async () => {
+  if (backgroundServicesStarted || backgroundServicesStarting) return;
+
+  backgroundServicesStarting = true;
+  try {
     await ensureBotSchedulerSchema();
 
     startCatalogSyncLoop();
@@ -1040,7 +1096,20 @@ app.listen(env.API_PORT, "0.0.0.0", () => {
     } else {
       console.log("[guardian] disabled; set GUARDIAN_ENABLED=true to run position safety checks");
     }
-  })().catch((error) => {
-    console.error("[startup] failed:", error);
-  });
+
+    backgroundServicesStarted = true;
+    backgroundBootstrapLastError = null;
+  } catch (error) {
+    backgroundBootstrapLastError = error instanceof Error ? error.message : String(error);
+    schedulerLastError = backgroundBootstrapLastError;
+    console.error("[startup] background services failed; retrying:", backgroundBootstrapLastError);
+    scheduleBackgroundBootstrapRetry();
+  } finally {
+    backgroundServicesStarting = false;
+  }
+};
+
+app.listen(env.API_PORT, "0.0.0.0", () => {
+  console.log(`API listening on http://0.0.0.0:${env.API_PORT}`);
+  void startBackgroundServices();
 });

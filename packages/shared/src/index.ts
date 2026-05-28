@@ -766,6 +766,64 @@ export const botPerformanceSeriesSchema = z.object({
   points: z.array(botPerformancePointSchema)
 });
 
+export const llmSpendEstimateSchema = z.object({
+  generatedAt: z.string().datetime(),
+  currency: z.literal("USD"),
+  activeBotCount: z.number().int().nonnegative(),
+  pricedBotCount: z.number().int().nonnegative(),
+  unknownBotCount: z.number().int().nonnegative(),
+  sampleWindowRuns: z.number().int().positive(),
+  estimatedHourlyUsd: z.number().nonnegative(),
+  estimatedDailyUsd: z.number().nonnegative(),
+  estimatedMonthlyUsd: z.number().nonnegative(),
+  observedSampleUsd: z.number().nonnegative(),
+  pricingUpdatedAt: z.string().datetime(),
+  pricingSource: z.string(),
+  note: z.string(),
+  assumptions: z.array(
+    z.object({
+      provider: z.string(),
+      model: z.string(),
+      inputUsdPerMillion: z.number().nonnegative(),
+      outputUsdPerMillion: z.number().nonnegative(),
+      sourceUrl: z.string().url(),
+      fetchedAt: z.string().datetime().nullable(),
+      note: z.string().nullable()
+    })
+  ),
+  bots: z.array(
+    z.object({
+      botId: z.string().uuid(),
+      botNumber: z.number().int().positive(),
+      name: z.string(),
+      frequencyMinutes: z.number().positive(),
+      runsPerHour: z.number().nonnegative(),
+      sampleRunCount: z.number().int().nonnegative(),
+      sampleCallCount: z.number().int().nonnegative(),
+      sampleInputTokens: z.number().int().nonnegative(),
+      sampleOutputTokens: z.number().int().nonnegative(),
+      estimatedCostPerRunUsd: z.number().nonnegative().nullable(),
+      estimatedHourlyUsd: z.number().nonnegative().nullable(),
+      estimatedDailyUsd: z.number().nonnegative().nullable(),
+      pricingKnown: z.boolean(),
+      warning: z.string().nullable(),
+      providers: z.array(
+        z.object({
+          provider: z.string(),
+          model: z.string(),
+          inputTokens: z.number().int().nonnegative(),
+          outputTokens: z.number().int().nonnegative(),
+          callCount: z.number().int().nonnegative(),
+          estimatedUsd: z.number().nonnegative().nullable(),
+          pricingKnown: z.boolean()
+        })
+      )
+    })
+  )
+});
+
+export type LlmSpendEstimate = z.infer<typeof llmSpendEstimateSchema>;
+
 const venueOverviewEntrySchema = z.object({
   accountBalance: z.number(),
   allocatedAmount: z.number(),
@@ -792,6 +850,7 @@ export const dashboardSchema = z.object({
   }),
   accounts: z.array(accountOverviewEntrySchema).default([]),
   bots: z.array(botSummarySchema),
+  llmSpendEstimate: llmSpendEstimateSchema.nullable().default(null),
   performanceSeries: z.array(botPerformanceSeriesSchema),
   recentRuns: z.array(
     z.object({

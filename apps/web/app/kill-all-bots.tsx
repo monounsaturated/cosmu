@@ -1,49 +1,106 @@
 "use client";
 
 import { useState } from "react";
+import { Loader2, OctagonX, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 
-export function KillAllBotsButton() {
+type KillAllBotsButtonProps = {
+  activeBotCount: number;
+  disabled?: boolean;
+};
+
+export function KillAllBotsButton({ activeBotCount, disabled = false }: KillAllBotsButtonProps) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const trigger = async () => {
-    if (busy) return;
-    if (!window.confirm("Kill all bots and liquidate their positions? This cannot be undone.")) return;
+    if (busy || disabled || activeBotCount === 0 || confirmText !== "STOP") return;
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch("/api/bots/kill-all", { method: "POST" });
       if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        window.alert(`Kill all complete — ${data.killed ?? 0} bot(s) liquidated.`);
-        window.location.reload();
+        setConfirmOpen(false);
+        setConfirmText("");
+        router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
-        window.alert(`Kill all failed: ${data.error ?? res.statusText}`);
+        setError(data.error ?? res.statusText);
       }
     } catch (error) {
-      window.alert(`Kill all failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      setError(error instanceof Error ? error.message : "Unknown error");
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <button
-      type="button"
-      onClick={trigger}
-      disabled={busy}
-      style={{
-        background: "#7f1d1d",
-        color: "#fca5a5",
-        border: "1px solid #dc2626",
-        borderRadius: "6px",
-        padding: "6px 14px",
-        fontSize: "12px",
-        fontWeight: 600,
-        cursor: busy ? "wait" : "pointer",
-        opacity: busy ? 0.6 : 1
-      }}
-    >
-      {busy ? "Killing all bots…" : "Kill All Bots"}
-    </button>
+    <>
+      <button
+        type="button"
+        className="btn panic-button"
+        onClick={() => {
+          setError(null);
+          setConfirmOpen(true);
+        }}
+        disabled={busy || disabled || activeBotCount === 0}
+        title={activeBotCount === 0 ? "No active agents to stop" : "Stop every active agent immediately"}
+      >
+        <OctagonX size={16} />
+        {activeBotCount === 0 ? "All stopped" : "Stop all"}
+      </button>
+
+      {confirmOpen && (
+        <div className="modal-overlay" role="presentation">
+          <section className="modal-content panic-modal" role="dialog" aria-modal="true" aria-labelledby="panic-modal-title">
+            <header className="modal-header">
+              <div className="modal-title-block">
+                <h2 id="panic-modal-title">Stop all active agents</h2>
+                <p>
+                  This disables {activeBotCount} active agent{activeBotCount === 1 ? "" : "s"} first, then attempts
+                  best-effort liquidation without making model calls.
+                </p>
+              </div>
+              <button className="modal-close" type="button" onClick={() => setConfirmOpen(false)} aria-label="Close">
+                <X size={18} />
+              </button>
+            </header>
+
+            <div className="modal-form">
+              <div className="panic-confirm-panel">
+                <strong>Cost guard</strong>
+                <p>
+                  Type <code>STOP</code> to cut off scheduled LLM runs. The backend disables every active agent before
+                  doing any slower cleanup work.
+                </p>
+                <input
+                  className="form-input"
+                  value={confirmText}
+                  onChange={(event) => setConfirmText(event.target.value)}
+                  autoFocus
+                  placeholder="STOP"
+                  aria-label="Confirmation text"
+                />
+              </div>
+
+              {error && <p className="form-error">{error}</p>}
+
+              <div className="form-actions">
+                <button className="btn btn-secondary" type="button" onClick={() => setConfirmOpen(false)} disabled={busy}>
+                  Cancel
+                </button>
+                <button className="btn panic-button panic-button-solid" type="button" onClick={trigger} disabled={busy || confirmText !== "STOP"}>
+                  {busy ? <Loader2 size={16} className="spin-icon" /> : <OctagonX size={16} />}
+                  Stop all agents
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+    </>
   );
 }
