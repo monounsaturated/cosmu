@@ -1,5 +1,6 @@
 import type { DashboardPayload } from "@cosmu/shared";
-import { Activity, AlertTriangle, DollarSign, Zap } from "lucide-react";
+import Link from "next/link";
+import { Activity, AlertTriangle, ArrowUpRight, DollarSign, Zap } from "lucide-react";
 
 type SpendEstimatePanelProps = {
   estimate: DashboardPayload["llmSpendEstimate"];
@@ -34,9 +35,15 @@ export function SpendEstimatePanel({ estimate }: SpendEstimatePanelProps) {
             Based on token logs from the last {estimate.sampleWindowRuns} completed run{estimate.sampleWindowRuns === 1 ? "" : "s"} per active agent.
           </p>
         </div>
-        <span className={estimate.unknownBotCount > 0 ? "badge badge-warn" : "badge badge-neutral"}>
-          {estimate.activeBotCount} active
-        </span>
+        <div className="spend-panel-actions">
+          <span className={estimate.unknownBotCount > 0 ? "badge badge-warn" : "badge badge-neutral"}>
+            {estimate.activeBotCount} active
+          </span>
+          <Link className="btn btn-secondary btn-small" href="/spending">
+            <ArrowUpRight size={14} />
+            Spending
+          </Link>
+        </div>
       </div>
 
       <div className="spend-kpis">

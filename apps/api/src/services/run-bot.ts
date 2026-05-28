@@ -15,6 +15,7 @@ import {
 import {
   createRun,
   finishRun,
+  markRuntimeRunFinished,
   listBotExecutionLedger,
   claimRun,
   recentTradeAlerts,
@@ -118,6 +119,8 @@ const safeRecordLightStep = async (input: {
 };
 
 export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => {
+  let schedulerClaimed = false;
+
   // Atomic claim: if another tick/source already started this cycle, bail out
   // silently. Protects against double-firing from overlapping scheduler sources
   // (internal 15s loop + external /internal/scheduler/tick cron).
@@ -127,6 +130,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
     if (!claimed) {
       return { runId: null, status: "skipped" as const };
     }
+    schedulerClaimed = true;
   }
 
   let runId: string | null = null;
@@ -304,7 +308,8 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
         runId,
         runtimeConfigId: bot.runtimeConfigId,
         status: "failure",
-        errorState: { message: "Decision validation failed", issues: validationResult.issues }
+        errorState: { message: "Decision validation failed", issues: validationResult.issues },
+        rescheduleFromFinish: !schedulerClaimed
       });
       await notifySlack(`Run failed for ${bot.name}: ${validationResult.issues.join("; ")}`);
       return { runId, status: "failure" as const, decision: traderResult.decision };
@@ -453,7 +458,8 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
       runId,
       runtimeConfigId: bot.runtimeConfigId,
       status: runStatus,
-      errorState: hasUncertain ? { message: "At least one execution result is uncertain" } : null
+      errorState: hasUncertain ? { message: "At least one execution result is uncertain" } : null,
+      rescheduleFromFinish: !schedulerClaimed
     });
 
     const tradeSummary = await summarizeTrades(runId);
@@ -492,7 +498,13 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
         runId,
         runtimeConfigId: bot.runtimeConfigId,
         status: "failure",
-        errorState: { message: errorMessage }
+        errorState: { message: errorMessage },
+        rescheduleFromFinish: !schedulerClaimed
+      });
+    } else if (schedulerClaimed) {
+      await markRuntimeRunFinished({
+        runtimeConfigId: bot.runtimeConfigId,
+        rescheduleFromFinish: false
       });
     }
 

@@ -28,11 +28,19 @@ export default async function BotsPage() {
         </div>
       </section>
 
+      {dashboard.backendError && (
+        <section className="panel dashboard-error-state">
+          <strong>Agents backend unavailable</strong>
+          <p>The API failed before the agent list loaded, so the table is not showing an empty account state.</p>
+          <code>{dashboard.backendError}</code>
+        </section>
+      )}
+
       <BotTable
         dashboard={dashboard}
         title="All agents"
         description="Every strategy in one sortable table. Click a row for run history, positions, prompts, and controls."
-        emptyMessage="No agents yet. Create one to start testing a strategy."
+        emptyMessage={dashboard.backendError ? "Agent data is unavailable. Check the API connection." : "No agents yet. Create one to start testing a strategy."}
         defaultSortField="created"
         defaultSortOrder="desc"
         showCreatedByDefault

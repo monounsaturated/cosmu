@@ -85,11 +85,28 @@ export const updateRunPrompts = async (runId: string, promptSystem: string, prom
   `;
 };
 
+export const markRuntimeRunFinished = async (input: {
+  runtimeConfigId: string;
+  rescheduleFromFinish?: boolean;
+}) => {
+  await sql`
+    update bot_runtime_configs
+    set last_run_finished_at = now(),
+        next_run_at = case
+          when ${input.rescheduleFromFinish ?? false} then now() + make_interval(secs => frequency_minutes * 60)
+          else next_run_at
+        end,
+        updated_at = now()
+    where id = ${input.runtimeConfigId}
+  `;
+};
+
 export const finishRun = async (input: {
   runId: string;
   runtimeConfigId: string;
   status: "success" | "failure" | "uncertain";
   errorState?: Record<string, JsonValue> | null;
+  rescheduleFromFinish?: boolean;
 }) => {
   await sql`
     update runs
@@ -98,13 +115,10 @@ export const finishRun = async (input: {
         finished_at = now()
     where id = ${input.runId}
   `;
-  await sql`
-    update bot_runtime_configs
-    set last_run_finished_at = now(),
-        next_run_at = now() + make_interval(secs => frequency_minutes * 60),
-        updated_at = now()
-    where id = ${input.runtimeConfigId}
-  `;
+  await markRuntimeRunFinished({
+    runtimeConfigId: input.runtimeConfigId,
+    rescheduleFromFinish: input.rescheduleFromFinish
+  });
 };
 
 export const recentTradeAlerts = async (runId: string) =>

@@ -2,6 +2,15 @@
   "framework": "nextjs",
   "outputDirectory": ".next",
   "installCommand": "cd ../.. && pnpm install",
-  "buildCommand": "cd ../.. && pnpm --filter @cosmu/shared build && pnpm --filter @cosmu/web build"
+  "buildCommand": "cd ../.. && pnpm --filter @cosmu/shared build && pnpm --filter @cosmu/web build",
+  "crons": [
+    {
+      "path": "/api/cron/bots",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/hourly",
+      "schedule": "0 * * * *"
+    }
+  ]
 }
-

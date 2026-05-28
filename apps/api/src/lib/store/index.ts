@@ -23,6 +23,7 @@ export {
   storeTraderOutput,
   updateRunPrompts,
   finishRun,
+  markRuntimeRunFinished,
   recentTradeAlerts,
   getRunDetail,
   getBotRuns

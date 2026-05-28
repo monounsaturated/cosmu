@@ -330,8 +330,8 @@ export const ensureBotSchedulerSchema = async () => {
   await sql`
     update bot_runtime_configs
     set next_run_at = case
-      when last_run_finished_at is not null then last_run_finished_at + make_interval(secs => frequency_minutes * 60)
-      when last_run_started_at is not null then last_run_started_at + make_interval(secs => frequency_minutes * 60)
+      when last_run_started_at is not null then greatest(now(), last_run_started_at + make_interval(secs => frequency_minutes * 60))
+      when last_run_finished_at is not null then greatest(now(), last_run_finished_at + make_interval(secs => frequency_minutes * 60))
       else created_at
     end
     where next_run_at is null
@@ -515,8 +515,8 @@ export const updateBotConfig = async (
     await sql`
       update bot_runtime_configs
       set next_run_at = case
-            when last_run_finished_at is not null then last_run_finished_at + make_interval(secs => ${input.runtimeConfig.frequencyMinutes * 60})
-            when last_run_started_at is not null then last_run_started_at + make_interval(secs => ${input.runtimeConfig.frequencyMinutes * 60})
+            when last_run_started_at is not null then greatest(now(), last_run_started_at + make_interval(secs => ${input.runtimeConfig.frequencyMinutes * 60}))
+            when last_run_finished_at is not null then greatest(now(), last_run_finished_at + make_interval(secs => ${input.runtimeConfig.frequencyMinutes * 60}))
             else now()
           end,
           updated_at = now()

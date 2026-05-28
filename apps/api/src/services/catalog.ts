@@ -116,7 +116,7 @@ export const bootstrapModelProfiles = async (): Promise<CatalogUpsertResult> => 
   return { count: profiles.length, inserted, updated };
 };
 
-const HOURS_12_MS = 12 * 60 * 60 * 1000;
+export const CATALOG_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
 const shouldRefreshProvider = async (provider: string) => {
   const [row] = await sql<{ syncedAt: Date }[]>`
@@ -130,7 +130,7 @@ const shouldRefreshProvider = async (provider: string) => {
     return true;
   }
 
-  return Date.now() - row.syncedAt.getTime() > HOURS_12_MS;
+  return Date.now() - row.syncedAt.getTime() > CATALOG_REFRESH_INTERVAL_MS;
 };
 
 export const syncProviderModels = async (provider: string, force = false): Promise<ProviderSyncResult> => {
@@ -139,13 +139,13 @@ export const syncProviderModels = async (provider: string, force = false): Promi
   }
 
   if (!force && !(await shouldRefreshProvider(provider))) {
-    console.log(`[catalog] Skipping ${provider} sync - within 12 hour window`);
+    console.log(`[catalog] Skipping ${provider} sync - within 1 hour window`);
     return {
       synced: false,
       count: 0,
       inserted: 0,
       updated: 0,
-      message: "Skipped - synced within last 12 hours"
+      message: "Skipped - synced within last hour"
     };
   }
 
@@ -200,6 +200,45 @@ export const syncProviderModels = async (provider: string, force = false): Promi
   };
 };
 
+export const syncAllProviderModels = async (force = false) => {
+  const results = [];
+  let bootstrapResult = { count: 0, inserted: 0, updated: 0 };
+
+  for (const provider of SUPPORTED_MODEL_PROVIDERS) {
+    try {
+      results.push({
+        provider,
+        label: modelProviderLabel(provider),
+        ...(await syncProviderModels(provider, force))
+      });
+    } catch (error) {
+      console.warn(`[catalog] ${provider} sync failed:`, error instanceof Error ? error.message : String(error));
+      results.push({
+        provider,
+        label: modelProviderLabel(provider),
+        synced: false,
+        count: 0,
+        inserted: 0,
+        updated: 0,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  try {
+    bootstrapResult = await bootstrapModelProfiles();
+  } catch (error) {
+    console.warn("[catalog] model bootstrap failed:", error instanceof Error ? error.message : String(error));
+  }
+
+  return {
+    syncedAt: new Date().toISOString(),
+    force,
+    providers: results,
+    bootstrap: bootstrapResult
+  };
+};
+
 const shouldRefreshVenue = async (venue: string) => {
   const [row] = await sql<{ lastSeenAt: Date }[]>`
     select max(last_seen_at) as "lastSeenAt"
@@ -211,12 +250,17 @@ const shouldRefreshVenue = async (venue: string) => {
     return true;
   }
 
-  return Date.now() - row.lastSeenAt.getTime() > HOURS_12_MS;
+  return Date.now() - row.lastSeenAt.getTime() > CATALOG_REFRESH_INTERVAL_MS;
 };
 
-export const syncVenueSymbols = async (venue: "binance") => {
-  if (!(await shouldRefreshVenue(venue))) {
-    return;
+export const syncVenueSymbols = async (venue: "binance", force = false) => {
+  if (!force && !(await shouldRefreshVenue(venue))) {
+    return {
+      venue,
+      synced: false,
+      count: 0,
+      message: "Skipped - synced within last hour"
+    };
   }
 
   const symbols = (await listVenueSymbols()) as string[];
@@ -238,6 +282,13 @@ export const syncVenueSymbols = async (venue: "binance") => {
         updated_at = now()
     `;
   }
+
+  return {
+    venue,
+    synced: true,
+    count: symbols.length,
+    message: `Synced ${symbols.length} symbols`
+  };
 };
 
 export const getVenueSymbols = async (venue: "binance") => {

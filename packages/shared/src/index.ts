@@ -824,6 +824,61 @@ export const llmSpendEstimateSchema = z.object({
 
 export type LlmSpendEstimate = z.infer<typeof llmSpendEstimateSchema>;
 
+export const llmSpendOverviewSchema = z.object({
+  generatedAt: z.string().datetime(),
+  currency: z.literal("USD"),
+  estimate: llmSpendEstimateSchema,
+  totals: z.object({
+    allTimeUsd: z.number().nonnegative().nullable(),
+    last24hUsd: z.number().nonnegative().nullable(),
+    last7dUsd: z.number().nonnegative().nullable(),
+    last30dUsd: z.number().nonnegative().nullable(),
+    callCount: z.number().int().nonnegative(),
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    unknownCostCallCount: z.number().int().nonnegative()
+  }),
+  topBots: z.array(
+    z.object({
+      botId: z.string().uuid(),
+      botNumber: z.number().int().positive(),
+      name: z.string(),
+      enabled: z.boolean(),
+      frequencyMinutes: z.number().positive().nullable(),
+      totalUsd: z.number().nonnegative().nullable(),
+      last24hUsd: z.number().nonnegative().nullable(),
+      callCount: z.number().int().nonnegative(),
+      inputTokens: z.number().int().nonnegative(),
+      outputTokens: z.number().int().nonnegative(),
+      lastCallAt: z.string().datetime().nullable(),
+      estimatedCostPerRunUsd: z.number().nonnegative().nullable(),
+      estimatedHourlyUsd: z.number().nonnegative().nullable()
+    })
+  ),
+  recentRuns: z.array(
+    z.object({
+      runId: z.string().uuid(),
+      botId: z.string().uuid(),
+      botNumber: z.number().int().positive(),
+      botName: z.string(),
+      status: runStatusSchema,
+      startedAt: z.string().datetime(),
+      finishedAt: z.string().datetime().nullable(),
+      totalUsd: z.number().nonnegative().nullable(),
+      callCount: z.number().int().nonnegative(),
+      inputTokens: z.number().int().nonnegative(),
+      outputTokens: z.number().int().nonnegative()
+    })
+  ),
+  pricing: z.object({
+    updatedAt: z.string().datetime(),
+    source: z.string(),
+    assumptions: llmSpendEstimateSchema.shape.assumptions
+  })
+});
+
+export type LlmSpendOverview = z.infer<typeof llmSpendOverviewSchema>;
+
 const venueOverviewEntrySchema = z.object({
   accountBalance: z.number(),
   allocatedAmount: z.number(),

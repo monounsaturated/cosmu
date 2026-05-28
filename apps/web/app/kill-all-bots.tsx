@@ -13,18 +13,16 @@ export function KillAllBotsButton({ activeBotCount, disabled = false }: KillAllB
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const trigger = async () => {
-    if (busy || disabled || activeBotCount === 0 || confirmText !== "STOP") return;
+    if (busy || disabled || activeBotCount === 0) return;
     setBusy(true);
     setError(null);
     try {
       const res = await fetch("/api/bots/kill-all", { method: "POST" });
       if (res.ok) {
         setConfirmOpen(false);
-        setConfirmText("");
         router.refresh();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -73,17 +71,9 @@ export function KillAllBotsButton({ activeBotCount, disabled = false }: KillAllB
               <div className="panic-confirm-panel">
                 <strong>Cost guard</strong>
                 <p>
-                  Type <code>STOP</code> to cut off scheduled LLM runs. The backend disables every active agent before
-                  doing any slower cleanup work.
+                  This cuts off scheduled LLM runs immediately. The backend disables every active agent before doing any
+                  slower cleanup work.
                 </p>
-                <input
-                  className="form-input"
-                  value={confirmText}
-                  onChange={(event) => setConfirmText(event.target.value)}
-                  autoFocus
-                  placeholder="STOP"
-                  aria-label="Confirmation text"
-                />
               </div>
 
               {error && <p className="form-error">{error}</p>}
@@ -92,7 +82,7 @@ export function KillAllBotsButton({ activeBotCount, disabled = false }: KillAllB
                 <button className="btn btn-secondary" type="button" onClick={() => setConfirmOpen(false)} disabled={busy}>
                   Cancel
                 </button>
-                <button className="btn panic-button panic-button-solid" type="button" onClick={trigger} disabled={busy || confirmText !== "STOP"}>
+                <button className="btn panic-button panic-button-solid" type="button" onClick={trigger} disabled={busy}>
                   {busy ? <Loader2 size={16} className="spin-icon" /> : <OctagonX size={16} />}
                   Stop all agents
                 </button>

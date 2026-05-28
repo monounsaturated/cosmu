@@ -430,15 +430,15 @@ export function RunDetail({ run }: { run: Run }) {
       {validationFailed && (
         <div style={{
           marginTop: "12px",
-          background: "#451a1a",
-          border: "1px solid #7f1d1d",
+          background: "rgba(239, 68, 68, 0.08)",
+          border: "1px solid rgba(239, 68, 68, 0.28)",
           borderRadius: "6px",
           padding: "10px 12px",
           fontSize: "12px"
         }}>
-          <p style={{ color: "#fca5a5", fontWeight: 600, margin: "0 0 4px 0" }}>Validation rejected</p>
+          <p style={{ color: "var(--danger)", fontWeight: 600, margin: "0 0 4px 0" }}>Validation rejected</p>
           {run.validationResult!.issues.map((issue, i) => (
-            <p key={i} style={{ color: "#fca5a5", margin: "2px 0", fontSize: "11px" }}>{issue}</p>
+            <p key={i} style={{ color: "var(--danger)", margin: "2px 0", fontSize: "11px" }}>{issue}</p>
           ))}
         </div>
       )}

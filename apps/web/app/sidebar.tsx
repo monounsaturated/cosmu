@@ -9,6 +9,7 @@ import {
   Bot,
   Brain,
   ChevronUp,
+  DollarSign,
   Ellipsis,
   FlaskConical,
   Gauge,
@@ -47,6 +48,7 @@ const DEFAULT_FEATURE_TOGGLES: FeatureToggles = {
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", description: "runs and portfolio", icon: BarChart3, group: "Core" },
+  { href: "/spending", label: "Spending", description: "model API costs", icon: DollarSign, group: "Core" },
   { href: "/bots", label: "Agents", description: "create and compare", icon: Bot, group: "Core" },
   { href: "/prompts", label: "Prompts", description: "research and trader prompts", icon: BadgeCheck, group: "Core" },
   { href: "/settings", label: "Settings", description: "models, defaults, keys", icon: Settings, group: "Core" },
@@ -60,6 +62,7 @@ const NAV_ITEMS = [
 const MOBILE_TABS = [
   { href: "/", label: "Home", icon: BarChart3 },
   { href: "/bots", label: "Agents", icon: Bot },
+  { href: "/spending", label: "Spend", icon: DollarSign },
   { href: "/prompts", label: "Prompts", icon: BadgeCheck },
   { href: "/settings", label: "Settings", icon: Settings }
 ];

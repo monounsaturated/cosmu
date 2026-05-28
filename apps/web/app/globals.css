@@ -757,6 +757,14 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
   margin: 2px 0 4px;
 }
 
+.spend-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .spend-kpis {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1017,6 +1025,17 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
 
 .command-grid > section { margin: 0 !important; }
 .command-grid .venue-group { height: 100%; }
+
+.spending-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.spending-source-panel .spend-bot-row {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, auto);
+}
 
 .grid {
   display: grid;
@@ -3325,6 +3344,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
   .spend-kpis { grid-template-columns: repeat(2, 1fr); }
 
   .command-grid,
+  .spending-grid,
   .ops-grid { grid-template-columns: 1fr; }
 
   .settings-create-row { grid-template-columns: 1fr 1fr; }
@@ -3377,6 +3397,9 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
   .product-flow { grid-template-columns: 1fr; }
   .metric-strip { grid-template-columns: repeat(2, 1fr); }
   .metric-strip strong { font-size: 20px; }
+  .spending-grid { grid-template-columns: 1fr; }
+  .spend-panel-header { display: grid; }
+  .spend-panel-actions { justify-content: flex-start; }
   .spend-kpis { grid-template-columns: repeat(2, 1fr); }
   .spend-bot-row { grid-template-columns: 1fr; }
   .spend-bot-cost { text-align: left; }
@@ -3640,6 +3663,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
 /* ── 34. Responsive: Small mobile (≤480px) ── */
 @media (max-width: 480px) {
   .metric-strip,
+  .spending-grid,
   .spend-kpis { grid-template-columns: 1fr; }
   .account-metrics { grid-template-columns: 1fr; }
   .flow-step { min-height: auto; }

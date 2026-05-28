@@ -14,7 +14,6 @@ import {
   createModelProfile,
   createPrompt,
   getBotSetupById,
-  getDueBots,
   getAllEnabledBotSetups,
   getRunDetail,
   getPromptVersionBody,
@@ -33,7 +32,6 @@ import {
   listActivePositions,
   getAppSettings,
   setAppSettings,
-  ensureBotSchedulerSchema,
   killBot
 } from "./lib/store.js";
 import { getDashboard } from "./services/dashboard.js";
@@ -52,18 +50,27 @@ import {
   bootstrapModelProfiles,
   modelProviderLabel,
   getVenueSymbols,
-  syncProviderModels
+  syncProviderModels,
+  syncAllProviderModels
 } from "./services/catalog.js";
 import { getAccountBalance, getTickerPricesForSymbols, normalizeSymbol } from "./adapters/binance.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
 import { killBotAndLiquidate } from "./services/kill-bot.js";
-import { startGuardian } from "./services/guardian.js";
 import { listTools } from "./mcp/index.js";
 import { agentsRouter } from "./routes/agents.js";
 import { researchRouter } from "./routes/research.js";
 import { signalsRouter } from "./routes/signals.js";
 import { tradingAgentsRouter } from "./routes/trading-agents.js";
+import {
+  getRuntimeAutomationStatus,
+  runBackgroundJob,
+  runHourlyBackgroundJobs,
+  startRuntimeAutomation,
+  type BackgroundJobId
+} from "./services/background-jobs.js";
+import { runSchedulerTick, triggerSchedulerWatchdog } from "./services/bot-scheduler.js";
+import { getLlmSpendOverview } from "./services/llm-spend.js";
 
 const app = express();
 const botCreateRuntimeConfigSchema = runtimeConfigSchema.omit({ enabled: true });
@@ -163,7 +170,9 @@ app.get("/internal/diagnostics", async (_request, response) => {
   } catch (e) { result.binanceApi = `unreachable: ${String(e)}`; }
 
   result.cors = corsDiagnostics();
-  result.scheduler = getSchedulerStatus();
+  const automation = getRuntimeAutomationStatus();
+  result.automation = automation;
+  result.scheduler = automation.scheduler;
 
   response.json(result);
 });
@@ -194,7 +203,8 @@ app.get("/internal/qa/status", async (_request, response) => {
       slackConfigured: Boolean(env.SLACK_WEBHOOK_URL),
       webBaseUrlConfigured: Boolean(env.WEB_BASE_URL)
     },
-    scheduler: getSchedulerStatus()
+    automation: getRuntimeAutomationStatus(),
+    scheduler: getRuntimeAutomationStatus().scheduler
   });
 });
 
@@ -439,6 +449,37 @@ app.post("/internal/scheduler/tick", async (_request, response, next) => {
   }
 });
 
+app.get("/internal/background-jobs", async (_request, response) => {
+  response.json(getRuntimeAutomationStatus());
+});
+
+app.post("/internal/background-jobs/hourly", async (_request, response, next) => {
+  try {
+    response.json(await runHourlyBackgroundJobs("manual"));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/internal/background-jobs/:jobId/run", async (request, response, next) => {
+  try {
+    response.json(await runBackgroundJob(request.params.jobId as BackgroundJobId, "manual"));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/spend/llm", async (_request, response, next) => {
+  const startedAt = Date.now();
+  try {
+    const overview = await getLlmSpendOverview();
+    console.log(`[spend] llm overview served in ${Date.now() - startedAt}ms`);
+    response.json(overview);
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/prompts", async (_request, response, next) => {
   try {
     response.json(await listPrompts());
@@ -652,36 +693,18 @@ app.post("/internal/catalog/sync", async (request, response, next) => {
   try {
     const force = request.query.force === "true";
     const provider = typeof request.query.provider === "string" ? request.query.provider : "all";
-    const providersToSync = provider === "all" ? [...SUPPORTED_MODEL_PROVIDERS] : [provider];
-    const syncResults = [];
-    let bootstrapResult = { count: 0, inserted: 0, updated: 0 };
-
-    for (const providerName of providersToSync) {
-      try {
-        syncResults.push({
-          provider: providerName,
-          label: modelProviderLabel(providerName),
-          ...(await syncProviderModels(providerName, force))
-        });
-      } catch (syncError) {
-        console.warn(`${providerName} sync failed:`, String(syncError));
-        syncResults.push({
-          provider: providerName,
-          label: modelProviderLabel(providerName),
-          synced: false,
-          count: 0,
-          inserted: 0,
-          updated: 0,
-          message: String(syncError)
-        });
-      }
-    }
-
-    try {
-      bootstrapResult = await bootstrapModelProfiles();
-    } catch (bootstrapError) {
-      console.warn("Model bootstrap failed:", String(bootstrapError));
-    }
+    const catalogSync = provider === "all"
+      ? await syncAllProviderModels(force)
+      : {
+          syncedAt: new Date().toISOString(),
+          force,
+          providers: [{
+            provider,
+            label: modelProviderLabel(provider),
+            ...(await syncProviderModels(provider, force))
+          }],
+          bootstrap: await bootstrapModelProfiles()
+        };
 
     const models = await listModelProfiles(provider === "all" ? undefined : provider);
 
@@ -689,9 +712,9 @@ app.post("/internal/catalog/sync", async (request, response, next) => {
       ok: true,
       provider,
       modelCount: models.length,
-      syncedAt: new Date().toISOString(),
-      sync: syncResults,
-      bootstrap: bootstrapResult,
+      syncedAt: catalogSync.syncedAt,
+      sync: catalogSync.providers,
+      bootstrap: catalogSync.bootstrap,
       models: models.map(m => ({ id: m.id, name: m.name, provider: m.provider, model: m.model }))
     });
   } catch (error) {
@@ -922,194 +945,7 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
   });
 });
 
-const CATALOG_SYNC_INTERVAL_MS = 30 * 60 * 1000;
-const BACKGROUND_BOOTSTRAP_RETRY_MS = 15 * 1000;
-
-let catalogSyncLoopStarted = false;
-const startCatalogSyncLoop = () => {
-  if (catalogSyncLoopStarted) return;
-  catalogSyncLoopStarted = true;
-
-  const runSync = async () => {
-    try {
-      for (const provider of SUPPORTED_MODEL_PROVIDERS) {
-        try {
-          await syncProviderModels(provider);
-        } catch (providerError) {
-          console.warn(`Background ${provider} catalog sync failed:`, String(providerError));
-        }
-      }
-      await bootstrapModelProfiles();
-    } catch (error) {
-      console.warn("Background catalog sync failed:", String(error));
-    }
-  };
-
-  void runSync();
-  setInterval(() => {
-    void runSync();
-  }, CATALOG_SYNC_INTERVAL_MS);
-};
-
-const SCHEDULER_INTERVAL_MS = 15 * 1000; // 15 seconds to ensure we don't miss the frequency
-const SCHEDULER_WATCHDOG_MIN_INTERVAL_MS = 10 * 1000;
-
-let schedulerLoopStarted = false;
-let schedulerInterval: NodeJS.Timeout | null = null;
-let schedulerTickRunning = false;
-let schedulerLastTickAt: string | null = null;
-let schedulerLastFinishedAt: string | null = null;
-let schedulerLastError: string | null = null;
-let schedulerLastDueBotCount = 0;
-let schedulerLastResultCount = 0;
-let schedulerWatchdogLastTriggeredAt: string | null = null;
-let schedulerWatchdogLastTriggeredMs = 0;
-let backgroundServicesStarted = false;
-let backgroundServicesStarting = false;
-let backgroundBootstrapRetry: NodeJS.Timeout | null = null;
-let backgroundBootstrapLastError: string | null = null;
-let backgroundBootstrapNextRetryAt: string | null = null;
-
-const getSchedulerStatus = () => ({
-  enabled: env.SCHEDULER_ENABLED,
-  backgroundServicesStarted,
-  backgroundServicesStarting,
-  backgroundBootstrapLastError,
-  backgroundBootstrapNextRetryAt,
-  loopStarted: schedulerLoopStarted,
-  intervalActive: Boolean(schedulerInterval),
-  tickRunning: schedulerTickRunning,
-  intervalMs: SCHEDULER_INTERVAL_MS,
-  watchdogLastTriggeredAt: schedulerWatchdogLastTriggeredAt,
-  lastTickAt: schedulerLastTickAt,
-  lastFinishedAt: schedulerLastFinishedAt,
-  lastDueBotCount: schedulerLastDueBotCount,
-  lastResultCount: schedulerLastResultCount,
-  lastError: schedulerLastError
-});
-
-const runSchedulerTick = async (trigger: "startup" | "interval" | "manual" | "watchdog") => {
-  if (schedulerTickRunning) {
-    return {
-      checkedAt: new Date().toISOString(),
-      trigger,
-      skipped: true,
-      reason: "scheduler_tick_already_running",
-      dueBotCount: schedulerLastDueBotCount,
-      results: []
-    };
-  }
-
-  schedulerTickRunning = true;
-  schedulerLastTickAt = new Date().toISOString();
-
-  try {
-    const dueBots = await getDueBots();
-    const results: Array<Record<string, unknown>> = [];
-
-    for (const bot of dueBots) {
-      try {
-        const result = await runBot(bot);
-        results.push({ botId: bot.id, ...result });
-      } catch (error) {
-        results.push({
-          botId: bot.id,
-          status: "failure",
-          error: error instanceof Error ? error.message : "Unknown run error"
-        });
-      }
-    }
-
-    schedulerLastError = null;
-    schedulerLastDueBotCount = dueBots.length;
-    schedulerLastResultCount = results.length;
-    schedulerLastFinishedAt = new Date().toISOString();
-
-    return {
-      checkedAt: schedulerLastFinishedAt,
-      trigger,
-      skipped: false,
-      dueBotCount: dueBots.length,
-      results
-    };
-  } catch (error) {
-    schedulerLastError = error instanceof Error ? error.message : String(error);
-    schedulerLastFinishedAt = new Date().toISOString();
-    console.warn("Background scheduler tick failed:", schedulerLastError);
-    throw error;
-  } finally {
-    schedulerTickRunning = false;
-  }
-};
-
-const triggerSchedulerWatchdog = (reason: "dashboard" | "diagnostics" = "dashboard") => {
-  if (!env.SCHEDULER_ENABLED || schedulerTickRunning) return;
-
-  const now = Date.now();
-  if (now - schedulerWatchdogLastTriggeredMs < SCHEDULER_WATCHDOG_MIN_INTERVAL_MS) return;
-
-  schedulerWatchdogLastTriggeredMs = now;
-  schedulerWatchdogLastTriggeredAt = new Date(now).toISOString();
-
-  void runSchedulerTick("watchdog").catch((error) => {
-    console.warn(`[scheduler] ${reason} watchdog tick failed:`, error instanceof Error ? error.message : String(error));
-  });
-};
-
-const startSchedulerLoop = () => {
-  if (schedulerLoopStarted) return;
-
-  schedulerLoopStarted = true;
-  void runSchedulerTick("startup").catch(() => {});
-  schedulerInterval = setInterval(() => {
-    void runSchedulerTick("interval").catch(() => {});
-  }, SCHEDULER_INTERVAL_MS);
-};
-
-const scheduleBackgroundBootstrapRetry = () => {
-  if (backgroundBootstrapRetry) return;
-
-  const retryAt = new Date(Date.now() + BACKGROUND_BOOTSTRAP_RETRY_MS);
-  backgroundBootstrapNextRetryAt = retryAt.toISOString();
-  backgroundBootstrapRetry = setTimeout(() => {
-    backgroundBootstrapRetry = null;
-    backgroundBootstrapNextRetryAt = null;
-    void startBackgroundServices();
-  }, BACKGROUND_BOOTSTRAP_RETRY_MS);
-};
-
-const startBackgroundServices = async () => {
-  if (backgroundServicesStarted || backgroundServicesStarting) return;
-
-  backgroundServicesStarting = true;
-  try {
-    await ensureBotSchedulerSchema();
-
-    startCatalogSyncLoop();
-    if (env.SCHEDULER_ENABLED) {
-      startSchedulerLoop();
-    } else {
-      console.log("[scheduler] disabled; set SCHEDULER_ENABLED=true to run due bots automatically");
-    }
-    if (env.GUARDIAN_ENABLED) {
-      startGuardian();
-    } else {
-      console.log("[guardian] disabled; set GUARDIAN_ENABLED=true to run position safety checks");
-    }
-
-    backgroundServicesStarted = true;
-    backgroundBootstrapLastError = null;
-  } catch (error) {
-    backgroundBootstrapLastError = error instanceof Error ? error.message : String(error);
-    schedulerLastError = backgroundBootstrapLastError;
-    console.error("[startup] background services failed; retrying:", backgroundBootstrapLastError);
-    scheduleBackgroundBootstrapRetry();
-  } finally {
-    backgroundServicesStarting = false;
-  }
-};
-
 app.listen(env.API_PORT, "0.0.0.0", () => {
   console.log(`API listening on http://0.0.0.0:${env.API_PORT}`);
-  void startBackgroundServices();
+  void startRuntimeAutomation();
 });
