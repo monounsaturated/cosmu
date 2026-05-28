@@ -178,8 +178,13 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
     left join trader_prompt_order on trader_prompt_order.id = tp.id
     where brc.enabled = true
       and (
+        brc.next_run_at is null
+        or brc.next_run_at <= now()
+      )
+      and (
         brc.last_run_started_at is null
-        or brc.last_run_started_at <= now() - make_interval(secs => (brc.frequency_minutes * 60) - 10)
+        or brc.last_run_finished_at >= brc.last_run_started_at
+        or brc.last_run_started_at <= now() - interval '30 minutes'
       )
     order by b.created_at asc
   `;
@@ -309,18 +314,26 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
  *
  * Returns true if we won the race and the run should proceed, false if another
  * tick/source (internal scheduler, external cron, manual trigger) already
- * claimed this cycle. Dedup is enforced by the same frequency window used in
- * `getDueBots`, so two ticks firing within a single cycle can only win once.
+ * claimed this cycle. Dedup is enforced by moving `next_run_at` forward in the
+ * same update that records the claim, so two ticks firing together can only win
+ * once.
  */
 export const claimRun = async (runtimeConfigId: string): Promise<boolean> => {
   const rows = await sql<{ id: string }[]>`
     update bot_runtime_configs
     set last_run_started_at = now(),
+        next_run_at = now() + make_interval(secs => frequency_minutes * 60),
         updated_at = now()
     where id = ${runtimeConfigId}
+      and enabled = true
+      and (
+        next_run_at is null
+        or next_run_at <= now()
+      )
       and (
         last_run_started_at is null
-        or last_run_started_at <= now() - make_interval(secs => (frequency_minutes * 60) - 10)
+        or last_run_finished_at >= last_run_started_at
+        or last_run_started_at <= now() - interval '30 minutes'
       )
     returning id
   `;
@@ -343,6 +356,7 @@ export const killBot = async (botId: string) => {
     update bot_runtime_configs
     set enabled = false,
         killed_at = now(),
+        next_run_at = null,
         updated_at = now()
     where bot_id = ${botId}
   `;
@@ -385,13 +399,14 @@ export const createBot = async (input: {
   await sql`
     insert into bot_runtime_configs (
       bot_id, enabled, venue, frequency_minutes, mode, asset_class,
-      budget_usdt, execution_config, context_symbols
+      budget_usdt, execution_config, context_symbols, next_run_at
     ) values (
       ${bot.id}, ${scheduledEnabled}, ${input.runtimeConfig.venue}, ${input.runtimeConfig.frequencyMinutes},
       ${input.runtimeConfig.mode}, ${input.runtimeConfig.assetClass},
       ${input.runtimeConfig.budgetUsdt ?? 1000},
       ${sql.json(input.runtimeConfig.execution)},
-      ${sql.json(input.runtimeConfig.contextSymbols)}
+      ${sql.json(input.runtimeConfig.contextSymbols)},
+      ${scheduledEnabled ? sql`now()` : null}
     )
   `;
 
@@ -446,6 +461,20 @@ export const updateBotConfig = async (
       update bot_runtime_configs
       set ${sql(runtimeUpdates)}, updated_at = now()
       where bot_id = ${botId}
+    `;
+  }
+
+  if (input.runtimeConfig !== undefined) {
+    await sql`
+      update bot_runtime_configs
+      set next_run_at = case
+            when last_run_finished_at is not null then last_run_finished_at + make_interval(secs => ${input.runtimeConfig.frequencyMinutes * 60})
+            when last_run_started_at is not null then last_run_started_at + make_interval(secs => ${input.runtimeConfig.frequencyMinutes * 60})
+            else now()
+          end,
+          updated_at = now()
+      where bot_id = ${botId}
+        and enabled = true
     `;
   }
 };

@@ -100,7 +100,9 @@ export const finishRun = async (input: {
   `;
   await sql`
     update bot_runtime_configs
-    set last_run_finished_at = now(), updated_at = now()
+    set last_run_finished_at = now(),
+        next_run_at = now() + make_interval(secs => frequency_minutes * 60),
+        updated_at = now()
     where id = ${input.runtimeConfigId}
   `;
 };
