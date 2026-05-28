@@ -53,11 +53,17 @@ set -a && source .env.local && set +a && node scripts/apply-sql.mjs apps/api/sql
 
 Set `DATABASE_SSL=false` in `.env.local` for local non-SSL Postgres. Leave it empty/true for Supabase pooler.
 
-## Deploy on Railway
+## Deployment
 
-Railway auto-deploys on every push to `main`. No infra to manage.
+Current production stack:
 
-### 1. API (trading agents backend)
+- **Vercel** runs `apps/web` only.
+- **Railway** runs `apps/api`, the bot scheduler, guardian, and background sync jobs.
+- **Supabase Postgres** stores app state.
+
+Do not add Vercel cron for bot scheduling. Railway is the always-on runtime owner.
+
+### 1. Railway API
 
 ```
 railway login
@@ -87,15 +93,18 @@ SCHEDULER_ENABLED=true
 GUARDIAN_ENABLED=true
 ```
 
-### 2. Web (dashboard)
+### 2. Vercel Web
 
-Create a second service in the same Railway project:
-- Root directory: `apps/web`
-- Build: `pnpm install && pnpm build`
-- Start: `pnpm start`
-- Add `NEXT_PUBLIC_API_URL` pointing to your API service URL
+Deploy `apps/web` to Vercel. The web app has no cron jobs and can run on Hobby.
 
-Or deploy to Vercel (free tier) — just point it at `apps/web`.
+Set these Vercel env vars:
+
+```
+API_BASE_URL=https://<railway-api-service>.up.railway.app
+API_SECRET_KEY=<same-32+-char-secret-as-railway>
+```
+
+`API_BASE_URL` is server-only. Do not use `NEXT_PUBLIC_API_URL` for the backend secret path.
 
 ### 3. TradingAgents (optional Python AI hedge fund)
 
@@ -107,7 +116,7 @@ If using the Python TradingAgents wrapper:
 
 ### GitHub auto-deploy
 
-Once connected, every `git push origin main` triggers a new deploy automatically. Railway builds, health-checks (`/health`), and swaps with zero downtime. Rollback from the dashboard if needed.
+Once connected, every `git push origin main` triggers a new Railway deploy automatically. Railway builds, health-checks (`/health`), and swaps with zero downtime. Rollback from the dashboard if needed.
 
 ## Environment
 
@@ -122,6 +131,9 @@ Once connected, every `git push origin main` triggers a new deploy automatically
 - `BINANCE_API_SECRET`: Binance Spot live secret
 - `SLACK_WEBHOOK_URL`: optional Slack webhook
 - `API_SECRET_KEY`: shared secret between the Next.js BFF routes and this API (header `x-api-key`)
+- `API_BASE_URL`: Vercel-only server env pointing at the Railway API
+- `SCHEDULER_ENABLED`: Railway-only; set `true` to run due bots automatically
+- `GUARDIAN_ENABLED`: Railway-only; set `true` to run position safety checks
 
 Minimum useful local tests:
 
@@ -129,6 +141,18 @@ Minimum useful local tests:
 - Research with real LLM: add `XAI_API_KEY` or `NOUS_API_KEY`
 - Testnet bot run: add Binance testnet keys
 - Live Light run: add Binance live keys and keep execution limits conservative
+
+### Railway background jobs
+
+The API starts one in-process background loop on Railway:
+
+- Bot scheduler: checks due bots every 15 seconds when `SCHEDULER_ENABLED=true`.
+- Market data cache: refreshes Binance prices and balances every minute so dashboard requests stay fast.
+- LLM pricing sync: refreshes provider pricing assumptions hourly.
+- Model catalog sync: fetches available models hourly.
+- Venue symbol sync: refreshes tradable Binance symbols hourly.
+
+Use `GET /internal/background-jobs` with `x-api-key` to inspect status.
 
 ### CORS (API ↔ dashboard on Vercel)
 

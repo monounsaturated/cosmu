@@ -3,6 +3,7 @@ import type { DashboardPayload } from "@cosmu/shared";
 
 type AccountEntry = DashboardPayload["accounts"][number];
 type VenueOverview = DashboardPayload["venueOverview"];
+type MarketDataStatus = DashboardPayload["marketDataStatus"];
 
 const formatUsd = (value: number) =>
   new Intl.NumberFormat("en-US", {
@@ -42,12 +43,23 @@ const fallbackAccounts = (venueOverview: VenueOverview): AccountEntry[] => {
   return rows;
 };
 
+const formatFreshness = (value: string | null | undefined) => {
+  if (!value) return "warming up";
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 90) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 90) return `${minutes}m ago`;
+  return `${Math.round(minutes / 60)}h ago`;
+};
+
 export function VenueOverview({
   accounts,
-  venueOverview
+  venueOverview,
+  marketDataStatus
 }: {
   accounts: DashboardPayload["accounts"];
   venueOverview: VenueOverview;
+  marketDataStatus?: MarketDataStatus;
 }) {
   const rows = accounts.length > 0 ? accounts : fallbackAccounts(venueOverview);
 
@@ -70,12 +82,16 @@ export function VenueOverview({
               ? Math.min(100, Math.max(0, (account.allocatedAmount / account.accountBalance) * 100))
               : 0;
             const spareTone = account.spareAmount < 0 ? "value-red" : account.spareAmount > 0 ? "value-green" : "";
+            const dataStatus = account.mode === "live" ? marketDataStatus?.live : marketDataStatus?.testnet;
+            const dataLabel = dataStatus?.balanceError
+              ? "balance unavailable"
+              : `balance ${formatFreshness(dataStatus?.balanceUpdatedAt)}`;
             return (
               <article className={`account-card account-card-${account.status}`} key={account.id}>
                 <div className="account-card-top">
                   <span>
                     <strong>{account.label}</strong>
-                    <small>{account.venue} / {account.mode}</small>
+                    <small>{account.venue} / {account.mode} · {dataLabel}</small>
                   </span>
                   <span className={`badge ${account.connected ? "badge-success" : "badge-inactive"}`}>
                     {account.connected ? "connected" : account.status}

@@ -154,8 +154,15 @@ const FALLBACK_PRICING: PricingEntry[] = [
   }
 ];
 
-let cachedPricingCatalog: PricingCatalog | null = null;
+const buildFallbackPricingCatalog = (): PricingCatalog => ({
+  entries: FALLBACK_PRICING,
+  generatedAt: new Date().toISOString(),
+  source: "static-fallback"
+});
+
+let cachedPricingCatalog: PricingCatalog = buildFallbackPricingCatalog();
 let pricingCacheExpiresAt = 0;
+let pricingRefreshPromise: Promise<PricingCatalog> | null = null;
 
 const PRICING_SOURCE_URLS = Array.from(
   new Map(FALLBACK_PRICING.map((entry) => [`${entry.provider}:${entry.sourceUrl}`, {
@@ -237,43 +244,64 @@ const checkPricingSources = async () => {
 
 export const refreshLlmPricingCatalog = async (force = false): Promise<PricingCatalog> => {
   const now = Date.now();
-  if (!force && cachedPricingCatalog && now < pricingCacheExpiresAt) {
+  if (!force && now < pricingCacheExpiresAt) {
     return cachedPricingCatalog;
   }
 
-  const checkedAtByProvider = await checkPricingSources();
-  let entries = FALLBACK_PRICING.map((entry) => ({
-    ...entry,
-    fetchedAt: checkedAtByProvider.get(entry.provider) ?? entry.fetchedAt,
-    note: checkedAtByProvider.has(entry.provider) && entry.provider !== "xai"
-      ? `${entry.note} Pricing source page reachable at refresh time; list-rate parsing is kept conservative.`
-      : entry.note
-  }));
-  let source = "static-fallback";
-
-  try {
-    const xaiPricing = await fetchXaiPricing();
-    if (xaiPricing.length > 0) {
-      entries = [
-        ...xaiPricing,
-        ...entries.filter((entry) => entry.provider !== "xai")
-      ];
-      source = "xai-live-plus-source-checked-fallbacks";
-    }
-  } catch (error) {
-    console.warn("[llm-spend] using fallback pricing:", error instanceof Error ? error.message : String(error));
+  if (!force && pricingRefreshPromise) {
+    return pricingRefreshPromise;
   }
 
-  cachedPricingCatalog = {
-    entries,
-    generatedAt: new Date().toISOString(),
-    source
-  };
-  pricingCacheExpiresAt = now + PRICING_REFRESH_INTERVAL_MS;
-  return cachedPricingCatalog;
+  pricingRefreshPromise = (async () => {
+    const checkedAtByProvider = await checkPricingSources();
+    let entries = FALLBACK_PRICING.map((entry) => ({
+      ...entry,
+      fetchedAt: checkedAtByProvider.get(entry.provider) ?? entry.fetchedAt,
+      note: checkedAtByProvider.has(entry.provider) && entry.provider !== "xai"
+        ? `${entry.note} Pricing source page reachable at refresh time; list-rate parsing is kept conservative.`
+        : entry.note
+    }));
+    let source = "static-fallback";
+
+    try {
+      const xaiPricing = await fetchXaiPricing();
+      if (xaiPricing.length > 0) {
+        entries = [
+          ...xaiPricing,
+          ...entries.filter((entry) => entry.provider !== "xai")
+        ];
+        source = "xai-live-plus-source-checked-fallbacks";
+      }
+    } catch (error) {
+      console.warn("[llm-spend] using fallback pricing:", error instanceof Error ? error.message : String(error));
+    }
+
+    cachedPricingCatalog = {
+      entries,
+      generatedAt: new Date().toISOString(),
+      source
+    };
+    pricingCacheExpiresAt = now + PRICING_REFRESH_INTERVAL_MS;
+    return cachedPricingCatalog;
+  })();
+
+  try {
+    return await pricingRefreshPromise;
+  } finally {
+    pricingRefreshPromise = null;
+  }
 };
 
 export const getLlmPricingCatalog = () => refreshLlmPricingCatalog(false);
+
+export const getCachedLlmPricingCatalog = () => {
+  if (Date.now() > pricingCacheExpiresAt && !pricingRefreshPromise) {
+    void refreshLlmPricingCatalog(false).catch((error) => {
+      console.warn("[llm-spend] background pricing refresh failed:", error instanceof Error ? error.message : String(error));
+    });
+  }
+  return cachedPricingCatalog;
+};
 
 const modelMatches = (pattern: string, model: string) => {
   const normalizedPattern = pattern.toLowerCase();
@@ -307,6 +335,28 @@ export const getLlmSpendEstimate = async () => {
       where brc.enabled = true
       order by b.bot_number asc
     `;
+  const pricingCatalog = getCachedLlmPricingCatalog();
+
+  if (activeBots.length === 0) {
+    return llmSpendEstimateSchema.parse({
+      generatedAt: new Date().toISOString(),
+      currency: "USD",
+      activeBotCount: 0,
+      pricedBotCount: 0,
+      unknownBotCount: 0,
+      sampleWindowRuns: SAMPLE_WINDOW_RUNS,
+      estimatedHourlyUsd: 0,
+      estimatedDailyUsd: 0,
+      estimatedMonthlyUsd: 0,
+      observedSampleUsd: 0,
+      pricingUpdatedAt: pricingCatalog.generatedAt,
+      pricingSource: pricingCatalog.source,
+      note: "No active bots. Estimate will update from stored token samples when bots are enabled and complete runs.",
+      assumptions: [],
+      bots: []
+    });
+  }
+
   const sampleRunCounts = await sql<SampleRunCountRow[]>`
       with recent_runs as (
         select
@@ -349,7 +399,6 @@ export const getLlmSpendEstimate = async () => {
       where rr.rn <= ${SAMPLE_WINDOW_RUNS}
       group by rr.bot_id, c.provider, c.model
     `;
-  const pricingCatalog = await getLlmPricingCatalog();
 
   const runCountByBot = new Map(sampleRunCounts.map((row) => [row.botId, Number(row.sampleRunCount ?? 0)]));
   const usageByBot = new Map<string, UsageRow[]>();
@@ -530,7 +579,7 @@ const toIsoString = (value: Date | string | null | undefined) => {
 
 export const getLlmSpendOverview = async () => {
   const estimate = await getLlmSpendEstimate();
-  const pricingCatalog = await getLlmPricingCatalog();
+  const pricingCatalog = getCachedLlmPricingCatalog();
   const aggregateRows = await sql<SpendAggregateRow[]>`
       select
         provider,

@@ -40,3 +40,6 @@ Frontend-editable settings are non-secret runtime configuration only. API keys, 
 
 Keep Railway for API/scheduler/guardian, Vercel for frontend, and Supabase/Postgres for state. Add RunPod or VPS workers only for Research compute; do not move the whole app to GPU infra.
 
+## 2026-05-28: Vercel Is Web Only
+
+Keep recurring bot/runtime automation on Railway. Vercel should not define cron jobs for bot runs or hourly sync because the backend is already paid and always-on, and Hobby cron limits block deploys. The frontend calls Railway through server-side `API_BASE_URL` plus `API_SECRET_KEY`; Supabase remains the database.

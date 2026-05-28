@@ -360,8 +360,7 @@ export const ensureBotSchedulerSchema = async () => {
  * Atomically claim the current scheduled run for this bot.
  *
  * Returns true if we won the race and the run should proceed, false if another
- * tick/source (internal scheduler, external cron, manual trigger) already
- * claimed this cycle. Dedup is enforced by moving `next_run_at` forward in the
+ * tick/source already claimed this cycle. Dedup is enforced by moving `next_run_at` forward in the
  * same update that records the claim, so two ticks firing together can only win
  * once.
  */

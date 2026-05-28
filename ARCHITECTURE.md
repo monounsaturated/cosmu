@@ -31,7 +31,11 @@ The first cross-mode primitive is `agent_steps`: a product-level timeline for ev
 
 ## Triple-run / double-fire protection
 
-Runs are atomically claimed in [lib/store/bots.ts:claimRun](apps/api/src/lib/store/bots.ts): a single `UPDATE … WHERE last_run_started_at IS NULL OR last_run_started_at <= now() - (frequency_minutes*60 - 10s) RETURNING id`. If another tick source (internal 15s loop, Railway cron, manual trigger) already claimed the window, `runBot` bails with `{runId:null, status:"skipped"}`. **Do not** add a separate "last_run_at" write anywhere — the UPDATE is the claim.
+Runs are atomically claimed in [lib/store/bots.ts:claimRun](apps/api/src/lib/store/bots.ts): a single `UPDATE` records `last_run_started_at` and advances `next_run_at` before the run starts. If another tick source already claimed the window, `runBot` bails with `{runId:null, status:"skipped"}`. **Do not** add a separate "last_run_at" write anywhere — the UPDATE is the claim.
+
+Runtime automation belongs to Railway. Vercel hosts the web app only and should not contain bot-scheduler cron jobs.
+
+Dashboard market/account data is cached by the Railway background loop. Page requests should read the cache and return quickly instead of waiting on Binance.
 
 Kill-mode liquidation ([services/kill-bot.ts](apps/api/src/services/kill-bot.ts)) skips `claimRun` because `killBot` disables the bot *first*, so the scheduler can't race it.
 

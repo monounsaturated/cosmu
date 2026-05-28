@@ -123,7 +123,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
 
   // Atomic claim: if another tick/source already started this cycle, bail out
   // silently. Protects against double-firing from overlapping scheduler sources
-  // (internal 15s loop + external /internal/scheduler/tick cron).
+  // (Railway loop, watchdog, or an operator-triggered internal tick).
   // Manual triggers (Run Now button) bypass the claim to always fire.
   if (!opts.manual) {
     const claimed = await claimRun(bot.runtimeConfigId);

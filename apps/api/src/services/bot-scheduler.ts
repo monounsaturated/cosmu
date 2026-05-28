@@ -2,7 +2,7 @@ import { env } from "../env.js";
 import { getDueBots } from "../lib/store.js";
 import { runBot } from "./run-bot.js";
 
-export type SchedulerTrigger = "startup" | "interval" | "manual" | "watchdog" | "cron";
+export type SchedulerTrigger = "startup" | "interval" | "manual" | "watchdog";
 
 export const BOT_SCHEDULER_INTERVAL_MS = 15 * 1000;
 
@@ -30,7 +30,7 @@ export const getSchedulerStatus = () => ({
 });
 
 export const runSchedulerTick = async (trigger: SchedulerTrigger) => {
-  if (!env.SCHEDULER_ENABLED && trigger !== "manual" && trigger !== "cron") {
+  if (!env.SCHEDULER_ENABLED && trigger !== "manual") {
     return {
       checkedAt: new Date().toISOString(),
       trigger,

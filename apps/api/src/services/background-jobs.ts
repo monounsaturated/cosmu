@@ -13,9 +13,15 @@ import {
   syncVenueSymbols
 } from "./catalog.js";
 import { PRICING_REFRESH_INTERVAL_MS, refreshLlmPricingCatalog } from "./llm-spend.js";
+import { MARKET_DATA_REFRESH_INTERVAL_MS, refreshMarketDataSnapshot } from "./market-data-cache.js";
 
-type BackgroundJobTrigger = "startup" | "interval" | "manual" | "cron";
-export type BackgroundJobId = "bot-scheduler" | "llm-pricing-sync" | "model-catalog-sync" | "venue-symbol-sync";
+type BackgroundJobTrigger = "startup" | "interval" | "manual";
+export type BackgroundJobId =
+  | "bot-scheduler"
+  | "market-data-refresh"
+  | "llm-pricing-sync"
+  | "model-catalog-sync"
+  | "venue-symbol-sync";
 
 type BackgroundJobDefinition = {
   id: BackgroundJobId;
@@ -54,7 +60,7 @@ let backgroundBootstrapLastError: string | null = null;
 let backgroundBootstrapNextRetryAt: string | null = null;
 
 const schedulerTriggerFromBackground = (trigger: BackgroundJobTrigger): SchedulerTrigger =>
-  trigger === "cron" ? "cron" : trigger === "manual" ? "manual" : trigger;
+  trigger === "manual" ? "manual" : trigger;
 
 const JOB_DEFINITIONS: BackgroundJobDefinition[] = [
   {
@@ -64,6 +70,14 @@ const JOB_DEFINITIONS: BackgroundJobDefinition[] = [
     intervalMs: BOT_SCHEDULER_INTERVAL_MS,
     enabled: () => env.SCHEDULER_ENABLED,
     run: (trigger) => runSchedulerTick(schedulerTriggerFromBackground(trigger))
+  },
+  {
+    id: "market-data-refresh",
+    label: "Market data cache",
+    description: "Refreshes cached Binance prices and account balances so dashboard requests stay fast.",
+    intervalMs: MARKET_DATA_REFRESH_INTERVAL_MS,
+    enabled: () => true,
+    run: (trigger) => refreshMarketDataSnapshot(trigger === "startup" ? "startup" : trigger === "manual" ? "manual" : "interval")
   },
   {
     id: "llm-pricing-sync",
@@ -127,7 +141,7 @@ export const runBackgroundJob = async (id: BackgroundJobId, trigger: BackgroundJ
   const status = jobStatuses.get(id)!;
   status.enabled = job.enabled();
 
-  if (!status.enabled && trigger !== "manual" && trigger !== "cron") {
+  if (!status.enabled && trigger !== "manual") {
     return {
       id,
       skipped: true,

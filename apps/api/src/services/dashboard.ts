@@ -1,7 +1,7 @@
 import { sql } from "../db.js";
-import { getAccountBalance, getAllTickerPrices } from "../adapters/binance.js";
 import { dashboardSchema, botSummarySchema, botPerformanceSeriesSchema, portfolioSnapshotSchema } from "@cosmu/shared";
 import { getLlmSpendEstimate } from "./llm-spend.js";
+import { getCachedMarketDataSnapshot } from "./market-data-cache.js";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
@@ -16,42 +16,6 @@ const getSampleQuality = (daysRunning: number, tradeCount: number) => {
   if (daysRunning >= 14 && tradeCount >= 50) return "high" as const;
   if (daysRunning >= 3 && tradeCount >= 10) return "medium" as const;
   return "low" as const;
-};
-
-const dashboardFetchWarnings = new Map<string, number>();
-const DASHBOARD_FETCH_WARNING_THROTTLE_MS = 5 * 60 * 1000;
-const DASHBOARD_VENUE_TIMEOUT_MS = 3500;
-
-const describeFetchFailure = (reason: unknown) => {
-  const message = reason instanceof Error ? reason.message : String(reason);
-  const binanceCodeMatch = message.match(/"code":(-?\d+)/);
-  const binanceMessageMatch = message.match(/"msg":"([^"]+)"/);
-  if (binanceCodeMatch || binanceMessageMatch) {
-    return `Binance ${binanceCodeMatch?.[1] ?? "error"}: ${binanceMessageMatch?.[1] ?? message}`;
-  }
-  return message;
-};
-
-const warnDashboardFetchFailure = (key: string, label: string, reason: unknown) => {
-  const now = Date.now();
-  const last = dashboardFetchWarnings.get(key) ?? 0;
-  if (now - last < DASHBOARD_FETCH_WARNING_THROTTLE_MS) return;
-  dashboardFetchWarnings.set(key, now);
-  console.warn(`[dashboard] ${label} unavailable: ${describeFetchFailure(reason)}`);
-};
-
-const withDashboardTimeout = async <T>(label: string, promise: Promise<T>): Promise<T> => {
-  let timeout: NodeJS.Timeout | null = null;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error(`${label} timed out after ${DASHBOARD_VENUE_TIMEOUT_MS}ms`)), DASHBOARD_VENUE_TIMEOUT_MS);
-      })
-    ]);
-  } finally {
-    if (timeout) clearTimeout(timeout);
-  }
 };
 
 export const getDashboard = async () => {
@@ -137,22 +101,11 @@ export const getDashboard = async () => {
     where e.status = 'success'
   `;
 
-  const [testnetPricesResult, testnetBalanceResult, livePricesResult, liveBalanceResult] = await Promise.allSettled([
-    withDashboardTimeout("testnet prices", getAllTickerPrices("testnet")),
-    withDashboardTimeout("testnet balance", getAccountBalance("testnet")),
-    withDashboardTimeout("live prices", getAllTickerPrices("live")),
-    withDashboardTimeout("live balance", getAccountBalance("live"))
-  ]);
-
-  const testnetPrices: any[] = testnetPricesResult.status === "fulfilled" ? testnetPricesResult.value : [];
-  const testnetBalance: any = testnetBalanceResult.status === "fulfilled" ? testnetBalanceResult.value : null;
-  const livePrices: any[] = livePricesResult.status === "fulfilled" ? livePricesResult.value : [];
-  const liveBalance: any = liveBalanceResult.status === "fulfilled" ? liveBalanceResult.value : null;
-
-  if (testnetPricesResult.status === "rejected") warnDashboardFetchFailure("testnet-prices", "testnet prices", testnetPricesResult.reason);
-  if (testnetBalanceResult.status === "rejected") warnDashboardFetchFailure("testnet-balance", "testnet balance", testnetBalanceResult.reason);
-  if (livePricesResult.status === "rejected") warnDashboardFetchFailure("live-prices", "live prices", livePricesResult.reason);
-  if (liveBalanceResult.status === "rejected") warnDashboardFetchFailure("live-balance", "live balance", liveBalanceResult.reason);
+  const marketData = getCachedMarketDataSnapshot();
+  const testnetPrices: any[] = marketData.testnet.prices;
+  const testnetBalance: any = marketData.testnet.balance;
+  const livePrices: any[] = marketData.live.prices;
+  const liveBalance: any = marketData.live.balance;
 
   const getPriceMap = (prices: any[]) => {
     if (!Array.isArray(prices)) return {};
@@ -383,6 +336,22 @@ export const getDashboard = async () => {
 
   return dashboardSchema.parse({
     generatedAt: new Date().toISOString(),
+    marketDataStatus: {
+      live: {
+        pricesUpdatedAt: marketData.live.pricesUpdatedAt,
+        balanceUpdatedAt: marketData.live.balanceUpdatedAt,
+        pricesError: marketData.live.pricesError,
+        balanceError: marketData.live.balanceError,
+        stale: marketData.live.stale
+      },
+      testnet: {
+        pricesUpdatedAt: marketData.testnet.pricesUpdatedAt,
+        balanceUpdatedAt: marketData.testnet.balanceUpdatedAt,
+        pricesError: marketData.testnet.pricesError,
+        balanceError: marketData.testnet.balanceError,
+        stale: marketData.testnet.stale
+      }
+    },
     venueOverview: {
       live: liveAccount ? {
         accountBalance: liveAccount.accountBalance,

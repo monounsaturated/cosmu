@@ -108,7 +108,11 @@ export default async function HomePage() {
       <SpendEstimatePanel estimate={dashboard.llmSpendEstimate} />
 
       <section className="command-grid">
-        <VenueOverview accounts={dashboard.accounts} venueOverview={dashboard.venueOverview} />
+        <VenueOverview
+          accounts={dashboard.accounts}
+          venueOverview={dashboard.venueOverview}
+          marketDataStatus={dashboard.marketDataStatus}
+        />
         <article className="panel">
           <div className="panel-table-header">
             <div>

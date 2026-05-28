@@ -896,9 +896,21 @@ const accountOverviewEntrySchema = venueOverviewEntrySchema.extend({
   status: z.enum(["connected", "configured", "unconfigured", "error"])
 });
 
+const marketDataModeStatusSchema = z.object({
+  pricesUpdatedAt: z.string().datetime().nullable(),
+  balanceUpdatedAt: z.string().datetime().nullable(),
+  pricesError: z.string().nullable(),
+  balanceError: z.string().nullable(),
+  stale: z.boolean()
+});
+
 export const dashboardSchema = z.object({
   generatedAt: z.string().datetime(),
   backendError: z.string().optional(),
+  marketDataStatus: z.object({
+    live: marketDataModeStatusSchema,
+    testnet: marketDataModeStatusSchema
+  }).optional(),
   venueOverview: z.object({
     live: venueOverviewEntrySchema.nullable(),
     testnet: venueOverviewEntrySchema.nullable()
