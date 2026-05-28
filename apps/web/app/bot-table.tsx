@@ -223,7 +223,18 @@ const COLUMN_DEFS: ColumnDef[] = [
   }
 ];
 
-const DEFAULT_VISIBLE_COLUMNS = COLUMN_DEFS.filter((column) => column.defaultVisible).map((column) => column.id);
+const DEFAULT_VISIBLE_COLUMNS: ColumnId[] = [
+  "agent",
+  "status",
+  "account",
+  "cadence",
+  "value",
+  "netPnl",
+  "returnPct",
+  "trades",
+  "lastDecision",
+  "actions"
+];
 const COMPACT_VISIBLE_COLUMNS: ColumnId[] = ["agent", "status", "account", "value", "netPnl", "actions"];
 
 const getInitialVisibleColumns = (compact: boolean, showCreatedByDefault: boolean): ColumnId[] => {
@@ -353,7 +364,7 @@ export function BotTable({
 
   if (dashboard.backendError) {
     return (
-      <section className="panel performance-surface">
+      <section className="panel performance-surface agent-performance-surface">
         <div className="performance-header">
           <div>
             <h3>{title}</h3>
@@ -370,7 +381,7 @@ export function BotTable({
   }
 
   return (
-    <section className="panel performance-surface">
+    <section className="panel performance-surface agent-performance-surface">
       <div className="performance-header">
         <div>
           <h3>{title}</h3>
@@ -427,8 +438,8 @@ export function BotTable({
         </details>
       </div>
 
-      <div className="table-scroll">
-        <table className="table table-compact">
+      <div className="table-scroll agent-table-scroll">
+        <table className="table table-compact agent-table">
           <thead>
             <tr>
               {visibleColumnDefs.map((column) => (

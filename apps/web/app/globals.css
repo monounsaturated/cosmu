@@ -673,7 +673,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
 /* ── 10. Metric Strip ── */
 .metric-strip {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 8px;
   margin-bottom: 16px;
 }
@@ -1123,6 +1123,18 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
   padding: 10px 0 0;
   text-align: left;
   font-size: 12px;
+}
+
+.agent-performance-surface {
+  margin-bottom: 16px;
+}
+
+.agent-table td[data-label="Latest Decision"] {
+  min-width: 220px;
+}
+
+.agent-table td[data-label="Agent"] strong {
+  white-space: nowrap;
 }
 
 .dashboard-error-state {
@@ -3478,6 +3490,77 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
 
   .table td[data-label="Actions"]::before {
     display: none;
+  }
+
+  .agent-performance-surface {
+    padding: 12px;
+  }
+
+  .agent-performance-surface .performance-header {
+    display: grid;
+    gap: 10px;
+  }
+
+  .agent-performance-surface .performance-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .agent-performance-surface .performance-summary span {
+    display: grid;
+    gap: 2px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+  }
+
+  .agent-table tbody {
+    gap: 12px;
+  }
+
+  .agent-table tr {
+    border-color: var(--border-strong);
+  }
+
+  .agent-table td {
+    min-height: 36px;
+    padding: 8px 10px;
+  }
+
+  .agent-table td[data-label="Agent"] {
+    display: block;
+    padding: 12px 12px 6px;
+    text-align: left;
+    border-bottom: 0;
+  }
+
+  .agent-table td[data-label="Agent"]::before {
+    display: none;
+  }
+
+  .agent-table td[data-label="Agent"] strong {
+    display: block;
+    color: var(--text-strong);
+    font-size: 16px;
+    line-height: 1.25;
+    white-space: normal;
+  }
+
+  .agent-table td[data-label="Latest Decision"] {
+    display: block;
+    text-align: left;
+  }
+
+  .agent-table td[data-label="Latest Decision"]::before {
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .agent-table td[data-label="Latest Decision"] .table-truncate {
+    max-width: none;
+    white-space: normal;
   }
 
   .run-detail-row td {

@@ -1,9 +1,7 @@
 import { sql } from "../db.js";
-import { dashboardSchema, botSummarySchema, botPerformanceSeriesSchema, portfolioSnapshotSchema } from "@cosmu/shared";
+import { dashboardSchema, botSummarySchema, portfolioSnapshotSchema } from "@cosmu/shared";
 import { getLlmSpendEstimate } from "./llm-spend.js";
 import { getCachedMarketDataSnapshot } from "./market-data-cache.js";
-
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 const parseJson = <T>(value: unknown): T => {
   if (typeof value === "string") {
@@ -43,6 +41,19 @@ export const getDashboard = async () => {
       from runs r
       left join decisions d on d.run_id = r.id
       order by r.bot_id, r.created_at desc
+    ),
+    latest_snapshot as (
+      select distinct on (r.bot_id)
+        r.bot_id,
+        ps.total_usd_value::float8 as "currentPortfolioUsd",
+        ps.gross_pnl_usd::float8 as "grossPnlUsd",
+        ps.net_pnl_usd::float8 as "netPnlUsd",
+        ps.fee_usd::float8 as "snapshotFeeUsd",
+        ps.raw_snapshot as "rawSnapshot"
+      from portfolio_snapshots ps
+      join runs r on r.id = ps.run_id
+      where ps.stage = 'after'
+      order by r.bot_id, ps.created_at desc
     )
     select
       b.id,
@@ -69,6 +80,11 @@ export const getDashboard = async () => {
       latest_run."lastRunStatus",
       latest_run."latestDecisionSummary",
       cast(latest_run."errorState" ->> 'message' as text) as "latestError",
+      latest_snapshot."currentPortfolioUsd",
+      latest_snapshot."grossPnlUsd",
+      latest_snapshot."netPnlUsd",
+      latest_snapshot."snapshotFeeUsd",
+      latest_snapshot."rawSnapshot",
       brc.budget_usdt::float8 as "budgetUsdt",
       brc.updated_at as "updatedAt"
     from bots b
@@ -82,69 +98,13 @@ export const getDashboard = async () => {
     left join run_stats on run_stats.bot_id = b.id
     left join trade_stats on trade_stats.bot_id = b.id
     left join latest_run on latest_run.bot_id = b.id
+    left join latest_snapshot on latest_snapshot.bot_id = b.id
     order by brc.enabled desc, b.created_at desc
   `;
 
-  // Fetch all successful executions to compute virtual portfolios
-  const allExecutions = await sql`
-    select
-      r.bot_id,
-      e.symbol,
-      e.side,
-      e.executed_quantity::float8 as "executedQuantity",
-      e.executed_notional_usd::float8 as "executedNotionalUsd",
-      e.fee_amount::float8 as "feeAmount",
-      e.fee_asset as "feeAsset",
-      e.fee_usd::float8 as "feeUsd"
-    from executions e
-    join runs r on r.id = e.run_id
-    where e.status = 'success'
-  `;
-
   const marketData = getCachedMarketDataSnapshot();
-  const testnetPrices: any[] = marketData.testnet.prices;
   const testnetBalance: any = marketData.testnet.balance;
-  const livePrices: any[] = marketData.live.prices;
   const liveBalance: any = marketData.live.balance;
-
-  const getPriceMap = (prices: any[]) => {
-    if (!Array.isArray(prices)) return {};
-    return Object.fromEntries(prices.map((p: any) => [p.symbol, Number(p.price)]));
-  };
-
-  const testnetPriceMap = getPriceMap(testnetPrices);
-  const livePriceMap = getPriceMap(livePrices);
-
-  const virtualPortfolios = new Map<string, { usdt: number; assets: Record<string, number> }>();
-  for (const bot of botRows) {
-    virtualPortfolios.set(bot.id, { usdt: bot.budgetUsdt ?? 1000, assets: {} });
-  }
-
-  for (const exec of allExecutions) {
-    const portfolio = virtualPortfolios.get(exec.bot_id);
-    if (!portfolio) continue;
-
-    // Strip either USDT or USDC from the pair — both count as cash.
-    const baseAsset = String(exec.symbol).replace(/USD[TC]$/i, "");
-    if (!portfolio.assets[baseAsset]) portfolio.assets[baseAsset] = 0;
-
-    if (exec.side === "buy") {
-      portfolio.assets[baseAsset] += exec.executedQuantity;
-      portfolio.usdt -= exec.executedNotionalUsd;
-    } else if (exec.side === "sell") {
-      portfolio.assets[baseAsset] -= exec.executedQuantity;
-      portfolio.usdt += exec.executedNotionalUsd;
-    }
-
-    if (exec.feeAsset && exec.feeAmount > 0) {
-      if (exec.feeAsset === "USDT" || exec.feeAsset === "USDC") {
-        portfolio.usdt -= exec.feeAmount;
-      } else {
-        if (!portfolio.assets[exec.feeAsset]) portfolio.assets[exec.feeAsset] = 0;
-        portfolio.assets[exec.feeAsset] -= exec.feeAmount;
-      }
-    }
-  }
 
   const allocatedByMode = new Map<string, number>([
     ["live", 0],
@@ -156,23 +116,12 @@ export const getDashboard = async () => {
     const daysRunning = Math.max(0, (Date.now() - row.startedAt.getTime()) / (1000 * 60 * 60 * 24));
     const tradeCount = Number(row.tradeCount ?? 0);
     const budgetUsdt = Number(row.budgetUsdt ?? 1000);
-
-    const portfolio = virtualPortfolios.get(row.id) ?? { usdt: budgetUsdt, assets: {} };
-    const priceMap = row.mode === "testnet" ? testnetPriceMap : livePriceMap;
-
-    let currentPortfolioUsd = portfolio.usdt;
-    for (const [asset, qty] of Object.entries(portfolio.assets)) {
-      if (qty > 0.00000001 || qty < -0.00000001) {
-        if (asset === "USDT" || asset === "USDC") currentPortfolioUsd += qty;
-        else currentPortfolioUsd += qty * (priceMap[`${asset}USDT`] ?? priceMap[`${asset}USDC`] ?? 0);
-      }
-    }
+    const currentPortfolioUsd = row.currentPortfolioUsd === null ? budgetUsdt : Number(row.currentPortfolioUsd);
+    const netPnlUsd = row.netPnlUsd === null ? currentPortfolioUsd - budgetUsdt : Number(row.netPnlUsd);
 
     if (row.enabled) {
       allocatedByMode.set(row.mode, (allocatedByMode.get(row.mode) ?? 0) + currentPortfolioUsd);
     }
-
-    const netPnlUsd = currentPortfolioUsd - budgetUsdt;
 
     return botSummarySchema.parse({
       ...row,
@@ -181,7 +130,7 @@ export const getDashboard = async () => {
       tradeCount,
       avgTradesPerDay: tradeCount / Math.max(daysRunning, 1),
       totalFeesUsd: row.totalFeesUsd === null ? null : Number(row.totalFeesUsd),
-      grossPnlUsd: null, // Virtual portfolio makes gross less meaningful without separating fees from trades perfectly, we just use netPnl
+      grossPnlUsd: row.grossPnlUsd === null ? null : Number(row.grossPnlUsd),
       netPnlUsd,
       currentPortfolioUsd,
       sampleQuality: getSampleQuality(daysRunning, tradeCount),
@@ -296,26 +245,20 @@ export const getDashboard = async () => {
     limit 20
   `;
 
-  // Provide a snapshot for the UI compatible with latestSnapshots
   const latestSnapshots = bots.map((bot) => {
-    const portfolio = virtualPortfolios.get(bot.id) ?? { usdt: bot.budgetUsdt, assets: {} };
-    const priceMap = bot.mode === "testnet" ? testnetPriceMap : livePriceMap;
-    
-    // Label cash by venue: live binance has no USDT pairs, so the bot's logical
-    // cash is held as USDC. Mirrors buildLogicalSnapshot for display consistency.
-    const cashAsset = bot.mode === "live" ? "USDC" : "USDT";
-    const balances = [{ asset: cashAsset, free: portfolio.usdt, locked: 0, usdValue: portfolio.usdt }];
-    for (const [asset, qty] of Object.entries(portfolio.assets)) {
-      if (qty > 0.00000001 || qty < -0.00000001) {
-        balances.push({
-          asset,
-          free: qty,
-          locked: 0,
-          usdValue: qty * (priceMap[`${asset}USDT`] ?? priceMap[`${asset}USDC`] ?? 0)
-        });
-      }
+    const row = botRows.find((candidate) => candidate.id === bot.id);
+    const rawSnapshot = row?.rawSnapshot ? parseJson(row.rawSnapshot) : null;
+    if (rawSnapshot) {
+      return {
+        botId: bot.id,
+        botName: bot.name?.trim()
+          ? `Bot #${bot.botNumber} — ${bot.name.trim()}`
+          : `Bot #${bot.botNumber}`,
+        snapshot: portfolioSnapshotSchema.parse(rawSnapshot)
+      };
     }
 
+    const cashAsset = bot.mode === "live" ? "USDC" : "USDT";
     return {
       botId: bot.id,
       botName: bot.name?.trim()
@@ -324,10 +267,10 @@ export const getDashboard = async () => {
       snapshot: portfolioSnapshotSchema.parse({
         assetClass: bot.assetClass,
         totalUsdValue: bot.currentPortfolioUsd ?? 0,
-        grossPnlUsd: null,
+        grossPnlUsd: bot.grossPnlUsd,
         netPnlUsd: bot.netPnlUsd ?? 0,
         feeUsd: bot.totalFeesUsd ?? 0,
-        balances,
+        balances: [{ asset: cashAsset, free: bot.currentPortfolioUsd ?? bot.budgetUsdt, locked: 0, usdValue: bot.currentPortfolioUsd ?? bot.budgetUsdt }],
         prices: [],
         capturedAt: new Date().toISOString()
       })

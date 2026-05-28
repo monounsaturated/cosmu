@@ -76,6 +76,15 @@ const app = express();
 const botCreateRuntimeConfigSchema = runtimeConfigSchema.omit({ enabled: true });
 const ALWAYS_KEEP_XAI_MODEL_IDS = new Set(["grok-4.3"]);
 
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] unhandled rejection:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("[process] uncaught exception:", error);
+  throw error;
+});
+
 const corsOptions = buildCorsOptions();
 app.use(corsOptions ? cors(corsOptions) : cors());
 app.use(express.json());

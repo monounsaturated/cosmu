@@ -20,6 +20,7 @@ API_SECRET_KEY=<same secret as Railway>
 ## Railway
 
 Railway runs the always-on backend from the repo root with `railway.toml`.
+The repo includes `.nvmrc` and an `engines` range so Railway, Vercel, and local builds stay on the same Node 22+ runtime family.
 
 Required core env vars:
 

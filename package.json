@@ -2,6 +2,9 @@
   "name": "cosmu",
   "private": true,
   "packageManager": "pnpm@10.18.0",
+  "engines": {
+    "node": ">=22 <26"
+  },
   "scripts": {
     "build": "pnpm --filter @cosmu/shared build && pnpm --filter @cosmu/api build",
     "build:all": "pnpm -r build",

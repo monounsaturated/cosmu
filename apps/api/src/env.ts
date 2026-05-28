@@ -20,8 +20,9 @@ function findRepoRoot(): string {
 }
 
 const repoRoot = findRepoRoot();
+// Load local files without overriding process env so Railway/Vercel secrets always win.
+dotenv.config({ path: path.join(repoRoot, ".env.local") });
 dotenv.config({ path: path.join(repoRoot, ".env") });
-dotenv.config({ path: path.join(repoRoot, ".env.local"), override: true });
 
 const optionalNonEmptyString = z.preprocess(
   (value) => {

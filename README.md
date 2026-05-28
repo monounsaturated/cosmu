@@ -62,6 +62,7 @@ Current production stack:
 - **Supabase Postgres** stores app state.
 
 Do not add Vercel cron for bot scheduling. Railway is the always-on runtime owner.
+The repo includes `.nvmrc` and a Node 22+ `engines` range; keep Railway and Vercel on that runtime family.
 
 ### 1. Railway API
 

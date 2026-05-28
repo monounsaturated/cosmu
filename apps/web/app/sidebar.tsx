@@ -47,9 +47,8 @@ const DEFAULT_FEATURE_TOGGLES: FeatureToggles = {
 };
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", description: "runs and portfolio", icon: BarChart3, group: "Core" },
+  { href: "/", label: "Agents", description: "dashboard and controls", icon: Bot, group: "Core" },
   { href: "/spending", label: "Spending", description: "model API costs", icon: DollarSign, group: "Core" },
-  { href: "/bots", label: "Agents", description: "create and compare", icon: Bot, group: "Core" },
   { href: "/prompts", label: "Prompts", description: "research and trader prompts", icon: BadgeCheck, group: "Core" },
   { href: "/settings", label: "Settings", description: "models, defaults, keys", icon: Settings, group: "Core" },
   { href: "/prompt-lab", label: "Prompt Lab", description: "prompt experiments", icon: Brain, group: "Modules", featureKey: "promptLab" },
@@ -60,8 +59,7 @@ const NAV_ITEMS = [
 ] satisfies NavItem[];
 
 const MOBILE_TABS = [
-  { href: "/", label: "Home", icon: BarChart3 },
-  { href: "/bots", label: "Agents", icon: Bot },
+  { href: "/", label: "Agents", icon: Bot },
   { href: "/spending", label: "Spend", icon: DollarSign },
   { href: "/prompts", label: "Prompts", icon: BadgeCheck },
   { href: "/settings", label: "Settings", icon: Settings }
@@ -149,7 +147,7 @@ export function Sidebar() {
   );
   const mobileExtraItems = useMemo(() => visibleItems.filter((item) => !MOBILE_TABS.some((tab) => tab.href === item.href)), [visibleItems]);
 
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const isActive = (href: string) => (href === "/" ? pathname === "/" || pathname.startsWith("/bots") : pathname.startsWith(href));
 
   const handleNavClick = (href: string) => {
     setPendingHref(href);

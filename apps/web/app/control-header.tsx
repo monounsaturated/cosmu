@@ -14,7 +14,7 @@ const labelForPath = (path: string) => {
   if (path.startsWith("/pro")) return "Review";
   if (path.startsWith("/prompts")) return "Prompts";
   if (path.startsWith("/settings")) return "Settings";
-  return "Dashboard";
+  return "Agents";
 };
 
 export function ControlHeader() {

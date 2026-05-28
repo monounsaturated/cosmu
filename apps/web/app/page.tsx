@@ -22,32 +22,19 @@ export default async function HomePage() {
   const totalAccountBalance = dashboard.accounts.reduce((sum, account) => sum + account.accountBalance, 0);
   const totalAllocated = dashboard.accounts.reduce((sum, account) => sum + account.allocatedAmount, 0);
   const freeCapacity = dashboard.accounts.reduce((sum, account) => sum + account.spareAmount, 0);
-  const importantLightBots = [...lightBots]
-    .sort((a, b) => {
-      const aScore =
-        (a.enabled ? 1000 : 0) +
-        (a.latestError ? 700 : 0) +
-        Math.abs(a.netPnlUsd ?? 0) +
-        (a.currentPortfolioUsd ?? 0) / 100;
-      const bScore =
-        (b.enabled ? 1000 : 0) +
-        (b.latestError ? 700 : 0) +
-        Math.abs(b.netPnlUsd ?? 0) +
-        (b.currentPortfolioUsd ?? 0) / 100;
-      return bScore - aScore;
-    })
-    .slice(0, 6);
-  const focusedDashboard = { ...dashboard, bots: importantLightBots };
+  const bestLightBot = [...lightBots]
+    .filter((bot) => bot.netPnlUsd !== null)
+    .sort((a, b) => (b.netPnlUsd ?? -Infinity) - (a.netPnlUsd ?? -Infinity))[0] ?? null;
 
   return (
     <main className="page page-wide">
       <AutoRefresh intervalMs={30000} />
-      <section className="command-hero">
+      <section className="command-hero agents-hero">
         <div>
-          <p className="eyebrow">Trading desk</p>
-          <h1>Agent balance sheet</h1>
+          <p className="eyebrow">Agents</p>
+          <h1>Run, inspect, and control every agent.</h1>
           <p>
-            Accounts, active risk, PnL, and execution flow in one focused dashboard.
+            One command center for agent status, portfolio exposure, recent runs, and emergency controls.
           </p>
         </div>
         <div className="hero-actions command-actions">
@@ -103,7 +90,23 @@ export default async function HomePage() {
           <strong className={recentFailures > 0 ? "value-red" : ""}>{recentFailures}</strong>
           <small>last dashboard window</small>
         </article>
+        <article>
+          <span>Best agent</span>
+          <strong>{bestLightBot ? `#${bestLightBot.botNumber}` : "—"}</strong>
+          <small>{bestLightBot ? `${bestLightBot.netPnlUsd! >= 0 ? "+" : ""}$${bestLightBot.netPnlUsd!.toFixed(2)} net` : "no sample yet"}</small>
+        </article>
       </section>
+
+      <BotTable
+        dashboard={dashboard}
+        workspaceMode="light"
+        title="Agents"
+        description="The main operating table. Search, sort, run, stop, and open an agent from one place."
+        emptyMessage="No agents yet. Create one to start with a paper strategy."
+        defaultSortField="created"
+        defaultSortOrder="desc"
+        showCreatedByDefault
+      />
 
       <SpendEstimatePanel estimate={dashboard.llmSpendEstimate} />
 
@@ -134,18 +137,6 @@ export default async function HomePage() {
             }))} />
           )}
         </article>
-      </section>
-
-      <section className="focus-section">
-        <BotTable
-          dashboard={focusedDashboard}
-          workspaceMode="light"
-          title="Important agents"
-          description="Active agents, recent errors, and meaningful exposure only. Open Agents for the full list."
-          emptyMessage="No agents yet. Create one to start with a paper strategy."
-          compact
-          maxRows={6}
-        />
       </section>
 
       <section className="stack command-stack">
