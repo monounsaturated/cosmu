@@ -4,7 +4,8 @@ export const getMaxDrawdownLimitUsd = (runtimeConfig: RuntimeConfig) =>
   runtimeConfig.budgetUsdt * (1 - runtimeConfig.execution.maxDrawdownPct / 100);
 
 export const isMaxDrawdownBreached = (runtimeConfig: RuntimeConfig, totalUsdValue: number) =>
-  Number.isFinite(totalUsdValue)
+  runtimeConfig.execution.maxDrawdownEnabled
+  && Number.isFinite(totalUsdValue)
   && totalUsdValue <= getMaxDrawdownLimitUsd(runtimeConfig);
 
 export const describeMaxDrawdownBreach = (runtimeConfig: RuntimeConfig, totalUsdValue: number) => {

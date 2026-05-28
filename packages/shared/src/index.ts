@@ -95,9 +95,9 @@ export const prePromptModulesSchema = z.object({
   includeCurrentPositions: z.boolean().default(true),
   includePastTrades: z.boolean().default(false),
   pastTradesLookback: z.number().int().min(1).max(200).default(10),
-  includePerformanceStats: z.boolean().default(true),
+  includePerformanceStats: z.boolean().default(false),
   includeBotRanking: z.boolean().default(false),
-  includeWalletOverview: z.boolean().default(true)
+  includeWalletOverview: z.boolean().default(false)
 });
 
 export const prePromptConfigSchema = z
@@ -107,9 +107,9 @@ export const prePromptConfigSchema = z
       includeCurrentPositions: true,
       includePastTrades: false,
       pastTradesLookback: 10,
-      includePerformanceStats: true,
+      includePerformanceStats: false,
       includeBotRanking: false,
-      includeWalletOverview: true
+      includeWalletOverview: false
     })
   })
   .transform((val) => ({
@@ -133,6 +133,7 @@ const DEFAULT_PHASE_DEFAULT = { provider: "xai", modelProfileId: null, prompt: D
 const DEFAULT_TRADER_PHASE_DEFAULT = { provider: "xai", modelProfileId: null, prompt: DEFAULT_SAVED_PROMPT_DEFAULT } as const;
 const DEFAULT_RUNTIME_EXECUTION = {
   enabled: false,
+  maxDrawdownEnabled: false,
   allowMarketOrders: true,
   allowLimitOrders: true,
   maxOrdersPerRun: 3,
@@ -181,7 +182,7 @@ export const DEFAULT_INJECTED_DATA_TEMPLATES = {
   },
   traderExecutionRules: {
     label: "Execution Rules",
-    preview: "=== EXECUTION RULES ===\nRules enforced: YES\nMax orders/run: 3 | Max notional/order: $250\nCash reserve (untouchable): $25\nMax drawdown before bot kill: 10%\nAllowed types: MARKET, LIMIT"
+    preview: "=== EXECUTION RULES ===\nOrder caps: OFF\nMax drawdown kill: OFF\nAllowed types: MARKET, LIMIT"
   },
   traderWallet: {
     label: "Wallet",
@@ -239,6 +240,7 @@ export const agentRuntimeDefaultsSchema = z.object({
   symbolScope: symbolScopeSchema.default("all"),
   execution: z.object({
     enabled: z.boolean().default(false),
+    maxDrawdownEnabled: z.boolean().default(false),
     allowMarketOrders: z.boolean().default(true),
     allowLimitOrders: z.boolean().default(true),
     maxOrdersPerRun: z.number().int().positive().max(20).default(3),
@@ -312,6 +314,7 @@ export const runtimeConfigSchema = z.object({
   symbolScope: symbolScopeSchema.default("selected"),
   execution: z.object({
     enabled: z.boolean().default(false),
+    maxDrawdownEnabled: z.boolean().default(false),
     allowMarketOrders: z.boolean().default(true),
     allowLimitOrders: z.boolean().default(true),
     maxOrdersPerRun: z.number().int().positive().max(20).default(5),

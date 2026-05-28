@@ -83,6 +83,9 @@ const buildSessionSection = (bot: BotSetup, label?: string) => [
 ].join("\n");
 
 const buildExecRulesSection = (exec: BotSetup["runtimeConfig"]["execution"], label?: string) => {
+  const drawdownRule = exec.maxDrawdownEnabled
+    ? `Max drawdown before bot kill: ${exec.maxDrawdownPct}%`
+    : "Max drawdown kill: OFF";
   // When rules are disabled, deliberately do NOT surface the configured
   // max-orders-per-run / max-notional numbers: the model will anchor on them
   // and produce baskets of exactly that size even though nothing is enforced.
@@ -90,7 +93,8 @@ const buildExecRulesSection = (exec: BotSetup["runtimeConfig"]["execution"], lab
   if (!exec.enabled) {
     return [
       heading(label, "EXECUTION RULES"),
-      "Rules enforced: NO (relaxed) — no order-count or per-order notional caps.",
+      "Order caps: OFF — no order-count or per-order notional caps.",
+      drawdownRule,
       "Size and count of orders are up to your judgment. Total spend is still bounded by the bot's budget and by available wallet balance; Binance tradability rules (min notional, lot size) still apply.",
       "Allowed order types: MARKET, LIMIT"
     ].join("\n");
@@ -101,10 +105,10 @@ const buildExecRulesSection = (exec: BotSetup["runtimeConfig"]["execution"], lab
     .join(", ");
   return [
     heading(label, "EXECUTION RULES"),
-    "Rules enforced: YES",
+    "Order caps: ON",
     `Max orders/run: ${exec.maxOrdersPerRun} | Max notional/order: $${exec.maxNotionalPerOrderUsd}`,
     `Cash reserve (untouchable): $${exec.minCashReserveUsd}`,
-    `Max drawdown before bot kill: ${exec.maxDrawdownPct}%`,
+    drawdownRule,
     `Allowed types: ${allowedTypes}`
   ].join("\n");
 };

@@ -41,6 +41,7 @@ type AppSettings = {
       symbolScope: "selected" | "all";
       execution: {
         enabled: boolean;
+        maxDrawdownEnabled: boolean;
         allowMarketOrders: boolean;
         allowLimitOrders: boolean;
         maxOrdersPerRun: number;
@@ -98,6 +99,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
       symbolScope: "all",
       execution: {
         enabled: false,
+        maxDrawdownEnabled: false,
         allowMarketOrders: true,
         allowLimitOrders: true,
         maxOrdersPerRun: 3,
@@ -656,14 +658,10 @@ export function SettingsConsole() {
             />
             <span>Execution rules on by default</span>
           </label>
-          <label className="field">
-            <span>Max drawdown before kill (%)</span>
+          <label className="checkbox-label">
             <input
-              type="number"
-              min={1}
-              max={100}
-              step={0.5}
-              value={settings.agentDefaults.runtime.execution.maxDrawdownPct}
+              type="checkbox"
+              checked={settings.agentDefaults.runtime.execution.maxDrawdownEnabled}
               onChange={(event) =>
                 updateSettings((current) => ({
                   ...current,
@@ -671,16 +669,41 @@ export function SettingsConsole() {
                     ...current.agentDefaults,
                     runtime: {
                       ...current.agentDefaults.runtime,
-                      execution: {
-                        ...current.agentDefaults.runtime.execution,
-                        maxDrawdownPct: Math.min(100, Math.max(1, Number(event.target.value) || 1))
-                      }
+                      execution: { ...current.agentDefaults.runtime.execution, maxDrawdownEnabled: event.target.checked }
                     }
                   }
                 }))
               }
             />
+            <span>Kill on max drawdown by default</span>
           </label>
+          {settings.agentDefaults.runtime.execution.maxDrawdownEnabled && (
+            <label className="field">
+              <span>Max drawdown before kill (%)</span>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                step={0.5}
+                value={settings.agentDefaults.runtime.execution.maxDrawdownPct}
+                onChange={(event) =>
+                  updateSettings((current) => ({
+                    ...current,
+                    agentDefaults: {
+                      ...current.agentDefaults,
+                      runtime: {
+                        ...current.agentDefaults.runtime,
+                        execution: {
+                          ...current.agentDefaults.runtime.execution,
+                          maxDrawdownPct: Math.min(100, Math.max(1, Number(event.target.value) || 1))
+                        }
+                      }
+                    }
+                  }))
+                }
+              />
+            </label>
+          )}
         </div>
       </section>
 

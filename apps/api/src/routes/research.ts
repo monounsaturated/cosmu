@@ -564,6 +564,7 @@ researchRouter.post("/research/candidates/:candidateId/paper-bot", async (reques
         symbolScope: "selected",
         execution: {
           enabled: false,
+          maxDrawdownEnabled: false,
           allowMarketOrders: true,
           allowLimitOrders: true,
           maxOrdersPerRun: 3,

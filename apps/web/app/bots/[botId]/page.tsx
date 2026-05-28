@@ -198,6 +198,11 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
             <p className="label" style={{ marginBottom: "12px" }}>Execution Rules</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
               <SettingPill label="Live Execution" on={setup.runtimeConfig.execution.enabled} />
+              <SettingPill
+                label="Max Drawdown Kill"
+                on={!!setup.runtimeConfig.execution.maxDrawdownEnabled}
+                extra={setup.runtimeConfig.execution.maxDrawdownEnabled ? `${setup.runtimeConfig.execution.maxDrawdownPct}%` : undefined}
+              />
               <SettingPill label="Market Orders" on={setup.runtimeConfig.execution.allowMarketOrders} />
               <SettingPill label="Limit Orders" on={setup.runtimeConfig.execution.allowLimitOrders} />
             </div>
@@ -214,10 +219,6 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
                 <div>
                   <p className="label">Min Cash Reserve</p>
                   <p>${setup.runtimeConfig.execution.minCashReserveUsd}</p>
-                </div>
-                <div>
-                  <p className="label">Max Drawdown Before Kill</p>
-                  <p>{setup.runtimeConfig.execution.maxDrawdownPct}%</p>
                 </div>
               </div>
             )}

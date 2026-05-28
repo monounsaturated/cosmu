@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ModalShell } from "./modal-shell";
 
@@ -127,10 +128,8 @@ Budget: $1,000.00 - you must stay within this allocation`,
   {
     label: "Execution Rules",
     preview: `=== EXECUTION RULES ===
-Rules enforced: YES
-Max orders/run: 3 | Max notional/order: $250
-Cash reserve (untouchable): $25
-Max drawdown before bot kill: 10%
+Order caps: OFF
+Max drawdown kill: OFF
 Allowed types: MARKET, LIMIT`,
   },
   {
@@ -200,6 +199,7 @@ type AppSettings = {
       symbolScope: "selected" | "all";
       execution: {
         enabled: boolean;
+        maxDrawdownEnabled: boolean;
         allowMarketOrders: boolean;
         allowLimitOrders: boolean;
         maxOrdersPerRun: number;
@@ -270,6 +270,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
       symbolScope: "all",
       execution: {
         enabled: false,
+        maxDrawdownEnabled: false,
         allowMarketOrders: true,
         allowLimitOrders: true,
         maxOrdersPerRun: 3,
@@ -400,6 +401,7 @@ type BotSetup = {
     contextSymbols: string[];
     execution: {
       enabled: boolean;
+      maxDrawdownEnabled: boolean;
       allowMarketOrders: boolean;
       allowLimitOrders: boolean;
       maxOrdersPerRun: number;
@@ -475,6 +477,7 @@ const buildDefaultState = () => {
     contextSymbols: [] as string[],
     execution: {
       enabled: false,
+      maxDrawdownEnabled: false,
       allowMarketOrders: true,
       allowLimitOrders: true,
       maxOrdersPerRun: 3,
@@ -487,21 +490,48 @@ const buildDefaultState = () => {
         includeCurrentPositions: true,
         includePastTrades: false,
         pastTradesLookback: 10,
-        includePerformanceStats: true,
+        includePerformanceStats: false,
         includeBotRanking: false,
-        includeWalletOverview: true
+        includeWalletOverview: false
       }
     }
   };
 };
 
-function InjectedPreviewBlock({ label, preview, alwaysOn }: { label: string; preview: string; alwaysOn?: boolean }) {
+function InjectedPreviewBlock({
+  label,
+  preview,
+  checked,
+  disabled,
+  alwaysOn,
+  onCheckedChange,
+  children
+}: {
+  label: string;
+  preview: string;
+  checked: boolean;
+  disabled?: boolean;
+  alwaysOn?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+  children?: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="injected-block">
+    <div className={`injected-block ${checked ? "" : "injected-block-unchecked"} ${disabled ? "injected-block-disabled" : ""}`}>
+      <div className="injected-block-header">
+        <label className="injected-block-toggle" onClick={(event) => event.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={disabled}
+            aria-label={`${label} injected data`}
+            onChange={(event) => onCheckedChange?.(event.target.checked)}
+          />
+          <span className="injected-block-check" aria-hidden="true" />
+        </label>
       <button
         type="button"
-        className="injected-block-header"
+          className="injected-block-main"
         onClick={() => setOpen(!open)}
       >
         <span className="injected-block-label">
@@ -510,8 +540,12 @@ function InjectedPreviewBlock({ label, preview, alwaysOn }: { label: string; pre
         </span>
         <span className="injected-block-chevron">{open ? "v" : ">"}</span>
       </button>
+      </div>
       {open && (
-        <pre className="injected-block-preview">{preview}</pre>
+        <>
+          <pre className="injected-block-preview">{preview}</pre>
+          {children && <div className="injected-block-extra">{children}</div>}
+        </>
       )}
     </div>
   );
@@ -593,10 +627,53 @@ function PromptSection({
   disabled?: boolean;
 }) {
   const title = phase === "research" ? "Research Prompt" : "Trader Prompt";
+  const hasInjectedData = alwaysInjected.length > 0 || (optionalModules?.length ?? 0) > 0;
 
   const defaultPromptName = nextPromptNumber
     ? `${title} #${nextPromptNumber}`
     : title;
+  const renderInjectedData = () => (
+    <div className="prompt-composer-injected">
+      <div className="injected-separator">
+        <span className="injected-separator-label">Injected Data (auto-appended at runtime)</span>
+      </div>
+      {alwaysInjected.map((item) => (
+        <InjectedPreviewBlock
+          key={item.label}
+          label={item.label}
+          preview={item.preview}
+          checked
+          disabled
+          alwaysOn
+        />
+      ))}
+      {optionalModules?.map((m) => {
+        const moduleChecked = activeModules?.[m.key] ?? false;
+        return (
+          <InjectedPreviewBlock
+            key={m.key}
+            label={m.label}
+            preview={m.preview}
+            checked={moduleChecked}
+            onCheckedChange={(checked) => onToggleModule?.(m.key, checked)}
+          >
+            {m.key === "includePastTrades" && moduleChecked && pastTradesLookback !== undefined && (
+              <label className="injected-lookback-field">
+                <span>Lookback</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={pastTradesLookback}
+                  onChange={(e) => onLookbackChange?.(Number(e.target.value))}
+                />
+              </label>
+            )}
+          </InjectedPreviewBlock>
+        );
+      })}
+    </div>
+  );
 
   return (
     <div className="form-section" style={{ borderLeft: `3px solid ${phaseColor}` }}>
@@ -715,19 +792,7 @@ function PromptSection({
                 rows={10}
                 required
               />
-              {alwaysInjected.length > 0 && (
-                <div className="prompt-composer-injected">
-                  <div className="injected-separator">
-                    <span className="injected-separator-label">Injected Data (auto-appended at runtime)</span>
-                  </div>
-                  {alwaysInjected.map((item) => (
-                    <InjectedPreviewBlock key={item.label} label={item.label} preview={item.preview} alwaysOn />
-                  ))}
-                  {optionalModules?.filter((m) => activeModules?.[m.key]).map((m) => (
-                    <InjectedPreviewBlock key={m.key} label={m.label} preview={m.preview} />
-                  ))}
-                </div>
-              )}
+              {hasInjectedData && renderInjectedData()}
             </div>
           </div>
         </div>
@@ -781,19 +846,7 @@ function PromptSection({
                   <pre className="prompt-body-preview">
                     {loadingBody ? "Loading..." : (savedBody ?? "\u2014")}
                   </pre>
-                  {alwaysInjected.length > 0 && (
-                    <div className="prompt-composer-injected">
-                      <div className="injected-separator">
-                        <span className="injected-separator-label">Injected Data (auto-appended at runtime)</span>
-                      </div>
-                      {alwaysInjected.map((item) => (
-                        <InjectedPreviewBlock key={item.label} label={item.label} preview={item.preview} alwaysOn />
-                      ))}
-                      {optionalModules?.filter((m) => activeModules?.[m.key]).map((m) => (
-                        <InjectedPreviewBlock key={m.key} label={m.label} preview={m.preview} />
-                      ))}
-                    </div>
-                  )}
+                  {hasInjectedData && renderInjectedData()}
                 </>
               )}
             </div>
@@ -801,43 +854,6 @@ function PromptSection({
         </>
       )}
 
-      {optionalModules && optionalModules.length > 0 && (
-        <div className="injected-data-section">
-          <h4>Injected Data</h4>
-          <p className="field-help">Live data appended to the trader prompt each run.</p>
-          <div className="modules-grid">
-            <label className="checkbox-label" style={{ opacity: 0.6 }}>
-              <input type="checkbox" checked disabled />
-              <span>Wallet &amp; held positions <span className="field-help">(always included)</span></span>
-            </label>
-            {optionalModules.map((m) => (
-              <label key={m.key} className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={activeModules?.[m.key] ?? false}
-                  onChange={(e) => onToggleModule?.(m.key, e.target.checked)}
-                />
-                <span>{m.label}</span>
-              </label>
-            ))}
-          </div>
-
-          {activeModules?.includePastTrades && pastTradesLookback !== undefined && (
-            <div className="form-row" style={{ maxWidth: 200, marginTop: 8 }}>
-              <label>
-                Lookback (trades)
-                <input
-                  type="number"
-                  min={1}
-                  max={200}
-                  value={pastTradesLookback}
-                  onChange={(e) => onLookbackChange?.(Number(e.target.value))}
-                />
-              </label>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -1797,30 +1813,45 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
 
             <div className="form-section">
               <h3>Deterministic settings</h3>
-              <div className="form-grid">
-                <div className="form-row">
-                  <label>
-                    Max drawdown before kill (%)
+              <div className="deterministic-toggle-grid">
+                <div className={`execution-toggle-card ${formData.execution.maxDrawdownEnabled ? "execution-toggle-card-active" : ""}`}>
+                  <label className="checkbox-label execution-cap-toggle">
                     <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      step={0.5}
-                      value={formData.execution.maxDrawdownPct}
+                      type="checkbox"
+                      checked={formData.execution.maxDrawdownEnabled}
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          execution: {
-                            ...formData.execution,
-                            maxDrawdownPct: Math.min(100, Math.max(1, Number(e.target.value) || 1))
-                          }
+                          execution: { ...formData.execution, maxDrawdownEnabled: e.target.checked }
                         })
                       }
                     />
+                    <span>
+                      <strong>Kill on max drawdown</strong>
+                      <small>{formData.execution.maxDrawdownEnabled ? `Kill the bot if portfolio value falls ${formData.execution.maxDrawdownPct}% from starting budget.` : "Off by default. Turn on when you want a hard loss stop."}</small>
+                    </span>
                   </label>
-                  <span className="field-help">
-                    Always enforced. A $1,000 bot with 10% max drawdown is killed at $900.
-                  </span>
+                  {formData.execution.maxDrawdownEnabled && (
+                    <label className="compact-number-field">
+                      <span>Max drawdown (%)</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={0.5}
+                        value={formData.execution.maxDrawdownPct}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            execution: {
+                              ...formData.execution,
+                              maxDrawdownPct: Math.min(100, Math.max(1, Number(e.target.value) || 1))
+                            }
+                          })
+                        }
+                      />
+                    </label>
+                  )}
                 </div>
                 <label className="checkbox-label execution-cap-toggle">
                   <input

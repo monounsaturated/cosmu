@@ -120,6 +120,7 @@ agentsRouter.post("/agent-control/approvals/:approvalId/approve", async (request
           symbolScope: "selected",
           execution: {
             enabled: false,
+            maxDrawdownEnabled: false,
             allowMarketOrders: true,
             allowLimitOrders: true,
             maxOrdersPerRun: 3,
