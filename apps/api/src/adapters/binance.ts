@@ -37,9 +37,9 @@ export type VenueContext = {
 
 let venueSymbolsCache: { expiresAt: number; symbols: string[] } | null = null;
 
-const accountPermissionsCache = new Map<RuntimeConfig["mode"], { expiresAt: number; perms: Set<string> }>();
+const accountPermissionsCache = new Map<RuntimeConfig["mode"], { expiresAt: number; perms: Set<string> | undefined }>();
 
-const getAccountPermissions = async (mode: RuntimeConfig["mode"]): Promise<Set<string>> => {
+const getAccountPermissions = async (mode: RuntimeConfig["mode"]): Promise<Set<string> | undefined> => {
   const cached = accountPermissionsCache.get(mode);
   if (cached && cached.expiresAt > Date.now()) return cached.perms;
   try {
@@ -50,11 +50,12 @@ const getAccountPermissions = async (mode: RuntimeConfig["mode"]): Promise<Set<s
     // Binance omits SPOT when permissions is non-empty for some regional accounts, but canTrade
     // implies spot access — add SPOT so baseline pairs (no TRD_GRP_* restriction) still pass.
     if (acct?.canTrade) perms.add("SPOT");
-    accountPermissionsCache.set(mode, { expiresAt: Date.now() + 10 * 60 * 1000, perms });
-    return perms;
+    const resolvedPerms = perms.size > 0 || acct?.canTrade === false ? perms : undefined;
+    accountPermissionsCache.set(mode, { expiresAt: Date.now() + 10 * 60 * 1000, perms: resolvedPerms });
+    return resolvedPerms;
   } catch (err) {
     console.warn(`[binance] getAccountPermissions(${mode}) failed:`, err instanceof Error ? err.message : err);
-    return new Set<string>();
+    return undefined;
   }
 };
 
@@ -62,11 +63,16 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const getBaseUrl = (mode: RuntimeConfig["mode"]) => (mode === "live" ? LIVE_BASE_URL : TESTNET_BASE_URL);
 
-const getApiKey = (mode: RuntimeConfig["mode"]) => {
+const getConfiguredApiKey = (mode: RuntimeConfig["mode"]) => {
   if (mode === "testnet" && env.BINANCE_TESTNET_API_KEY) {
     return env.BINANCE_TESTNET_API_KEY;
   }
-  if (env.BINANCE_API_KEY) return env.BINANCE_API_KEY;
+  return env.BINANCE_API_KEY;
+};
+
+const getApiKey = (mode: RuntimeConfig["mode"]) => {
+  const apiKey = getConfiguredApiKey(mode);
+  if (apiKey) return apiKey;
   throw new Error(`${mode === "testnet" ? "BINANCE_TESTNET_API_KEY or " : ""}BINANCE_API_KEY is not configured`);
 };
 
@@ -95,7 +101,7 @@ const requestWithQuery = async (
   }
 
   const suffix = finalParams.toString();
-  return binanceFetch(mode, `${path}${suffix ? `?${suffix}` : ""}`, { method: "GET" });
+  return binanceFetch(mode, `${path}${suffix ? `?${suffix}` : ""}`, { method: "GET" }, signed);
 };
 
 const binanceFetch = async (
@@ -106,7 +112,8 @@ const binanceFetch = async (
 ) => {
   const url = new URL(`${getBaseUrl(mode)}${path}`);
   const headers = new Headers(init?.headers);
-  headers.set("X-MBX-APIKEY", getApiKey(mode));
+  const apiKey = signed ? getApiKey(mode) : getConfiguredApiKey(mode);
+  if (apiKey) headers.set("X-MBX-APIKEY", apiKey);
 
   let body: string | undefined;
   if (signed && init?.body && typeof init.body === "string") {
@@ -166,7 +173,9 @@ export const roundToTick = (value: number, tickSize: number) => {
 
 const parseSymbolRules = (exchangeInfo: any): SymbolRules => {
   const lotSize = exchangeInfo.filters.find((filter: any) => filter.filterType === "LOT_SIZE");
-  const minNotional = exchangeInfo.filters.find((filter: any) => filter.filterType === "MIN_NOTIONAL");
+  const minNotional = exchangeInfo.filters.find((filter: any) =>
+    filter.filterType === "MIN_NOTIONAL" || filter.filterType === "NOTIONAL"
+  );
   const priceFilter = exchangeInfo.filters.find((filter: any) => filter.filterType === "PRICE_FILTER");
 
   return {

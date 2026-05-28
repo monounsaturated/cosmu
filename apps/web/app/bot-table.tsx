@@ -36,6 +36,9 @@ type Props = {
   workspaceMode?: "light" | "research" | "pro";
   compact?: boolean;
   maxRows?: number;
+  defaultSortField?: ColumnId;
+  defaultSortOrder?: SortOrder;
+  showCreatedByDefault?: boolean;
 };
 
 const venueLabel = (venue: "binance" | "binance-testnet") =>
@@ -223,6 +226,14 @@ const COLUMN_DEFS: ColumnDef[] = [
 const DEFAULT_VISIBLE_COLUMNS = COLUMN_DEFS.filter((column) => column.defaultVisible).map((column) => column.id);
 const COMPACT_VISIBLE_COLUMNS: ColumnId[] = ["agent", "status", "account", "value", "netPnl", "actions"];
 
+const getInitialVisibleColumns = (compact: boolean, showCreatedByDefault: boolean): ColumnId[] => {
+  const base = compact ? COMPACT_VISIBLE_COLUMNS : DEFAULT_VISIBLE_COLUMNS;
+  if (!showCreatedByDefault || base.includes("created")) return base;
+  const insertAfter = base.indexOf("account");
+  if (insertAfter === -1) return [...base, "created"];
+  return [...base.slice(0, insertAfter + 1), "created", ...base.slice(insertAfter + 1)];
+};
+
 export function BotTable({
   dashboard,
   title = "Agent Performance",
@@ -230,20 +241,25 @@ export function BotTable({
   emptyMessage = "No agents created yet.",
   workspaceMode,
   compact = false,
-  maxRows
+  maxRows,
+  defaultSortField = "returnPct",
+  defaultSortOrder = "desc",
+  showCreatedByDefault = false
 }: Props) {
   const scopedBots = useMemo(() => {
     if (!workspaceMode) return dashboard.bots;
     return dashboard.bots.filter((bot) => (bot.workspaceMode ?? "light") === workspaceMode);
   }, [dashboard.bots, workspaceMode]);
   const router = useRouter();
-  const [sortField, setSortField] = useState<ColumnId>("returnPct");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [sortField, setSortField] = useState<ColumnId>(defaultSortField);
+  const [sortOrder, setSortOrder] = useState<SortOrder>(defaultSortOrder);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<FilterValue>("all");
   const [accountFilter, setAccountFilter] = useState<FilterValue>("all");
   const [qualityFilter, setQualityFilter] = useState<FilterValue>("all");
-  const [visibleColumns, setVisibleColumns] = useState<ColumnId[]>(compact ? COMPACT_VISIBLE_COLUMNS : DEFAULT_VISIBLE_COLUMNS);
+  const [visibleColumns, setVisibleColumns] = useState<ColumnId[]>(() =>
+    getInitialVisibleColumns(compact, showCreatedByDefault)
+  );
 
   const handleSort = (field: ColumnId) => {
     if (!COLUMN_DEFS.find((column) => column.id === field)?.sortValue) return;

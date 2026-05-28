@@ -159,6 +159,7 @@ app.get("/internal/diagnostics", async (_request, response) => {
   } catch (e) { result.binanceApi = `unreachable: ${String(e)}`; }
 
   result.cors = corsDiagnostics();
+  result.scheduler = getSchedulerStatus();
 
   response.json(result);
 });
@@ -186,7 +187,8 @@ app.get("/internal/qa/status", async (_request, response) => {
       ),
       slackConfigured: Boolean(env.SLACK_WEBHOOK_URL),
       webBaseUrlConfigured: Boolean(env.WEB_BASE_URL)
-    }
+    },
+    scheduler: getSchedulerStatus()
   });
 });
 
@@ -424,26 +426,7 @@ app.get("/bots/:botId/runs", async (request, response, next) => {
 
 app.post("/internal/scheduler/tick", async (_request, response, next) => {
   try {
-    const dueBots = await getDueBots();
-    const results = [];
-
-    for (const bot of dueBots) {
-      try {
-        results.push(await runBot(bot));
-      } catch (error) {
-        results.push({
-          botId: bot.id,
-          status: "failure",
-          error: error instanceof Error ? error.message : "Unknown run error"
-        });
-      }
-    }
-
-    response.json({
-      checkedAt: new Date().toISOString(),
-      dueBotCount: dueBots.length,
-      results
-    });
+    response.json(await runSchedulerTick("manual"));
   } catch (error) {
     next(error);
   }
@@ -753,7 +736,11 @@ app.post("/bots", async (request, response, next) => {
     if (promptVersionId) void touchResearchPromptUsage(promptVersionId).catch(() => {});
     if (traderPromptVersionId) void touchTraderPromptUsage(traderPromptVersionId).catch(() => {});
 
-    response.json({ id, initialRunQueued: true });
+    response.json({
+      id,
+      initialRunQueued: true,
+      schedulerEnabled: env.SCHEDULER_ENABLED
+    });
 
     setImmediate(() => {
       void (async () => {
@@ -953,25 +940,85 @@ const startCatalogSyncLoop = () => {
 
 const SCHEDULER_INTERVAL_MS = 15 * 1000; // 15 seconds to ensure we don't miss the frequency
 
-const startSchedulerLoop = () => {
-  const runScheduler = async () => {
-    try {
-      const dueBots = await getDueBots();
-      for (const bot of dueBots) {
-        try {
-          await runBot(bot);
-        } catch (error) {
-          console.error(`Bot ${bot.id} run failed in scheduler:`, error);
-        }
-      }
-    } catch (error) {
-      console.warn("Background scheduler tick failed:", String(error));
-    }
-  };
+let schedulerLoopStarted = false;
+let schedulerTickRunning = false;
+let schedulerLastTickAt: string | null = null;
+let schedulerLastFinishedAt: string | null = null;
+let schedulerLastError: string | null = null;
+let schedulerLastDueBotCount = 0;
+let schedulerLastResultCount = 0;
 
-  void runScheduler();
+const getSchedulerStatus = () => ({
+  enabled: env.SCHEDULER_ENABLED,
+  loopStarted: schedulerLoopStarted,
+  tickRunning: schedulerTickRunning,
+  intervalMs: SCHEDULER_INTERVAL_MS,
+  lastTickAt: schedulerLastTickAt,
+  lastFinishedAt: schedulerLastFinishedAt,
+  lastDueBotCount: schedulerLastDueBotCount,
+  lastResultCount: schedulerLastResultCount,
+  lastError: schedulerLastError
+});
+
+const runSchedulerTick = async (trigger: "startup" | "interval" | "manual") => {
+  if (schedulerTickRunning) {
+    return {
+      checkedAt: new Date().toISOString(),
+      trigger,
+      skipped: true,
+      reason: "scheduler_tick_already_running",
+      dueBotCount: schedulerLastDueBotCount,
+      results: []
+    };
+  }
+
+  schedulerTickRunning = true;
+  schedulerLastTickAt = new Date().toISOString();
+
+  try {
+    const dueBots = await getDueBots();
+    const results: Array<Record<string, unknown>> = [];
+
+    for (const bot of dueBots) {
+      try {
+        const result = await runBot(bot);
+        results.push({ botId: bot.id, ...result });
+      } catch (error) {
+        results.push({
+          botId: bot.id,
+          status: "failure",
+          error: error instanceof Error ? error.message : "Unknown run error"
+        });
+      }
+    }
+
+    schedulerLastError = null;
+    schedulerLastDueBotCount = dueBots.length;
+    schedulerLastResultCount = results.length;
+    schedulerLastFinishedAt = new Date().toISOString();
+
+    return {
+      checkedAt: schedulerLastFinishedAt,
+      trigger,
+      skipped: false,
+      dueBotCount: dueBots.length,
+      results
+    };
+  } catch (error) {
+    schedulerLastError = error instanceof Error ? error.message : String(error);
+    schedulerLastFinishedAt = new Date().toISOString();
+    console.warn("Background scheduler tick failed:", schedulerLastError);
+    throw error;
+  } finally {
+    schedulerTickRunning = false;
+  }
+};
+
+const startSchedulerLoop = () => {
+  schedulerLoopStarted = true;
+  void runSchedulerTick("startup").catch(() => {});
   setInterval(() => {
-    void runScheduler();
+    void runSchedulerTick("interval").catch(() => {});
   }, SCHEDULER_INTERVAL_MS);
 };
 

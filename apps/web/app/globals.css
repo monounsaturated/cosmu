@@ -186,7 +186,7 @@ img { max-width: 100%; display: block; }
   gap: 4px;
   flex: 1;
   overflow-y: auto;
-  padding-bottom: 84px;
+  padding-bottom: 12px;
 }
 
 .sidebar-nav-group {
@@ -250,19 +250,14 @@ img { max-width: 100%; display: block; }
 }
 
 .sidebar-item-active {
-  background: var(--surface-hover);
-  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--surface-hover) 72%, transparent);
+  border-color: var(--border);
+  box-shadow: inset 2px 0 0 var(--muted-strong);
   color: var(--text-strong);
 }
 
 .sidebar-item-active strong {
   color: var(--text-strong);
-}
-
-.sidebar-active-dot {
-  margin-left: auto;
-  color: var(--accent);
-  flex: 0 0 auto;
 }
 
 .sidebar-item-soft {
@@ -273,28 +268,6 @@ img { max-width: 100%; display: block; }
 
 .sidebar-item-soft small {
   color: var(--muted);
-}
-
-.sidebar-footer-modern {
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-}
-
-.sidebar-footer-modern span {
-  display: block;
-  color: var(--muted-strong);
-  font-size: 11px;
-}
-
-.sidebar-footer-modern strong {
-  color: var(--text-strong);
-  font-size: 13px;
 }
 
 .sidebar-resize-handle {
@@ -350,13 +323,14 @@ img { max-width: 100%; display: block; }
   border: 0;
   background: transparent;
   font-family: inherit;
-  transition: color 0.15s;
+  transition: background 0.15s, color 0.15s;
   -webkit-tap-highlight-color: transparent;
   cursor: pointer;
 }
 
 .mobile-tab-item-active {
-  color: var(--accent);
+  color: var(--text-strong);
+  background: var(--surface);
 }
 
 .mobile-tab-item:active {
@@ -439,8 +413,8 @@ img { max-width: 100%; display: block; }
 }
 
 .mobile-more-item-active {
-  border-color: rgba(16, 185, 129, 0.3);
-  background: var(--accent-soft);
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
 }
 
 /* ── 6. Control Header ── */
@@ -489,7 +463,7 @@ img { max-width: 100%; display: block; }
   font-weight: 600;
 }
 
-.control-status {
+.control-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -498,30 +472,6 @@ img { max-width: 100%; display: block; }
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
-}
-
-.control-status span,
-.control-status a {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 32px;
-  padding: 4px 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  text-decoration: none;
-}
-
-.control-status a:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
-}
-
-.status-danger {
-  color: var(--danger) !important;
-  border-color: rgba(239, 68, 68, 0.2) !important;
 }
 
 .theme-toggle {
@@ -560,6 +510,44 @@ img { max-width: 100%; display: block; }
   0% { transform: translateX(-40%); opacity: 0.5; }
   50% { opacity: 1; }
   100% { transform: translateX(40%); opacity: 0.5; }
+}
+
+.route-loading {
+  display: grid;
+  gap: 16px;
+  min-height: 220px;
+  overflow: hidden;
+}
+
+.route-loading-bar,
+.route-loading-grid span {
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 8%, transparent), transparent),
+    var(--surface);
+  background-size: 220% 100%;
+  animation: loading-sweep 1.2s linear infinite;
+}
+
+.route-loading-bar {
+  width: min(420px, 70%);
+  height: 28px;
+}
+
+.route-loading-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.route-loading-grid span {
+  min-height: 120px;
+  border: 1px solid var(--border);
+}
+
+@keyframes loading-sweep {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
 }
 
 /* ── 7. Typography ── */
@@ -3165,7 +3153,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
   }
 
   .control-brand { display: grid; }
-  .control-status { display: none; }
+  .route-loading-grid { grid-template-columns: 1fr; }
 
   .hero,
   .command-hero,

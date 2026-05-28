@@ -29,6 +29,9 @@ export default async function BotsPage() {
         title="All agents"
         description="Every strategy in one sortable table. Click a row for run history, positions, prompts, and controls."
         emptyMessage="No agents yet. Create one to start testing a strategy."
+        defaultSortField="created"
+        defaultSortOrder="desc"
+        showCreatedByDefault
       />
     </main>
   );

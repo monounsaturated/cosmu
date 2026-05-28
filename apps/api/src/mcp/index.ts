@@ -66,7 +66,9 @@ export const callTool = async <T = unknown>(
 export const listTools = () =>
   Array.from(toolRegistry.values()).map((tool) => ({
     name: tool.name,
-    description: tool.description
+    description: tool.description,
+    agentFacing: tool.agentFacing === true,
+    inputSchema: tool.inputSchema ?? null
   }));
 
 /** Return the set of tools that can be invoked by an LLM agent. */

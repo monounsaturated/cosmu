@@ -17,6 +17,27 @@ const getSampleQuality = (daysRunning: number, tradeCount: number) => {
   return "low" as const;
 };
 
+const dashboardFetchWarnings = new Map<string, number>();
+const DASHBOARD_FETCH_WARNING_THROTTLE_MS = 5 * 60 * 1000;
+
+const describeFetchFailure = (reason: unknown) => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  const binanceCodeMatch = message.match(/"code":(-?\d+)/);
+  const binanceMessageMatch = message.match(/"msg":"([^"]+)"/);
+  if (binanceCodeMatch || binanceMessageMatch) {
+    return `Binance ${binanceCodeMatch?.[1] ?? "error"}: ${binanceMessageMatch?.[1] ?? message}`;
+  }
+  return message;
+};
+
+const warnDashboardFetchFailure = (key: string, label: string, reason: unknown) => {
+  const now = Date.now();
+  const last = dashboardFetchWarnings.get(key) ?? 0;
+  if (now - last < DASHBOARD_FETCH_WARNING_THROTTLE_MS) return;
+  dashboardFetchWarnings.set(key, now);
+  console.warn(`[dashboard] ${label} unavailable: ${describeFetchFailure(reason)}`);
+};
+
 export const getDashboard = async () => {
   const botRows = await sql`
     with run_stats as (
@@ -112,10 +133,10 @@ export const getDashboard = async () => {
   const livePrices: any[] = livePricesResult.status === "fulfilled" ? livePricesResult.value : [];
   const liveBalance: any = liveBalanceResult.status === "fulfilled" ? liveBalanceResult.value : null;
 
-  if (testnetPricesResult.status === "rejected") console.warn("Failed to fetch testnet prices", testnetPricesResult.reason);
-  if (testnetBalanceResult.status === "rejected") console.warn("Failed to fetch testnet balance", testnetBalanceResult.reason);
-  if (livePricesResult.status === "rejected") console.warn("Failed to fetch live prices", livePricesResult.reason);
-  if (liveBalanceResult.status === "rejected") console.warn("Failed to fetch live balance", liveBalanceResult.reason);
+  if (testnetPricesResult.status === "rejected") warnDashboardFetchFailure("testnet-prices", "testnet prices", testnetPricesResult.reason);
+  if (testnetBalanceResult.status === "rejected") warnDashboardFetchFailure("testnet-balance", "testnet balance", testnetBalanceResult.reason);
+  if (livePricesResult.status === "rejected") warnDashboardFetchFailure("live-prices", "live prices", livePricesResult.reason);
+  if (liveBalanceResult.status === "rejected") warnDashboardFetchFailure("live-balance", "live balance", liveBalanceResult.reason);
 
   const getPriceMap = (prices: any[]) => {
     if (!Array.isArray(prices)) return {};

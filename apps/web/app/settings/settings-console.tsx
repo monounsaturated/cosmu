@@ -72,6 +72,17 @@ type Diagnostics = {
   backend?: {
     modelProviderKeys?: Record<string, boolean>;
     tradingAccountKeys?: Record<string, boolean>;
+    scheduler?: {
+      enabled: boolean;
+      loopStarted: boolean;
+      tickRunning: boolean;
+      intervalMs: number;
+      lastTickAt: string | null;
+      lastFinishedAt: string | null;
+      lastDueBotCount: number;
+      lastResultCount: number;
+      lastError: string | null;
+    };
   };
   backendError?: string;
 };
@@ -199,6 +210,9 @@ const DATA_SOURCE_PRESETS: Array<{
 ];
 
 const providerLabel = (provider: string) => PROVIDER_LABELS[provider] ?? (provider || "custom");
+
+const formatDiagnosticTime = (value: string | null | undefined) =>
+  value ? new Date(value).toLocaleString() : "never";
 
 const promptOptions = (prompts: PromptProfile[], label: "Research" | "Trader") =>
   prompts
@@ -336,6 +350,7 @@ export function SettingsConsole() {
 
   const modelProviderKeys = diagnostics?.backend?.modelProviderKeys ?? {};
   const tradingAccountKeys = diagnostics?.backend?.tradingAccountKeys ?? {};
+  const scheduler = diagnostics?.backend?.scheduler;
   const providerKeyRows = PROVIDERS.map((provider) => ({
     key: provider,
     label: providerLabel(provider),
@@ -854,6 +869,29 @@ export function SettingsConsole() {
               </div>
             ))}
             {diagnostics?.backendError ? <p className="feedback feedback-error">{diagnostics.backendError}</p> : null}
+          </div>
+          <div className="settings-group">
+            <span className="label">Automation</span>
+            <div className="settings-row">
+              <span>
+                <strong>Scheduler</strong>
+                <small>
+                  {scheduler?.loopStarted
+                    ? `Last tick ${formatDiagnosticTime(scheduler.lastFinishedAt)}`
+                    : "Set SCHEDULER_ENABLED=true and restart the API"}
+                </small>
+              </span>
+              <span className={`badge ${scheduler?.enabled && scheduler?.loopStarted ? "badge-success" : "badge-inactive"}`}>
+                {scheduler?.enabled && scheduler?.loopStarted ? "running" : "off"}
+              </span>
+            </div>
+            <div className="settings-row">
+              <span>
+                <strong>Due agents</strong>
+                <small>{scheduler?.lastError ? scheduler.lastError : "Last scheduler scan"}</small>
+              </span>
+              <span className="badge badge-neutral">{scheduler?.lastDueBotCount ?? 0} due</span>
+            </div>
           </div>
         </div>
       </section>

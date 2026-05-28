@@ -9,7 +9,6 @@ import {
   Bot,
   Brain,
   ChevronUp,
-  CircleDot,
   Ellipsis,
   FlaskConical,
   Gauge,
@@ -145,10 +144,6 @@ export function Sidebar() {
     () => NAV_ITEMS.filter((item) => !item.featureKey || featureToggles[item.featureKey]),
     [featureToggles]
   );
-  const activeSection = useMemo(
-    () => NAV_ITEMS.find((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href))),
-    [pathname]
-  );
   const mobileExtraItems = useMemo(() => visibleItems.filter((item) => !MOBILE_TABS.some((tab) => tab.href === item.href)), [visibleItems]);
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
@@ -181,18 +176,12 @@ export function Sidebar() {
                   <Link key={item.href} href={item.href} onClick={() => handleNavClick(item.href)} className={`sidebar-item ${active ? "sidebar-item-active" : ""}`}>
                     <Icon size={18} />
                     <span><strong>{item.label}</strong><small>{item.description}</small></span>
-                    {active ? <CircleDot className="sidebar-active-dot" size={10} /> : null}
                   </Link>
                 );
               })}
             </div>
           ))}
         </nav>
-
-        <div className="sidebar-footer-modern">
-          <span>Current view</span>
-          <strong>{activeSection?.label ?? "Dashboard"}</strong>
-        </div>
       </aside>
 
       <nav className="mobile-tab-bar" aria-label="Mobile navigation">
