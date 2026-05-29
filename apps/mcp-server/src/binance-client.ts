@@ -13,25 +13,33 @@ const TESTNET_BASE = "https://testnet.binance.vision/api";
 
 const baseUrl = (mode: Mode) => (mode === "live" ? LIVE_BASE : TESTNET_BASE);
 
-const apiKey = (mode: Mode) =>
-  mode === "testnet" && env.BINANCE_TESTNET_API_KEY
-    ? env.BINANCE_TESTNET_API_KEY
-    : env.BINANCE_API_KEY;
+const configuredApiKey = (mode: Mode) =>
+  mode === "testnet" ? env.BINANCE_TESTNET_API_KEY : env.BINANCE_API_KEY;
 
-const apiSecret = (mode: Mode) =>
-  mode === "testnet" && env.BINANCE_TESTNET_API_SECRET
-    ? env.BINANCE_TESTNET_API_SECRET
-    : env.BINANCE_API_SECRET;
+const apiKey = (mode: Mode) => {
+  const key = configuredApiKey(mode);
+  if (key) return key;
+  throw new Error(`${mode === "testnet" ? "BINANCE_TESTNET_API_KEY" : "BINANCE_API_KEY"} is not configured`);
+};
+
+const apiSecret = (mode: Mode) => {
+  const secret = mode === "testnet" ? env.BINANCE_TESTNET_API_SECRET : env.BINANCE_API_SECRET;
+  if (secret) return secret;
+  throw new Error(`${mode === "testnet" ? "BINANCE_TESTNET_API_SECRET" : "BINANCE_API_SECRET"} is not configured`);
+};
 
 const sign = (params: URLSearchParams, mode: Mode) =>
   crypto.createHmac("sha256", apiSecret(mode)).update(params.toString()).digest("hex");
 
 async function request(mode: Mode, path: string, init?: RequestInit & { signed?: boolean }) {
   const url = `${baseUrl(mode)}${path}`;
+  const { signed, ...fetchInit } = init ?? {};
   const headers = new Headers(init?.headers);
-  headers.set("X-MBX-APIKEY", apiKey(mode));
+  if (signed) {
+    headers.set("X-MBX-APIKEY", apiKey(mode));
+  }
 
-  const res = await fetch(url, { ...init, headers });
+  const res = await fetch(url, { ...fetchInit, headers });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Binance ${path}: ${res.status} ${text}`);
@@ -42,7 +50,7 @@ async function request(mode: Mode, path: string, init?: RequestInit & { signed?:
 function signedQuery(mode: Mode, path: string) {
   const params = new URLSearchParams({ timestamp: Date.now().toString(), recvWindow: "5000" });
   params.set("signature", sign(params, mode));
-  return request(mode, `${path}?${params.toString()}`);
+  return request(mode, `${path}?${params.toString()}`, { signed: true });
 }
 
 /* ── Public tools ── */
@@ -133,5 +141,5 @@ export async function getOpenOrders(mode: Mode, symbol?: string) {
   const params = new URLSearchParams({ timestamp: Date.now().toString(), recvWindow: "5000" });
   if (symbol) params.set("symbol", symbol.toUpperCase());
   params.set("signature", sign(params, mode));
-  return request(mode, `/v3/openOrders?${params.toString()}`);
+  return request(mode, `/v3/openOrders?${params.toString()}`, { signed: true });
 }

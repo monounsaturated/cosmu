@@ -220,10 +220,7 @@ app.get("/internal/qa/status", async (_request, response) => {
       xaiConfigured: Boolean(env.XAI_API_KEY),
       nousConfigured: Boolean(env.NOUS_API_KEY),
       binanceLiveConfigured: Boolean(env.BINANCE_API_KEY && env.BINANCE_API_SECRET),
-      binanceTestnetConfigured: Boolean(
-        (env.BINANCE_TESTNET_API_KEY && env.BINANCE_TESTNET_API_SECRET)
-          || (env.BINANCE_API_KEY && env.BINANCE_API_SECRET)
-      ),
+      binanceTestnetConfigured: Boolean(env.BINANCE_TESTNET_API_KEY && env.BINANCE_TESTNET_API_SECRET),
       slackConfigured: Boolean(env.SLACK_WEBHOOK_URL),
       webBaseUrlConfigured: Boolean(env.WEB_BASE_URL)
     },

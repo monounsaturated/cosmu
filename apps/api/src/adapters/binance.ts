@@ -63,25 +63,19 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const getBaseUrl = (mode: RuntimeConfig["mode"]) => (mode === "live" ? LIVE_BASE_URL : TESTNET_BASE_URL);
 
-const getConfiguredApiKey = (mode: RuntimeConfig["mode"]) => {
-  if (mode === "testnet" && env.BINANCE_TESTNET_API_KEY) {
-    return env.BINANCE_TESTNET_API_KEY;
-  }
-  return env.BINANCE_API_KEY;
-};
+const getConfiguredApiKey = (mode: RuntimeConfig["mode"]) =>
+  mode === "testnet" ? env.BINANCE_TESTNET_API_KEY : env.BINANCE_API_KEY;
 
 const getApiKey = (mode: RuntimeConfig["mode"]) => {
   const apiKey = getConfiguredApiKey(mode);
   if (apiKey) return apiKey;
-  throw new Error(`${mode === "testnet" ? "BINANCE_TESTNET_API_KEY or " : ""}BINANCE_API_KEY is not configured`);
+  throw new Error(`${mode === "testnet" ? "BINANCE_TESTNET_API_KEY" : "BINANCE_API_KEY"} is not configured`);
 };
 
 const getApiSecret = (mode: RuntimeConfig["mode"]) => {
-  if (mode === "testnet" && env.BINANCE_TESTNET_API_SECRET) {
-    return env.BINANCE_TESTNET_API_SECRET;
-  }
-  if (env.BINANCE_API_SECRET) return env.BINANCE_API_SECRET;
-  throw new Error(`${mode === "testnet" ? "BINANCE_TESTNET_API_SECRET or " : ""}BINANCE_API_SECRET is not configured`);
+  const apiSecret = mode === "testnet" ? env.BINANCE_TESTNET_API_SECRET : env.BINANCE_API_SECRET;
+  if (apiSecret) return apiSecret;
+  throw new Error(`${mode === "testnet" ? "BINANCE_TESTNET_API_SECRET" : "BINANCE_API_SECRET"} is not configured`);
 };
 
 const signParams = (params: URLSearchParams, mode: RuntimeConfig["mode"]) =>
@@ -113,8 +107,9 @@ const binanceFetch = async (
   const url = new URL(`${getBaseUrl(mode)}${path}`);
   const safePath = url.pathname;
   const headers = new Headers(init?.headers);
-  const apiKey = signed ? getApiKey(mode) : getConfiguredApiKey(mode);
-  if (apiKey) headers.set("X-MBX-APIKEY", apiKey);
+  if (signed) {
+    headers.set("X-MBX-APIKEY", getApiKey(mode));
+  }
 
   let body: string | undefined;
   if (signed && init?.body && typeof init.body === "string") {
@@ -405,21 +400,20 @@ export const lookupBinanceSymbols = async (
   // testnet but only TAOUSDC on live in some regions). Intersecting means
   // testnet sims mirror what live would allow.
   const needLiveCheck = mode === "testnet";
-  const [exchangeInfoResponse, tickerPrices, liveExchangeInfo, accountPerms, livePerms] = await Promise.all([
+  const [exchangeInfoResponse, tickerPrices, liveExchangeInfo, accountPerms] = await Promise.all([
     getAllExchangeInfo(mode),
     getAllTickerPrices(mode),
     needLiveCheck ? getAllExchangeInfo("live") : Promise.resolve(null),
-    getAccountPermissions(mode),
-    needLiveCheck ? getAccountPermissions("live") : Promise.resolve(null)
+    getAccountPermissions(mode)
   ]);
 
-  // For testnet: use LIVE account permissions when intersecting with live exchangeInfo
-  // (the goal is to mirror what the user could actually trade on live).
-  const livePermsForIntersect = livePerms ?? undefined;
+  // For testnet, intersect with public live exchangeInfo so simulations avoid
+  // symbols that are testnet-only. Do not consult live account permissions here:
+  // expired or intentionally absent live keys must not break testnet operation.
   const liveTradable = new Set<string>();
   if (liveExchangeInfo) {
     for (const raw of liveExchangeInfo.symbols ?? []) {
-      if (!isTradableSpotStableSymbol(raw, livePermsForIntersect)) continue;
+      if (!isTradableSpotStableSymbol(raw)) continue;
       liveTradable.add(normalizeSymbol(String(raw.symbol ?? "")));
     }
   }
