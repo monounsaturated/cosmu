@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ venue: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ venue: string }> }) {
   try {
     const apiSecretKey = process.env.API_SECRET_KEY;
     if (!apiSecretKey) {
@@ -10,10 +10,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ven
     }
 
     const { venue } = await params;
-    const res = await fetch(`${apiBaseUrl}/venues/${venue}/symbols`, {
+    const upstream = new URL(`${apiBaseUrl}/venues/${venue}/symbols`);
+    const force = new URL(request.url).searchParams.get("force");
+    if (force) upstream.searchParams.set("force", force);
+    const res = await fetch(upstream, {
       headers: {
         "x-api-key": apiSecretKey
-      }
+      },
+      cache: "no-store"
     });
 
     const data = await res.json();

@@ -42,6 +42,11 @@ const venueConfigured = (mode: RuntimeConfig["mode"]) =>
 
 export const describeVenueError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
+  if (/aborted|timed out|timeout/i.test(message)) {
+    return message.includes("Binance")
+      ? message
+      : `Binance account request timed out or was aborted: ${message}`;
+  }
   const binanceCodeMatch = message.match(/"code":(-?\d+)/);
   const binanceMessageMatch = message.match(/"msg":"([^"]+)"/);
   if (binanceCodeMatch || binanceMessageMatch) {

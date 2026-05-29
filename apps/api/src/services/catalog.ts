@@ -1,5 +1,6 @@
 import { sql } from "../db.js";
 import { listVenueSymbols } from "../adapters/binance.js";
+import type { VenueId } from "./venues.js";
 import { listXaiModels } from "../providers/xai.js";
 import { listNousModels } from "../providers/nous.js";
 import { listOpenAIModels } from "../providers/openai.js";
@@ -253,7 +254,9 @@ const shouldRefreshVenue = async (venue: string) => {
   return Date.now() - row.lastSeenAt.getTime() > CATALOG_REFRESH_INTERVAL_MS;
 };
 
-export const syncVenueSymbols = async (venue: "binance", force = false) => {
+const venueMode = (venue: VenueId) => venue === "binance-testnet" ? "testnet" as const : "live" as const;
+
+export const syncVenueSymbols = async (venue: VenueId, force = false) => {
   if (!force && !(await shouldRefreshVenue(venue))) {
     return {
       venue,
@@ -263,7 +266,7 @@ export const syncVenueSymbols = async (venue: "binance", force = false) => {
     };
   }
 
-  const symbols = (await listVenueSymbols()) as string[];
+  const symbols = (await listVenueSymbols(venueMode(venue))) as string[];
 
   await sql`
     update venue_symbol_catalog
@@ -271,10 +274,11 @@ export const syncVenueSymbols = async (venue: "binance", force = false) => {
     where venue = ${venue}
   `;
 
-  for (const symbol of symbols) {
+  if (symbols.length > 0) {
     await sql`
       insert into venue_symbol_catalog (venue, symbol, is_active, last_seen_at, updated_at)
-      values (${venue}, ${symbol}, true, now(), now())
+      select ${venue}, symbol, true, now(), now()
+      from unnest(${symbols}::text[]) as symbol
       on conflict (venue, symbol) do update
       set
         is_active = true,
@@ -291,9 +295,9 @@ export const syncVenueSymbols = async (venue: "binance", force = false) => {
   };
 };
 
-export const getVenueSymbols = async (venue: "binance") => {
+export const getVenueSymbols = async (venue: VenueId, force = false) => {
   try {
-    await syncVenueSymbols(venue);
+    await syncVenueSymbols(venue, force);
   } catch (syncError) {
     console.warn("Venue symbol sync failed, serving cached catalog:", syncError);
   }

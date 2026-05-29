@@ -525,7 +525,7 @@ app.get("/venues/:venue/symbols", async (request, response, next) => {
     response.json({
       venue,
       label: venue === "binance-testnet" ? "Binance Testnet" : "Binance",
-      symbols: await getVenueSymbols("binance")
+      symbols: await getVenueSymbols(venue, request.query.force === "true")
     });
   } catch (error) {
     next(error);

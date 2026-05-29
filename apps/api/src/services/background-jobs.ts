@@ -100,7 +100,10 @@ const JOB_DEFINITIONS: BackgroundJobDefinition[] = [
     description: "Refreshes tradable venue symbols used by agent prompts and validation.",
     intervalMs: CATALOG_REFRESH_INTERVAL_MS,
     enabled: () => true,
-    run: (trigger) => syncVenueSymbols("binance", trigger !== "startup")
+    run: async (trigger) => ({
+      live: await syncVenueSymbols("binance", trigger !== "startup"),
+      testnet: await syncVenueSymbols("binance-testnet", trigger !== "startup")
+    })
   }
 ];
 

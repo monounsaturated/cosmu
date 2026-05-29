@@ -214,7 +214,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
     // We still compute candidateSymbols from the research output for logging/debugging
     // (and to help surface "what did the research mention" in the UI). But the trader no
     // longer receives pre-fetched prices — it calls `binance_symbol_lookup` itself.
-    const venueSymbols = await getVenueSymbols("binance");
+    const venueSymbols = await getVenueSymbols(bot.runtimeConfig.venue);
     const candidateSymbols = extractCandidateSymbols(researchResult.rawText, venueSymbols);
     const decisionVenueContext = beforeVenueContext;
 

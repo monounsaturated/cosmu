@@ -970,9 +970,15 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     return source.slice(0, 120);
   }, [symbolSearch, symbols]);
 
-  const safeFetch = async <T,>(url: string): Promise<{ data: T | null; error: string | null }> => {
+  const safeFetch = async <T,>(
+    url: string,
+    options: { timeoutMs?: number } = {}
+  ): Promise<{ data: T | null; error: string | null }> => {
+    const timeoutMs = options.timeoutMs ?? 8000;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => {
+      controller.abort(new Error(`Request timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
     try {
       const res = await fetch(url, { signal: controller.signal });
       if (!res.ok) {
@@ -982,6 +988,9 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       }
       return { data: (await res.json()) as T, error: null };
     } catch (e) {
+      if (e instanceof Error && e.name === "AbortError") {
+        return { data: null, error: `Request timed out after ${timeoutMs}ms` };
+      }
       return { data: null, error: e instanceof Error ? e.message : String(e) };
     } finally {
       clearTimeout(timeout);
@@ -1008,24 +1017,6 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       setError(`Failed to sync models: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setIsSyncing(false);
-    }
-  };
-
-  const fetchSymbolsDirect = async (): Promise<string[]> => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    try {
-      const res = await fetch("https://api.binance.com/api/v3/exchangeInfo", { signal: controller.signal });
-      if (!res.ok) return [];
-      const data = await res.json();
-      return ((data.symbols ?? []) as Array<{ symbol: string; status: string; isSpotTradingAllowed: boolean; quoteAsset: string }>)
-        .filter((s) => s.status === "TRADING" && s.isSpotTradingAllowed !== false && (s.quoteAsset === "USDT" || s.quoteAsset === "USDC"))
-        .map((s) => s.symbol)
-        .sort();
-    } catch {
-      return [];
-    } finally {
-      clearTimeout(timeout);
     }
   };
 
@@ -1058,11 +1049,12 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     const load = async () => {
       setDataLoaded(false);
       setError(null);
+      const initialVenue = formData.venue;
 
       const [promptsRes, modelsRes, symbolsRes, botRes, traderPromptsRes, numbersRes, appSettingsRes] = await Promise.all([
         safeFetch<Prompt[]>("/api/prompts"),
         safeFetch<Model[]>("/api/models"),
-        safeFetch<SymbolResponse>("/api/venues/binance/symbols"),
+        safeFetch<SymbolResponse>(`/api/venues/${initialVenue}/symbols`, { timeoutMs: 25000 }),
         mode === "edit" && botId ? safeFetch<BotSetup>(`/api/bots/${botId}`) : Promise.resolve({ data: null, error: null }),
         safeFetch<TraderPrompt[]>("/api/trader-prompts"),
         safeFetch<{ nextBotNumber: number; nextResearchPromptNumber: number; nextTraderPromptNumber: number }>("/api/next-numbers"),
@@ -1083,8 +1075,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       const mergedAppSettings = mergeAppSettings(appSettingsRes.data ?? DEFAULT_APP_SETTINGS);
       setAppSettings(mergedAppSettings);
 
-      let resolvedSymbols: string[] = symbolsRes.data?.symbols ?? [];
-      if (resolvedSymbols.length === 0) resolvedSymbols = await fetchSymbolsDirect();
+      const resolvedSymbols: string[] = symbolsRes.data?.symbols ?? [];
       if (resolvedSymbols.length > 0) setSymbols(resolvedSymbols);
 
       if (cancelled) return;
@@ -1314,8 +1305,8 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     const loadVenue = async () => {
       try {
         const [balanceRes, symbolsRes] = await Promise.all([
-          safeFetch<VenueBalance>(`/api/venues/${formData.venue}/balance`),
-          safeFetch<SymbolResponse>(`/api/venues/${formData.venue}/symbols`)
+          safeFetch<VenueBalance>(`/api/venues/${formData.venue}/balance?force=true`, { timeoutMs: 25000 }),
+          safeFetch<SymbolResponse>(`/api/venues/${formData.venue}/symbols?force=true`, { timeoutMs: 25000 })
         ]);
 
         if (cancelled) return;
@@ -1329,9 +1320,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
             : `${venueLabel} account check failed: ${backendError ?? "backend returned disconnected"}`
         );
 
-        const directSymbols = symbolsRes.data?.symbols?.length ? [] : await fetchSymbolsDirect();
-        if (cancelled) return;
-        const nextSymbols = symbolsRes.data?.symbols?.length ? symbolsRes.data.symbols : directSymbols;
+        const nextSymbols = symbolsRes.data?.symbols ?? [];
 
         if (nextSymbols.length) {
           setSymbols(nextSymbols);

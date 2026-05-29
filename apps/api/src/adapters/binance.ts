@@ -35,7 +35,9 @@ export type VenueContext = {
   rawAccountResponse: unknown;
 };
 
-let venueSymbolsCache: { expiresAt: number; symbols: string[] } | null = null;
+const BINANCE_REQUEST_TIMEOUT_MS = 15 * 1000;
+
+let venueSymbolsCache: Partial<Record<RuntimeConfig["mode"], { expiresAt: number; symbols: string[] }>> = {};
 
 const accountPermissionsCache = new Map<RuntimeConfig["mode"], { expiresAt: number; perms: Set<string> | undefined }>();
 
@@ -123,12 +125,24 @@ const binanceFetch = async (
   }
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const response = await fetch(url, {
-      ...init,
-      headers,
-      body,
-      signal: AbortSignal.timeout(8000)
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...init,
+        headers,
+        body,
+        signal: AbortSignal.timeout(BINANCE_REQUEST_TIMEOUT_MS)
+      });
+    } catch (error) {
+      if (
+        (error instanceof DOMException &&
+          (error.name === "TimeoutError" || error.name === "AbortError")) ||
+        (error instanceof Error && /aborted|timed out|timeout/i.test(error.message))
+      ) {
+        throw new Error(`Binance ${safePath} timed out after ${BINANCE_REQUEST_TIMEOUT_MS}ms`);
+      }
+      throw error;
+    }
 
     if (response.status !== 429) {
       if (!response.ok) {
@@ -239,16 +253,6 @@ const splitBaseAndQuote = (symbol: string): { base: string; quote: StableQuote |
     }
   }
   return { base: normalized, quote: null };
-};
-
-const requestPublicJson = async (path: string) => {
-  const response = await fetch(`${LIVE_BASE_URL}${path}`);
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Binance public ${path} failed: ${response.status} ${errorText}`);
-  }
-
-  return response.json();
 };
 
 const getAccount = (mode: RuntimeConfig["mode"]) =>
@@ -495,18 +499,19 @@ export const lookupBinanceSymbols = async (
   return out;
 };
 
-export const listVenueSymbols = async () => {
-  if (venueSymbolsCache && venueSymbolsCache.expiresAt > Date.now()) {
-    return venueSymbolsCache.symbols;
+export const listVenueSymbols = async (mode: RuntimeConfig["mode"] = "live") => {
+  const cached = venueSymbolsCache[mode];
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.symbols;
   }
 
-  const response = await requestPublicJson("/v3/exchangeInfo");
+  const response = await getAllExchangeInfo(mode);
   const symbols = (response.symbols ?? [])
     .filter((symbol: any) => isTradableSpotStableSymbol(symbol))
     .map((symbol: any) => normalizeSymbol(symbol.symbol))
     .sort((left: string, right: string) => left.localeCompare(right));
 
-  venueSymbolsCache = {
+  venueSymbolsCache[mode] = {
     expiresAt: Date.now() + 24 * 60 * 60 * 1000,
     symbols
   };
