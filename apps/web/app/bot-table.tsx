@@ -7,7 +7,13 @@ import type { DashboardPayload } from "@cosmu/shared";
 import { BotControls } from "./bot-controls";
 import { LocalTime } from "./local-time";
 
-type BotRow = DashboardPayload["bots"][number];
+type BotRow = DashboardPayload["bots"][number] & {
+  llmHourlyUsd?: number | null;
+  llmDailyUsd?: number | null;
+  llmCostPerRunUsd?: number | null;
+  llmTokens?: number | null;
+  llmWarning?: string | null;
+};
 type ColumnId =
   | "agent"
   | "status"
@@ -22,6 +28,10 @@ type ColumnId =
   | "returnPct"
   | "trades"
   | "runs"
+  | "llmHourly"
+  | "llmDaily"
+  | "llmRun"
+  | "llmTokens"
   | "quality"
   | "lastDecision"
   | "actions";
@@ -60,6 +70,19 @@ const formatUsd = (value: number | null, options: { signed?: boolean } = {}) => 
   const prefix = options.signed && value > 0 ? "+" : "";
   return `${prefix}$${value.toFixed(2)}`;
 };
+
+const formatSpend = (value: number | null | undefined, digits = 2) => {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return value.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: value >= 100 ? 0 : 2,
+    maximumFractionDigits: digits
+  });
+};
+
+const formatInt = (value: number | null | undefined) =>
+  value === null || value === undefined ? "—" : value.toLocaleString("en-US");
 
 const formatPct = (value: number | null) => {
   if (value === null) return "—";
@@ -202,6 +225,42 @@ const COLUMN_DEFS: ColumnDef[] = [
     render: (bot) => bot.runCount
   },
   {
+    id: "llmHourly",
+    label: "LLM / h",
+    align: "right",
+    defaultVisible: true,
+    sortValue: (bot) => bot.llmHourlyUsd ?? null,
+    render: (bot) => (
+      <span className={bot.llmWarning ? "value-red" : ""} title={bot.llmWarning ?? undefined}>
+        {formatSpend(bot.llmHourlyUsd)}
+      </span>
+    )
+  },
+  {
+    id: "llmDaily",
+    label: "LLM / day",
+    align: "right",
+    defaultVisible: false,
+    sortValue: (bot) => bot.llmDailyUsd ?? null,
+    render: (bot) => formatSpend(bot.llmDailyUsd, 0)
+  },
+  {
+    id: "llmRun",
+    label: "LLM / run",
+    align: "right",
+    defaultVisible: false,
+    sortValue: (bot) => bot.llmCostPerRunUsd ?? null,
+    render: (bot) => formatSpend(bot.llmCostPerRunUsd, 4)
+  },
+  {
+    id: "llmTokens",
+    label: "Tokens",
+    align: "right",
+    defaultVisible: false,
+    sortValue: (bot) => bot.llmTokens ?? null,
+    render: (bot) => formatInt(bot.llmTokens)
+  },
+  {
     id: "quality",
     label: "Sample",
     defaultVisible: false,
@@ -232,6 +291,7 @@ const DEFAULT_VISIBLE_COLUMNS: ColumnId[] = [
   "netPnl",
   "returnPct",
   "trades",
+  "llmHourly",
   "lastDecision",
   "actions"
 ];
@@ -258,9 +318,23 @@ export function BotTable({
   showCreatedByDefault = false
 }: Props) {
   const scopedBots = useMemo(() => {
-    if (!workspaceMode) return dashboard.bots;
-    return dashboard.bots.filter((bot) => (bot.workspaceMode ?? "light") === workspaceMode);
-  }, [dashboard.bots, workspaceMode]);
+    const spendByBotId = new Map(
+      (dashboard.llmSpendEstimate?.bots ?? []).map((bot) => [bot.botId, bot])
+    );
+    const enriched = dashboard.bots.map((bot) => {
+      const spend = spendByBotId.get(bot.id);
+      return {
+        ...bot,
+        llmHourlyUsd: spend?.estimatedHourlyUsd ?? null,
+        llmDailyUsd: spend?.estimatedDailyUsd ?? null,
+        llmCostPerRunUsd: spend?.estimatedCostPerRunUsd ?? null,
+        llmTokens: spend ? spend.sampleInputTokens + spend.sampleOutputTokens : null,
+        llmWarning: spend?.warning ?? null
+      };
+    });
+    if (!workspaceMode) return enriched;
+    return enriched.filter((bot) => (bot.workspaceMode ?? "light") === workspaceMode);
+  }, [dashboard.bots, dashboard.llmSpendEstimate?.bots, workspaceMode]);
   const router = useRouter();
   const [sortField, setSortField] = useState<ColumnId>(defaultSortField);
   const [sortOrder, setSortOrder] = useState<SortOrder>(defaultSortOrder);
@@ -346,15 +420,17 @@ export function BotTable({
   const displayedBots = typeof maxRows === "number" ? sortedBots.slice(0, maxRows) : sortedBots;
 
   const overview = useMemo(() => {
-    const active = scopedBots.filter((bot) => bot.enabled).length;
-    const totalValue = scopedBots.reduce((sum, bot) => sum + (bot.currentPortfolioUsd ?? 0), 0);
-    const netPnl = scopedBots.reduce((sum, bot) => sum + (bot.netPnlUsd ?? 0), 0);
+    const activeBots = scopedBots.filter((bot) => bot.enabled);
+    const active = activeBots.length;
+    const totalValue = activeBots.reduce((sum, bot) => sum + (bot.currentPortfolioUsd ?? 0), 0);
+    const netPnl = activeBots.reduce((sum, bot) => sum + (bot.netPnlUsd ?? 0), 0);
+    const llmHourly = activeBots.reduce((sum, bot) => sum + (bot.llmHourlyUsd ?? 0), 0);
     const best = scopedBots.reduce<BotRow | null>((current, bot) => {
       if (getReturnPct(bot) === null) return current;
       if (!current || (getReturnPct(bot) ?? -Infinity) > (getReturnPct(current) ?? -Infinity)) return bot;
       return current;
     }, null);
-    return { active, totalValue, netPnl, best };
+    return { active, totalValue, netPnl, llmHourly, best };
   }, [scopedBots]);
 
   const SortIndicator = ({ field }: { field: ColumnId }) => {
@@ -390,8 +466,9 @@ export function BotTable({
         <div className="performance-summary">
           <span><strong>{scopedBots.length}</strong> total</span>
           <span><strong>{overview.active}</strong> active</span>
-          <span><strong>{formatUsd(overview.totalValue)}</strong> value</span>
+          <span><strong>{formatUsd(overview.totalValue)}</strong> active value</span>
           <span className={valueTone(overview.netPnl)}><strong>{formatUsd(overview.netPnl, { signed: true })}</strong> net</span>
+          <span><strong>{formatSpend(overview.llmHourly)}</strong> LLM / h</span>
           <span><strong>{overview.best ? displayName(overview.best) : "—"}</strong> best</span>
         </div>
       </div>

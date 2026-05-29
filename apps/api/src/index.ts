@@ -76,6 +76,17 @@ const app = express();
 const botCreateRuntimeConfigSchema = runtimeConfigSchema.omit({ enabled: true });
 const ALWAYS_KEEP_XAI_MODEL_IDS = new Set(["grok-4.3"]);
 
+const assertVenueConnected = async (venue: "binance" | "binance-testnet") => {
+  const mode = venue === "binance-testnet" ? "testnet" as const : "live" as const;
+  try {
+    await getAccountBalance(mode);
+  } catch (error) {
+    const label = venue === "binance-testnet" ? "Binance Testnet" : "Binance Live";
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`${label} is not connected. Check the API key/secret in .env.local or deployment env. ${detail}`);
+  }
+};
+
 process.on("unhandledRejection", (reason) => {
   console.error("[process] unhandled rejection:", reason);
 });
@@ -757,6 +768,15 @@ app.post("/bots", async (request, response, next) => {
   try {
     const { name, slug, promptVersionId, modelProfileId, traderModelProfileId, promptConfig, traderConfig, traderPromptVersionId, parentBotId, enabled, runtimeConfig } =
       request.body;
+    const parsedRuntimeConfig = botCreateRuntimeConfigSchema.parse(runtimeConfig);
+    try {
+      await assertVenueConnected(parsedRuntimeConfig.venue);
+    } catch (connectionError) {
+      response.status(409).json({
+        error: connectionError instanceof Error ? connectionError.message : "Selected venue is not connected"
+      });
+      return;
+    }
     const id = await createBot({
       name,
       slug,
@@ -768,7 +788,7 @@ app.post("/bots", async (request, response, next) => {
       traderPromptVersionId: traderPromptVersionId ?? null,
       parentBotId,
       enabled: typeof enabled === "boolean" ? enabled : undefined,
-      runtimeConfig: botCreateRuntimeConfigSchema.parse(runtimeConfig)
+      runtimeConfig: parsedRuntimeConfig
     });
 
     // Track prompt usage
@@ -871,6 +891,17 @@ app.patch("/bots/:botId", async (request, response, next) => {
 
     if (nextRuntimeConfig?.symbolScope === "all") {
       nextRuntimeConfig.contextSymbols = [ALL_SYMBOLS_TOKEN];
+    }
+
+    if (nextRuntimeConfig) {
+      try {
+        await assertVenueConnected(nextRuntimeConfig.venue);
+      } catch (connectionError) {
+        response.status(409).json({
+          error: connectionError instanceof Error ? connectionError.message : "Selected venue is not connected"
+        });
+        return;
+      }
     }
 
     await updateBotConfig(request.params.botId, {

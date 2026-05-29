@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { ModalShell } from "./modal-shell";
 
 const ALL_SYMBOLS_TOKEN = "__ALL__";
@@ -29,28 +30,17 @@ Rules:
 - Keep the order list lean — quality over quantity
 - Every order must include a concise rationale`;
 
-const DEFAULT_TRADER_PROMPT = `You are the execution stage (phase 2) for one autonomous Binance spot bot (quoted in USDT or USDC — both count as cash).
+const DEFAULT_TRADER_PROMPT = `You are phase 2 for one Binance spot bot. Convert research into one valid TradingDecision JSON object.
 
-Inputs (in the user message):
-- UPSTREAM RESEARCH: qualitative thesis from phase 1 — symbols may be informal; normalize to bases and let the lookup tool pick USDT or USDC.
-- SESSION / EXECUTION RULES / WALLET / AUTHORIZED PAIRS: hard facts — never contradict them.
-- LIVE MARKET PRICES: authoritative reference for sizing stops and limits on buys.
+Use binance_symbol_lookup for candidate tickers. Use its canonical symbol and currentPrice. Ignore stale prices from research.
 
-Output: exactly one JSON object (no markdown fences, no prose) matching TradingDecision:
-- mode: one of "rebalance" | "enter" | "exit" | "hold" | "adjust". Use "hold" when there is no defensible trade.
-- rationaleSummary: <=600 chars, decision-grade summary.
-- globalRationale: <=4000 chars tying research to orders or explaining why you are flat.
-- confidence: number in [0,1].
-- timeHorizon: short string or null.
-- orders: array (<= max orders/run from rules). Each order: symbol, side buy|sell, type market|limit, quantity (>0), limitPrice (null unless limit), stopLossPrice, takeProfitPrice, rationale.
-- targetAllocations: usually [].
+Respect wallet, authorized pairs, order caps, cash reserve, and allowed order types.
 
-Order logic:
-- BUY: every buy MUST set stopLossPrice strictly below the live reference price for that symbol and takeProfitPrice strictly above. Omit trades you cannot justify with the given prices.
-- SELL: set stopLossPrice and takeProfitPrice to null.
-- Respect authorized pair list when present; otherwise any Binance USDT or USDC spot pair is allowed if grounded in research + prices.
-- Stay within wallet + execution caps; prefer fewer, higher-conviction orders over many small ones.
-- If research conflicts with prices, scope, or risk limits, prefer mode hold with orders: [].`;
+BUY: stopLossPrice below currentPrice and takeProfitPrice above it.
+SELL: stopLossPrice and takeProfitPrice null.
+
+If no trade is valid, return hold with orders: [].
+Return JSON only.`;
 
 const DEFAULT_RESEARCH_GROUNDING_RULES = `---
 GROUNDING RULES (critical - your output feeds live trading decisions):
@@ -104,12 +94,11 @@ const buildResearchGroundingPreview = () => ({
 const TRADER_NON_NEGOTIABLE_PREVIEW = {
   label: "Non-Negotiable Constraints",
   preview: `---
-NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):
-- Every BUY order MUST include stopLossPrice and takeProfitPrice on the correct side of currentPrice.
-- For SELL orders: set stopLossPrice and takeProfitPrice to null.
-- Never place a buy for a symbol you have not verified tradable via binance_symbol_lookup in this turn.
-- No defensible trade? Return mode='hold' with an empty orders array.
-- Final reply must be one JSON object matching TradingDecision.`,
+HARD RULES:
+- Buy only symbols verified this turn with binance_symbol_lookup.
+- BUY: stopLossPrice < currentPrice and takeProfitPrice > currentPrice. SELL: both null.
+- No valid trade: return hold with orders: [].
+- Final answer: one TradingDecision JSON object.`,
 };
 
 const ALWAYS_INJECTED_TRADER: { label: string; preview: string }[] = [
@@ -415,6 +404,12 @@ type BotSetup = {
 type SymbolResponse = {
   label: string;
   symbols: string[];
+};
+
+type VenueBalance = {
+  totalFreeUsdt: number;
+  allocatedUsdt: number;
+  availableUsdt: number;
 };
 
 type BotFormModalProps = {
@@ -892,7 +887,9 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   const [traderSavingVersion, setTraderSavingVersion] = useState(false);
 
   const [isSyncing, setIsSyncing] = useState(false);
-  const [venueBalance, setVenueBalance] = useState<{ totalFreeUsdt: number; allocatedUsdt: number; availableUsdt: number } | null>(null);
+  const [venueBalance, setVenueBalance] = useState<VenueBalance | null>(null);
+  const [venueConnectionError, setVenueConnectionError] = useState<string | null>(null);
+  const [symbolLoadError, setSymbolLoadError] = useState<string | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
 
   const providerOptions = useMemo(() => {
@@ -1302,16 +1299,45 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     setTraderShowEditor(false);
   }, [formData.existingTraderVersionId, formData.traderStrategy, traderPromptOptions]);
 
-  // Fetch venue balance when venue changes
+  // Fetch venue readiness and pair universe when venue changes.
   useEffect(() => {
     let cancelled = false;
     setLoadingBalance(true);
     setVenueBalance(null);
-    fetch(`/api/venues/${formData.venue}/balance`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (!cancelled && data) setVenueBalance(data); })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setLoadingBalance(false); });
+    setVenueConnectionError(null);
+    setSymbolLoadError(null);
+
+    const loadVenue = async () => {
+      const [balanceRes, symbolsRes] = await Promise.all([
+        safeFetch<VenueBalance>(`/api/venues/${formData.venue}/balance`),
+        safeFetch<SymbolResponse>(`/api/venues/${formData.venue}/symbols`)
+      ]);
+
+      if (cancelled) return;
+
+      setVenueBalance(balanceRes.data);
+      setVenueConnectionError(
+        balanceRes.error
+          ? `${VENUE_LABELS[formData.venue] ?? formData.venue} account check failed. Verify API key, secret, IP allowlist, and spot permissions.`
+          : null
+      );
+
+      const directSymbols = symbolsRes.data?.symbols?.length ? [] : await fetchSymbolsDirect();
+      if (cancelled) return;
+      const nextSymbols = symbolsRes.data?.symbols?.length ? symbolsRes.data.symbols : directSymbols;
+
+      if (nextSymbols.length) {
+        setSymbols(nextSymbols);
+        setSymbolLoadError(null);
+      } else {
+        setSymbols([]);
+        setSymbolLoadError(symbolsRes.error ?? "Pair list failed to load");
+      }
+
+      setLoadingBalance(false);
+    };
+
+    void loadVenue();
     return () => { cancelled = true; };
   }, [formData.venue]);
 
@@ -1405,12 +1431,18 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     return data.promptVersionId as string;
   };
 
+  const selectedVenueLabel = VENUE_LABELS[formData.venue] ?? formData.venue;
+  const selectedVenueConnected = Boolean(venueBalance && !venueConnectionError);
+  const venueBlocked = !loadingBalance && !selectedVenueConnected;
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setError(null);
 
     try {
+      if (loadingBalance) throw new Error(`Checking ${selectedVenueLabel} connection. Try again in a moment.`);
+      if (!selectedVenueConnected) throw new Error(`${selectedVenueLabel} is not connected. Add valid API credentials before creating an agent for this venue.`);
       if (!formData.researchModelProfileId) throw new Error("Choose a research model");
       if (!formData.traderModelProfileId) throw new Error("Choose a trader model");
       if (formData.researchStrategy === "new" && !formData.newResearchBody.trim()) throw new Error("Research prompt body is required");
@@ -1578,16 +1610,127 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                     Venue
                     <select
                       value={formData.venue}
-                      onChange={(e) => setFormData({ ...formData, venue: e.target.value as "binance" | "binance-testnet" })}
+                      onChange={(e) => {
+                        setPairsOpen(false);
+                        setSymbolSearch("");
+                        setFormData({
+                          ...formData,
+                          venue: e.target.value as "binance" | "binance-testnet",
+                          contextSymbols: []
+                        });
+                      }}
                     >
                       <option value="binance-testnet">Binance Testnet</option>
                       <option value="binance">Binance</option>
                     </select>
                   </label>
-                  {venueBalance && (
-                    <span className="venue-balance">
-                      {loadingBalance ? "..." : `$${venueBalance.totalFreeUsdt.toFixed(2)} cash on account (USDT+USDC)`}
-                    </span>
+                  <span className={`venue-status ${loadingBalance ? "" : selectedVenueConnected ? "venue-status-ok" : "venue-status-error"}`}>
+                    {loadingBalance ? <Loader2 size={14} /> : selectedVenueConnected ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                    {loadingBalance
+                      ? "Checking connection"
+                      : selectedVenueConnected
+                        ? `$${venueBalance!.totalFreeUsdt.toFixed(2)} cash available`
+                        : venueConnectionError ?? "Venue not connected"}
+                  </span>
+                </div>
+
+                <div className="form-row pair-selector-field">
+                  <span className="form-label">Pairs</span>
+                  <div className="pairs-picker pairs-picker-inline" ref={pairsRef}>
+                    <div className="segmented-control">
+                      <button
+                        type="button"
+                        className={`segmented-option ${formData.symbolScope === "all" ? "segmented-option-active" : ""}`}
+                        aria-pressed={formData.symbolScope === "all"}
+                        onClick={() => {
+                          setPairsOpen(false);
+                          setSymbolSearch("");
+                          setFormData({ ...formData, symbolScope: "all", contextSymbols: [] });
+                        }}
+                      >
+                        All pairs
+                      </button>
+                      <button
+                        type="button"
+                        className={`segmented-option ${formData.symbolScope === "selected" ? "segmented-option-active" : ""}`}
+                        aria-pressed={formData.symbolScope === "selected"}
+                        onClick={() => {
+                          setFormData({ ...formData, symbolScope: "selected" });
+                          setPairsOpen(true);
+                        }}
+                      >
+                        Selected
+                      </button>
+                    </div>
+                    {formData.symbolScope === "all" ? (
+                      <span className="field-help">All stable-quoted pairs for {selectedVenueLabel}.</span>
+                    ) : (
+                      <>
+                        <div className="pairs-search-wrap">
+                          <input
+                            type="text"
+                            className="pairs-search"
+                            value={symbolSearch}
+                            onFocus={() => setPairsOpen(true)}
+                            onChange={(e) => {
+                              setSymbolSearch(e.target.value);
+                              setPairsOpen(true);
+                            }}
+                            placeholder={formData.contextSymbols.length > 0 ? `${formData.contextSymbols.length} selected - search pairs...` : "Search pairs..."}
+                            aria-label="Authorized pairs"
+                          />
+                          {formData.contextSymbols.length > 0 && !symbolSearch && (
+                            <button
+                              type="button"
+                              className="pairs-count-badge"
+                              onClick={() => setPairsOpen(true)}
+                            >
+                              {formData.contextSymbols.length}
+                            </button>
+                          )}
+                        </div>
+                        {pairsOpen && (
+                          <div className="pairs-dropdown" role="group" aria-label="Authorized pair choices">
+                            <div className="pairs-dropdown-toolbar">
+                              <span>{formData.contextSymbols.length} selected</span>
+                              <button type="button" className="btn btn-xs" onClick={() => setPairsOpen(false)}>
+                                Done
+                              </button>
+                            </div>
+                            <div className="pairs-dropdown-list">
+                              {symbols.length === 0 ? (
+                                <p className="pairs-empty">{symbolLoadError ?? (dataLoaded ? "Pair list failed to load." : "Loading pairs...")}</p>
+                              ) : filteredSymbols.length === 0 ? (
+                                <p className="pairs-empty">No match</p>
+                              ) : (
+                                filteredSymbols.map((symbol) => (
+                                  <label
+                                    key={symbol}
+                                    className="pairs-row"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={formData.contextSymbols.includes(symbol)}
+                                      onChange={() => toggleSymbol(symbol)}
+                                    />
+                                    <span>{symbol}</span>
+                                  </label>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  {formData.symbolScope === "selected" && formData.contextSymbols.length > 0 && (
+                    <div className="selected-symbols">
+                      {formData.contextSymbols.map((symbol) => (
+                        <button key={symbol} type="button" className="badge badge-button" onClick={() => toggleSymbol(symbol)}>
+                          {symbol} x
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
 
@@ -1618,110 +1761,13 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                     </select>
                   </label>
                 </div>
-
-                {/* Authorized Pairs */}
-                <div className="form-row pairs-field">
-                  <label>
-                    Pairs
-                    <div className="pairs-picker pairs-picker-inline" ref={pairsRef}>
-                      <div className="segmented-control">
-                        <button
-                          type="button"
-                          className={`segmented-option ${formData.symbolScope === "all" ? "segmented-option-active" : ""}`}
-                          aria-pressed={formData.symbolScope === "all"}
-                          onClick={() => {
-                            setPairsOpen(false);
-                            setSymbolSearch("");
-                            setFormData({ ...formData, symbolScope: "all", contextSymbols: [] });
-                          }}
-                        >
-                          All pairs
-                        </button>
-                        <button
-                          type="button"
-                          className={`segmented-option ${formData.symbolScope === "selected" ? "segmented-option-active" : ""}`}
-                          aria-pressed={formData.symbolScope === "selected"}
-                          onClick={() => {
-                            setFormData({ ...formData, symbolScope: "selected" });
-                            setPairsOpen(true);
-                          }}
-                        >
-                          Selected pairs
-                        </button>
-                      </div>
-                      {formData.symbolScope === "all" ? (
-                        <span className="field-help">All {VENUE_LABELS[formData.venue] ?? formData.venue} stable-quoted pairs are authorized.</span>
-                      ) : (
-                        <>
-                          <div className="pairs-search-wrap">
-                            <input
-                              type="text"
-                              className="pairs-search"
-                              value={symbolSearch}
-                              onFocus={() => setPairsOpen(true)}
-                              onChange={(e) => {
-                                setSymbolSearch(e.target.value);
-                                setPairsOpen(true);
-                              }}
-                              placeholder={formData.contextSymbols.length > 0 ? `${formData.contextSymbols.length} selected - search pairs...` : "Search pairs..."}
-                              aria-label="Authorized pairs"
-                            />
-                            {formData.contextSymbols.length > 0 && !symbolSearch && (
-                              <button
-                                type="button"
-                                className="pairs-count-badge"
-                                onClick={() => setPairsOpen(true)}
-                              >
-                                {formData.contextSymbols.length} selected
-                              </button>
-                            )}
-                          </div>
-                          {pairsOpen && (
-                            <div className="pairs-dropdown" role="group" aria-label="Authorized pair choices">
-                              <div className="pairs-dropdown-toolbar">
-                                <span>{formData.contextSymbols.length} selected</span>
-                                <button type="button" className="btn btn-xs" onClick={() => setPairsOpen(false)}>
-                                  Done
-                                </button>
-                              </div>
-                              <div className="pairs-dropdown-list">
-                                {symbols.length === 0 ? (
-                                  <p className="pairs-empty">{dataLoaded ? "Pair list failed to load." : "Loading pairs..."}</p>
-                                ) : filteredSymbols.length === 0 ? (
-                                  <p className="pairs-empty">No match</p>
-                                ) : (
-                                  filteredSymbols.map((symbol) => (
-                                    <label
-                                      key={symbol}
-                                      className="pairs-row"
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={formData.contextSymbols.includes(symbol)}
-                                        onChange={() => toggleSymbol(symbol)}
-                                      />
-                                      <span>{symbol}</span>
-                                    </label>
-                                  ))
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </label>
-                  {formData.symbolScope === "selected" && formData.contextSymbols.length > 0 && (
-                    <div className="selected-symbols">
-                      {formData.contextSymbols.map((symbol) => (
-                        <button key={symbol} type="button" className="badge badge-button" onClick={() => toggleSymbol(symbol)}>
-                          {symbol} ×
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
+              {venueBlocked && (
+                <div className="form-warning" role="alert">
+                  <AlertTriangle size={16} />
+                  <span>{selectedVenueLabel} must be connected before this agent can be created or saved.</span>
+                </div>
+              )}
             </div>
 
             <div className="full-section">
@@ -1959,7 +2005,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
               <button type="button" className="btn" onClick={onClose} disabled={saving}>
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary" disabled={saving}>
+              <button type="submit" className="btn btn-primary" disabled={saving || loadingBalance || !selectedVenueConnected}>
                 {saving
                   ? mode === "create" ? "Creating..." : "Saving..."
                   : mode === "create" ? "Create Agent" : "Save Changes"}

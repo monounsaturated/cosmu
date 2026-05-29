@@ -1,7 +1,7 @@
 import { sql } from "../db.js";
 import { dashboardSchema, botSummarySchema, portfolioSnapshotSchema } from "@cosmu/shared";
 import { getLlmSpendEstimate } from "./llm-spend.js";
-import { getCachedMarketDataSnapshot } from "./market-data-cache.js";
+import { getCachedMarketDataSnapshot, refreshMarketDataSnapshot } from "./market-data-cache.js";
 
 const parseJson = <T>(value: unknown): T => {
   if (typeof value === "string") {
@@ -102,7 +102,11 @@ export const getDashboard = async () => {
     order by brc.enabled desc, b.created_at desc
   `;
 
-  const marketData = getCachedMarketDataSnapshot();
+  let marketData = getCachedMarketDataSnapshot();
+  if (!marketData.live.balanceUpdatedAt && !marketData.live.balanceError && !marketData.testnet.balanceUpdatedAt && !marketData.testnet.balanceError) {
+    await refreshMarketDataSnapshot("dashboard");
+    marketData = getCachedMarketDataSnapshot();
+  }
   const testnetBalance: any = marketData.testnet.balance;
   const liveBalance: any = marketData.live.balance;
 
@@ -147,7 +151,8 @@ export const getDashboard = async () => {
       venue: "binance",
       mode: "live",
       balance: liveAccountBalance,
-      connected: Boolean(liveBalance)
+      connected: Boolean(liveBalance),
+      error: marketData.live.balanceError
     },
     {
       id: "binance-testnet",
@@ -155,7 +160,8 @@ export const getDashboard = async () => {
       venue: "binance-testnet",
       mode: "testnet",
       balance: testnetAccountBalance,
-      connected: Boolean(testnetBalance)
+      connected: Boolean(testnetBalance),
+      error: marketData.testnet.balanceError
     }
   ];
   const accounts = accountConfigs.map((account) => {
@@ -165,7 +171,9 @@ export const getDashboard = async () => {
     const spareAmount = account.connected
       ? Math.max(0, account.balance - allocatedAmount)
       : 0;
-    const status = account.connected
+    const status = account.error
+      ? "error"
+      : account.connected
       ? "connected"
       : configuredAgents > 0
         ? "configured"
@@ -181,7 +189,8 @@ export const getDashboard = async () => {
       connected: account.connected,
       configuredAgents,
       activeAgents,
-      status
+      status,
+      error: account.error
     };
   });
   const liveAccount = accounts.find((account) => account.mode === "live") ?? null;

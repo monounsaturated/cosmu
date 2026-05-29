@@ -1,4 +1,4 @@
-import { Activity, CircleDollarSign, PlugZap, WalletCards } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, CircleDollarSign, PlugZap, WalletCards } from "lucide-react";
 import type { DashboardPayload } from "@cosmu/shared";
 
 type AccountEntry = DashboardPayload["accounts"][number];
@@ -84,8 +84,9 @@ export function VenueOverview({
             const spareTone = account.spareAmount < 0 ? "value-red" : account.spareAmount > 0 ? "value-green" : "";
             const dataStatus = account.mode === "live" ? marketDataStatus?.live : marketDataStatus?.testnet;
             const dataLabel = dataStatus?.balanceError
-              ? "balance unavailable"
+              ? dataStatus.balanceError
               : `balance ${formatFreshness(dataStatus?.balanceUpdatedAt)}`;
+            const badgeClass = account.connected ? "badge-success" : account.status === "error" ? "badge-warn" : "badge-inactive";
             return (
               <article className={`account-card account-card-${account.status}`} key={account.id}>
                 <div className="account-card-top">
@@ -93,7 +94,8 @@ export function VenueOverview({
                     <strong>{account.label}</strong>
                     <small>{account.venue} / {account.mode} · {dataLabel}</small>
                   </span>
-                  <span className={`badge ${account.connected ? "badge-success" : "badge-inactive"}`}>
+                  <span className={`badge ${badgeClass}`}>
+                    {account.connected ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
                     {account.connected ? "connected" : account.status}
                   </span>
                 </div>

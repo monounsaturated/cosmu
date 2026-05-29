@@ -8,7 +8,6 @@ import { VenueOverview } from "./venue-overview";
 import { RecentExecutions } from "./recent-executions";
 import { PortfolioState } from "./portfolio-state";
 import { PromptSnapshots } from "./prompt-snapshots";
-import { SpendEstimatePanel } from "./spend-estimate-panel";
 import { getDashboard } from "./dashboard-data";
 
 export const dynamic = "force-dynamic";
@@ -22,10 +21,9 @@ export default async function HomePage() {
   const totalAccountBalance = dashboard.accounts.reduce((sum, account) => sum + account.accountBalance, 0);
   const totalAllocated = dashboard.accounts.reduce((sum, account) => sum + account.allocatedAmount, 0);
   const freeCapacity = dashboard.accounts.reduce((sum, account) => sum + account.spareAmount, 0);
-  const bestLightBot = [...lightBots]
-    .filter((bot) => bot.netPnlUsd !== null)
-    .sort((a, b) => (b.netPnlUsd ?? -Infinity) - (a.netPnlUsd ?? -Infinity))[0] ?? null;
-
+  const connectedVenues = dashboard.accounts.filter((account) => account.connected).length;
+  const llmHourlyUsd = dashboard.llmSpendEstimate?.estimatedHourlyUsd ?? 0;
+  const llmDailyUsd = dashboard.llmSpendEstimate?.estimatedDailyUsd ?? 0;
   return (
     <main className="page page-wide">
       <AutoRefresh intervalMs={30000} />
@@ -64,7 +62,7 @@ export default async function HomePage() {
         <article className="metric-card-emphasis">
           <span>Equity</span>
           <strong>{totalAccountBalance.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</strong>
-          <small>{dashboard.accounts.filter((account) => account.connected).length}/{dashboard.accounts.length} connected</small>
+          <small>{connectedVenues}/{dashboard.accounts.length} venues connected</small>
         </article>
         <article>
           <span>Allocated</span>
@@ -86,14 +84,14 @@ export default async function HomePage() {
           <small>Light workspace</small>
         </article>
         <article>
+          <span>LLM burn</span>
+          <strong>{llmHourlyUsd.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 })}/h</strong>
+          <small>{llmDailyUsd.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}/day estimate</small>
+        </article>
+        <article>
           <span>Recent failures</span>
           <strong className={recentFailures > 0 ? "value-red" : ""}>{recentFailures}</strong>
           <small>last dashboard window</small>
-        </article>
-        <article>
-          <span>Best agent</span>
-          <strong>{bestLightBot ? `#${bestLightBot.botNumber}` : "—"}</strong>
-          <small>{bestLightBot ? `${bestLightBot.netPnlUsd! >= 0 ? "+" : ""}$${bestLightBot.netPnlUsd!.toFixed(2)} net` : "no sample yet"}</small>
         </article>
       </section>
 
@@ -107,8 +105,6 @@ export default async function HomePage() {
         defaultSortOrder="desc"
         showCreatedByDefault
       />
-
-      <SpendEstimatePanel estimate={dashboard.llmSpendEstimate} />
 
       <section className="command-grid">
         <VenueOverview

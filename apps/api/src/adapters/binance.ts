@@ -111,6 +111,9 @@ const binanceFetch = async (
   signed?: boolean
 ) => {
   const url = new URL(`${getBaseUrl(mode)}${path}`);
+  const safePath = path
+    .replace(/signature=[^&\s]+/g, "signature=[redacted]")
+    .replace(/timestamp=\d+/g, "timestamp=[redacted]");
   const headers = new Headers(init?.headers);
   const apiKey = signed ? getApiKey(mode) : getConfiguredApiKey(mode);
   if (apiKey) headers.set("X-MBX-APIKEY", apiKey);
@@ -137,7 +140,7 @@ const binanceFetch = async (
     if (response.status !== 429) {
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Binance ${path} failed: ${response.status} ${errorText}`);
+        throw new Error(`Binance ${safePath} failed: ${response.status} ${errorText}`);
       }
 
       return response.json();
@@ -146,7 +149,7 @@ const binanceFetch = async (
     await wait(500 * 2 ** attempt);
   }
 
-  throw new Error(`Binance ${path} exceeded retry budget`);
+  throw new Error(`Binance ${safePath} exceeded retry budget`);
 };
 
 export const normalizeSymbol = (value: string) => value.replace(/[^A-Z0-9]/gi, "").toUpperCase();

@@ -9,10 +9,13 @@ import {
   Bot,
   Brain,
   ChevronUp,
+  Database,
   DollarSign,
   Ellipsis,
   FlaskConical,
   Gauge,
+  MessageSquare,
+  Network,
   Radio,
   Settings,
   ShieldCheck,
@@ -47,21 +50,21 @@ const DEFAULT_FEATURE_TOGGLES: FeatureToggles = {
 };
 
 const NAV_ITEMS = [
-  { href: "/", label: "Agents", description: "dashboard and controls", icon: Bot, group: "Core" },
-  { href: "/spending", label: "Spending", description: "model API costs", icon: DollarSign, group: "Core" },
-  { href: "/prompts", label: "Prompts", description: "research and trader prompts", icon: BadgeCheck, group: "Core" },
-  { href: "/settings", label: "Settings", description: "models, defaults, keys", icon: Settings, group: "Core" },
+  { href: "/", label: "Dashboard", description: "agents, venues, spend", icon: Bot, group: "Core" },
+  { href: "/prompts", label: "Prompts", description: "research and trader text", icon: BadgeCheck, group: "Core" },
+  { href: "/spending", label: "Spend Detail", description: "token ledger", icon: DollarSign, group: "Core" },
+  { href: "/settings", label: "Settings", description: "models, venues, modules", icon: Settings, group: "Core" },
   { href: "/prompt-lab", label: "Prompt Lab", description: "prompt experiments", icon: Brain, group: "Modules", featureKey: "promptLab" },
   { href: "/sentiment", label: "Sentiment", description: "market pulse", icon: Gauge, group: "Modules", featureKey: "sentiment" },
   { href: "/signals", label: "Signals", description: "capture and triage", icon: Radio, group: "Modules", featureKey: "signals" },
-  { href: "/research", label: "Research", description: "paper experiments", icon: FlaskConical, group: "Modules", featureKey: "researchLab" },
+  { href: "/research", label: "Research", description: "framework tests", icon: FlaskConical, group: "Modules", featureKey: "researchLab" },
   { href: "/pro", label: "Review", description: "live approvals", icon: ShieldCheck, group: "Modules", featureKey: "proReview" }
 ] satisfies NavItem[];
 
 const MOBILE_TABS = [
-  { href: "/", label: "Agents", icon: Bot },
-  { href: "/spending", label: "Spend", icon: DollarSign },
+  { href: "/", label: "Dash", icon: Bot },
   { href: "/prompts", label: "Prompts", icon: BadgeCheck },
+  { href: "/spending", label: "Spend", icon: DollarSign },
   { href: "/settings", label: "Settings", icon: Settings }
 ];
 
@@ -169,7 +172,7 @@ export function Sidebar() {
         <nav className="sidebar-list" aria-label="Navigation">
           {GROUPS.filter((group) => visibleItems.some((item) => item.group === group)).map((group) => (
             <div className="sidebar-nav-group" key={group}>
-              <span className="sidebar-group-title">{group === "Core" ? "Workspace" : "Enabled"}</span>
+              <span className="sidebar-group-title">{group === "Core" ? "Operate" : "Enabled Modules"}</span>
               {visibleItems.filter((item) => item.group === group).map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.href) || pendingHref === item.href;
@@ -183,6 +186,13 @@ export function Sidebar() {
             </div>
           ))}
         </nav>
+
+        <div className="sidebar-platform-note">
+          <span><Database size={14} /> data</span>
+          <span><Network size={14} /> frameworks</span>
+          <span><Brain size={14} /> memory</span>
+          <span><MessageSquare size={14} /> chat</span>
+        </div>
       </aside>
 
       <nav className="mobile-tab-bar" aria-label="Mobile navigation">

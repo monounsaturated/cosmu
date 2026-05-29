@@ -892,7 +892,8 @@ const accountOverviewEntrySchema = venueOverviewEntrySchema.extend({
   connected: z.boolean(),
   configuredAgents: z.number().int().nonnegative(),
   activeAgents: z.number().int().nonnegative(),
-  status: z.enum(["connected", "configured", "unconfigured", "error"])
+  status: z.enum(["connected", "configured", "unconfigured", "error"]),
+  error: z.string().nullable().optional()
 });
 
 const marketDataModeStatusSchema = z.object({
