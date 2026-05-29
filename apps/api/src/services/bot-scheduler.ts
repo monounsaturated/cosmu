@@ -1,4 +1,3 @@
-import { env } from "../env.js";
 import { getDueBots } from "../lib/store.js";
 import { runBot } from "./run-bot.js";
 
@@ -18,7 +17,7 @@ let schedulerWatchdogLastTriggeredAt: string | null = null;
 let schedulerWatchdogLastTriggeredMs = 0;
 
 export const getSchedulerStatus = () => ({
-  enabled: env.SCHEDULER_ENABLED,
+  enabled: true,
   intervalMs: BOT_SCHEDULER_INTERVAL_MS,
   tickRunning: schedulerTickRunning,
   watchdogLastTriggeredAt: schedulerWatchdogLastTriggeredAt,
@@ -30,17 +29,6 @@ export const getSchedulerStatus = () => ({
 });
 
 export const runSchedulerTick = async (trigger: SchedulerTrigger) => {
-  if (!env.SCHEDULER_ENABLED && trigger !== "manual") {
-    return {
-      checkedAt: new Date().toISOString(),
-      trigger,
-      skipped: true,
-      reason: "scheduler_disabled",
-      dueBotCount: schedulerLastDueBotCount,
-      results: []
-    };
-  }
-
   if (schedulerTickRunning) {
     return {
       checkedAt: new Date().toISOString(),
@@ -101,7 +89,7 @@ export const runSchedulerTick = async (trigger: SchedulerTrigger) => {
 };
 
 export const triggerSchedulerWatchdog = (reason: "dashboard" | "diagnostics" = "dashboard") => {
-  if (!env.SCHEDULER_ENABLED || schedulerTickRunning) return;
+  if (schedulerTickRunning) return;
 
   const now = Date.now();
   if (now - schedulerWatchdogLastTriggeredMs < SCHEDULER_WATCHDOG_MIN_INTERVAL_MS) return;

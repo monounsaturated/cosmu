@@ -14,14 +14,14 @@ type GitHubRelease = {
 
 const findLocalPyproject = async () => {
   const candidates = [
-    path.resolve(process.cwd(), "TradingAgents-main", "pyproject.toml"),
-    path.resolve(process.cwd(), "..", "..", "TradingAgents-main", "pyproject.toml"),
-    path.resolve(process.cwd(), "..", "TradingAgents-main", "pyproject.toml")
+    path.resolve(/*turbopackIgnore: true*/ process.cwd(), "TradingAgents-main", "pyproject.toml"),
+    path.resolve(/*turbopackIgnore: true*/ process.cwd(), "..", "..", "TradingAgents-main", "pyproject.toml"),
+    path.resolve(/*turbopackIgnore: true*/ process.cwd(), "..", "TradingAgents-main", "pyproject.toml")
   ];
 
   for (const candidate of candidates) {
     try {
-      const text = await readFile(candidate, "utf8");
+      const text = await readFile(/*turbopackIgnore: true*/ candidate, "utf8");
       return { path: candidate, text };
     } catch {
       // Try the next common monorepo cwd. The route must keep working in dev and deployment.

@@ -1,6 +1,5 @@
-import { env } from "../env.js";
 import { ensureBotSchedulerSchema } from "../lib/store.js";
-import { startGuardian } from "./guardian.js";
+import { getGuardianStatus, startGuardian } from "./guardian.js";
 import {
   BOT_SCHEDULER_INTERVAL_MS,
   getSchedulerStatus,
@@ -68,7 +67,7 @@ const JOB_DEFINITIONS: BackgroundJobDefinition[] = [
     label: "Bot scheduler",
     description: "Claims due enabled bots and runs one non-overlapping cycle per bot.",
     intervalMs: BOT_SCHEDULER_INTERVAL_MS,
-    enabled: () => env.SCHEDULER_ENABLED,
+    enabled: () => true,
     run: (trigger) => runSchedulerTick(schedulerTriggerFromBackground(trigger))
   },
   {
@@ -264,16 +263,7 @@ export const startRuntimeAutomation = async () => {
   try {
     await ensureBotSchedulerSchema();
     startBackgroundJobLoop();
-
-    if (!env.SCHEDULER_ENABLED) {
-      console.log("[bot-scheduler] disabled; set SCHEDULER_ENABLED=true to run due bots automatically");
-    }
-
-    if (env.GUARDIAN_ENABLED) {
-      startGuardian();
-    } else {
-      console.log("[guardian] disabled; set GUARDIAN_ENABLED=true to run position safety checks");
-    }
+    startGuardian();
 
     backgroundServicesStarted = true;
     backgroundBootstrapLastError = null;
@@ -295,6 +285,7 @@ export const getRuntimeAutomationStatus = () => ({
   intervalActive: Boolean(backgroundJobLoop),
   intervalMs: BACKGROUND_JOB_LOOP_INTERVAL_MS,
   scheduler: getSchedulerStatus(),
+  guardian: getGuardianStatus(),
   jobs: Array.from(jobStatuses.values()).map((status) => ({
     ...status,
     enabled: getJobDefinition(status.id)?.enabled() ?? status.enabled

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import { CreateBotModal } from "./create-bot-modal";
 import { KillAllBotsButton } from "./kill-all-bots";
 
@@ -14,6 +14,7 @@ type DashboardActionsProps = {
 
 export function DashboardActions({ hasNoBots, activeBotCount, dashboardUnavailable = false }: DashboardActionsProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [refreshing, startRefreshTransition] = useTransition();
   const router = useRouter();
 
   const handleSuccess = () => {
@@ -24,6 +25,15 @@ export function DashboardActions({ hasNoBots, activeBotCount, dashboardUnavailab
   return (
     <>
       <div className="hero-action-row">
+        <button
+          className="btn btn-secondary"
+          type="button"
+          onClick={() => startRefreshTransition(() => router.refresh())}
+          disabled={refreshing}
+        >
+          <RefreshCw size={16} />
+          {refreshing ? "Refreshing" : "Refresh"}
+        </button>
         <KillAllBotsButton activeBotCount={activeBotCount} disabled={dashboardUnavailable} />
         <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
           <Plus size={16} />

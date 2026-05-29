@@ -111,9 +111,7 @@ const binanceFetch = async (
   signed?: boolean
 ) => {
   const url = new URL(`${getBaseUrl(mode)}${path}`);
-  const safePath = path
-    .replace(/signature=[^&\s]+/g, "signature=[redacted]")
-    .replace(/timestamp=\d+/g, "timestamp=[redacted]");
+  const safePath = url.pathname;
   const headers = new Headers(init?.headers);
   const apiKey = signed ? getApiKey(mode) : getConfiguredApiKey(mode);
   if (apiKey) headers.set("X-MBX-APIKEY", apiKey);

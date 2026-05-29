@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { DashboardPayload } from "@cosmu/shared";
@@ -339,6 +339,7 @@ export function BotTable({
   const [sortField, setSortField] = useState<ColumnId>(defaultSortField);
   const [sortOrder, setSortOrder] = useState<SortOrder>(defaultSortOrder);
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [statusFilter, setStatusFilter] = useState<FilterValue>("all");
   const [accountFilter, setAccountFilter] = useState<FilterValue>("all");
   const [qualityFilter, setQualityFilter] = useState<FilterValue>("all");
@@ -367,7 +368,7 @@ export function BotTable({
   };
 
   const filteredBots = useMemo(() => {
-    const search = query.trim().toLowerCase();
+    const search = deferredQuery.trim().toLowerCase();
     return scopedBots.filter((bot) => {
       if (statusFilter === "active" && !bot.enabled) return false;
       if (statusFilter === "stopped" && bot.enabled) return false;
@@ -389,7 +390,7 @@ export function BotTable({
         accountLabel(bot.mode)
       ].some((value) => value.toLowerCase().includes(search));
     });
-  }, [accountFilter, qualityFilter, query, scopedBots, statusFilter]);
+  }, [accountFilter, deferredQuery, qualityFilter, scopedBots, statusFilter]);
 
   const sortedBots = useMemo(() => {
     const column = COLUMN_DEFS.find((item) => item.id === sortField);
@@ -416,7 +417,10 @@ export function BotTable({
     });
   }, [filteredBots, sortField, sortOrder]);
 
-  const visibleColumnDefs = COLUMN_DEFS.filter((column) => visibleColumns.includes(column.id));
+  const visibleColumnDefs = useMemo(
+    () => COLUMN_DEFS.filter((column) => visibleColumns.includes(column.id)),
+    [visibleColumns]
+  );
   const displayedBots = typeof maxRows === "number" ? sortedBots.slice(0, maxRows) : sortedBots;
 
   const overview = useMemo(() => {

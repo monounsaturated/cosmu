@@ -1308,33 +1308,35 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     setSymbolLoadError(null);
 
     const loadVenue = async () => {
-      const [balanceRes, symbolsRes] = await Promise.all([
-        safeFetch<VenueBalance>(`/api/venues/${formData.venue}/balance`),
-        safeFetch<SymbolResponse>(`/api/venues/${formData.venue}/symbols`)
-      ]);
+      try {
+        const [balanceRes, symbolsRes] = await Promise.all([
+          safeFetch<VenueBalance>(`/api/venues/${formData.venue}/balance`),
+          safeFetch<SymbolResponse>(`/api/venues/${formData.venue}/symbols`)
+        ]);
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      setVenueBalance(balanceRes.data);
-      setVenueConnectionError(
-        balanceRes.error
-          ? `${VENUE_LABELS[formData.venue] ?? formData.venue} account check failed. Verify API key, secret, IP allowlist, and spot permissions.`
-          : null
-      );
+        setVenueBalance(balanceRes.data);
+        setVenueConnectionError(
+          balanceRes.error
+            ? `${VENUE_LABELS[formData.venue] ?? formData.venue} account check failed. Verify API key, secret, IP allowlist, and spot permissions.`
+            : null
+        );
 
-      const directSymbols = symbolsRes.data?.symbols?.length ? [] : await fetchSymbolsDirect();
-      if (cancelled) return;
-      const nextSymbols = symbolsRes.data?.symbols?.length ? symbolsRes.data.symbols : directSymbols;
+        const directSymbols = symbolsRes.data?.symbols?.length ? [] : await fetchSymbolsDirect();
+        if (cancelled) return;
+        const nextSymbols = symbolsRes.data?.symbols?.length ? symbolsRes.data.symbols : directSymbols;
 
-      if (nextSymbols.length) {
-        setSymbols(nextSymbols);
-        setSymbolLoadError(null);
-      } else {
-        setSymbols([]);
-        setSymbolLoadError(symbolsRes.error ?? "Pair list failed to load");
+        if (nextSymbols.length) {
+          setSymbols(nextSymbols);
+          setSymbolLoadError(null);
+        } else {
+          setSymbols([]);
+          setSymbolLoadError(symbolsRes.error ?? "Pair list failed to load");
+        }
+      } finally {
+        if (!cancelled) setLoadingBalance(false);
       }
-
-      setLoadingBalance(false);
     };
 
     void loadVenue();

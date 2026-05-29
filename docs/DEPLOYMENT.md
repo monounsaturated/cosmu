@@ -28,8 +28,6 @@ Required core env vars:
 DATABASE_URL=<supabase connection string>
 DATABASE_SSL=true
 API_SECRET_KEY=<32+ chars>
-SCHEDULER_ENABLED=true
-GUARDIAN_ENABLED=true
 ```
 
 Provider and exchange keys also belong on Railway, not in Vercel or the DB.
@@ -40,6 +38,7 @@ Railway owns recurring work:
 
 - Bot scheduler: every 15 seconds.
 - Market data cache: every minute.
+- Guardian: position safety checks every 10 seconds.
 - Pricing, model catalog, and venue symbol sync: hourly.
 
 Use `GET /internal/background-jobs` with `x-api-key` to verify the loop is running.

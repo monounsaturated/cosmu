@@ -40,14 +40,6 @@ const optionalUrlString = z.preprocess(
   z.string().url().optional()
 );
 
-const optionalBooleanString = z.preprocess(
-  (value) => {
-    if (value === undefined || value === "") return undefined;
-    return String(value).trim().toLowerCase();
-  },
-  z.enum(["true", "false"]).optional()
-);
-
 const envSchema = z.object({
   API_PORT: z.coerce.number().optional(),
   PORT: z.coerce.number().optional(),
@@ -95,8 +87,6 @@ const envSchema = z.object({
     },
     z.enum(["true", "false"]).optional()
   ),
-  SCHEDULER_ENABLED: optionalBooleanString,
-  GUARDIAN_ENABLED: optionalBooleanString,
   XAI_API_KEY: optionalNonEmptyString,
   NOUS_API_KEY: optionalNonEmptyString,
   NOUS_BASE_URL: optionalUrlString,
@@ -129,7 +119,5 @@ export const env = {
   HUGGINGFACE_API_KEY: parsedEnv.HUGGINGFACE_API_KEY ?? parsedEnv.HF_TOKEN,
   GOOGLE_API_KEY: parsedEnv.GOOGLE_API_KEY ?? parsedEnv.GEMINI_API_KEY,
   GOOGLE_BASE_URL: parsedEnv.GOOGLE_BASE_URL ?? parsedEnv.GEMINI_BASE_URL,
-  API_PORT: parsedEnv.PORT ?? parsedEnv.API_PORT ?? 4000,
-  SCHEDULER_ENABLED: parsedEnv.SCHEDULER_ENABLED === "true",
-  GUARDIAN_ENABLED: parsedEnv.GUARDIAN_ENABLED === "true"
+  API_PORT: parsedEnv.PORT ?? parsedEnv.API_PORT ?? 4000
 };

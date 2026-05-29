@@ -25,7 +25,7 @@
 - Store API keys in `.env.local` for local development and server environment variables in deployment.
 - Store non-secret configuration in the database: model profiles, default models, feature toggles, prompt versions, data source metadata, and runtime limits.
 - Do not put provider keys, exchange keys, or TradingAgents secrets in the database until encryption, rotation, audit logs, and per-user scopes are implemented.
-- Background automation is opt-in. Set `SCHEDULER_ENABLED=true` to run due bots automatically and `GUARDIAN_ENABLED=true` to run position safety checks.
+- Background automation runs with the API process by default. Surface runtime status in Settings instead of gating scheduler or guardian with env variables.
 
 ## Feature Toggles
 - Default toggles are defined in `packages/shared/src/index.ts`.

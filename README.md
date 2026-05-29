@@ -90,8 +90,6 @@ BINANCE_TESTNET_API_SECRET=<your-secret>
 BINANCE_API_KEY=<your-key>           # for live trading
 BINANCE_API_SECRET=<your-secret>
 SLACK_WEBHOOK_URL=<your-webhook>
-SCHEDULER_ENABLED=true
-GUARDIAN_ENABLED=true
 ```
 
 ### 2. Vercel Web
@@ -133,8 +131,6 @@ Once connected, every `git push origin main` triggers a new Railway deploy autom
 - `SLACK_WEBHOOK_URL`: optional Slack webhook
 - `API_SECRET_KEY`: shared secret between the Next.js BFF routes and this API (header `x-api-key`)
 - `API_BASE_URL`: Vercel-only server env pointing at the Railway API
-- `SCHEDULER_ENABLED`: Railway-only; set `true` to run due bots automatically
-- `GUARDIAN_ENABLED`: Railway-only; set `true` to run position safety checks
 
 Minimum useful local tests:
 
@@ -147,11 +143,12 @@ Minimum useful local tests:
 
 The API starts one in-process background loop on Railway:
 
-- Bot scheduler: checks due bots every 15 seconds when `SCHEDULER_ENABLED=true`.
+- Bot scheduler: always on; checks due bots every 15 seconds.
 - Market data cache: refreshes Binance prices and balances every minute so dashboard requests stay fast.
 - LLM pricing sync: refreshes provider pricing assumptions hourly.
 - Model catalog sync: fetches available models hourly.
 - Venue symbol sync: refreshes tradable Binance symbols hourly.
+- Guardian: always on; checks open positions and safety-stop state.
 
 Use `GET /internal/background-jobs` with `x-api-key` to inspect status.
 

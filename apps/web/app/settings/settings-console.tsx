@@ -83,6 +83,15 @@ type Diagnostics = {
       lastResultCount: number;
       lastError: string | null;
     };
+    automation?: {
+      guardian?: {
+        enabled: boolean;
+        running: boolean;
+        tickRunning: boolean;
+        intervalMs: number;
+        reconciled: boolean;
+      };
+    };
   };
   backendError?: string;
 };
@@ -351,6 +360,7 @@ export function SettingsConsole() {
   const modelProviderKeys = diagnostics?.backend?.modelProviderKeys ?? {};
   const tradingAccountKeys = diagnostics?.backend?.tradingAccountKeys ?? {};
   const scheduler = diagnostics?.backend?.scheduler;
+  const guardian = diagnostics?.backend?.automation?.guardian;
   const providerKeyRows = PROVIDERS.map((provider) => ({
     key: provider,
     label: providerLabel(provider),
@@ -832,7 +842,7 @@ export function SettingsConsole() {
             <span>
               <strong>Provider keys</strong>
               <small>
-                <code>XAI_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>BINANCE_*</code>, and TradingAgents keys live in <code>.env.local</code> locally and server env in deploys. Keep <code>SCHEDULER_ENABLED</code> and <code>GUARDIAN_ENABLED</code> off unless automation is intentional.
+                <code>XAI_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>BINANCE_*</code>, and TradingAgents keys live in <code>.env.local</code> locally and server env in deploys. Scheduler and guardian run with the API and are monitored below.
               </small>
             </span>
           </div>
@@ -878,11 +888,26 @@ export function SettingsConsole() {
                 <small>
                   {scheduler?.loopStarted
                     ? `Last tick ${formatDiagnosticTime(scheduler.lastFinishedAt)}`
-                    : "Set SCHEDULER_ENABLED=true and restart the API"}
+                    : "Starting with the API"}
                 </small>
               </span>
               <span className={`badge ${scheduler?.enabled && scheduler?.loopStarted ? "badge-success" : "badge-inactive"}`}>
                 {scheduler?.enabled && scheduler?.loopStarted ? "running" : "off"}
+              </span>
+            </div>
+            <div className="settings-row">
+              <span>
+                <strong>Guardian</strong>
+                <small>
+                  {guardian?.tickRunning
+                    ? "Checking open positions now"
+                    : guardian?.intervalMs
+                      ? `Every ${Math.round(guardian.intervalMs / 1000)}s`
+                      : "Starting with the API"}
+                </small>
+              </span>
+              <span className={`badge ${guardian?.running ? "badge-success" : "badge-inactive"}`}>
+                {guardian?.running ? "running" : "starting"}
               </span>
             </div>
             <div className="settings-row">

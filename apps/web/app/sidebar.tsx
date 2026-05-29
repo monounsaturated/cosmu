@@ -9,13 +9,10 @@ import {
   Bot,
   Brain,
   ChevronUp,
-  Database,
   DollarSign,
   Ellipsis,
   FlaskConical,
   Gauge,
-  MessageSquare,
-  Network,
   Radio,
   Settings,
   ShieldCheck,
@@ -186,13 +183,6 @@ export function Sidebar() {
             </div>
           ))}
         </nav>
-
-        <div className="sidebar-platform-note">
-          <span><Database size={14} /> data</span>
-          <span><Network size={14} /> frameworks</span>
-          <span><Brain size={14} /> memory</span>
-          <span><MessageSquare size={14} /> chat</span>
-        </div>
       </aside>
 
       <nav className="mobile-tab-bar" aria-label="Mobile navigation">

@@ -2,7 +2,6 @@ import { DashboardActions } from "./dashboard-actions";
 import { PerformanceChart } from "./performance-chart";
 import { RecentRunsTable } from "./run-detail-row";
 import { BotTable } from "./bot-table";
-import { AutoRefresh } from "./live-refresh";
 import { LocalTime } from "./local-time";
 import { VenueOverview } from "./venue-overview";
 import { RecentExecutions } from "./recent-executions";
@@ -26,7 +25,6 @@ export default async function HomePage() {
   const llmDailyUsd = dashboard.llmSpendEstimate?.estimatedDailyUsd ?? 0;
   return (
     <main className="page page-wide">
-      <AutoRefresh intervalMs={30000} />
       <section className="command-hero agents-hero">
         <div>
           <p className="eyebrow">Agents</p>

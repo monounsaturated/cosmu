@@ -192,13 +192,17 @@ app.get("/internal/diagnostics", async (_request, response) => {
   result.cors = corsDiagnostics();
   const automation = getRuntimeAutomationStatus();
   result.automation = automation;
-  result.scheduler = automation.scheduler;
+  result.scheduler = {
+    ...automation.scheduler,
+    loopStarted: automation.loopStarted
+  };
 
   response.json(result);
 });
 
 app.get("/internal/qa/status", async (_request, response) => {
   triggerSchedulerWatchdog("diagnostics");
+  const automation = getRuntimeAutomationStatus();
 
   response.json({
     ok: true,
@@ -223,8 +227,11 @@ app.get("/internal/qa/status", async (_request, response) => {
       slackConfigured: Boolean(env.SLACK_WEBHOOK_URL),
       webBaseUrlConfigured: Boolean(env.WEB_BASE_URL)
     },
-    automation: getRuntimeAutomationStatus(),
-    scheduler: getRuntimeAutomationStatus().scheduler
+    automation,
+    scheduler: {
+      ...automation.scheduler,
+      loopStarted: automation.loopStarted
+    }
   });
 });
 
@@ -798,7 +805,7 @@ app.post("/bots", async (request, response, next) => {
     response.json({
       id,
       initialRunQueued: true,
-      schedulerEnabled: env.SCHEDULER_ENABLED
+      schedulerEnabled: true
     });
 
     setImmediate(() => {

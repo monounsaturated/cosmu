@@ -290,17 +290,18 @@ export const runGuardianTick = async (): Promise<void> => {
   // Group positions by mode (testnet vs live) since ticker endpoint differs.
   // Skip positions for disabled/killed bots — they produce false "gave up" alerts.
   const positionsByMode = new Map<"testnet" | "live", BotPosition[]>();
+  let skippedDisabledCount = 0;
   for (const position of positions) {
+    const state = getCloseState(position.id);
+    if (state.givenUp) continue;
+
     const bot = await getBotSetupCached(position.botId);
     if (!bot) continue;
 
     const enabledState = await getBotEnabledState(position.botId);
     if (!enabledState || !enabledState.enabled) {
-      const state = getCloseState(position.id);
-      if (!state.givenUp) {
-        state.givenUp = true;
-        console.log(`[guardian] skipping position ${position.symbol} — bot "${enabledState?.name ?? position.botId}" is disabled`);
-      }
+      state.givenUp = true;
+      skippedDisabledCount += 1;
       continue;
     }
 
@@ -308,6 +309,10 @@ export const runGuardianTick = async (): Promise<void> => {
     const arr = positionsByMode.get(mode) ?? [];
     arr.push(position);
     positionsByMode.set(mode, arr);
+  }
+
+  if (skippedDisabledCount > 0) {
+    console.log(`[guardian] skipped ${skippedDisabledCount} position(s) tied to disabled agents`);
   }
 
   for (const [mode, modePositions] of positionsByMode.entries()) {
@@ -424,6 +429,14 @@ export const stopGuardian = () => {
     guardianTimer = null;
   }
 };
+
+export const getGuardianStatus = () => ({
+  enabled: true,
+  running: Boolean(guardianTimer) && !stopRequested,
+  tickRunning,
+  intervalMs: GUARDIAN_TICK_MS,
+  reconciled
+});
 
 // Keep VenueContext import from being flagged as unused. It is referenced in the
 // type-level for future guardian heuristics (liquidity checks).
