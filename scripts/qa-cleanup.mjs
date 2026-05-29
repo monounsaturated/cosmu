@@ -11,12 +11,12 @@ if (!url) { console.error("DATABASE_URL not set"); process.exit(1); }
 const sql = postgres(url, { max: 1, ssl: "require" });
 
 try {
-  // Delete QA test bots (research/pro) created during QA today
+  // Delete QA test bots created during local verification.
   const deleted = await sql`
     delete from bots
-    where workspace_mode in ('research', 'pro')
-      and slug like any (array['research-%', 'pro-%'])
-    returning id, name, workspace_mode as "workspaceMode"
+    where slug like 'qa-%'
+       or name ilike 'QA %'
+    returning id, name, slug
   `;
   console.log("Deleted:", deleted);
 
@@ -31,7 +31,7 @@ try {
 
   const approvals = await sql`
     delete from approval_requests
-    where title ilike '%QA %' or title ilike 'Promote "QA %'
+    where title ilike '%QA %'
     returning id, title
   `;
   console.log("Deleted approvals:", approvals);

@@ -31,7 +31,7 @@
   --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.2);
   --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
   --tab-bar-height: 60px;
-  --sidebar-w: 256px;
+  --sidebar-w: 216px;
 }
 
 :root[data-theme="light"] {
@@ -269,24 +269,6 @@ img { max-width: 100%; display: block; }
   color: var(--muted);
 }
 
-.sidebar-resize-handle {
-  position: absolute;
-  top: 0;
-  right: -3px;
-  width: 6px;
-  height: 100%;
-  cursor: col-resize;
-  z-index: 31;
-  transition: background 0.15s;
-}
-
-.sidebar-resize-handle:hover,
-.sidebar-resize-handle:active {
-  background: var(--accent);
-  opacity: 0.5;
-  border-radius: 3px;
-}
-
 /* Mobile navigation controls - hidden by default */
 .mobile-more-backdrop,
 .mobile-more-sheet { display: none; }
@@ -306,6 +288,40 @@ img { max-width: 100%; display: block; }
   border-top: 1px solid var(--border);
   align-items: center;
   justify-content: space-around;
+}
+
+.platform-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.platform-overview-item {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.platform-overview-item svg {
+  color: var(--muted-strong);
+}
+
+.platform-overview-item span,
+.platform-overview-item small {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.platform-overview-item strong {
+  color: var(--text-strong);
+  font-size: 22px;
+  line-height: 1;
 }
 
 .mobile-tab-item {
@@ -2785,7 +2801,7 @@ h1, h2, h3, h4, h5, h6 { margin: 0; }
 
 .loop-prompt-section textarea { min-height: 80px; }
 
-/* ── 28. TradingAgents ── */
+/* ── 28. Shelved research sidecar styles ── */
 .ta-page {
   display: grid;
   gap: 16px;

@@ -9,11 +9,11 @@ const run = async () => {
   console.log("✓ budget_usdt on bot_runtime_configs");
 
   await sql`alter table bot_runtime_configs drop constraint if exists bot_runtime_configs_venue_check`;
-  await sql`alter table bot_runtime_configs add constraint bot_runtime_configs_venue_check check (venue in ('binance', 'binance-testnet'))`;
+  await sql`alter table bot_runtime_configs add constraint bot_runtime_configs_venue_check check (venue in ('binance', 'binance-testnet', 'ibkr-paper', 'ibkr'))`;
   console.log("✓ venue check updated on bot_runtime_configs");
 
   await sql`alter table executions drop constraint if exists executions_venue_check`;
-  await sql`alter table executions add constraint executions_venue_check check (venue in ('binance', 'binance-testnet'))`;
+  await sql`alter table executions add constraint executions_venue_check check (venue in ('binance', 'binance-testnet', 'ibkr-paper', 'ibkr'))`;
   console.log("✓ venue check updated on executions");
 
   console.log("All migrations done.");

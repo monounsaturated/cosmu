@@ -1,6 +1,6 @@
 // module: Tradable-symbol catalog cache sync.
 import { sql } from "../db.js";
-import { listVenueSymbols } from "../adapters/binance.js";
+import { isBinanceVenue, listVenueSymbols } from "../adapters/binance.js";
 import type { VenueId } from "./venues.js";
 import { listXaiModels } from "../providers/xai.js";
 import { listNousModels } from "../providers/nous.js";
@@ -255,9 +255,19 @@ const shouldRefreshVenue = async (venue: string) => {
   return Date.now() - row.lastSeenAt.getTime() > CATALOG_REFRESH_INTERVAL_MS;
 };
 
-const venueMode = (venue: VenueId) => venue === "binance-testnet" ? "testnet" as const : "live" as const;
+const venueMode = (venue: Extract<VenueId, "binance" | "binance-testnet">) =>
+  venue === "binance-testnet" ? "testnet" as const : "live" as const;
 
 export const syncVenueSymbols = async (venue: VenueId, force = false) => {
+  if (!isBinanceVenue(venue)) {
+    return {
+      venue,
+      synced: false,
+      count: 0,
+      message: "Skipped - venue symbol sync is not implemented for this planned venue"
+    };
+  }
+
   if (!force && !(await shouldRefreshVenue(venue))) {
     return {
       venue,

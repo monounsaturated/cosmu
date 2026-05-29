@@ -2,6 +2,7 @@
 import { Router, type Router as ExpressRouter } from "express";
 import {
   addPromptVersion,
+  addTraderPromptVersion,
   createFormatterPromptVersion,
   createPrompt,
   createTraderPrompt,
@@ -146,6 +147,20 @@ settingsRouter.post("/trader-prompts", async (request, response, next) => {
       return;
     }
     const result = await createTraderPrompt({ name, slug, initialBody: initialBody.trim() });
+    response.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+settingsRouter.post("/trader-prompts/:promptId/versions", async (request, response, next) => {
+  try {
+    const { body } = request.body;
+    if (!body || typeof body !== "string" || !body.trim()) {
+      response.status(400).json({ error: "body is required" });
+      return;
+    }
+    const result = await addTraderPromptVersion({ promptId: request.params.promptId, body: body.trim() });
     response.json(result);
   } catch (error) {
     next(error);

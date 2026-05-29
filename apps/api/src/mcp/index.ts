@@ -6,6 +6,10 @@ import { getExchangeInfoTool } from "./tools/get-exchange-info.js";
 import { executeOrderTool } from "./tools/execute-order.js";
 import { cancelOrdersTool } from "./tools/cancel-orders.js";
 import { binanceSymbolLookupTool } from "./tools/binance-symbol-lookup.js";
+import { tradabilityResolveTool } from "./tools/tradability-resolve.js";
+import { sourcesFetchTool } from "./tools/sources-fetch.js";
+import { signalsQueryTool } from "./tools/signals-query.js";
+import { indexesQueryTool } from "./tools/indexes-query.js";
 
 export type { ToolContext, ToolCallResult };
 
@@ -23,6 +27,10 @@ register(getExchangeInfoTool);
 register(executeOrderTool);
 register(cancelOrdersTool);
 register(binanceSymbolLookupTool);
+register(tradabilityResolveTool);
+register(sourcesFetchTool);
+register(signalsQueryTool);
+register(indexesQueryTool);
 
 /** Call a registered tool by name. */
 export const callTool = async <T = unknown>(

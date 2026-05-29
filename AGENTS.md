@@ -31,11 +31,11 @@ Do not crawl the whole repo by default. Do not do broad cleanup while fixing a n
 - `Decision`: agent output before validation and execution.
 - `Execution`: venue order, fill, fee, position, and venue response.
 - `Outcome`: result, PnL, fees, review, and lesson.
-- `Index`: scheduled bot that monitors Sources and applies a standardized prompt to quantify a topic over time. Derived view over Signals, not a new raw store. (Future hook — not built yet.)
+- `Index`: scheduled bot that monitors Sources and applies a standardized prompt to quantify a topic over time. Derived view over Signals, not a new raw store.
 - `Venue`: actual trading or market venue, for example `Binance`, `Binance Testnet`, `IBKR`, or `Polymarket`.
 - `AgentStep`: audited model/tool phase.
 
-Use the actual venue name everywhere — UI, code, and DB. The only venue concepts are `Binance` (`binance`) and `Binance Testnet` (`binance-testnet`). Never use generic labels such as paper, live mode, or testnet mode.
+Use the actual venue name everywhere — UI, code, and DB. Active execution venues are `Binance` (`binance`) and `Binance Testnet` (`binance-testnet`). `IBKR Paper` (`ibkr-paper`) and `IBKR` (`ibkr`) are prepared in contracts for future equity execution but are not enabled in bot creation yet. Never use generic labels such as paper mode, live mode, or testnet mode.
 
 ## Module Map
 Each `services/`, `lib/store/`, `adapters/`, `providers/`, and `research/` file starts with a one-line `// module:` memo — read that first to know what it does before opening the file.
@@ -47,7 +47,7 @@ Each `services/`, `lib/store/`, `adapters/`, `providers/`, and `research/` file 
 - Signals/data: `apps/api/src/routes/signals.ts`, `apps/api/src/lib/store/signals.ts`, `raw_observations`, `standardized_signals`.
 - Research: `apps/api/src/routes/research.ts`, `apps/api/src/research`, `apps/api/src/lib/store/research*.ts`, `apps/web/app/research`.
 - Settings/secrets: `apps/web/app/settings`, app settings stores. Secrets stay in env, not DB.
-- Shelved reference: `TradingAgents-main` (vendored OSS) and `apps/trading-agents` wrapper are set aside — do not read, crawl, or couple runtime to them.
+- Shelved reference: `TradingAgents-main` (vendored OSS) is set aside — do not read, crawl, or couple runtime to it.
 
 ## Data Rules
 - Raw external information should become a `Record` before it is reused.
@@ -84,7 +84,7 @@ Stop and report before:
 - UI changes: verify desktop and mobile widths in the browser when the dev server is available.
 
 ## Repo Memory
-- [venues] Venue is the single source of truth for testnet vs live: `binance` = live, `binance-testnet` = testnet. There is no separate execution-mode field. Show actual venue names everywhere.
+- [venues] Venue is the single source of truth for execution context: `binance` and `binance-testnet` are active; `ibkr-paper` and `ibkr` are future equity execution venues. There is no separate execution-mode field. Show actual venue names everywhere.
 - [data] Preserve raw source payloads/provenance when practical; derived signals, indexes, and reviews should be recomputable.
 - [research] Research can use tools and venue data, but execution still goes through the validator and venue adapter.
 - [secrets] API keys, exchange keys, and provider secrets stay in `.env.local` locally and server env in deployments.

@@ -2,7 +2,7 @@
 /**
  * Apply a single SQL file against DATABASE_URL.
  * Usage:
- *   set -a && source .env.local && set +a && node scripts/apply-sql.mjs apps/api/sql/018_workspace_mode.sql
+ *   set -a && source .env.local && set +a && node scripts/apply-sql.mjs apps/api/sql/022_sources_indexes.sql
  */
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";

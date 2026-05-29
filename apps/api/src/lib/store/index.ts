@@ -135,5 +135,12 @@ export {
   updateStandardizedSignalStatus
 } from "./signals.js";
 
+export {
+  ensureIndexSchema,
+  listIndexConfigs,
+  createIndexConfig,
+  listIndexSnapshots
+} from "./indexes.js";
+
 export type { JsonValue } from "./helpers.js";
 export { parseJson, toIsoString, buildRuntimeConfig } from "./helpers.js";

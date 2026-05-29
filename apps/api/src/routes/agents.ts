@@ -7,8 +7,13 @@ import {
   listApprovalRequests,
   updateApprovalStatus
 } from "../lib/store.js";
+import { listAgentDefinitions } from "../services/agent-registry.js";
 
 export const agentsRouter: ExpressRouter = Router();
+
+agentsRouter.get("/agents/registry", async (_request, response) => {
+  response.json({ agents: listAgentDefinitions() });
+});
 
 agentsRouter.get("/agent-control/summary", async (_request, response, next) => {
   try {

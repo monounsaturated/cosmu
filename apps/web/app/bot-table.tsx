@@ -3,7 +3,7 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import type { DashboardPayload } from "@cosmu/shared";
+import type { DashboardPayload, Venue } from "@cosmu/shared";
 import { BotControls } from "./bot-controls";
 import { LocalTime } from "./local-time";
 
@@ -50,8 +50,11 @@ type Props = {
   showCreatedByDefault?: boolean;
 };
 
-const venueLabel = (venue: "binance" | "binance-testnet") =>
-  venue === "binance-testnet" ? "Binance Testnet" : "Binance";
+const venueLabel = (venue: Venue) =>
+  venue === "binance-testnet" ? "Binance Testnet"
+    : venue === "ibkr-paper" ? "IBKR Paper"
+      : venue === "ibkr" ? "IBKR"
+        : "Binance";
 
 const displayName = (bot: BotRow) => {
   const trimmed = bot.name?.trim() ?? "";

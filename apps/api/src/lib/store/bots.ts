@@ -328,8 +328,8 @@ export const ensureBotSchedulerSchema = async () => {
   await sql`
     update bot_runtime_configs
     set next_run_at = case
-      when last_run_finished_at is not null then greatest(now(), last_run_finished_at + make_interval(secs => frequency_minutes * 60))
       when last_run_started_at is not null then greatest(now(), last_run_started_at + make_interval(secs => frequency_minutes * 60))
+      when last_run_finished_at is not null then greatest(now(), last_run_finished_at + make_interval(secs => frequency_minutes * 60))
       else created_at
     end
     where enabled = true
@@ -361,7 +361,8 @@ export const ensureBotSchedulerSchema = async () => {
  * Returns true if the run should proceed, false if another source already
  * claimed this cycle or a scheduled run is not due yet. A claim clears
  * `next_run_at` while the run is active; `finishRun` schedules the next cadence
- * from the finish timestamp. If the process dies mid-run, the stale-start guard
+ * from the start timestamp so "every 1 minute" is start-to-start when the run
+ * itself is short enough. If the process dies mid-run, the stale-start guard
  * below lets a later tick recover it after 30 minutes.
  */
 export const claimRun = async (

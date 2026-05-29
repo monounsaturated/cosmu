@@ -22,7 +22,8 @@ const heading = (label: string | undefined, fallback: string) =>
 export const DEFAULT_NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
   "---",
   "HARD RULES:",
-  "- Buy only symbols verified this turn with binance_symbol_lookup; use its canonical symbol and currentPrice.",
+  "- Buy only symbols verified this turn with tradability_resolve or binance_symbol_lookup; use the returned canonical symbol and currentPrice.",
+  "- Resolve only the strongest few ideas. Do not ask for, print, or enumerate the full venue universe.",
   "- BUY: stopLossPrice < currentPrice and takeProfitPrice > currentPrice. SELL: both null.",
   "- If no valid trade survives, return hold with orders: [].",
   "- Final answer: one TradingDecision JSON object, no markdown or prose."
@@ -33,7 +34,9 @@ export const DEFAULT_NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
 export const DEFAULT_FORMATTER_BODY = [
   "You are phase 2 for one Binance spot bot. Convert the research text into a valid TradingDecision JSON object.",
   "Live Binance uses USDC pairs only. Testnet/dev may use USDT or USDC. Treat USDT and USDC as cash.",
-  "Use binance_symbol_lookup once for the specific tickers you may trade. Use returned currentPrice, tickSize, stepSize, and canonical symbol. Ignore stale prices from research.",
+  "Select at most 3 concrete trade ideas from the research, then resolve only those specific assets with tradability_resolve or binance_symbol_lookup.",
+  "Use returned currentPrice, tickSize, stepSize, and canonical symbol. Ignore stale prices from research.",
+  "If a research idea is not executable on this venue, do not force it. Either resolve a close venue-executable substitute with a clear rationale, or hold.",
   "Respect the injected wallet, authorized pairs, order caps, reserve, and allowed order types. Prefer fewer high-conviction orders.",
   "If nothing is defensible after validation, return mode='hold' with orders: [].",
   "Output exactly one JSON object with: mode, rationaleSummary, globalRationale, confidence, timeHorizon, orders, targetAllocations."
@@ -56,7 +59,7 @@ const buildWalletSection = (snapshot: VenueContext["snapshot"], label?: string) 
 const buildSessionSection = (bot: BotSetup, label?: string) => [
   heading(label, "SESSION"),
   `Bot: ${bot.name} (#${bot.botNumber}) | Model: ${bot.traderModelProfileName}`,
-  `Venue: ${bot.runtimeConfig.venue === "binance-testnet" ? "Binance Testnet" : "Binance"} (spot) | Frequency: every ${bot.runtimeConfig.frequencyMinutes}min`,
+  `Venue: ${venueLabel(bot.runtimeConfig.venue)} (${bot.runtimeConfig.venue}, ${bot.runtimeConfig.assetClass}) | Frequency: every ${bot.runtimeConfig.frequencyMinutes}min`,
   `Budget: ${fmtUsd(bot.runtimeConfig.budgetUsdt)} — you must stay within this allocation`
 ].join("\n");
 
@@ -103,6 +106,43 @@ const buildTradingScopeSection = (runtimeConfig: BotSetup["runtimeConfig"], labe
 
 // Live prices are no longer pre-injected into the trader prompt.
 // The trader fetches authoritative prices on-demand via the `binance_symbol_lookup` tool.
+
+const venueLabel = (venue: BotSetup["runtimeConfig"]["venue"]) =>
+  venue === "binance-testnet" ? "Binance Testnet"
+    : venue === "binance" ? "Binance"
+      : venue === "ibkr-paper" ? "IBKR Paper"
+        : "IBKR";
+
+const buildResearchVenueBrief = (bot: BotSetup) => {
+  const { runtimeConfig } = bot;
+  const base = [
+    "---",
+    "VENUE BRIEF:",
+    `- This bot trades on ${venueLabel(runtimeConfig.venue)}.`,
+    `- Asset class: ${runtimeConfig.assetClass}.`,
+    "- Do not ask for or print a full tradable-universe list.",
+    "- Research broadly, but when naming a trade idea, include the asset/ticker plainly so the trader can resolve it deterministically before execution."
+  ];
+
+  if (runtimeConfig.venue === "binance") {
+    base.push("- Binance live in this app is USDC-quoted spot only; USDT spot pairs are not executable here.");
+  } else if (runtimeConfig.venue === "binance-testnet") {
+    base.push("- Binance Testnet supports sandbox spot execution; the trader will verify exact USDT/USDC pair availability.");
+  } else {
+    base.push("- IBKR execution is prepared but not enabled yet; equity ideas should be stored as research/signals until the paper adapter is active.");
+  }
+
+  if (runtimeConfig.symbolScope === "selected") {
+    const selected = runtimeConfig.contextSymbols.filter((symbol) => symbol !== "__ALL__");
+    if (selected.length > 0 && selected.length <= 12) {
+      base.push(`- This selected-pair bot is constrained to: ${selected.join(", ")}.`);
+    } else if (selected.length > 12) {
+      base.push(`- This selected-pair bot has ${selected.length} authorized symbols; do not print the full list.`);
+    }
+  }
+
+  return base.join("\n");
+};
 
 /** Phase 1: pure written prompt — no injected data sections. */
 const buildResearchUserSections = (_input: {
@@ -210,6 +250,7 @@ export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildProm
   const groundingBlock = renderRuntimeTemplate(appSettings.promptRuntime.researchGroundingRules).trim();
 
   const parts = [bot.promptBody.trim()];
+  parts.push(buildResearchVenueBrief(bot));
   if (groundingBlock) parts.push(groundingBlock);
   const systemPrompt = parts.join("\n\n");
   const userMessage = "Analyze the market now. Identify any trading opportunities worth exploring.";

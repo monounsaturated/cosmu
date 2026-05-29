@@ -4,9 +4,11 @@ import express from "express";
 import { env } from "./env.js";
 import { buildCorsOptions } from "./cors-options.js";
 import { agentsRouter } from "./routes/agents.js";
+import { indexesRouter } from "./routes/indexes.js";
 import { researchRouter } from "./routes/research.js";
 import { signalsRouter } from "./routes/signals.js";
-import { tradingAgentsRouter } from "./routes/trading-agents.js";
+import { sourcesRouter } from "./routes/sources.js";
+import { tradabilityRouter } from "./routes/tradability.js";
 import { systemRouter } from "./routes/system.js";
 import { settingsRouter } from "./routes/settings.js";
 import { venuesRouter } from "./routes/venues.js";
@@ -44,9 +46,11 @@ app.use((request, response, next) => {
 });
 
 app.use(agentsRouter);
+app.use(indexesRouter);
 app.use(researchRouter);
 app.use(signalsRouter);
-app.use(tradingAgentsRouter);
+app.use(sourcesRouter);
+app.use(tradabilityRouter);
 app.use(systemRouter);
 app.use(settingsRouter);
 app.use(venuesRouter);

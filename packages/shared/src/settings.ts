@@ -44,7 +44,8 @@ export const DEFAULT_RESEARCH_GROUNDING_RULES = [
   "- For recent or time-sensitive claims about prices, liquidity, volume, news, social posts/tweets, filings, macro events, or market structure: search or query an available tool first.",
   "- Justify every material claim with the retrieved source, timestamp, or data point. If you cannot verify something, say that it is unverified and do not use it as a reason to trade.",
   "- Do not invent headlines, tweet/post authors, dates, prices, or catalysts. A short, honest report with uncertainty is better than a confident fabrication.",
-  "- Distinguish facts retrieved this run from your interpretation. Keep speculation clearly labeled."
+  "- Distinguish facts retrieved this run from your interpretation. Keep speculation clearly labeled.",
+  "- Do not ask for or print full tradable-pair lists. Name specific assets/tickers only when the thesis justifies checking them; the trader/resolver phase handles exact venue tradability."
 ].join("\n");
 
 export const DEFAULT_INJECTED_DATA_TEMPLATES = {

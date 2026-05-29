@@ -124,7 +124,7 @@ function PromptSection({
   phaseColor: string;
   strategy: "new" | "existing";
   onStrategyChange: (s: "new" | "existing") => void;
-  promptOptions: { id: string; label: string; body: string }[];
+  promptOptions: { id: string; promptId?: string; label: string; body: string }[];
   selectedVersionId: string;
   onVersionChange: (id: string) => void;
   promptName: string;
@@ -482,6 +482,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       .filter((tp) => Boolean(tp.latestVersionId))
       .map((tp) => ({
         id: tp.latestVersionId!,
+        promptId: tp.id,
         label: `Trader Prompt #${tp.promptNumber} — ${tp.name}`,
         body: tp.latestBody ?? "",
         lastUsedAt: tp.lastUsedAt,
@@ -631,9 +632,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
         else if (setup.traderModelProvider ?? setup.modelProvider) setSelectedTraderProvider(setup.traderModelProvider ?? setup.modelProvider);
 
         const mergedVenue: "binance" | "binance-testnet" =
-          setup.runtimeConfig.venue === "binance-testnet" || setup.runtimeConfig.mode === "testnet"
-            ? "binance-testnet"
-            : "binance";
+          setup.runtimeConfig.venue === "binance-testnet" ? "binance-testnet" : "binance";
 
         setFormData({
           name: setup.name,
@@ -868,16 +867,18 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     setResearchSavingVersion(true);
     setError(null);
     try {
-      const res = await fetch("/api/prompts", {
+      const selected = researchPromptOptions.find((option) => option.id === formData.existingPromptVersionId);
+      if (!selected?.promptId) throw new Error("Choose a saved research prompt first");
+      const res = await fetch(`/api/prompts/${selected.promptId}/versions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "", slug: "", initialBody: researchEditedBody })
+        body: JSON.stringify({ body: researchEditedBody.trim() })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to save prompt");
 
-      const promptsRes = await fetch("/api/prompts");
-      setPrompts(await promptsRes.json());
+      const promptsRes = await safeFetch<Prompt[]>("/api/prompts");
+      if (promptsRes.data) setPrompts(promptsRes.data);
       setFormData((cur) => ({ ...cur, existingPromptVersionId: data.promptVersionId }));
       setResearchShowEditor(false);
     } catch (e) {
@@ -891,14 +892,12 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     setTraderSavingVersion(true);
     setError(null);
     try {
-      const res = await fetch("/api/trader-prompts", {
+      const selected = traderPromptOptions.find((option) => option.id === formData.existingTraderVersionId);
+      if (!selected?.promptId) throw new Error("Choose a saved trader prompt first");
+      const res = await fetch(`/api/trader-prompts/${selected.promptId}/versions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "",
-          slug: "",
-          initialBody: traderEditedBody.trim()
-        })
+        body: JSON.stringify({ body: traderEditedBody.trim() })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to save trader prompt");
@@ -1014,7 +1013,6 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
             runtimeConfig: {
               venue: formData.venue,
               frequencyMinutes: Number(formData.frequencyMinutes),
-              mode: formData.venue === "binance-testnet" ? "testnet" : "live",
               assetClass: "spot",
               budgetUsdt: formData.budgetUsdt,
               symbolScope: formData.symbolScope,
@@ -1039,7 +1037,6 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
             runtimeConfig: {
               venue: formData.venue,
               frequencyMinutes: Number(formData.frequencyMinutes),
-              mode: formData.venue === "binance-testnet" ? "testnet" : "live",
               assetClass: "spot",
               budgetUsdt: formData.budgetUsdt,
               symbolScope: formData.symbolScope,
@@ -1122,7 +1119,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                     <input
                       type="text"
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      onChange={(e) => setFormData((cur) => ({ ...cur, name: e.target.value }))}
                       placeholder={nextBotNumber ? `#${nextBotNumber}` : "My Strategy"}
                     />
                   </label>
@@ -1136,11 +1133,11 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                       onChange={(e) => {
                         setPairsOpen(false);
                         setSymbolSearch("");
-                        setFormData({
-                          ...formData,
+                        setFormData((cur) => ({
+                          ...cur,
                           venue: e.target.value as "binance" | "binance-testnet",
                           contextSymbols: []
-                        });
+                        }));
                       }}
                     >
                       <option value="binance-testnet">Binance Testnet</option>
@@ -1168,7 +1165,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                         onClick={() => {
                           setPairsOpen(false);
                           setSymbolSearch("");
-                          setFormData({ ...formData, symbolScope: "all", contextSymbols: [] });
+                          setFormData((cur) => ({ ...cur, symbolScope: "all", contextSymbols: [] }));
                         }}
                       >
                         All pairs
@@ -1178,7 +1175,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                         className={`segmented-option ${formData.symbolScope === "selected" ? "segmented-option-active" : ""}`}
                         aria-pressed={formData.symbolScope === "selected"}
                         onClick={() => {
-                          setFormData({ ...formData, symbolScope: "selected" });
+                          setFormData((cur) => ({ ...cur, symbolScope: "selected" }));
                           setPairsOpen(true);
                         }}
                       >
@@ -1265,7 +1262,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                       min={10}
                       step={10}
                       value={formData.budgetUsdt}
-                      onChange={(e) => setFormData({ ...formData, budgetUsdt: Math.max(10, Number(e.target.value)) })}
+                      onChange={(e) => setFormData((cur) => ({ ...cur, budgetUsdt: Math.max(10, Number(e.target.value)) }))}
                     />
                   </label>
                   <span className="field-help">USDT or USDC — auto-swapped</span>
@@ -1276,7 +1273,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                     Frequency
                     <select
                       value={formData.frequencyMinutes}
-                      onChange={(e) => setFormData({ ...formData, frequencyMinutes: e.target.value })}
+                      onChange={(e) => setFormData((cur) => ({ ...cur, frequencyMinutes: e.target.value }))}
                     >
                       {FREQUENCY_OPTIONS.map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1298,14 +1295,14 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 phase="research"
                 phaseColor="#60a5fa"
                 strategy={formData.researchStrategy}
-                onStrategyChange={(s) => setFormData({ ...formData, researchStrategy: s })}
+                onStrategyChange={(s) => setFormData((cur) => ({ ...cur, researchStrategy: s }))}
                 promptOptions={researchPromptOptions}
                 selectedVersionId={formData.existingPromptVersionId}
-                onVersionChange={(id) => setFormData({ ...formData, existingPromptVersionId: id })}
+                onVersionChange={(id) => setFormData((cur) => ({ ...cur, existingPromptVersionId: id }))}
                 promptName={formData.newResearchName}
-                onNameChange={(n) => setFormData({ ...formData, newResearchName: n })}
+                onNameChange={(n) => setFormData((cur) => ({ ...cur, newResearchName: n }))}
                 promptBody={formData.newResearchBody}
-                onBodyChange={(b) => setFormData({ ...formData, newResearchBody: b })}
+                onBodyChange={(b) => setFormData((cur) => ({ ...cur, newResearchBody: b }))}
                 promptBodyPlaceholder={DEFAULT_RESEARCH_PROMPT}
                 savedBody={researchSavedBody}
                 showBodyEditor={researchShowEditor}
@@ -1339,14 +1336,14 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 phase="trader"
                 phaseColor="#a78bfa"
                 strategy={formData.traderStrategy}
-                onStrategyChange={(s) => setFormData({ ...formData, traderStrategy: s })}
+                onStrategyChange={(s) => setFormData((cur) => ({ ...cur, traderStrategy: s }))}
                 promptOptions={traderPromptOptions}
                 selectedVersionId={formData.existingTraderVersionId}
-                onVersionChange={(id) => setFormData({ ...formData, existingTraderVersionId: id })}
+                onVersionChange={(id) => setFormData((cur) => ({ ...cur, existingTraderVersionId: id }))}
                 promptName={formData.newTraderName}
-                onNameChange={(n) => setFormData({ ...formData, newTraderName: n })}
+                onNameChange={(n) => setFormData((cur) => ({ ...cur, newTraderName: n }))}
                 promptBody={formData.newTraderBody}
-                onBodyChange={(b) => setFormData({ ...formData, newTraderBody: b })}
+                onBodyChange={(b) => setFormData((cur) => ({ ...cur, newTraderBody: b }))}
                 promptBodyPlaceholder={DEFAULT_TRADER_PROMPT}
                 savedBody={traderSavedBody}
                 showBodyEditor={traderShowEditor}
@@ -1389,10 +1386,10 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                       type="checkbox"
                       checked={formData.execution.maxDrawdownEnabled}
                       onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          execution: { ...formData.execution, maxDrawdownEnabled: e.target.checked }
-                        })
+                        setFormData((cur) => ({
+                          ...cur,
+                          execution: { ...cur.execution, maxDrawdownEnabled: e.target.checked }
+                        }))
                       }
                     />
                     <span>
@@ -1410,13 +1407,13 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                         step={0.5}
                         value={formData.execution.maxDrawdownPct}
                         onChange={(e) =>
-                          setFormData({
-                            ...formData,
+                          setFormData((cur) => ({
+                            ...cur,
                             execution: {
-                              ...formData.execution,
+                              ...cur.execution,
                               maxDrawdownPct: Math.min(100, Math.max(1, Number(e.target.value) || 1))
                             }
-                          })
+                          }))
                         }
                       />
                     </label>
@@ -1427,7 +1424,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                     type="checkbox"
                     checked={formData.execution.enabled}
                     onChange={(e) =>
-                      setFormData({ ...formData, execution: { ...formData.execution, enabled: e.target.checked } })
+                      setFormData((cur) => ({ ...cur, execution: { ...cur.execution, enabled: e.target.checked } }))
                     }
                   />
                   <span>
@@ -1445,7 +1442,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                         type="checkbox"
                         checked={formData.execution.allowMarketOrders}
                         onChange={(e) =>
-                          setFormData({ ...formData, execution: { ...formData.execution, allowMarketOrders: e.target.checked } })
+                          setFormData((cur) => ({ ...cur, execution: { ...cur.execution, allowMarketOrders: e.target.checked } }))
                         }
                       />
                       <span>Market orders</span>
@@ -1455,7 +1452,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                         type="checkbox"
                         checked={formData.execution.allowLimitOrders}
                         onChange={(e) =>
-                          setFormData({ ...formData, execution: { ...formData.execution, allowLimitOrders: e.target.checked } })
+                          setFormData((cur) => ({ ...cur, execution: { ...cur.execution, allowLimitOrders: e.target.checked } }))
                         }
                       />
                       <span>Limit orders</span>
@@ -1472,7 +1469,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                           max={20}
                           value={formData.execution.maxOrdersPerRun}
                           onChange={(e) =>
-                            setFormData({ ...formData, execution: { ...formData.execution, maxOrdersPerRun: Number(e.target.value) } })
+                            setFormData((cur) => ({ ...cur, execution: { ...cur.execution, maxOrdersPerRun: Number(e.target.value) } }))
                           }
                         />
                       </label>
@@ -1485,7 +1482,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                           min={1}
                           value={formData.execution.maxNotionalPerOrderUsd}
                           onChange={(e) =>
-                            setFormData({ ...formData, execution: { ...formData.execution, maxNotionalPerOrderUsd: Number(e.target.value) } })
+                            setFormData((cur) => ({ ...cur, execution: { ...cur.execution, maxNotionalPerOrderUsd: Number(e.target.value) } }))
                           }
                         />
                       </label>
@@ -1498,7 +1495,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                           min={0}
                           value={formData.execution.minCashReserveUsd}
                           onChange={(e) =>
-                            setFormData({ ...formData, execution: { ...formData.execution, minCashReserveUsd: Number(e.target.value) } })
+                            setFormData((cur) => ({ ...cur, execution: { ...cur.execution, minCashReserveUsd: Number(e.target.value) } }))
                           }
                         />
                       </label>

@@ -1,19 +1,22 @@
 // module: Venue config/resolution — Binance vs Binance Testnet credentials.
 import { env } from "../env.js";
-import { getAccountBalance, type BinanceNet } from "../adapters/binance.js";
+import { getAccountBalance, isBinanceVenue, type BinanceNet } from "../adapters/binance.js";
+import type { Venue } from "@cosmu/shared";
 
-export type VenueId = "binance" | "binance-testnet";
+export type VenueId = Venue;
 
 type VenueDefinition = {
   id: VenueId;
   label: string;
-  mode: BinanceNet;
+  mode: BinanceNet | "paper" | "live";
+  assetClass: "spot" | "equity";
+  execution: "active" | "planned";
 };
 
 export type VenueConnectionStatus = {
   id: VenueId;
   label: string;
-  mode: BinanceNet;
+  mode: VenueDefinition["mode"];
   configured: boolean;
   connected: boolean;
   checkedAt: string;
@@ -24,21 +27,27 @@ export type VenueConnectionStatus = {
 const VENUE_STATUS_TTL_MS = 30 * 1000;
 
 export const VENUES: VenueDefinition[] = [
-  { id: "binance", label: "Binance", mode: "live" },
-  { id: "binance-testnet", label: "Binance Testnet", mode: "testnet" }
+  { id: "binance", label: "Binance", mode: "live", assetClass: "spot", execution: "active" },
+  { id: "binance-testnet", label: "Binance Testnet", mode: "testnet", assetClass: "spot", execution: "active" },
+  { id: "ibkr-paper", label: "IBKR Paper", mode: "paper", assetClass: "equity", execution: "planned" },
+  { id: "ibkr", label: "IBKR", mode: "live", assetClass: "equity", execution: "planned" }
 ];
 
 const statusCache = new Map<VenueId, { expiresAt: number; status: VenueConnectionStatus }>();
 
 export const parseVenueId = (value: string): VenueId | null =>
-  value === "binance" || value === "binance-testnet" ? value : null;
+  value === "binance" || value === "binance-testnet" || value === "ibkr-paper" || value === "ibkr"
+    ? value
+    : null;
 
 export const getVenueDefinition = (venue: VenueId) => VENUES.find((entry) => entry.id === venue)!;
 
-const venueConfigured = (mode: BinanceNet) =>
+const venueConfigured = (mode: VenueDefinition["mode"]) =>
   mode === "testnet"
     ? Boolean(env.BINANCE_TESTNET_API_KEY && env.BINANCE_TESTNET_API_SECRET)
-    : Boolean(env.BINANCE_API_KEY && env.BINANCE_API_SECRET);
+    : mode === "live"
+    ? Boolean(env.BINANCE_API_KEY && env.BINANCE_API_SECRET)
+    : false;
 
 export const describeVenueError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
@@ -70,6 +79,21 @@ export const checkVenueConnection = async (
   const checkedAt = new Date().toISOString();
   const configured = venueConfigured(definition.mode);
 
+  if (!isBinanceVenue(definition.id)) {
+    const status: VenueConnectionStatus = {
+      id: definition.id,
+      label: definition.label,
+      mode: definition.mode,
+      configured: false,
+      connected: false,
+      checkedAt,
+      balance: null,
+      error: `${definition.label} execution adapter is planned but not enabled yet`
+    };
+    statusCache.set(venue, { expiresAt: Date.now() + VENUE_STATUS_TTL_MS, status });
+    return status;
+  }
+
   if (!configured) {
     const status: VenueConnectionStatus = {
       id: definition.id,
@@ -89,7 +113,8 @@ export const checkVenueConnection = async (
   }
 
   try {
-    const balance = await getAccountBalance(definition.mode);
+    const binanceMode: BinanceNet = definition.id === "binance-testnet" ? "testnet" : "live";
+    const balance = await getAccountBalance(binanceMode);
     const status: VenueConnectionStatus = {
       id: definition.id,
       label: definition.label,

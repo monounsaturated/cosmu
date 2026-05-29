@@ -164,6 +164,8 @@ export type Model = {
   model: string;
 };
 
+export type BotVenue = "binance" | "binance-testnet";
+
 export type AppSettings = {
   agentDefaults: {
     research: {
@@ -177,7 +179,7 @@ export type AppSettings = {
       prompt: { mode: "new" | "saved"; versionId: string | null };
     };
     runtime: {
-      venue: "binance" | "binance-testnet";
+      venue: BotVenue;
       frequencyMinutes: number;
       budgetUsdt: number;
       symbolScope: "selected" | "all";
@@ -375,9 +377,8 @@ export type BotSetup = {
     };
   };
   runtimeConfig: {
-    venue: "binance" | "binance-testnet";
+    venue: BotVenue;
     frequencyMinutes: number;
-    mode: "testnet" | "live";
     budgetUsdt?: number;
     symbolScope: "selected" | "all";
     contextSymbols: string[];
@@ -462,7 +463,7 @@ export const buildDefaultState = () => {
     traderModelProfileId: "",
     // Runtime (kept for backward compat during submit)
     modelProfileId: "",
-    venue: "binance-testnet" as "binance" | "binance-testnet",
+    venue: "binance-testnet" as BotVenue,
     frequencyMinutes: "30",
     budgetUsdt: 1000,
     symbolScope: "all" as "selected" | "all",

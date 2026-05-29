@@ -96,7 +96,10 @@ export const markRuntimeRunFinished = async (input: {
     set last_run_finished_at = now(),
         next_run_at = case
           when enabled = false then null
-          when ${shouldReschedule} then now() + make_interval(secs => frequency_minutes * 60)
+          when ${shouldReschedule} then greatest(
+            now(),
+            coalesce(last_run_started_at, now()) + make_interval(secs => frequency_minutes * 60)
+          )
           else next_run_at
         end,
         updated_at = now()

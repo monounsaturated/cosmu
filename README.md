@@ -117,14 +117,6 @@ API_SECRET_KEY=<same-32+-char-secret-as-railway>
 
 `API_BASE_URL` is server-only. Do not use `NEXT_PUBLIC_API_URL` for the backend secret path.
 
-### 3. TradingAgents (optional Python AI hedge fund)
-
-If using the Python TradingAgents wrapper:
-- Create a third Railway service
-- Root directory: `apps/trading-agents`
-- Uses its own `Dockerfile` (Python 3.12, FastAPI on port 8100)
-- Add `TRADING_AGENTS_URL` to the API service pointing to this service
-
 ### GitHub auto-deploy
 
 Once connected, every `git push origin main` triggers a new Railway deploy automatically. Railway builds, health-checks (`/health`), and swaps with zero downtime. Rollback from the dashboard if needed.
@@ -133,12 +125,12 @@ Once connected, every `git push origin main` triggers a new Railway deploy autom
 
 - `DATABASE_URL`: Supabase Postgres connection string
 - `DATABASE_SSL`: optional, set `false` for local Postgres
-- `XAI_API_KEY`: optional xAI API key for Light/Research model profiles using `provider = 'xai'`
+- `XAI_API_KEY`: optional xAI API key for research/trader model profiles using `provider = 'xai'`
 - `NOUS_API_KEY`: optional Nous Portal API key for model profiles using `provider = 'nous'`
 - `NOUS_BASE_URL`: optional Nous/OpenAI-compatible base URL, defaults to `https://portal.nousresearch.com/v1`
 - `BINANCE_TESTNET_API_KEY`: Binance Spot testnet key for Binance Testnet venue runs
 - `BINANCE_TESTNET_API_SECRET`: Binance Spot testnet secret
-- `BINANCE_API_KEY`: Binance Spot live key for live Light/Pro
+- `BINANCE_API_KEY`: Binance Spot live key for Binance venue runs
 - `BINANCE_API_SECRET`: Binance Spot live secret
 - `SLACK_WEBHOOK_URL`: optional Slack webhook
 - `API_SECRET_KEY`: shared secret between the Next.js BFF routes and this API (header `x-api-key`)

@@ -3,8 +3,8 @@ alter table bot_runtime_configs
 
 update bot_runtime_configs
 set next_run_at = case
-  when last_run_finished_at is not null then last_run_finished_at + make_interval(secs => frequency_minutes * 60)
   when last_run_started_at is not null then last_run_started_at + make_interval(secs => frequency_minutes * 60)
+  when last_run_finished_at is not null then last_run_finished_at + make_interval(secs => frequency_minutes * 60)
   else created_at
 end
 where enabled = true

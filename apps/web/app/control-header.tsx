@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { ThemeToggle } from "./theme-toggle";
 
 const labelForPath = (path: string) => {
-  if (path.startsWith("/trading-agents")) return "AI Hedge Fund";
   if (path.startsWith("/signals")) return "Signals";
   if (path.startsWith("/research")) return "Research";
   if (path.startsWith("/bots")) return "Agents";

@@ -7,6 +7,7 @@ import { VenueOverview } from "./venue-overview";
 import { RecentExecutions } from "./recent-executions";
 import { PortfolioState } from "./portfolio-state";
 import { PromptSnapshots } from "./prompt-snapshots";
+import { PlatformOverview } from "./platform-overview";
 import { getDashboard } from "./dashboard-data";
 
 export const dynamic = "force-dynamic";
@@ -138,6 +139,7 @@ export default async function HomePage() {
             }))} />
           )}
         </article>
+        <PlatformOverview />
       </section>
 
       <section className="stack command-stack">

@@ -7,7 +7,7 @@ const nativeEngine: ResearchEngineAdapter = {
   async run(input) {
     const universe = Array.from(new Set(input.spec.universe as string[] ?? ["BTCUSDT", "ETHUSDT"])).slice(0, 12);
     return {
-      summary: `Native engine prepared a TradingAgents-style research brief for ${universe.join(", ")}.`,
+      summary: `Native engine prepared a research brief for ${universe.join(", ")}.`,
       proposedSpec: {
         ...input.spec,
         hypothesis: input.hypothesis,

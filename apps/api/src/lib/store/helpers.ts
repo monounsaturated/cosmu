@@ -48,7 +48,7 @@ export const buildRuntimeConfig = (row: {
   venue: string;
   frequency_minutes?: number;
   frequencyMinutes?: number;
-  asset_class?: "spot";
+  asset_class?: "spot" | "equity";
   assetClass?: "spot";
   budget_usdt?: number;
   budgetUsdt?: number;

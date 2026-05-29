@@ -611,7 +611,7 @@ export function SettingsConsole() {
             <span>
               <strong>Provider keys</strong>
               <small>
-                <code>XAI_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>BINANCE_*</code>, and TradingAgents keys live in <code>.env.local</code> locally and server env in deploys. Scheduler and guardian run with the API and are monitored below.
+                <code>XAI_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, and <code>BINANCE_*</code> live in <code>.env.local</code> locally and server env in deploys. Scheduler and guardian run with the API and are monitored below.
               </small>
             </span>
           </div>

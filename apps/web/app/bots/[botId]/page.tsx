@@ -90,8 +90,8 @@ export default async function BotPage({ params }: { params: Promise<{ botId: str
           </h2>
         </div>
         <div className="panel">
-          <p className="label">Venue & Mode</p>
-          <h2 style={{ margin: "4px 0" }}>{setup.runtimeConfig.venue} ({setup.runtimeConfig.mode})</h2>
+          <p className="label">Venue</p>
+          <h2 style={{ margin: "4px 0" }}>{setup.runtimeConfig.venue}</h2>
         </div>
         <div className="panel">
           <p className="label">Frequency</p>

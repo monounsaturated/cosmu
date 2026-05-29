@@ -7,7 +7,8 @@ import {
   type ExecutionRecord,
   type OrderIntent,
   type PortfolioSnapshot,
-  type RuntimeConfig
+  type RuntimeConfig,
+  type Venue
 } from "@cosmu/shared";
 import { env } from "../env.js";
 
@@ -17,8 +18,15 @@ const TESTNET_BASE_URL = "https://testnet.binance.vision/api";
 // Which Binance network to hit. Derived from venue — the single product field.
 // `binance` -> live (real money), `binance-testnet` -> testnet sandbox.
 export type BinanceNet = "testnet" | "live";
-export const netForVenue = (venue: RuntimeConfig["venue"]): BinanceNet =>
-  venue === "binance-testnet" ? "testnet" : "live";
+export type BinanceVenue = Extract<Venue, "binance" | "binance-testnet">;
+export const isBinanceVenue = (venue: Venue): venue is BinanceVenue =>
+  venue === "binance" || venue === "binance-testnet";
+export const netForVenue = (venue: Venue): BinanceNet => {
+  if (!isBinanceVenue(venue)) {
+    throw new Error(`Venue ${venue} is not supported by the Binance adapter`);
+  }
+  return venue === "binance-testnet" ? "testnet" : "live";
+};
 
 type SymbolRules = {
   symbol: string;
@@ -391,8 +399,10 @@ export const lookupBinanceSymbols = async (
   const uniqueQueries = Array.from(new Set(queries));
   if (uniqueQueries.length === 0) return {};
 
-  // Candidate pairs to probe: respect venue-allowed quotes (USDC-only on live binance).
-  const allowedQuotes = allowedStableQuotesFor("binance");
+  const venue: BinanceVenue = mode === "testnet" ? "binance-testnet" : "binance";
+  // Candidate pairs to probe: respect the actual selected venue. Binance live is
+  // USDC-only for this app; Binance Testnet keeps USDT/USDC so test runs execute.
+  const allowedQuotes = allowedStableQuotesFor(venue);
   const candidatePairs = new Set<string>();
   for (const q of uniqueQueries) {
     const { base } = splitBaseAndQuote(q);
@@ -402,29 +412,11 @@ export const lookupBinanceSymbols = async (
     }
   }
 
-  // In testnet mode, we ALSO fetch live exchangeInfo and intersect: testnet
-  // has a broader / different symbol universe than live, so a testnet run can
-  // pick symbols that don't exist on live Binance (e.g., TAOUSDT exists on
-  // testnet but only TAOUSDC on live in some regions). Intersecting means
-  // testnet sims mirror what live would allow.
-  const needLiveCheck = mode === "testnet";
-  const [exchangeInfoResponse, tickerPrices, liveExchangeInfo, accountPerms] = await Promise.all([
+  const [exchangeInfoResponse, tickerPrices, accountPerms] = await Promise.all([
     getAllExchangeInfo(mode),
     getAllTickerPrices(mode),
-    needLiveCheck ? getAllExchangeInfo("live") : Promise.resolve(null),
     getAccountPermissions(mode)
   ]);
-
-  // For testnet, intersect with public live exchangeInfo so simulations avoid
-  // symbols that are testnet-only. Do not consult live account permissions here:
-  // expired or intentionally absent live keys must not break testnet operation.
-  const liveTradable = new Set<string>();
-  if (liveExchangeInfo) {
-    for (const raw of liveExchangeInfo.symbols ?? []) {
-      if (!isTradableSpotStableSymbol(raw)) continue;
-      liveTradable.add(normalizeSymbol(String(raw.symbol ?? "")));
-    }
-  }
 
   const permsForMode = mode === "live" ? accountPerms : undefined;
   const rulesMap: Record<string, SymbolRules> = {};
@@ -432,7 +424,6 @@ export const lookupBinanceSymbols = async (
     const sym = normalizeSymbol(String(raw.symbol ?? ""));
     if (!candidatePairs.has(sym)) continue;
     if (!isTradableSpotStableSymbol(raw, permsForMode)) continue;
-    if (needLiveCheck && !liveTradable.has(sym)) continue;
     rulesMap[sym] = parseSymbolRules(raw);
   }
 

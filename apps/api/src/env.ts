@@ -108,7 +108,6 @@ const envSchema = z.object({
   BINANCE_TESTNET_API_KEY: optionalNonEmptyString,
   BINANCE_TESTNET_API_SECRET: optionalNonEmptyString,
   SLACK_WEBHOOK_URL: optionalUrlString,
-  TRADING_AGENTS_URL: optionalUrlString,
   API_SECRET_KEY: z.string().min(32, "API_SECRET_KEY must be at least 32 characters")
 });
 
