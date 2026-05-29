@@ -157,6 +157,8 @@ const DEFAULT_FEATURE_TOGGLES = {
   promptLibrary: false
 } as const;
 
+export const defaultFeatureToggles = DEFAULT_FEATURE_TOGGLES;
+
 export const DEFAULT_RESEARCH_GROUNDING_RULES = [
   "---",
   "GROUNDING RULES (critical - your output feeds live trading decisions):",

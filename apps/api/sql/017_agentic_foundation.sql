@@ -1,5 +1,5 @@
 -- Agentic foundation: product-level agent observability, research experiments,
--- paper candidates, lightweight memory, and approval inbox primitives.
+-- venue-scoped candidates, lightweight memory, and approval inbox primitives.
 
 create table if not exists agent_steps (
   id uuid primary key default gen_random_uuid(),
@@ -120,6 +120,6 @@ values
   ('Weather signals', 'weather', false, '{"mode":"placeholder"}'::jsonb, 'unknown'),
   ('Astro signals', 'astro', false, '{"mode":"placeholder"}'::jsonb, 'unknown'),
   ('TradingView scripts', 'tradingview', false, '{"mode":"manual_import"}'::jsonb, 'unknown'),
-  ('IBKR stocks paper data', 'ibkr', false, '{"mode":"paper_data_first"}'::jsonb, 'unknown'),
-  ('Polymarket paper data', 'polymarket', false, '{"mode":"paper_data_first"}'::jsonb, 'unknown')
+  ('IBKR stocks data', 'ibkr', false, '{"mode":"data_first"}'::jsonb, 'unknown'),
+  ('Polymarket data', 'polymarket', false, '{"mode":"data_first"}'::jsonb, 'unknown')
 on conflict do nothing;

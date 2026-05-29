@@ -245,8 +245,8 @@ const PRODUCT_SWITCHES: Array<{
   { key: "promptLab", label: "Prompt Lab", description: "Prompt history, experiments, and advisor surface." },
   { key: "sentiment", label: "Sentiment", description: "Market sentiment dashboards and topic scoring." },
   { key: "signals", label: "Signals", description: "Raw observations converted into standardized signals." },
-  { key: "researchLab", label: "Research lab", description: "Paper-only experiments, data sources, and candidates." },
-  { key: "proReview", label: "Live review", description: "Approval inbox for promoted live candidates." },
+  { key: "researchLab", label: "Research lab", description: "Venue-scoped experiments, data sources, and candidates." },
+  { key: "proReview", label: "Execution review", description: "Approval inbox for promoted venue candidates." },
   { key: "promptLibrary", label: "Prompt library", description: "Version history and prompt inspection." }
 ];
 

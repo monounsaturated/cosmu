@@ -43,7 +43,7 @@ export function DashboardActions({ hasNoBots, activeBotCount, dashboardUnavailab
 
       {hasNoBots && !dashboardUnavailable && (
         <p className="muted" style={{ marginTop: "8px", fontSize: "14px" }}>
-          No agents yet. Create the first paper or live strategy to get started.
+          No agents yet. Create the first venue-scoped strategy to get started.
         </p>
       )}
 

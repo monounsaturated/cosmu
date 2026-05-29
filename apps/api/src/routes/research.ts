@@ -35,7 +35,7 @@ import {
   listEvaluationJobs,
   listResearchMemories,
   updateResearchMemory,
-  setCandidatePaperBot,
+  setCandidateVenueBot,
   updateResearchExperiment,
   updateResearchDataSource
 } from "../lib/store.js";
@@ -522,63 +522,75 @@ researchRouter.get("/research/candidates", async (_request, response, next) => {
   }
 });
 
+const createCandidateVenueBot = async (candidateId: string) => {
+  const candidate = await getResearchCandidate(candidateId);
+  if (!candidate) {
+    return { status: 404, body: { error: "Candidate not found" } };
+  }
+  const existingBotId = (candidate.metrics as { paperBotId?: string; venueBotId?: string } | null)?.venueBotId
+    ?? (candidate.metrics as { paperBotId?: string } | null)?.paperBotId;
+  if (existingBotId) {
+    return { status: 409, body: { error: "Research bot already exists for this candidate", botId: existingBotId } };
+  }
+  if (candidate.promotedBotId) {
+    return { status: 409, body: { error: "Candidate is already promoted", botId: candidate.promotedBotId } };
+  }
+
+  const prompt = await getLatestResearchPromptVersion();
+  const model = await getLatestModelProfile();
+  if (!prompt || !model) {
+    return { status: 409, body: { error: "Configure a research prompt and a model profile before creating bots" } };
+  }
+
+  const venue = "binance-testnet" as const;
+  const botSlug = `research-${candidate.id.slice(0, 8)}`;
+  const botId = await createBot({
+    name: candidate.name,
+    slug: botSlug,
+    promptVersionId: prompt.versionId,
+    modelProfileId: model.id,
+    workspaceMode: "research",
+    promptConfig: prePromptConfigSchema.parse({}),
+    traderConfig: traderConfigSchema.parse({}),
+    runtimeConfig: {
+      venue,
+      frequencyMinutes: 60,
+      mode: "testnet",
+      assetClass: "spot",
+      budgetUsdt: 1000,
+      symbolScope: "selected",
+      execution: {
+        enabled: false,
+        maxDrawdownEnabled: false,
+        allowMarketOrders: true,
+        allowLimitOrders: true,
+        maxOrdersPerRun: 3,
+        maxNotionalPerOrderUsd: 250,
+        minCashReserveUsd: 200,
+        maxDrawdownPct: 10
+      },
+      contextSymbols: []
+    }
+  });
+
+  await setCandidateVenueBot({ candidateId: candidate.id, botId, venue });
+  await updateResearchExperiment({ id: candidate.experimentId, promotionStatus: "paper_auto" });
+  return { status: 200, body: { ok: true, botId, venue } };
+};
+
+researchRouter.post("/research/candidates/:candidateId/venue-bot", async (request, response, next) => {
+  try {
+    const result = await createCandidateVenueBot(request.params.candidateId);
+    response.status(result.status).json(result.body);
+  } catch (error) {
+    next(error);
+  }
+});
+
 researchRouter.post("/research/candidates/:candidateId/paper-bot", async (request, response, next) => {
   try {
-    const candidate = await getResearchCandidate(request.params.candidateId);
-    if (!candidate) {
-      response.status(404).json({ error: "Candidate not found" });
-      return;
-    }
-    const existingPaperBotId = (candidate.metrics as { paperBotId?: string } | null)?.paperBotId;
-    if (existingPaperBotId) {
-      response.status(409).json({ error: "Paper bot already exists for this candidate", botId: existingPaperBotId });
-      return;
-    }
-    if (candidate.promotedBotId) {
-      response.status(409).json({ error: "Candidate is already promoted to Pro", botId: candidate.promotedBotId });
-      return;
-    }
-
-    const prompt = await getLatestResearchPromptVersion();
-    const model = await getLatestModelProfile();
-    if (!prompt || !model) {
-      response.status(409).json({ error: "Configure a research prompt and a model profile before creating bots" });
-      return;
-    }
-
-    const botSlug = `research-${candidate.id.slice(0, 8)}`;
-    const botId = await createBot({
-      name: candidate.name,
-      slug: botSlug,
-      promptVersionId: prompt.versionId,
-      modelProfileId: model.id,
-      workspaceMode: "research",
-      promptConfig: prePromptConfigSchema.parse({}),
-      traderConfig: traderConfigSchema.parse({}),
-      runtimeConfig: {
-        venue: "binance-testnet",
-        frequencyMinutes: 60,
-        mode: "testnet",
-        assetClass: "spot",
-        budgetUsdt: 1000,
-        symbolScope: "selected",
-        execution: {
-          enabled: false,
-          maxDrawdownEnabled: false,
-          allowMarketOrders: true,
-          allowLimitOrders: true,
-          maxOrdersPerRun: 3,
-          maxNotionalPerOrderUsd: 250,
-          minCashReserveUsd: 200,
-          maxDrawdownPct: 10
-        },
-        contextSymbols: []
-      }
-    });
-
-    await setCandidatePaperBot({ candidateId: candidate.id, botId });
-    await updateResearchExperiment({ id: candidate.experimentId, promotionStatus: "paper_auto" });
-    response.json({ ok: true, botId });
+    const result = await createCandidateVenueBot(request.params.candidateId);
+    response.status(result.status).json(result.body);
   } catch (error) {
     next(error);
   }

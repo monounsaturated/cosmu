@@ -24,7 +24,7 @@ type Props = {
   initialSessions: ResearchSession[];
 };
 
-type CandidateAction = "paper-bot" | "promote";
+type CandidateAction = "create-bot" | "promote";
 
 type ModelProfile = {
   id: string;
@@ -51,7 +51,7 @@ const RESEARCH_TOOL_OPTIONS = [
   { id: "web_search", label: "Web search" },
   { id: "x_search", label: "X search" },
   { id: "market_data", label: "Market data" },
-  { id: "paper_backtest", label: "Paper backtest" }
+  { id: "paper_backtest", label: "Backtest" }
 ];
 
 const statusBadge = (status: string) => {
@@ -59,6 +59,14 @@ const statusBadge = (status: string) => {
   if (status.includes("rejected") || status.includes("failure")) return "badge-failure";
   if (status.includes("running") || status.includes("queued")) return "badge-running";
   return "badge-neutral";
+};
+
+const candidateStatusLabel = (status: ResearchCandidate["status"]) => {
+  if (status === "paper_ready") return "ready";
+  if (status === "paper_running") return "bot created";
+  if (status === "paper_rejected") return "rejected";
+  if (status === "live_candidate") return "promoted";
+  return status;
 };
 
 const formatMetricValue = (value: unknown): string => {
@@ -69,7 +77,7 @@ const formatMetricValue = (value: unknown): string => {
   return JSON.stringify(value);
 };
 
-const HIDDEN_METRIC_KEYS = new Set(["paperBotId"]);
+const HIDDEN_METRIC_KEYS = new Set(["paperBotId", "paperBotStatus", "venueBotId", "venueBotStatus"]);
 
 const candidateMetrics = (candidate: ResearchCandidate): Array<[string, string]> => {
   if (!candidate.metrics || typeof candidate.metrics !== "object") return [];
@@ -435,12 +443,12 @@ export function ResearchConsole({
     setPendingCandidate({ id: candidate.id, action });
     setActionFeedback(null);
     try {
-      const path = action === "paper-bot" ? "paper-bot" : "promote-to-pro";
+      const path = action === "create-bot" ? "venue-bot" : "promote-to-pro";
       const res = await fetch(`/api/research/candidates/${candidate.id}/${path}`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Action failed");
 
-      if (action === "paper-bot") {
+      if (action === "create-bot") {
         setCandidates((current) =>
           current.map((item) =>
             item.id === candidate.id
@@ -450,7 +458,10 @@ export function ResearchConsole({
                   metrics: {
                     ...((item.metrics ?? {}) as Record<string, unknown>),
                     paperBotId: data.botId,
-                    paperBotStatus: "created_testnet_disabled"
+                    paperBotStatus: "created_testnet_disabled",
+                    venueBotId: data.botId,
+                    venueBotStatus: "created_disabled",
+                    venue: data.venue ?? "binance-testnet"
                   }
                 }
               : item
@@ -855,17 +866,18 @@ export function ResearchConsole({
       {candidates.length > 0 && (
       <section className="panel">
         <div className="section-header">
-          <h3>Paper candidates</h3>
+          <h3>Research candidates</h3>
           <span className="muted">{candidates.length}</span>
         </div>
         <div className="dense-list">
-          {candidates.length === 0 && <p className="muted">No paper candidates yet.</p>}
+          {candidates.length === 0 && <p className="muted">No research candidates yet.</p>}
           {candidates.map((candidate) => {
             const metrics = candidateMetrics(candidate);
             const feedback = actionFeedback?.id === candidate.id ? actionFeedback : null;
-            const isPaperBotPending = pendingCandidate?.id === candidate.id && pendingCandidate.action === "paper-bot";
+            const isCreateBotPending = pendingCandidate?.id === candidate.id && pendingCandidate.action === "create-bot";
             const isPromotePending = pendingCandidate?.id === candidate.id && pendingCandidate.action === "promote";
-            const hasPaperBot = Boolean((candidate.metrics as { paperBotId?: string } | null)?.paperBotId);
+            const hasVenueBot = Boolean((candidate.metrics as { paperBotId?: string; venueBotId?: string } | null)?.venueBotId
+              ?? (candidate.metrics as { paperBotId?: string } | null)?.paperBotId);
             const hasProBot = Boolean(candidate.promotedBotId);
             return (
               <div key={candidate.id} className="candidate-card">
@@ -874,7 +886,7 @@ export function ResearchConsole({
                     <strong>{candidate.name}</strong>
                     <span className="muted">{candidate.thesis}</span>
                   </span>
-                  <span className={`badge ${statusBadge(candidate.status)}`}>{candidate.status}</span>
+                  <span className={`badge ${statusBadge(candidate.status)}`}>{candidateStatusLabel(candidate.status)}</span>
                 </div>
                 {metrics.length > 0 && (
                   <dl className="candidate-metrics">
@@ -891,10 +903,10 @@ export function ResearchConsole({
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={() => runCandidateAction(candidate, "paper-bot")}
-                    disabled={hasPaperBot || isPaperBotPending}
+                    onClick={() => runCandidateAction(candidate, "create-bot")}
+                    disabled={hasVenueBot || isCreateBotPending}
                   >
-                    {hasPaperBot ? "Research bot exists" : isPaperBotPending ? "Creating..." : "Create research bot"}
+                    {hasVenueBot ? "Research bot exists" : isCreateBotPending ? "Creating..." : "Create Binance Testnet bot"}
                   </button>
                   <button
                     type="button"

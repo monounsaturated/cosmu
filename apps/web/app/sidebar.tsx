@@ -18,15 +18,9 @@ import {
   ShieldCheck,
   Sparkles
 } from "lucide-react";
+import { defaultFeatureToggles, type AppSettings } from "@cosmu/shared";
 
-type FeatureToggles = {
-  promptLab: boolean;
-  sentiment: boolean;
-  signals: boolean;
-  researchLab: boolean;
-  proReview: boolean;
-  promptLibrary: boolean;
-};
+type FeatureToggles = AppSettings["featureToggles"];
 
 type NavItem = {
   href: string;
@@ -35,15 +29,6 @@ type NavItem = {
   icon: typeof BarChart3;
   group: "Core" | "Modules";
   featureKey?: keyof FeatureToggles;
-};
-
-const DEFAULT_FEATURE_TOGGLES: FeatureToggles = {
-  promptLab: false,
-  sentiment: false,
-  signals: false,
-  researchLab: false,
-  proReview: false,
-  promptLibrary: false
 };
 
 const NAV_ITEMS = [
@@ -77,7 +62,7 @@ export function Sidebar() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
-  const [featureToggles, setFeatureToggles] = useState<FeatureToggles>(DEFAULT_FEATURE_TOGGLES);
+  const [featureToggles, setFeatureToggles] = useState<FeatureToggles>(defaultFeatureToggles);
   const dragging = useRef(false);
   const sidebarRef = useRef<HTMLElement>(null);
 
@@ -98,12 +83,12 @@ export function Sidebar() {
       .then((data) => {
         if (cancelled) return;
         setFeatureToggles({
-          ...DEFAULT_FEATURE_TOGGLES,
+          ...defaultFeatureToggles,
           ...(data?.featureToggles ?? {})
         });
       })
       .catch(() => {
-        if (!cancelled) setFeatureToggles(DEFAULT_FEATURE_TOGGLES);
+        if (!cancelled) setFeatureToggles(defaultFeatureToggles);
       });
     return () => {
       cancelled = true;

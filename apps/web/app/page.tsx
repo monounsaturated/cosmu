@@ -73,7 +73,7 @@ export default async function HomePage() {
         <article>
           <span>Allocated</span>
           <strong>{totalAllocated.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</strong>
-          <small>across live, paper, future accounts</small>
+          <small>across configured venues</small>
         </article>
         <article>
           <span>Free cash</span>
@@ -106,7 +106,7 @@ export default async function HomePage() {
         workspaceMode="light"
         title="Agents"
         description="The main operating table. Search, sort, run, stop, and open an agent from one place."
-        emptyMessage="No agents yet. Create one to start with a paper strategy."
+        emptyMessage="No agents yet. Create one to start with a venue-scoped strategy."
         defaultSortField="created"
         defaultSortOrder="desc"
         showCreatedByDefault

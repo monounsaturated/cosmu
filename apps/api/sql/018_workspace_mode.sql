@@ -1,6 +1,6 @@
 -- Workspace-mode segregation for bots.
--- Light bots remain the operational baseline. Research bots are paper-only
--- exploratory agents. Pro bots are promoted candidates eligible for live
+-- Light bots remain the operational baseline. Research bots are venue-scoped
+-- exploratory agents. Pro bots are promoted candidates eligible for
 -- execution under approval gates.
 
 alter table bots

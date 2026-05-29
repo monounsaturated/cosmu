@@ -1,5 +1,5 @@
 -- Modular Research Core
--- Datasets, sessions, engine runs, experiment specs, evaluations, paper simulation, and memory.
+-- Datasets, sessions, engine runs, experiment specs, evaluations, simulation, and memory.
 
 create table if not exists datasets (
   id uuid primary key default gen_random_uuid(),

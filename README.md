@@ -1,20 +1,24 @@
 # Cosmu
 
-Lean autonomous trading and research platform built from `SYSTEM.md`.
+Internal investment operating system for agent research, data capture, venue execution, and outcome review.
 
 ## What is built
 
-- `apps/api`: Node API for Light trading, Signal Sentinel, Research experiments, agent observability, and Pro approvals
-- `apps/web`: internal command center with `Light | Signals | Research | Pro` modes
-- `packages/shared`: shared decision, runtime, execution, and dashboard contracts
+- `apps/api`: Node API for agent runs, Signals, Research, venue execution, scheduler/guardian jobs, and audit traces
+- `apps/web`: internal command center for agents, Signals, Research, Settings, and optional modules
+- `packages/shared`: shared schemas, defaults, runtime, execution, and dashboard contracts
 - `apps/api/sql`: schema, seeds, agentic foundation, and workspace-mode migrations
 
-## Product Modes
+## Product Flow
 
-- **Cosmu Light** keeps the current Binance spot loop: research prompt, trader prompt, deterministic validator, execution, guardian, dashboard.
-- **Cosmu Signals** converts hot observations from X, web, news, market, or manual QA into small standardized signals that agents can consume.
-- **Cosmu Research** is the paper-only lab: natural-language experiments, data-source scouting, candidate creation, testnet paper bots, and anti-noise review.
-- **Cosmu Pro** is the approval-gated live workspace: Research candidates can be promoted into disabled-live Pro bots, then manually enabled when risk policy allows it.
+```text
+Source -> Record -> Signal -> Research -> Strategy -> Decision -> Execution -> Outcome
+```
+
+- **Agents** run the current venue-aware loop: research prompt, trader prompt, deterministic validator, execution, guardian, dashboard.
+- **Signals** convert records from X, web, news, market, APIs, or manual QA into small standardized interpretations that agents can consume.
+- **Research** runs natural-language experiments, data-source scouting, strategy candidates, backtests/evaluations, and anti-noise review.
+- **Venues** are shown by actual name, such as Binance and Binance Testnet. Avoid generic product labels like paper/live/testnet mode.
 
 ## Current loop
 
@@ -24,7 +28,7 @@ Lean autonomous trading and research platform built from `SYSTEM.md`.
 4. Binance adapter fetches balances, prices, and tradability metadata
 5. xAI returns strict structured JSON decision
 6. backend validates the decision with shared Zod schemas and runtime rules
-7. Binance adapter executes normalized spot intents on testnet or live
+7. Binance adapter executes normalized spot intents on the configured venue
 8. API stores runs, decisions, executions, and portfolio snapshots
 9. dashboard reads the latest state from the API
 10. Slack gets non-blocking run alerts
@@ -35,7 +39,7 @@ Lean autonomous trading and research platform built from `SYSTEM.md`.
 2. Install dependencies with `pnpm install`.
 3. Apply SQL files in order from `apps/api/sql`. For the current three-mode branch, make sure `017_agentic_foundation.sql` and `018_workspace_mode.sql` have been applied.
 4. Start API + web together with `pnpm dev`, or separately with `pnpm --filter @cosmu/api dev` and `pnpm --filter @cosmu/web dev`.
-5. Open the web app and test the path: Light dashboard → Signals QA capture → Research session → paper candidate → Pro approval.
+5. Open the web app and test the path: Dashboard -> Signals QA capture -> Research session -> candidate -> approval.
 
 QA helper:
 
@@ -50,6 +54,14 @@ SQL helper:
 set -a && source .env.local && set +a && node scripts/apply-sql.mjs apps/api/sql/017_agentic_foundation.sql
 set -a && source .env.local && set +a && node scripts/apply-sql.mjs apps/api/sql/018_workspace_mode.sql
 ```
+
+Local/test reset helper:
+
+```bash
+set -a && source .env.local && set +a && ALLOW_DB_RESET=true pnpm db:reset:local
+```
+
+The reset helper is destructive and guarded. It refuses to run without `ALLOW_DB_RESET=true` and refuses remote-looking URLs unless explicitly overridden.
 
 Set `DATABASE_SSL=false` in `.env.local` for local non-SSL Postgres. Leave it empty/true for Supabase pooler.
 
@@ -124,7 +136,7 @@ Once connected, every `git push origin main` triggers a new Railway deploy autom
 - `XAI_API_KEY`: optional xAI API key for Light/Research model profiles using `provider = 'xai'`
 - `NOUS_API_KEY`: optional Nous Portal API key for model profiles using `provider = 'nous'`
 - `NOUS_BASE_URL`: optional Nous/OpenAI-compatible base URL, defaults to `https://portal.nousresearch.com/v1`
-- `BINANCE_TESTNET_API_KEY`: Binance Spot testnet key for Research paper bots and testnet Light runs
+- `BINANCE_TESTNET_API_KEY`: Binance Spot testnet key for Binance Testnet venue runs
 - `BINANCE_TESTNET_API_SECRET`: Binance Spot testnet secret
 - `BINANCE_API_KEY`: Binance Spot live key for live Light/Pro
 - `BINANCE_API_SECRET`: Binance Spot live secret
@@ -136,8 +148,8 @@ Minimum useful local tests:
 
 - Dashboard shell only: `DATABASE_URL`, `API_SECRET_KEY`
 - Research with real LLM: add `XAI_API_KEY` or `NOUS_API_KEY`
-- Testnet bot run: add Binance testnet keys
-- Live Light run: add Binance live keys and keep execution limits conservative
+- Binance Testnet venue run: add Binance testnet keys
+- Binance venue run: add Binance live keys and keep execution limits conservative
 
 ### Railway background jobs
 
@@ -169,6 +181,6 @@ If Postman gets an auth / HTML challenge from `*.vercel.app`, that is usually **
 
 - Runtime behavior lives in `bot_runtime_configs`, not in prompt text or scheduler code.
 - Binance-specific request signing and payload handling stay inside `apps/api/src/adapters/binance.ts`.
-- `testnet` and `live` are the only exchange execution modes. Research paper bots use testnet and stay in the Research workspace.
+- Product UI should show actual venue names, for example Binance and Binance Testnet. Older internal mode fields may remain temporarily for compatibility.
 - `spot` is the only supported asset class in V1.
 - External repos are references, not runtime owners. See `docs/EXTERNAL_REPOS.md`.

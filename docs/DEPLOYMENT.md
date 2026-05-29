@@ -32,7 +32,7 @@ API_SECRET_KEY=<32+ chars>
 
 Provider and exchange keys also belong on Railway, not in Vercel or the DB.
 
-Required Binance testnet env vars for paper/testnet venues:
+Required env vars for the Binance Testnet venue:
 
 ```
 BINANCE_TESTNET_API_KEY=<binance spot testnet key>

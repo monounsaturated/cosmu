@@ -110,7 +110,7 @@ export const runResearchExperiment = async (experimentId: string) => {
           hypothesis: experiment.hypothesis,
           universe: symbols.length > 0 ? symbols : ["BTC", "ETH"],
           dataKinds,
-          validationMethod: "paper-first walk-forward or out-of-sample required before live eligibility",
+          validationMethod: "venue-first walk-forward or out-of-sample required before real-funds eligibility",
           primaryMetric: "risk-adjusted net return after fees/slippage",
           rejectionCriteria: [
             "data leakage",
@@ -122,7 +122,7 @@ export const runResearchExperiment = async (experimentId: string) => {
           liveEligible: false
         };
         return {
-          outputText: `Planned paper-only experiment for ${plan.universe.join(", ")} using ${dataKinds.join(", ")} data.`,
+          outputText: `Planned venue-scoped research for ${plan.universe.join(", ")} using ${dataKinds.join(", ")} data.`,
           outputJson: plan
         };
       }
@@ -151,7 +151,7 @@ export const runResearchExperiment = async (experimentId: string) => {
               healthStatus: source.healthStatus
             })),
             missingKinds: missing,
-            sourcePolicy: "sources are read/paper-only in Research v1"
+            sourcePolicy: "sources are read and evaluated inside Research v1"
           }
         };
       }
@@ -201,10 +201,10 @@ export const runResearchExperiment = async (experimentId: string) => {
           "Out-of-sample or walk-forward evidence is required before promotion.",
           "Costs and slippage must be included before comparing candidates."
         ];
-        const verdict = experiment.hypothesis.trim().length < 20 ? "reject_too_vague" : "paper_only";
+        const verdict = experiment.hypothesis.trim().length < 20 ? "reject_too_vague" : "research_only";
         return {
-          outputText: verdict === "paper_only"
-            ? "Approved only for paper exploration. Live trading remains blocked."
+          outputText: verdict === "research_only"
+            ? "Approved for research exploration. Real-funds venue execution remains blocked."
             : "Rejected: hypothesis is too vague to test safely.",
           outputJson: {
             verdict,
@@ -215,11 +215,11 @@ export const runResearchExperiment = async (experimentId: string) => {
       }
     );
 
-    const shouldCreateCandidate = skeptic.verdict === "paper_only";
+    const shouldCreateCandidate = skeptic.verdict === "research_only";
     const candidate = shouldCreateCandidate
       ? await createResearchCandidate({
           experimentId,
-          name: `${experiment.title} paper candidate`,
+          name: `${experiment.title} research candidate`,
           thesis: experiment.hypothesis,
           metrics: {
             evidenceLevel: "hypothesis_only",
@@ -237,7 +237,7 @@ export const runResearchExperiment = async (experimentId: string) => {
       { planner, dataScout, featureBuilder, skeptic, candidateId: candidate?.id ?? null },
       async () => ({
         outputText: candidate
-          ? `Created paper candidate ${candidate.name}. Next step: run a real backtest/paper job.`
+          ? `Created research candidate ${candidate.name}. Next step: run an evaluation or venue-scoped bot.`
           : "Experiment rejected before candidate creation.",
         outputJson: {
           candidate,

@@ -277,18 +277,23 @@ export const setCandidatePromotedBot = async (input: { candidateId: string; botI
   `;
 };
 
-export const setCandidatePaperBot = async (input: { candidateId: string; botId: string }) => {
+export const setCandidateVenueBot = async (input: { candidateId: string; botId: string; venue?: string }) => {
   await sql`
     update research_candidates
     set status = 'paper_running',
         metrics = coalesce(metrics, '{}'::jsonb) || jsonb_build_object(
           'paperBotId', ${input.botId}::text,
-          'paperBotStatus', 'created_testnet_disabled'
+          'paperBotStatus', 'created_testnet_disabled',
+          'venueBotId', ${input.botId}::text,
+          'venueBotStatus', 'created_disabled',
+          'venue', ${input.venue ?? "binance-testnet"}
         ),
         updated_at = now()
     where id = ${input.candidateId}
   `;
 };
+
+export const setCandidatePaperBot = setCandidateVenueBot;
 
 export const getPendingLivePromotionApprovalForCandidate = async (candidateId: string) => {
   const [row] = await sql<{

@@ -104,7 +104,7 @@ agentsRouter.post("/agent-control/approvals/:approvalId/approve", async (request
       }
 
       createdBotId = await createBot({
-        name: candidate.name.replace(/paper candidate$/i, "live").trim(),
+        name: candidate.name.replace(/\s*(paper|research) candidate$/i, "").trim() || candidate.name,
         slug: `pro-${candidate.id.slice(0, 8)}`,
         promptVersionId: prompt.versionId,
         modelProfileId: model.id,

@@ -54,8 +54,6 @@ type Props = {
 const venueLabel = (venue: "binance" | "binance-testnet") =>
   venue === "binance-testnet" ? "Binance Testnet" : "Binance";
 
-const accountLabel = (mode: "testnet" | "live") => mode === "live" ? "Live" : "Paper";
-
 const displayName = (bot: BotRow) => {
   const trimmed = bot.name?.trim() ?? "";
   const isPlaceholder = trimmed === "" || /^#\d+$/.test(trimmed);
@@ -123,15 +121,10 @@ const COLUMN_DEFS: ColumnDef[] = [
   },
   {
     id: "account",
-    label: "Account",
+    label: "Venue",
     defaultVisible: true,
-    sortValue: (bot) => `${bot.mode}-${bot.venue}`,
-    render: (bot) => (
-      <span>
-        {accountLabel(bot.mode)}
-        <span className="muted table-subtext">{venueLabel(bot.venue)}</span>
-      </span>
-    )
+    sortValue: (bot) => venueLabel(bot.venue),
+    render: (bot) => <span>{venueLabel(bot.venue)}</span>
   },
   {
     id: "created",
@@ -373,7 +366,7 @@ export function BotTable({
       if (statusFilter === "active" && !bot.enabled) return false;
       if (statusFilter === "stopped" && bot.enabled) return false;
       if (statusFilter === "errors" && !bot.latestError) return false;
-      if (accountFilter !== "all" && bot.mode !== accountFilter) return false;
+      if (accountFilter !== "all" && bot.venue !== accountFilter) return false;
       if (qualityFilter !== "all" && bot.sampleQuality !== qualityFilter) return false;
       if (!search) return true;
 
@@ -386,8 +379,7 @@ export function BotTable({
         bot.traderModelName ?? bot.modelProfileName,
         bot.latestDecisionSummary ?? "",
         bot.latestError ?? "",
-        venueLabel(bot.venue),
-        accountLabel(bot.mode)
+        venueLabel(bot.venue)
       ].some((value) => value.toLowerCase().includes(search));
     });
   }, [accountFilter, deferredQuery, qualityFilter, scopedBots, statusFilter]);
@@ -491,9 +483,9 @@ export function BotTable({
           <option value="errors">Has errors</option>
         </select>
         <select value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}>
-          <option value="all">All accounts</option>
-          <option value="testnet">Paper</option>
-          <option value="live">Live</option>
+          <option value="all">All venues</option>
+          <option value="binance-testnet">Binance Testnet</option>
+          <option value="binance">Binance</option>
         </select>
         <select value={qualityFilter} onChange={(event) => setQualityFilter(event.target.value)}>
           <option value="all">All samples</option>

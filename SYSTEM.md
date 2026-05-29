@@ -68,15 +68,15 @@ Current posture:
 - global kill switch for emergency halt
 
 Current evolution direction:
-- Cosmu is becoming a three-mode agentic platform while keeping the current live-capable loop intact.
-- **Cosmu Light** is the current lean Binance spot trading loop and must remain available as a simple, reliable baseline. Light is a fast iteration tool — it is not where new strategies are discovered.
-- **Cosmu Research** is the autonomous paper-only research lab for natural-language experiments, data-source testing, backtests, anti-noise review, paper bots, and lessons. Research bots stay on testnet.
-- **Cosmu Pro** is the agentic live trader. Pro bots only exist by promotion from Research candidates and only after explicit approval. Light bots and unpromoted research bots never appear in Pro.
+- Cosmu is becoming an internal investment operating system while keeping the current venue execution loop intact.
+- **Agents** keep the current lean Binance spot trading loop available as a simple, reliable baseline and fast iteration tool.
+- **Research** handles natural-language experiments, data-source testing, backtests, anti-noise review, venue-scoped research bots, and lessons.
+- **Approval-gated execution** lets Research candidates become disabled promoted bots only after explicit approval. Approval does not enable order placement by itself.
 - The three modes are segregated: each mode lists its own bots only. A bot's `workspace_mode` (`light` | `research` | `pro`) is the source of truth for which workspace can see and act on it.
-- The end goal is a fully autonomous Cosmu Pro: it should propose hypotheses, test them in Research, promote what survives review, trade within capped limits, review outcomes, and improve itself — all observable, interruptible, and reversible from the frontend.
+- The end goal is a fully autonomous investment loop: propose hypotheses, test them in Research, promote what survives review, trade within capped limits, review outcomes, and improve itself — all observable, interruptible, and reversible from the frontend.
 - The frontend must remain the command center for observing and controlling bots, agents, research jobs, data sources, approvals, and failures.
 - AI agents browsing this codebase should treat full autonomy as the destination but never bypass the approval gate, the deterministic validator, or the global kill switch on the way there.
-- See `docs/AGENTIC_PLATFORM_PLAN.md`, `docs/ROADMAP.md`, `docs/DECISIONS.md`, and `docs/AGENT_OPERATING_GUIDE.md` before changing this direction.
+- See `AGENTS.md` before code changes. It is the current coding-agent map, vocabulary, and repo memory.
 
 Why this posture:
 - it is fast to ship
@@ -294,26 +294,22 @@ Why:
 - V1 should stay simple
 - the data model should not force a rebuild later
 
-### 5.8 Execution modes and research paper bots
+### 5.8 Venues and research bots
 
 Locked:
-- V1 exchange execution supports testnet and live only
-- Light uses the existing testnet/live runtime path
-- Research paper bots are represented as `workspace_mode = 'research'` bots pinned to `binance-testnet`, `mode = 'testnet'`, and `execution.enabled = false` by default
-- do not add a separate third exchange execution enum called `paper`
+- Product UI should show actual venue names, for example Binance and Binance Testnet.
+- V1 internal execution fields still support `testnet` and `live` for adapter compatibility.
+- Research bots are represented as `workspace_mode = 'research'` bots pinned to the Binance Testnet venue, with `execution.enabled = false` by default.
+- do not add a separate third exchange execution enum for simulated trading
 
-Testnet means:
+Binance Testnet means:
 - real exchange integration path
 - no real funds
 
-Live means:
-- real orders
-- real funds
-
 Why:
-- testnet exercises the real path without real capital
-- live capability is part of V1 seriousness
-- Research needs paper-only product semantics, but adding a separate paper execution path would create a second trading engine too early
+- Binance Testnet exercises the real path without real capital
+- venue-specific execution capability is part of V1 seriousness
+- adding a separate simulated execution path would create a second trading engine too early
 
 ### 5.9 Notifications
 
@@ -823,7 +819,7 @@ Runtime config should include at least:
 - enabled / disabled
 - venue
 - refresh frequency
-- mode: testnet / live
+- venue-backed execution path
 - asset class: default `spot`
 - execution-related toggles
 - future optional flags when needed
@@ -838,7 +834,7 @@ This should include:
 - refresh frequency
 - active prompt version
 - active model profile
-- mode: testnet / live
+- configured venue
 - bot-level execution toggles that are part of normal operation
 
 Locked rule:
@@ -945,7 +941,7 @@ Required now:
 - view refresh frequency
 - view active prompt version
 - view active model profile
-- view mode: testnet / live
+- view configured venue
 - view last run status
 - view latest decision summary
 - view latest orders or executions
@@ -957,11 +953,11 @@ Required now:
 ### 15.4 Minimum V1 editing capabilities
 
 Next:
-- the dashboard should let the operator manage prompts, prompt versions, model selection, frequency, enabled state, testnet / live mode, and bot assignment of prompt / model / config
+- the dashboard should let the operator manage prompts, prompt versions, model selection, frequency, enabled state, venue, and bot assignment of prompt / model / config
 
 Locked rules:
-- mode visibility must be clear
-- switching to live should require strong confirmation
+- venue visibility must be clear
+- enabling a real-funds venue should require strong confirmation
 
 ---
 
@@ -973,7 +969,7 @@ Next:
 - UI controls for prompt version management
 - UI controls for model switching
 - UI controls for frequency editing
-- UI controls for testnet / live switching
+- UI controls for venue switching
 - better run inspection details
 - clearer execution inspection
 - richer Slack summaries
@@ -1046,7 +1042,7 @@ Avoid:
 - premature enterprise auth or permission systems
 - speculative signal frameworks in V1
 - Telegram or Discord notifications in V1
-- paper added as a third exchange execution enum in V1
+- a separate simulated-trading execution enum added in V1
 
 Important nuance:
 - Avoid is not the same as Later

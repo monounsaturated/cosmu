@@ -1,7 +1,16 @@
 # ARCHITECTURE — non-obvious things the code relies on
 
-A one-pass reference for humans and LLMs. `SYSTEM.md` holds product truth; this file holds
-implementation specifics that are easy to forget and hard to rediscover from the code alone.
+A one-pass reference for humans and LLMs. `AGENTS.md` is the coding-agent entrypoint; this file holds implementation specifics that are easy to forget and hard to rediscover from the code alone.
+
+## Product kernel
+
+Cosmu should grow around this flow:
+
+```text
+Source -> Record -> Signal -> Research -> Strategy -> Decision -> Execution -> Outcome
+```
+
+The current runtime still uses the established two-prompt trading loop. Future ingestion and ML work should make source data reusable by storing returned data as records and standardized interpretations as signals instead of trapping them inside one LLM response.
 
 ## Pipeline shape
 
@@ -17,17 +26,17 @@ One run = Research → Trader → Validator → Execution, orchestrated in
 
 Cosmu is being extended into three modes without removing the current loop:
 
-- **Light** — the current operational Binance loop. The production baseline and a quick-iteration tool. Light bots are segregated and never appear in Research or Pro.
-- **Research** — natural-language experiments, data-source tests, paper candidates, anti-overfit review, paper bots, and memory. Research bots are pinned to `binance-testnet` and never place live orders.
-- **Pro** — opt-in multi-agent live trading. Pro bots only exist by promotion from Research candidates and only after explicit human approval. They share the deterministic validator and global kill switch with Light.
+- **Agents** — the current operational venue loop. The production baseline and quick-iteration tool.
+- **Research** — natural-language experiments, data-source tests, strategy candidates, anti-overfit review, venue-scoped research bots, and memory.
+- **Approval-gated execution** — promoted candidates remain disabled until explicit human approval and an operator enables execution rules.
 
 Workspace segregation is enforced by `bots.workspace_mode` (`light` | `research` | `pro`), exposed on `BotSummary.workspaceMode` and used by `BotTable` to filter rows on the Light, Research, and Pro pages.
 
-The promotion path is one-directional: Research → approval inbox → Pro. `research_candidates.promoted_bot_id` records the resulting bot. Approving a `live_promotion` request creates a Pro bot with `execution.enabled = false`, so a human still has to flip on order placement — approval alone does not enable live trading.
+The promotion path is one-directional: Research -> approval inbox -> promoted bot. `research_candidates.promoted_bot_id` records the resulting bot. Approving a promotion creates the bot with `execution.enabled = false`, so a human still has to enable order placement; approval alone does not execute trades.
 
 The first cross-mode primitive is `agent_steps`: a product-level timeline for every visible agent/tool phase. `run_llm_calls` stays as low-level provider telemetry.
 
-**End-state automation goal.** Cosmu Pro should eventually run the full loop autonomously — propose hypotheses, test them in Research, promote what survives review, trade within capped limits, review outcomes, update lessons, and self-improve. AI agents working in this codebase should help us get there incrementally without bypassing the deterministic validator, the global kill switch, or the approval gate.
+**End-state automation goal.** Cosmu should eventually run the full loop autonomously — propose hypotheses, test them in Research, promote what survives review, trade within capped limits, review outcomes, update lessons, and self-improve. AI agents working in this codebase should help us get there incrementally without bypassing the deterministic validator, the global kill switch, or approval gates.
 
 ## Triple-run / double-fire protection
 

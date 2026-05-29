@@ -64,12 +64,12 @@ export default async function ProPage() {
           </p>
         </article>
         <article className="panel">
-          <h3>Live safety defaults</h3>
+          <h3>Execution safety defaults</h3>
           <ul className="clean-list">
-            <li>Human approval before any live promotion.</li>
+            <li>Human approval before promotion to a real-funds venue.</li>
             <li>Promoted bots start with execution disabled — a human enables order placement.</li>
             <li>Validator and global kill switch are mandatory and shared with Light.</li>
-            <li>Paper evidence and skeptic pass are required before live eligibility.</li>
+            <li>Research evidence and skeptic pass are required before real-funds eligibility.</li>
           </ul>
         </article>
       </section>
@@ -80,9 +80,9 @@ export default async function ProPage() {
         <BotTable
           dashboard={dashboard}
           workspaceMode="pro"
-          title="Pro live agents"
-          description="Live agents promoted from Research. Each row is a strategy that cleared paper review and explicit human approval. Light bots and research paper bots never appear here."
-          emptyMessage="No Pro agents yet. Approve a Research promotion request above to spawn one."
+          title="Promoted agents"
+          description="Venue-scoped agents promoted from Research. Each row is a strategy that cleared review and explicit human approval."
+          emptyMessage="No promoted agents yet. Approve a Research promotion request above to spawn one."
         />
       </div>
     </main>

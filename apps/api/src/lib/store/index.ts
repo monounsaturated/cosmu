@@ -98,6 +98,7 @@ export {
   getResearchCandidate,
   getPendingLivePromotionApprovalForCandidate,
   setCandidatePromotedBot,
+  setCandidateVenueBot,
   setCandidatePaperBot,
   listResearchCandidates
 } from "./research.js";
