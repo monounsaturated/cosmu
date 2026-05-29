@@ -1,3 +1,4 @@
+// module: Mistral provider via the OpenAI-compatible shim.
 import {
   createOpenAiCompatibleProvider,
   listOpenAiCompatibleModels,

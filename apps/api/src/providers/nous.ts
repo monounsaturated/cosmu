@@ -1,3 +1,4 @@
+// module: Nous Research provider adapter.
 import OpenAI from "openai";
 import { env } from "../env.js";
 import type { LLMChatInput, LLMProvider, LLMResponse } from "./llm.js";

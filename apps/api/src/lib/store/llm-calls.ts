@@ -1,3 +1,4 @@
+// module: Persist/read run_llm_calls — low-level provider telemetry + trader toolCalls.
 import { sql } from "../../db.js";
 
 export type LLMCallRecord = {

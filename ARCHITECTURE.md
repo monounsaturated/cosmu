@@ -7,10 +7,13 @@ A one-pass reference for humans and LLMs. `AGENTS.md` is the coding-agent entryp
 Cosmu should grow around this flow:
 
 ```text
-Source -> Record -> Signal -> Research -> Strategy -> Decision -> Execution -> Outcome
+Source -> Record -> Signal -> Index ─┐
+                                     └─> Research -> Strategy -> Decision -> Execution -> Outcome
 ```
 
 The current runtime still uses the established two-prompt trading loop. Future ingestion and ML work should make source data reusable by storing returned data as records and standardized interpretations as signals instead of trapping them inside one LLM response.
+
+**The one rule that must never break:** keep the model's *decision* separate from what the venue actually *executed*. These stay distinct rows/fields and must never be collapsed: prompt version, model profile, runtime context, raw model output, parsed decision, validation result, order intent, venue execution result, resulting portfolio state. Lose this separation and the system becomes impossible to trust, debug, compare, or extend.
 
 ## Pipeline shape
 
@@ -24,19 +27,13 @@ One run = Research → Trader → Validator → Execution, orchestrated in
 
 ## Agentic platform direction
 
-Cosmu is being extended into three modes without removing the current loop:
+There is one kind of agent: a **bot**. A bot runs the operational loop below on a schedule, against an explicit venue. Research is a workflow that produces strategy candidates which can be turned into bots; it is not a separate class of bot. There are no light/research/pro workspace modes — all bots live in one list, differentiated only by their `venue` and whether execution is enabled.
 
-- **Agents** — the current operational venue loop. The production baseline and quick-iteration tool.
-- **Research** — natural-language experiments, data-source tests, strategy candidates, anti-overfit review, venue-scoped research bots, and memory.
-- **Approval-gated execution** — promoted candidates remain disabled until explicit human approval and an operator enables execution rules.
+`agent_steps` is the product-level timeline for every visible agent/tool phase. `run_llm_calls` stays as low-level provider telemetry.
 
-Workspace segregation is enforced by `bots.workspace_mode` (`light` | `research` | `pro`), exposed on `BotSummary.workspaceMode` and used by `BotTable` to filter rows on the Light, Research, and Pro pages.
+**Index (future hook, not built yet).** An Index is a scheduled bot that monitors specific data Sources, captures Records, and applies a standardized prompt to turn qualitative data into quantified Signals about one topic over time. Indexes are derived views over Signals — never a new raw-data store. The data model should leave room for this (Source → Record → Signal → Index) without building ingestion now.
 
-The promotion path is one-directional: Research -> approval inbox -> promoted bot. `research_candidates.promoted_bot_id` records the resulting bot. Approving a promotion creates the bot with `execution.enabled = false`, so a human still has to enable order placement; approval alone does not execute trades.
-
-The first cross-mode primitive is `agent_steps`: a product-level timeline for every visible agent/tool phase. `run_llm_calls` stays as low-level provider telemetry.
-
-**End-state automation goal.** Cosmu should eventually run the full loop autonomously — propose hypotheses, test them in Research, promote what survives review, trade within capped limits, review outcomes, update lessons, and self-improve. AI agents working in this codebase should help us get there incrementally without bypassing the deterministic validator, the global kill switch, or approval gates.
+**End-state automation goal.** Cosmu should eventually run the full loop autonomously — propose hypotheses, test them in Research, trade within capped limits, review outcomes, update lessons, and self-improve. AI agents working in this codebase should help us get there incrementally without bypassing the deterministic validator or the global kill switch.
 
 ## Triple-run / double-fire protection
 

@@ -17,7 +17,7 @@ const fallbackAccounts = (venueOverview: VenueOverview): AccountEntry[] => {
   if (venueOverview.live) {
     rows.push({
       id: "binance-live",
-      label: "Binance Live",
+      label: "Binance",
       venue: "binance",
       mode: "live",
       configured: true,

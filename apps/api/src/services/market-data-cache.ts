@@ -1,7 +1,7 @@
-import type { RuntimeConfig } from "@cosmu/shared";
-import { getAccountBalance, getAllTickerPrices } from "../adapters/binance.js";
+// module: Cache Binance balances/prices for fast dashboard reads.
+import { getAccountBalance, getAllTickerPrices, type BinanceNet } from "../adapters/binance.js";
 
-type MarketMode = RuntimeConfig["mode"];
+type MarketMode = BinanceNet;
 type TickerPrice = { symbol: string; price: string | number };
 type AccountBalance = Awaited<ReturnType<typeof getAccountBalance>>;
 type MarketDataTrigger = "startup" | "interval" | "manual" | "dashboard";

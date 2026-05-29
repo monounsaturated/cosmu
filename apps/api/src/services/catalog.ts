@@ -1,3 +1,4 @@
+// module: Tradable-symbol catalog cache sync.
 import { sql } from "../db.js";
 import { listVenueSymbols } from "../adapters/binance.js";
 import type { VenueId } from "./venues.js";

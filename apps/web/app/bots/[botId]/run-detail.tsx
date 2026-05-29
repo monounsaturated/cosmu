@@ -513,7 +513,7 @@ export function RunDetail({ run }: { run: Run }) {
         </>
       )}
 
-      <AgentTimeline scopeType="light_run" scopeId={run.id} title="Light Agent Timeline" />
+      <AgentTimeline scopeType="bot_run" scopeId={run.id} title="Agent Timeline" />
 
       {/* LLM Calls */}
       <LLMCallsPanel runId={run.id} />

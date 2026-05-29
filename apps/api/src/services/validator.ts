@@ -119,7 +119,7 @@ export const validateDecision = async (input: {
         // - Reserve: always enforce a minimum (execution enabled -> user value, else FALLBACK_MIN_CASH_RESERVE_USD).
         // - `spentUsd` accumulates buffered amounts so back-to-back buys in one run cannot
         //   each see the full snapshot cash (bot #57 regression).
-        const usdcOnly = isUsdcOnlyVenue(input.runtimeConfig);
+        const usdcOnly = isUsdcOnlyVenue(input.runtimeConfig.venue);
         const cashFree = usdcOnly
           ? balances.get("USDC")?.free ?? 0
           : (balances.get("USDT")?.free ?? 0) + (balances.get("USDC")?.free ?? 0);

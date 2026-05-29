@@ -15,6 +15,7 @@ import {
   getBinanceOrderStatus,
   normalizeSymbol,
   loadVenueContext,
+  netForVenue,
   type VenueContext
 } from "../adapters/binance.js";
 import { sql } from "../db.js";
@@ -126,7 +127,7 @@ const triggerGuardianSell = async (
     if (position.safetyStopOrderId) {
       try {
         await cancelSafetyStopOrder(
-          bot.runtimeConfig.mode,
+          netForVenue(bot.runtimeConfig.venue),
           position.symbol,
           position.safetyStopOrderId
         );
@@ -140,7 +141,7 @@ const triggerGuardianSell = async (
 
     // 2. Market-sell the position's quantity
     let execution = await placeMarketSell({
-      mode: bot.runtimeConfig.mode,
+      mode: netForVenue(bot.runtimeConfig.venue),
       venue: bot.runtimeConfig.venue,
       assetClass: bot.runtimeConfig.assetClass,
       symbol: position.symbol,
@@ -216,7 +217,7 @@ export const reconcileSafetyStops = async (): Promise<void> => {
 
     try {
       const status = await getBinanceOrderStatus(
-        bot.runtimeConfig.mode,
+        netForVenue(bot.runtimeConfig.venue),
         position.symbol,
         position.safetyStopOrderId
       );
@@ -305,7 +306,7 @@ export const runGuardianTick = async (): Promise<void> => {
       continue;
     }
 
-    const mode = bot.runtimeConfig.mode;
+    const mode = netForVenue(bot.runtimeConfig.venue);
     const arr = positionsByMode.get(mode) ?? [];
     arr.push(position);
     positionsByMode.set(mode, arr);

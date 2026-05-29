@@ -1,3 +1,4 @@
+// module: Boot/manage Railway background loops (scheduler, guardian, market-data cache).
 import { ensureBotSchedulerSchema } from "../lib/store.js";
 import { getGuardianStatus, startGuardian } from "./guardian.js";
 import {

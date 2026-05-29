@@ -1,3 +1,4 @@
+// module: OpenAI provider via the OpenAI-compatible shim.
 import {
   createOpenAiCompatibleProvider,
   listOpenAiCompatibleModels,

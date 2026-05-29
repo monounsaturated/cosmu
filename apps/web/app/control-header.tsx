@@ -11,7 +11,6 @@ const labelForPath = (path: string) => {
   if (path.startsWith("/research")) return "Research";
   if (path.startsWith("/bots")) return "Agents";
   if (path.startsWith("/spending")) return "Spending";
-  if (path.startsWith("/pro")) return "Review";
   if (path.startsWith("/prompts")) return "Prompts";
   if (path.startsWith("/settings")) return "Settings";
   return "Agents";

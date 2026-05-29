@@ -1,4 +1,5 @@
-import { executeOrders, isUsdcOnlyVenue, loadVenueContext, cancelAllOpenOrdersForSymbol } from "../adapters/binance.js";
+// module: Kill-switch liquidation — disable bot, cancel orders, flatten positions.
+import { executeOrders, isUsdcOnlyVenue, loadVenueContext, cancelAllOpenOrdersForSymbol, netForVenue } from "../adapters/binance.js";
 import {
   createRun,
   finishRun,
@@ -90,7 +91,7 @@ export const killBotAndLiquidate = async (
     // This frees locked balances from OCO (SL/TP) orders.
     for (const symbol of heldSymbols) {
       try {
-        await cancelAllOpenOrdersForSymbol(bot.runtimeConfig.mode, symbol);
+        await cancelAllOpenOrdersForSymbol(netForVenue(bot.runtimeConfig.venue), symbol);
       } catch (cancelError) {
         console.warn(`kill-bot: cancel orders for ${symbol} failed, continuing:`, cancelError);
       }
@@ -118,7 +119,7 @@ export const killBotAndLiquidate = async (
     // Build sell orders from logical balances — only what this bot actually bought.
     // Quote selection: USDC on live binance (no USDT pairs in FR); otherwise prefer
     // whichever quote actually has a tradable pair in the fresh venue context.
-    const usdcOnly = isUsdcOnlyVenue(bot.runtimeConfig);
+    const usdcOnly = isUsdcOnlyVenue(bot.runtimeConfig.venue);
     const pickQuote = (asset: string): "USDT" | "USDC" => {
       if (usdcOnly) return "USDC";
       if (freshVenueContext.symbolRules[`${asset}USDT`]) return "USDT";

@@ -1,3 +1,4 @@
+// module: Factory for OpenAI-compatible chat providers.
 import OpenAI from "openai";
 import { env } from "../env.js";
 import type { ToolInputSchema } from "../mcp/types.js";

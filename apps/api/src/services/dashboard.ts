@@ -1,3 +1,4 @@
+// module: Assemble dashboard payload (portfolio valuation, bot summaries).
 import { sql } from "../db.js";
 import { dashboardSchema, botSummarySchema, portfolioSnapshotSchema } from "@cosmu/shared";
 import { getLlmSpendEstimate } from "./llm-spend.js";
@@ -62,11 +63,9 @@ export const getDashboard = async () => {
       b.name,
       b.slug,
       b.created_at as "startedAt",
-      coalesce(b.workspace_mode, 'light') as "workspaceMode",
       brc.enabled,
       brc.venue,
       brc.frequency_minutes as "frequencyMinutes",
-      brc.mode,
       brc.asset_class as "assetClass",
       concat(p.name, ' v', pv.version) as "promptVersionLabel",
       case when tp.id is not null then concat(tp.name, ' v', tpv.version) else null end as "traderPromptVersionLabel",
@@ -122,7 +121,8 @@ export const getDashboard = async () => {
     const netPnlUsd = row.netPnlUsd === null ? currentPortfolioUsd - budgetUsdt : Number(row.netPnlUsd);
 
     if (row.enabled) {
-      allocatedByMode.set(row.mode, (allocatedByMode.get(row.mode) ?? 0) + currentPortfolioUsd);
+      const net = row.venue === "binance-testnet" ? "testnet" : "live";
+      allocatedByMode.set(net, (allocatedByMode.get(net) ?? 0) + currentPortfolioUsd);
     }
 
     return botSummarySchema.parse({
@@ -145,7 +145,7 @@ export const getDashboard = async () => {
   const accountConfigs = [
     {
       id: "binance-live",
-      label: "Binance Live",
+      label: "Binance",
       venue: "binance",
       mode: "live",
       balance: liveAccountBalance,
@@ -166,9 +166,11 @@ export const getDashboard = async () => {
       error: testnetStatus.error ?? marketData.testnet.balanceError
     }
   ];
+  const botNet = (bot: (typeof bots)[number]) =>
+    bot.venue === "binance-testnet" ? "testnet" : "live";
   const accounts = accountConfigs.map((account) => {
-    const configuredAgents = bots.filter((bot) => bot.mode === account.mode).length;
-    const activeAgents = bots.filter((bot) => bot.mode === account.mode && bot.enabled).length;
+    const configuredAgents = bots.filter((bot) => botNet(bot) === account.mode).length;
+    const activeAgents = bots.filter((bot) => botNet(bot) === account.mode && bot.enabled).length;
     const allocatedAmount = allocatedByMode.get(account.mode) ?? 0;
     const spareAmount = account.connected
       ? Math.max(0, account.balance - allocatedAmount)
@@ -274,7 +276,7 @@ export const getDashboard = async () => {
       };
     }
 
-    const cashAsset = bot.mode === "live" ? "USDC" : "USDT";
+    const cashAsset = bot.venue === "binance" ? "USDC" : "USDT";
     return {
       botId: bot.id,
       botName: bot.name?.trim()

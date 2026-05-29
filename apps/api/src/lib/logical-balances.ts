@@ -1,3 +1,4 @@
+// module: Merge USDT+USDC into one logical cash balance; strip stable suffixes.
 import { portfolioSnapshotSchema, type RuntimeConfig } from "@cosmu/shared";
 import { isUsdcOnlyVenue } from "../adapters/binance.js";
 import type { BotExecutionLedgerEntry } from "./store.js";
@@ -62,7 +63,7 @@ export const computeLogicalBalances = (
 // Returns held-coin pairs the trader can re-price against. For each held base asset,
 // include venue-allowed quote variants so the pricing loader can resolve them.
 export const getHeldSymbols = (logical: LogicalBalances, runtimeConfig?: RuntimeConfig) => {
-  const usdcOnly = runtimeConfig ? isUsdcOnlyVenue(runtimeConfig) : false;
+  const usdcOnly = runtimeConfig ? isUsdcOnlyVenue(runtimeConfig.venue) : false;
   const quotes = usdcOnly ? ["USDC"] : ["USDT", "USDC"];
   return Object.entries(logical.assets)
     .filter(([asset, qty]) => asset.length > 0 && Math.abs(qty) > 1e-8)
@@ -78,7 +79,7 @@ export const buildLogicalSnapshot = (input: {
   // venues where USDT isn't tradable (binance live = USDC-only) labelling it "USDT"
   // makes the validator look for USDT free-balance and underflow. Use the actual
   // tradable stable for those venues.
-  const cashAsset = isUsdcOnlyVenue(input.runtimeConfig) ? "USDC" : "USDT";
+  const cashAsset = isUsdcOnlyVenue(input.runtimeConfig.venue) ? "USDC" : "USDT";
   const balances = [
     {
       asset: cashAsset,

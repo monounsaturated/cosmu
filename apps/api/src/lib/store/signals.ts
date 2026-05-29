@@ -1,3 +1,4 @@
+// module: raw_observations + standardized_signals storage.
 import type { RawObservation, StandardizedSignal } from "@cosmu/shared";
 import { sql } from "../../db.js";
 import { parseJson, type JsonValue } from "./helpers.js";

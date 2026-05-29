@@ -7,18 +7,19 @@ Internal investment operating system for agent research, data capture, venue exe
 - `apps/api`: Node API for agent runs, Signals, Research, venue execution, scheduler/guardian jobs, and audit traces
 - `apps/web`: internal command center for agents, Signals, Research, Settings, and optional modules
 - `packages/shared`: shared schemas, defaults, runtime, execution, and dashboard contracts
-- `apps/api/sql`: schema, seeds, agentic foundation, and workspace-mode migrations
+- `apps/api/sql`: schema, seeds, and migrations
 
 ## Product Flow
 
 ```text
-Source -> Record -> Signal -> Research -> Strategy -> Decision -> Execution -> Outcome
+Source -> Record -> Signal -> Index -> Research -> Strategy -> Decision -> Execution -> Outcome
 ```
 
-- **Agents** run the current venue-aware loop: research prompt, trader prompt, deterministic validator, execution, guardian, dashboard.
-- **Signals** convert records from X, web, news, market, APIs, or manual QA into small standardized interpretations that agents can consume.
+- **Bots** run the venue-aware loop: research prompt, trader prompt, deterministic validator, execution, guardian, dashboard.
+- **Signals** convert records from X, web, news, market, APIs, or manual QA into small standardized interpretations that bots can consume.
 - **Research** runs natural-language experiments, data-source scouting, strategy candidates, backtests/evaluations, and anti-noise review.
-- **Venues** are shown by actual name, such as Binance and Binance Testnet. Avoid generic product labels like paper/live/testnet mode.
+- **Index** (future) is a scheduled bot that monitors Sources and applies a standardized prompt to quantify a topic over time.
+- **Venues** are the single source of truth for testnet vs live, shown by actual name: `Binance` and `Binance Testnet`. No generic paper/live/testnet-mode labels.
 
 ## Current loop
 
@@ -37,9 +38,9 @@ Source -> Record -> Signal -> Research -> Strategy -> Decision -> Execution -> O
 
 1. Copy `.env.example` to `.env.local` and fill in the values needed for the surface you want to test.
 2. Install dependencies with `pnpm install`.
-3. Apply SQL files in order from `apps/api/sql`. For the current three-mode branch, make sure `017_agentic_foundation.sql` and `018_workspace_mode.sql` have been applied.
+3. Apply SQL files in order from `apps/api/sql`.
 4. Start API + web together with `pnpm dev`, or separately with `pnpm --filter @cosmu/api dev` and `pnpm --filter @cosmu/web dev`.
-5. Open the web app and test the path: Dashboard -> Signals QA capture -> Research session -> candidate -> approval.
+5. Open the web app and test the path: Dashboard -> Signals QA capture -> Research session -> candidate -> bot.
 
 QA helper:
 
@@ -51,8 +52,7 @@ pnpm build:all
 SQL helper:
 
 ```bash
-set -a && source .env.local && set +a && node scripts/apply-sql.mjs apps/api/sql/017_agentic_foundation.sql
-set -a && source .env.local && set +a && node scripts/apply-sql.mjs apps/api/sql/018_workspace_mode.sql
+set -a && source .env.local && set +a && node scripts/apply-sql.mjs apps/api/sql/<file>.sql
 ```
 
 Local/test reset helper:

@@ -1,8 +1,8 @@
-import type { RuntimeConfig } from "@cosmu/shared";
+import type { BinanceNet } from "../adapters/binance.js";
 
 /** Context passed to every MCP tool execution. */
 export type ToolContext = {
-  mode: RuntimeConfig["mode"];
+  mode: BinanceNet;
 };
 
 /** JSON Schema-like description of a tool's parameters (agent-callable tools only). */

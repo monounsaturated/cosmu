@@ -43,7 +43,6 @@ type Props = {
   title?: string;
   description?: string;
   emptyMessage?: string;
-  workspaceMode?: "light" | "research" | "pro";
   compact?: boolean;
   maxRows?: number;
   defaultSortField?: ColumnId;
@@ -303,7 +302,6 @@ export function BotTable({
   title = "Agent Performance",
   description = "Compare every active and stopped strategy from one shared table. Sort, filter, and choose columns here; every mode uses the same surface.",
   emptyMessage = "No agents created yet.",
-  workspaceMode,
   compact = false,
   maxRows,
   defaultSortField = "returnPct",
@@ -325,9 +323,8 @@ export function BotTable({
         llmWarning: spend?.warning ?? null
       };
     });
-    if (!workspaceMode) return enriched;
-    return enriched.filter((bot) => (bot.workspaceMode ?? "light") === workspaceMode);
-  }, [dashboard.bots, dashboard.llmSpendEstimate?.bots, workspaceMode]);
+    return enriched;
+  }, [dashboard.bots, dashboard.llmSpendEstimate?.bots]);
   const router = useRouter();
   const [sortField, setSortField] = useState<ColumnId>(defaultSortField);
   const [sortOrder, setSortOrder] = useState<SortOrder>(defaultSortOrder);

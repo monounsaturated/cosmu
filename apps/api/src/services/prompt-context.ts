@@ -1,3 +1,4 @@
+// module: Build compact runtime context + grounding blocks for prompts.
 import { isUsdcOnlyVenue, type VenueContext } from "../adapters/binance.js";
 import {
   getBotPrePromptContext,
@@ -55,7 +56,7 @@ const buildWalletSection = (snapshot: VenueContext["snapshot"], label?: string) 
 const buildSessionSection = (bot: BotSetup, label?: string) => [
   heading(label, "SESSION"),
   `Bot: ${bot.name} (#${bot.botNumber}) | Model: ${bot.traderModelProfileName}`,
-  `Mode: ${bot.runtimeConfig.mode} | Venue: Binance Spot | Frequency: every ${bot.runtimeConfig.frequencyMinutes}min`,
+  `Venue: ${bot.runtimeConfig.venue === "binance-testnet" ? "Binance Testnet" : "Binance"} (spot) | Frequency: every ${bot.runtimeConfig.frequencyMinutes}min`,
   `Budget: ${fmtUsd(bot.runtimeConfig.budgetUsdt)} — you must stay within this allocation`
 ].join("\n");
 
@@ -94,7 +95,7 @@ const buildTradingScopeSection = (runtimeConfig: BotSetup["runtimeConfig"], labe
   if (runtimeConfig.symbolScope === "selected" && runtimeConfig.contextSymbols.length > 0) {
     return [heading(label, "AUTHORIZED PAIRS - trade ONLY these"), runtimeConfig.contextSymbols.join(", ")].join("\n");
   }
-  const scope = isUsdcOnlyVenue(runtimeConfig)
+  const scope = isUsdcOnlyVenue(runtimeConfig.venue)
     ? "any USDC-quoted spot pair available on Binance live (USDT pairs are NOT tradable in this region — use USDC only)"
     : "any stable-quoted spot pair available on Binance (USDC preferred, USDT fallback)";
   return `${heading(label, "TRADING SCOPE")}\nYou may trade ${scope}. Pick your symbols based on your own analysis.`;
@@ -215,7 +216,7 @@ export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildProm
 
   const compactContext: Record<string, unknown> = {
     phase: "research",
-    mode: runtimeConfig.mode,
+    venue: runtimeConfig.venue,
     symbolScope: runtimeConfig.symbolScope,
     walletTotalUsd: venueContext.snapshot.totalUsdValue,
     balanceCount: venueContext.snapshot.balances.length,
@@ -273,7 +274,7 @@ export const buildFormatterPhaseContext = async ({
 
   const compactContext: Record<string, unknown> = {
     phase: "formatter",
-    mode: runtimeConfig.mode,
+    venue: runtimeConfig.venue,
     symbolScope: runtimeConfig.symbolScope,
     walletTotalUsd: venueContext.snapshot.totalUsdValue,
     candidateSymbols,

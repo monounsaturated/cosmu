@@ -10,7 +10,8 @@ import {
   executeOrders,
   placeSafetyStopOrder,
   roundToStep,
-  roundToTick
+  roundToTick,
+  netForVenue
 } from "../adapters/binance.js";
 import {
   createRun,
@@ -99,7 +100,7 @@ const safeRecordLightStep = async (input: {
 }) => {
   try {
     await recordAgentStep({
-      scopeType: "light_run",
+      scopeType: "bot_run",
       scopeId: input.runId,
       agentKey: input.agentKey,
       agentLabel: input.agentLabel,
@@ -257,7 +258,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
       systemPrompt: formatterCtx.systemPrompt,
       userMessage: formatterCtx.userMessage,
       runId,
-      toolContext: { mode: bot.runtimeConfig.mode }
+      toolContext: { mode: netForVenue(bot.runtimeConfig.venue) }
     });
 
     await storeTraderOutput(runId, traderResult.rawText);
@@ -394,7 +395,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
           if (safetyPrice > 0 && safetyQty > 0 && (!rules || safetyQty >= rules.minQty)) {
             try {
               const result = await placeSafetyStopOrder({
-                mode: bot.runtimeConfig.mode,
+                mode: netForVenue(bot.runtimeConfig.venue),
                 symbol: record.symbol,
                 quantity: safetyQty,
                 stopPrice: safetyPrice,

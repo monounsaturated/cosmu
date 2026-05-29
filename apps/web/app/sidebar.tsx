@@ -15,7 +15,6 @@ import {
   Gauge,
   Radio,
   Settings,
-  ShieldCheck,
   Sparkles
 } from "lucide-react";
 import { defaultFeatureToggles, type AppSettings } from "@cosmu/shared";
@@ -39,8 +38,7 @@ const NAV_ITEMS = [
   { href: "/prompt-lab", label: "Prompt Lab", description: "prompt experiments", icon: Brain, group: "Modules", featureKey: "promptLab" },
   { href: "/sentiment", label: "Sentiment", description: "market pulse", icon: Gauge, group: "Modules", featureKey: "sentiment" },
   { href: "/signals", label: "Signals", description: "capture and triage", icon: Radio, group: "Modules", featureKey: "signals" },
-  { href: "/research", label: "Research", description: "framework tests", icon: FlaskConical, group: "Modules", featureKey: "researchLab" },
-  { href: "/pro", label: "Review", description: "live approvals", icon: ShieldCheck, group: "Modules", featureKey: "proReview" }
+  { href: "/research", label: "Research", description: "framework tests", icon: FlaskConical, group: "Modules", featureKey: "researchLab" }
 ] satisfies NavItem[];
 
 const MOBILE_TABS = [

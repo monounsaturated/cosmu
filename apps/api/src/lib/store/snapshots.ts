@@ -1,3 +1,4 @@
+// module: Portfolio snapshot storage.
 import { portfolioSnapshotSchema, type PortfolioSnapshot } from "@cosmu/shared";
 import { sql } from "../../db.js";
 

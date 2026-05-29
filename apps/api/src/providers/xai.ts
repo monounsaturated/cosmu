@@ -1,3 +1,4 @@
+// module: xAI/Grok provider — research browsing (Responses API) + trader tool-loop (Chat Completions).
 import OpenAI from "openai";
 import {
   tradingDecisionJsonSchema,

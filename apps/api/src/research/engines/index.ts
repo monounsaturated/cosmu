@@ -1,3 +1,4 @@
+// module: Research engine registry/lookup.
 import type { ResearchEngine } from "@cosmu/shared";
 import type { ResearchEngineAdapter } from "./types.js";
 

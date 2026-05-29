@@ -1,3 +1,4 @@
+// module: Hugging Face provider via the OpenAI-compatible shim.
 import {
   createOpenAiCompatibleProvider,
   listOpenAiCompatibleModels,

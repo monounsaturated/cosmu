@@ -1,3 +1,4 @@
+// module: Bot CRUD, atomic run claiming (next_run_at), and scheduling queries.
 import {
   assetClassSchema,
   type PrePromptConfig,
@@ -6,6 +7,7 @@ import {
   traderConfigSchema
 } from "@cosmu/shared";
 import { sql } from "../../db.js";
+import { netForVenue } from "../../adapters/binance.js";
 import { buildRuntimeConfig, parseJson, parsePromptConfig, parseTraderConfig, type JsonValue } from "./helpers.js";
 
 export type BotSetup = {
@@ -107,7 +109,6 @@ const BOT_SELECT_QUERY = `
     brc.enabled,
     brc.venue,
     brc.frequency_minutes as "frequencyMinutes",
-    brc.mode,
     brc.asset_class as "assetClass",
     brc.execution_config as "executionConfig",
     brc.context_symbols as "contextSymbols",
@@ -161,7 +162,6 @@ export const getDueBots = async (): Promise<BotSetup[]> => {
       brc.enabled,
       brc.venue,
       brc.frequency_minutes as "frequencyMinutes",
-      brc.mode,
       brc.asset_class as "assetClass",
       brc.execution_config as "executionConfig",
       brc.context_symbols as "contextSymbols",
@@ -228,7 +228,6 @@ export const getAllEnabledBotSetups = async (): Promise<BotSetup[]> => {
       brc.enabled,
       brc.venue,
       brc.frequency_minutes as "frequencyMinutes",
-      brc.mode,
       brc.asset_class as "assetClass",
       brc.execution_config as "executionConfig",
       brc.context_symbols as "contextSymbols",
@@ -286,7 +285,6 @@ export const getBotSetupById = async (botId: string): Promise<BotSetup | null> =
       brc.enabled,
       brc.venue,
       brc.frequency_minutes as "frequencyMinutes",
-      brc.mode,
       brc.asset_class as "assetClass",
       brc.execution_config as "executionConfig",
       brc.context_symbols as "contextSymbols",
@@ -426,26 +424,22 @@ export const createBot = async (input: {
   traderConfig?: TraderConfig;
   traderPromptVersionId?: string | null;
   parentBotId?: string | null;
-  workspaceMode?: "light" | "research" | "pro";
   enabled?: boolean;
   runtimeConfig: Omit<RuntimeConfig, "enabled">;
 }) => {
   const effectiveName = input.name.trim();
-  const workspaceMode = input.workspaceMode ?? "light";
-  const scheduledEnabled = input.enabled ?? (workspaceMode === "pro" ? false : true);
+  const scheduledEnabled = input.enabled ?? true;
   const [bot] = await sql<{ id: string }[]>`
     insert into bots (
       name, slug, active_prompt_version_id, active_model_profile_id,
       active_trader_model_profile_id,
-      active_trader_prompt_version_id, parent_bot_id, prompt_config, trader_config,
-      workspace_mode
+      active_trader_prompt_version_id, parent_bot_id, prompt_config, trader_config
     ) values (
       ${effectiveName}, ${input.slug}, ${input.promptVersionId}, ${input.modelProfileId},
       ${input.traderModelProfileId ?? input.modelProfileId},
       ${input.traderPromptVersionId ?? null}, ${input.parentBotId ?? null},
       ${sql.json(input.promptConfig)},
-      ${sql.json(input.traderConfig ?? traderConfigSchema.parse({}))},
-      ${workspaceMode}
+      ${sql.json(input.traderConfig ?? traderConfigSchema.parse({}))}
     )
     returning id
   `;
@@ -456,7 +450,7 @@ export const createBot = async (input: {
       budget_usdt, execution_config, context_symbols, next_run_at
     ) values (
       ${bot.id}, ${scheduledEnabled}, ${input.runtimeConfig.venue}, ${input.runtimeConfig.frequencyMinutes},
-      ${input.runtimeConfig.mode}, ${input.runtimeConfig.assetClass},
+      ${netForVenue(input.runtimeConfig.venue)}, ${input.runtimeConfig.assetClass},
       ${input.runtimeConfig.budgetUsdt ?? 1000},
       ${sql.json(input.runtimeConfig.execution)},
       ${sql.json(input.runtimeConfig.contextSymbols)},
@@ -503,7 +497,7 @@ export const updateBotConfig = async (
   if (input.runtimeConfig !== undefined) {
     runtimeUpdates.venue = input.runtimeConfig.venue;
     runtimeUpdates.frequency_minutes = input.runtimeConfig.frequencyMinutes;
-    runtimeUpdates.mode = input.runtimeConfig.mode;
+    runtimeUpdates.mode = netForVenue(input.runtimeConfig.venue);
     runtimeUpdates.asset_class = input.runtimeConfig.assetClass;
     runtimeUpdates.budget_usdt = input.runtimeConfig.budgetUsdt;
     runtimeUpdates.execution_config = sql.json(input.runtimeConfig.execution);

@@ -1,3 +1,4 @@
+// module: Persist/read bot runs (status, outputs, prompts sent).
 import {
   type RuntimeConfig,
   type TradingDecision,

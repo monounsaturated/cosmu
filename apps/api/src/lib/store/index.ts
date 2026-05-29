@@ -96,8 +96,6 @@ export {
   updateResearchDataSource,
   createResearchCandidate,
   getResearchCandidate,
-  getPendingLivePromotionApprovalForCandidate,
-  setCandidatePromotedBot,
   setCandidateVenueBot,
   setCandidatePaperBot,
   listResearchCandidates

@@ -1,3 +1,4 @@
+// module: Research prompt + prompt-version storage and lookups.
 import type { RuntimeConfig } from "@cosmu/shared";
 import { sql } from "../../db.js";
 

@@ -3,13 +3,15 @@
 This is the mandatory pre-prompt for coding agents in this repo. Keep it lean and current. If this file grows past roughly 200 lines, prune stale memory before adding more.
 
 ## Mission
-Cosmu is an internal investment operating system. Preserve the working core: create agents, ingest data, observe markets, standardize signals, run research, make decisions, execute through explicit venues, and review outcomes.
+Cosmu is an internal investment operating system. Preserve the working core: create bots, ingest data, observe markets, standardize signals, run research, make decisions, execute through explicit venues, and review outcomes.
 
 Primary product flow:
 
 ```text
-Source -> Record -> Signal -> Research -> Strategy -> Decision -> Execution -> Outcome
+Source -> Record -> Signal -> Index -> Research -> Strategy -> Decision -> Execution -> Outcome
 ```
+
+There is one kind of agent: a **bot** (the Cosmu trading bot). No light/research/pro workspace modes — bots differ only by `venue` and whether execution is enabled.
 
 ## Read Order
 1. Read this file first.
@@ -29,20 +31,23 @@ Do not crawl the whole repo by default. Do not do broad cleanup while fixing a n
 - `Decision`: agent output before validation and execution.
 - `Execution`: venue order, fill, fee, position, and venue response.
 - `Outcome`: result, PnL, fees, review, and lesson.
+- `Index`: scheduled bot that monitors Sources and applies a standardized prompt to quantify a topic over time. Derived view over Signals, not a new raw store. (Future hook — not built yet.)
 - `Venue`: actual trading or market venue, for example `Binance`, `Binance Testnet`, `IBKR`, or `Polymarket`.
 - `AgentStep`: audited model/tool phase.
 
-Show the actual venue name in product UI. Avoid generic labels such as paper, live mode, or testnet mode. Existing DB values may keep older names temporarily for compatibility, but new UI and docs should use venue-first language.
+Use the actual venue name everywhere — UI, code, and DB. The only venue concepts are `Binance` (`binance`) and `Binance Testnet` (`binance-testnet`). Never use generic labels such as paper, live mode, or testnet mode.
 
 ## Module Map
-- Web app: `apps/web/app`. Dashboard, agent creation/editing, Signals, Research, Settings, optional modules.
+Each `services/`, `lib/store/`, `adapters/`, `providers/`, and `research/` file starts with a one-line `// module:` memo — read that first to know what it does before opening the file.
+
+- Web app: `apps/web/app`. Dashboard, bot creation/editing, Signals, Research, Settings, optional modules.
 - API: `apps/api/src`. Express routes, services, store modules, background jobs, venue adapters.
-- Shared contracts: `packages/shared/src/index.ts`. Zod schemas, app defaults, public types. Change carefully.
+- Shared contracts: `packages/shared/src` (barrel at `index.ts`, split by domain: `venue`, `trading`, `signals`, `research`, `agent`, `settings`). Zod schemas, app defaults, public types. Change carefully.
 - Venues/execution: `apps/api/src/adapters`, `apps/api/src/services/validator.ts`, execution stores, positions, snapshots.
 - Signals/data: `apps/api/src/routes/signals.ts`, `apps/api/src/lib/store/signals.ts`, `raw_observations`, `standardized_signals`.
 - Research: `apps/api/src/routes/research.ts`, `apps/api/src/research`, `apps/api/src/lib/store/research*.ts`, `apps/web/app/research`.
 - Settings/secrets: `apps/web/app/settings`, app settings stores. Secrets stay in env, not DB.
-- TradingAgents reference: `apps/trading-agents` wrapper and `TradingAgents-main` upstream copy. Do not couple live runtime to upstream internals.
+- Shelved reference: `TradingAgents-main` (vendored OSS) and `apps/trading-agents` wrapper are set aside — do not read, crawl, or couple runtime to them.
 
 ## Data Rules
 - Raw external information should become a `Record` before it is reused.
@@ -79,7 +84,7 @@ Stop and report before:
 - UI changes: verify desktop and mobile widths in the browser when the dev server is available.
 
 ## Repo Memory
-- [venues] Show actual venue names such as `Binance` and `Binance Testnet`. Avoid generic paper/live/testnet mode labels in product UI.
+- [venues] Venue is the single source of truth for testnet vs live: `binance` = live, `binance-testnet` = testnet. There is no separate execution-mode field. Show actual venue names everywhere.
 - [data] Preserve raw source payloads/provenance when practical; derived signals, indexes, and reviews should be recomputable.
 - [research] Research can use tools and venue data, but execution still goes through the validator and venue adapter.
 - [secrets] API keys, exchange keys, and provider secrets stay in `.env.local` locally and server env in deployments.

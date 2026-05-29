@@ -24,7 +24,7 @@ type Props = {
   initialSessions: ResearchSession[];
 };
 
-type CandidateAction = "create-bot" | "promote";
+type CandidateAction = "create-bot";
 
 type ModelProfile = {
   id: string;
@@ -51,7 +51,7 @@ const RESEARCH_TOOL_OPTIONS = [
   { id: "web_search", label: "Web search" },
   { id: "x_search", label: "X search" },
   { id: "market_data", label: "Market data" },
-  { id: "paper_backtest", label: "Backtest" }
+  { id: "backtest", label: "Backtest" }
 ];
 
 const statusBadge = (status: string) => {
@@ -386,7 +386,7 @@ export function ResearchConsole({
           sessionId: selectedSession.id,
           specId: latestSpec.id,
           datasetVersionIds: selectedSession.datasetVersionIds,
-          kind: "paper_backtest",
+          kind: "backtest",
           runNow: true
         })
       });
@@ -443,46 +443,34 @@ export function ResearchConsole({
     setPendingCandidate({ id: candidate.id, action });
     setActionFeedback(null);
     try {
-      const path = action === "create-bot" ? "venue-bot" : "promote-to-pro";
-      const res = await fetch(`/api/research/candidates/${candidate.id}/${path}`, { method: "POST" });
+      const res = await fetch(`/api/research/candidates/${candidate.id}/venue-bot`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Action failed");
 
-      if (action === "create-bot") {
-        setCandidates((current) =>
-          current.map((item) =>
-            item.id === candidate.id
-              ? {
-                  ...item,
-                  status: "paper_running",
-                  metrics: {
-                    ...((item.metrics ?? {}) as Record<string, unknown>),
-                    paperBotId: data.botId,
-                    paperBotStatus: "created_testnet_disabled",
-                    venueBotId: data.botId,
-                    venueBotStatus: "created_disabled",
-                    venue: data.venue ?? "binance-testnet"
-                  }
+      setCandidates((current) =>
+        current.map((item) =>
+          item.id === candidate.id
+            ? {
+                ...item,
+                status: "paper_running",
+                metrics: {
+                  ...((item.metrics ?? {}) as Record<string, unknown>),
+                  paperBotId: data.botId,
+                  paperBotStatus: "created_testnet_disabled",
+                  venueBotId: data.botId,
+                  venueBotStatus: "created_disabled",
+                  venue: data.venue ?? "binance-testnet"
                 }
-              : item
-          )
-        );
-        setActionFeedback({
-          id: candidate.id,
-          tone: "success",
-          message: "Research bot created in workspace."
-        });
-        startTransition(() => router.refresh());
-      } else {
-        setCandidates((current) =>
-          current.map((item) => (item.id === candidate.id ? { ...item, status: "live_candidate" } : item))
-        );
-        setActionFeedback({
-          id: candidate.id,
-          tone: "success",
-          message: "Promotion request created. Review it on Cosmu Pro."
-        });
-      }
+              }
+            : item
+        )
+      );
+      setActionFeedback({
+        id: candidate.id,
+        tone: "success",
+        message: "Research bot created in workspace."
+      });
+      startTransition(() => router.refresh());
     } catch (err) {
       setActionFeedback({
         id: candidate.id,
@@ -770,7 +758,7 @@ export function ResearchConsole({
             </div>
           )}
           <AgentTimeline
-            scopeType="research_experiment"
+            scopeType="research"
             scopeId={selectedSession.id}
             title="Session agent debate"
             initialSteps={selectedSessionDetail?.steps}
@@ -875,10 +863,8 @@ export function ResearchConsole({
             const metrics = candidateMetrics(candidate);
             const feedback = actionFeedback?.id === candidate.id ? actionFeedback : null;
             const isCreateBotPending = pendingCandidate?.id === candidate.id && pendingCandidate.action === "create-bot";
-            const isPromotePending = pendingCandidate?.id === candidate.id && pendingCandidate.action === "promote";
             const hasVenueBot = Boolean((candidate.metrics as { paperBotId?: string; venueBotId?: string } | null)?.venueBotId
               ?? (candidate.metrics as { paperBotId?: string } | null)?.paperBotId);
-            const hasProBot = Boolean(candidate.promotedBotId);
             return (
               <div key={candidate.id} className="candidate-card">
                 <div className="candidate-card-head">
@@ -907,14 +893,6 @@ export function ResearchConsole({
                     disabled={hasVenueBot || isCreateBotPending}
                   >
                     {hasVenueBot ? "Research bot exists" : isCreateBotPending ? "Creating..." : "Create Binance Testnet bot"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => runCandidateAction(candidate, "promote")}
-                    disabled={isPromotePending || hasProBot}
-                  >
-                    {hasProBot ? "Pro bot exists" : isPromotePending ? "Requesting..." : "Promote to Pro"}
                   </button>
                 </div>
                 {feedback && (

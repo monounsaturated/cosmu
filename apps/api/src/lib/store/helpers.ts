@@ -1,3 +1,4 @@
+// module: Shared store helpers (symbol tokens, row mappers).
 import {
   ALL_SYMBOLS_TOKEN,
   prePromptConfigSchema,
@@ -47,7 +48,6 @@ export const buildRuntimeConfig = (row: {
   venue: string;
   frequency_minutes?: number;
   frequencyMinutes?: number;
-  mode: "testnet" | "live";
   asset_class?: "spot";
   assetClass?: "spot";
   budget_usdt?: number;
@@ -65,7 +65,6 @@ export const buildRuntimeConfig = (row: {
     enabled: row.enabled,
     venue: row.venue,
     frequencyMinutes,
-    mode: row.mode,
     assetClass: row.asset_class ?? row.assetClass ?? "spot",
     budgetUsdt: row.budget_usdt ?? row.budgetUsdt ?? 1000,
     symbolScope: contextConfig.symbolScope,

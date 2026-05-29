@@ -1,3 +1,4 @@
+// module: LLM token spend estimation + spend overview.
 import { sql } from "../db.js";
 import { llmSpendEstimateSchema, llmSpendOverviewSchema } from "@cosmu/shared";
 

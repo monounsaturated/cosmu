@@ -1,3 +1,4 @@
+// module: Persist/read execution records (venue orders, fills, fees).
 import { executionRecordSchema, type ExecutionRecord } from "@cosmu/shared";
 import { sql } from "../../db.js";
 import type { JsonValue } from "./helpers.js";

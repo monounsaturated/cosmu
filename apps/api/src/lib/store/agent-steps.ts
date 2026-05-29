@@ -1,3 +1,4 @@
+// module: Persist/read agent_steps — the product-level timeline of agent/tool phases.
 import type { AgentStep } from "@cosmu/shared";
 import { sql } from "../../db.js";
 import { type JsonValue } from "./helpers.js";
@@ -139,7 +140,7 @@ export const listAgentSteps = async (input: {
 
 export type ApprovalRequest = {
   id: string;
-  requestType: "live_promotion" | "dangerous_action" | "connector_permission";
+  requestType: "dangerous_action" | "connector_permission";
   status: "pending" | "approved" | "rejected" | "cancelled";
   title: string;
   body: string | null;

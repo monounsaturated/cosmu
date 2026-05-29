@@ -1,3 +1,4 @@
+// module: Anthropic LLM provider adapter.
 import { env } from "../env.js";
 import type { LLMChatInput, LLMProvider, LLMResponse, LLMMessage } from "./llm.js";
 import type { AgenticChatResult, AgenticTool, AgentToolCallLog } from "./xai.js";

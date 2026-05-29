@@ -1,3 +1,4 @@
+// module: Research engine adapter types.
 import type { ResearchEngine, ResearchSession } from "@cosmu/shared";
 
 export type EngineRunInput = {

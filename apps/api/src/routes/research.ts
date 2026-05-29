@@ -8,13 +8,11 @@ import {
   traderConfigSchema
 } from "@cosmu/shared";
 import {
-  createApprovalRequest,
   createBot,
   createResearchDataSource,
   createResearchExperiment,
   getLatestModelProfile,
   getLatestResearchPromptVersion,
-  getPendingLivePromotionApprovalForCandidate,
   getResearchCandidate,
   getResearchExperiment,
   getResearchSession,
@@ -250,7 +248,7 @@ researchRouter.get("/research/sessions/:sessionId", async (request, response, ne
       listExperimentSpecs(session.id),
       listEvaluationJobs(session.id),
       listResearchMemories(session.id),
-      listAgentSteps({ scopeType: "research_experiment", scopeId: session.id })
+      listAgentSteps({ scopeType: "research", scopeId: session.id })
     ]);
     response.json({ session, engineRuns, specs, evaluations, memories, steps });
   } catch (error) {
@@ -346,7 +344,7 @@ researchRouter.post("/research/evaluations", async (request, response, next) => 
       response.status(400).json({ error: "sessionId and specId are required" });
       return;
     }
-    const kind = evaluationKindSchema.parse(typeof body.kind === "string" ? body.kind : "paper_backtest");
+    const kind = evaluationKindSchema.parse(typeof body.kind === "string" ? body.kind : "backtest");
     const datasetVersionIds = Array.isArray(body.datasetVersionIds)
       ? body.datasetVersionIds.map((id) => String(id))
       : [];
@@ -428,7 +426,7 @@ researchRouter.post("/research/experiments", async (request, response, next) => 
     }
 
     const result = await runResearchExperiment(experiment.id);
-    const steps = await listAgentSteps({ scopeType: "research_experiment", scopeId: experiment.id });
+    const steps = await listAgentSteps({ scopeType: "research", scopeId: experiment.id });
     response.json({ ...result, steps, ran: true });
   } catch (error) {
     next(error);
@@ -443,7 +441,7 @@ researchRouter.get("/research/experiments/:experimentId", async (request, respon
       return;
     }
     const steps = await listAgentSteps({
-      scopeType: "research_experiment",
+      scopeType: "research",
       scopeId: request.params.experimentId
     });
     response.json({ experiment, steps });
@@ -456,7 +454,7 @@ researchRouter.post("/research/experiments/:experimentId/run", async (request, r
   try {
     const result = await runResearchExperiment(request.params.experimentId);
     const steps = await listAgentSteps({
-      scopeType: "research_experiment",
+      scopeType: "research",
       scopeId: request.params.experimentId
     });
     response.json({ ...result, steps });
@@ -549,13 +547,11 @@ const createCandidateVenueBot = async (candidateId: string) => {
     slug: botSlug,
     promptVersionId: prompt.versionId,
     modelProfileId: model.id,
-    workspaceMode: "research",
     promptConfig: prePromptConfigSchema.parse({}),
     traderConfig: traderConfigSchema.parse({}),
     runtimeConfig: {
       venue,
       frequencyMinutes: 60,
-      mode: "testnet",
       assetClass: "spot",
       budgetUsdt: 1000,
       symbolScope: "selected",
@@ -582,60 +578,6 @@ researchRouter.post("/research/candidates/:candidateId/venue-bot", async (reques
   try {
     const result = await createCandidateVenueBot(request.params.candidateId);
     response.status(result.status).json(result.body);
-  } catch (error) {
-    next(error);
-  }
-});
-
-researchRouter.post("/research/candidates/:candidateId/paper-bot", async (request, response, next) => {
-  try {
-    const result = await createCandidateVenueBot(request.params.candidateId);
-    response.status(result.status).json(result.body);
-  } catch (error) {
-    next(error);
-  }
-});
-
-researchRouter.post("/research/candidates/:candidateId/promote-to-pro", async (request, response, next) => {
-  try {
-    const candidate = await getResearchCandidate(request.params.candidateId);
-    if (!candidate) {
-      response.status(404).json({ error: "Candidate not found" });
-      return;
-    }
-    if (candidate.promotedBotId) {
-      response.status(409).json({ error: "Candidate is already promoted to Pro", botId: candidate.promotedBotId });
-      return;
-    }
-
-    const existingApproval = await getPendingLivePromotionApprovalForCandidate(candidate.id);
-    if (existingApproval) {
-      response.json({ ok: true, approval: existingApproval, alreadyPending: true });
-      return;
-    }
-
-    const approval = await createApprovalRequest({
-      requestType: "live_promotion",
-      title: `Promote "${candidate.name}" to Cosmu Pro`,
-      body: candidate.thesis,
-      payload: {
-        candidateId: candidate.id,
-        experimentId: candidate.experimentId,
-        thesis: candidate.thesis,
-        riskNotes: candidate.riskNotes,
-        metrics: candidate.metrics,
-        suggestedMode: "live",
-        suggestedVenue: "binance"
-      }
-    });
-
-    await updateResearchExperiment({
-      id: candidate.experimentId,
-      status: "live_candidate",
-      promotionStatus: "live_pending_approval"
-    });
-
-    response.json({ ok: true, approval });
   } catch (error) {
     next(error);
   }

@@ -1,3 +1,4 @@
+// module: Research session orchestration over engines + agent steps.
 import type { AgentStep } from "@cosmu/shared";
 import {
   createAgentStep,
@@ -61,7 +62,7 @@ const runStep = async (
   fn: () => Promise<ResearchStepOutput>
 ) => {
   const stepId = await createAgentStep({
-    scopeType: "research_experiment",
+    scopeType: "research",
     scopeId,
     agentKey,
     agentLabel,
@@ -270,13 +271,13 @@ export const runResearchExperiment = async (experimentId: string) => {
   }
 };
 
-export const LIGHT_AGENT_LABELS: Array<{
+export const BOT_AGENT_LABELS: Array<{
   key: string;
   label: string;
   scopeType: AgentStep["scopeType"];
 }> = [
-  { key: "research", label: "Research", scopeType: "light_run" },
-  { key: "trader", label: "Trader", scopeType: "light_run" },
-  { key: "validator", label: "Validator", scopeType: "light_run" },
-  { key: "execution", label: "Execution", scopeType: "light_run" }
+  { key: "research", label: "Research", scopeType: "bot_run" },
+  { key: "trader", label: "Trader", scopeType: "bot_run" },
+  { key: "validator", label: "Validator", scopeType: "bot_run" },
+  { key: "execution", label: "Execution", scopeType: "bot_run" }
 ];

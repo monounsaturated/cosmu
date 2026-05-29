@@ -1,3 +1,4 @@
+// module: Binance venue adapter — REST signing, balances, prices, symbol rules, order/OCO execution, stable-quote swaps.
 import crypto from "node:crypto";
 import {
   ALL_SYMBOLS_TOKEN,
@@ -12,6 +13,12 @@ import { env } from "../env.js";
 
 const LIVE_BASE_URL = "https://api.binance.com/api";
 const TESTNET_BASE_URL = "https://testnet.binance.vision/api";
+
+// Which Binance network to hit. Derived from venue — the single product field.
+// `binance` -> live (real money), `binance-testnet` -> testnet sandbox.
+export type BinanceNet = "testnet" | "live";
+export const netForVenue = (venue: RuntimeConfig["venue"]): BinanceNet =>
+  venue === "binance-testnet" ? "testnet" : "live";
 
 type SymbolRules = {
   symbol: string;
@@ -37,11 +44,11 @@ export type VenueContext = {
 
 const BINANCE_REQUEST_TIMEOUT_MS = 15 * 1000;
 
-let venueSymbolsCache: Partial<Record<RuntimeConfig["mode"], { expiresAt: number; symbols: string[] }>> = {};
+let venueSymbolsCache: Partial<Record<BinanceNet, { expiresAt: number; symbols: string[] }>> = {};
 
-const accountPermissionsCache = new Map<RuntimeConfig["mode"], { expiresAt: number; perms: Set<string> | undefined }>();
+const accountPermissionsCache = new Map<BinanceNet, { expiresAt: number; perms: Set<string> | undefined }>();
 
-const getAccountPermissions = async (mode: RuntimeConfig["mode"]): Promise<Set<string> | undefined> => {
+const getAccountPermissions = async (mode: BinanceNet): Promise<Set<string> | undefined> => {
   const cached = accountPermissionsCache.get(mode);
   if (cached && cached.expiresAt > Date.now()) return cached.perms;
   try {
@@ -63,28 +70,28 @@ const getAccountPermissions = async (mode: RuntimeConfig["mode"]): Promise<Set<s
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const getBaseUrl = (mode: RuntimeConfig["mode"]) => (mode === "live" ? LIVE_BASE_URL : TESTNET_BASE_URL);
+const getBaseUrl = (mode: BinanceNet) => (mode === "live" ? LIVE_BASE_URL : TESTNET_BASE_URL);
 
-const getConfiguredApiKey = (mode: RuntimeConfig["mode"]) =>
+const getConfiguredApiKey = (mode: BinanceNet) =>
   mode === "testnet" ? env.BINANCE_TESTNET_API_KEY : env.BINANCE_API_KEY;
 
-const getApiKey = (mode: RuntimeConfig["mode"]) => {
+const getApiKey = (mode: BinanceNet) => {
   const apiKey = getConfiguredApiKey(mode);
   if (apiKey) return apiKey;
   throw new Error(`${mode === "testnet" ? "BINANCE_TESTNET_API_KEY" : "BINANCE_API_KEY"} is not configured`);
 };
 
-const getApiSecret = (mode: RuntimeConfig["mode"]) => {
+const getApiSecret = (mode: BinanceNet) => {
   const apiSecret = mode === "testnet" ? env.BINANCE_TESTNET_API_SECRET : env.BINANCE_API_SECRET;
   if (apiSecret) return apiSecret;
   throw new Error(`${mode === "testnet" ? "BINANCE_TESTNET_API_SECRET" : "BINANCE_API_SECRET"} is not configured`);
 };
 
-const signParams = (params: URLSearchParams, mode: RuntimeConfig["mode"]) =>
+const signParams = (params: URLSearchParams, mode: BinanceNet) =>
   crypto.createHmac("sha256", getApiSecret(mode)).update(params.toString()).digest("hex");
 
 const requestWithQuery = async (
-  mode: RuntimeConfig["mode"],
+  mode: BinanceNet,
   path: string,
   params: URLSearchParams,
   signed: boolean
@@ -101,7 +108,7 @@ const requestWithQuery = async (
 };
 
 const binanceFetch = async (
-  mode: RuntimeConfig["mode"],
+  mode: BinanceNet,
   path: string,
   init?: RequestInit,
   signed?: boolean
@@ -209,13 +216,10 @@ const isStableQuote = (asset: string): asset is StableQuote =>
 // Binance France (live) no longer offers USDT pairs — restrict to USDC only.
 // Testnet keeps both quotes since dev/sim flows still need USDT pairs.
 // Other venues (when added) keep dual-stable behavior.
-export const isUsdcOnlyVenue = (cfg: { venue: RuntimeConfig["venue"]; mode: RuntimeConfig["mode"] }) =>
-  cfg.venue === "binance" && cfg.mode === "live";
+export const isUsdcOnlyVenue = (venue: RuntimeConfig["venue"]) => venue === "binance";
 
-const allowedStableQuotesFor = (cfg: {
-  venue: RuntimeConfig["venue"];
-  mode: RuntimeConfig["mode"];
-}): readonly StableQuote[] => (isUsdcOnlyVenue(cfg) ? ["USDC"] : STABLE_QUOTES);
+const allowedStableQuotesFor = (venue: RuntimeConfig["venue"]): readonly StableQuote[] =>
+  isUsdcOnlyVenue(venue) ? ["USDC"] : STABLE_QUOTES;
 
 // Binance intersection rule: account can trade a symbol iff `accountPermissions`
 // has at least one permission in common with at least one `permissionSets` subArray.
@@ -255,10 +259,10 @@ const splitBaseAndQuote = (symbol: string): { base: string; quote: StableQuote |
   return { base: normalized, quote: null };
 };
 
-const getAccount = (mode: RuntimeConfig["mode"]) =>
+const getAccount = (mode: BinanceNet) =>
   requestWithQuery(mode, "/v3/account", new URLSearchParams(), true);
 
-export const getAccountBalance = async (mode: RuntimeConfig["mode"]) => {
+export const getAccountBalance = async (mode: BinanceNet) => {
   const account = await getAccount(mode);
   const balances = (account.balances ?? [])
     .filter((b: { free: string; locked: string }) => Number(b.free) > 0 || Number(b.locked) > 0)
@@ -285,14 +289,14 @@ export const getAccountBalance = async (mode: RuntimeConfig["mode"]) => {
   };
 };
 
-export const getAllTickerPrices = (mode: RuntimeConfig["mode"]) =>
+export const getAllTickerPrices = (mode: BinanceNet) =>
   binanceFetch(mode, "/v3/ticker/price", { method: "GET" });
 
-const getTickerPrice = (mode: RuntimeConfig["mode"], symbol: string) =>
+const getTickerPrice = (mode: BinanceNet, symbol: string) =>
   binanceFetch(mode, `/v3/ticker/price?symbol=${encodeURIComponent(symbol)}`, { method: "GET" });
 
 export const getTickerPricesForSymbols = async (
-  mode: RuntimeConfig["mode"],
+  mode: BinanceNet,
   symbolsInput: string[]
 ): Promise<Record<string, number>> => {
   const symbols = Array.from(new Set(symbolsInput.map(normalizeSymbol).filter(Boolean)));
@@ -307,11 +311,11 @@ export const getTickerPricesForSymbols = async (
   return out;
 };
 
-const getAllExchangeInfo = (mode: RuntimeConfig["mode"]) =>
+const getAllExchangeInfo = (mode: BinanceNet) =>
   binanceFetch(mode, "/v3/exchangeInfo", { method: "GET" });
 
 export const cancelAllOpenOrdersForSymbol = async (
-  mode: RuntimeConfig["mode"],
+  mode: BinanceNet,
   symbolInput: string
 ) => {
   const symbol = normalizeSymbol(symbolInput);
@@ -377,7 +381,7 @@ export type SymbolLookupEntry =
  * Does NOT fetch account data. Cheap to call mid-agent-loop.
  */
 export const lookupBinanceSymbols = async (
-  mode: RuntimeConfig["mode"],
+  mode: BinanceNet,
   rawSymbols: string[]
 ): Promise<Record<string, SymbolLookupEntry>> => {
   const queries = rawSymbols
@@ -388,7 +392,7 @@ export const lookupBinanceSymbols = async (
   if (uniqueQueries.length === 0) return {};
 
   // Candidate pairs to probe: respect venue-allowed quotes (USDC-only on live binance).
-  const allowedQuotes = allowedStableQuotesFor({ venue: "binance", mode });
+  const allowedQuotes = allowedStableQuotesFor("binance");
   const candidatePairs = new Set<string>();
   for (const q of uniqueQueries) {
     const { base } = splitBaseAndQuote(q);
@@ -499,7 +503,7 @@ export const lookupBinanceSymbols = async (
   return out;
 };
 
-export const listVenueSymbols = async (mode: RuntimeConfig["mode"] = "live") => {
+export const listVenueSymbols = async (mode: BinanceNet = "live") => {
   const cached = venueSymbolsCache[mode];
   if (cached && cached.expiresAt > Date.now()) {
     return cached.symbols;
@@ -523,7 +527,7 @@ export const loadVenueContext = async (
   runtimeConfig: RuntimeConfig,
   contextSymbols: string[]
 ): Promise<VenueContext> => {
-  const rawAccountResponse = await getAccount(runtimeConfig.mode);
+  const rawAccountResponse = await getAccount(netForVenue(runtimeConfig.venue));
   const balances = (rawAccountResponse.balances ?? []).filter((balance: any) => {
     const asset = String(balance.asset ?? "").trim();
     if (!asset) {
@@ -534,8 +538,8 @@ export const loadVenueContext = async (
 
   // For each non-stable balance asset, include venue-allowed stable pairs as candidates; the
   // one that resolves to a live price will be used for USD valuation.
-  const allowedQuotes = allowedStableQuotesFor(runtimeConfig);
-  const usdcOnly = isUsdcOnlyVenue(runtimeConfig);
+  const allowedQuotes = allowedStableQuotesFor(runtimeConfig.venue);
+  const usdcOnly = isUsdcOnlyVenue(runtimeConfig.venue);
   const balanceSymbols = balances
     .flatMap((balance: any) => {
       const asset = String(balance.asset ?? "").trim().toUpperCase();
@@ -552,7 +556,7 @@ export const loadVenueContext = async (
       return true;
     });
 
-  const exchangeInfoResponse = await getAllExchangeInfo(runtimeConfig.mode);
+  const exchangeInfoResponse = await getAllExchangeInfo(netForVenue(runtimeConfig.venue));
   const exchangeSymbols = exchangeInfoResponse.symbols ?? [];
   // Re-use the account permissions already implied by `rawAccountResponse` to
   // filter exchangeInfo to what this account can actually trade.
@@ -578,7 +582,7 @@ export const loadVenueContext = async (
       : [...balanceSymbols, ...selectedSymbols, ...pegSymbols]
   );
 
-  const allPrices = await getAllTickerPrices(runtimeConfig.mode);
+  const allPrices = await getAllTickerPrices(netForVenue(runtimeConfig.venue));
   const priceMap = Object.fromEntries(
     (Array.isArray(allPrices) ? allPrices : [])
       .filter((price: any) => derivedSymbols.has(normalizeSymbol(price.symbol)))
@@ -678,7 +682,7 @@ export const validateTradability = async (
 };
 
 const getUsdPriceForAsset = async (
-  mode: RuntimeConfig["mode"],
+  mode: BinanceNet,
   asset: string | null,
   venueContext: VenueContext
 ) => {
@@ -719,7 +723,7 @@ const PEG_GUARD_PCT = 0.2;
  * No-op (returns null) when no swap is needed or when the peg guard trips.
  */
 const ensureStableQuoteLiquidity = async (input: {
-  mode: RuntimeConfig["mode"];
+  mode: BinanceNet;
   quoteAsset: StableQuote;
   requiredQuoteAmount: number;
   venueContext: VenueContext;
@@ -813,7 +817,7 @@ const ensureStableQuoteLiquidity = async (input: {
  * required).
  */
 export const placeSafetyStopOrder = async (input: {
-  mode: RuntimeConfig["mode"];
+  mode: BinanceNet;
   symbol: string;
   quantity: number;
   stopPrice: number;
@@ -872,7 +876,7 @@ export const placeSafetyStopOrder = async (input: {
 };
 
 export const cancelSafetyStopOrder = async (
-  mode: RuntimeConfig["mode"],
+  mode: BinanceNet,
   symbol: string,
   orderId: string
 ): Promise<"cancelled" | "not_found"> => {
@@ -904,7 +908,7 @@ export const cancelSafetyStopOrder = async (
 };
 
 export const getBinanceOrderStatus = async (
-  mode: RuntimeConfig["mode"],
+  mode: BinanceNet,
   symbol: string,
   orderId: string
 ): Promise<{
@@ -957,7 +961,7 @@ export const getBinanceOrderStatus = async (
  * bypass the main `executeOrders` flow.
  */
 export const placeMarketSell = async (input: {
-  mode: RuntimeConfig["mode"];
+  mode: BinanceNet;
   venue: RuntimeConfig["venue"];
   assetClass: RuntimeConfig["assetClass"];
   symbol: string;
@@ -1129,14 +1133,14 @@ export const executeOrders = async (input: {
 
     // Pre-trade liquidity check: peg-swap between USDT and USDC when both are tradable
     // on this venue. Disabled on Binance live (USDC-only — no USDT pairs to swap into).
-    if (order.side === "buy" && !isUsdcOnlyVenue(input.runtimeConfig)) {
+    if (order.side === "buy" && !isUsdcOnlyVenue(input.runtimeConfig.venue)) {
       const { quote: orderQuote } = splitBaseAndQuote(order.symbol);
       if (orderQuote) {
         const priceForSizing = input.venueContext.priceMap[order.symbol] ?? order.limitPrice ?? 0;
         const requiredQuote = order.quantity * priceForSizing;
         if (requiredQuote > 0) {
           await ensureStableQuoteLiquidity({
-            mode: input.runtimeConfig.mode,
+            mode: netForVenue(input.runtimeConfig.venue),
             quoteAsset: orderQuote,
             requiredQuoteAmount: requiredQuote * 1.001,
             venueContext: input.venueContext
@@ -1165,7 +1169,7 @@ export const executeOrders = async (input: {
 
     try {
       const rawVenueResponse = await binanceFetch(
-        input.runtimeConfig.mode,
+        netForVenue(input.runtimeConfig.venue),
         "/v3/order",
         {
           method: "POST",
@@ -1184,7 +1188,7 @@ export const executeOrders = async (input: {
         rawVenueResponse
       });
 
-      const feeAssetUsdPrice = await getUsdPriceForAsset(input.runtimeConfig.mode, record.feeAsset, input.venueContext);
+      const feeAssetUsdPrice = await getUsdPriceForAsset(netForVenue(input.runtimeConfig.venue), record.feeAsset, input.venueContext);
       const feeUsd =
         record.feeAmount && feeAssetUsdPrice !== null
           ? Number((record.feeAmount * feeAssetUsdPrice).toFixed(8))

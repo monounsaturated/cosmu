@@ -1,3 +1,4 @@
+// module: Read queries that assemble the dashboard payload.
 import {
   botSummarySchema,
   botPerformanceSeriesSchema,

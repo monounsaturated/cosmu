@@ -1,3 +1,4 @@
+// module: Find due bots and trigger their runs.
 import { getDueBots } from "../lib/store.js";
 import { runBot } from "./run-bot.js";
 

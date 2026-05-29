@@ -1,3 +1,4 @@
+// module: Modular research core orchestration (datasets -> specs -> engine runs -> evaluations).
 import {
   createAgentStep,
   finishAgentStep,
@@ -147,7 +148,7 @@ export const runNativeSession = async (input: {
     const roleOutputs: Record<string, unknown> = {};
     for (const role of ROLE_PIPELINE) {
       const stepId = await createAgentStep({
-        scopeType: "research_experiment",
+        scopeType: "research",
         scopeId: session.id,
         agentKey: role.key,
         agentLabel: role.label,
@@ -229,14 +230,14 @@ export const enqueueEvaluationJob = async (input: {
   specId: string;
   engineRunId?: string | null;
   datasetVersionIds: string[];
-  kind?: "paper_backtest" | "ml_validation";
+  kind?: "backtest" | "ml_validation";
   configJson?: Record<string, unknown>;
 }) => {
   const job = await createEvaluationJob({
     sessionId: input.sessionId,
     specId: input.specId,
     engineRunId: input.engineRunId ?? null,
-    kind: input.kind ?? "paper_backtest",
+    kind: input.kind ?? "backtest",
     datasetVersionIds: input.datasetVersionIds,
     configJson: input.configJson ?? {}
   });

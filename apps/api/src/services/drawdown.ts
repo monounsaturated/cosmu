@@ -1,3 +1,4 @@
+// module: Drawdown computation and guard helpers.
 import type { RuntimeConfig } from "@cosmu/shared";
 
 export const getMaxDrawdownLimitUsd = (runtimeConfig: RuntimeConfig) =>

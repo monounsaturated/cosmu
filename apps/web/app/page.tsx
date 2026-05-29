@@ -13,9 +13,9 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const dashboard = await getDashboard();
-  const lightBots = dashboard.bots.filter((bot) => (bot.workspaceMode ?? "light") === "light");
-  const activeLightBots = lightBots.filter((bot) => bot.enabled).length;
-  const totalLightPnl = lightBots.reduce((sum, bot) => sum + (bot.netPnlUsd ?? 0), 0);
+  const allBots = dashboard.bots;
+  const activeBots = allBots.filter((bot) => bot.enabled).length;
+  const totalPnl = allBots.reduce((sum, bot) => sum + (bot.netPnlUsd ?? 0), 0);
   const recentFailures = dashboard.recentRuns.filter((run) => run.status === "failure").length;
   const totalAccountBalance = dashboard.accounts.reduce((sum, account) => sum + account.accountBalance, 0);
   const totalAllocated = dashboard.accounts.reduce((sum, account) => sum + account.allocatedAmount, 0);
@@ -62,8 +62,8 @@ export default async function HomePage() {
       <section className="metric-strip">
         <article>
           <span>Active agents</span>
-          <strong>{activeLightBots}</strong>
-          <small>{lightBots.length} configured</small>
+          <strong>{activeBots}</strong>
+          <small>{allBots.length} configured</small>
         </article>
         <article className="metric-card-emphasis">
           <span>Equity</span>
@@ -84,10 +84,10 @@ export default async function HomePage() {
         </article>
         <article>
           <span>Net PnL</span>
-          <strong className={totalLightPnl >= 0 ? "value-green" : "value-red"}>
-            {totalLightPnl >= 0 ? "+" : ""}${totalLightPnl.toFixed(2)}
+          <strong className={totalPnl >= 0 ? "value-green" : "value-red"}>
+            {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
           </strong>
-          <small>Light workspace</small>
+          <small>All agents</small>
         </article>
         <article>
           <span>LLM burn</span>
@@ -103,7 +103,6 @@ export default async function HomePage() {
 
       <BotTable
         dashboard={dashboard}
-        workspaceMode="light"
         title="Agents"
         description="The main operating table. Search, sort, run, stop, and open an agent from one place."
         emptyMessage="No agents yet. Create one to start with a venue-scoped strategy."

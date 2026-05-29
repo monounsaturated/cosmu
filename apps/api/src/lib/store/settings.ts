@@ -1,3 +1,4 @@
+// module: App settings + runtime config persistence.
 import { sql } from "../../db.js";
 import { appSettingsSchema, defaultAppSettings, type AppSettings } from "@cosmu/shared";
 

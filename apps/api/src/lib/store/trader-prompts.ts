@@ -1,3 +1,4 @@
+// module: Trader prompt + prompt-version storage.
 import { sql } from "../../db.js";
 
 export type TraderPromptSummary = {

@@ -1,3 +1,4 @@
+// module: Storage for the modular research core (datasets, specs, engine runs, evaluations, memory).
 import type {
   Dataset,
   DatasetVersion,

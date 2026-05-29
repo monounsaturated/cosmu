@@ -1,3 +1,4 @@
+// module: Fire-and-forget Slack notifications.
 import { env } from "../env.js";
 
 const postToSlack = async (text: string) => {

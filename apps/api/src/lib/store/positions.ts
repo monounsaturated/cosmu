@@ -1,3 +1,4 @@
+// module: Persist/read bot positions.
 import { sql } from "../../db.js";
 
 export type PositionCloseReason =

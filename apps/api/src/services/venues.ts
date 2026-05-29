@@ -1,19 +1,19 @@
-import type { RuntimeConfig } from "@cosmu/shared";
+// module: Venue config/resolution — Binance vs Binance Testnet credentials.
 import { env } from "../env.js";
-import { getAccountBalance } from "../adapters/binance.js";
+import { getAccountBalance, type BinanceNet } from "../adapters/binance.js";
 
 export type VenueId = "binance" | "binance-testnet";
 
 type VenueDefinition = {
   id: VenueId;
   label: string;
-  mode: RuntimeConfig["mode"];
+  mode: BinanceNet;
 };
 
 export type VenueConnectionStatus = {
   id: VenueId;
   label: string;
-  mode: RuntimeConfig["mode"];
+  mode: BinanceNet;
   configured: boolean;
   connected: boolean;
   checkedAt: string;
@@ -24,7 +24,7 @@ export type VenueConnectionStatus = {
 const VENUE_STATUS_TTL_MS = 30 * 1000;
 
 export const VENUES: VenueDefinition[] = [
-  { id: "binance", label: "Binance Live", mode: "live" },
+  { id: "binance", label: "Binance", mode: "live" },
   { id: "binance-testnet", label: "Binance Testnet", mode: "testnet" }
 ];
 
@@ -35,7 +35,7 @@ export const parseVenueId = (value: string): VenueId | null =>
 
 export const getVenueDefinition = (venue: VenueId) => VENUES.find((entry) => entry.id === venue)!;
 
-const venueConfigured = (mode: RuntimeConfig["mode"]) =>
+const venueConfigured = (mode: BinanceNet) =>
   mode === "testnet"
     ? Boolean(env.BINANCE_TESTNET_API_KEY && env.BINANCE_TESTNET_API_SECRET)
     : Boolean(env.BINANCE_API_KEY && env.BINANCE_API_SECRET);
