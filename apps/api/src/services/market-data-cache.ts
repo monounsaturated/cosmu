@@ -145,6 +145,23 @@ export const refreshMarketDataSnapshot = async (trigger: MarketDataTrigger = "ma
   };
 };
 
+export const refreshMarketDataMode = async (
+  mode: MarketMode,
+  trigger: MarketDataTrigger = "manual"
+) => {
+  const results = await Promise.all([
+    refreshEntry(pricesCache[mode], `${mode} prices`, async () => getAllTickerPrices(mode) as Promise<TickerPrice[]>),
+    refreshEntry(balanceCache[mode], `${mode} balance`, () => getAccountBalance(mode))
+  ]);
+
+  return {
+    refreshedAt: new Date().toISOString(),
+    trigger,
+    mode,
+    results
+  };
+};
+
 const buildModeSnapshot = (mode: MarketMode): ModeSnapshot => ({
   prices: pricesCache[mode].value ?? [],
   balance: balanceCache[mode].value,
@@ -155,14 +172,15 @@ const buildModeSnapshot = (mode: MarketMode): ModeSnapshot => ({
   stale: entryIsStale(pricesCache[mode]) || entryIsStale(balanceCache[mode])
 });
 
-export const getCachedMarketDataSnapshot = () => {
+export const getCachedMarketDataSnapshot = (options: { autoRefresh?: boolean } = {}) => {
+  const autoRefresh = options.autoRefresh ?? true;
   const needsRefresh =
     entryNeedsRefresh(pricesCache.testnet) ||
     entryNeedsRefresh(balanceCache.testnet) ||
     entryNeedsRefresh(pricesCache.live) ||
     entryNeedsRefresh(balanceCache.live);
 
-  if (needsRefresh) {
+  if (autoRefresh && needsRefresh) {
     void refreshMarketDataSnapshot("dashboard").catch((error) => {
       console.warn("[market-data-cache] dashboard refresh failed:", describeError(error));
     });

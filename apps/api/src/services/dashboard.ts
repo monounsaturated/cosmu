@@ -1,7 +1,7 @@
 import { sql } from "../db.js";
 import { dashboardSchema, botSummarySchema, portfolioSnapshotSchema } from "@cosmu/shared";
 import { getLlmSpendEstimate } from "./llm-spend.js";
-import { getCachedMarketDataSnapshot, refreshMarketDataSnapshot } from "./market-data-cache.js";
+import { getCachedMarketDataSnapshot, refreshMarketDataMode, refreshMarketDataSnapshot } from "./market-data-cache.js";
 
 const parseJson = <T>(value: unknown): T => {
   if (typeof value === "string") {
@@ -102,10 +102,14 @@ export const getDashboard = async () => {
     order by brc.enabled desc, b.created_at desc
   `;
 
-  let marketData = getCachedMarketDataSnapshot();
+  let marketData = getCachedMarketDataSnapshot({ autoRefresh: false });
   if (!marketData.live.balanceUpdatedAt && !marketData.live.balanceError && !marketData.testnet.balanceUpdatedAt && !marketData.testnet.balanceError) {
     await refreshMarketDataSnapshot("dashboard");
-    marketData = getCachedMarketDataSnapshot();
+    marketData = getCachedMarketDataSnapshot({ autoRefresh: false });
+  }
+  if (!marketData.testnet.balance && marketData.testnet.stale) {
+    await refreshMarketDataMode("testnet", "dashboard");
+    marketData = getCachedMarketDataSnapshot({ autoRefresh: false });
   }
   const testnetBalance: any = marketData.testnet.balance;
   const liveBalance: any = marketData.live.balance;

@@ -1319,7 +1319,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
         setVenueBalance(balanceRes.data);
         setVenueConnectionError(
           balanceRes.error
-            ? `${VENUE_LABELS[formData.venue] ?? formData.venue} account check failed. Verify API key, secret, IP allowlist, and spot permissions.`
+            ? `${VENUE_LABELS[formData.venue] ?? formData.venue} account check failed: ${balanceRes.error}`
             : null
         );
 

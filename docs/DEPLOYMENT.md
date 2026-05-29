@@ -32,6 +32,17 @@ API_SECRET_KEY=<32+ chars>
 
 Provider and exchange keys also belong on Railway, not in Vercel or the DB.
 
+Required Binance testnet env vars for paper/testnet venues:
+
+```
+BINANCE_TESTNET_API_KEY=<binance spot testnet key>
+BINANCE_TESTNET_API_SECRET=<binance spot testnet secret>
+```
+
+Do not rely on `BINANCE_API_KEY` / `BINANCE_API_SECRET` for testnet. The backend intentionally keeps live and testnet credentials separate so expired live keys cannot break testnet.
+
+If Binance keys use an IP allowlist, allow the Railway backend's outbound IP. Vercel does not own venue connectivity; the web app only proxies venue checks to Railway.
+
 ## Background Jobs
 
 Railway owns recurring work:
