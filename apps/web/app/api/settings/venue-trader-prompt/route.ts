@@ -9,7 +9,7 @@ export async function GET() {
       return NextResponse.json({ error: "API_SECRET_KEY is required" }, { status: 500 });
     }
 
-    const res = await fetch(`${apiBaseUrl}/settings/formatter-prompt`, {
+    const res = await fetch(`${apiBaseUrl}/settings/venue-trader-prompt`, {
       cache: "no-store",
       headers: { "x-api-key": apiSecretKey }
     });
@@ -34,7 +34,7 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json();
-    const res = await fetch(`${apiBaseUrl}/settings/formatter-prompt`, {
+    const res = await fetch(`${apiBaseUrl}/settings/venue-trader-prompt`, {
       method: "PUT",
       headers: {
         "x-api-key": apiSecretKey,

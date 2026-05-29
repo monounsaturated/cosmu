@@ -8,7 +8,7 @@ type VersionedPrompt = {
   id: string | null;
 };
 
-type FormatterPrompts = {
+type VenueTraderPrompts = {
   binance: VersionedPrompt;
   "binance-testnet": VersionedPrompt;
 };
@@ -21,10 +21,10 @@ type HistoryEntry = {
 };
 
 const emptyVersioned: VersionedPrompt = { body: "", version: null, id: null };
-const empty: FormatterPrompts = { binance: emptyVersioned, "binance-testnet": emptyVersioned };
+const empty: VenueTraderPrompts = { binance: emptyVersioned, "binance-testnet": emptyVersioned };
 
-export function FormatterPromptSettings() {
-  const [prompts, setPrompts] = useState<FormatterPrompts>(empty);
+export function VenueTraderPromptSettings() {
+  const [prompts, setPrompts] = useState<VenueTraderPrompts>(empty);
   const [draft, setDraft] = useState<{ binance: string; "binance-testnet": string }>({ binance: "", "binance-testnet": "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -38,10 +38,10 @@ export function FormatterPromptSettings() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/settings/formatter-prompt");
+      const res = await fetch("/api/settings/venue-trader-prompt");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to load");
-      const p = data.formatterPrompts as FormatterPrompts;
+      const p = data.venueTraderPrompts as VenueTraderPrompts;
       const next = {
         binance: p?.binance ?? emptyVersioned,
         "binance-testnet": p?.["binance-testnet"] ?? emptyVersioned
@@ -64,14 +64,14 @@ export function FormatterPromptSettings() {
     setError(null);
     setSavedAt(null);
     try {
-      const res = await fetch("/api/settings/formatter-prompt", {
+      const res = await fetch("/api/settings/venue-trader-prompt", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ formatterPrompts: draft })
+        body: JSON.stringify({ venueTraderPrompts: draft })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed");
-      const p = data.formatterPrompts as FormatterPrompts;
+      const p = data.venueTraderPrompts as VenueTraderPrompts;
       const next = {
         binance: p?.binance ?? emptyVersioned,
         "binance-testnet": p?.["binance-testnet"] ?? emptyVersioned
@@ -92,7 +92,7 @@ export function FormatterPromptSettings() {
       return;
     }
     try {
-      const res = await fetch(`/api/settings/formatter-prompt/${venue}/versions`);
+      const res = await fetch(`/api/settings/venue-trader-prompt/${venue}/versions`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to load versions");
       setHistory((h) => ({ ...h, [venue]: data.versions ?? [] }));
@@ -130,9 +130,9 @@ export function FormatterPromptSettings() {
           </button>
           <span className="muted" style={{ fontSize: "0.85rem" }}>
             {loading
-              ? "Loading\u2026"
+              ? "Loading…"
               : hasCustomPrompt
-                ? `Custom formatter configured (${versionLabel(prompts.binance)} live, ${versionLabel(prompts["binance-testnet"])} testnet).`
+                ? `Custom trader prompt configured (${versionLabel(prompts.binance)} live, ${versionLabel(prompts["binance-testnet"])} testnet).`
                 : "Using built-in defaults."}
           </span>
           {!loading && hasCustomPrompt && (
@@ -149,12 +149,12 @@ export function FormatterPromptSettings() {
       ) : (
         <>
           {loading ? (
-            <p className="muted">Loading\u2026</p>
+            <p className="muted">Loading…</p>
           ) : (
             <>
               <div className="panel">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Formatter \u2014 Binance (live)</h2>
+                  <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Trader — Binance (live)</h2>
                   {prompts.binance.version && (
                     <span className="badge badge-neutral">{versionLabel(prompts.binance)}</span>
                   )}
@@ -164,7 +164,7 @@ export function FormatterPromptSettings() {
                   style={{ width: "100%", minHeight: "140px" }}
                   value={draft.binance}
                   onChange={(e) => setDraft((d) => ({ ...d, binance: e.target.value }))}
-                  placeholder="Optional. Empty = built-in formatter system prompt."
+                  placeholder="Optional. Empty = built-in trader system prompt."
                 />
                 <button type="button" className="btn" onClick={() => void loadHistory("binance")} style={{ marginTop: "0.5rem", fontSize: "0.8rem" }}>
                   {historyVenue === "binance" ? "Hide history" : "Show history"}
@@ -173,7 +173,7 @@ export function FormatterPromptSettings() {
 
               <div className="panel">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Formatter \u2014 Binance Testnet</h2>
+                  <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Trader — Binance Testnet</h2>
                   {prompts["binance-testnet"].version && (
                     <span className="badge badge-neutral">{versionLabel(prompts["binance-testnet"])}</span>
                   )}
@@ -183,7 +183,7 @@ export function FormatterPromptSettings() {
                   style={{ width: "100%", minHeight: "140px" }}
                   value={draft["binance-testnet"]}
                   onChange={(e) => setDraft((d) => ({ ...d, "binance-testnet": e.target.value }))}
-                  placeholder="Optional. Empty = built-in formatter system prompt."
+                  placeholder="Optional. Empty = built-in trader system prompt."
                 />
                 <button type="button" className="btn" onClick={() => void loadHistory("binance-testnet")} style={{ marginTop: "0.5rem", fontSize: "0.8rem" }}>
                   {historyVenue === "binance-testnet" ? "Hide history" : "Show history"}
@@ -204,7 +204,7 @@ export function FormatterPromptSettings() {
 
               <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
                 <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={saving || !dirty}>
-                  {saving ? "Saving\u2026" : "Save new version"}
+                  {saving ? "Saving…" : "Save new version"}
                 </button>
                 <button
                   type="button"
@@ -240,7 +240,7 @@ export function FormatterPromptSettings() {
       {historyVenue && history[historyVenue].length > 0 && (
         <div className="panel" style={{ maxHeight: "400px", overflowY: "auto" }}>
           <h3 style={{ marginTop: 0, fontSize: "1rem" }}>
-            Version history \u2014 {historyVenue === "binance" ? "Binance (live)" : "Binance Testnet"}
+            Version history — {historyVenue === "binance" ? "Binance (live)" : "Binance Testnet"}
           </h3>
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             {history[historyVenue].map((entry) => (

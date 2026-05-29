@@ -3,13 +3,13 @@ import { Router, type Router as ExpressRouter } from "express";
 import {
   addPromptVersion,
   addTraderPromptVersion,
-  createFormatterPromptVersion,
+  createVenueTraderPromptVersion,
   createPrompt,
   createTraderPrompt,
-  getAllActiveFormatterPrompts,
+  getAllActiveVenueTraderPrompts,
   getAppSettings,
   getPromptVersionBody,
-  listFormatterPromptVersions,
+  listVenueTraderPromptVersions,
   listPrompts,
   listTraderPrompts,
   setAppSettings
@@ -17,9 +17,9 @@ import {
 
 export const settingsRouter: ExpressRouter = Router();
 
-settingsRouter.get("/settings/formatter-prompt", async (_request, response, next) => {
+settingsRouter.get("/settings/venue-trader-prompt", async (_request, response, next) => {
   try {
-    response.json({ formatterPrompts: await getAllActiveFormatterPrompts() });
+    response.json({ venueTraderPrompts: await getAllActiveVenueTraderPrompts() });
   } catch (error) {
     next(error);
   }
@@ -41,45 +41,45 @@ settingsRouter.put("/settings/app", async (request, response, next) => {
   }
 });
 
-settingsRouter.put("/settings/formatter-prompt", async (request, response, next) => {
+settingsRouter.put("/settings/venue-trader-prompt", async (request, response, next) => {
   try {
-    const body = request.body as { formatterPrompts?: unknown };
-    const raw = body?.formatterPrompts;
+    const body = request.body as { venueTraderPrompts?: unknown };
+    const raw = body?.venueTraderPrompts;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-      response.status(400).json({ error: "formatterPrompts object required" });
+      response.status(400).json({ error: "venueTraderPrompts object required" });
       return;
     }
     const o = raw as Record<string, unknown>;
     if (typeof o.binance !== "string" || typeof o["binance-testnet"] !== "string") {
       response.status(400).json({
-        error: "formatterPrompts must include string fields binance and binance-testnet"
+        error: "venueTraderPrompts must include string fields binance and binance-testnet"
       });
       return;
     }
     if (o.binance.length > 12000 || o["binance-testnet"].length > 12000) {
-      response.status(400).json({ error: "Each formatter prompt may be at most 12000 characters" });
+      response.status(400).json({ error: "Each trader prompt may be at most 12000 characters" });
       return;
     }
     if (o.binance.trim().length > 0) {
-      await createFormatterPromptVersion("binance", o.binance.trim());
+      await createVenueTraderPromptVersion("binance", o.binance.trim());
     }
     if (o["binance-testnet"].trim().length > 0) {
-      await createFormatterPromptVersion("binance-testnet", o["binance-testnet"].trim());
+      await createVenueTraderPromptVersion("binance-testnet", o["binance-testnet"].trim());
     }
-    response.json({ ok: true, formatterPrompts: await getAllActiveFormatterPrompts() });
+    response.json({ ok: true, venueTraderPrompts: await getAllActiveVenueTraderPrompts() });
   } catch (error) {
     next(error);
   }
 });
 
-settingsRouter.get("/settings/formatter-prompt/:venue/versions", async (request, response, next) => {
+settingsRouter.get("/settings/venue-trader-prompt/:venue/versions", async (request, response, next) => {
   try {
     const venue = request.params.venue;
     if (venue !== "binance" && venue !== "binance-testnet") {
       response.status(404).json({ error: "Venue not found" });
       return;
     }
-    const versions = await listFormatterPromptVersions(venue);
+    const versions = await listVenueTraderPromptVersions(venue);
     response.json({ venue, versions });
   } catch (error) {
     next(error);

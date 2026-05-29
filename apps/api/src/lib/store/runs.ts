@@ -15,18 +15,18 @@ export const createRun = async (input: {
   compactContext: Record<string, unknown>;
   promptSystem?: string;
   promptUser?: string;
-  formatterPromptVersionId?: string | null;
+  traderPromptVersionId?: string | null;
 }) => {
   const [row] = await sql<{ id: string }[]>`
     insert into runs (
       bot_id, prompt_version_id, model_profile_id, runtime_config,
-      compact_context, prompt_system, prompt_user, formatter_prompt_version_id, status
+      compact_context, prompt_system, prompt_user, trader_prompt_version_id, status
     ) values (
       ${input.botId}, ${input.promptVersionId}, ${input.modelProfileId},
       ${sql.json(input.runtimeConfig)},
       ${sql.json(input.compactContext as JsonValue)},
       ${input.promptSystem ?? null}, ${input.promptUser ?? null},
-      ${input.formatterPromptVersionId ?? null}, 'running'
+      ${input.traderPromptVersionId ?? null}, 'running'
     )
     returning id
   `;
@@ -204,7 +204,7 @@ export const getBotRuns = async (
       parsedDecision: unknown;
       validationResult: unknown;
       compactContext: unknown;
-      formatterVersion: number | null;
+      traderVersion: number | null;
       startedAt: Date;
       finishedAt: Date | null;
     }[]
@@ -217,11 +217,11 @@ export const getBotRuns = async (
       r.parsed_decision as "parsedDecision",
       r.validation_result as "validationResult",
       r.compact_context as "compactContext",
-      vpv.version as "formatterVersion",
+      vpv.version as "traderVersion",
       r.started_at as "startedAt", r.finished_at as "finishedAt"
     from runs r
     join bots b on b.id = r.bot_id
-    left join venue_prompt_versions vpv on vpv.id = r.formatter_prompt_version_id
+    left join venue_prompt_versions vpv on vpv.id = r.trader_prompt_version_id
     where r.bot_id = ${botId}
     ${includeGuardian ? sql`` : sql`and coalesce(r.compact_context->>'source', '') <> 'guardian'`}
     order by r.created_at desc

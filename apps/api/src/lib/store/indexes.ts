@@ -118,6 +118,87 @@ export const createIndexConfig = async (input: {
   return mapIndexConfig(row);
 };
 
+export const getDueIndexConfigs = async (): Promise<IndexConfig[]> => {
+  const rows = await sql<IndexConfigRow[]>`
+    select
+      c.id, c.name, c.slug, c.description, c.status,
+      c.cadence_minutes as "cadenceMinutes",
+      c.source_keys as "sourceKeys",
+      c.prompt_body as "promptBody",
+      c.output_schema as "outputSchema",
+      c.created_at as "createdAt",
+      c.updated_at as "updatedAt"
+    from index_configs c
+    where c.status = 'active'
+      and not exists (
+        select 1 from index_runs r where r.index_id = c.id and r.status = 'running'
+      )
+      and (
+        (select max(r2.started_at) from index_runs r2 where r2.index_id = c.id) is null
+        or (select max(r2.started_at) from index_runs r2 where r2.index_id = c.id)
+             < now() - make_interval(mins => c.cadence_minutes)
+      )
+    order by c.updated_at asc
+  `;
+  return rows.map(mapIndexConfig);
+};
+
+// Atomic claim: only inserts a running run when none is already in flight for this
+// index, so overlapping scheduler ticks can't double-fire the same index.
+export const claimIndexRun = async (indexId: string): Promise<string | null> => {
+  const [row] = await sql<{ id: string }[]>`
+    insert into index_runs (index_id, status)
+    select ${indexId}, 'running'
+    where not exists (
+      select 1 from index_runs where index_id = ${indexId} and status = 'running'
+    )
+    returning id
+  `;
+  return row?.id ?? null;
+};
+
+export const finishIndexRun = async (
+  runId: string,
+  input: { status: "success" | "failure"; sourceCounts?: unknown; cost?: unknown; error?: string | null }
+) => {
+  await sql`
+    update index_runs
+    set status = ${input.status},
+        source_counts = ${sql.json((input.sourceCounts ?? {}) as JsonValue)},
+        cost_json = ${sql.json((input.cost ?? {}) as JsonValue)},
+        error = ${input.error ?? null},
+        finished_at = now()
+    where id = ${runId}
+  `;
+};
+
+export const setIndexStatus = async (indexId: string, status: IndexConfig["status"]) => {
+  await sql`
+    update index_configs set status = ${status}, updated_at = now() where id = ${indexId}
+  `;
+};
+
+export const createIndexSnapshot = async (input: {
+  indexId: string;
+  runId: string | null;
+  value: number | null;
+  label: string | null;
+  summary: string;
+  evidence?: unknown;
+}): Promise<IndexSnapshot> => {
+  const [row] = await sql<IndexSnapshotRow[]>`
+    insert into index_snapshots (index_id, run_id, value, label, summary, evidence_json)
+    values (
+      ${input.indexId}, ${input.runId}, ${input.value}, ${input.label},
+      ${input.summary}, ${sql.json((input.evidence ?? []) as JsonValue)}
+    )
+    returning
+      id, index_id::text as "indexId", value::float8 as value, label, summary,
+      evidence_json as "evidenceJson", captured_at as "capturedAt"
+  `;
+  return mapIndexSnapshot(row);
+};
+
 export const listIndexSnapshots = async (indexId: string, limit = 50) => {
   const rows = await sql<IndexSnapshotRow[]>`
     select

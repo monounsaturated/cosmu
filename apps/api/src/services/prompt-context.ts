@@ -2,7 +2,7 @@
 import { isUsdcOnlyVenue, type VenueContext } from "../adapters/binance.js";
 import {
   getBotPrePromptContext,
-  getActiveFormatterPrompt,
+  getActiveVenueTraderPrompt,
   getAppSettings,
   type BotSetup
 } from "../lib/store.js";
@@ -31,7 +31,7 @@ export const DEFAULT_NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
 
 // System prelude removed — the user's written prompt is now the entire system prompt for research.
 
-export const DEFAULT_FORMATTER_BODY = [
+export const DEFAULT_TRADER_BODY = [
   "You are phase 2 for one Binance spot bot. Convert the research text into a valid TradingDecision JSON object.",
   "Live Binance uses USDC pairs only. Testnet/dev may use USDT or USDC. Treat USDT and USDC as cash.",
   "Select at most 3 concrete trade ideas from the research, then resolve only those specific assets with tradability_resolve or binance_symbol_lookup.",
@@ -155,7 +155,7 @@ const buildResearchUserSections = (_input: {
   return "";
 };
 
-/** Build optional module sections (used by the trader/formatter phase). */
+/** Build optional module sections (used by the trader phase). */
 const buildOptionalModuleSections = (input: {
   bot: BotSetup;
   venueContext: VenueContext;
@@ -210,7 +210,7 @@ const buildOptionalModuleSections = (input: {
 
 /** Phase 2: trader context with research text + wallet + rules + optional modules.
  *  Live prices are deliberately NOT injected — the trader fetches them via binance_symbol_lookup. */
-const buildFormatterUserSections = (input: {
+const buildTraderUserSections = (input: {
   bot: BotSetup;
   venueContext: VenueContext;
   researchRawText: string;
@@ -267,8 +267,8 @@ export const buildResearchPhaseContext = async ({ bot, venueContext }: BuildProm
   return { systemPrompt, userMessage, compactContext };
 };
 
-/** Phase 2: formatter + hard constraints; includes all injected data. */
-export const buildFormatterPhaseContext = async ({
+/** Phase 2: trader + hard constraints; includes all injected data. */
+export const buildTraderPhaseContext = async ({
   bot,
   venueContext,
   researchRawText,
@@ -286,26 +286,26 @@ export const buildFormatterPhaseContext = async ({
     pastTradesLookback: modules.pastTradesLookback
   });
 
-  // Use bot's own trader prompt if set; fall back to venue-level formatter; then default
+  // Use bot's own trader prompt if set; fall back to venue-level trader prompt; then default
   const botTraderBody = bot.traderPromptBody?.trim() ?? "";
-  let formatterBody: string;
-  let formatterPromptVersionId: string | null = null;
+  let traderBody: string;
+  let traderPromptVersionId: string | null = null;
 
   if (botTraderBody.length > 0) {
-    formatterBody = botTraderBody;
-    formatterPromptVersionId = bot.traderPromptVersionId ?? null;
+    traderBody = botTraderBody;
+    traderPromptVersionId = bot.traderPromptVersionId ?? null;
   } else {
-    const activeFormatter = await getActiveFormatterPrompt(runtimeConfig.venue);
-    const trimmedCustom = activeFormatter?.body?.trim() ?? "";
-    formatterBody = trimmedCustom.length > 0 ? trimmedCustom : DEFAULT_FORMATTER_BODY;
-    formatterPromptVersionId = activeFormatter?.id ?? null;
+    const activeVenueTrader = await getActiveVenueTraderPrompt(runtimeConfig.venue);
+    const trimmedCustom = activeVenueTrader?.body?.trim() ?? "";
+    traderBody = trimmedCustom.length > 0 ? trimmedCustom : DEFAULT_TRADER_BODY;
+    traderPromptVersionId = activeVenueTrader?.id ?? null;
   }
 
   const nonNegotiable = appSettings.promptRuntime.injectedDataTemplates.traderNonNegotiable.preview.trim() ||
     DEFAULT_NON_NEGOTIABLE_CONSTRAINTS_BLOCK;
-  const systemPrompt = [formatterBody, renderRuntimeTemplate(nonNegotiable)].join("\n\n");
+  const systemPrompt = [traderBody, renderRuntimeTemplate(nonNegotiable)].join("\n\n");
 
-  const userMessage = buildFormatterUserSections({
+  const userMessage = buildTraderUserSections({
     bot,
     venueContext,
     researchRawText,
@@ -314,7 +314,7 @@ export const buildFormatterPhaseContext = async ({
   });
 
   const compactContext: Record<string, unknown> = {
-    phase: "formatter",
+    phase: "trader",
     venue: runtimeConfig.venue,
     symbolScope: runtimeConfig.symbolScope,
     walletTotalUsd: venueContext.snapshot.totalUsdValue,
@@ -326,6 +326,6 @@ export const buildFormatterPhaseContext = async ({
     systemPrompt,
     userMessage,
     compactContext,
-    formatterPromptVersionId
+    traderPromptVersionId
   };
 };

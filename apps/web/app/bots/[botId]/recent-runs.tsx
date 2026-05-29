@@ -11,7 +11,7 @@ type Run = {
   promptUser: string | null;
   researchOutput: string | null;
   traderOutput: string | null;
-  formatterVersion: number | null;
+  traderVersion: number | null;
   validationResult?: { accepted: boolean; issues: string[] } | null;
 };
 

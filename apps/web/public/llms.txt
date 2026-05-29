@@ -1,0 +1,43 @@
+# Cosmu
+
+> Autonomous crypto-trading platform on Binance spot. A scheduled pipeline of agents (Research → Trader → deterministic Validator → Execution) runs trading "bots" against a venue; future index- and research-agents read/write a shared signals store. The model's *decision* and the venue's *execution* are always kept as separate records.
+
+This file maps the app for LLM agents. The web app (Next.js) is a thin UI over an Express API; its `/app/api/*` routes proxy to the API with a server-side secret key. Contracts live in `@cosmu/shared` (Zod schemas).
+
+## Architecture (in the repo, not served over HTTP)
+- ARCHITECTURE.md: Non-obvious implementation facts the code relies on (pipeline shape, double-fire protection, USDT/USDC agnosticism, xAI provider quirks, MCP tools). Read this first.
+- AGENTS.md: Coding-agent entrypoint and conventions.
+
+## Core concepts
+- Bot: a scheduled agent that runs one Research→Trader→Validator→Execution cycle against an explicit venue. All agents live in one list, differentiated by `venue` and whether execution is enabled.
+- Run: one execution of the pipeline. Produces agent_steps (product timeline) and run_llm_calls (provider telemetry).
+- Decision vs Execution: never collapsed. Prompt version, model profile, raw model output, parsed decision, validation result, order intent, venue execution result, and portfolio state are distinct records.
+- Source → Record → Signal → Index: the data model for ingesting external data, standardizing it into signals, and deriving index views. Tables exist; ingestion/runners are being wired.
+
+## Web sections (pages)
+- /: Dashboard — agents overview, performance, venue health, spend estimates.
+- /bots, /bots/[botId]: Agent list and per-agent run history, prompts, live positions.
+- /research: Research experiments, datasets, evaluations.
+- /signals: Standardized signals capture and triage.
+- /sentiment: Market pulse signals.
+- /prompts, /prompt-lab: Prompt library with versioning, and prompt experiments.
+- /spending: LLM token ledger and cost estimates.
+- /settings: Model, venue, trader-prompt config and feature toggles.
+
+## API surface (Express; called via the web proxy with x-api-key)
+- GET /health: Liveness.
+- GET /dashboard: Cached dashboard payload (prices, balances, agents, spend).
+- GET /mcp/tools: Registered agent-facing tool definitions.
+- Bots: GET/POST /bots, GET/PATCH /bots/:botId, POST /bots/:botId/run, POST /bots/:botId/kill, GET /bots/:botId/runs, GET /bots/:botId/positions.
+- Runs: GET /runs/:runId, GET /runs/:runId/llm-calls.
+- Research: /research/* (sessions, specs, datasets, evaluations, candidates, memory, data-sources).
+- Signals & Indexes: /signals/*, /indexes/*.
+- Sources & Tradability: /sources/*, /tradability/*.
+- Prompts: /prompts/*, /trader-prompts/*.
+- Settings & Models & Venues: /settings/*, /models, /venues/*.
+- Ops (internal): GET /internal/diagnostics, GET /internal/background-jobs, POST /internal/scheduler/tick, POST /internal/background-jobs/:jobId/run, GET /spend/llm.
+
+## Notes for agents
+- Runtime automation (scheduler, guardian, market-data cache, catalog syncs) runs on Railway, not Vercel.
+- Never bypass the deterministic validator (services/validator.ts) or the global kill switch.
+- Tools are registered in apps/api/src/mcp/index.ts; agent-facing ones are auto-exposed to the trader.

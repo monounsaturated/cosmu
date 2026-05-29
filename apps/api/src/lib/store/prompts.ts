@@ -145,7 +145,7 @@ type VenuePromptVersion = {
   createdAt: string;
 };
 
-export const getActiveFormatterPrompt = async (
+export const getActiveVenueTraderPrompt = async (
   venue: RuntimeConfig["venue"]
 ): Promise<VenuePromptVersion | null> => {
   try {
@@ -153,26 +153,26 @@ export const getActiveFormatterPrompt = async (
       select id, venue, prompt_type as "promptType", version, body,
              created_at::text as "createdAt"
       from venue_prompt_versions
-      where venue = ${venue} and prompt_type = 'formatter' and length(trim(body)) > 0
+      where venue = ${venue} and prompt_type = 'trader' and length(trim(body)) > 0
       order by version desc
       limit 1
     `;
     return row ?? null;
   } catch (error) {
-    console.warn("getActiveFormatterPrompt failed:", String(error));
+    console.warn("getActiveVenueTraderPrompt failed:", String(error));
     return null;
   }
 };
 
-export const createFormatterPromptVersion = async (
+export const createVenueTraderPromptVersion = async (
   venue: RuntimeConfig["venue"],
   body: string
 ): Promise<VenuePromptVersion> => {
   const [row] = await sql<VenuePromptVersion[]>`
     insert into venue_prompt_versions (venue, prompt_type, version, body)
     values (
-      ${venue}, 'formatter',
-      coalesce((select max(version) from venue_prompt_versions where venue = ${venue} and prompt_type = 'formatter'), 0) + 1,
+      ${venue}, 'trader',
+      coalesce((select max(version) from venue_prompt_versions where venue = ${venue} and prompt_type = 'trader'), 0) + 1,
       ${body}
     )
     returning id, venue, prompt_type as "promptType", version, body, created_at::text as "createdAt"
@@ -180,17 +180,17 @@ export const createFormatterPromptVersion = async (
   return row;
 };
 
-export const listFormatterPromptVersions = async (venue: RuntimeConfig["venue"]): Promise<VenuePromptVersion[]> =>
+export const listVenueTraderPromptVersions = async (venue: RuntimeConfig["venue"]): Promise<VenuePromptVersion[]> =>
   sql<VenuePromptVersion[]>`
     select id, venue, prompt_type as "promptType", version, body, created_at::text as "createdAt"
     from venue_prompt_versions
-    where venue = ${venue} and prompt_type = 'formatter'
+    where venue = ${venue} and prompt_type = 'trader'
     order by version desc
   `;
 
-export const getAllActiveFormatterPrompts = async () => {
-  const binance = await getActiveFormatterPrompt("binance");
-  const testnet = await getActiveFormatterPrompt("binance-testnet");
+export const getAllActiveVenueTraderPrompts = async () => {
+  const binance = await getActiveVenueTraderPrompt("binance");
+  const testnet = await getActiveVenueTraderPrompt("binance-testnet");
   return {
     binance: { body: binance?.body ?? "", version: binance?.version ?? null, id: binance?.id ?? null },
     "binance-testnet": { body: testnet?.body ?? "", version: testnet?.version ?? null, id: testnet?.id ?? null }

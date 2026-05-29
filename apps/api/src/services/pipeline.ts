@@ -13,8 +13,7 @@ import {
   tradingDecisionSchema,
   type TradingDecision
 } from "@cosmu/shared";
-import type { BotSetup } from "../lib/store/bots.js";
-import { storeLLMCall } from "../lib/store/llm-calls.js";
+import { storeLLMCall, type BotSetup } from "../lib/store.js";
 import {
   getProvider,
   runXaiAgentLoop,

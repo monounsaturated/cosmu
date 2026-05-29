@@ -1,4 +1,4 @@
-import { FormatterPromptSettings } from "./formatter-prompt-settings";
+import { VenueTraderPromptSettings } from "./venue-trader-prompt-settings";
 import { SettingsConsole } from "./settings-console";
 
 export default function SettingsPage() {
@@ -17,11 +17,11 @@ export default function SettingsPage() {
       <SettingsConsole />
 
       <section className="panel">
-        <h2 style={{ marginTop: 0, fontSize: "1.15rem" }}>Formatter / execution prompt</h2>
+        <h2 style={{ marginTop: 0, fontSize: "1.15rem" }}>Venue trader prompt</h2>
         <p className="muted" style={{ marginBottom: "16px" }}>
           Converts free-form research into executable TradingDecision JSON per venue.
         </p>
-        <FormatterPromptSettings />
+        <VenueTraderPromptSettings />
       </section>
     </main>
   );

@@ -47,7 +47,7 @@ import {
 } from "./pipeline.js";
 import { getVenueSymbols } from "./catalog.js";
 import { notifySlack } from "./notifier.js";
-import { buildFormatterPhaseContext, buildResearchPhaseContext } from "./prompt-context.js";
+import { buildTraderPhaseContext, buildResearchPhaseContext } from "./prompt-context.js";
 import { validateDecision } from "./validator.js";
 import { killBotAndLiquidate } from "./kill-bot.js";
 import { describeMaxDrawdownBreach, isMaxDrawdownBreached } from "./drawdown.js";
@@ -219,7 +219,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
     const candidateSymbols = extractCandidateSymbols(researchResult.rawText, venueSymbols);
     const decisionVenueContext = beforeVenueContext;
 
-    const formatterCtx = await buildFormatterPhaseContext({
+    const traderCtx = await buildTraderPhaseContext({
       bot,
       venueContext: decisionVenueContext,
       researchRawText: researchResult.rawText,
@@ -229,7 +229,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
     // Update run with full prompt context
     const compactContext = {
       ...researchCtx.compactContext,
-      formatter: formatterCtx.compactContext,
+      trader: traderCtx.compactContext,
       researchCandidateSymbols: candidateSymbols
     };
 
@@ -238,7 +238,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
       researchCtx.systemPrompt,
       "",
       "=== PHASE 2 — TRADER (system) ===",
-      formatterCtx.systemPrompt
+      traderCtx.systemPrompt
     ].join("\n");
 
     const promptUser = [
@@ -246,7 +246,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
       researchCtx.userMessage,
       "",
       "=== PHASE 2 — TRADER (user context) ===",
-      formatterCtx.userMessage
+      traderCtx.userMessage
     ].join("\n");
 
     // Persist combined prompts so the UI can show both phases
@@ -255,8 +255,8 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
     // ── 4. Trader Agent (agentic; uses binance_symbol_lookup tool) ───
     const traderResult = await runTraderAgent({
       bot,
-      systemPrompt: formatterCtx.systemPrompt,
-      userMessage: formatterCtx.userMessage,
+      systemPrompt: traderCtx.systemPrompt,
+      userMessage: traderCtx.userMessage,
       runId,
       toolContext: { mode: netForVenue(bot.runtimeConfig.venue) }
     });
@@ -268,7 +268,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
       agentLabel: "Trader",
       inputJson: {
         candidateSymbols,
-        traderPromptVersionId: formatterCtx.formatterPromptVersionId
+        traderPromptVersionId: traderCtx.traderPromptVersionId
       },
       outputText: traderResult.rawText,
       outputJson: traderResult.decision,

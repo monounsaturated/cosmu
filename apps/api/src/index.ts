@@ -14,6 +14,7 @@ import { settingsRouter } from "./routes/settings.js";
 import { venuesRouter } from "./routes/venues.js";
 import { modelsRouter } from "./routes/models.js";
 import { botsRouter } from "./routes/bots.js";
+import { openapiRouter, OPENAPI_PUBLIC_PATH } from "./routes/openapi.js";
 import { startRuntimeAutomation } from "./services/background-jobs.js";
 
 const app = express();
@@ -32,7 +33,7 @@ app.use(corsOptions ? cors(corsOptions) : cors());
 app.use(express.json());
 
 app.use((request, response, next) => {
-  if (request.path === "/health") {
+  if (request.path === "/health" || request.path === OPENAPI_PUBLIC_PATH) {
     return next();
   }
 
@@ -56,6 +57,7 @@ app.use(settingsRouter);
 app.use(venuesRouter);
 app.use(modelsRouter);
 app.use(botsRouter);
+app.use(openapiRouter);
 
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   console.error(error);

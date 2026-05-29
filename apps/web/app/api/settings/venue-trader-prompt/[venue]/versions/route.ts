@@ -10,7 +10,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ven
     }
 
     const { venue } = await params;
-    const res = await fetch(`${apiBaseUrl}/settings/formatter-prompt/${venue}/versions`, {
+    const res = await fetch(`${apiBaseUrl}/settings/venue-trader-prompt/${venue}/versions`, {
       cache: "no-store",
       headers: { "x-api-key": apiSecretKey }
     });

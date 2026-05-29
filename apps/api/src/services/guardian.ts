@@ -25,10 +25,11 @@ import {
   storeExecutionRecords,
   updateSafetyStop,
   closePosition,
-  type BotPosition
+  getBotSetupById,
+  getBotEnabledState,
+  type BotPosition,
+  type BotSetup
 } from "../lib/store.js";
-import { getBotSetupById, getBotEnabledState } from "../lib/store/bots.js";
-import type { BotSetup } from "../lib/store/bots.js";
 import { notifySlack } from "./notifier.js";
 import { buildLogicalSnapshot, computeLogicalBalances } from "../lib/logical-balances.js";
 import { killBotAndLiquidate } from "./kill-bot.js";

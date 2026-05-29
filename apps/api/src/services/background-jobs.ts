@@ -1,5 +1,5 @@
 // module: Boot/manage Railway background loops (scheduler, guardian, market-data cache).
-import { ensureBotSchedulerSchema } from "../lib/store.js";
+import { ensureBotSchedulerSchema, ensureIndexSchema } from "../lib/store.js";
 import { getGuardianStatus, startGuardian } from "./guardian.js";
 import {
   BOT_SCHEDULER_INTERVAL_MS,
@@ -7,6 +7,11 @@ import {
   runSchedulerTick,
   type SchedulerTrigger
 } from "./bot-scheduler.js";
+import {
+  INDEX_SCHEDULER_INTERVAL_MS,
+  getIndexSchedulerStatus,
+  runIndexSchedulerTick
+} from "./index-runner.js";
 import {
   CATALOG_REFRESH_INTERVAL_MS,
   syncAllProviderModels,
@@ -18,6 +23,7 @@ import { MARKET_DATA_REFRESH_INTERVAL_MS, refreshMarketDataSnapshot } from "./ma
 type BackgroundJobTrigger = "startup" | "interval" | "manual";
 export type BackgroundJobId =
   | "bot-scheduler"
+  | "index-scheduler"
   | "market-data-refresh"
   | "llm-pricing-sync"
   | "model-catalog-sync"
@@ -70,6 +76,14 @@ const JOB_DEFINITIONS: BackgroundJobDefinition[] = [
     intervalMs: BOT_SCHEDULER_INTERVAL_MS,
     enabled: () => true,
     run: (trigger) => runSchedulerTick(schedulerTriggerFromBackground(trigger))
+  },
+  {
+    id: "index-scheduler",
+    label: "Index scheduler",
+    description: "Claims due active index configs and writes one snapshot per index per cadence.",
+    intervalMs: INDEX_SCHEDULER_INTERVAL_MS,
+    enabled: () => true,
+    run: (trigger) => runIndexSchedulerTick(trigger === "manual" ? "manual" : trigger === "startup" ? "startup" : "interval")
   },
   {
     id: "market-data-refresh",
@@ -266,6 +280,7 @@ export const startRuntimeAutomation = async () => {
   backgroundServicesStarting = true;
   try {
     await ensureBotSchedulerSchema();
+    await ensureIndexSchema();
     startBackgroundJobLoop();
     startGuardian();
 
@@ -289,6 +304,7 @@ export const getRuntimeAutomationStatus = () => ({
   intervalActive: Boolean(backgroundJobLoop),
   intervalMs: BACKGROUND_JOB_LOOP_INTERVAL_MS,
   scheduler: getSchedulerStatus(),
+  indexScheduler: getIndexSchedulerStatus(),
   guardian: getGuardianStatus(),
   jobs: Array.from(jobStatuses.values()).map((status) => ({
     ...status,

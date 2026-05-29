@@ -1,5 +1,6 @@
-// Re-export all store modules for backward compatibility.
-// New code should import from specific modules directly.
+// Public surface for the data layer. Import store functions from "../lib/store.js"
+// (this barrel) — not from individual modules — so the persistence layout stays
+// internal and refactorable. The per-table modules live alongside this file.
 
 export type { BotSetup, BotExecutionLedgerEntry } from "./bots.js";
 export {
@@ -50,10 +51,10 @@ export {
   addPromptVersion,
   createPrompt,
   createModelProfile,
-  getActiveFormatterPrompt,
-  createFormatterPromptVersion,
-  listFormatterPromptVersions,
-  getAllActiveFormatterPrompts,
+  getActiveVenueTraderPrompt,
+  createVenueTraderPromptVersion,
+  listVenueTraderPromptVersions,
+  getAllActiveVenueTraderPrompts,
   touchResearchPromptUsage,
   getLatestResearchPromptVersion,
   getLatestModelProfile
@@ -139,7 +140,12 @@ export {
   ensureIndexSchema,
   listIndexConfigs,
   createIndexConfig,
-  listIndexSnapshots
+  listIndexSnapshots,
+  getDueIndexConfigs,
+  claimIndexRun,
+  finishIndexRun,
+  setIndexStatus,
+  createIndexSnapshot
 } from "./indexes.js";
 
 export type { JsonValue } from "./helpers.js";

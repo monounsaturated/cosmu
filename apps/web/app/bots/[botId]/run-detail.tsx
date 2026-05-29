@@ -12,7 +12,7 @@ type Run = {
   promptUser: string | null;
   researchOutput: string | null;
   traderOutput: string | null;
-  formatterVersion: number | null;
+  traderVersion: number | null;
   validationResult?: { accepted: boolean; issues: string[] } | null;
 };
 
@@ -421,8 +421,8 @@ export function RunDetail({ run }: { run: Run }) {
     <details style={{ background: "var(--bg-card)", border: "1px solid var(--border)", padding: "16px", borderRadius: "8px" }}>
       <summary style={{ cursor: "pointer", fontWeight: "bold" }}>
         <LocalTime value={run.startedAt} /> - <span className={`badge badge-${run.status}`}>{run.status}</span>
-        {run.formatterVersion && (
-          <span className="badge badge-neutral" style={{ marginLeft: "8px" }}>formatter v{run.formatterVersion}</span>
+        {run.traderVersion && (
+          <span className="badge badge-neutral" style={{ marginLeft: "8px" }}>trader v{run.traderVersion}</span>
         )}
       </summary>
 
