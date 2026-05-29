@@ -1,7 +1,8 @@
 import { sql } from "../db.js";
 import { dashboardSchema, botSummarySchema, portfolioSnapshotSchema } from "@cosmu/shared";
 import { getLlmSpendEstimate } from "./llm-spend.js";
-import { getCachedMarketDataSnapshot, refreshMarketDataMode, refreshMarketDataSnapshot } from "./market-data-cache.js";
+import { getCachedMarketDataSnapshot } from "./market-data-cache.js";
+import { getVenueConnectionStatuses } from "./venues.js";
 
 const parseJson = <T>(value: unknown): T => {
   if (typeof value === "string") {
@@ -102,17 +103,10 @@ export const getDashboard = async () => {
     order by brc.enabled desc, b.created_at desc
   `;
 
-  let marketData = getCachedMarketDataSnapshot({ autoRefresh: false });
-  if (!marketData.live.balanceUpdatedAt && !marketData.live.balanceError && !marketData.testnet.balanceUpdatedAt && !marketData.testnet.balanceError) {
-    await refreshMarketDataSnapshot("dashboard");
-    marketData = getCachedMarketDataSnapshot({ autoRefresh: false });
-  }
-  if (!marketData.testnet.balance && marketData.testnet.stale) {
-    await refreshMarketDataMode("testnet", "dashboard");
-    marketData = getCachedMarketDataSnapshot({ autoRefresh: false });
-  }
-  const testnetBalance: any = marketData.testnet.balance;
-  const liveBalance: any = marketData.live.balance;
+  const [liveStatus, testnetStatus] = await getVenueConnectionStatuses();
+  const marketData = getCachedMarketDataSnapshot();
+  const testnetBalance: any = testnetStatus.balance;
+  const liveBalance: any = liveStatus.balance;
 
   const allocatedByMode = new Map<string, number>([
     ["live", 0],
@@ -155,8 +149,10 @@ export const getDashboard = async () => {
       venue: "binance",
       mode: "live",
       balance: liveAccountBalance,
-      connected: Boolean(liveBalance),
-      error: marketData.live.balanceError
+      configured: liveStatus.configured,
+      connected: liveStatus.connected,
+      checkedAt: liveStatus.checkedAt,
+      error: liveStatus.error ?? marketData.live.balanceError
     },
     {
       id: "binance-testnet",
@@ -164,8 +160,10 @@ export const getDashboard = async () => {
       venue: "binance-testnet",
       mode: "testnet",
       balance: testnetAccountBalance,
-      connected: Boolean(testnetBalance),
-      error: marketData.testnet.balanceError
+      configured: testnetStatus.configured,
+      connected: testnetStatus.connected,
+      checkedAt: testnetStatus.checkedAt,
+      error: testnetStatus.error ?? marketData.testnet.balanceError
     }
   ];
   const accounts = accountConfigs.map((account) => {
@@ -190,7 +188,9 @@ export const getDashboard = async () => {
       accountBalance: account.balance,
       allocatedAmount,
       spareAmount,
+      configured: account.configured,
       connected: account.connected,
+      checkedAt: account.checkedAt,
       configuredAgents,
       activeAgents,
       status,

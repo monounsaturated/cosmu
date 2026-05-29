@@ -20,6 +20,7 @@ const fallbackAccounts = (venueOverview: VenueOverview): AccountEntry[] => {
       label: "Binance Live",
       venue: "binance",
       mode: "live",
+      configured: true,
       connected: true,
       configuredAgents: 0,
       activeAgents: 0,
@@ -33,6 +34,7 @@ const fallbackAccounts = (venueOverview: VenueOverview): AccountEntry[] => {
       label: "Binance Testnet",
       venue: "binance-testnet",
       mode: "testnet",
+      configured: true,
       connected: true,
       configuredAgents: 0,
       activeAgents: 0,
@@ -83,9 +85,11 @@ export function VenueOverview({
               : 0;
             const spareTone = account.spareAmount < 0 ? "value-red" : account.spareAmount > 0 ? "value-green" : "";
             const dataStatus = account.mode === "live" ? marketDataStatus?.live : marketDataStatus?.testnet;
-            const dataLabel = dataStatus?.balanceError
+            const dataLabel = account.error
+              ? account.error
+              : dataStatus?.balanceError
               ? dataStatus.balanceError
-              : `balance ${formatFreshness(dataStatus?.balanceUpdatedAt)}`;
+              : `checked ${formatFreshness(account.checkedAt ?? dataStatus?.balanceUpdatedAt)}`;
             const badgeClass = account.connected ? "badge-success" : account.status === "error" ? "badge-warn" : "badge-inactive";
             return (
               <article className={`account-card account-card-${account.status}`} key={account.id}>

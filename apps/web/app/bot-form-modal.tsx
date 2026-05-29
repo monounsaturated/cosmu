@@ -407,6 +407,10 @@ type SymbolResponse = {
 };
 
 type VenueBalance = {
+  configured: boolean;
+  connected: boolean;
+  checkedAt: string;
+  error: string | null;
   totalFreeUsdt: number;
   allocatedUsdt: number;
   availableUsdt: number;
@@ -1317,10 +1321,12 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
         if (cancelled) return;
 
         setVenueBalance(balanceRes.data);
+        const venueLabel = VENUE_LABELS[formData.venue] ?? formData.venue;
+        const backendError = balanceRes.data?.error ?? balanceRes.error;
         setVenueConnectionError(
-          balanceRes.error
-            ? `${VENUE_LABELS[formData.venue] ?? formData.venue} account check failed: ${balanceRes.error}`
-            : null
+          balanceRes.data?.connected
+            ? null
+            : `${venueLabel} account check failed: ${backendError ?? "backend returned disconnected"}`
         );
 
         const directSymbols = symbolsRes.data?.symbols?.length ? [] : await fetchSymbolsDirect();
@@ -1434,7 +1440,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   };
 
   const selectedVenueLabel = VENUE_LABELS[formData.venue] ?? formData.venue;
-  const selectedVenueConnected = Boolean(venueBalance && !venueConnectionError);
+  const selectedVenueConnected = Boolean(venueBalance?.connected && !venueConnectionError);
   const venueBlocked = !loadingBalance && !selectedVenueConnected;
 
   const handleSubmit = async (event: React.FormEvent) => {

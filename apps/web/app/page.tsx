@@ -21,6 +21,7 @@ export default async function HomePage() {
   const totalAllocated = dashboard.accounts.reduce((sum, account) => sum + account.allocatedAmount, 0);
   const freeCapacity = dashboard.accounts.reduce((sum, account) => sum + account.spareAmount, 0);
   const connectedVenues = dashboard.accounts.filter((account) => account.connected).length;
+  const venueIssues = dashboard.accounts.filter((account) => !account.connected);
   const llmHourlyUsd = dashboard.llmSpendEstimate?.estimatedHourlyUsd ?? 0;
   const llmDailyUsd = dashboard.llmSpendEstimate?.estimatedDailyUsd ?? 0;
   return (
@@ -48,6 +49,13 @@ export default async function HomePage() {
           <strong>Dashboard backend unavailable</strong>
           <p>The agent list could not be loaded from the API. The app is showing an error instead of an empty state.</p>
           <code>{dashboard.backendError}</code>
+        </section>
+      )}
+
+      {!dashboard.backendError && venueIssues.length > 0 && (
+        <section className="panel dashboard-error-state">
+          <strong>Venue connection issue</strong>
+          <p>{venueIssues.map((account) => `${account.label}: ${account.error ?? "not connected"}`).join(" | ")}</p>
         </section>
       )}
 

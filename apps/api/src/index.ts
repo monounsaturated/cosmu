@@ -53,7 +53,13 @@ import {
   syncProviderModels,
   syncAllProviderModels
 } from "./services/catalog.js";
-import { getAccountBalance, getTickerPricesForSymbols, normalizeSymbol } from "./adapters/binance.js";
+import { getTickerPricesForSymbols, normalizeSymbol } from "./adapters/binance.js";
+import {
+  checkVenueConnection,
+  getVenueConnectionStatuses,
+  parseVenueId,
+  type VenueId
+} from "./services/venues.js";
 import { notifySlack } from "./services/notifier.js";
 import { runBot } from "./services/run-bot.js";
 import { killBotAndLiquidate } from "./services/kill-bot.js";
@@ -76,14 +82,10 @@ const app = express();
 const botCreateRuntimeConfigSchema = runtimeConfigSchema.omit({ enabled: true });
 const ALWAYS_KEEP_XAI_MODEL_IDS = new Set(["grok-4.3"]);
 
-const assertVenueConnected = async (venue: "binance" | "binance-testnet") => {
-  const mode = venue === "binance-testnet" ? "testnet" as const : "live" as const;
-  try {
-    await getAccountBalance(mode);
-  } catch (error) {
-    const label = venue === "binance-testnet" ? "Binance Testnet" : "Binance Live";
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`${label} is not connected. Check the API key/secret in .env.local or deployment env. ${detail}`);
+const assertVenueConnected = async (venue: VenueId) => {
+  const status = await checkVenueConnection(venue, { force: true });
+  if (!status.connected) {
+    throw new Error(`${status.label} is not connected. ${status.error ?? "Check backend API credentials and permissions."}`);
   }
 };
 
@@ -514,8 +516,8 @@ app.get("/prompts", async (_request, response, next) => {
 
 app.get("/venues/:venue/symbols", async (request, response, next) => {
   try {
-    const venue = request.params.venue;
-    if (venue !== "binance" && venue !== "binance-testnet") {
+    const venue = parseVenueId(request.params.venue);
+    if (!venue) {
       response.status(404).json({ error: "Venue not found" });
       return;
     }
@@ -530,11 +532,26 @@ app.get("/venues/:venue/symbols", async (request, response, next) => {
   }
 });
 
+app.get("/venues/status", async (request, response, next) => {
+  try {
+    response.json({
+      checkedAt: new Date().toISOString(),
+      venues: await getVenueConnectionStatuses({ force: request.query.force === "true" })
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/venues/:venue/balance", async (request, response, next) => {
   try {
-    const venue = request.params.venue;
-    const mode = venue === "binance-testnet" ? "testnet" as const : "live" as const;
-    const balance = await getAccountBalance(mode);
+    const venue = parseVenueId(request.params.venue);
+    if (!venue) {
+      response.status(404).json({ error: "Venue not found" });
+      return;
+    }
+
+    const status = await checkVenueConnection(venue, { force: request.query.force === "true" });
 
     const allocatedBudgets = await sql<{ total: string }[]>`
       select coalesce(sum(budget_usdt), 0)::text as total
@@ -543,12 +560,19 @@ app.get("/venues/:venue/balance", async (request, response, next) => {
         and enabled = true
     `;
     const allocatedUsdt = Number(allocatedBudgets[0]?.total ?? 0);
+    const totalFreeUsdt = status.balance?.totalFreeUsdt ?? 0;
 
     response.json({
       venue,
-      totalFreeUsdt: balance.totalFreeUsdt,
+      label: status.label,
+      mode: status.mode,
+      configured: status.configured,
+      connected: status.connected,
+      checkedAt: status.checkedAt,
+      error: status.error,
+      totalFreeUsdt,
       allocatedUsdt,
-      availableUsdt: Math.max(0, balance.totalFreeUsdt - allocatedUsdt)
+      availableUsdt: Math.max(0, totalFreeUsdt - allocatedUsdt)
     });
   } catch (error) {
     next(error);
