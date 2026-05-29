@@ -1049,12 +1049,10 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
     const load = async () => {
       setDataLoaded(false);
       setError(null);
-      const initialVenue = formData.venue;
 
-      const [promptsRes, modelsRes, symbolsRes, botRes, traderPromptsRes, numbersRes, appSettingsRes] = await Promise.all([
+      const [promptsRes, modelsRes, botRes, traderPromptsRes, numbersRes, appSettingsRes] = await Promise.all([
         safeFetch<Prompt[]>("/api/prompts"),
         safeFetch<Model[]>("/api/models"),
-        safeFetch<SymbolResponse>(`/api/venues/${initialVenue}/symbols`, { timeoutMs: 25000 }),
         mode === "edit" && botId ? safeFetch<BotSetup>(`/api/bots/${botId}`) : Promise.resolve({ data: null, error: null }),
         safeFetch<TraderPrompt[]>("/api/trader-prompts"),
         safeFetch<{ nextBotNumber: number; nextResearchPromptNumber: number; nextTraderPromptNumber: number }>("/api/next-numbers"),
@@ -1075,14 +1073,10 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       const mergedAppSettings = mergeAppSettings(appSettingsRes.data ?? DEFAULT_APP_SETTINGS);
       setAppSettings(mergedAppSettings);
 
-      const resolvedSymbols: string[] = symbolsRes.data?.symbols ?? [];
-      if (resolvedSymbols.length > 0) setSymbols(resolvedSymbols);
-
       if (cancelled) return;
 
       const errors: string[] = [];
       if (loadedModels.length === 0) errors.push("models");
-      if (resolvedSymbols.length === 0) errors.push("symbols");
       if (mode === "edit" && botId && !botRes.data) errors.push("bot config");
 
       if (errors.length) {
