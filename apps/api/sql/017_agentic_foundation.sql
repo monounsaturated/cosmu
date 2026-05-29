@@ -3,7 +3,7 @@
 
 create table if not exists agent_steps (
   id uuid primary key default gen_random_uuid(),
-  scope_type text not null check (scope_type in ('light_run', 'research_experiment', 'paper_bot_run', 'pro_run')),
+  scope_type text not null check (scope_type in ('bot_run', 'research')),
   scope_id uuid not null,
   agent_key text not null,
   agent_label text not null,
@@ -30,8 +30,8 @@ create table if not exists research_experiments (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   hypothesis text not null,
-  status text not null check (status in ('draft', 'running', 'rejected', 'paper_candidate', 'live_candidate')) default 'draft',
-  promotion_status text not null check (promotion_status in ('none', 'paper_auto', 'live_pending_approval', 'live_approved', 'live_rejected')) default 'none',
+  status text not null check (status in ('draft', 'running', 'rejected', 'candidate')) default 'draft',
+  progress_status text not null check (progress_status in ('none', 'candidate_created', 'bot_created', 'rejected')) default 'none',
   plan_json jsonb,
   result_json jsonb,
   skeptic_verdict text,
@@ -59,10 +59,11 @@ create table if not exists research_candidates (
   id uuid primary key default gen_random_uuid(),
   experiment_id uuid not null references research_experiments(id) on delete cascade,
   name text not null,
-  status text not null check (status in ('paper_ready', 'paper_running', 'paper_rejected', 'live_candidate')) default 'paper_ready',
+  status text not null check (status in ('ready', 'bot_created', 'rejected')) default 'ready',
   thesis text not null,
   metrics jsonb,
   risk_notes text,
+  bot_id uuid references bots(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -70,7 +71,7 @@ create table if not exists research_candidates (
 create index if not exists research_candidates_experiment_idx on research_candidates (experiment_id, created_at desc);
 create index if not exists research_candidates_status_idx on research_candidates (status, updated_at desc);
 
-create table if not exists paper_bot_runs (
+create table if not exists research_bot_runs (
   id uuid primary key default gen_random_uuid(),
   candidate_id uuid not null references research_candidates(id) on delete cascade,
   status text not null check (status in ('running', 'success', 'failure', 'rejected')) default 'running',
@@ -82,7 +83,7 @@ create table if not exists paper_bot_runs (
   created_at timestamptz not null default now()
 );
 
-create index if not exists paper_bot_runs_candidate_idx on paper_bot_runs (candidate_id, created_at desc);
+create index if not exists research_bot_runs_candidate_idx on research_bot_runs (candidate_id, created_at desc);
 
 create table if not exists lessons (
   id uuid primary key default gen_random_uuid(),
@@ -101,7 +102,7 @@ create index if not exists lessons_scope_idx on lessons (scope_type, scope_key, 
 
 create table if not exists approval_requests (
   id uuid primary key default gen_random_uuid(),
-  request_type text not null check (request_type in ('live_promotion', 'dangerous_action', 'connector_permission')),
+  request_type text not null check (request_type in ('dangerous_action', 'connector_permission')),
   status text not null check (status in ('pending', 'approved', 'rejected', 'cancelled')) default 'pending',
   title text not null,
   body text,

@@ -120,7 +120,7 @@ export const runResearchExperiment = async (experimentId: string) => {
             "unstable signal across regimes",
             "result disappears after costs"
           ],
-          liveEligible: false
+          executionEligible: false
         };
         return {
           outputText: `Planned venue-scoped research for ${plan.universe.join(", ")} using ${dataKinds.join(", ")} data.`,
@@ -176,14 +176,14 @@ export const runResearchExperiment = async (experimentId: string) => {
           dataKinds.includes("polymarket") && "odds change, liquidity, spread, event resolution horizon"
         ].filter(Boolean);
         return {
-          outputText: `Drafted ${features.length} feature family/families. No live eligibility without backtest evidence.`,
+          outputText: `Drafted ${features.length} feature family/families. No execution eligibility without backtest evidence.`,
           outputJson: {
             features,
             executionAssumptions: {
               feesIncluded: true,
               slippageIncluded: true,
               latencySensitive: false,
-              liveEligible: false
+              executionEligible: false
             }
           }
         };
@@ -197,9 +197,9 @@ export const runResearchExperiment = async (experimentId: string) => {
       { planner, dataScout, featureBuilder },
       async () => {
         const riskFlags = [
-          "No backtest has run yet, so this is not live eligible.",
+          "No backtest has run yet, so execution remains blocked.",
           "Multiple-testing risk must be tracked, especially for exotic data.",
-          "Out-of-sample or walk-forward evidence is required before promotion.",
+          "Out-of-sample or walk-forward evidence is required before enabling execution.",
           "Costs and slippage must be included before comparing candidates."
         ];
         const verdict = experiment.hypothesis.trim().length < 20 ? "reject_too_vague" : "research_only";
@@ -209,7 +209,7 @@ export const runResearchExperiment = async (experimentId: string) => {
             : "Rejected: hypothesis is too vague to test safely.",
           outputJson: {
             verdict,
-            liveEligible: false,
+            executionEligible: false,
             riskFlags
           }
         };
@@ -225,9 +225,9 @@ export const runResearchExperiment = async (experimentId: string) => {
           metrics: {
             evidenceLevel: "hypothesis_only",
             backtestStatus: "not_run",
-            liveEligible: false
+            executionEligible: false
           },
-          riskNotes: "Auto-created by Research v1. Requires backtest and skeptic pass before live approval."
+          riskNotes: "Auto-created by Research v1. Requires backtest and skeptic pass before execution is enabled."
         })
       : null;
 
@@ -243,17 +243,17 @@ export const runResearchExperiment = async (experimentId: string) => {
         outputJson: {
           candidate,
           nextActions: candidate
-            ? ["run_backtest", "collect_more_data", "keep_live_blocked"]
+            ? ["run_backtest", "collect_more_data", "keep_execution_blocked"]
             : ["rewrite_hypothesis"],
-          liveEligible: false
+          executionEligible: false
         }
       })
     );
 
     const updated = await updateResearchExperiment({
       id: experimentId,
-      status: candidate ? "paper_candidate" : "rejected",
-      promotionStatus: candidate ? "paper_auto" : "none",
+      status: candidate ? "candidate" : "rejected",
+      progressStatus: candidate ? "candidate_created" : "none",
       planJson: planner,
       resultJson: summary,
       skepticVerdict: String(skeptic.verdict ?? "unknown")

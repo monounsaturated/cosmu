@@ -93,7 +93,7 @@ create table if not exists evaluation_jobs (
   spec_id uuid not null references experiment_specs(id) on delete cascade,
   engine_run_id uuid references research_engine_runs(id) on delete set null,
   status text not null check (status in ('queued', 'running', 'success', 'failure', 'cancelled')) default 'queued',
-  kind text not null check (kind in ('paper_backtest', 'ml_validation')) default 'paper_backtest',
+  kind text not null check (kind in ('backtest', 'ml_validation')) default 'backtest',
   dataset_version_ids jsonb not null default '[]'::jsonb,
   config_json jsonb not null default '{}'::jsonb,
   result_id uuid,
@@ -124,7 +124,7 @@ alter table evaluation_jobs
   add constraint evaluation_jobs_result_id_fkey
   foreign key (result_id) references evaluation_results(id) on delete set null;
 
-create table if not exists paper_portfolios (
+create table if not exists simulation_portfolios (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references research_sessions(id) on delete cascade,
   evaluation_result_id uuid references evaluation_results(id) on delete set null,
@@ -135,11 +135,11 @@ create table if not exists paper_portfolios (
   updated_at timestamptz not null default now()
 );
 
-create index if not exists paper_portfolios_session_idx on paper_portfolios (session_id, created_at desc);
+create index if not exists simulation_portfolios_session_idx on simulation_portfolios (session_id, created_at desc);
 
-create table if not exists paper_trades (
+create table if not exists simulation_trades (
   id uuid primary key default gen_random_uuid(),
-  portfolio_id uuid not null references paper_portfolios(id) on delete cascade,
+  portfolio_id uuid not null references simulation_portfolios(id) on delete cascade,
   symbol text not null,
   side text not null check (side in ('buy', 'sell')),
   quantity numeric(20,8) not null,
@@ -151,7 +151,7 @@ create table if not exists paper_trades (
   created_at timestamptz not null default now()
 );
 
-create index if not exists paper_trades_portfolio_idx on paper_trades (portfolio_id, trade_at asc);
+create index if not exists simulation_trades_portfolio_idx on simulation_trades (portfolio_id, trade_at asc);
 
 create table if not exists research_memories (
   id uuid primary key default gen_random_uuid(),

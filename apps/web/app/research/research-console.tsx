@@ -15,76 +15,16 @@ import type {
 } from "@cosmu/shared";
 import { AgentTimeline } from "../agent-timeline";
 import { LocalTime } from "../local-time";
-
-type Props = {
-  initialCommand?: string;
-  initialDataSources: ResearchDataSource[];
-  initialCandidates: ResearchCandidate[];
-  initialDatasets: Dataset[];
-  initialSessions: ResearchSession[];
-};
-
-type CandidateAction = "create-bot";
-
-type ModelProfile = {
-  id: string;
-  name: string;
-  provider: string;
-  model: string;
-};
-
-const DATA_SOURCE_KINDS: ResearchDataSource["kind"][] = [
-  "market",
-  "news",
-  "web",
-  "social",
-  "weather",
-  "astro",
-  "tradingview",
-  "csv",
-  "custom_api",
-  "ibkr",
-  "polymarket"
-];
-
-const RESEARCH_TOOL_OPTIONS = [
-  { id: "web_search", label: "Web search" },
-  { id: "x_search", label: "X search" },
-  { id: "market_data", label: "Market data" },
-  { id: "backtest", label: "Backtest" }
-];
-
-const statusBadge = (status: string) => {
-  if (status.includes("candidate") || status.includes("ready") || status.includes("success")) return "badge-success";
-  if (status.includes("rejected") || status.includes("failure")) return "badge-failure";
-  if (status.includes("running") || status.includes("queued")) return "badge-running";
-  return "badge-neutral";
-};
-
-const candidateStatusLabel = (status: ResearchCandidate["status"]) => {
-  if (status === "paper_ready") return "ready";
-  if (status === "paper_running") return "bot created";
-  if (status === "paper_rejected") return "rejected";
-  if (status === "live_candidate") return "promoted";
-  return status;
-};
-
-const formatMetricValue = (value: unknown): string => {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "number") return Number.isFinite(value) ? value.toFixed(2) : "—";
-  if (typeof value === "boolean") return value ? "yes" : "no";
-  if (typeof value === "string") return value;
-  return JSON.stringify(value);
-};
-
-const HIDDEN_METRIC_KEYS = new Set(["paperBotId", "paperBotStatus", "venueBotId", "venueBotStatus"]);
-
-const candidateMetrics = (candidate: ResearchCandidate): Array<[string, string]> => {
-  if (!candidate.metrics || typeof candidate.metrics !== "object") return [];
-  return Object.entries(candidate.metrics as Record<string, unknown>)
-    .filter(([key]) => !HIDDEN_METRIC_KEYS.has(key))
-    .map(([key, value]) => [key, formatMetricValue(value)]);
-};
+import {
+  DATA_SOURCE_KINDS,
+  RESEARCH_TOOL_OPTIONS,
+  candidateMetrics,
+  candidateStatusLabel,
+  statusBadge,
+  type CandidateAction,
+  type ModelProfile,
+  type Props
+} from "./research-constants";
 
 export function ResearchConsole({
   initialCommand = "",
@@ -451,12 +391,11 @@ export function ResearchConsole({
         current.map((item) =>
           item.id === candidate.id
             ? {
-                ...item,
-                status: "paper_running",
+              ...item,
+                status: "bot_created",
+                botId: data.botId,
                 metrics: {
                   ...((item.metrics ?? {}) as Record<string, unknown>),
-                  paperBotId: data.botId,
-                  paperBotStatus: "created_testnet_disabled",
                   venueBotId: data.botId,
                   venueBotStatus: "created_disabled",
                   venue: data.venue ?? "binance-testnet"
@@ -863,8 +802,8 @@ export function ResearchConsole({
             const metrics = candidateMetrics(candidate);
             const feedback = actionFeedback?.id === candidate.id ? actionFeedback : null;
             const isCreateBotPending = pendingCandidate?.id === candidate.id && pendingCandidate.action === "create-bot";
-            const hasVenueBot = Boolean((candidate.metrics as { paperBotId?: string; venueBotId?: string } | null)?.venueBotId
-              ?? (candidate.metrics as { paperBotId?: string } | null)?.paperBotId);
+            const hasVenueBot = Boolean(candidate.botId
+              ?? (candidate.metrics as { venueBotId?: string } | null)?.venueBotId);
             return (
               <div key={candidate.id} className="candidate-card">
                 <div className="candidate-card-head">

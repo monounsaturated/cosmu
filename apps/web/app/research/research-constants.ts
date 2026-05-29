@@ -52,10 +52,9 @@ export const statusBadge = (status: string) => {
 };
 
 export const candidateStatusLabel = (status: ResearchCandidate["status"]) => {
-  if (status === "paper_ready") return "ready";
-  if (status === "paper_running") return "bot created";
-  if (status === "paper_rejected") return "rejected";
-  if (status === "live_candidate") return "promoted";
+  if (status === "ready") return "ready";
+  if (status === "bot_created") return "bot created";
+  if (status === "rejected") return "rejected";
   return status;
 };
 
@@ -67,7 +66,7 @@ const formatMetricValue = (value: unknown): string => {
   return JSON.stringify(value);
 };
 
-const HIDDEN_METRIC_KEYS = new Set(["paperBotId", "paperBotStatus", "venueBotId", "venueBotStatus"]);
+const HIDDEN_METRIC_KEYS = new Set(["venueBotId", "venueBotStatus"]);
 
 export const candidateMetrics = (candidate: ResearchCandidate): Array<[string, string]> => {
   if (!candidate.metrics || typeof candidate.metrics !== "object") return [];

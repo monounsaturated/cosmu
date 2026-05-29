@@ -10,7 +10,7 @@
     "build:all": "pnpm -r build",
     "build:railway": "pnpm --filter @cosmu/shared build && pnpm --filter @cosmu/api build",
     "db:reset:local": "node scripts/reset-local-db.mjs",
-    "dev": "pnpm --parallel --filter @cosmu/api --filter @cosmu/web dev",
+    "dev": "pnpm --filter @cosmu/shared build && pnpm --parallel --filter @cosmu/shared --filter @cosmu/api --filter @cosmu/web dev",
     "start": "pnpm --filter @cosmu/api start",
     "start:api": "pnpm --filter @cosmu/api start",
     "start:web": "pnpm --filter @cosmu/web start",

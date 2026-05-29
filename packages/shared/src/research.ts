@@ -5,15 +5,13 @@ export const researchExperimentStatusSchema = z.enum([
   "draft",
   "running",
   "rejected",
-  "paper_candidate",
-  "live_candidate"
+  "candidate"
 ]);
-export const promotionStatusSchema = z.enum([
+export const researchProgressStatusSchema = z.enum([
   "none",
-  "paper_auto",
-  "live_pending_approval",
-  "live_approved",
-  "live_rejected"
+  "candidate_created",
+  "bot_created",
+  "rejected"
 ]);
 export const dataSourceKindSchema = z.enum([
   "market",
@@ -56,7 +54,7 @@ export const researchExperimentSchema = z.object({
   title: z.string(),
   hypothesis: z.string(),
   status: researchExperimentStatusSchema,
-  promotionStatus: promotionStatusSchema,
+  progressStatus: researchProgressStatusSchema,
   planJson: z.unknown().nullable(),
   resultJson: z.unknown().nullable(),
   skepticVerdict: z.string().nullable(),
@@ -70,11 +68,11 @@ export const researchCandidateSchema = z.object({
   id: z.string().uuid(),
   experimentId: z.string().uuid(),
   name: z.string(),
-  status: z.enum(["paper_ready", "paper_running", "paper_rejected", "live_candidate"]),
+  status: z.enum(["ready", "bot_created", "rejected"]),
   thesis: z.string(),
   metrics: z.unknown().nullable(),
   riskNotes: z.string().nullable(),
-  promotedBotId: z.string().uuid().nullable().default(null),
+  botId: z.string().uuid().nullable().default(null),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime()
 });

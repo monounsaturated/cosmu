@@ -97,7 +97,6 @@ export {
   createResearchCandidate,
   getResearchCandidate,
   setCandidateVenueBot,
-  setCandidatePaperBot,
   listResearchCandidates
 } from "./research.js";
 

@@ -22,8 +22,8 @@ type ResearchDataSourceRow = Omit<ResearchDataSource, "createdAt" | "updatedAt" 
   lastCheckedAt: Date | null;
 };
 
-type ResearchCandidateRow = Omit<ResearchCandidate, "createdAt" | "updatedAt" | "promotedBotId"> & {
-  promotedBotId: string | null;
+type ResearchCandidateRow = Omit<ResearchCandidate, "createdAt" | "updatedAt" | "botId"> & {
+  botId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -47,7 +47,7 @@ const mapDataSource = (row: ResearchDataSourceRow): ResearchDataSource => ({
 const mapCandidate = (row: ResearchCandidateRow): ResearchCandidate => ({
   ...row,
   metrics: row.metrics == null ? null : parseJson(row.metrics),
-  promotedBotId: row.promotedBotId ?? null,
+  botId: row.botId ?? null,
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString()
 });
@@ -57,14 +57,14 @@ export const createResearchExperiment = async (input: {
   hypothesis: string;
 }) => {
   const [row] = await sql<ResearchExperimentRow[]>`
-    insert into research_experiments (title, hypothesis, status, promotion_status)
+    insert into research_experiments (title, hypothesis, status, progress_status)
     values (${input.title}, ${input.hypothesis}, 'draft', 'none')
     returning
       id,
       title,
       hypothesis,
       status,
-      promotion_status as "promotionStatus",
+      progress_status as "progressStatus",
       plan_json as "planJson",
       result_json as "resultJson",
       skeptic_verdict as "skepticVerdict",
@@ -77,7 +77,7 @@ export const createResearchExperiment = async (input: {
 export const updateResearchExperiment = async (input: {
   id: string;
   status?: ResearchExperiment["status"];
-  promotionStatus?: ResearchExperiment["promotionStatus"];
+  progressStatus?: ResearchExperiment["progressStatus"];
   planJson?: unknown;
   resultJson?: unknown;
   skepticVerdict?: string | null;
@@ -85,7 +85,7 @@ export const updateResearchExperiment = async (input: {
   const [row] = await sql<ResearchExperimentRow[]>`
     update research_experiments
     set status = coalesce(${input.status ?? null}, status),
-        promotion_status = coalesce(${input.promotionStatus ?? null}, promotion_status),
+        progress_status = coalesce(${input.progressStatus ?? null}, progress_status),
         plan_json = coalesce(${sql.json((input.planJson ?? null) as JsonValue)}, plan_json),
         result_json = coalesce(${sql.json((input.resultJson ?? null) as JsonValue)}, result_json),
         skeptic_verdict = coalesce(${input.skepticVerdict ?? null}, skeptic_verdict),
@@ -96,7 +96,7 @@ export const updateResearchExperiment = async (input: {
       title,
       hypothesis,
       status,
-      promotion_status as "promotionStatus",
+      progress_status as "progressStatus",
       plan_json as "planJson",
       result_json as "resultJson",
       skeptic_verdict as "skepticVerdict",
@@ -113,7 +113,7 @@ export const getResearchExperiment = async (id: string) => {
       title,
       hypothesis,
       status,
-      promotion_status as "promotionStatus",
+      progress_status as "progressStatus",
       plan_json as "planJson",
       result_json as "resultJson",
       skeptic_verdict as "skepticVerdict",
@@ -132,7 +132,7 @@ export const listResearchExperiments = async (limit = 50) => {
       title,
       hypothesis,
       status,
-      promotion_status as "promotionStatus",
+      progress_status as "progressStatus",
       plan_json as "planJson",
       result_json as "resultJson",
       skeptic_verdict as "skepticVerdict",
@@ -231,7 +231,7 @@ export const createResearchCandidate = async (input: {
   const [row] = await sql<ResearchCandidateRow[]>`
     insert into research_candidates (experiment_id, name, status, thesis, metrics, risk_notes)
     values (
-      ${input.experimentId}, ${input.name}, 'paper_ready', ${input.thesis},
+      ${input.experimentId}, ${input.name}, 'ready', ${input.thesis},
       ${sql.json((input.metrics ?? null) as JsonValue)}, ${input.riskNotes ?? null}
     )
     returning
@@ -242,7 +242,7 @@ export const createResearchCandidate = async (input: {
       thesis,
       metrics,
       risk_notes as "riskNotes",
-      promoted_bot_id::text as "promotedBotId",
+      bot_id::text as "botId",
       created_at as "createdAt",
       updated_at as "updatedAt"
   `;
@@ -259,7 +259,7 @@ export const getResearchCandidate = async (id: string) => {
       thesis,
       metrics,
       risk_notes as "riskNotes",
-      promoted_bot_id::text as "promotedBotId",
+      bot_id::text as "botId",
       created_at as "createdAt",
       updated_at as "updatedAt"
     from research_candidates
@@ -268,23 +268,12 @@ export const getResearchCandidate = async (id: string) => {
   return row ? mapCandidate(row) : null;
 };
 
-export const setCandidatePromotedBot = async (input: { candidateId: string; botId: string }) => {
-  await sql`
-    update research_candidates
-    set promoted_bot_id = ${input.botId},
-        status = 'live_candidate',
-        updated_at = now()
-    where id = ${input.candidateId}
-  `;
-};
-
 export const setCandidateVenueBot = async (input: { candidateId: string; botId: string; venue?: string }) => {
   await sql`
     update research_candidates
-    set status = 'paper_running',
+    set bot_id = ${input.botId},
+        status = 'bot_created',
         metrics = coalesce(metrics, '{}'::jsonb) || jsonb_build_object(
-          'paperBotId', ${input.botId}::text,
-          'paperBotStatus', 'created_testnet_disabled',
           'venueBotId', ${input.botId}::text,
           'venueBotStatus', 'created_disabled',
           'venue', ${input.venue ?? "binance-testnet"}
@@ -293,8 +282,6 @@ export const setCandidateVenueBot = async (input: { candidateId: string; botId: 
     where id = ${input.candidateId}
   `;
 };
-
-export const setCandidatePaperBot = setCandidateVenueBot;
 
 export const listResearchCandidates = async (limit = 50) => {
   const rows = await sql<ResearchCandidateRow[]>`
@@ -306,7 +293,7 @@ export const listResearchCandidates = async (limit = 50) => {
       thesis,
       metrics,
       risk_notes as "riskNotes",
-      promoted_bot_id::text as "promotedBotId",
+      bot_id::text as "botId",
       created_at as "createdAt",
       updated_at as "updatedAt"
     from research_candidates

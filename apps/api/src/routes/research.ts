@@ -54,14 +54,12 @@ const titleFromHypothesis = (hypothesis: string) => {
 
 researchRouter.get("/research/page-data", async (_request, response, next) => {
   try {
-    const [experiments, dataSources, candidates, datasets, sessions, memories] = await Promise.all([
-      listResearchExperiments(),
-      listResearchDataSources(),
-      listResearchCandidates(),
-      listDatasets(),
-      listResearchSessions(),
-      listResearchMemories()
-    ]);
+    const experiments = await listResearchExperiments();
+    const dataSources = await listResearchDataSources();
+    const candidates = await listResearchCandidates();
+    const datasets = await listDatasets();
+    const sessions = await listResearchSessions();
+    const memories = await listResearchMemories();
     response.json({ experiments, dataSources, candidates, datasets, sessions, memories });
   } catch (error) {
     next(error);
@@ -525,13 +523,10 @@ const createCandidateVenueBot = async (candidateId: string) => {
   if (!candidate) {
     return { status: 404, body: { error: "Candidate not found" } };
   }
-  const existingBotId = (candidate.metrics as { paperBotId?: string; venueBotId?: string } | null)?.venueBotId
-    ?? (candidate.metrics as { paperBotId?: string } | null)?.paperBotId;
+  const existingBotId = (candidate.metrics as { venueBotId?: string } | null)?.venueBotId
+    ?? candidate.botId;
   if (existingBotId) {
     return { status: 409, body: { error: "Research bot already exists for this candidate", botId: existingBotId } };
-  }
-  if (candidate.promotedBotId) {
-    return { status: 409, body: { error: "Candidate is already promoted", botId: candidate.promotedBotId } };
   }
 
   const prompt = await getLatestResearchPromptVersion();
@@ -570,7 +565,7 @@ const createCandidateVenueBot = async (candidateId: string) => {
   });
 
   await setCandidateVenueBot({ candidateId: candidate.id, botId, venue });
-  await updateResearchExperiment({ id: candidate.experimentId, promotionStatus: "paper_auto" });
+  await updateResearchExperiment({ id: candidate.experimentId, progressStatus: "bot_created" });
   return { status: 200, body: { ok: true, botId, venue } };
 };
 
