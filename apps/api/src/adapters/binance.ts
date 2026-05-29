@@ -671,7 +671,7 @@ export const validateTradability = async (
     ...order,
     symbol,
     quantity,
-    limitPrice: order.limitPrice ? roundToStep(order.limitPrice, rules.tickSize) : null,
+    limitPrice: order.limitPrice ? roundToTick(order.limitPrice, rules.tickSize) : null,
     stopLossPrice: order.stopLossPrice ? roundToTick(order.stopLossPrice, rules.tickSize) : null,
     takeProfitPrice: order.takeProfitPrice ? roundToTick(order.takeProfitPrice, rules.tickSize) : null
   };

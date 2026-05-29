@@ -330,11 +330,12 @@ export const ensureBotSchedulerSchema = async () => {
   await sql`
     update bot_runtime_configs
     set next_run_at = case
-      when last_run_started_at is not null then greatest(now(), last_run_started_at + make_interval(secs => frequency_minutes * 60))
       when last_run_finished_at is not null then greatest(now(), last_run_finished_at + make_interval(secs => frequency_minutes * 60))
+      when last_run_started_at is not null then greatest(now(), last_run_started_at + make_interval(secs => frequency_minutes * 60))
       else created_at
     end
-    where next_run_at is null
+    where enabled = true
+      and next_run_at is null
   `;
 
   const [index] = await sql<{ exists: boolean }[]>`
@@ -359,20 +360,27 @@ export const ensureBotSchedulerSchema = async () => {
 /**
  * Atomically claim the current scheduled run for this bot.
  *
- * Returns true if we won the race and the run should proceed, false if another
- * tick/source already claimed this cycle. Dedup is enforced by moving `next_run_at` forward in the
- * same update that records the claim, so two ticks firing together can only win
- * once.
+ * Returns true if the run should proceed, false if another source already
+ * claimed this cycle or a scheduled run is not due yet. A claim clears
+ * `next_run_at` while the run is active; `finishRun` schedules the next cadence
+ * from the finish timestamp. If the process dies mid-run, the stale-start guard
+ * below lets a later tick recover it after 30 minutes.
  */
-export const claimRun = async (runtimeConfigId: string): Promise<boolean> => {
+export const claimRun = async (
+  runtimeConfigId: string,
+  options: { force?: boolean } = {}
+): Promise<boolean> => {
+  const force = options.force ?? false;
   const rows = await sql<{ id: string }[]>`
     update bot_runtime_configs
     set last_run_started_at = now(),
-        next_run_at = now() + make_interval(secs => frequency_minutes * 60),
+        next_run_at = null,
         updated_at = now()
     where id = ${runtimeConfigId}
       and enabled = true
       and (
+        ${force}
+        or
         next_run_at is null
         or next_run_at <= now()
       )
@@ -513,11 +521,7 @@ export const updateBotConfig = async (
   if (input.runtimeConfig !== undefined) {
     await sql`
       update bot_runtime_configs
-      set next_run_at = case
-            when last_run_started_at is not null then greatest(now(), last_run_started_at + make_interval(secs => ${input.runtimeConfig.frequencyMinutes * 60}))
-            when last_run_finished_at is not null then greatest(now(), last_run_finished_at + make_interval(secs => ${input.runtimeConfig.frequencyMinutes * 60}))
-            else now()
-          end,
+      set next_run_at = now(),
           updated_at = now()
       where bot_id = ${botId}
         and enabled = true

@@ -7,7 +7,8 @@ set next_run_at = case
   when last_run_started_at is not null then last_run_started_at + make_interval(secs => frequency_minutes * 60)
   else created_at
 end
-where next_run_at is null;
+where enabled = true
+  and next_run_at is null;
 
 create index if not exists bot_runtime_configs_due_idx
   on bot_runtime_configs (enabled, next_run_at)

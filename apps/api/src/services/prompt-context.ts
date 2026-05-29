@@ -20,45 +20,22 @@ const heading = (label: string | undefined, fallback: string) =>
 
 export const DEFAULT_NON_NEGOTIABLE_CONSTRAINTS_BLOCK = [
   "---",
-  "NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):",
-  "• Every BUY order MUST include stopLossPrice (strictly below entry) AND takeProfitPrice (strictly above entry).",
-  "  The entry reference is the currentPrice returned by `binance_symbol_lookup` for that symbol — NOT any price mentioned in the upstream research.",
-  "  After a buy fills, an OCO SELL is automatically placed at those two levels. Buys missing SL/TP, or with SL/TP on the wrong side of currentPrice, are silently dropped.",
-  "• For SELL orders: set stopLossPrice and takeProfitPrice to null.",
-  "• Never place a buy for a symbol you have not verified tradable via `binance_symbol_lookup` in this turn. If tradable:false, drop that candidate.",
-  "• No defensible trade? Return mode='hold' with an empty orders array.",
-  "• Final reply (after all tool calls) MUST be one JSON object matching TradingDecision — no markdown fences, no prose outside the JSON."
+  "HARD RULES:",
+  "- Buy only symbols verified this turn with binance_symbol_lookup; use its canonical symbol and currentPrice.",
+  "- BUY: stopLossPrice < currentPrice and takeProfitPrice > currentPrice. SELL: both null.",
+  "- If no valid trade survives, return hold with orders: [].",
+  "- Final answer: one TradingDecision JSON object, no markdown or prose."
 ].join("\n");
 
 // System prelude removed — the user's written prompt is now the entire system prompt for research.
 
 export const DEFAULT_FORMATTER_BODY = [
-  "You are the execution stage (phase 2) for one autonomous Binance spot bot. On Binance live (France), USDT pairs are NOT available — every order must be a USDC pair. On testnet/dev, both USDT and USDC pairs are tradable. Either way, treat USDT and USDC at 1:1 as cash.",
-  "",
-  "You have a tool available: `binance_symbol_lookup(symbols: string[])`. Pass bare bases ('NEIRO') or full pairs ('BTCUSDC'); the tool returns the best tradable stable-quoted pair allowed for this venue (USDC-only on live, USDC-preferred elsewhere). ALWAYS use the canonical `symbol` from the response when placing the order — e.g. if you asked for 'NEIRO' and got back {symbol:'NEIROUSDC'}, your order.symbol must be 'NEIROUSDC'. Pass ONLY the specific tickers you are considering; one call with up to 10 symbols is enough — do not waste iterations.",
-  "",
-  "Inputs (in the user message):",
-  "- UPSTREAM RESEARCH: qualitative thesis from phase 1. Symbols may be informal or mis-spelled; normalize to bases and let the lookup pick USDT or USDC. Any price figures mentioned there may be stale or wrong — ignore them and use currentPrice from the tool.",
-  "- SESSION / EXECUTION RULES / WALLET / AUTHORIZED PAIRS: hard facts — never contradict them.",
-  "- (No live prices are pre-injected. Always fetch via the tool.)",
-  "",
-  "Workflow:",
-  "1. Read the research output and list the candidate bases.",
-  "2. If the bot has an AUTHORIZED PAIRS list, discard candidates not in it.",
-  "3. Call `binance_symbol_lookup` once with the surviving candidates.",
-  "4. Drop any returned with tradable:false.",
-  "5. For each remaining symbol, use the canonical `symbol` returned (may be USDT or USDC). Size orders with the tool's currentPrice. Compute stopLossPrice strictly below and takeProfitPrice strictly above that price, respecting tickSize.",
-  "6. Respect wallet + execution caps. Prefer fewer, higher-conviction orders.",
-  "7. If after all filtering no order survives, return mode='hold' with orders: [].",
-  "",
-  "Output: exactly one JSON object (no markdown fences, no prose) matching TradingDecision:",
-  '- mode: one of "rebalance" | "enter" | "exit" | "hold" | "adjust".',
-  "- rationaleSummary: <=600 chars, decision-grade summary.",
-  "- globalRationale: <=4000 chars tying research + tool-returned facts to orders (or explaining why flat).",
-  "- confidence: number in [0,1].",
-  "- timeHorizon: short string or null.",
-  "- orders: array. Each: symbol, side buy|sell, type market|limit, quantity (>0), limitPrice (null unless limit), stopLossPrice, takeProfitPrice, rationale. If execution rules are enforced, respect the max orders/run and max notional/order stated above; otherwise size the basket yourself.",
-  "- targetAllocations: usually []."
+  "You are phase 2 for one Binance spot bot. Convert the research text into a valid TradingDecision JSON object.",
+  "Live Binance uses USDC pairs only. Testnet/dev may use USDT or USDC. Treat USDT and USDC as cash.",
+  "Use binance_symbol_lookup once for the specific tickers you may trade. Use returned currentPrice, tickSize, stepSize, and canonical symbol. Ignore stale prices from research.",
+  "Respect the injected wallet, authorized pairs, order caps, reserve, and allowed order types. Prefer fewer high-conviction orders.",
+  "If nothing is defensible after validation, return mode='hold' with orders: [].",
+  "Output exactly one JSON object with: mode, rationaleSummary, globalRationale, confidence, timeHorizon, orders, targetAllocations."
 ].join("\n");
 
 type HistoryContext = Awaited<ReturnType<typeof getBotPrePromptContext>>;

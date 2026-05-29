@@ -89,11 +89,13 @@ export const markRuntimeRunFinished = async (input: {
   runtimeConfigId: string;
   rescheduleFromFinish?: boolean;
 }) => {
+  const shouldReschedule = input.rescheduleFromFinish ?? true;
   await sql`
     update bot_runtime_configs
     set last_run_finished_at = now(),
         next_run_at = case
-          when ${input.rescheduleFromFinish ?? false} then now() + make_interval(secs => frequency_minutes * 60)
+          when enabled = false then null
+          when ${shouldReschedule} then now() + make_interval(secs => frequency_minutes * 60)
           else next_run_at
         end,
         updated_at = now()

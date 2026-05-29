@@ -35,7 +35,8 @@ import {
   computeLogicalBalances,
   buildLogicalSnapshot,
   getHeldSymbols,
-  computeAfterSnapshot
+  computeAfterSnapshot,
+  baseAssetFromSymbol
 } from "../lib/logical-balances.js";
 import {
   runResearchAgent,
@@ -119,19 +120,15 @@ const safeRecordLightStep = async (input: {
 };
 
 export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => {
-  let schedulerClaimed = false;
+  let runtimeClaimed = false;
 
-  // Atomic claim: if another tick/source already started this cycle, bail out
-  // silently. Protects against double-firing from overlapping scheduler sources
-  // (Railway loop, watchdog, or an operator-triggered internal tick).
-  // Manual triggers (Run Now button) bypass the claim to always fire.
-  if (!opts.manual) {
-    const claimed = await claimRun(bot.runtimeConfigId);
-    if (!claimed) {
-      return { runId: null, status: "skipped" as const };
-    }
-    schedulerClaimed = true;
+  // Atomic claim: every run source uses the same DB lock. Manual runs are
+  // allowed before the next scheduled time, but never overlap an active run.
+  const claimed = await claimRun(bot.runtimeConfigId, { force: opts.manual === true });
+  if (!claimed) {
+    return { runId: null, status: "skipped" as const };
   }
+  runtimeClaimed = true;
 
   let runId: string | null = null;
 
@@ -308,8 +305,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
         runId,
         runtimeConfigId: bot.runtimeConfigId,
         status: "failure",
-        errorState: { message: "Decision validation failed", issues: validationResult.issues },
-        rescheduleFromFinish: !schedulerClaimed
+        errorState: { message: "Decision validation failed", issues: validationResult.issues }
       });
       await notifySlack(`Run failed for ${bot.name}: ${validationResult.issues.join("; ")}`);
       return { runId, status: "failure" as const, decision: traderResult.decision };
@@ -358,13 +354,23 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
 
       if (record.side === "buy" && record.stopLossPrice && record.takeProfitPrice) {
         const feeUsd = record.feeUsd ?? 0;
+        const baseAsset = baseAssetFromSymbol(record.symbol);
+        const baseFeeQty =
+          baseAsset && record.feeAsset?.toUpperCase() === baseAsset
+            ? record.feeAmount ?? 0
+            : 0;
+        const positionQty = Math.max(0, qty - baseFeeQty);
+        if (positionQty <= 0) {
+          console.warn(`[run-bot] buy ${record.symbol} filled but net position quantity is ${positionQty}`);
+          continue;
+        }
         const costBasisUsd = qty * price + feeUsd;
         let createdPositionId: string | null = null;
         try {
           const pos = await openPosition({
             botId: bot.id,
             symbol: record.symbol,
-            quantity: qty,
+            quantity: positionQty,
             avgEntryPrice: price,
             costBasisUsd,
             stopLossPrice: record.stopLossPrice,
@@ -384,7 +390,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
           const rules = decisionVenueContext.symbolRules[record.symbol];
           const rawSafety = record.stopLossPrice * (1 - safetyPct);
           const safetyPrice = rules ? roundToTick(rawSafety, rules.tickSize) : rawSafety;
-          const safetyQty = rules ? roundToStep(qty, rules.stepSize) : qty;
+          const safetyQty = rules ? roundToStep(positionQty, rules.stepSize) : positionQty;
           if (safetyPrice > 0 && safetyQty > 0 && (!rules || safetyQty >= rules.minQty)) {
             try {
               const result = await placeSafetyStopOrder({
@@ -458,8 +464,7 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
       runId,
       runtimeConfigId: bot.runtimeConfigId,
       status: runStatus,
-      errorState: hasUncertain ? { message: "At least one execution result is uncertain" } : null,
-      rescheduleFromFinish: !schedulerClaimed
+      errorState: hasUncertain ? { message: "At least one execution result is uncertain" } : null
     });
 
     const tradeSummary = await summarizeTrades(runId);
@@ -498,13 +503,11 @@ export const runBot = async (bot: BotSetup, opts: { manual?: boolean } = {}) => 
         runId,
         runtimeConfigId: bot.runtimeConfigId,
         status: "failure",
-        errorState: { message: errorMessage },
-        rescheduleFromFinish: !schedulerClaimed
+        errorState: { message: errorMessage }
       });
-    } else if (schedulerClaimed) {
+    } else if (runtimeClaimed) {
       await markRuntimeRunFinished({
-        runtimeConfigId: bot.runtimeConfigId,
-        rescheduleFromFinish: false
+        runtimeConfigId: bot.runtimeConfigId
       });
     }
 

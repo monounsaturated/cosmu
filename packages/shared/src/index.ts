@@ -196,12 +196,11 @@ export const DEFAULT_INJECTED_DATA_TEMPLATES = {
     label: "Non-Negotiable Constraints",
     preview: [
       "---",
-      "NON-NEGOTIABLE CONSTRAINTS (enforced in code after your response):",
-      "- Every BUY order MUST include stopLossPrice and takeProfitPrice on the correct side of currentPrice.",
-      "- For SELL orders: set stopLossPrice and takeProfitPrice to null.",
-      "- Never place a buy for a symbol you have not verified tradable via binance_symbol_lookup in this turn.",
-      "- No defensible trade? Return mode='hold' with an empty orders array.",
-      "- Final reply must be one JSON object matching TradingDecision."
+      "HARD RULES:",
+      "- Buy only symbols verified this turn with binance_symbol_lookup; use its canonical symbol and currentPrice.",
+      "- BUY: stopLossPrice < currentPrice and takeProfitPrice > currentPrice. SELL: both null.",
+      "- If no valid trade survives, return hold with orders: [].",
+      "- Final answer: one TradingDecision JSON object, no markdown or prose."
     ].join("\n")
   },
   includeWalletOverview: {

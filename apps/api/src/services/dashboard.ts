@@ -162,6 +162,9 @@ export const getDashboard = async () => {
     const configuredAgents = bots.filter((bot) => bot.mode === account.mode).length;
     const activeAgents = bots.filter((bot) => bot.mode === account.mode && bot.enabled).length;
     const allocatedAmount = allocatedByMode.get(account.mode) ?? 0;
+    const spareAmount = account.connected
+      ? Math.max(0, account.balance - allocatedAmount)
+      : 0;
     const status = account.connected
       ? "connected"
       : configuredAgents > 0
@@ -174,7 +177,7 @@ export const getDashboard = async () => {
       mode: account.mode,
       accountBalance: account.balance,
       allocatedAmount,
-      spareAmount: account.balance - allocatedAmount,
+      spareAmount,
       connected: account.connected,
       configuredAgents,
       activeAgents,
