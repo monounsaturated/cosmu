@@ -7,7 +7,6 @@ import {
   traderConfigSchema
 } from "@cosmu/shared";
 import { sql } from "../../db.js";
-import { netForVenue } from "../../adapters/binance.js";
 import { buildRuntimeConfig, parseJson, parsePromptConfig, parseTraderConfig, type JsonValue } from "./helpers.js";
 
 export type BotSetup = {
@@ -447,11 +446,11 @@ export const createBot = async (input: {
 
   await sql`
     insert into bot_runtime_configs (
-      bot_id, enabled, venue, frequency_minutes, mode, asset_class,
+      bot_id, enabled, venue, frequency_minutes, asset_class,
       budget_usdt, execution_config, context_symbols, next_run_at
     ) values (
       ${bot.id}, ${scheduledEnabled}, ${input.runtimeConfig.venue}, ${input.runtimeConfig.frequencyMinutes},
-      ${netForVenue(input.runtimeConfig.venue)}, ${input.runtimeConfig.assetClass},
+      ${input.runtimeConfig.assetClass},
       ${input.runtimeConfig.budgetUsdt ?? 1000},
       ${sql.json(input.runtimeConfig.execution)},
       ${sql.json(input.runtimeConfig.contextSymbols)},
@@ -498,7 +497,6 @@ export const updateBotConfig = async (
   if (input.runtimeConfig !== undefined) {
     runtimeUpdates.venue = input.runtimeConfig.venue;
     runtimeUpdates.frequency_minutes = input.runtimeConfig.frequencyMinutes;
-    runtimeUpdates.mode = netForVenue(input.runtimeConfig.venue);
     runtimeUpdates.asset_class = input.runtimeConfig.assetClass;
     runtimeUpdates.budget_usdt = input.runtimeConfig.budgetUsdt;
     runtimeUpdates.execution_config = sql.json(input.runtimeConfig.execution);

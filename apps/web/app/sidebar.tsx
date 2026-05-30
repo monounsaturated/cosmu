@@ -14,10 +14,10 @@ import {
   FlaskConical,
   Gauge,
   Radio,
-  Settings,
-  Sparkles
+  Settings
 } from "lucide-react";
 import { defaultFeatureToggles, type AppSettings } from "@cosmu/shared";
+import { CosmuMark } from "./cosmu-mark";
 
 type FeatureToggles = AppSettings["featureToggles"];
 
@@ -97,7 +97,7 @@ export function Sidebar() {
     <>
       <aside className="sidebar-modern">
         <Link href="/" className="sidebar-logo-modern" aria-label="Cosmu home">
-          <span className="sidebar-mark"><Sparkles size={16} /></span>
+          <span className="sidebar-mark"><CosmuMark size={16} /></span>
           <span>
             <strong>cosmu</strong>
             <small>trading agents</small>
