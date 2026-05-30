@@ -29,6 +29,18 @@ import {
   type BotFormModalProps
 } from "./bot-form-constants";
 
+// Module-level cache so reopening the modal is instant. Survives until full reload.
+// Lists are revalidated in the background; symbols are cached per-venue (they change rarely).
+type CatalogCache = {
+  prompts: Prompt[];
+  models: Model[];
+  traderPrompts: TraderPrompt[];
+  appSettings: AppSettings;
+  nextNumbers: { nextBotNumber: number; nextResearchPromptNumber: number; nextTraderPromptNumber: number } | null;
+};
+let catalogCache: CatalogCache | null = null;
+const symbolsCache: Record<string, string[]> = {};
+
 function InjectedPreviewBlock({
   label,
   preview,
@@ -390,12 +402,14 @@ function PromptSection({
 }
 
 export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalProps) {
-  const [prompts, setPrompts] = useState<Prompt[]>([]);
-  const [traderPrompts, setTraderPrompts] = useState<TraderPrompt[]>([]);
-  const [models, setModels] = useState<Model[]>([]);
+  const [prompts, setPrompts] = useState<Prompt[]>(() => catalogCache?.prompts ?? []);
+  const [traderPrompts, setTraderPrompts] = useState<TraderPrompt[]>(() => catalogCache?.traderPrompts ?? []);
+  const [models, setModels] = useState<Model[]>(() => catalogCache?.models ?? []);
   const [symbols, setSymbols] = useState<string[]>([]);
   const [loading, setLoading] = useState(mode === "edit");
   const [dataLoaded, setDataLoaded] = useState(false);
+  // Flips true on the first real user edit so background defaults never overwrite typed input.
+  const dirtyRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadTrigger, setLoadTrigger] = useState(0);
@@ -404,11 +418,11 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   const pairsRef = useRef<HTMLDivElement>(null);
   const [selectedResearchProvider, setSelectedResearchProvider] = useState("xai");
   const [selectedTraderProvider, setSelectedTraderProvider] = useState("xai");
-  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => catalogCache?.appSettings ?? DEFAULT_APP_SETTINGS);
   const [formData, setFormData] = useState(buildDefaultState());
-  const [nextBotNumber, setNextBotNumber] = useState<number | null>(null);
-  const [nextResearchPromptNumber, setNextResearchPromptNumber] = useState<number | null>(null);
-  const [nextTraderPromptNumber, setNextTraderPromptNumber] = useState<number | null>(null);
+  const [nextBotNumber, setNextBotNumber] = useState<number | null>(() => catalogCache?.nextNumbers?.nextBotNumber ?? null);
+  const [nextResearchPromptNumber, setNextResearchPromptNumber] = useState<number | null>(() => catalogCache?.nextNumbers?.nextResearchPromptNumber ?? null);
+  const [nextTraderPromptNumber, setNextTraderPromptNumber] = useState<number | null>(() => catalogCache?.nextNumbers?.nextTraderPromptNumber ?? null);
 
   // Research prompt editor state
   const [researchSavedBody, setResearchSavedBody] = useState<string | null>(null);
@@ -606,6 +620,15 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       const mergedAppSettings = mergeAppSettings(appSettingsRes.data ?? DEFAULT_APP_SETTINGS);
       setAppSettings(mergedAppSettings);
 
+      // Refresh the module cache so the next modal open is instant.
+      catalogCache = {
+        prompts: promptsRes.data ?? catalogCache?.prompts ?? [],
+        models: loadedModels,
+        traderPrompts: traderPromptsRes.data ?? catalogCache?.traderPrompts ?? [],
+        appSettings: mergedAppSettings,
+        nextNumbers: numbersRes.data ?? catalogCache?.nextNumbers ?? null,
+      };
+
       if (cancelled) return;
 
       const errors: string[] = [];
@@ -658,7 +681,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
             ...setup.runtimeConfig.execution
           }
         });
-      } else {
+      } else if (!dirtyRef.current) {
         const settings = mergedAppSettings;
         const researchDefault = settings.agentDefaults.research;
         const traderDefault = settings.agentDefaults.trader;
@@ -705,10 +728,10 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       }
 
       // If trader defaults to "existing" but no saved prompts exist, fall back to "new"
-      if (mode === "create" && (!traderPromptsRes.data || traderPromptsRes.data.filter(tp => tp.latestVersionId).length === 0)) {
+      if (mode === "create" && !dirtyRef.current && (!traderPromptsRes.data || traderPromptsRes.data.filter(tp => tp.latestVersionId).length === 0)) {
         setFormData((cur) => ({ ...cur, traderStrategy: "new" }));
       }
-      if (mode === "create" && (!promptsRes.data || promptsRes.data.filter((p) => p.latestVersionId).length === 0)) {
+      if (mode === "create" && !dirtyRef.current && (!promptsRes.data || promptsRes.data.filter((p) => p.latestVersionId).length === 0)) {
         setFormData((cur) => ({ ...cur, researchStrategy: "new" }));
       }
 
@@ -822,22 +845,29 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
   // Fetch venue readiness and pair universe when venue changes.
   useEffect(() => {
     let cancelled = false;
+    const venue = formData.venue;
     setLoadingBalance(true);
     setVenueBalance(null);
     setVenueConnectionError(null);
     setSymbolLoadError(null);
 
+    // Show cached pairs immediately (they change rarely); the fetch below refreshes them.
+    const cachedSymbols = symbolsCache[venue];
+    if (cachedSymbols?.length) setSymbols(cachedSymbols);
+    else setSymbols([]);
+
     const loadVenue = async () => {
       try {
+        // No `force` — rely on the upstream caches (balance 30s TTL, symbols 24h TTL).
         const [balanceRes, symbolsRes] = await Promise.all([
-          safeFetch<VenueBalance>(`/api/venues/${formData.venue}/balance?force=true`, { timeoutMs: 25000 }),
-          safeFetch<SymbolResponse>(`/api/venues/${formData.venue}/symbols?force=true`, { timeoutMs: 25000 })
+          safeFetch<VenueBalance>(`/api/venues/${venue}/balance`, { timeoutMs: 25000 }),
+          safeFetch<SymbolResponse>(`/api/venues/${venue}/symbols`, { timeoutMs: 25000 })
         ]);
 
         if (cancelled) return;
 
         setVenueBalance(balanceRes.data);
-        const venueLabel = VENUE_LABELS[formData.venue] ?? formData.venue;
+        const venueLabel = VENUE_LABELS[venue] ?? venue;
         const backendError = balanceRes.data?.error ?? balanceRes.error;
         setVenueConnectionError(
           balanceRes.data?.connected
@@ -848,9 +878,10 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
         const nextSymbols = symbolsRes.data?.symbols ?? [];
 
         if (nextSymbols.length) {
+          symbolsCache[venue] = nextSymbols;
           setSymbols(nextSymbols);
           setSymbolLoadError(null);
-        } else {
+        } else if (!symbolsCache[venue]?.length) {
           setSymbols([]);
           setSymbolLoadError(symbolsRes.error ?? "Pair list failed to load");
         }
@@ -916,6 +947,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
 
   const toggleSymbol = (symbol: string) => {
     if (formData.symbolScope === "all") return;
+    dirtyRef.current = true;
     setFormData((cur) => ({
       ...cur,
       contextSymbols: cur.contextSymbols.includes(symbol)
@@ -1100,7 +1132,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
       {loading ? (
         <p className="muted">Loading configuration...</p>
       ) : (
-        <form className="modal-form" onSubmit={handleSubmit}>
+        <form className="modal-form" onSubmit={handleSubmit} onChange={() => { dirtyRef.current = true; }} onInput={() => { dirtyRef.current = true; }}>
 
             {/* ── Core Settings ── */}
             <div className="form-section">
@@ -1163,6 +1195,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                         className={`segmented-option ${formData.symbolScope === "all" ? "segmented-option-active" : ""}`}
                         aria-pressed={formData.symbolScope === "all"}
                         onClick={() => {
+                          dirtyRef.current = true;
                           setPairsOpen(false);
                           setSymbolSearch("");
                           setFormData((cur) => ({ ...cur, symbolScope: "all", contextSymbols: [] }));
@@ -1175,6 +1208,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                         className={`segmented-option ${formData.symbolScope === "selected" ? "segmented-option-active" : ""}`}
                         aria-pressed={formData.symbolScope === "selected"}
                         onClick={() => {
+                          dirtyRef.current = true;
                           setFormData((cur) => ({ ...cur, symbolScope: "selected" }));
                           setPairsOpen(true);
                         }}
@@ -1295,7 +1329,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 phase="research"
                 phaseColor="#60a5fa"
                 strategy={formData.researchStrategy}
-                onStrategyChange={(s) => setFormData((cur) => ({ ...cur, researchStrategy: s }))}
+                onStrategyChange={(s) => { dirtyRef.current = true; setFormData((cur) => ({ ...cur, researchStrategy: s })); }}
                 promptOptions={researchPromptOptions}
                 selectedVersionId={formData.existingPromptVersionId}
                 onVersionChange={(id) => setFormData((cur) => ({ ...cur, existingPromptVersionId: id }))}
@@ -1336,7 +1370,7 @@ export function BotFormModal({ mode, botId, onClose, onSuccess }: BotFormModalPr
                 phase="trader"
                 phaseColor="#a78bfa"
                 strategy={formData.traderStrategy}
-                onStrategyChange={(s) => setFormData((cur) => ({ ...cur, traderStrategy: s }))}
+                onStrategyChange={(s) => { dirtyRef.current = true; setFormData((cur) => ({ ...cur, traderStrategy: s })); }}
                 promptOptions={traderPromptOptions}
                 selectedVersionId={formData.existingTraderVersionId}
                 onVersionChange={(id) => setFormData((cur) => ({ ...cur, existingTraderVersionId: id }))}
