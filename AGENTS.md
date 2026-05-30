@@ -49,6 +49,19 @@ Each `services/`, `lib/store/`, `adapters/`, `providers/`, and `research/` file 
 - Settings/secrets: `apps/web/app/settings`, app settings stores. Secrets stay in env, not DB.
 - Shelved reference: `TradingAgents-main` (vendored OSS) is set aside — do not read, crawl, or couple runtime to it.
 
+## Database Migrations
+Schema changes are applied automatically on deploy — there is **no manual DB step**.
+
+To change the schema:
+1. Add a new file `apps/api/sql/NNN_short_name.sql` (NNN = next number, zero-padded; keep names lexicographically ordered).
+2. Write it **idempotently** — `create table if not exists`, `add column if not exists`, `drop constraint if exists` before re-adding, guard `rename column` with an `information_schema` check. Assume it may run twice.
+3. Commit and deploy. On the next boot, `apps/api/src/db-migrate.ts` (`runPendingMigrations()`, called from `index.ts` before `app.listen`) applies every file not yet in the `schema_migrations` ledger, in filename order. A failed migration aborts startup (Railway restarts), so traffic never hits a half-migrated schema.
+
+Notes:
+- The ledger is the source of truth. On the first run against the already-provisioned production DB, migrations through `BASELINE_THROUGH` (in `db-migrate.ts`) are recorded as applied **without** re-running (they predate the runner). A fresh/empty DB runs everything.
+- `scripts/apply-sql.mjs` and `scripts/migrate.mjs` are **local-only** conveniences. Do not rely on them for production — the migrate-on-start runner owns production schema.
+- Still under a Stop Condition: do not make DB/schema changes unless explicitly requested.
+
 ## Data Rules
 - Raw external information should become a `Record` before it is reused.
 - Interpreted information should become a `Signal`.

@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 /**
+ * LEGACY local-only ad-hoc runner (requires psql). Superseded for production by
+ * apps/api/src/db-migrate.ts (migrate-on-start). To add a schema change, drop a new
+ * idempotent file in apps/api/sql/ and deploy — see AGENTS.md → "Database Migrations".
+ *
  * Run: set -a && source .env.local && set +a && node scripts/migrate.mjs
  */
 import { execSync } from "node:child_process";

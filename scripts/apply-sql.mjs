@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 /**
- * Apply a single SQL file against DATABASE_URL.
+ * LOCAL-ONLY convenience: apply a single SQL file against DATABASE_URL by hand.
+ *
+ * Production does NOT use this. Schema changes are applied automatically on deploy by
+ * apps/api/src/db-migrate.ts (migrate-on-start). See AGENTS.md → "Database Migrations".
+ * Use this only to poke a local/test DB.
+ *
  * Usage:
  *   set -a && source .env.local && set +a && node scripts/apply-sql.mjs apps/api/sql/022_sources_indexes.sql
  */

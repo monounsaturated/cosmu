@@ -16,6 +16,7 @@ import { modelsRouter } from "./routes/models.js";
 import { botsRouter } from "./routes/bots.js";
 import { openapiRouter, OPENAPI_PUBLIC_PATH } from "./routes/openapi.js";
 import { startRuntimeAutomation } from "./services/background-jobs.js";
+import { runPendingMigrations } from "./db-migrate.js";
 
 const app = express();
 
@@ -66,7 +67,18 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
   });
 });
 
-app.listen(env.API_PORT, "0.0.0.0", () => {
-  console.log(`API listening on http://0.0.0.0:${env.API_PORT}`);
-  void startRuntimeAutomation();
+const start = async () => {
+  // Apply any pending DB migrations before serving traffic. A failure here aborts
+  // startup on purpose — we must never serve against a half-migrated schema.
+  await runPendingMigrations();
+
+  app.listen(env.API_PORT, "0.0.0.0", () => {
+    console.log(`API listening on http://0.0.0.0:${env.API_PORT}`);
+    void startRuntimeAutomation();
+  });
+};
+
+void start().catch((error) => {
+  console.error("[startup] migration/boot failed:", error instanceof Error ? error.message : error);
+  process.exit(1);
 });
