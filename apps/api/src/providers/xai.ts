@@ -10,12 +10,6 @@ import type { BotSetup } from "../lib/store.js";
 import type { LLMProvider, LLMChatInput, LLMResponse, LLMMessage } from "./llm.js";
 import type { ToolInputSchema } from "../mcp/types.js";
 import { toOpenAITools } from "./tool-adapters.js";
-import { nousProvider } from "./nous.js";
-import { openaiProvider } from "./openai.js";
-import { anthropicProvider } from "./anthropic.js";
-import { huggingFaceProvider } from "./huggingface.js";
-import { googleProvider } from "./google.js";
-import { mistralProvider } from "./mistral.js";
 
 const client = new OpenAI({
   apiKey: env.XAI_API_KEY ?? "missing-xai-api-key",
@@ -171,30 +165,6 @@ export const runXaiResearchWithBrowsing = async (input: {
     model: (response as { model?: string }).model ?? input.model,
     usage
   };
-};
-
-// ─── Provider Factory ────────────────────────────────────────────────
-
-const providers: Record<string, LLMProvider> = {
-  xai: xaiProvider,
-  nous: nousProvider,
-  openai: openaiProvider,
-  anthropic: anthropicProvider,
-  huggingface: huggingFaceProvider,
-  google: googleProvider,
-  mistral: mistralProvider
-};
-
-export const getProvider = (name: string): LLMProvider => {
-  const provider = providers[name];
-  if (!provider) {
-    throw new Error(`Unknown LLM provider: ${name}. Available: ${Object.keys(providers).join(", ")}`);
-  }
-  return provider;
-};
-
-export const registerProvider = (provider: LLMProvider) => {
-  providers[provider.name] = provider;
 };
 
 // ─── Legacy Functions (used by existing run-bot.ts until pipeline.ts takes over) ─

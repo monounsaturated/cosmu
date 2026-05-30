@@ -14,7 +14,7 @@ import {
   updateStandardizedSignalStatus
 } from "../lib/store.js";
 import { z } from "zod";
-import { getProvider } from "../providers/xai.js";
+import { getProvider } from "../providers/registry.js";
 
 export const signalsRouter: ExpressRouter = Router();
 

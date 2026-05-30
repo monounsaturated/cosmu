@@ -14,8 +14,8 @@ import {
   type TradingDecision
 } from "@cosmu/shared";
 import { storeLLMCall, type BotSetup } from "../lib/store.js";
+import { getProvider } from "../providers/registry.js";
 import {
-  getProvider,
   runXaiAgentLoop,
   runXaiResearchWithBrowsing,
   type AgenticTool,

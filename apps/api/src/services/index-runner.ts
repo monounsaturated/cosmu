@@ -11,7 +11,7 @@ import {
   listStandardizedSignals,
   listRawObservations
 } from "../lib/store.js";
-import { getProvider } from "../providers/xai.js";
+import { getProvider } from "../providers/registry.js";
 import type { LLMMessage } from "../providers/llm.js";
 import type { IndexConfig } from "@cosmu/shared";
 
