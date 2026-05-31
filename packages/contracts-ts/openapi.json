@@ -1,0 +1,885 @@
+{
+  "components": {
+    "schemas": {
+      "Allocation": {
+        "properties": {
+          "capital": {
+            "title": "Capital",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "string"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "name",
+          "weight",
+          "capital",
+          "venue"
+        ],
+        "title": "Allocation",
+        "type": "object"
+      },
+      "Backtest": {
+        "properties": {
+          "deflated_sharpe": {
+            "title": "Deflated Sharpe",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_dd": {
+            "title": "Max Dd",
+            "type": "number"
+          },
+          "num_trades": {
+            "title": "Num Trades",
+            "type": "integer"
+          },
+          "oos_return": {
+            "title": "Oos Return",
+            "type": "number"
+          },
+          "passed_gates": {
+            "title": "Passed Gates",
+            "type": "boolean"
+          },
+          "pbo": {
+            "title": "Pbo",
+            "type": "number"
+          },
+          "win_rate": {
+            "title": "Win Rate",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "oos_return",
+          "deflated_sharpe",
+          "max_dd",
+          "win_rate",
+          "num_trades",
+          "pbo",
+          "passed_gates"
+        ],
+        "title": "Backtest",
+        "type": "object"
+      },
+      "CommandRequest": {
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "CommandRequest",
+        "type": "object"
+      },
+      "CommandResponse": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "parsed_policy": {
+            "additionalProperties": true,
+            "title": "Parsed Policy",
+            "type": "object"
+          },
+          "reply_md": {
+            "title": "Reply Md",
+            "type": "string"
+          }
+        },
+        "required": [
+          "parsed_policy",
+          "applied",
+          "reply_md"
+        ],
+        "title": "CommandResponse",
+        "type": "object"
+      },
+      "CostSlice": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "amount"
+        ],
+        "title": "CostSlice",
+        "type": "object"
+      },
+      "Event": {
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "ref_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Id"
+          },
+          "ref_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Type"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ts",
+          "actor",
+          "kind",
+          "ref_type",
+          "ref_id",
+          "payload"
+        ],
+        "title": "Event",
+        "type": "object"
+      },
+      "EventsResponse": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            },
+            "title": "Events",
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "title": "EventsResponse",
+        "type": "object"
+      },
+      "Execution": {
+        "properties": {
+          "fee": {
+            "title": "Fee",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "number"
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue"
+          }
+        },
+        "required": [
+          "id",
+          "side",
+          "qty",
+          "price",
+          "fee",
+          "venue",
+          "ts"
+        ],
+        "title": "Execution",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LeaderboardResponse": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/LeaderboardRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "LeaderboardResponse",
+        "type": "object"
+      },
+      "LeaderboardRow": {
+        "properties": {
+          "deflated_sharpe": {
+            "title": "Deflated Sharpe",
+            "type": "number"
+          },
+          "lineage": {
+            "title": "Lineage",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "net_pct": {
+            "title": "Net Pct",
+            "type": "number"
+          },
+          "pbo": {
+            "title": "Pbo",
+            "type": "number"
+          },
+          "sleeve_return_pct": {
+            "title": "Sleeve Return Pct",
+            "type": "number"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "sleeve_return_pct",
+          "deflated_sharpe",
+          "net_pct",
+          "pbo",
+          "status",
+          "lineage"
+        ],
+        "title": "LeaderboardRow",
+        "type": "object"
+      },
+      "Point": {
+        "properties": {
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "ts",
+          "value"
+        ],
+        "title": "Point",
+        "type": "object"
+      },
+      "PortfolioResponse": {
+        "properties": {
+          "allocation": {
+            "items": {
+              "$ref": "#/components/schemas/Allocation"
+            },
+            "title": "Allocation",
+            "type": "array"
+          },
+          "costs": {
+            "items": {
+              "$ref": "#/components/schemas/CostSlice"
+            },
+            "title": "Costs",
+            "type": "array"
+          },
+          "equity_curve": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "title": "Equity Curve",
+            "type": "array"
+          },
+          "live_enabled": {
+            "title": "Live Enabled",
+            "type": "boolean"
+          },
+          "opex_vs_alpha": {
+            "title": "Opex Vs Alpha",
+            "type": "number"
+          },
+          "pnl_net": {
+            "title": "Pnl Net",
+            "type": "number"
+          }
+        },
+        "required": [
+          "equity_curve",
+          "pnl_net",
+          "allocation",
+          "costs",
+          "live_enabled",
+          "opex_vs_alpha"
+        ],
+        "title": "PortfolioResponse",
+        "type": "object"
+      },
+      "Recommendation": {
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "state": {
+            "enum": [
+              "open",
+              "approved",
+              "dismissed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ts",
+          "kind",
+          "body",
+          "state",
+          "payload"
+        ],
+        "title": "Recommendation",
+        "type": "object"
+      },
+      "RecommendationsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Recommendation"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RecommendationsResponse",
+        "type": "object"
+      },
+      "StrategyDetailResponse": {
+        "properties": {
+          "backtests": {
+            "items": {
+              "$ref": "#/components/schemas/Backtest"
+            },
+            "title": "Backtests",
+            "type": "array"
+          },
+          "generated_code": {
+            "title": "Generated Code",
+            "type": "string"
+          },
+          "holdout": {
+            "additionalProperties": true,
+            "title": "Holdout",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes_md": {
+            "title": "Notes Md",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "spec": {
+            "additionalProperties": true,
+            "title": "Spec",
+            "type": "object"
+          },
+          "trades": {
+            "items": {
+              "$ref": "#/components/schemas/Execution"
+            },
+            "title": "Trades",
+            "type": "array"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "spec",
+          "generated_code",
+          "params",
+          "trades",
+          "backtests",
+          "notes_md",
+          "holdout"
+        ],
+        "title": "StrategyDetailResponse",
+        "type": "object"
+      },
+      "ToggleRequest": {
+        "properties": {
+          "confirm": {
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "confirm"
+        ],
+        "title": "ToggleRequest",
+        "type": "object"
+      },
+      "ToggleResponse": {
+        "properties": {
+          "caps": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Caps",
+            "type": "object"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "promoted": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Promoted",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "promoted",
+          "caps"
+        ],
+        "title": "ToggleResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Cosmu Engine",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/console/command": {
+      "post": {
+        "operationId": "console_command_console_command_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Console Command"
+      }
+    },
+    "/events": {
+      "get": {
+        "operationId": "events_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events"
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/leaderboard": {
+      "get": {
+        "operationId": "leaderboard_leaderboard_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaderboardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Leaderboard"
+      }
+    },
+    "/portfolio": {
+      "get": {
+        "operationId": "portfolio_portfolio_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Portfolio"
+      }
+    },
+    "/recommendations": {
+      "get": {
+        "operationId": "recommendations_recommendations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Recommendations"
+      }
+    },
+    "/spine/backtest": {
+      "post": {
+        "operationId": "spine_backtest_spine_backtest_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  },
+                  "title": "Response Spine Backtest Spine Backtest Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Spine Backtest"
+      }
+    },
+    "/strategies/{version_id}": {
+      "get": {
+        "operationId": "strategy_detail_strategies__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategy Detail"
+      }
+    },
+    "/toggle/live": {
+      "post": {
+        "operationId": "toggle_live_toggle_live_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToggleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToggleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Toggle Live"
+      }
+    }
+  }
+}

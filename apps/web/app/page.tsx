@@ -1,157 +1,222 @@
-import { DashboardActions } from "./dashboard-actions";
-import { PerformanceChart } from "./performance-chart";
-import { RecentRunsTable } from "./run-detail-row";
-import { BotTable } from "./bot-table";
-import { LocalTime } from "./local-time";
-import { VenueOverview } from "./venue-overview";
-import { RecentExecutions } from "./recent-executions";
-import { PortfolioState } from "./portfolio-state";
-import { PromptSnapshots } from "./prompt-snapshots";
-import { PlatformOverview } from "./platform-overview";
-import { getDashboard } from "./dashboard-data";
+import { ArrowUpRight, BadgeDollarSign, BrainCircuit, CircleDollarSign, Gauge, LockKeyhole, RadioTower, ShieldCheck } from "lucide-react";
+import { ConsoleBox } from "./console-box";
+import { getEvents, getLeaderboard, getPortfolio, getRecommendations, getStrategy } from "./data";
+import type { Allocation, Backtest, CostSlice, Event, LeaderboardRow, Recommendation } from "@cosmu/contracts-ts";
 
-export const dynamic = "force-dynamic";
+function formatUsd(value: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
+}
+
+function formatPct(value: number) {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+function EquityChart({ points }: { points: { ts: string; value: number }[] }) {
+  const width = 720;
+  const height = 260;
+  const min = Math.min(...points.map((point) => point.value));
+  const max = Math.max(...points.map((point) => point.value));
+  const span = Math.max(max - min, 1);
+  const path = points
+    .map((point, index) => {
+      const x = (index / Math.max(points.length - 1, 1)) * width;
+      const y = height - ((point.value - min) / span) * (height - 20) - 10;
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <svg className="chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Pooled wallet equity curve">
+      <path d={path} fill="none" stroke="var(--green)" strokeWidth="3" />
+      <path d={`${path} L ${width} ${height} L 0 ${height} Z`} fill="rgba(53,208,127,.08)" />
+      <line x1="0" y1={height - 1} x2={width} y2={height - 1} stroke="var(--line)" />
+    </svg>
+  );
+}
 
 export default async function HomePage() {
-  const dashboard = await getDashboard();
-  const allBots = dashboard.bots;
-  const activeBots = allBots.filter((bot) => bot.enabled).length;
-  const totalPnl = allBots.reduce((sum, bot) => sum + (bot.netPnlUsd ?? 0), 0);
-  const recentFailures = dashboard.recentRuns.filter((run) => run.status === "failure").length;
-  const totalAccountBalance = dashboard.accounts.reduce((sum, account) => sum + account.accountBalance, 0);
-  const totalAllocated = dashboard.accounts.reduce((sum, account) => sum + account.allocatedAmount, 0);
-  const freeCapacity = dashboard.accounts.reduce((sum, account) => sum + account.spareAmount, 0);
-  const connectedVenues = dashboard.accounts.filter((account) => account.connected).length;
-  const venueIssues = dashboard.accounts.filter((account) => !account.connected);
-  const llmHourlyUsd = dashboard.llmSpendEstimate?.estimatedHourlyUsd ?? 0;
-  const llmDailyUsd = dashboard.llmSpendEstimate?.estimatedDailyUsd ?? 0;
+  const [portfolio, leaderboard, strategy, recommendations, events] = await Promise.all([
+    getPortfolio(),
+    getLeaderboard(),
+    getStrategy("sv-btc"),
+    getRecommendations(),
+    getEvents()
+  ]);
+  const equity = portfolio.equity_curve.at(-1)?.value ?? 100000;
+  const costsTotal = portfolio.costs.reduce((sum: number, item: CostSlice) => sum + item.amount, 0);
+
   return (
-    <main className="page page-wide">
-      <section className="command-hero agents-hero">
-        <div>
-          <p className="eyebrow">Agents</p>
-          <h1>Run, inspect, and control every agent.</h1>
-          <p>
-            One command center for agent status, portfolio exposure, recent runs, and emergency controls.
-          </p>
-        </div>
-        <div className="hero-actions command-actions">
-          <span className="badge badge-neutral">Updated <LocalTime value={dashboard.generatedAt} /></span>
-          <DashboardActions
-            hasNoBots={dashboard.bots.length === 0}
-            activeBotCount={dashboard.bots.filter((bot) => bot.enabled).length}
-            dashboardUnavailable={Boolean(dashboard.backendError)}
-          />
-        </div>
-      </section>
-
-      {dashboard.backendError && (
-        <section className="panel dashboard-error-state">
-          <strong>Dashboard backend unavailable</strong>
-          <p>The agent list could not be loaded from the API. The app is showing an error instead of an empty state.</p>
-          <code>{dashboard.backendError}</code>
-        </section>
-      )}
-
-      {!dashboard.backendError && venueIssues.length > 0 && (
-        <section className="panel dashboard-error-state">
-          <strong>Venue connection issue</strong>
-          <p>{venueIssues.map((account) => `${account.label}: ${account.error ?? "not connected"}`).join(" | ")}</p>
-        </section>
-      )}
-
-      <section className="metric-strip">
-        <article>
-          <span>Active agents</span>
-          <strong>{activeBots}</strong>
-          <small>{allBots.length} configured</small>
-        </article>
-        <article className="metric-card-emphasis">
-          <span>Equity</span>
-          <strong>{totalAccountBalance.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</strong>
-          <small>{connectedVenues}/{dashboard.accounts.length} venues connected</small>
-        </article>
-        <article>
-          <span>Allocated</span>
-          <strong>{totalAllocated.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</strong>
-          <small>across configured venues</small>
-        </article>
-        <article>
-          <span>Free cash</span>
-          <strong className={freeCapacity < 0 ? "value-red" : "value-green"}>
-            {freeCapacity.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}
-          </strong>
-          <small>unallocated capacity</small>
-        </article>
-        <article>
-          <span>Net PnL</span>
-          <strong className={totalPnl >= 0 ? "value-green" : "value-red"}>
-            {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
-          </strong>
-          <small>All agents</small>
-        </article>
-        <article>
-          <span>LLM burn</span>
-          <strong>{llmHourlyUsd.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 })}/h</strong>
-          <small>{llmDailyUsd.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}/day estimate</small>
-        </article>
-        <article>
-          <span>Recent failures</span>
-          <strong className={recentFailures > 0 ? "value-red" : ""}>{recentFailures}</strong>
-          <small>last dashboard window</small>
-        </article>
-      </section>
-
-      <BotTable
-        dashboard={dashboard}
-        title="Agents"
-        description="The main operating table. Search, sort, run, stop, and open an agent from one place."
-        emptyMessage="No agents yet. Create one to start with a venue-scoped strategy."
-        defaultSortField="created"
-        defaultSortOrder="desc"
-        showCreatedByDefault
-      />
-
-      <section className="command-grid">
-        <VenueOverview
-          accounts={dashboard.accounts}
-          venueOverview={dashboard.venueOverview}
-          marketDataStatus={dashboard.marketDataStatus}
-        />
-        <article className="panel">
-          <div className="panel-table-header">
-            <div>
-              <h3>Recent runs</h3>
-              <p className="field-help">Expand rows for prompts, tool calls, and validation.</p>
-            </div>
-            <span className="badge badge-neutral">{dashboard.recentRuns.length}</span>
+    <div className="page">
+      <section className="surface" id="dashboard">
+        <div className="eyebrow">deterministic master + autonomous lab</div>
+        <h1>Autonomous strategy farming with the scorer and money out of the agent&apos;s reach.</h1>
+        <div className="grid metrics" style={{ marginTop: 18 }}>
+          <div className="card metric">
+            <small>Pooled paper equity</small>
+            <strong>{formatUsd(equity)}</strong>
+            <span className="pill good"><ArrowUpRight size={14} /> {formatUsd(portfolio.pnl_net)} net</span>
           </div>
-          {dashboard.recentRuns.length === 0 ? (
-            <p className="muted">No runs yet. Create an agent, then run it from the table.</p>
-          ) : (
-            <RecentRunsTable runs={dashboard.recentRuns.map((r) => ({
-              id: r.id,
-              botName: r.botName,
-              status: r.status,
-              startedAt: r.startedAt,
-              decisionMode: r.decisionMode,
-              rationaleSummary: r.rationaleSummary
-            }))} />
-          )}
-        </article>
-        <PlatformOverview />
+          <div className="card metric">
+            <small>Opex vs alpha</small>
+            <strong>{Math.round(portfolio.opex_vs_alpha * 100)}%</strong>
+            <span className="subtle">auto-throttle below edge</span>
+          </div>
+          <div className="card metric">
+            <small>Live gate</small>
+            <strong>{portfolio.live_enabled ? "ON" : "OFF"}</strong>
+            <span className="pill warn"><LockKeyhole size={14} /> approval required</span>
+          </div>
+          <div className="card metric">
+            <small>Capital valve</small>
+            <strong>4 gates</strong>
+            <span className="subtle">WFO, holdout, paper, caps</span>
+          </div>
+        </div>
+        <div className="grid two" style={{ marginTop: 12 }}>
+          <div className="card">
+            <div className="surface-header">
+              <div>
+                <h2>Pooled wallet</h2>
+                <p className="subtle">Paper and live share one code path; this view shows money truth net of costs.</p>
+              </div>
+              <span className="pill good"><CircleDollarSign size={14} /> net of fees</span>
+            </div>
+            <EquityChart points={portfolio.equity_curve} />
+          </div>
+          <div className="card stack">
+            <h2>Allocation and costs</h2>
+            {portfolio.allocation.map((item: Allocation) => (
+              <div className="row" key={item.strategy_id}>
+                <div>
+                  <strong>{item.name}</strong>
+                  <div className="subtle">{item.venue}</div>
+                </div>
+                <div className="mono">{Math.round(item.weight * 100)}%</div>
+              </div>
+            ))}
+            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 10 }} className="stack">
+              {portfolio.costs.map((item: CostSlice) => (
+                <div className="row" key={item.category}>
+                  <span className="subtle">{item.category}</span>
+                  <span className="mono">{formatUsd(item.amount)}</span>
+                </div>
+              ))}
+              <div className="row">
+                <strong>Total daily opex</strong>
+                <strong>{formatUsd(costsTotal)}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <section className="stack command-stack">
-        <article className="panel">
-          <h3>Performance Comparison</h3>
-          <PerformanceChart series={dashboard.performanceSeries} />
-        </article>
-
-        <RecentExecutions executions={dashboard.recentExecutions} />
-        <PortfolioState snapshots={dashboard.latestSnapshots} />
-        <PromptSnapshots versions={dashboard.promptVersions} />
+      <section className="surface" id="leaderboard">
+        <div className="surface-header">
+          <div>
+            <div className="eyebrow">leaderboard</div>
+            <h2>Every version earns its own standardized sleeve.</h2>
+          </div>
+          <span className="pill"><Gauge size={14} /> ranked by deflated OOS Sharpe</span>
+        </div>
+        <div className="card table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th>Status</th>
+                <th>Sleeve</th>
+                <th>Net</th>
+                <th>D Sharpe</th>
+                <th>PBO</th>
+                <th>Lineage</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leaderboard.rows.map((row: LeaderboardRow) => (
+                <tr key={row.version_id}>
+                  <td><a href={`/strategy/${row.version_id}`}><strong>{row.name}</strong></a></td>
+                  <td><span className={`pill ${row.status === "killed" ? "bad" : row.status === "paper" ? "good" : "warn"}`}>{row.status}</span></td>
+                  <td className="mono">{formatPct(row.sleeve_return_pct)}</td>
+                  <td className="mono">{formatPct(row.net_pct)}</td>
+                  <td className="mono">{row.deflated_sharpe.toFixed(2)}</td>
+                  <td className="mono">{row.pbo.toFixed(2)}</td>
+                  <td className="subtle">{row.lineage}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
-    </main>
+
+      <section className="surface" id="strategy">
+        <div className="surface-header">
+          <div>
+            <div className="eyebrow">strategy detail</div>
+            <h2>{strategy.name}</h2>
+          </div>
+          <span className="pill good"><ShieldCheck size={14} /> scorer-owned gates</span>
+        </div>
+        <div className="grid two">
+          <div className="card stack">
+            <h3>Evidence</h3>
+            {strategy.backtests.map((backtest: Backtest) => (
+              <div className="row" key={backtest.id}>
+                <div>
+                  <strong>{backtest.kind}</strong>
+                  <div className="subtle">{backtest.num_trades} trades · max DD {(backtest.max_dd * 100).toFixed(1)}%</div>
+                </div>
+                <div className="mono">{backtest.deflated_sharpe.toFixed(2)} dS</div>
+              </div>
+            ))}
+            <p className="subtle">{strategy.notes_md}</p>
+          </div>
+          <div className="card stack">
+            <h3>Compiled artifact</h3>
+            <pre className="code">{strategy.generated_code}</pre>
+            <div className="row">
+              <span className="subtle">Holdout</span>
+              <span className="pill good">seen once · passed</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="surface" id="console">
+        <div className="surface-header">
+          <div>
+            <div className="eyebrow">console</div>
+            <h2>Chat, voice, images, recommendations.</h2>
+          </div>
+          <span className="pill"><BrainCircuit size={14} /> LLM proposes, master disposes</span>
+        </div>
+        <div className="console">
+          <div className="card">
+            <ConsoleBox />
+          </div>
+          <div className="stack">
+            <div className="card stack">
+              <h3>Recommendations</h3>
+              {recommendations.map((item: Recommendation) => (
+                <div className="stack" key={item.id} style={{ borderTop: "1px solid var(--line)", paddingTop: 10 }}>
+                  <span className="pill warn">{item.kind}</span>
+                  <p>{item.body}</p>
+                </div>
+              ))}
+            </div>
+            <div className="card stack">
+              <h3>Audit stream</h3>
+              {events.map((event: Event) => (
+                <div className="row" key={event.id}>
+                  <div>
+                    <strong>{event.kind}</strong>
+                    <div className="subtle">{event.actor} · {event.ref_type ?? "system"}</div>
+                  </div>
+                  <RadioTower size={15} color="var(--cyan)" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }

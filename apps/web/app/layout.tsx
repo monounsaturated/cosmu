@@ -1,33 +1,57 @@
 import "./globals.css";
 import type { ReactNode } from "react";
-import { ControlHeader } from "./control-header";
-import { Sidebar } from "./sidebar";
+import { Activity, Bot, ChartNoAxesCombined, LayoutDashboard, MessageSquareText, Trophy } from "lucide-react";
 
 export const metadata = {
-  title: "cosmu",
-  description: "AI trading OS"
+  title: "Cosmu v2",
+  description: "Autonomous quant money machine"
 };
+
+const nav = [
+  { href: "/#dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/#leaderboard", label: "Leaderboard", icon: Trophy },
+  { href: "/strategy/sv-btc", label: "Strategy", icon: ChartNoAxesCombined },
+  { href: "/#console", label: "Console", icon: MessageSquareText }
+];
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" data-scroll-behavior="smooth" suppressHydrationWarning>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(() => { try { const saved = localStorage.getItem("cosmu-theme"); const theme = saved === "light" || saved === "dark" ? saved : (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"); document.documentElement.dataset.theme = theme; document.documentElement.style.colorScheme = theme; } catch { document.documentElement.dataset.theme = "dark"; } })();`
-          }}
-        />
-      </head>
+    <html lang="en">
       <body>
-        <div className="app-shell">
-          <Sidebar />
-          <div className="app-main">
-            <ControlHeader />
+        <div className="shell">
+          <aside className="sidebar">
+            <div className="brand">
+              <div className="mark">C</div>
+              <div>
+                <strong>Cosmu</strong>
+                <div className="subtle">v2 autonomous lab</div>
+              </div>
+            </div>
+            <nav className="nav" aria-label="Main navigation">
+              {nav.map((item) => (
+                <a key={item.href} href={item.href}>
+                  <item.icon size={17} />
+                  <span>{item.label}</span>
+                </a>
+              ))}
+            </nav>
+          </aside>
+          <main className="main">
+            <div className="topbar">
+              <div className="row">
+                <Activity size={18} color="var(--green)" />
+                <span className="subtle">Paper farming live-shadow data. Live capital gated.</span>
+              </div>
+              <div className="pill warn">
+                <Bot size={14} />
+                live off by default
+              </div>
+            </div>
             {children}
-          </div>
+          </main>
         </div>
       </body>
     </html>
   );
 }
+

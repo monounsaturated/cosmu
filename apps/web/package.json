@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@cosmu/shared": "workspace:*",
+    "@cosmu/contracts-ts": "workspace:*",
     "lucide-react": "^1.14.0",
     "next": "latest",
     "react": "latest",

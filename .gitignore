@@ -6,6 +6,7 @@ node_modules
 .turbo
 coverage
 .external
+.cosmu
 
 # macOS
 .DS_Store

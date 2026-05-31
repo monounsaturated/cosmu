@@ -1,55 +1,60 @@
 # Deployment
 
-Cosmu's current stack is intentionally simple:
+Cosmu v2 deploys as three explicit pieces:
 
-- **Vercel** hosts the Next.js web app only.
-- **Railway** hosts the Express API, scheduler, guardian, and background jobs.
-- **Supabase Postgres** is the database.
+- **FastAPI engine/API** on an always-on worker/service such as Render.
+- **Next.js web app** on Vercel.
+- **Supabase Postgres + pgvector** for the fresh v2 control-plane schema and RAG.
 
-## Vercel
+The retired v1 Railway/Express deployment is no longer the active target.
 
-Vercel should not run cron jobs for Cosmu. Keep it as the frontend and server-side BFF.
+## Engine
+
+Run from `apps/engine` with Python 3.12+.
+
+Required production env vars:
+
+```bash
+DATABASE_URL=<supabase postgres connection string>
+API_SECRET_KEY=<server-side API secret>
+```
+
+Optional vendor/env vars are enabled only when that module is active:
+
+```bash
+OPENROUTER_API_KEY=<model router key>
+BINANCE_API_KEY=<trade-only key, withdrawals disabled>
+BINANCE_API_SECRET=<trade-only secret>
+```
+
+Start command:
+
+```bash
+PYTHONPATH=apps/engine python3 -m cosmu.api.app
+```
+
+Migrations are represented by the v2 schema in `apps/engine/cosmu/knowledge/schema.sql`; the production path should run the equivalent Alembic migration before the worker starts.
+
+## Web
+
+Vercel runs `apps/web`.
 
 Required env vars:
 
-```
-API_BASE_URL=https://<railway-api-service>.up.railway.app
-API_SECRET_KEY=<same secret as Railway>
-```
-
-## Railway
-
-Railway runs the always-on backend from the repo root with `railway.toml`.
-The repo includes `.nvmrc` and an `engines` range so Railway, Vercel, and local builds stay on the same Node 22+ runtime family.
-
-Required core env vars:
-
-```
-DATABASE_URL=<supabase connection string>
-DATABASE_SSL=true
-API_SECRET_KEY=<32+ chars>
+```bash
+ENGINE_API_URL=https://<engine-service>
+NEXT_PUBLIC_ENGINE_API_URL=https://<engine-service>
 ```
 
-Provider and exchange keys also belong on Railway, not in Vercel or the DB.
+`ENGINE_API_URL` is used by server components. `NEXT_PUBLIC_ENGINE_API_URL` is used only for the local Console interaction path and must never carry secrets.
 
-Required env vars for the Binance Testnet venue:
+## Verification
 
+```bash
+pnpm contracts:generate
+PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests
+pnpm typecheck
+pnpm build
 ```
-BINANCE_TESTNET_API_KEY=<binance spot testnet key>
-BINANCE_TESTNET_API_SECRET=<binance spot testnet secret>
-```
 
-Do not rely on `BINANCE_API_KEY` / `BINANCE_API_SECRET` for testnet. The backend intentionally keeps live and testnet credentials separate so expired live keys cannot break testnet.
-
-If Binance keys use an IP allowlist, allow the Railway backend's outbound IP. Vercel does not own venue connectivity; the web app only proxies venue checks to Railway.
-
-## Background Jobs
-
-Railway owns recurring work:
-
-- Bot scheduler: every 15 seconds.
-- Market data cache: every minute.
-- Guardian: position safety checks every 10 seconds.
-- Pricing, model catalog, and venue symbol sync: hourly.
-
-Use `GET /internal/background-jobs` with `x-api-key` to verify the loop is running.
+Live trading remains off by default. Any mutating route that can affect money must stay authenticated server-side and gated by explicit confirmation.

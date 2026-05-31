@@ -11,6 +11,6 @@
     "incremental": true,
     "plugins": [{ "name": "next" }]
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "../../packages/shared/src/**/*.ts"],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "../../packages/contracts-ts/src/**/*.ts"],
   "exclude": ["node_modules"]
 }
