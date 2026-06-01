@@ -155,4 +155,52 @@
   }
   .animate-menu-in { animation: menu-in 180ms cubic-bezier(0.16, 1, 0.3, 1); }
   .animate-overlay-in { animation: overlay-in 180ms ease-out; }
+
+  /* tooltip bubble rises subtly on reveal; collapses to a plain fade under reduced-motion */
+  .tooltip-bubble {
+    transform: translate(-50%, 3px);
+  }
+  .group\/tt:hover .tooltip-bubble,
+  .group\/tt:focus-within .tooltip-bubble {
+    transform: translate(-50%, 0);
+  }
+
+  /* sticky first column for tables that scroll horizontally on mobile (keeps the row's name pinned).
+     A hairline right edge separates the pinned cell from content scrolling beneath it. */
+  .sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: color-mix(in oklab, var(--color-surface) 96%, transparent);
+    box-shadow: 1px 0 0 0 color-mix(in oklab, var(--color-border) 70%, transparent);
+  }
+  /* on wide screens nothing scrolls, so the pinned edge is unnecessary noise */
+  @media (min-width: 768px) {
+    .sticky-col {
+      box-shadow: none;
+    }
+  }
+}
+
+/* Honor the OS "reduce motion" setting: kill ambient + transition motion, keep opacity reveals. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .tooltip-bubble {
+    transform: translate(-50%, 0) !important;
+  }
+}
+
+/* Never let a money surface cause a horizontal page scroll on small screens. */
+@media (max-width: 640px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
 }

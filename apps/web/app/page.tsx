@@ -1,17 +1,41 @@
-import { ArrowRight, Coins, Gauge, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, Coins, Gauge, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
-import { getEvents, getPortfolio, getRecommendations } from "./data";
-import type { CostSlice, Event, Recommendation } from "@cosmu/contracts-ts";
+import { getEvents, getLeaderboard, getPortfolio, getRecommendations } from "./data";
+import type { CostSlice, Event, LeaderboardRow, Recommendation } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
+import { Tooltip } from "@/components/ui/tooltip";
+import { MoneyState, moneyMode } from "@/components/ui/money-state";
 import { AreaChart } from "@/components/charts/area-chart";
 import { CrossAssetGate } from "@/components/research/cross-asset-gate";
 import { formatPct, formatSigned, formatUsd } from "@/lib/utils";
 
+const statusVariant: Record<string, "up" | "warn" | "down" | "info"> = {
+  paper: "up",
+  live: "info",
+  screening: "warn",
+  killed: "down"
+};
+
+// Sleeve-% vs pooled-wallet — the one explanation that disambiguates the two money layers.
+const SLEEVE_VS_POOLED = (
+  <div className="space-y-1.5">
+    <p>
+      <span className="font-semibold text-foreground">Sleeve %</span> — each strategy&apos;s own net-of-fee return on its
+      standardized capital sleeve, judged in isolation.
+    </p>
+    <p>
+      <span className="font-semibold text-foreground">Pooled wallet</span> — the single aggregate across every funded
+      sleeve. This is the headline number.
+    </p>
+  </div>
+);
+
 export default async function OverviewPage() {
-  const [{ portfolio, demo }, recommendations, events] = await Promise.all([
+  const [{ portfolio, demo }, leaderboard, recommendations, events] = await Promise.all([
     getPortfolio(),
+    getLeaderboard(),
     getRecommendations(),
     getEvents()
   ]);
@@ -24,47 +48,64 @@ export default async function OverviewPage() {
   const costsTotal = portfolio.costs.reduce((sum: number, c: CostSlice) => sum + c.amount, 0);
   const up = returnPct >= 0;
 
+  // One source of truth for "what kind of money is this?" — drives every label on the page.
+  const mode = moneyMode({ demo, live: portfolio.live_enabled });
+
+  // Which strategies are working: top few funded/working sleeves by net %, never the killed ones.
+  const working = (leaderboard.rows as LeaderboardRow[])
+    .filter((r) => r.status !== "killed")
+    .sort((a, b) => b.net_pct - a.net_pct)
+    .slice(0, 4);
+
   return (
-    <div className="mx-auto max-w-[1200px] space-y-7 px-5 py-7 lg:px-7">
+    <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-7 lg:px-7">
       {demo ? (
         <div className="flex items-center gap-2 rounded-md border border-warn/35 bg-warn/10 px-3 py-2 text-[12px] text-warn">
-          <span className="size-1.5 rounded-full bg-warn" />
+          <span className="size-1.5 shrink-0 rounded-full bg-warn" />
           Engine unreachable — showing labelled demo data. These numbers are not a real track record.
         </div>
       ) : null}
 
-      {/* Headline money number */}
-      <section className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">net return · after fees · paper</div>
+      {/* Headline money number — are we making money? */}
+      <section className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">
+              net return · after fees
+            </span>
+            <MoneyState mode={mode} />
+          </div>
           {hasTrackRecord ? (
             <>
-              <div className={`mt-1 text-5xl font-semibold tracking-tight tabular ${up ? "text-up" : "text-down"}`}>
+              <div className={`mt-1.5 text-[2.75rem] font-semibold leading-none tracking-tight tabular sm:text-5xl ${up ? "text-up" : "text-down"}`}>
                 {formatPct(returnPct)}
               </div>
-              <div className="mt-1.5 flex items-center gap-2 text-[13px] text-muted">
+              <div className="mt-2 flex items-center gap-2 text-[13px] text-muted">
                 {up ? <TrendingUp className="size-4 text-up" /> : <TrendingDown className="size-4 text-down" />}
                 <span className={up ? "text-up" : "text-down"}>{formatSigned(portfolio.pnl_net)}</span>
-                <span className="text-quiet">since inception</span>
+                <span className="text-quiet">total profit · since inception</span>
               </div>
             </>
           ) : (
             <>
-              <div className="mt-1 text-5xl font-semibold tracking-tight tabular text-quiet">—</div>
-              <div className="mt-1.5 text-[13px] text-quiet">No paper track record yet. Numbers appear once the engine starts trading on paper.</div>
+              <div className="mt-1.5 text-[2.75rem] font-semibold leading-none tracking-tight tabular text-quiet sm:text-5xl">—</div>
+              <div className="mt-2 text-[13px] text-quiet">No paper track record yet. Numbers appear once the engine starts trading on paper.</div>
             </>
           )}
         </div>
-        <Badge variant={portfolio.live_enabled ? "up" : "warn"}>
-          <ShieldCheck className="size-3" /> Live capital {portfolio.live_enabled ? "ON" : "OFF"}
-        </Badge>
       </section>
 
       {/* Compact KPI row */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Pooled paper equity" value={hasTrackRecord ? formatUsd(equity) : "—"} accent="iris" icon={<Coins className="size-4" />} />
         <Stat
-          label="Net P&L (after costs)"
+          label="Pooled wallet"
+          value={hasTrackRecord ? formatUsd(equity) : "—"}
+          accent="iris"
+          icon={<Coins className="size-4" />}
+          hint={<span className="inline-flex items-center gap-1 text-quiet">aggregate <Tooltip content={SLEEVE_VS_POOLED} /></span>}
+        />
+        <Stat
+          label="Total profit"
           value={hasTrackRecord ? <span className={up ? "text-up" : "text-down"}>{formatSigned(portfolio.pnl_net)}</span> : "—"}
           accent={up ? "up" : "down"}
         />
@@ -72,20 +113,21 @@ export default async function OverviewPage() {
         <Stat label="Daily opex" value={portfolio.costs.length ? formatUsd(costsTotal, 0) : "—"} accent="iris" />
       </section>
 
-      {/* One equity chart */}
+      {/* Pooled wallet equity chart */}
       <section>
         <Card>
           <CardHeader>
-            <CardTitle>Pooled wallet</CardTitle>
-            <Badge variant="up">
-              <Coins className="size-3" /> net of fees
-            </Badge>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <CardTitle>Pooled wallet</CardTitle>
+              <Tooltip content={SLEEVE_VS_POOLED} />
+            </div>
+            <MoneyState mode={mode} withInfo={false} />
           </CardHeader>
           <CardContent>
             {hasTrackRecord ? (
               <AreaChart points={portfolio.equity_curve} height={240} />
             ) : (
-              <div className="flex h-[240px] flex-col items-center justify-center gap-1.5 text-center">
+              <div className="flex h-[200px] flex-col items-center justify-center gap-1.5 text-center sm:h-[240px]">
                 <Coins className="size-5 text-quiet" />
                 <div className="text-[13px] text-muted">No live data yet</div>
                 <div className="max-w-sm text-[11.5px] text-quiet">
@@ -97,14 +139,56 @@ export default async function OverviewPage() {
         </Card>
       </section>
 
-      {/* Needs you + recent activity */}
+      {/* Which strategies are working — top few by net %, detail lives in Research */}
+      <section>
+        <Card>
+          <CardHeader>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <CardTitle>Working strategies</CardTitle>
+              <Tooltip content={SLEEVE_VS_POOLED} />
+            </div>
+            <Link
+              href="/research"
+              className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft transition-colors hover:underline"
+            >
+              All strategies <ArrowRight className="size-3.5" />
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {working.length === 0 ? (
+              <p className="text-[12.5px] text-quiet">No surviving strategies yet. Survivors appear here once a sleeve clears the gates.</p>
+            ) : (
+              working.map((row) => (
+                <Link
+                  key={row.version_id}
+                  href={`/strategy/${row.version_id}`}
+                  className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2.5 transition-colors hover:border-border hover:bg-surface-2/55"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-[12.5px] font-medium text-foreground">{row.name}</div>
+                    <div className="text-[11px] text-quiet">sleeve · net of fees</div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2.5">
+                    <span className={`tabular text-[13px] font-medium ${row.net_pct >= 0 ? "text-up" : "text-down"}`}>
+                      {formatPct(row.net_pct)}
+                    </span>
+                    <Badge variant={statusVariant[row.status] ?? "muted"}>{row.status}</Badge>
+                  </div>
+                </Link>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Needs you + how the machine is working (recent activity) */}
       <section className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Needs you</CardTitle>
             <Link
               href="/console"
-              className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft hover:underline"
+              className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft transition-colors hover:underline"
             >
               Open console <ArrowRight className="size-3.5" />
             </Link>
@@ -125,10 +209,10 @@ export default async function OverviewPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Recent activity</CardTitle>
+            <CardTitle>What the machine did</CardTitle>
             <Link
               href="/console"
-              className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft hover:underline"
+              className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft transition-colors hover:underline"
             >
               Full stream <ArrowRight className="size-3.5" />
             </Link>
@@ -136,13 +220,13 @@ export default async function OverviewPage() {
           <CardContent className="space-y-2.5">
             {events.map((event: Event) => (
               <div key={event.id} className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[12.5px] font-medium text-foreground">{event.kind.replace(/_/g, " ")}</div>
+                <div className="min-w-0">
+                  <div className="truncate text-[12.5px] font-medium text-foreground">{event.kind.replace(/_/g, " ")}</div>
                   <div className="text-[11px] text-quiet">
                     {event.actor} · {event.ref_type ?? "system"}
                   </div>
                 </div>
-                <span className="size-1.5 rounded-full bg-info/80" />
+                <span className="size-1.5 shrink-0 rounded-full bg-info/80" />
               </div>
             ))}
           </CardContent>
@@ -155,7 +239,7 @@ export default async function OverviewPage() {
           <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">research signal</div>
           <Link
             href="/research"
-            className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft hover:underline"
+            className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft transition-colors hover:underline"
           >
             All research <ArrowRight className="size-3.5" />
           </Link>

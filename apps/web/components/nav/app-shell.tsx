@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { Activity, Lock, PanelLeft, PanelLeftClose } from "lucide-react";
 import { CosmuMark, CosmuWordmark } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
-import { MobileNav, SideNavLinks } from "@/components/nav/app-nav";
+import { BottomNav, SideNavLinks } from "@/components/nav/app-nav";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { cn } from "@/lib/utils";
 
@@ -65,10 +65,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <main className="min-w-0">
+      <main className="min-w-0 pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
         <header className="glass sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-border/70 px-5 py-3 lg:px-7">
           <div className="flex items-center gap-2.5 text-[13px] text-muted">
-            <MobileNav />
+            <span className="lg:hidden">
+              <CosmuMark size={26} />
+            </span>
             <button
               type="button"
               onClick={toggle}
@@ -96,6 +98,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
         {children}
       </main>
+
+      <BottomNav />
     </div>
   );
 }

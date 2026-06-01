@@ -9,8 +9,23 @@ import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Search } from "lucide-react";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { cn, formatPct } from "@/lib/utils";
+
+// Disambiguate the two money layers right where the columns live.
+const SLEEVE_VS_POOLED = (
+  <div className="space-y-1.5">
+    <p>
+      <span className="font-semibold text-foreground">Sleeve</span> — this strategy&apos;s raw return on its standardized
+      capital sleeve.
+    </p>
+    <p>
+      <span className="font-semibold text-foreground">Net</span> — the same sleeve after fees and costs. The pooled wallet
+      on Overview aggregates these.
+    </p>
+  </div>
+);
 
 const statusVariant: Record<string, "up" | "warn" | "down" | "info"> = {
   paper: "up",
@@ -62,12 +77,14 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
             className="h-8 w-full rounded-md border border-border bg-background/60 pl-8 pr-2 text-[12.5px] text-foreground outline-none transition-colors placeholder:text-quiet focus-visible:border-iris/60 focus-visible:ring-2 focus-visible:ring-ring/40"
           />
         </div>
-        <span className="ml-auto text-[11.5px] text-quiet">{sorted.length} versions</span>
+        <span className="ml-auto inline-flex items-center gap-1 text-[11.5px] text-quiet">
+          sleeve vs net <Tooltip content={SLEEVE_VS_POOLED} /> · {sorted.length} versions
+        </span>
       </div>
       <Table>
         <THead>
           <TR>
-            <SortTH label="Strategy" col="name" sortKey={sortKey} dir={dir} onClick={toggleSort} />
+            <SortTH label="Strategy" col="name" sortKey={sortKey} dir={dir} onClick={toggleSort} sticky />
             <SortTH label="Status" col="status" sortKey={sortKey} dir={dir} onClick={toggleSort} />
             <SortTH label="Sleeve" col="sleeve_return_pct" sortKey={sortKey} dir={dir} onClick={toggleSort} align="right" />
             <SortTH label="Net" col="net_pct" sortKey={sortKey} dir={dir} onClick={toggleSort} align="right" />
@@ -80,9 +97,9 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
             <TR
               key={row.version_id}
               onClick={() => router.push(`/strategy/${row.version_id}`)}
-              className="cursor-pointer transition-colors hover:bg-surface-2/50"
+              className="group cursor-pointer transition-colors hover:bg-surface-2/50"
             >
-              <TD>
+              <TD className="sticky-col group-hover:bg-surface-2/50">
                 <div className="font-medium text-foreground">{row.name}</div>
                 <div className="text-[11px] text-quiet">{row.lineage}</div>
               </TD>
@@ -109,7 +126,8 @@ function SortTH({
   sortKey,
   dir,
   onClick,
-  align = "left"
+  align = "left",
+  sticky = false
 }: {
   label: string;
   col: SortKey;
@@ -117,10 +135,11 @@ function SortTH({
   dir: "asc" | "desc";
   onClick: (k: SortKey) => void;
   align?: "left" | "right";
+  sticky?: boolean;
 }) {
   const active = sortKey === col;
   return (
-    <TH className={align === "right" ? "text-right" : undefined}>
+    <TH className={cn(align === "right" && "text-right", sticky && "sticky-col")}>
       <button
         type="button"
         onClick={() => onClick(col)}

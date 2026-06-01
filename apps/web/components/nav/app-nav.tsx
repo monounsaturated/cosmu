@@ -62,69 +62,33 @@ export function SideNavLinks({ onNavigate, collapsed = false }: { onNavigate?: (
   );
 }
 
-export function MobileNav() {
-  const [open, setOpen] = useState(false);
+// Mobile primary navigation: a fixed bottom bar with large (>=44px) tap targets, always one tap
+// from any surface. Sits above page content (the page reserves space via padding-bottom on mobile).
+export function BottomNav() {
   const pathname = usePathname();
-
   return (
-    <div className="lg:hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-label="Open menu"
-        aria-expanded={open}
-        className="inline-flex size-9 items-center justify-center rounded-md border border-border/70 text-muted transition-colors hover:bg-surface-2/60 hover:text-foreground"
-      >
-        {open ? <X className="size-5" /> : <Menu className="size-5" />}
-      </button>
-      {open &&
-        createPortal(
-          <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-            <button
-              aria-label="Close menu"
-              onClick={() => setOpen(false)}
-              className="animate-overlay-in absolute inset-0 bg-black/40"
-            />
-            {/* compact, content-sized rounded panel that slides + fades in from the top (pure CSS) */}
-            <div className="animate-menu-in absolute inset-x-3 top-3 origin-top rounded-2xl border border-border bg-surface p-2 shadow-2xl">
-              <div className="flex items-center justify-between px-1.5 pb-2 pt-1">
-                <CosmuWordmark />
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label="Close menu"
-                  className="inline-flex size-8 items-center justify-center rounded-md text-muted hover:bg-surface-2/60 hover:text-foreground"
-                >
-                  <X className="size-5" />
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {navItems.map((item) => {
-                  const active = isActive(pathname, item.href);
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setOpen(false)}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "flex items-center gap-2 rounded-lg border px-3 py-2.5 text-[13px] transition-colors",
-                        active
-                          ? "border-border bg-surface-2/70 text-foreground"
-                          : "border-transparent bg-surface-2/30 text-muted hover:bg-surface-2/60 hover:text-foreground",
-                        item.gated && !active && "text-quiet opacity-70"
-                      )}
-                    >
-                      <item.icon className={cn("size-[17px] shrink-0", active ? "text-iris-soft" : "text-quiet")} />
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          </div>,
-          document.body
-        )}
-    </div>
+    <nav
+      aria-label="Primary"
+      className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
+    >
+      {navItems.map((item) => {
+        const active = isActive(pathname, item.href);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "flex min-h-[56px] flex-col items-center justify-center gap-1 text-[10.5px] font-medium transition-colors",
+              active ? "text-iris-soft" : "text-quiet hover:text-foreground",
+              item.gated && !active && "opacity-70"
+            )}
+          >
+            <item.icon className={cn("size-[20px] shrink-0", active && "text-iris-soft")} />
+            <span>{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

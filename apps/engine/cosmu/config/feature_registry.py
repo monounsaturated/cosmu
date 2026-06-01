@@ -34,6 +34,11 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     FeatureDefinition(name="vix_term_slope", source="fred/cboe", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="daily publication time", prior="Term slope encodes risk regime."),
     FeatureDefinition(name="putcall_ratio", source="cboe", tier="tier0", asset_classes=["equity"], asof_semantics="daily publication time (next-day availability floor)", prior="Sentiment extremes mean-revert at swing horizon.", transform_version="putcall-zscore-v1"),
     FeatureDefinition(name="liquidation_cascade", source="coinglass", tier="tier0", asset_classes=["crypto"], asof_semantics="liquidation bucket close time (next-bucket availability floor)", prior="A spike in total long+short liquidations marks forced deleveraging that overshoots — a cascade exhausts sellers and mean-reverts at the swing horizon.", transform_version="liquidation-cascade-zscore-v1"),
+    # Best-effort OSINT ("watching planes"): aircraft activity from the free OpenSky Network as a crude,
+    # LOW-CONFIDENCE macro-risk-appetite proxy. Availability == observation time (a live snapshot is only
+    # knowable when taken — no look-ahead). tier1 + the explicit low-confidence prior mean it must earn its
+    # place via out-of-sample; the gate down-weights it until it pays.
+    FeatureDefinition(name="osint_air_activity", source="opensky", tier="tier1", asset_classes=["crypto", "equity"], asof_semantics="live ADS-B snapshot time (availability == observation, no look-ahead)", prior="Aircraft activity is a crude, low-confidence macro risk-appetite/economic-activity proxy (best-effort OSINT); must earn its place via OOS — flag low-confidence.", transform_version="osint-adsb-v1"),
     FeatureDefinition(name="cftc_net_positioning", source="cftc", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="CFTC release time", prior="Crowded positioning can unwind."),
     FeatureDefinition(name="dxy", source="fred", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="daily publication time", prior="Dollar strength changes risk appetite."),
     FeatureDefinition(name="yield_curve_2s10s", source="fred", tier="tier0", asset_classes=["equity"], asof_semantics="daily publication time", prior="Curve slope tracks macro regime."),

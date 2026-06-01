@@ -26,6 +26,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Stat } from "@/components/ui/stat";
+import { MoneyState, moneyMode } from "@/components/ui/money-state";
 import { cn, formatSigned, formatUsd } from "@/lib/utils";
 
 const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
@@ -66,6 +67,9 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
 
   const armed = state.armed;
   const mode = modeBadge(state.mode);
+  // The single money-state label for every $ on this surface: DEMO offline, LIVE only when armed
+  // on the live venue, otherwise PAPER (simulated / testnet).
+  const money = moneyMode({ demo, live: armed && state.mode === "live" });
   const dailyLossPct = state.caps.max_daily_loss > 0 ? Math.min(100, (state.daily_loss / state.caps.max_daily_loss) * 100) : 0;
 
   async function refreshPositions() {
@@ -184,10 +188,11 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <MoneyState mode={money} />
           <Badge variant={mode.variant}>
             <ShieldCheck className="size-3" /> mode · {mode.label}
           </Badge>
-          {demo ? <Badge variant="warn">demo · engine offline</Badge> : null}
+          {demo ? <Badge variant="warn">engine offline</Badge> : null}
           {!armed ? (
             <Button variant="primary" size="md" onClick={openGoLive} disabled={pending}>
               <Power className="size-4" /> Go live
@@ -262,7 +267,7 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
               <table className="w-full text-left text-[12.5px]">
                 <thead>
                   <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-quiet">
-                    <th className="px-2 py-2 font-medium">Symbol</th>
+                    <th className="sticky-col px-2 py-2 font-medium">Symbol</th>
                     <th className="px-2 py-2 font-medium">Venue</th>
                     <th className="px-2 py-2 text-right font-medium">Qty</th>
                     <th className="px-2 py-2 text-right font-medium">Avg price</th>
@@ -273,7 +278,7 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
                 <tbody>
                   {state.positions.map((p) => (
                     <tr key={p.instrument_id} className="border-b border-border/40 last:border-0">
-                      <td className="px-2 py-2.5 font-medium text-foreground">{p.symbol}</td>
+                      <td className="sticky-col px-2 py-2.5 font-medium text-foreground">{p.symbol}</td>
                       <td className="px-2 py-2.5 text-muted">{p.venue}</td>
                       <td className="px-2 py-2.5 text-right tabular text-muted">{p.qty}</td>
                       <td className="px-2 py-2.5 text-right tabular text-muted">{formatUsd(p.avg_price)}</td>
@@ -371,7 +376,7 @@ function ActivationModal({
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <CapInput label="Per-strategy cap" value={caps.per_strategy_cap} onChange={(v) => onChangeCaps({ ...caps, per_strategy_cap: v })} />
             <CapInput label="Global cap" value={caps.global_cap} onChange={(v) => onChangeCaps({ ...caps, global_cap: v })} />
             <CapInput label="Max daily loss" value={caps.max_daily_loss} onChange={(v) => onChangeCaps({ ...caps, max_daily_loss: v })} />
