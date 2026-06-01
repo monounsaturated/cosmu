@@ -1,42 +1,23 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Cosmu mark — an orbit (the strategy population circling the deterministic core)
- * with a single bright node mid-orbit. Iris gradient, cosmos motif.
+ * Cosmu mark — an orbit (the strategy population) circling the deterministic core, one bright
+ * node mid-orbit. The tile is filled with the iris gradient so it reads on BOTH light and dark
+ * (the old dark-fill tile blacked out on light mode). Glyph is white for contrast on the iris.
  */
-export function CosmuMark({ className, size = 34 }: { className?: string; size?: number }) {
+export function CosmuMark({ className, size = 32 }: { className?: string; size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 48 48"
-      fill="none"
-      className={className}
-      aria-hidden
-    >
+    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" className={className} aria-hidden>
       <defs>
-        <linearGradient id="cosmu-iris" x1="6" y1="6" x2="42" y2="42" gradientUnits="userSpaceOnUse">
-          <stop stopColor="oklch(0.74 0.16 290)" />
-          <stop offset="1" stopColor="oklch(0.6 0.2 300)" />
+        <linearGradient id="cosmu-tile" x1="2" y1="2" x2="38" y2="38" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#7c5cff" />
+          <stop offset="1" stopColor="#5331c9" />
         </linearGradient>
-        <radialGradient id="cosmu-core" cx="0.5" cy="0.5" r="0.5">
-          <stop stopColor="oklch(0.86 0.12 290)" />
-          <stop offset="1" stopColor="oklch(0.62 0.2 295)" />
-        </radialGradient>
       </defs>
-      <rect x="1" y="1" width="46" height="46" rx="13" fill="oklch(0.22 0.03 290)" />
-      <rect x="1" y="1" width="46" height="46" rx="13" stroke="url(#cosmu-iris)" strokeOpacity="0.45" />
-      <ellipse
-        cx="24"
-        cy="24"
-        rx="14.5"
-        ry="8"
-        stroke="url(#cosmu-iris)"
-        strokeWidth="2"
-        transform="rotate(-28 24 24)"
-      />
-      <circle cx="24" cy="24" r="4" fill="url(#cosmu-core)" />
-      <circle cx="36.4" cy="17.8" r="2.6" fill="oklch(0.82 0.14 85)" />
+      <rect x="0.75" y="0.75" width="38.5" height="38.5" rx="11" fill="url(#cosmu-tile)" />
+      <ellipse cx="20" cy="20" rx="12" ry="6.6" stroke="white" strokeOpacity="0.92" strokeWidth="2" transform="rotate(-28 20 20)" />
+      <circle cx="20" cy="20" r="3.4" fill="white" />
+      <circle cx="30.4" cy="14.8" r="2.3" fill="#f3c948" />
     </svg>
   );
 }

@@ -1,71 +1,66 @@
 # Cosmu v2 — Build Brief
 
-> **Status (2026-06-01):** Phases 0+1 below — **the honest wall + the first single-signal gate — are BUILT** (`scorer.py`, `research/gate.py`, `holdout.py`, `altdata.py`, `universe_calendar.py`, `trials.py`; see `IMPLEMENTATION.md`). They are **reference only — do not rebuild them.**
+> **Status (2026-06-01):** Phases 0, 1, and **1.5 (single-asset aggregation gate) are BUILT and green on the fixture** — the honest wall, the LLM universal adapter (`ingest/standardize.py`), and the three-arm ablation (`research/gate.py` `evaluate_ablation`: price-only vs +alt vs buy-and-hold). See `IMPLEMENTATION.md`. **Reference only — do not rebuild.**
 >
-> **The active build unit is Phase 1.5 below — build it in one pass.** It is the cheapest honest test of the differentiator: *does aggregating numerous, complex, point-in-time sources and LLM-standardizing them add edge over price alone, after costs?* Read `docs/PLAN.md` §0–§2 + Phase 1.5 for the why; this brief is the what + the acceptance bar.
+> **The active build unit is Phase 1.6 below — build it in one pass.** It proves the *second* half of the differentiator: *does combining asset classes beat any single one?* — the cross-asset/decorrelation edge most likely to pay at small size. It builds directly on the proven 1.5 harness, stays on **free data ($0)**, and keeps **execution deferred** (PLAN §2 two-plane split). Read `docs/PLAN.md` §0–§2 + Phase 1.6 for the why; this brief is the what + the acceptance bar.
 
 ---
 
-## ACTIVE UNIT — Phase 1.5: Prove the aggregation edge
+## ACTIVE UNIT — Phase 1.6: The cross-asset extension
 
 ### Mission (one paragraph)
-Extend the existing wall + gate to answer the two questions the product actually exists for: **(1) does aggregating complex data beat price-only, after costs, point-in-time? and (2) does combining asset classes beat any single one?** — the cross-asset/decorrelation edge most likely to pay at small size. Run it as a **multi-arm ablation** (single-asset price-only vs single-asset+alt vs **cross-asset+alt** vs buy-and-hold) on **free multi-asset data ($0, no paid vendors)**, with per-source *and* per-asset-class drop-one reports so the owner learns *which assets and which data* pay. This is the **data/signal plane only — execution stays one-venue/simulated and paid vendors are deferred** (PLAN §2 two-plane split). No UI, no Nautilus, no vectorbt, no Supabase, no live — one pass. If cross-asset+alt doesn't beat the baselines, that is a valuable result: cut the data/assets that didn't pay, not the project.
+Extend the **proven 1.5 ablation** from one asset class to three, to answer the question the product's ambition rests on: **does combining asset classes beat any single one?** Add free **equity** (daily bars + FRED macro) and **prediction-market odds** (Polymarket public API) behind the existing seams; add **cross-asset features** (one market's price as another's feature); add a **fourth arm** to the ablation — (1) single-asset price-only · (2) single-asset+alt *(both built)* · **(3) cross-asset+alt (new)** · (4) buy-and-hold — with per-source *and* per-asset-class drop-one so the owner learns *which assets and which data* pay. This is the **data/signal plane only — execution stays one-venue/simulated and paid vendors are deferred** (PLAN §2). No UI, no Nautilus, no vectorbt, no Supabase, no live, **no paid vendors** — one pass. If cross-asset+alt doesn't beat the baselines, that is a valuable result: keep it single-asset and cut the classes that didn't pay, don't cut the project.
 
 ### Cold-start reading (in order, do not load whole files)
 1. `AGENTS.md` — invariants + decision tables.
-2. `docs/PLAN.md` §0–§2 (LLM at ingest-time not hot path; §2 venue constraint) + **Phase 1.5** in §4.
-3. `docs/IMPLEMENTATION.md` — what is real vs stubbed (the wall + first gate are real).
-4. The intent-spec header of each module before you edit it.
+2. `docs/PLAN.md` §0–§2 (LLM at ingest-time not hot path; §2 **two-plane split** + multi-asset) + **Phase 1.6** in §4.
+3. `docs/IMPLEMENTATION.md` — what is real vs stubbed (the wall + the 1.5 single-asset ablation are real and green).
+4. The intent-spec headers of `data/altdata.py`, `research/gate.py`, `ingest/standardize.py` — you are *extending* these, not rewriting.
 
-### Hard invariants (carry over from Phases 0+1, plus one)
-- **LLM only at ingest-time, frozen.** Any LLM transform is defined **once** → validated (`instructor`/Pydantic) → **versioned + content-hash-cached** → deterministic code runs it forever. **Zero LLM calls in the backtest, scoring, or decision paths.** The whole gate must run **fully offline via fixtures** (CI has no keys).
-- The **scorer and money stay deterministic and out of any LLM path.**
-- **No magic numbers in strategies** — thresholds/lengths come from a fitted `param_space`.
-- **No hardcoded "edge."** Unsupported features produce *no trades*, never invented returns.
-- **Point-in-time integrity** everywhere: data is read "as you would have known it then" (availability time, not event time).
+### Hard invariants (carry over — do not weaken)
+- **Build on the proven 1.5 harness.** Reuse `evaluate_ablation`, the alt-data seam, the LLM adapter, the trial ledger, the scorer. This is an *extension* — adding asset classes + a fourth arm, not a new gate.
+- **LLM only at ingest-time, frozen.** Validated (`instructor`/Pydantic) → **versioned + content-hash-cached** → deterministic code runs it forever. **Zero LLM calls in the backtest/scoring/decision paths.** The whole gate runs **fully offline via fixtures** (CI has no keys).
+- **The scorer and money stay deterministic and out of any LLM path.**
+- **Data plane only — execution stays deferred** (PLAN §2): paper/backtest fills are simulated; **no IBKR/Polymarket execution adapter, no paid data vendor** in this pass.
+- **No magic numbers** (thresholds from a fitted `param_space`); **no hardcoded "edge"** (unsupported features → no trades).
+- **Point-in-time integrity** everywhere (availability time, not event time); causal transforms only.
 - **Determinism:** seeded, reproducible for a fixed data + fixture cache.
-- **Every source/feature declares a prior hypothesis.** More data = more overfitting surface; a source that can't say why it carries swing-horizon edge does not get built.
+- **Every source/asset class declares a prior hypothesis.** More data/assets = more overfitting surface — anything that can't say why it carries swing-horizon edge does not get built.
 - Verify with `python3 -m pytest apps/engine/tests`; keep all existing tests green.
 
 ### Scope — build ALL of this in one pass
 
-**A. Three free sources behind the existing seam — `apps/engine/cosmu/data/altdata.py`**
-Extend the `AltDataProvider` Protocol; mirror the existing `FixtureAltDataProvider` so everything builds and tests with no key. All three: **immutable, append-only snapshots stamped with availability time** (never upsert — vendors revise history); reads select the latest snapshot ≤ *t*; causal transforms only (rolling/expanding, never full-sample).
-1. **Crypto funding rate + open interest** (ccxt / exchange REST, free) — used as a **long filter** (spot, long-only per PLAN §2), not a standalone signal.
-2. **Fear & Greed index** (alternative.me, free, daily).
-3. **One genuinely unstructured source** (crypto news headlines, free tier) — the source that exercises the LLM-as-universal-adapter.
+**A. Two new free asset classes behind the existing seams — `apps/engine/cosmu/data/altdata.py` + `apps/engine/cosmu/data/market.py`**
+Mirror the existing provider/`FixtureAltDataProvider` pattern (append-only, availability-stamped, latest snapshot ≤ *t*, causal transforms). Add offline fixtures for each so the gate runs with no key.
+1. **Equities** — free **daily bars** (e.g. Stooq/Yahoo-free) + **FRED macro** (free API). *Known limit: free equity bars are **survivorship-biased** (no delisted names) — declare it; this gate tests signal **presence**, not deployable capacity. Norgate replaces it at the execution/live phase.*
+2. **Prediction markets** — **Polymarket public CLOB odds** (free, no wallet). Odds-as-features only; no execution.
 
-**B. The LLM universal adapter, done right — `apps/engine/cosmu/ingest/standardize.py` (new)**
-- Maps the **unstructured** source (A.3) → a validated numeric row (e.g. `{event_type, sentiment, confidence}`) via `instructor`/Pydantic, **cheap tier, batched, cached by content hash, hard daily cost cap.**
-- The transform is **versioned** (`transform_version` pinned into any feature that uses it) with a **deterministic offline fixture** so the gate runs with no key.
-- A's numeric sources (funding/OI/F&G) **skip the LLM** — make that explicit; the LLM earns its place *only* on messy text.
+**B. Cross-asset features — extend `apps/engine/cosmu/config/feature_registry.py`**
+- 2–3 cross-asset features, each with a one-line **prior** + `transform_version`: e.g. **prediction-market odds → crypto/equity risk-on/off tag**, **crypto funding → cross-asset risk-appetite**, equity-macro (FRED) regime tag. The point is *transfer* — one market's price as another market's feature.
+- Reuse the built LLM adapter (`ingest/standardize.py`) only where a source is genuinely unstructured; numeric odds/bars/macro **skip the LLM**.
 
-**C. Hypothesis-backed features — extend `apps/engine/cosmu/config/feature_registry.py`**
-- 2–3 features, each with a one-line **prior** + its `transform_version`: e.g. news-sentiment z-score; funding-extreme long filter; F&G mean-reversion regime tag.
-
-**D. The ablation gate — extend `apps/engine/cosmu/research/gate.py`**
-- Run **three arms** on the **same** eligible universe (`universe_calendar.py`), same costs (`data/backtest.py`), same wall (`master/scorer.py`): (1) **price-only** baseline, (2) **+ alt-data features**, (3) **buy-and-hold** BTC/ETH.
-- Emit a **drop-one** per-source marginal-contribution report (how much each source moves deflated Sharpe).
-- **Pre-registered pass bar (log it before looking; changing it after counts as a new trial):**
-  - alt-data arm net return **> price-only arm** *and* **> buy-and-hold**, all net of the same costs
+**C. Add the cross-asset arm to the ablation — extend `apps/engine/cosmu/research/gate.py` (`evaluate_ablation`)**
+- Now **four arms** on the **same** windows / costs / wall: (1) single-asset price-only · (2) single-asset + alt-data *(both already built)* · **(3) cross-asset + alt-data (new)** · (4) buy-and-hold.
+- Add a **per-asset-class** drop-one report alongside the existing per-source one (how much each class moves deflated Sharpe).
+- **Pre-registered pass bar (log before looking; changing it after counts as a new trial):**
+  - arm (3) net return **> arm (1)** *and* **> arm (2)** *and* **> buy-and-hold**, all net of the same costs
   - `num_trades ≥ 30` · `PSR(SR0) ≥ 0.95` after global-trial deflation · `overfit metric < 0.50`
   - **positive net in ≥ 2 regime folds** · `max_drawdown < 0.25`
-  - **attempt budget ≤ 12** variants total, **every attempt counted in the global trial counter** (`master/trials.py`) — the gate itself must not be p-hacked.
-- Verdict: `PASS` (aggregation thesis real → Phase 2) / `STOP` (cut to the sources that paid, per the drop-one report).
+  - **attempt budget ≤ 12** variants total, **every attempt counted in the global trial counter** (`master/trials.py`).
+- Verdict: `PASS` (cross-asset thesis real → Phase 2 with all classes) / `STOP-narrow` (keep single-asset, cut classes that didn't pay, per the per-class report).
 
-**E. Tests — `apps/engine/tests/` (extend, keep all existing green)**
-- Each provider serves point-in-time offline; a *revised* snapshot does not rewrite an earlier point-in-time read.
-- LLM adapter is deterministic given the fixture; a cache hit avoids a second call; no LLM call occurs in any backtest/scoring path (asserted).
-- Ablation runs end-to-end on fixtures and prints a deterministic three-arm verdict + per-source drop-one contributions.
-- Global trial counter increments once per attempt.
+**D. Tests — `apps/engine/tests/` (extend, keep all existing green)**
+- Each new provider serves point-in-time offline; a *revised* snapshot does not rewrite an earlier read; survivorship limit asserted for the equity fixture.
+- The four-arm ablation runs end-to-end on fixtures and prints a deterministic verdict + per-source *and* per-asset-class drop-one.
+- No LLM call in any backtest/scoring path (asserted); global trial counter increments once per attempt.
 
 ### Out of scope (do NOT build)
-UI (sidebar/charts/routes) · NautilusTrader · vectorbt/Optuna · Supabase/pgvector/RAG · survival model · live trading · LunarCrush wiring beyond leaving the provider seam ready (free sources first — a $0 real gate beats a paid one). These are Phases 2–4, conditional on this gate.
+Execution adapters (IBKR, Polymarket live wallet) · **any paid data vendor** (Norgate/Sharadar/Databento) · UI (sidebar/charts/routes) · NautilusTrader · vectorbt/Optuna · Supabase/pgvector/RAG · survival model · live trading · LunarCrush. These are Phases 2–4, conditional on this gate.
 
-### Definition of Done (Phase 1.5)
+### Definition of Done (Phase 1.6)
 - All existing + new tests pass under `python3 -m pytest apps/engine/tests`.
-- `python3 -m cosmu.research.gate` runs **offline** and prints a deterministic three-arm verdict + per-source marginal contribution against the pre-registered bar; trial counter increments per attempt.
-- No LLM call in any non-ingest path; no new paid cloud dependency; no magic numbers; no survivorship/lookahead/holdout-reuse paths introduced.
+- `python3 -m cosmu.research.gate` runs **offline** and prints a deterministic **four-arm** verdict + per-source and per-asset-class drop-one against the pre-registered bar; trial counter increments per attempt.
+- No LLM call in any non-ingest path; **no execution adapter, no paid vendor**; no magic numbers; no survivorship/lookahead/holdout-reuse paths introduced (free-equity survivorship limit explicitly declared, not hidden).
 
 ---
 

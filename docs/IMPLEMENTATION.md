@@ -43,8 +43,12 @@
 - **LLM universal adapter** (`ingest/standardize.py`): unstructured headline → validated `StandardizedNews` (`event_type/sentiment/confidence`), **content-hash cached**, **frozen `TRANSFORM_VERSION`**, deterministic offline lexicon path so the gate runs with no key; the LLM slots in at one seam and **never runs in any backtest/scoring path**.
 - **Ablation gate** (`research/gate.py` `evaluate_ablation`): three arms on the same universe/costs/wall — **price-only vs +alt-data vs buy-and-hold** — plus a **drop-one** per-source marginal-Sharpe report, CSCV over a diverse alt-arm grid, the pre-registered bar, and every arm counted in the global trial ledger. CLI `python3 -m cosmu.research.gate` prints the three-arm verdict offline. On the seeded fixture: PASS, alt > price-only > buy-and-hold, news is the paying source.
 
+### Free-data ingestion pipeline (BUILT)
+- `ingest/pipeline.py` — `ingest_free_sources(...)` pulls funding/OI, Fear&Greed (market-wide), and news headlines via the free providers into the **append-only point-in-time** `AltDataStore`; news is LLM-standardized to a numeric `news_sentiment` series **at ingest only** (cached). Idempotent (re-runs never change the as-of view), offline-safe via injected providers. This is the seam the *real* gate reads once a scheduled worker runs it live.
+
 ## Decisions
 
+- **Hosting = Railway, DB = Supabase (Postgres + pgvector).** Railway over Render (Render's free tier sleeps — unfit for a 24/7 data worker; multi-service always-on is cheaper on Railway's usage billing). Hetzner is the Tier-2/3 cost option. Supabase gives managed Postgres + pgvector for the central indexed store / graveyard RAG.
 - **Free data first ($0).** The first real gate runs on funding/OI + Fear&Greed + free news; LunarCrush/social is optional and only added if the free aggregation gate shows legs. A $0 real gate beats a paid one.
 - **Pine import = paste / file upload / bulk, not TV link.** TradingView doesn't expose script source over a public URL (closed-source scripts; scraping violates ToS). Paste + `.pine`/`.txt` upload + the sample library is the robust path. A CSV/bulk-paste of `{name, source}` is the multi-import seam.
 - **LLM-optional by default.** Authoring + generation run deterministically without any model key, so the machine is fully functional offline; the model router is an enhancement at a single seam, never a hard dependency. Keeps the scorer/money partition intact regardless.
@@ -129,9 +133,9 @@ The core feature is the LLM using ML tools to test strategies fast — but the h
 
 ## Priority order (next)
 
-**Gate-first (decided 2026-06-01): the next build is the Phase 1.5 aggregation/ablation gate — prove the differentiator on free data before building any more product.** The product/UI work below is real but **deferred until the gate passes** (don't gold-plate a surface for an unproven edge).
+**Gate-first (decided 2026-06-01): prove the differentiator on free data before building any more product.** Phase 1.5 (single-asset aggregation ablation) is **built and green on the fixture**. The active build is **Phase 1.6 — the cross-asset extension** (the multi-asset thesis: does combining asset classes beat any single one?). Product/UI work stays **deferred until the gate passes** (don't gold-plate a surface for an unproven edge).
 
-1. **Phase 1.5 — prove the aggregation edge** (`docs/BUILD_BRIEF.md`, active unit). Three free sources behind the `AltDataProvider` seam + the LLM universal adapter (frozen, ingest-only) → the three-arm ablation gate (price-only vs + alt-data vs buy-and-hold) with per-source drop-one. **Nothing below matters until the alt-data arm beats price-only.**
+1. **Phase 1.6 — the cross-asset extension** (`docs/BUILD_BRIEF.md`, active unit). Add free **equities** (daily bars + FRED) and **prediction-market odds** (Polymarket public API) behind the existing seams + cross-asset features → a **fourth arm** on the built ablation: cross-asset+alt vs single-asset price-only vs single-asset+alt vs buy-and-hold, with per-asset-class drop-one. **Execution + paid vendors deferred** (two-plane split, PLAN §2). **Nothing below matters until cross-asset+alt beats the single-asset baseline.**
 2. *(after PASS)* **Split into the three engines + the six real routes**, collapsible icon sidebar, 2-click Live modal.
 3. *(after PASS)* **Pine inbox folder.**
 4. *(after PASS)* **Dashboard redesign**: real charts (Tremor/Recharts), plain language, mobile pass.

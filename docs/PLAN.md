@@ -78,7 +78,7 @@ This is what buys an "AI trading firm" for ~$60/mo instead of $6,000: you pay th
 
 **Does an exploitable edge exist *across asset classes* — crypto + equities + prediction markets — after fees, point-in-time-correct? And does *combining* them beat any single one?**
 
-Most published *single-market* alt-data edges are decayed or were lookahead artifacts. But the edge most likely to survive at small size is **decorrelation + cross-market signal transfer** (§6, VISION §21) — and that edge *only exists multi-asset*. So we do **not** narrow to one market to feel safe. We go multi-asset on **inputs** from day one and make "multi-asset beats single-asset" a **falsifiable hypothesis the gate tests.** The firm is still scaffolding around a premise that may be zero — so we prove it before building the factory (Phases 1 + 1.5). Phases 2–4 are *conditional* on the gate producing an honest **cross-asset** survivor that beats the single-asset, price-only baseline.
+Most published *single-market* alt-data edges are decayed or were lookahead artifacts. But the edge most likely to survive at small size is **decorrelation + cross-market signal transfer** (§6, VISION §21) — and that edge *only exists multi-asset*. So we do **not** narrow to one market to feel safe. We go multi-asset on **inputs** from day one and make "multi-asset beats single-asset" a **falsifiable hypothesis the gate tests** (Phase 1.6). The firm is still scaffolding around a premise that may be zero — so we prove it before building the factory (Phases 1 → 1.6). Phases 2–4 are *conditional* on the gate producing an honest **cross-asset** survivor that beats the single-asset, price-only baseline.
 
 ### The two-plane split (how multi-asset stays cheap *and* disciplined)
 
@@ -129,15 +129,17 @@ Cheapest path to truth. **No LLM, no registry, no pipeline, no UI.** Manual data
 - **DoD / decision gate:** ≥1 signal clears with an honest deflated Sharpe + survivable PBO. **Nothing clears → stop. That's a real, valuable result.** Clears → proceed.
 - *Product slice:* a one-screen result view (signal vs buy-and-hold) is the thinnest useful surface — optional, but it's the first thing you'd actually look at.
 
-### Phase 1.5 — Prove the *cross-asset* aggregation edge *(THE DIFFERENTIATOR GATE — multi-asset, FREE data)*
-Phase 1 proves *a* signal exists. Phase 1.5 proves the **two** things the product is actually *for*: that **aggregating complex point-in-time data adds edge over price alone**, *and* that **combining asset classes beats any single one** — the decorrelation/cross-market edge most likely to pay at small size. All on **free data, $0**, with **execution still deferred** (two-plane split, §2). *More data is not automatically good (it is overfitting surface — §6); this phase is where every source and every asset class has to earn its place or get cut.*
-- **1.5.1 Free multi-asset sources** behind the existing `AltDataProvider`/market seams, point-in-time, append-only, offline-fixture-backed: crypto **funding + OI + Fear&Greed** (ccxt / alternative.me, funding as a **long filter** — §2); equity **free daily bars + FRED macro**; **prediction-market odds** (Polymarket public API); one **unstructured** source (crypto news headlines, free) for the LLM adapter. *(Free equity data is survivorship-biased — a documented PoC limitation, replaced by Norgate at the execution/live phase; here we test signal **presence**, not deployable capacity.)*
-- **1.5.2 The LLM universal adapter, done right:** the unstructured source is standardized to a validated numeric row **once** — frozen, **versioned**, content-hash-**cached**, cheap-tier, hard daily cap — then deterministic code runs forever (§1). Numeric sources **skip the LLM**. The whole gate runs **fully offline via fixtures** (CI has no keys).
-- **1.5.3 Cross-asset features**, each with a stated prior: e.g. **prediction-market odds → crypto/equity risk-on/off**, **crypto funding → cross-asset risk appetite**, news-sentiment z-score. Cross-asset signal transfer is the whole point — one market's price as another market's feature.
-- **1.5.4 The multi-arm ablation gate** (extend `apps/engine/cosmu/research/gate.py`): four arms on the **same** wall / costs / windows — (1) **single-asset price-only** (baseline), (2) **single-asset + alt-data**, (3) **cross-asset + alt-data** (the multi-asset thesis), (4) **buy-and-hold** — plus **drop-one** per-source *and* per-asset-class contribution. Pre-registered bar (logged before looking): arm (3) must beat (1), (2), **and** (4) net of costs, clear the existing PSR/overfit/min-trades/≥2-regime/drawdown gates, with **attempt budget ≤ 12, every attempt counted in the global trial counter** (the gate itself must not be p-hacked).
-- **DoD / decision gate:** cross-asset+alt beats single-asset **and** buy-and-hold → the multi-asset thesis is **proven** (not assumed) → proceed to Phase 2. Only single-asset+alt clears → narrow to that. Neither → **STOP.** The per-axis report tells you exactly **which asset classes and which sources** paid — ambition validated by evidence, for $0.
+### Phase 1.5 — Prove the *aggregation* edge, single-asset *(THE DIFFERENTIATOR GATE — BUILT ✓)*
+**Done and green on the fixture** (see `IMPLEMENTATION.md`): three free crypto sources (funding as a long filter, Fear&Greed, free news) behind the alt-data seam; the LLM universal adapter (`ingest/standardize.py`, frozen/versioned/cached, never in any backtest/scoring path); and a **three-arm ablation** (`research/gate.py` `evaluate_ablation`) — **price-only vs + alt-data vs buy-and-hold** — with a drop-one per-source report, CSCV/PBO, the pre-registered bar, and every arm counted in the global trial ledger. On the seeded fixture: **PASS, alt > price-only > buy-and-hold, news is the paying source.** *(The real-data run still needs the live free pulls wired — but the harness and the verdict logic are proven.)*
 
-### Phase 2 — Earn the stack *(only if the Phase 1 / 1.5 gate passed)*
+### Phase 1.6 — The cross-asset extension *(ACTIVE — multi-asset, still FREE data)*
+Phase 1.5 proved *aggregating data beats price* on one asset class. Phase 1.6 proves the **second, bigger** half of the thesis: that **combining asset classes beats any single one** — the decorrelation/cross-market edge most likely to pay at small size (§6, VISION §21). Built on the proven 1.5 harness, on **free data, $0**, with **execution still deferred** (two-plane split, §2). *More data/assets is not automatically good (it is overfitting surface — §6); this is where each asset class earns its place or gets cut.*
+- **1.6.1 Add two free asset classes** to the existing seams, point-in-time, append-only, fixture-backed: equity **free daily bars + FRED macro**, and **prediction-market odds** (Polymarket public API). *(Free equity data is survivorship-biased — a documented PoC limitation, replaced by Norgate at the execution/live phase; here we test signal **presence**, not deployable capacity.)*
+- **1.6.2 Cross-asset features**, each with a stated prior: e.g. **prediction-market odds → crypto/equity risk-on/off**, **crypto funding → cross-asset risk appetite**. Cross-asset signal transfer is the whole point — one market's price as another market's feature.
+- **1.6.3 Add a fourth arm to the ablation** (extend `evaluate_ablation`): (1) single-asset price-only · (2) single-asset + alt-data *(both already built)* · **(3) cross-asset + alt-data (the new thesis)** · (4) buy-and-hold. Add **per-asset-class** drop-one alongside the existing per-source one. Same pre-registered bar, same global trial counter, **attempt budget ≤ 12**.
+- **DoD / decision gate:** cross-asset+alt beats single-asset **and** buy-and-hold → the multi-asset thesis is **proven, not assumed** → proceed to Phase 2 with all three classes. Only single-asset+alt clears → keep it single-asset for now. Neither → **STOP.** The per-axis report tells you exactly **which asset classes and which sources** paid — ambition validated by evidence, for $0.
+
+### Phase 2 — Earn the stack *(only if the Phase 1 → 1.6 gate passed)*
 Infrastructure is now justified by a real edge. Add each piece **only as volume/pain demands it.**
 - **2.1** Automate ingestion with a **scheduled job** (adopt Prefect only when DAG complexity is real) → **Supabase Postgres**, point-in-time.
 - **2.2** **vectorbt** (throughput), **Optuna** (param fitting, kills the midpoint stand-in), **CPCV** (upgrade the wall now that there are many strategies to validate), Polars/Parquet.
@@ -179,7 +181,47 @@ Railway $10–25 · Vercel $0–20 · Supabase $0–25 · Modal $0–20 · ccxt/
 - **You buy/operate (everything else):** data APIs, vectorbt/Optuna/LightGBM/Nautilus, Supabase, Modal, OpenRouter, Prefect, Langfuse. Maintenance and bug risk live mostly in someone else's repo.
 
 ## 8. Open items before code
-1. **Phase 1 / 1.5 edge gate** — the whole roadmap past Phase 2 is conditional on it. The Phase 0 wall + Phase 1 single-signal gate are **built** (see `IMPLEMENTATION.md`); the active unit is the **Phase 1.5 cross-asset ablation gate** (`docs/BUILD_BRIEF.md`). Run it on free multi-asset data; don't build further until cross-asset+alt beats the single-asset price-only baseline.
+1. **Phase 1 → 1.6 edge gate** — the whole roadmap past Phase 2 is conditional on it. The Phase 0 wall, Phase 1 single-signal gate, and the **Phase 1.5 single-asset aggregation gate are built** (see `IMPLEMENTATION.md`); the active unit is the **Phase 1.6 cross-asset extension** (`docs/BUILD_BRIEF.md`). Run it on free multi-asset data; don't build further until cross-asset+alt beats the single-asset price-only baseline.
 2. **Spot vs futures** (§2) — now an *optimization, not a blocker*: multi-asset gives directional/decorrelated expression without it. Decide only if the gate shows crypto specifically needs the short leg.
 3. **LunarCrush API key + tier choice** — *optional*, only to add social data after the free gate passes.
 4. **`class_gates` schema add** (Phase 4.1 polish) — ask-first DB change, not on the critical path. (Note: an `asset_class_gates` table already exists in the schema.)
+
+## 9. Data sources (impact-ranked) + stack & pricing tiers
+
+> Principle (aligned with §1 + BUILD_BRIEF): **free data first, gate before factory.** Wire the cheap high-impact sources, run the *real* gate, and only build the big agentic/ML/indexing machine if real data beats price-only. Don't build the factory on a synthetic PASS.
+
+### Data sources, ranked by impact-per-cost (crypto, free-first)
+| # | Source | Cost | Edge prior | Status |
+|---|--------|------|-----------|--------|
+| 1 | **Price OHLCV** (Binance/ccxt) | free | baseline the rest must beat | wired |
+| 2 | **Funding rate + Open Interest** (Binance fapi) | free | crowded-leverage / positioning — the classic crypto edge | provider wired |
+| 3 | **Fear & Greed** (alternative.me) | free | crowd-sentiment regime, mean-reverts | wired |
+| 4 | **Liquidations** (Coinglass free) | free | cascade/exhaustion timing | next |
+| 5 | **News headlines** (CryptoPanic free / RSS / GDELT) | free | narrative shift precedes continuation; the LLM-as-adapter source | provider wired |
+| 6 | **On-chain flows** (Glassnode/CryptoQuant free→paid, Dune free) | freemium | exchange in/outflows, whale moves | later |
+| 7 | **Social** (LunarCrush) | ~$24–40/mo | social momentum; decays fast | optional, post-gate |
+| 8 | **Macro** (FRED: DXY, 2s10s) | free | risk regime | later/equities |
+
+**Acquisition = APIs + scheduled pulls, not scraping.** Where an API exists, use it (ToS-safe); scraping only via legal free feeds (RSS/GDELT). All pulls land **append-only, point-in-time** in the store. The **LLM runs only at ingest** to standardize unstructured text → numeric (content-hash cached, free/cheap model), never in the hot path.
+
+### Agentic & retrieval (low-token, cheap)
+- **MCP = the agent's *tool* interface** (web search, RAG read, backtest_request) — not the ingestion pipeline (plain code is cheaper for scheduled pulls).
+- **Free models for ingest + breadth** (OpenRouter free Llama/Qwen/DeepSeek tiers), frontier only for novel hypotheses, all behind **LiteLLM with a hard cap**.
+- **Low-token retrieval:** structured Postgres + a compact one-line **INDEX** + **pgvector** over graveyard/research notes. The LLM reads the INDEX then one record. **Recycle:** features computed once and reused across strategies; the **graveyard is long-term memory** so dead ideas aren't re-proposed.
+- **Pine scripts / NL trading ideas** already enter via `translate_pine` + `lab/author` → the same typed-spec funnel; the LLM authors structure only, the wall judges.
+
+### Stack & pricing — 3 tiers (smartest moves)
+**Don't self-host LLMs or rent always-on GPU.** Always-on = cheap CPU; LLM = OpenRouter; GPU = pay-per-use bursts only.
+
+| Tier | When | Always-on | DB | Compute burst | LLM | Paid data | ~ $/mo |
+|------|------|-----------|----|--------------|----|-----------|--------|
+| **1 — Prove it** | now (free gate) | Railway hobby **or** Hetzner CX22 / Scaleway; Vercel free | Supabase free (PG+pgvector) | none (CPU backtests) | OpenRouter **free** models, cap ~$10 | none | **$5–35** |
+| **2 — Edge found** | after real gate PASS | Hetzner CX32 / Railway pro | Supabase Pro ($25) | Modal pay-per-use ($0–50) | cheap-tier + rare frontier, cap ~$30–80 | LunarCrush ($24–40) + on-chain basic (~$30) | **$60–150** |
+| **3 — Compounding/live** | sustained paper edge | dedicated Hetzner AX (~$50) | Supabase Pro + add-ons | RunPod/Modal GPU bursts ($50–200) | frontier for novel, cap $100–250 | + Tardis/Databento/paid on-chain | **$250–600** |
+
+**Recommended lean stack:** Railway (DX) or Hetzner (cost) always-on · Supabase (Postgres+pgvector) · Modal (bursts) · OpenRouter+LiteLLM (LLM) · Vercel (web). Render is fine but pricier than Hetzner for always-on; RunPod best for cheap GPU bursts.
+
+### Next unit — real data + central DB (ask-first: infra/schema)
+1. **Supabase Postgres + pgvector** replaces SQLite + JSONL caches → the central, indexed store the vision needs (feature store · append-only snapshots · graveyard RAG · INDEX).
+2. **Scheduled free-data worker** pulls sources #1–5 live, point-in-time → run `evaluate_ablation` on **real** data → a true PASS/STOP.
+3. Only on real PASS: build the holistic agentic/ML/indexing layer (Phase 2+).

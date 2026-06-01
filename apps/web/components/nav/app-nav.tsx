@@ -57,33 +57,57 @@ export function SideNavLinks({ onNavigate, collapsed = false }: { onNavigate?: (
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
   return (
     <div className="lg:hidden">
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen((o) => !o)}
         aria-label="Open menu"
+        aria-expanded={open}
         className="inline-flex size-9 items-center justify-center rounded-md border border-border/70 text-muted transition-colors hover:bg-surface-2/60 hover:text-foreground"
       >
-        <Menu className="size-5" />
+        {open ? <X className="size-5" /> : <Menu className="size-5" />}
       </button>
       {open &&
         createPortal(
           <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-            <button aria-label="Close menu" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)} />
-            <div className="absolute inset-y-0 left-0 flex w-[260px] flex-col gap-4 overflow-y-auto border-r border-border bg-surface p-4 shadow-2xl">
-              <div className="flex items-center justify-between">
+            <button aria-label="Close menu" className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
+            {/* compact, content-sized rounded panel at the top — not a full-height block */}
+            <div className="absolute inset-x-3 top-3 rounded-2xl border border-border bg-surface p-2 shadow-2xl">
+              <div className="flex items-center justify-between px-1.5 pb-2 pt-1">
                 <CosmuWordmark />
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
                   aria-label="Close menu"
-                  className="inline-flex size-8 items-center justify-center rounded-md text-muted hover:text-foreground"
+                  className="inline-flex size-8 items-center justify-center rounded-md text-muted hover:bg-surface-2/60 hover:text-foreground"
                 >
                   <X className="size-5" />
                 </button>
               </div>
-              <SideNavLinks onNavigate={() => setOpen(false)} />
+              <div className="grid grid-cols-2 gap-1.5">
+                {navItems.map((item) => {
+                  const active = isActive(pathname, item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setOpen(false)}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "flex items-center gap-2 rounded-lg border px-3 py-2.5 text-[13px] transition-colors",
+                        active
+                          ? "border-border bg-surface-2/70 text-foreground"
+                          : "border-transparent bg-surface-2/30 text-muted hover:bg-surface-2/60 hover:text-foreground"
+                      )}
+                    >
+                      <item.icon className={cn("size-[17px] shrink-0", active ? "text-iris-soft" : "text-quiet")} />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
           </div>,
           document.body
