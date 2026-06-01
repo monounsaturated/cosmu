@@ -10,11 +10,16 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from cosmu.config.settings import GateSettings
+from decimal import Decimal
+
+from cosmu.config.settings import GateSettings, RiskSettings
 from cosmu.execution.costopt import FeeSchedule, OrderPlan, choose_order
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, Promotion, promote_cohort
+from cosmu.master.execution import IntendedOrder, OrderOutcome, execute_orders
+from cosmu.master.portfolio import PaperPortfolio
 from cosmu.portfolio.rotation import Allocation, Sleeve, rotate
+from cosmu.spine.venue import VenueCatalog, default_catalog
 
 
 @dataclass
@@ -22,10 +27,14 @@ class CycleContext:
     """The state passed through one cycle's stages, accumulating the cycle's decisions and an audit log."""
 
     as_of: datetime
+    live_enabled: bool = False  # set by the agent from its envelope so the execute stage can route live
+    kill_switch: bool = False
     candidates: list[Candidate] = field(default_factory=list)
     promotions: list[Promotion] = field(default_factory=list)
     allocations: list[Allocation] = field(default_factory=list)
     plans: list[tuple[str, OrderPlan]] = field(default_factory=list)  # (sleeve_id, execution plan)
+    intents: list[IntendedOrder] = field(default_factory=list)
+    outcomes: list[OrderOutcome] = field(default_factory=list)
     log: list[str] = field(default_factory=list)
 
 
@@ -85,6 +94,50 @@ def execution_plan_stage(fee: FeeSchedule, *, edge_bps_of: Callable[[str], float
     return stage
 
 
+def execute_stage(
+    *,
+    store: Store,
+    portfolio: PaperPortfolio,
+    adapter,  # BinanceSpotExecutionAdapter or any core.ExecutionAdapter; None -> paper only
+    risk: RiskSettings,
+    order_of: Callable[[str, OrderPlan], IntendedOrder | None],
+    catalog: VenueCatalog | None = None,
+    marks_of: Callable[[], dict[str, Decimal]] | None = None,
+) -> Stage:
+    """The single execute stage — REPLACES the old 'paper-only: plans not sent' stub. Turns each funded plan into
+    an IntendedOrder via `order_of`, then routes the whole batch through master/execution.execute_orders, which
+    runs the risk gauntlet and submits live ONLY when (live toggle ON + adapter active + gate passed + caps +
+    not killed); otherwise paper-fills. Marks-to-market after, so GET /portfolio reflects real state."""
+    cat = catalog or default_catalog()
+
+    def stage(ctx: CycleContext) -> CycleContext:
+        intents: list[IntendedOrder] = []
+        for sleeve_id, plan in ctx.plans:
+            intent = order_of(sleeve_id, plan)
+            if intent is not None:
+                intents.append(intent)
+        ctx.intents = intents
+        ctx.outcomes = execute_orders(
+            intents,
+            live_enabled=ctx.live_enabled,
+            kill_switch=ctx.kill_switch,
+            adapter=adapter,
+            store=store,
+            portfolio=portfolio,
+            risk=risk,
+            catalog=cat,
+        )
+        if marks_of is not None:
+            portfolio.mark_to_market(marks_of())
+        routed = sum(1 for o in ctx.outcomes if o.routed_live)
+        filled = sum(1 for o in ctx.outcomes if o.accepted)
+        rejected = sum(1 for o in ctx.outcomes if not o.accepted)
+        ctx.log.append(f"execute: {filled} filled ({routed} live), {rejected} rejected by gauntlet")
+        return ctx
+
+    return stage
+
+
 # --- the autonomous agent -------------------------------------------------------------------------
 
 @dataclass
@@ -118,10 +171,16 @@ class TradingAgent:
             return CycleContext(as_of, log=["halted: kill_switch"])
         if self.envelope.paused:
             return CycleContext(as_of, log=["paused"])
-        ctx = CycleContext(as_of, candidates=list(candidates))
+        ctx = CycleContext(
+            as_of,
+            live_enabled=self.envelope.live_enabled,
+            kill_switch=self.envelope.kill_switch,
+            candidates=list(candidates),
+        )
         for stage in self.stages:
             ctx = stage(ctx)
-        if not self.envelope.live_enabled and ctx.plans:
+        # The old paper-only note still fires when no execute stage ran (plans planned but not routed).
+        if not self.envelope.live_enabled and ctx.plans and not ctx.outcomes:
             ctx.log.append("paper-only: live toggle off, plans not sent to a venue")
         self.cycles_run += 1
         if self.on_cycle is not None:

@@ -2,9 +2,20 @@
 builder = "nixpacks"
 buildCommand = "pnpm build:railway"
 
+# The ONLY persistent process: the API service (which also runs the farm/paper loop). Live trading stays
+# OFF by default — capability is dormant behind the live toggle + keys + the deterministic gate.
 [deploy]
 startCommand = "pnpm start"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
+
+# Scheduled, BOUNDED research ingest — NOT a 24/7 process. Runs a single free-data ingest pass + gate run,
+# then exits. Railway runs a [[cron]] command as a one-shot container on the schedule below (every 6h).
+# If your Railway plan requires cron to be configured in the dashboard instead, set a Cron Schedule on a
+# service with this exact start command:
+#     python3 -m cosmu.research.loop --ingest
+[[cron]]
+schedule = "0 */6 * * *"
+command = "cd apps/engine && python3 -m cosmu.research.loop --ingest"

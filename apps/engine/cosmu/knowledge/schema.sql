@@ -113,6 +113,21 @@ CREATE TABLE IF NOT EXISTS portfolio_snapshots (
   drawdown NUMERIC NOT NULL
 );
 
+-- Live/paper open positions per strategy sleeve, marked-to-market by master/portfolio.py. avg_price is the
+-- memoryless basis; venue distinguishes paper/testnet/live mechanics. Net-zero rows are kept for audit.
+CREATE TABLE IF NOT EXISTS positions (
+  id TEXT PRIMARY KEY,
+  strategy_version_id TEXT,
+  instrument_id TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  venue TEXT NOT NULL,
+  qty NUMERIC NOT NULL,
+  avg_price NUMERIC NOT NULL,
+  realized_pnl NUMERIC NOT NULL DEFAULT 0,
+  last_was_loss INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sleeves (
   id TEXT PRIMARY KEY,
   strategy_version_id TEXT NOT NULL UNIQUE REFERENCES strategy_versions(id),

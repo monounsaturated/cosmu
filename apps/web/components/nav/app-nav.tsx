@@ -8,14 +8,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { LayoutDashboard, Menu, MessageSquare, Microscope, SlidersHorizontal, X } from "lucide-react";
+import { LayoutDashboard, Menu, MessageSquare, Microscope, Radio, SlidersHorizontal, X } from "lucide-react";
 import { CosmuWordmark } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 
-export const navItems = [
+// `gated` items are kept deliberately dimmed (live trading is in scope but off by default —
+// the screen itself stays lean and the gate must pass before anything can arm).
+type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; gated?: boolean };
+
+export const navItems: NavItem[] = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/research", label: "Research", icon: Microscope },
   { href: "/console", label: "Console", icon: MessageSquare },
+  { href: "/live", label: "Live", icon: Radio, gated: true },
   { href: "/settings", label: "Settings", icon: SlidersHorizontal }
 ];
 
@@ -44,7 +49,8 @@ export function SideNavLinks({ onNavigate, collapsed = false }: { onNavigate?: (
               collapsed ? "justify-center px-0 py-2.5" : "px-3 py-2",
               active
                 ? "border-border bg-surface-2/70 text-foreground"
-                : "border-transparent text-muted hover:border-border hover:bg-surface-2/60 hover:text-foreground"
+                : "border-transparent text-muted hover:border-border hover:bg-surface-2/60 hover:text-foreground",
+              item.gated && !active && "text-quiet opacity-70 hover:opacity-100"
             )}
           >
             <item.icon className={cn("size-[17px] shrink-0 transition-colors", active ? "text-iris-soft" : "text-quiet group-hover:text-iris-soft")} />
@@ -105,7 +111,8 @@ export function MobileNav() {
                         "flex items-center gap-2 rounded-lg border px-3 py-2.5 text-[13px] transition-colors",
                         active
                           ? "border-border bg-surface-2/70 text-foreground"
-                          : "border-transparent bg-surface-2/30 text-muted hover:bg-surface-2/60 hover:text-foreground"
+                          : "border-transparent bg-surface-2/30 text-muted hover:bg-surface-2/60 hover:text-foreground",
+                        item.gated && !active && "text-quiet opacity-70"
                       )}
                     >
                       <item.icon className={cn("size-[17px] shrink-0", active ? "text-iris-soft" : "text-quiet")} />

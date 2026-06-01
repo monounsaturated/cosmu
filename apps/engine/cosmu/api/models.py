@@ -115,6 +115,60 @@ class ToggleResponse(BaseModel):
     enabled: bool
     promoted: list[str]
     caps: dict[str, float]
+    requires_confirm: bool = False
+    reason: str | None = None
+
+
+class LiveCaps(BaseModel):
+    per_strategy_cap: float
+    global_cap: float
+    max_daily_loss: float
+
+
+class EligibleStrategy(BaseModel):
+    version_id: str
+    name: str
+
+
+class ActivateRequest(BaseModel):
+    per_strategy_cap: float
+    global_cap: float
+    max_daily_loss: float
+    confirm: bool
+
+
+class ActivateResponse(BaseModel):
+    armed: bool
+    caps: LiveCaps
+    eligible: list[EligibleStrategy]
+    reason: str | None = None
+
+
+class DefundRequest(BaseModel):
+    scope: Literal["all", "strategy"]
+    version_id: str | None = None
+
+
+class DefundResponse(BaseModel):
+    ok: bool
+    defunded: list[str]
+
+
+class LivePosition(BaseModel):
+    instrument_id: str
+    symbol: str
+    qty: float
+    avg_price: float
+    unrealized_pnl: float
+    venue: str
+
+
+class LivePositionsResponse(BaseModel):
+    armed: bool
+    mode: Literal["testnet", "live", "paper"]
+    daily_loss: float
+    caps: LiveCaps
+    positions: list[LivePosition]
 
 
 class VenueState(BaseModel):

@@ -1,6 +1,70 @@
 {
   "components": {
     "schemas": {
+      "ActivateRequest": {
+        "properties": {
+          "confirm": {
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "global_cap": {
+            "title": "Global Cap",
+            "type": "number"
+          },
+          "max_daily_loss": {
+            "title": "Max Daily Loss",
+            "type": "number"
+          },
+          "per_strategy_cap": {
+            "title": "Per Strategy Cap",
+            "type": "number"
+          }
+        },
+        "required": [
+          "per_strategy_cap",
+          "global_cap",
+          "max_daily_loss",
+          "confirm"
+        ],
+        "title": "ActivateRequest",
+        "type": "object"
+      },
+      "ActivateResponse": {
+        "properties": {
+          "armed": {
+            "title": "Armed",
+            "type": "boolean"
+          },
+          "caps": {
+            "$ref": "#/components/schemas/LiveCaps"
+          },
+          "eligible": {
+            "items": {
+              "$ref": "#/components/schemas/EligibleStrategy"
+            },
+            "title": "Eligible",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "armed",
+          "caps",
+          "eligible"
+        ],
+        "title": "ActivateResponse",
+        "type": "object"
+      },
       "Allocation": {
         "properties": {
           "capital": {
@@ -628,6 +692,55 @@
         "title": "CrossAssetVerdict",
         "type": "object"
       },
+      "DefundRequest": {
+        "properties": {
+          "scope": {
+            "enum": [
+              "all",
+              "strategy"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "title": "DefundRequest",
+        "type": "object"
+      },
+      "DefundResponse": {
+        "properties": {
+          "defunded": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Defunded",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "defunded"
+        ],
+        "title": "DefundResponse",
+        "type": "object"
+      },
       "DropOneClass": {
         "properties": {
           "asset_class": {
@@ -672,6 +785,24 @@
           "delta"
         ],
         "title": "DropOneSource",
+        "type": "object"
+      },
+      "EligibleStrategy": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name"
+        ],
+        "title": "EligibleStrategy",
         "type": "object"
       },
       "EvaluatedStrategy": {
@@ -1071,6 +1202,107 @@
         "title": "LeaderboardRow",
         "type": "object"
       },
+      "LiveCaps": {
+        "properties": {
+          "global_cap": {
+            "title": "Global Cap",
+            "type": "number"
+          },
+          "max_daily_loss": {
+            "title": "Max Daily Loss",
+            "type": "number"
+          },
+          "per_strategy_cap": {
+            "title": "Per Strategy Cap",
+            "type": "number"
+          }
+        },
+        "required": [
+          "per_strategy_cap",
+          "global_cap",
+          "max_daily_loss"
+        ],
+        "title": "LiveCaps",
+        "type": "object"
+      },
+      "LivePosition": {
+        "properties": {
+          "avg_price": {
+            "title": "Avg Price",
+            "type": "number"
+          },
+          "instrument_id": {
+            "title": "Instrument Id",
+            "type": "string"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "number"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "unrealized_pnl": {
+            "title": "Unrealized Pnl",
+            "type": "number"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instrument_id",
+          "symbol",
+          "qty",
+          "avg_price",
+          "unrealized_pnl",
+          "venue"
+        ],
+        "title": "LivePosition",
+        "type": "object"
+      },
+      "LivePositionsResponse": {
+        "properties": {
+          "armed": {
+            "title": "Armed",
+            "type": "boolean"
+          },
+          "caps": {
+            "$ref": "#/components/schemas/LiveCaps"
+          },
+          "daily_loss": {
+            "title": "Daily Loss",
+            "type": "number"
+          },
+          "mode": {
+            "enum": [
+              "testnet",
+              "live",
+              "paper"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "positions": {
+            "items": {
+              "$ref": "#/components/schemas/LivePosition"
+            },
+            "title": "Positions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "armed",
+          "mode",
+          "daily_loss",
+          "caps",
+          "positions"
+        ],
+        "title": "LivePositionsResponse",
+        "type": "object"
+      },
       "PineSample": {
         "properties": {
           "name": {
@@ -1450,6 +1682,22 @@
             },
             "title": "Promoted",
             "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "requires_confirm": {
+            "default": false,
+            "title": "Requires Confirm",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1816,6 +2064,100 @@
           }
         },
         "summary": "Leaderboard"
+      }
+    },
+    "/live/activate": {
+      "post": {
+        "operationId": "live_activate_live_activate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Live Activate"
+      }
+    },
+    "/live/defund": {
+      "post": {
+        "operationId": "live_defund_live_defund_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DefundRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefundResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Live Defund"
+      }
+    },
+    "/live/positions": {
+      "get": {
+        "operationId": "live_positions_live_positions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LivePositionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Live Positions"
       }
     },
     "/population": {

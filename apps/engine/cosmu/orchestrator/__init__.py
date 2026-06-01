@@ -11,6 +11,7 @@ from cosmu.orchestrator.agent import (
     Stage,
     TradingAgent,
     allocate_stage,
+    execute_stage,
     execution_plan_stage,
     gate_stage,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "Stage",
     "TradingAgent",
     "allocate_stage",
+    "execute_stage",
     "execution_plan_stage",
     "gate_stage",
 ]

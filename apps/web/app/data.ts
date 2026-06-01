@@ -10,28 +10,46 @@ import type {
   Recommendation,
   StrategyDetailResponse
 } from "@cosmu/contracts-ts";
+import type { PositionsResponse } from "@/components/live/contracts";
 
 const baseUrl = process.env.ENGINE_API_URL;
 
-async function getJson<T>(path: string, fallback: T): Promise<T> {
-  if (!baseUrl) return fallback;
+// Honest engine reachability. The server-rendered surfaces fetch the REAL engine; the only
+// fabricated numbers allowed are the clearly-labelled DEMO returned when the engine is
+// unreachable (no ENGINE_API_URL, or the fetch failed). `meta.demo` lets the UI say so out loud.
+async function getJson<T>(path: string, fallback: T): Promise<{ data: T; demo: boolean }> {
+  if (!baseUrl) return { data: fallback, demo: true };
   try {
     const response = await fetch(`${baseUrl}${path}`, { next: { revalidate: 5 } });
-    if (!response.ok) return fallback;
-    return (await response.json()) as T;
+    if (!response.ok) return { data: fallback, demo: true };
+    return { data: (await response.json()) as T, demo: false };
   } catch {
-    return fallback;
+    return { data: fallback, demo: true };
   }
 }
 
-const equityCurve = Array.from({ length: 48 }, (_, index) => {
+// HONEST EMPTY STATE: when there is no real engine paper portfolio yet, we show nothing
+// fabricated — zeroed money, empty allocation, an empty equity curve. The UI renders a
+// "no live data yet" empty state from this rather than inventing a track record.
+export const emptyPortfolio: PortfolioResponse = {
+  equity_curve: [],
+  pnl_net: 0,
+  allocation: [],
+  costs: [],
+  live_enabled: false,
+  opex_vs_alpha: 0
+};
+
+// DEMO ONLY — clearly labelled, used solely when the engine is unreachable so the app still
+// renders offline. Never presented as a real track record (the UI tags it "demo data").
+const demoEquityCurve = Array.from({ length: 48 }, (_, index) => {
   const value = 100000 + index * 178 + Math.sin(index / 3) * 900 - Math.max(0, index - 35) * 60;
   return { ts: `T-${47 - index}`, value: Math.round(value) };
 });
 
-export const fallbackPortfolio: PortfolioResponse = {
-  equity_curve: equityCurve,
-  pnl_net: equityCurve[equityCurve.length - 1].value - 100000,
+export const demoPortfolio: PortfolioResponse = {
+  equity_curve: demoEquityCurve,
+  pnl_net: demoEquityCurve[demoEquityCurve.length - 1].value - 100000,
   allocation: [
     { strategy_id: "sv-btc", name: "Funding-aware BTC swing", weight: 0.42, capital: 42000, venue: "Binance" },
     { strategy_id: "sv-equity", name: "Equity macro drift", weight: 0.31, capital: 31000, venue: "IBKR" },
@@ -146,29 +164,49 @@ export const fallbackCohort: CohortSummaryResponse = {
   pine_notes: []
 };
 
-export function getPopulation(): Promise<PopulationResponse> {
-  return getJson("/population", fallbackPopulation);
+export async function getPopulation(): Promise<PopulationResponse> {
+  return (await getJson("/population", fallbackPopulation)).data;
 }
 
-export function getPortfolio(): Promise<PortfolioResponse> {
-  return getJson("/portfolio", fallbackPortfolio);
+// Returns the REAL paper portfolio. `demo` is true only when the engine is unreachable
+// (and we fall back to the clearly-labelled demo). When the engine is reachable but has no
+// paper track record yet, it returns the honest empty portfolio (demo:false, empty arrays).
+export async function getPortfolio(): Promise<{ portfolio: PortfolioResponse; demo: boolean }> {
+  const { data, demo } = await getJson("/portfolio", demoPortfolio);
+  return { portfolio: demo ? demoPortfolio : data, demo };
 }
 
-export function getLeaderboard(): Promise<LeaderboardResponse> {
-  return getJson("/leaderboard", fallbackLeaderboard);
+export async function getLeaderboard(): Promise<LeaderboardResponse> {
+  return (await getJson("/leaderboard", fallbackLeaderboard)).data;
 }
 
-export function getStrategy(id: string): Promise<StrategyDetailResponse> {
-  return getJson(`/strategies/${id}`, fallbackStrategy);
+export async function getStrategy(id: string): Promise<StrategyDetailResponse> {
+  return (await getJson(`/strategies/${id}`, fallbackStrategy)).data;
 }
 
 export async function getRecommendations(): Promise<Recommendation[]> {
-  const response = await getJson("/recommendations", { items: fallbackRecommendations });
-  return response.items;
+  const { data } = await getJson("/recommendations", { items: fallbackRecommendations });
+  return data.items;
 }
 
 export async function getEvents(): Promise<Event[]> {
-  const response = await getJson("/events", { events: fallbackEvents });
-  return response.events;
+  const { data } = await getJson("/events", { events: fallbackEvents });
+  return data.events;
+}
+
+// Live trading positions snapshot for the /live surface. Locally-typed against the shared
+// contract (see components/live/contracts) until @cosmu/contracts-ts ships these. `demo` is
+// true only when the engine is unreachable — never presented as armed or live.
+const emptyPositions: PositionsResponse = {
+  armed: false,
+  mode: "paper",
+  daily_loss: 0,
+  caps: { per_strategy_cap: 250, global_cap: 1000, max_daily_loss: 100 },
+  positions: []
+};
+
+export async function getLivePositions(): Promise<PositionsResponse & { demo: boolean }> {
+  const { data, demo } = await getJson<PositionsResponse>("/live/positions", emptyPositions);
+  return { ...(demo ? emptyPositions : data), demo };
 }
 

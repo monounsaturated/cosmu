@@ -41,6 +41,10 @@ class LiveSettings(BaseModel):
     per_strategy_live_cap: Decimal = Decimal("2500")
     global_live_cap: Decimal = Decimal("10000")
     daily_loss_cap: Decimal = Decimal("250")
+    # mode is the explicit real-money interlock: "testnet" never touches real funds (Binance Testnet,
+    # fake money, real mechanics); "real" is the ONLY value that lets BINANCE_API_KEY/SECRET reach the
+    # production exchange — and even then only with the live toggle ON + gates passed + caps available.
+    mode: Literal["testnet", "real"] = "testnet"
 
 
 class RiskSettings(BaseModel):
@@ -97,6 +101,8 @@ class Settings(BaseSettings):
     lunarcrush_api_key: str | None = Field(default=None, repr=False)
     binance_api_key: str | None = Field(default=None, repr=False)
     binance_api_secret: str | None = Field(default=None, repr=False)
+    binance_testnet_api_key: str | None = Field(default=None, repr=False)
+    binance_testnet_api_secret: str | None = Field(default=None, repr=False)
     api_secret_key: str | None = Field(default=None, repr=False)
     spend: SpendSettings = Field(default_factory=SpendSettings)
     gates: GateSettings = Field(default_factory=GateSettings)

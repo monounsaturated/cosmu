@@ -10,6 +10,8 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 
 from cosmu.api.models import (
+    ActivateRequest,
+    ActivateResponse,
     Allocation,
     AuthorRequest,
     AuthorResponse,
@@ -21,8 +23,11 @@ from cosmu.api.models import (
     CommandResponse,
     CostSlice,
     CrossAssetVerdict,
+    DefundRequest,
+    DefundResponse,
     DropOneClass,
     DropOneSource,
+    EligibleStrategy,
     EvaluatedStrategy,
     Event,
     EventsResponse,
@@ -30,6 +35,9 @@ from cosmu.api.models import (
     GraveyardRow,
     LeaderboardResponse,
     LeaderboardRow,
+    LiveCaps,
+    LivePosition,
+    LivePositionsResponse,
     PineSample,
     PineSamplesResponse,
     PineTranslateRequest,
@@ -50,9 +58,11 @@ from cosmu.api.models import (
     VenueState,
     VenueToggleRequest,
 )
+from cosmu.adapters.exec.binance import BinanceSpotExecutionAdapter, resolve_mode
 from cosmu.config.settings import get_settings
 from cosmu.evolution.loop import CohortSummary, FarmLoop
 from cosmu.knowledge.store import Store, utcnow
+from cosmu.master.portfolio import PaperPortfolio
 from cosmu.lab.author import AuthorDraft, draft_from_brief
 from cosmu.spine.engine import EngineFacade
 from cosmu.spine.universe import (
@@ -74,6 +84,31 @@ ORIGIN_TO_LANE = {"seed": "seed", "mutation": "exploit", "wildcard": "explore", 
 
 settings = get_settings()
 store = Store(settings)
+
+
+def _portfolio() -> PaperPortfolio:
+    return PaperPortfolio(store, bankroll=settings.paper_bankroll, daily_loss_cap=settings.live.daily_loss_cap)
+
+
+def _live_mode() -> str:
+    """The mode GET /live/positions reports — the adapter's resolved mode (testnet/live) or paper if disabled."""
+    mode = resolve_mode(settings)
+    return mode if mode in ("testnet", "live") else "paper"
+
+
+def _live_caps_row() -> dict[str, float]:
+    row = store.row("SELECT max_notional, max_daily_loss FROM live_caps WHERE id = 'global'")
+    if row:
+        return {
+            "per_strategy_cap": float(settings.live.per_strategy_live_cap),
+            "global_cap": float(row["max_notional"]),
+            "max_daily_loss": float(row["max_daily_loss"]),
+        }
+    return {
+        "per_strategy_cap": float(settings.live.per_strategy_live_cap),
+        "global_cap": float(settings.live.global_live_cap),
+        "max_daily_loss": float(settings.live.daily_loss_cap),
+    }
 
 
 @asynccontextmanager
@@ -252,17 +287,24 @@ def portfolio() -> PortfolioResponse:
     snapshots = store.rows("SELECT ts, equity, pnl FROM portfolio_snapshots ORDER BY ts ASC LIMIT 120")
     curve = [Point(ts=row["ts"], value=float(row["equity"])) for row in snapshots]
     pnl_net = float(snapshots[-1]["pnl"]) if snapshots else 0.0
+    # Real allocation: open positions weighted by their notional share of equity (no fabricated numbers).
+    pf = _portfolio()
+    equity = float(pf.equity())
+    positions = pf.positions()
+    notionals = [(p, float(abs(p.qty) * p.avg_price)) for p in positions]
+    total_notional = sum(n for _, n in notionals)
     allocations = [
-        Allocation(strategy_id="global", name="Funding-aware BTC swing", weight=0.42, capital=42000, venue="Binance"),
-        Allocation(strategy_id="macro", name="Equity macro drift", weight=0.31, capital=31000, venue="IBKR"),
-        Allocation(strategy_id="pm", name="Prediction odds transfer", weight=0.27, capital=27000, venue="Polymarket"),
+        Allocation(
+            strategy_id=p.strategy_version_id or "pool",
+            name=p.symbol,
+            weight=round(n / total_notional, 6) if total_notional else 0.0,
+            capital=round(n, 2),
+            venue=p.venue,
+        )
+        for p, n in notionals
     ]
-    costs = [
-        CostSlice(category="llm", amount=18.4),
-        CostSlice(category="data", amount=7.2),
-        CostSlice(category="sandbox", amount=4.8),
-        CostSlice(category="infra", amount=3.1),
-    ]
+    cost_rows = store.rows("SELECT category, SUM(CAST(amount AS REAL)) AS amount FROM costs GROUP BY category")
+    costs = [CostSlice(category=r["category"], amount=float(r["amount"] or 0)) for r in cost_rows]
     live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
     return PortfolioResponse(
         equity_curve=curve,
@@ -270,7 +312,7 @@ def portfolio() -> PortfolioResponse:
         allocation=allocations,
         costs=costs,
         live_enabled=bool(live_row and live_row["enabled"]),
-        opex_vs_alpha=0.18,
+        opex_vs_alpha=round(sum(c.amount for c in costs) / equity, 6) if equity else 0.0,
     )
 
 
@@ -368,10 +410,105 @@ def recommendations() -> RecommendationsResponse:
 @app.post("/toggle/live", response_model=ToggleResponse)
 def toggle_live(request: ToggleRequest) -> ToggleResponse:
     if request.enabled and not request.confirm:
-        raise HTTPException(status_code=400, detail="live toggle requires confirm=true")
+        # Hardened: enabling live requires explicit confirm. We do NOT mutate state — the UI must re-submit
+        # with confirm=true. Returning requires_confirm keeps the contract honest instead of a 400 surprise.
+        return ToggleResponse(
+            enabled=False,
+            promoted=[],
+            caps={"per_strategy": float(settings.live.per_strategy_live_cap), "global": float(settings.live.global_live_cap)},
+            requires_confirm=True,
+            reason="enabling live requires confirm=true",
+        )
     store.rows("UPDATE live_toggle SET enabled = ?, enabled_at = ?, enabled_by = ? WHERE id = 'global'", (int(request.enabled), utcnow(), "local"))
     store.append_event(actor="human", kind="live_toggle_changed", ref_type="live_toggle", ref_id="global", payload={"enabled": request.enabled})
-    return ToggleResponse(enabled=request.enabled, promoted=[] if not request.enabled else ["simulation-only"], caps={"per_strategy": float(settings.live.per_strategy_live_cap), "global": float(settings.live.global_live_cap)})
+    return ToggleResponse(
+        enabled=request.enabled,
+        promoted=[] if not request.enabled else ["simulation-only"],
+        caps={"per_strategy": float(settings.live.per_strategy_live_cap), "global": float(settings.live.global_live_cap)},
+        requires_confirm=False,
+    )
+
+
+def _eligible_strategies() -> list[EligibleStrategy]:
+    """Strategies eligible to be armed: paper survivors that passed gates. Capability ≠ edge — being eligible
+    here does NOT trade live; it still requires the toggle ON + keys + the deterministic gate at execute time."""
+    rows = store.rows(
+        """
+        SELECT sv.id, s.name FROM strategy_versions sv
+        JOIN strategies s ON s.id = sv.strategy_id
+        JOIN backtests b ON b.strategy_version_id = sv.id
+        WHERE b.passed_gates = 1
+        ORDER BY sv.created_at DESC LIMIT 20
+        """
+    )
+    seen: set[str] = set()
+    out: list[EligibleStrategy] = []
+    for r in rows:
+        if r["id"] in seen:
+            continue
+        seen.add(r["id"])
+        out.append(EligibleStrategy(version_id=r["id"], name=r["name"]))
+    return out
+
+
+@app.post("/live/activate", response_model=ActivateResponse)
+def live_activate(request: ActivateRequest) -> ActivateResponse:
+    caps = LiveCaps(per_strategy_cap=request.per_strategy_cap, global_cap=request.global_cap, max_daily_loss=request.max_daily_loss)
+    if not request.confirm:
+        return ActivateResponse(armed=False, caps=caps, eligible=[], reason="activation requires confirm=true")
+    store.rows(
+        """
+        INSERT INTO live_caps(id, scope, ref_id, max_notional, max_daily_loss) VALUES ('global', 'pool', 'global', ?, ?)
+        ON CONFLICT (id) DO UPDATE SET max_notional = excluded.max_notional, max_daily_loss = excluded.max_daily_loss
+        """,
+        (str(request.global_cap), str(request.max_daily_loss)),
+    )
+    eligible = _eligible_strategies()
+    store.append_event(
+        actor="human",
+        kind="live_armed",
+        ref_type="live_caps",
+        ref_id="global",
+        payload={"per_strategy_cap": request.per_strategy_cap, "global_cap": request.global_cap, "max_daily_loss": request.max_daily_loss, "eligible": [e.version_id for e in eligible]},
+    )
+    return ActivateResponse(armed=True, caps=caps, eligible=eligible)
+
+
+@app.post("/live/defund", response_model=DefundResponse)
+def live_defund(request: DefundRequest) -> DefundResponse:
+    pf = _portfolio()
+    if request.scope == "strategy" and request.version_id:
+        rows = store.rows("SELECT instrument_id FROM positions WHERE strategy_version_id = ?", (request.version_id,))
+        store.rows("UPDATE positions SET qty = '0', updated_at = ? WHERE strategy_version_id = ?", (utcnow(), request.version_id))
+        defunded = [request.version_id]
+    else:
+        rows = store.rows("SELECT DISTINCT strategy_version_id FROM positions WHERE CAST(qty AS REAL) != 0")
+        store.rows("UPDATE positions SET qty = '0', updated_at = ?", (utcnow(),))
+        defunded = [str(r["strategy_version_id"] or "pool") for r in rows]
+    pf.mark_to_market({})
+    store.append_event(actor="human", kind="live_defunded", ref_type="live_caps", ref_id="global", payload={"scope": request.scope, "defunded": defunded})
+    return DefundResponse(ok=True, defunded=defunded)
+
+
+@app.get("/live/positions", response_model=LivePositionsResponse)
+def live_positions() -> LivePositionsResponse:
+    pf = _portfolio()
+    live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
+    armed = bool(live_row and live_row["enabled"]) and resolve_mode(settings) != "disabled"
+    caps = LiveCaps(**_live_caps_row())
+    daily = pf.daily_loss()
+    positions = [
+        LivePosition(
+            instrument_id=p.instrument_id,
+            symbol=p.symbol,
+            qty=float(p.qty),
+            avg_price=float(p.avg_price),
+            unrealized_pnl=float(p.unrealized_pnl(p.avg_price)),  # mark==basis without a fresh tick; honest 0
+            venue=p.venue,
+        )
+        for p in pf.positions()
+    ]
+    return LivePositionsResponse(armed=armed, mode=_live_mode(), daily_loss=float(daily.daily_loss), caps=caps, positions=positions)
 
 
 def _universe_response() -> UniverseResponse:

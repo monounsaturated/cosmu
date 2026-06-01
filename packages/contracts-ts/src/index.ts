@@ -1,5 +1,19 @@
 // Generated from apps/engine FastAPI OpenAPI. Do not edit by hand.
 
+export interface ActivateRequest {
+  confirm: boolean;
+  global_cap: number;
+  max_daily_loss: number;
+  per_strategy_cap: number;
+}
+
+export interface ActivateResponse {
+  armed: boolean;
+  caps: LiveCaps;
+  eligible: EligibleStrategy[];
+  reason?: string | null;
+}
+
 export interface Allocation {
   capital: number;
   name: string;
@@ -119,6 +133,16 @@ export interface CrossAssetVerdict {
   xasset_return: number;
 }
 
+export interface DefundRequest {
+  scope: "all" | "strategy";
+  version_id?: string | null;
+}
+
+export interface DefundResponse {
+  defunded: string[];
+  ok: boolean;
+}
+
 export interface DropOneClass {
   asset_class: string;
   delta: number;
@@ -129,6 +153,11 @@ export interface DropOneSource {
   delta: number;
   sharpe_without: number;
   source: string;
+}
+
+export interface EligibleStrategy {
+  name: string;
+  version_id: string;
 }
 
 export interface EvaluatedStrategy {
@@ -216,6 +245,29 @@ export interface LeaderboardRow {
   version_id: string;
 }
 
+export interface LiveCaps {
+  global_cap: number;
+  max_daily_loss: number;
+  per_strategy_cap: number;
+}
+
+export interface LivePosition {
+  avg_price: number;
+  instrument_id: string;
+  qty: number;
+  symbol: string;
+  unrealized_pnl: number;
+  venue: string;
+}
+
+export interface LivePositionsResponse {
+  armed: boolean;
+  caps: LiveCaps;
+  daily_loss: number;
+  mode: "testnet" | "live" | "paper";
+  positions: LivePosition[];
+}
+
 export interface PineSample {
   name: string;
   source: string;
@@ -297,6 +349,8 @@ export interface ToggleResponse {
   caps: Record<string, unknown>;
   enabled: boolean;
   promoted: string[];
+  reason?: string | null;
+  requires_confirm?: boolean;
 }
 
 export interface UniverseResponse {

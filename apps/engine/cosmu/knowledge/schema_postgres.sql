@@ -117,6 +117,19 @@ create table if not exists portfolio_snapshots (
   drawdown numeric not null
 );
 
+create table if not exists positions (
+  id text primary key,
+  strategy_version_id text,
+  instrument_id text not null,
+  symbol text not null,
+  venue text not null,
+  qty numeric not null,
+  avg_price numeric not null,
+  realized_pnl numeric not null default 0,
+  last_was_loss integer not null default 0,
+  updated_at text not null
+);
+
 create table if not exists sleeves (
   id text primary key,
   strategy_version_id text not null unique references strategy_versions(id),
