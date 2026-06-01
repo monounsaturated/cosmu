@@ -8,7 +8,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { LayoutDashboard, ListChecks, Menu, MessageSquare, Microscope, Radio, SlidersHorizontal, Wallet, X } from "lucide-react";
+import { LayoutDashboard, ListChecks, Menu, MessageSquare, Microscope, Radio, Receipt, SlidersHorizontal, Wallet, X } from "lucide-react";
 import { CosmuWordmark } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +21,7 @@ export const navItems: NavItem[] = [
   { href: "/lab", label: "Lab", icon: Microscope },
   { href: "/strategies", label: "Strategies", icon: ListChecks },
   { href: "/paper", label: "Paper", icon: Wallet },
+  { href: "/costs", label: "Costs", icon: Receipt },
   { href: "/live", label: "Live", icon: Radio, gated: true },
   { href: "/steer", label: "Steer", icon: MessageSquare },
   { href: "/settings", label: "Settings", icon: SlidersHorizontal }
@@ -71,7 +72,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-7 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-8 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       {navItems.map((item) => {
         const active = isActive(pathname, item.href);

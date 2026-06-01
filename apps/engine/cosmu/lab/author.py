@@ -1,8 +1,9 @@
-# intent: turn a plain-language brief into a typed, validated StrategySpec draft so a human can author/suggest strategies in chat (LLM-optional); inputs: brief text + optional feature/venue picks; outputs: AuthorDraft (spec + data sources + guardrail report); invariants: the draft only authors STRUCTURE — thresholds stay in param_space (no magic numbers), money-adjacent intent is flagged for approval, and the scorer/gates are never in this path.
+# intent: turn a plain-language brief into a typed, validated StrategySpec draft so a human can author/suggest strategies in chat (LLM-optional); inputs: brief text + optional feature/venue picks + optional long-term memory (graveyard RAG + distilled skills); outputs: AuthorDraft (spec + data sources + guardrail report); invariants: the draft only authors STRUCTURE — thresholds stay in param_space (no magic numbers), money-adjacent intent is flagged for approval, memory only INFORMS the proposal (avoid recently-dead structures, lean toward winners) and the scorer/gates are never in this path (they alone dispose).
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from cosmu.config.feature_registry import FEATURE_REGISTRY, features_for
 from cosmu.evolution.seeder import (
@@ -13,6 +14,9 @@ from cosmu.evolution.seeder import (
 )
 from cosmu.strategy.spec import Condition, FeatureRef, ParamRef, ParamSpace, StrategySpec
 from cosmu.strategy.static_check import validate_spec
+
+if TYPE_CHECKING:
+    from cosmu.knowledge.store import Store
 
 _SOURCE_BY_FEATURE = {f.name: f.source for f in FEATURE_REGISTRY}
 
@@ -53,6 +57,9 @@ class AuthorDraft:
     requires_approval: bool
     guardrails: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # What long-term memory told the brain (audit trail): dead structures avoided + winner patterns leaned into.
+    memory_avoided: list[str] = field(default_factory=list)
+    memory_leaned: list[str] = field(default_factory=list)
 
 
 def draft_from_brief(
@@ -61,9 +68,12 @@ def draft_from_brief(
     features: list[str] | None = None,
     venues: list[str] | None = None,
     llm_enabled: bool = False,
+    store: Store | None = None,
 ) -> AuthorDraft:
     text = brief.lower()
     notes: list[str] = []
+    memory_avoided: list[str] = []
+    memory_leaned: list[str] = []
 
     # 1) pick a base template from intent
     if any(k in text for k in ("revert", "reversion", "oversold", "mean", "dip", "bounce")):
@@ -105,6 +115,18 @@ def draft_from_brief(
     rejected = [f for f in wanted if f and f not in valid_feats]
     if rejected:
         notes.append(f"ignored features not valid for {spec.universe.asset_classes}: {rejected}")
+
+    # 5b) consult LONG-TERM MEMORY (graveyard RAG + distilled skills) when a store is wired: AVOID structures
+    # recently killed by the Gate and LEAN toward winning patterns. This only re-ranks the PROPOSAL — the
+    # deterministic scorer/Gate still dispose. Offline + keyless; cold start (no memory) is a no-op.
+    if store is not None:
+        chosen, leaned, avoided = _apply_memory(store, brief, chosen, valid_feats)
+        memory_leaned, memory_avoided = leaned, avoided
+        if avoided:
+            notes.append(f"memory: avoided recently-dead feature structure(s): {avoided}")
+        if leaned:
+            notes.append(f"memory: leaned toward winning feature pattern(s): {leaned}")
+
     if chosen:
         spec.entry = _entry_from_features(chosen, spec)
 
@@ -136,7 +158,62 @@ def draft_from_brief(
         requires_approval=requires_approval,
         guardrails=guardrails,
         notes=notes,
+        memory_avoided=memory_avoided,
+        memory_leaned=memory_leaned,
     )
+
+
+def _apply_memory(
+    store: Store,
+    brief: str,
+    chosen: list[str],
+    valid_feats: set[str],
+) -> tuple[list[str], list[str], list[str]]:
+    """Re-rank the candidate feature set against long-term memory. DROP a feature that appears in a recalled
+    DEAD-END structure (unless it is also in a recalled winner — a feature can be good in a different structure);
+    LEAN toward (append) features from recalled WINNER patterns and from high-grade distilled skills, validated
+    to the asset class. Returns (chosen, leaned, avoided). Deterministic; never raises into the author."""
+    try:
+        from cosmu.knowledge.memory import GraveyardMemory
+        from cosmu.lab.curator import skill_feature_priors
+
+        recall = GraveyardMemory(store).recall(brief, k=5)
+    except Exception:  # noqa: BLE001 — memory is advisory; a read hiccup must not break authoring
+        return chosen, [], []
+
+    dead_feats: set[str] = set()
+    for hit in recall.dead_ends:
+        dead_feats.update(hit.structure.get("entry_features", []))
+    winner_feats: list[str] = []
+    for hit in recall.winners:
+        for f in hit.structure.get("entry_features", []):
+            if f in valid_feats and f not in winner_feats:
+                winner_feats.append(f)
+
+    # A feature is only "dead" if memory has NOT also seen it win — that keeps the brain from over-pruning.
+    avoid = sorted({f for f in chosen if f in dead_feats and f not in winner_feats})
+    kept = [f for f in chosen if f not in avoid]
+
+    # Lean: winner-pattern features first, then high-grade skill features, deduped and asset-class-validated.
+    leaned: list[str] = []
+    skill_priors = skill_feature_priors(store)
+    skill_feats = [f for f, _ in sorted(skill_priors.items(), key=lambda kv: kv[1], reverse=True)]
+    for f in [*winner_feats, *skill_feats]:
+        if f in valid_feats and f not in kept and f not in avoid and f not in leaned:
+            leaned.append(f)
+
+    new_chosen = kept + leaned
+    # Never leave the entry empty AND never silently re-walk the dead structure: if avoidance emptied the set and
+    # memory offered no winner/skill lean, steer to a neutral, gate-agnostic momentum feature (ret_Nd) that is
+    # valid for the asset class — a different structure than the dead one. Only if THAT is unavailable do we keep
+    # the original (the author still produced a valid proposal; the Gate disposes).
+    if not new_chosen:
+        if avoid and "ret_Nd" in valid_feats:
+            new_chosen = ["ret_Nd"]
+            leaned = leaned or ["ret_Nd"]
+        else:
+            new_chosen = leaned or chosen
+    return new_chosen, leaned, avoid
 
 
 def _pick_asset(text: str) -> tuple[str, str | None]:

@@ -172,8 +172,10 @@ create table if not exists skills (
   lineage text not null,
   success_count integer not null,
   created_at text not null,
-  pruned_at text
+  pruned_at text,
+  embedding vector(1536)            -- pgvector: keyless deterministic embedding for skill-recall priors
 );
+create index if not exists idx_skills_embedding on skills using hnsw (embedding vector_cosine_ops);
 
 create table if not exists sources (
   id text primary key,

@@ -304,7 +304,14 @@ class CboePutCallProvider:
     def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
         if metric != "putcall_ratio":
             return []
-        req = urllib.request.Request(self.url, headers={"User-Agent": "cosmu-engine/0.1"})
+        # CBOE's CDN 403s a bare bot UA — present a browser-like UA + Accept so the free CSV is served.
+        req = urllib.request.Request(
+            self.url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                "Accept": "text/csv,*/*",
+            },
+        )
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             text = resp.read().decode("utf-8")
         return _points_from_cboe_putcall(text, self.release_lag_days)[-limit:]

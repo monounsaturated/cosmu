@@ -28,7 +28,10 @@ from cosmu.api.models import (
     CohortSummaryResponse,
     CommandRequest,
     CommandResponse,
+    CostByCategory,
+    CostPerStrategy,
     CostSlice,
+    CostsResponse,
     CrossAssetVerdict,
     DefundRequest,
     DefundResponse,
@@ -56,11 +59,15 @@ from cosmu.api.models import (
     PineSamplesResponse,
     PineTranslateRequest,
     PineTranslateResponse,
+    MemoryInsight,
+    MemoryInsightsResponse,
     Point,
     PopulationResponse,
     PortfolioResponse,
     Recommendation,
     RecommendationsResponse,
+    Skill,
+    SkillsResponse,
     StrategyDetailResponse,
     ToggleRequest,
     ToggleResponse,
@@ -312,6 +319,7 @@ def lab_author(request: AuthorRequest) -> AuthorResponse:
         features=request.features,
         venues=request.venues,
         llm_enabled=bool(settings.openrouter_api_key),
+        store=store,  # consult long-term memory (graveyard RAG + distilled skills) when proposing
     )
     store.append_event(actor="human", kind="strategy_drafted", ref_type="strategy_spec", payload={"template": draft.base_template, "features": draft.features, "valid": draft.valid})
     return _draft_to_response(draft)
@@ -849,6 +857,71 @@ def research_brain() -> BrainResponse:
         tools=tools,
         regime=BrainRegime(label=regime.label, vol_bucket=regime.vol_bucket, trend=regime.trend),
         survival_ranking=ranking,
+    )
+
+
+@app.get("/skills", response_model=SkillsResponse)
+def skills() -> SkillsResponse:
+    """The Curator's distilled SKILL recipes — reusable, parameterized templates the brain reuses as priors.
+    Best-graded first; pruned skills are excluded. `grade` is the downstream OOS pass-rate of derived Versions
+    (the deterministic Gate's verdicts) — the Curator curates what the Gate judged, it never judges."""
+    from cosmu.lab.curator import live_skills
+
+    return SkillsResponse(
+        skills=[
+            Skill(
+                name=s.name,
+                grade=round(s.grade, 6),
+                success_count=s.success_count,
+                lineage=s.lineage,
+                recipe_summary=s.recipe_summary,
+                created_at=s.created_at,
+            )
+            for s in live_skills(store)
+        ]
+    )
+
+
+@app.get("/memory/insights", response_model=MemoryInsightsResponse)
+def memory_insights_route() -> MemoryInsightsResponse:
+    """What the brain has LEARNED from long-term memory (graveyard/research RAG): dead-end structures to avoid +
+    winning patterns to reuse. Read straight off the persisted notes — no recompute, no LLM."""
+    from cosmu.knowledge.memory import memory_insights
+
+    return MemoryInsightsResponse(
+        insights=[MemoryInsight(kind=i["kind"], text=i["text"], ref=i["ref"]) for i in memory_insights(store)]
+    )
+
+
+@app.get("/costs", response_model=CostsResponse)
+def costs() -> CostsResponse:
+    """Cost transparency — opex vs alpha. Total spend, spend by category, the opex/equity ratio, and per-strategy
+    opex vs net edge (so the machine can see which Versions earn their keep). Reads only persisted rows."""
+    cost_rows = store.rows("SELECT category, SUM(CAST(amount AS REAL)) AS amount FROM costs GROUP BY category")
+    by_category = [CostByCategory(category=r["category"], amount=float(r["amount"] or 0)) for r in cost_rows]
+    total = round(sum(c.amount for c in by_category), 6)
+    equity = float(_portfolio().equity())
+    per_rows = store.rows(
+        """
+        SELECT sv.id AS version_id, s.name AS name,
+               SUM(CAST(c.amount AS REAL)) AS opex,
+               COALESCE(CAST(sl.equity AS REAL) - CAST(sl.starting_capital AS REAL), 0) AS net
+        FROM costs c
+        JOIN strategy_versions sv ON sv.id = c.strategy_version_id
+        JOIN strategies s ON s.id = sv.strategy_id
+        LEFT JOIN sleeves sl ON sl.strategy_version_id = sv.id
+        GROUP BY sv.id, s.name, sl.equity, sl.starting_capital
+        """
+    )
+    per_strategy = [
+        CostPerStrategy(version_id=r["version_id"], name=r["name"], opex=round(float(r["opex"] or 0), 6), net=round(float(r["net"] or 0), 6))
+        for r in per_rows
+    ]
+    return CostsResponse(
+        total_usd=total,
+        by_category=by_category,
+        opex_vs_alpha=round(total / equity, 6) if equity else 0.0,
+        per_strategy=per_strategy,
     )
 
 

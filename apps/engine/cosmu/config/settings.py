@@ -99,6 +99,10 @@ class Settings(BaseSettings):
     paper_bankroll: Decimal = Decimal("100000")
     openrouter_api_key: str | None = Field(default=None, repr=False)
     lunarcrush_api_key: str | None = Field(default=None, repr=False)
+    # Free cross-asset transfer sources: FRED needs a (free) key; Polymarket needs a real market token id
+    # (not a secret). Wired into the ingest providers so setting them is all it takes to go live.
+    fred_api_key: str | None = Field(default=None, repr=False)
+    polymarket_token: str | None = Field(default=None)
     binance_api_key: str | None = Field(default=None, repr=False)
     binance_api_secret: str | None = Field(default=None, repr=False)
     binance_testnet_api_key: str | None = Field(default=None, repr=False)

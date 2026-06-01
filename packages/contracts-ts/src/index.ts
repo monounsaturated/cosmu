@@ -156,9 +156,28 @@ export interface CommandResponse {
   reply_md: string;
 }
 
+export interface CostByCategory {
+  amount: number;
+  category: string;
+}
+
+export interface CostPerStrategy {
+  name: string;
+  net: number;
+  opex: number;
+  version_id: string;
+}
+
 export interface CostSlice {
   amount: number;
   category: string;
+}
+
+export interface CostsResponse {
+  by_category: CostByCategory[];
+  opex_vs_alpha: number;
+  per_strategy: CostPerStrategy[];
+  total_usd: number;
 }
 
 export interface CrossAssetVerdict {
@@ -244,6 +263,33 @@ export interface Execution {
   venue: string | null;
 }
 
+export interface FinderResponse {
+  gate_passed: number;
+  grid_size: number;
+  leaderboard: FinderVariant[];
+  promoted: number;
+  screened: number;
+  strategy_name: string;
+  survivors: FinderVariant[];
+}
+
+export interface FinderRunRequest {
+  max_variants?: number | null;
+  seed_real?: boolean;
+}
+
+export interface FinderVariant {
+  config_tag: string;
+  deflated_sharpe: number;
+  gate_passed: boolean;
+  holdout_passed: boolean;
+  net_profit: number;
+  num_trades: number;
+  profit_factor: number;
+  promoted: boolean;
+  version_id: string | null;
+}
+
 export interface GateStatusResponse {
   preregistered_bar: Record<string, unknown>;
   verdict: GateVerdictResponse | null;
@@ -317,6 +363,46 @@ export interface LivePositionsResponse {
   positions: LivePosition[];
 }
 
+export interface MemoryInsight {
+  kind: "dead_end" | "winner_pattern";
+  ref: string;
+  text: string;
+}
+
+export interface MemoryInsightsResponse {
+  insights: MemoryInsight[];
+}
+
+export interface MlFeatureWeight {
+  feature: string;
+  weight: number;
+}
+
+export interface MlRankedItem {
+  deflated_sharpe: number;
+  gate_passed: boolean;
+  name: string;
+  score: number;
+  version_id: string;
+}
+
+export interface MlRequest {
+  limit?: number | null;
+  request: string;
+}
+
+export interface MlResponse {
+  backend: string;
+  feature_importance: MlFeatureWeight[];
+  llm: string;
+  n_labels: number;
+  notes: string[];
+  ranking: MlRankedItem[];
+  request: string;
+  task: "survival_ranking" | "feature_importance";
+  trained: boolean;
+}
+
 export interface PineSample {
   name: string;
   source: string;
@@ -377,6 +463,19 @@ export interface RecommendationsResponse {
   items: Recommendation[];
 }
 
+export interface Skill {
+  created_at: string;
+  grade: number;
+  lineage: string;
+  name: string;
+  recipe_summary: string;
+  success_count: number;
+}
+
+export interface SkillsResponse {
+  skills: Skill[];
+}
+
 export interface StrategyDetailResponse {
   backtests: Backtest[];
   generated_code: string;
@@ -432,4 +531,7 @@ export type ApiRoutes = {
   leaderboard: LeaderboardResponse;
   recommendations: RecommendationsResponse;
   events: EventsResponse;
+  skills: SkillsResponse;
+  'memory/insights': MemoryInsightsResponse;
+  costs: CostsResponse;
 };

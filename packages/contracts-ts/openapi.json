@@ -774,6 +774,52 @@
         "title": "CommandResponse",
         "type": "object"
       },
+      "CostByCategory": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "amount"
+        ],
+        "title": "CostByCategory",
+        "type": "object"
+      },
+      "CostPerStrategy": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "net": {
+            "title": "Net",
+            "type": "number"
+          },
+          "opex": {
+            "title": "Opex",
+            "type": "number"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "opex",
+          "net"
+        ],
+        "title": "CostPerStrategy",
+        "type": "object"
+      },
       "CostSlice": {
         "properties": {
           "amount": {
@@ -790,6 +836,40 @@
           "amount"
         ],
         "title": "CostSlice",
+        "type": "object"
+      },
+      "CostsResponse": {
+        "properties": {
+          "by_category": {
+            "items": {
+              "$ref": "#/components/schemas/CostByCategory"
+            },
+            "title": "By Category",
+            "type": "array"
+          },
+          "opex_vs_alpha": {
+            "title": "Opex Vs Alpha",
+            "type": "number"
+          },
+          "per_strategy": {
+            "items": {
+              "$ref": "#/components/schemas/CostPerStrategy"
+            },
+            "title": "Per Strategy",
+            "type": "array"
+          },
+          "total_usd": {
+            "title": "Total Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "total_usd",
+          "by_category",
+          "opex_vs_alpha",
+          "per_strategy"
+        ],
+        "title": "CostsResponse",
         "type": "object"
       },
       "CrossAssetVerdict": {
@@ -1197,6 +1277,137 @@
         "title": "Execution",
         "type": "object"
       },
+      "FinderResponse": {
+        "properties": {
+          "gate_passed": {
+            "title": "Gate Passed",
+            "type": "integer"
+          },
+          "grid_size": {
+            "title": "Grid Size",
+            "type": "integer"
+          },
+          "leaderboard": {
+            "items": {
+              "$ref": "#/components/schemas/FinderVariant"
+            },
+            "title": "Leaderboard",
+            "type": "array"
+          },
+          "promoted": {
+            "title": "Promoted",
+            "type": "integer"
+          },
+          "screened": {
+            "title": "Screened",
+            "type": "integer"
+          },
+          "strategy_name": {
+            "title": "Strategy Name",
+            "type": "string"
+          },
+          "survivors": {
+            "items": {
+              "$ref": "#/components/schemas/FinderVariant"
+            },
+            "title": "Survivors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "strategy_name",
+          "grid_size",
+          "screened",
+          "gate_passed",
+          "promoted",
+          "leaderboard",
+          "survivors"
+        ],
+        "title": "FinderResponse",
+        "type": "object"
+      },
+      "FinderRunRequest": {
+        "properties": {
+          "max_variants": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Variants"
+          },
+          "seed_real": {
+            "default": false,
+            "title": "Seed Real",
+            "type": "boolean"
+          }
+        },
+        "title": "FinderRunRequest",
+        "type": "object"
+      },
+      "FinderVariant": {
+        "properties": {
+          "config_tag": {
+            "title": "Config Tag",
+            "type": "string"
+          },
+          "deflated_sharpe": {
+            "title": "Deflated Sharpe",
+            "type": "number"
+          },
+          "gate_passed": {
+            "title": "Gate Passed",
+            "type": "boolean"
+          },
+          "holdout_passed": {
+            "title": "Holdout Passed",
+            "type": "boolean"
+          },
+          "net_profit": {
+            "title": "Net Profit",
+            "type": "number"
+          },
+          "num_trades": {
+            "title": "Num Trades",
+            "type": "integer"
+          },
+          "profit_factor": {
+            "title": "Profit Factor",
+            "type": "number"
+          },
+          "promoted": {
+            "title": "Promoted",
+            "type": "boolean"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          }
+        },
+        "required": [
+          "config_tag",
+          "version_id",
+          "profit_factor",
+          "deflated_sharpe",
+          "net_profit",
+          "num_trades",
+          "gate_passed",
+          "promoted",
+          "holdout_passed"
+        ],
+        "title": "FinderVariant",
+        "type": "object"
+      },
       "GateStatusResponse": {
         "properties": {
           "preregistered_bar": {
@@ -1520,6 +1731,191 @@
         "title": "LivePositionsResponse",
         "type": "object"
       },
+      "MemoryInsight": {
+        "description": "One thing the brain has LEARNED from long-term memory: a dead-end structure to avoid or a winning pattern\nto reuse. `ref` is the source Version id.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "dead_end",
+              "winner_pattern"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "text",
+          "ref"
+        ],
+        "title": "MemoryInsight",
+        "type": "object"
+      },
+      "MemoryInsightsResponse": {
+        "properties": {
+          "insights": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryInsight"
+            },
+            "title": "Insights",
+            "type": "array"
+          }
+        },
+        "required": [
+          "insights"
+        ],
+        "title": "MemoryInsightsResponse",
+        "type": "object"
+      },
+      "MlFeatureWeight": {
+        "properties": {
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "feature",
+          "weight"
+        ],
+        "title": "MlFeatureWeight",
+        "type": "object"
+      },
+      "MlRankedItem": {
+        "properties": {
+          "deflated_sharpe": {
+            "title": "Deflated Sharpe",
+            "type": "number"
+          },
+          "gate_passed": {
+            "title": "Gate Passed",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "score",
+          "gate_passed",
+          "deflated_sharpe"
+        ],
+        "title": "MlRankedItem",
+        "type": "object"
+      },
+      "MlRequest": {
+        "properties": {
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit"
+          },
+          "request": {
+            "title": "Request",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request"
+        ],
+        "title": "MlRequest",
+        "type": "object"
+      },
+      "MlResponse": {
+        "properties": {
+          "backend": {
+            "title": "Backend",
+            "type": "string"
+          },
+          "feature_importance": {
+            "items": {
+              "$ref": "#/components/schemas/MlFeatureWeight"
+            },
+            "title": "Feature Importance",
+            "type": "array"
+          },
+          "llm": {
+            "title": "Llm",
+            "type": "string"
+          },
+          "n_labels": {
+            "title": "N Labels",
+            "type": "integer"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "ranking": {
+            "items": {
+              "$ref": "#/components/schemas/MlRankedItem"
+            },
+            "title": "Ranking",
+            "type": "array"
+          },
+          "request": {
+            "title": "Request",
+            "type": "string"
+          },
+          "task": {
+            "enum": [
+              "survival_ranking",
+              "feature_importance"
+            ],
+            "title": "Task",
+            "type": "string"
+          },
+          "trained": {
+            "title": "Trained",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "task",
+          "request",
+          "llm",
+          "trained",
+          "backend",
+          "n_labels",
+          "ranking",
+          "feature_importance",
+          "notes"
+        ],
+        "title": "MlResponse",
+        "type": "object"
+      },
       "PineSample": {
         "properties": {
           "name": {
@@ -1798,6 +2194,61 @@
           "items"
         ],
         "title": "RecommendationsResponse",
+        "type": "object"
+      },
+      "Skill": {
+        "description": "A reusable, parameterized SKILL recipe the Curator distilled from a gate-passing Version. `grade` is the\ndownstream OOS pass-rate of Versions derived from it (the deterministic Gate's verdicts \u2014 never the Curator's).",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "grade": {
+            "title": "Grade",
+            "type": "number"
+          },
+          "lineage": {
+            "title": "Lineage",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "recipe_summary": {
+            "title": "Recipe Summary",
+            "type": "string"
+          },
+          "success_count": {
+            "title": "Success Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "grade",
+          "success_count",
+          "lineage",
+          "recipe_summary",
+          "created_at"
+        ],
+        "title": "Skill",
+        "type": "object"
+      },
+      "SkillsResponse": {
+        "properties": {
+          "skills": {
+            "items": {
+              "$ref": "#/components/schemas/Skill"
+            },
+            "title": "Skills",
+            "type": "array"
+          }
+        },
+        "required": [
+          "skills"
+        ],
+        "title": "SkillsResponse",
         "type": "object"
       },
       "StrategyDetailResponse": {
@@ -2089,6 +2540,25 @@
         "summary": "Console Command"
       }
     },
+    "/costs": {
+      "get": {
+        "description": "Cost transparency \u2014 opex vs alpha. Total spend, spend by category, the opex/equity ratio, and per-strategy\nopex vs net edge (so the machine can see which Versions earn their keep). Reads only persisted rows.",
+        "operationId": "costs_costs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Costs"
+      }
+    },
     "/events": {
       "get": {
         "operationId": "events_events_get",
@@ -2265,6 +2735,84 @@
         "summary": "Lab Author Run"
       }
     },
+    "/lab/finder": {
+      "post": {
+        "description": "Run the Strategy Finder: grid-search the ORB+FVG seed's param space \u2192 screen each variant on REAL Binance\nspot bars (cached, offline-safe) \u2192 register every variant as a trial \u2192 rank by profit_factor (displayed) while\nthe deterministic Gate + FDR + one-shot holdout decide promotion \u2192 persist winners to the config library.",
+        "operationId": "lab_finder_lab_finder_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinderRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lab Finder"
+      }
+    },
+    "/lab/ml": {
+      "post": {
+        "description": "The ML-through-natural-language seam. A plain-language ML request \u2192 (LLM-optional, deterministic fallback)\nintent classification \u2192 runs the survival-ranking or feature-importance pass over REAL persisted outcomes \u2192\nreturns a result JUDGED by the deterministic scorer (gate verdict per item) but never alters it.",
+        "operationId": "lab_ml_lab_ml_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MlResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lab Ml"
+      }
+    },
     "/leaderboard": {
       "get": {
         "operationId": "leaderboard_leaderboard_get",
@@ -2375,6 +2923,25 @@
           }
         },
         "summary": "Live Positions"
+      }
+    },
+    "/memory/insights": {
+      "get": {
+        "description": "What the brain has LEARNED from long-term memory (graveyard/research RAG): dead-end structures to avoid +\nwinning patterns to reuse. Read straight off the persisted notes \u2014 no recompute, no LLM.",
+        "operationId": "memory_insights_route_memory_insights_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryInsightsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Memory Insights Route"
       }
     },
     "/population": {
@@ -2501,6 +3068,25 @@
           }
         },
         "summary": "Run Gate"
+      }
+    },
+    "/skills": {
+      "get": {
+        "description": "The Curator's distilled SKILL recipes \u2014 reusable, parameterized templates the brain reuses as priors.\nBest-graded first; pruned skills are excluded. `grade` is the downstream OOS pass-rate of derived Versions\n(the deterministic Gate's verdicts) \u2014 the Curator curates what the Gate judged, it never judges.",
+        "operationId": "skills_skills_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Skills"
       }
     },
     "/spine/backtest": {

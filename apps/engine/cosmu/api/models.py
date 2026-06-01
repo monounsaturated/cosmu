@@ -502,3 +502,57 @@ class BrainResponse(BaseModel):
     regime: BrainRegime
     survival_ranking: list[BrainRanking]
 
+
+# ---- self-improvement flywheel: distilled skills + long-term memory insights ----
+
+
+class Skill(BaseModel):
+    """A reusable, parameterized SKILL recipe the Curator distilled from a gate-passing Version. `grade` is the
+    downstream OOS pass-rate of Versions derived from it (the deterministic Gate's verdicts — never the Curator's)."""
+
+    name: str
+    grade: float
+    success_count: int
+    lineage: str
+    recipe_summary: str
+    created_at: str
+
+
+class SkillsResponse(BaseModel):
+    skills: list[Skill]
+
+
+class MemoryInsight(BaseModel):
+    """One thing the brain has LEARNED from long-term memory: a dead-end structure to avoid or a winning pattern
+    to reuse. `ref` is the source Version id."""
+
+    kind: Literal["dead_end", "winner_pattern"]
+    text: str
+    ref: str
+
+
+class MemoryInsightsResponse(BaseModel):
+    insights: list[MemoryInsight]
+
+
+# ---- cost transparency: opex vs alpha (engine builds, web consumes) ----
+
+
+class CostByCategory(BaseModel):
+    category: str
+    amount: float
+
+
+class CostPerStrategy(BaseModel):
+    version_id: str
+    name: str
+    opex: float
+    net: float
+
+
+class CostsResponse(BaseModel):
+    total_usd: float
+    by_category: list[CostByCategory]
+    opex_vs_alpha: float
+    per_strategy: list[CostPerStrategy]
+

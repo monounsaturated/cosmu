@@ -57,6 +57,9 @@ def main() -> None:
             "  leaderboard: LeaderboardResponse;",
             "  recommendations: RecommendationsResponse;",
             "  events: EventsResponse;",
+            "  skills: SkillsResponse;",
+            "  'memory/insights': MemoryInsightsResponse;",
+            "  costs: CostsResponse;",
             "};",
             "",
         ]

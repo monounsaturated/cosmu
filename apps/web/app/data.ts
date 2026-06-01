@@ -12,14 +12,33 @@
 
 import type {
   BrainResponse,
+  CostByCategory,
+  CostPerStrategy,
+  CostsResponse,
   Event,
   LeaderboardResponse,
+  MemoryInsight,
+  MemoryInsightsResponse,
   PopulationResponse,
   PortfolioResponse,
   Recommendation,
+  Skill,
+  SkillsResponse,
   StrategyDetailResponse
 } from "@cosmu/contracts-ts";
 import type { PositionsResponse } from "@/components/live/contracts";
+
+// Skills, memory insights, and costs come from the generated @cosmu/contracts-ts (no hand-typed
+// contract drift). Re-exported here so the surfaces that consume them keep importing from data.ts.
+export type {
+  Skill,
+  SkillsResponse,
+  MemoryInsight,
+  MemoryInsightsResponse,
+  CostByCategory,
+  CostPerStrategy,
+  CostsResponse
+};
 
 const baseUrl = process.env.ENGINE_API_URL;
 
@@ -87,6 +106,17 @@ const emptyStrategy: StrategyDetailResponse = {
   holdout: {}
 };
 
+const emptySkills: SkillsResponse = { skills: [] };
+
+const emptyInsights: MemoryInsightsResponse = { insights: [] };
+
+const emptyCosts: CostsResponse = {
+  total_usd: 0,
+  by_category: [],
+  opex_vs_alpha: 0,
+  per_strategy: []
+};
+
 const emptyPositions: PositionsResponse = {
   armed: false,
   mode: "paper",
@@ -136,6 +166,25 @@ export async function getRecommendations(): Promise<{ items: Recommendation[]; c
 export async function getEvents(): Promise<{ events: Event[]; connected: boolean }> {
   const { data, connected } = await getJson("/events", { events: [] as Event[] });
   return { events: data.events, connected };
+}
+
+// GET /skills — distilled skill recipes the brain has learned (the flywheel made visible). Empty
+// when the brain hasn't distilled any reusable recipe yet.
+export async function getSkills(): Promise<{ skills: Skill[]; connected: boolean }> {
+  const { data, connected } = await getJson("/skills", emptySkills);
+  return { skills: data.skills, connected };
+}
+
+// GET /memory/insights — dead-ends the brain avoids and winner patterns it leans into.
+export async function getInsights(): Promise<{ insights: MemoryInsight[]; connected: boolean }> {
+  const { data, connected } = await getJson("/memory/insights", emptyInsights);
+  return { insights: data.insights, connected };
+}
+
+// GET /costs — the dedicated ROI view (opex vs alpha, spend by category, per-strategy attribution).
+export async function getCosts(): Promise<{ costs: CostsResponse; connected: boolean }> {
+  const { data, connected } = await getJson("/costs", emptyCosts);
+  return { costs: data, connected };
 }
 
 // Live trading positions snapshot for the /live surface. `connected:false` is shown as engine-

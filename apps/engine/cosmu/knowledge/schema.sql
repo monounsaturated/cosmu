@@ -170,7 +170,8 @@ CREATE TABLE IF NOT EXISTS skills (
   lineage TEXT NOT NULL,
   success_count INTEGER NOT NULL,
   created_at TEXT NOT NULL,
-  pruned_at TEXT
+  pruned_at TEXT,
+  embedding TEXT  -- JSON float[]: keyless deterministic embedding for skill-recall priors (pgvector on Postgres)
 );
 
 CREATE TABLE IF NOT EXISTS sources (
@@ -190,7 +191,8 @@ CREATE TABLE IF NOT EXISTS research_notes (
   kind TEXT NOT NULL,
   body_md TEXT NOT NULL,
   structured TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  embedding TEXT  -- JSON float[]: keyless deterministic point-in-time embedding for graveyard/research RAG (pgvector on Postgres)
 );
 
 CREATE TABLE IF NOT EXISTS recommendations (
@@ -287,4 +289,6 @@ CREATE INDEX IF NOT EXISTS idx_backtests_version_kind ON backtests(strategy_vers
 CREATE INDEX IF NOT EXISTS idx_executions_run ON executions(run_id);
 CREATE INDEX IF NOT EXISTS idx_executions_ts ON executions(ts);
 CREATE INDEX IF NOT EXISTS idx_strategy_versions_status ON strategy_versions(status);
+CREATE INDEX IF NOT EXISTS idx_research_notes_created ON research_notes(created_at);
+CREATE INDEX IF NOT EXISTS idx_skills_pruned ON skills(pruned_at);
 

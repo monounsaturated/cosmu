@@ -3,6 +3,8 @@ dist
 node_modules
 .env
 .env.local
+# All APP_ENV profile files stay LOCAL (QA). Committed templates are the *.example versions.
+.env*.local
 .turbo
 coverage
 .external

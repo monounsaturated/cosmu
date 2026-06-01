@@ -54,6 +54,17 @@ class Providers:
     fred_series: str = DEFAULT_FRED_SERIES
     polymarket_token: str = DEFAULT_POLYMARKET_TOKEN
 
+    @classmethod
+    def from_settings(cls, settings) -> "Providers":  # noqa: ANN001
+        """Build the real free providers WITH the operator's keys/tokens wired in — so setting FRED_API_KEY
+        (free) and POLYMARKET_TOKEN (a real market id) is all it takes for macro_regime / risk_on to connect.
+        Sources needing nothing (Binance/Fear&Greed/GDELT) work regardless; missing key/token → that one
+        source stays empty (caught by _safe), never crashing the pass."""
+        return cls(
+            fred=FredMacroProvider(api_key=settings.fred_api_key),
+            polymarket_token=settings.polymarket_token or DEFAULT_POLYMARKET_TOKEN,
+        )
+
 
 def _default_store():  # noqa: ANN202 - AltDataStore | PgAltDataStore
     """Pick the backend the SAME way the API does: postgres URL → PgAltDataStore over the Store, else the
@@ -83,7 +94,7 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     an abort. The LLM runs ONLY at news standardization (cached); everything else is numeric (no LLM)."""
     store = store if store is not None else _default_store()
     symbols = list(symbols) if symbols is not None else list(DEFAULT_SYMBOLS)
-    p = providers if providers is not None else Providers()
+    p = providers if providers is not None else Providers.from_settings(get_settings())
 
     counts: dict[str, int] = {}
     counts["funding_rate"] = _safe(

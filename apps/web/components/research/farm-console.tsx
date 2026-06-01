@@ -166,7 +166,7 @@ export function FarmConsole() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="primary" onClick={runCohort} disabled={running}>
-              <Play /> {running ? "Farming…" : "Run cohort"}
+              <Play /> {running ? "Testing…" : "Run cohort"}
             </Button>
             <label className="flex items-center gap-2 text-[12.5px] text-muted">
               <input type="checkbox" checked={usePine} onChange={(e) => setUsePine(e.target.checked)} className="accent-[var(--color-iris)]" />

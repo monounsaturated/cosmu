@@ -118,13 +118,15 @@ def gather_context(bus: ToolBus, *, symbol: str = "BTCUSDT", offline: bool = Tru
     }
 
 
-def author_candidates(n: int, *, llm_enabled: bool = False) -> list[tuple[AuthorDraft, CandidateRecord]]:
+def author_candidates(n: int, *, llm_enabled: bool = False, store: Store | None = None) -> list[tuple[AuthorDraft, CandidateRecord]]:
     """Author N candidate specs via lab/author (LLM-OPTIONAL), compile + static-check each. The author only
-    produces STRUCTURE (thresholds stay in param_space); the gate, not this path, decides what survives."""
+    produces STRUCTURE (thresholds stay in param_space); the gate, not this path, decides what survives. When a
+    `store` is given the author consults LONG-TERM MEMORY (graveyard RAG + distilled skills) to avoid recently
+    dead structures and lean toward winners — still LLM-OPTIONAL, still proposal-only."""
     out: list[tuple[AuthorDraft, CandidateRecord]] = []
     briefs = [_BRIEFS[i % len(_BRIEFS)] for i in range(max(1, n))]
     for brief, feats in briefs:
-        draft = draft_from_brief(brief, features=feats, llm_enabled=llm_enabled)
+        draft = draft_from_brief(brief, features=feats, llm_enabled=llm_enabled, store=store)
         issues = list(draft.issues) or validate_spec(draft.spec)
         compiled_ok = False
         code_hash: str | None = None
@@ -173,7 +175,8 @@ def run_research_pass(
     bus = tool_bus or research_tool_bus()
     context = gather_context(bus)
 
-    authored = author_candidates(n, llm_enabled=llm_enabled)
+    # Consult long-term memory while authoring (avoid recently-dead structures, lean toward winners + skills).
+    authored = author_candidates(n, llm_enabled=llm_enabled, store=store)
     extra_seeds = [draft.spec for draft, rec in authored if rec.compiled]
 
     if market_data is not None:

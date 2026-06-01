@@ -120,6 +120,9 @@ class FarmLoop:
 
         lanes = {"seed": 0, "chat": 0, "exploit": 0, "explore": 0, "pine": 0}
         evaluated: list[Evaluated] = []
+        # version_id → its spec, so the self-improvement flywheel (graveyard memory + Curator skills) can record
+        # each death/win and distill survivors AFTER the cohort transaction commits (no nested writers).
+        specs_by_vid: dict[str, StrategySpec] = {}
         invalid = 0
         parents: list[tuple[str, StrategySpec]] = []
         pine_notes: list[str] = []
@@ -160,6 +163,7 @@ class FarmLoop:
                     invalid += 1
                     continue
                 evaluated.append(result)
+                specs_by_vid[vid] = cand.spec
                 lanes[cand.lane] += 1
                 parents.append((vid, cand.spec))
 
@@ -173,21 +177,23 @@ class FarmLoop:
                 pvid, pspec = rng.choice(parents)
                 child = mutator.mutate_exploit(pspec, rng)
                 cand = Candidate(spec=child.spec, origin="mutation", lane="exploit", operator=child.operator, rationale=child.rationale, parent_vid=pvid)
-                result, _vid = self._evaluate(cand, b, rng, seed, survival)
+                result, vid = self._evaluate(cand, b, rng, seed, survival)
                 if result is None:
                     invalid += 1
                     continue
                 evaluated.append(result)
+                specs_by_vid[vid] = cand.spec
                 lanes["exploit"] += 1
 
             for _ in range(explore_n):
                 child = mutator.wildcard(parent_specs, rng)
                 cand = Candidate(spec=child.spec, origin="wildcard", lane="explore", operator=child.operator, rationale=child.rationale)
-                result, _vid = self._evaluate(cand, b, rng, seed, survival)
+                result, vid = self._evaluate(cand, b, rng, seed, survival)
                 if result is None:
                     invalid += 1
                     continue
                 evaluated.append(result)
+                specs_by_vid[vid] = cand.spec
                 lanes["explore"] += 1
 
             # ORDER the gate-survivors by the survival model's edge-persistence score (descending) — this is the
@@ -219,6 +225,12 @@ class FarmLoop:
                 },
             )
 
+        # SELF-IMPROVEMENT FLYWHEEL (runs AFTER the cohort transaction commits — no nested writer): record every
+        # death + win into the graveyard/research RAG, distill gate-passing survivors into reusable skills, and
+        # re-grade the skill set. Best-effort: a memory/curation hiccup must never fail a cohort the Gate already
+        # judged (the scorer/Gate remain the sole authority over what survives).
+        self._record_flywheel(evaluated, specs_by_vid)
+
         return CohortSummary(
             cohort_id=cohort_id,
             seed=seed,
@@ -233,6 +245,28 @@ class FarmLoop:
             graveyard=graveyard[:16],
             pine_notes=pine_notes[:12],
         )
+
+    def _record_flywheel(self, evaluated: list[Evaluated], specs_by_vid: dict[str, StrategySpec]) -> None:
+        """Persist deaths + wins into long-term memory and distill survivors into skills, then re-grade. Imported
+        lazily so the loop stays importable even if the flywheel modules change. Never raises into the cohort."""
+        try:
+            from cosmu.knowledge.memory import GraveyardMemory
+            from cosmu.lab.curator import distill_skill, grade_skills
+
+            memory = GraveyardMemory(self.store)
+            distilled = False
+            for ev in evaluated:
+                spec = specs_by_vid.get(ev.version_id)
+                if spec is None:
+                    continue
+                memory.remember(spec, ev)
+                if ev.passed:
+                    distill_skill(self.store, spec, ev)
+                    distilled = True
+            if distilled:
+                grade_skills(self.store)
+        except Exception:  # noqa: BLE001 — the flywheel is additive; it never blocks a gated cohort
+            pass
 
     # ------------------------------------------------------------------ internals
 
