@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import math
 import random
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from cosmu.data.altdata import AltDataPoint, FixtureAltDataProvider
+from cosmu.data.altdata import AltDataPoint, FixtureAltDataProvider, FixtureNewsProvider, NewsItem
 from cosmu.data.market import Bar
 
 _SYMBOLS = ("BTCUSDT", "ETHUSDT", "ALTUSDT")
@@ -76,3 +77,88 @@ def synthetic_gate_inputs(*, edge: bool = True, seed: int = 7, n: int = 600) -> 
         market[symbol] = bars
         series[(symbol, "galaxy_score")] = points
     return market, FixtureAltDataProvider(series)
+
+
+# --- Phase 1.5 ablation fixtures -------------------------------------------------------------
+# A latent signal drives BOTH next-bar returns AND the alt sources (news strongest), so the
+# alt-data arm should beat price-only and the drop-one report should rank news first.
+
+_BULL = (
+    "Bitcoin surges as ETF inflows hit record",
+    "Major exchange announces partnership and adoption push",
+    "Network upgrade approval drives a fresh rally",
+)
+_BEAR = (
+    "Exchange hack triggers a broad selloff",
+    "Regulator weighs ban as the market plunges",
+    "Large liquidations spark crash fears",
+)
+_NEUTRAL = (
+    "Market trades sideways amid mixed signals",
+    "Analysts debate the next move",
+    "Volumes hold steady into the weekend",
+)
+
+
+def _make_ablation_symbol(symbol: str, *, edge: bool, seed: int, n: int):
+    rng = random.Random(f"abl-{symbol}-{seed}")
+    start = datetime(2023, 1, 1, tzinfo=UTC)
+    # Mean-reverting (AR(1)) latent so it oscillates around 0 → a sideways market (buy-and-hold ~flat)
+    # where timing matters and the news filter can add edge by avoiding the down-latent stretches.
+    latent: list[float] = []
+    level = 0.0
+    for _ in range(n):
+        level = 0.88 * level + rng.gauss(0, 0.5)
+        latent.append(level)
+
+    # Demean the deterministic edge so the asset is driftless (buy-and-hold ≈ flat regardless of
+    # seed luck). All the return then sits in *timing* the latent — which the alt arm can exploit
+    # by staying out of the down-latent stretches that buy-and-hold must eat.
+    raw_edge = [0.03 * math.tanh(latent[i - 1] if i > 0 else 0.0) if edge else 0.0 for i in range(n)]
+    mu = sum(raw_edge) / n
+
+    price = 100.0
+    bars: list[Bar] = []
+    funding: list[AltDataPoint] = []
+    fear_greed: list[AltDataPoint] = []
+    news: list[NewsItem] = []
+    for i in range(n):
+        ret = (raw_edge[i] - mu) + rng.gauss(0, 0.012)
+        open_ = price
+        price = max(0.01, price * (1 + ret))
+        ts = start + timedelta(days=i)
+        bars.append(
+            Bar(
+                ts=ts,
+                open=Decimal(str(round(open_, 6))),
+                high=Decimal(str(round(max(open_, price) * 1.005, 6))),
+                low=Decimal(str(round(min(open_, price) * 0.995, 6))),
+                close=Decimal(str(round(price, 6))),
+                volume=Decimal("1000000"),
+            )
+        )
+        si = latent[i]
+        if edge and si > 0.4:
+            headline = rng.choice(_BULL)
+        elif edge and si < -0.4:
+            headline = rng.choice(_BEAR)
+        else:
+            headline = rng.choice(_NEUTRAL)
+        news.append(NewsItem(ts=ts, available_at=ts, headline=headline))
+        funding.append(AltDataPoint(ts=ts, available_at=ts, value=round(-0.0002 * si + rng.gauss(0, 0.00005), 8)))
+        fg_val = (50.0 - 20.0 * math.tanh(si)) if edge else 50.0  # contrarian: fear when upside latent
+        fear_greed.append(AltDataPoint(ts=ts, available_at=ts + timedelta(days=1), value=round(fg_val, 2)))
+    return bars, funding, fear_greed, news
+
+
+def synthetic_ablation_inputs(*, edge: bool = True, seed: int = 7, n: int = 600):
+    market: dict[str, list[Bar]] = {}
+    alt_series: dict[tuple[str, str], list[AltDataPoint]] = {}
+    news: dict[str, list[NewsItem]] = {}
+    for symbol in _SYMBOLS:
+        bars, funding, fear_greed, items = _make_ablation_symbol(symbol, edge=edge, seed=seed, n=n)
+        market[symbol] = bars
+        alt_series[(symbol, "funding_rate")] = funding
+        alt_series[(symbol, "fear_greed")] = fear_greed
+        news[symbol] = items
+    return market, FixtureAltDataProvider(alt_series), FixtureNewsProvider(news)

@@ -50,7 +50,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <SideNavLinks collapsed={collapsed} />
 
-        <div className="mt-auto flex flex-col gap-3">
+        <div className="mt-auto">
           {!collapsed && (
             <div className="rounded-lg border border-border/70 bg-surface-2/40 p-3">
               <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
@@ -62,19 +62,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               </p>
             </div>
           )}
-          <button
-            type="button"
-            onClick={toggle}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className={cn(
-              "flex items-center gap-2 rounded-md border border-transparent py-2 text-[12.5px] text-muted transition-colors hover:border-border hover:bg-surface-2/60 hover:text-foreground",
-              collapsed ? "justify-center px-0" : "px-3"
-            )}
-          >
-            {collapsed ? <PanelLeft className="size-[17px]" /> : <PanelLeftClose className="size-[17px]" />}
-            {!collapsed && <span>Collapse</span>}
-          </button>
         </div>
       </aside>
 
@@ -82,6 +69,15 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="glass sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-border/70 px-5 py-3 lg:px-7">
           <div className="flex items-center gap-2.5 text-[13px] text-muted">
             <MobileNav />
+            <button
+              type="button"
+              onClick={toggle}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="hidden size-9 items-center justify-center rounded-md border border-border/70 text-muted transition-colors hover:bg-surface-2/60 hover:text-foreground lg:inline-flex"
+            >
+              {collapsed ? <PanelLeft className="size-[18px]" /> : <PanelLeftClose className="size-[18px]" />}
+            </button>
             <span className="relative flex size-2">
               <span className="animate-pulse-dot absolute inline-flex size-2 rounded-full bg-up/70" />
               <span className="relative inline-flex size-2 rounded-full bg-up" />

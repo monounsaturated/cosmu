@@ -35,8 +35,17 @@
 - API: `GET /universe`, `POST /universe/venue` (typed, contracts regenerated). Asset-class enablement is **derived** — a class is on iff ≥1 of its venues is on.
 - Web: `components/universe/universe-settings.tsx` (ticking toggles, plain language, "no data yet" honesty markers, offline-safe) rendered both as a Dashboard card and on the new `/settings` route stub.
 
+### Phase 0+1 wall & gate (BUILT)
+- `master/scorer.py` — real PSR/Deflated-Sharpe (skew+kurtosis adjusted), expected-max-Sharpe with **global trial accounting**, and a **CSCV** PBO. `master/trials.py` (cumulative trial ledger), `master/holdout.py` (one-shot holdout, re-requests refused), `data/universe_calendar.py` (point-in-time listing → no survivorship), `data/altdata.py` (append-only point-in-time snapshots + causal `rolling_zscore`). `data/backtest.py` gained capacity-aware slippage + regime folds + per-obs moments. `research/gate.py` `evaluate_gate` (single-signal stop-or-go) + offline fixtures.
+
+### Phase 1.5 — aggregation-edge ablation gate (BUILT)
+- **Three free sources behind the alt-data seam** (`data/altdata.py`): `FundingRateProvider` (Binance fapi, long filter), `FearGreedProvider` (alternative.me), and a `NewsProvider`/`NewsItem` unstructured path — each with offline fixtures, append-only point-in-time snapshots.
+- **LLM universal adapter** (`ingest/standardize.py`): unstructured headline → validated `StandardizedNews` (`event_type/sentiment/confidence`), **content-hash cached**, **frozen `TRANSFORM_VERSION`**, deterministic offline lexicon path so the gate runs with no key; the LLM slots in at one seam and **never runs in any backtest/scoring path**.
+- **Ablation gate** (`research/gate.py` `evaluate_ablation`): three arms on the same universe/costs/wall — **price-only vs +alt-data vs buy-and-hold** — plus a **drop-one** per-source marginal-Sharpe report, CSCV over a diverse alt-arm grid, the pre-registered bar, and every arm counted in the global trial ledger. CLI `python3 -m cosmu.research.gate` prints the three-arm verdict offline. On the seeded fixture: PASS, alt > price-only > buy-and-hold, news is the paying source.
+
 ## Decisions
 
+- **Free data first ($0).** The first real gate runs on funding/OI + Fear&Greed + free news; LunarCrush/social is optional and only added if the free aggregation gate shows legs. A $0 real gate beats a paid one.
 - **Pine import = paste / file upload / bulk, not TV link.** TradingView doesn't expose script source over a public URL (closed-source scripts; scraping violates ToS). Paste + `.pine`/`.txt` upload + the sample library is the robust path. A CSV/bulk-paste of `{name, source}` is the multi-import seam.
 - **LLM-optional by default.** Authoring + generation run deterministically without any model key, so the machine is fully functional offline; the model router is an enhancement at a single seam, never a hard dependency. Keeps the scorer/money partition intact regardless.
 - **Cohort screen is a deterministic surrogate** standing in for the vectorbt/Nautilus two-tier backtest (those are BUY/BORROW vendors). The architecture (cheap screen → full validate) mirrors the plan so wiring the real vendors is a swap, not a rewrite. The scorer/gates are already the real, authoritative deterministic layer.
@@ -120,9 +129,11 @@ The core feature is the LLM using ML tools to test strategies fast — but the h
 
 ## Priority order (next)
 
-1. **Make the numbers real** — wire real Binance-spot OHLCV (ccxt) + an honest backtest so the Lab's % reflects a true, fee-net edge. Nothing else matters until this is done.
-2. **Split into the three engines + the six real routes** (above), with the collapsible icon sidebar and the 2-click Live modal.
-3. **Pine inbox folder.**
-4. **Dashboard redesign**: real charts (Tremor/Recharts), plain language, mobile pass.
-5. **Settings page** for the operator knobs.
-6. Later: agentic research tools + ML survival model + pgvector RAG.
+**Gate-first (decided 2026-06-01): the next build is the Phase 1.5 aggregation/ablation gate — prove the differentiator on free data before building any more product.** The product/UI work below is real but **deferred until the gate passes** (don't gold-plate a surface for an unproven edge).
+
+1. **Phase 1.5 — prove the aggregation edge** (`docs/BUILD_BRIEF.md`, active unit). Three free sources behind the `AltDataProvider` seam + the LLM universal adapter (frozen, ingest-only) → the three-arm ablation gate (price-only vs + alt-data vs buy-and-hold) with per-source drop-one. **Nothing below matters until the alt-data arm beats price-only.**
+2. *(after PASS)* **Split into the three engines + the six real routes**, collapsible icon sidebar, 2-click Live modal.
+3. *(after PASS)* **Pine inbox folder.**
+4. *(after PASS)* **Dashboard redesign**: real charts (Tremor/Recharts), plain language, mobile pass.
+5. *(after PASS)* **Settings page** for the operator knobs.
+6. *(after PASS)* agentic research tools + ML survival model + pgvector RAG.

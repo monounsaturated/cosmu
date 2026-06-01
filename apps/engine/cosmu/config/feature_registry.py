@@ -15,10 +15,15 @@ class FeatureDefinition(BaseModel):
     asof_semantics: str
     prior: str
     enabled: bool = True
+    # Pins the (frozen, versioned) ingest transform a feature depends on, so a survivor is
+    # re-runnable byte-for-byte. None = pure price/registry feature, no ingest transform.
+    transform_version: str | None = None
 
 
 FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
-    FeatureDefinition(name="funding_rate", source="ccxt", tier="tier0", asset_classes=["crypto"], asof_semantics="exchange publication time", prior="Funding extremes proxy crowded leverage."),
+    FeatureDefinition(name="funding_rate", source="ccxt", tier="tier0", asset_classes=["crypto"], asof_semantics="exchange publication time", prior="Funding extremes proxy crowded leverage; used as a long filter (spot, long-only).", transform_version="funding-zscore-v1"),
+    FeatureDefinition(name="fear_greed", source="alternative.me", tier="tier0", asset_classes=["crypto"], asof_semantics="daily publication time (next-day availability)", prior="Crowd fear mean-reverts at swing horizon — buy fear, fade greed.", transform_version="feargreed-regime-v1"),
+    FeatureDefinition(name="news_sentiment", source="news_headlines", tier="tier1", asset_classes=["crypto"], asof_semantics="LLM-standardized at headline availability time", prior="A positive news-flow shift precedes multi-day continuation before it is fully priced.", transform_version="news-sentiment-v1"),
     FeatureDefinition(name="open_interest", source="exchange", tier="tier0", asset_classes=["crypto"], asof_semantics="exchange publication time", prior="OI changes reveal leverage build-up."),
     FeatureDefinition(name="perp_spot_basis", source="exchange", tier="tier0", asset_classes=["crypto"], asof_semantics="exchange publication time", prior="Basis captures risk appetite and carry."),
     FeatureDefinition(name="exchange_netflow", source="exchange", tier="tier0", asset_classes=["crypto"], asof_semantics="provider knowledge time", prior="Net inflows can precede sell pressure."),

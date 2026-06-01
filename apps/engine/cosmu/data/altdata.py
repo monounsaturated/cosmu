@@ -97,6 +97,73 @@ class FixtureAltDataProvider:
         return self.series.get((symbol, metric), [])[-limit:]
 
 
+@dataclass(frozen=True)
+class NewsItem:
+    ts: datetime  # headline timestamp
+    available_at: datetime  # when we'd have seen it (point-in-time)
+    headline: str
+
+
+class NewsProvider(Protocol):
+    def fetch_news(self, symbol: str, *, limit: int) -> list[NewsItem]:
+        """Return ascending unstructured headlines for one symbol."""
+
+
+class FundingRateProvider:
+    """Binance USDⓈ-M funding rate (free REST). Numeric → no LLM. Used as a long filter (spot)."""
+
+    def __init__(self, base_url: str = "https://fapi.binance.com") -> None:
+        self.base_url = base_url.rstrip("/")
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "funding_rate":
+            return []
+        query = urllib.parse.urlencode({"symbol": symbol, "limit": min(limit, 1000)})
+        url = f"{self.base_url}/fapi/v1/fundingRate?{query}"
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            rows = json.loads(resp.read().decode("utf-8"))
+        out: list[AltDataPoint] = []
+        for row in rows:
+            ts = datetime.fromtimestamp(int(row["fundingTime"]) / 1000, tz=UTC)
+            out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["fundingRate"])))
+        return out
+
+
+class FearGreedProvider:
+    """Crypto Fear & Greed index (alternative.me, free, daily). Market-wide; symbol ignored."""
+
+    def __init__(self, base_url: str = "https://api.alternative.me") -> None:
+        self.base_url = base_url.rstrip("/")
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "fear_greed":
+            return []
+        query = urllib.parse.urlencode({"limit": limit, "format": "json"})
+        url = f"{self.base_url}/fng/?{query}"
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        out: list[AltDataPoint] = []
+        for row in payload.get("data", []):
+            ts = datetime.fromtimestamp(int(row["timestamp"]), tz=UTC)
+            available = datetime.fromtimestamp(int(row["timestamp"]) + 86400, tz=UTC)
+            out.append(AltDataPoint(ts=ts, available_at=available, value=float(row["value"])))
+        return sorted(out, key=lambda p: p.ts)
+
+
+class FixtureNewsProvider:
+    """Deterministic offline headlines so the gate + tests run with no key/network."""
+
+    def __init__(self, news: dict[str, list[NewsItem]]) -> None:
+        self.news = news
+        self.calls: list[tuple[str, int]] = []
+
+    def fetch_news(self, symbol: str, *, limit: int) -> list[NewsItem]:
+        self.calls.append((symbol, limit))
+        return self.news.get(symbol, [])[-limit:]
+
+
 def rolling_zscore(values: list[float | None], lookback: int) -> list[float | None]:
     """Causal z-score: only past+current values, never the full sample (a full-sample z is lookahead)."""
     out: list[float | None] = [None] * len(values)

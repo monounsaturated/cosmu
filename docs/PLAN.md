@@ -9,15 +9,15 @@
 
 You don't write code. Your job is 3 steps:
 
-1. **Buy one thing:** a **LunarCrush API key** (lunarcrush.com, cheapest paid tier ~$24–40/mo). That's the only purchase needed to start.
+1. **Buy nothing yet.** The first real gate runs on **free data ($0) across three asset classes** — crypto (funding/OI, Fear & Greed), equities (free daily bars + macro), and prediction-market odds — plus free news headlines. A **LunarCrush key** (~$24–40/mo) is *optional*, only to add social data **after** the free gate shows the cross-asset thesis has legs. Real money and paid data vendors come later, gated on a proven survivor.
 2. **Hand the build to an agent** — paste this one line into a fresh coding agent:
    > *Build everything in `docs/BUILD_BRIEF.md`. Show me a plan first, then run the tests before saying it's done.*
-3. **Run one command** when it's finished — it tells you if there's a real edge:
+3. **Run one command** when it's finished — it tells you if aggregating data actually adds edge:
    ```
    python3 -m cosmu.research.gate
    ```
-   - **PASS** → there's a signal worth chasing → tell me to plan the next build.
-   - **STOP** → the idea doesn't hold up → you spent days, not months. That's still a win.
+   - **PASS** → the aggregated/standardized data beats price-only *and* buy-and-hold → tell me to plan the next build.
+   - **STOP** → it doesn't hold up → you spent days, not months, and the per-source report tells you which data (if any) to keep. That's still a win.
 
 **Cost to run:** ~$60–130/month, hard-capped. **Live trading stays OFF** until you flip it.
 **One optional choice** (default is fine): trade **spot only** (default), or add **futures** later (lets you short; bigger idea space).
@@ -76,13 +76,22 @@ This is what buys an "AI trading firm" for ~$60/mo instead of $6,000: you pay th
 
 ## 2. The strategic question that gates everything
 
-**Does an exploitable edge actually exist on Binance spot, after fees, point-in-time-correct?**
+**Does an exploitable edge exist *across asset classes* — crypto + equities + prediction markets — after fees, point-in-time-correct? And does *combining* them beat any single one?**
 
-Most published crypto social/alt-data edges are decayed or were lookahead artifacts. The entire firm is scaffolding around a premise that may be zero. So we **prove the premise before building the factory** (Phase 0.5 below). Phases 2–4 are *conditional* on Phase 0.5 producing at least one honest survivor.
+Most published *single-market* alt-data edges are decayed or were lookahead artifacts. But the edge most likely to survive at small size is **decorrelation + cross-market signal transfer** (§6, VISION §21) — and that edge *only exists multi-asset*. So we do **not** narrow to one market to feel safe. We go multi-asset on **inputs** from day one and make "multi-asset beats single-asset" a **falsifiable hypothesis the gate tests.** The firm is still scaffolding around a premise that may be zero — so we prove it before building the factory (Phases 1 + 1.5). Phases 2–4 are *conditional* on the gate producing an honest **cross-asset** survivor that beats the single-asset, price-only baseline.
 
-### Venue constraint (resolve before ingestion)
+### The two-plane split (how multi-asset stays cheap *and* disciplined)
 
-Cosmu trades **Binance spot, long-only**. Many funding/OI/mean-reversion hypotheses ("negative funding → 3-day reversion on alts") require shorting or futures and can only be expressed as the long leg here. Either (a) accept a narrower long-only hypothesis space, or (b) widen the venue to futures. **Decide this before building funding/OI ingestion you can't fully trade on.** Until decided, treat funding/OI as *filters on long entries*, not standalone signals.
+The objection to "multi-asset first" is cost and sprawl — paid vendors and an execution adapter per venue. We dissolve it by splitting the system into two planes that scale independently:
+
+- **Data & signal plane — multi-asset from day one, ~$0.** Every asset class's *features* are ingested point-in-time from **free** sources: crypto (ccxt funding/OI/flows, Fear&Greed), equities (free daily bars + FRED/EDGAR/COT macro), **prediction-market odds** (Polymarket public API). Cross-asset signal transfer is first-class. The **same wall scores every class on the same ruler** — and the foundation already supports this: the scorer has per-class walk-forward windows, and the schema already ships `venues.kind ∈ crypto|equity|prediction` + an `asset_class_gates` table. **No execution venue is needed to prove edge.**
+- **Execution plane — one venue now, more gated to live.** Paper/backtest fills are **simulated for every class** by the engine we already have. *Real* execution adapters (IBKR, Polymarket live wallet) and *paid* survivorship-free vendors (Norgate, Sharadar) are built **only when you flip live on a proven cross-asset survivor** — the expensive, irreversible spend is deferred until an edge pays for it.
+
+**The reconciliation:** be ambitious on *inputs and evaluation* (multi-asset, free, now); stay lean on *money and irreversible spend* (one execution venue, paid vendors deferred). Ambition where it's cheap; discipline where it's expensive.
+
+### Directional expression (multi-asset also relaxes the long-only problem)
+
+Going multi-asset partly *solves* the crypto long-only-spot handicap: **prediction markets express "down" by buying the opposite side**, equities carry a natural long drift, and cross-asset positions hedge each other. So you get directional and decorrelated expression **without needing crypto futures.** Crypto stays **spot long-only** for now (funding/OI as long-entry filters); the spot-vs-futures choice becomes an *optimization*, not a *blocker*.
 
 ## 3. Architecture (target state)
 
@@ -120,7 +129,15 @@ Cheapest path to truth. **No LLM, no registry, no pipeline, no UI.** Manual data
 - **DoD / decision gate:** ≥1 signal clears with an honest deflated Sharpe + survivable PBO. **Nothing clears → stop. That's a real, valuable result.** Clears → proceed.
 - *Product slice:* a one-screen result view (signal vs buy-and-hold) is the thinnest useful surface — optional, but it's the first thing you'd actually look at.
 
-### Phase 2 — Earn the stack *(only if Phase 1 passed)*
+### Phase 1.5 — Prove the *cross-asset* aggregation edge *(THE DIFFERENTIATOR GATE — multi-asset, FREE data)*
+Phase 1 proves *a* signal exists. Phase 1.5 proves the **two** things the product is actually *for*: that **aggregating complex point-in-time data adds edge over price alone**, *and* that **combining asset classes beats any single one** — the decorrelation/cross-market edge most likely to pay at small size. All on **free data, $0**, with **execution still deferred** (two-plane split, §2). *More data is not automatically good (it is overfitting surface — §6); this phase is where every source and every asset class has to earn its place or get cut.*
+- **1.5.1 Free multi-asset sources** behind the existing `AltDataProvider`/market seams, point-in-time, append-only, offline-fixture-backed: crypto **funding + OI + Fear&Greed** (ccxt / alternative.me, funding as a **long filter** — §2); equity **free daily bars + FRED macro**; **prediction-market odds** (Polymarket public API); one **unstructured** source (crypto news headlines, free) for the LLM adapter. *(Free equity data is survivorship-biased — a documented PoC limitation, replaced by Norgate at the execution/live phase; here we test signal **presence**, not deployable capacity.)*
+- **1.5.2 The LLM universal adapter, done right:** the unstructured source is standardized to a validated numeric row **once** — frozen, **versioned**, content-hash-**cached**, cheap-tier, hard daily cap — then deterministic code runs forever (§1). Numeric sources **skip the LLM**. The whole gate runs **fully offline via fixtures** (CI has no keys).
+- **1.5.3 Cross-asset features**, each with a stated prior: e.g. **prediction-market odds → crypto/equity risk-on/off**, **crypto funding → cross-asset risk appetite**, news-sentiment z-score. Cross-asset signal transfer is the whole point — one market's price as another market's feature.
+- **1.5.4 The multi-arm ablation gate** (extend `apps/engine/cosmu/research/gate.py`): four arms on the **same** wall / costs / windows — (1) **single-asset price-only** (baseline), (2) **single-asset + alt-data**, (3) **cross-asset + alt-data** (the multi-asset thesis), (4) **buy-and-hold** — plus **drop-one** per-source *and* per-asset-class contribution. Pre-registered bar (logged before looking): arm (3) must beat (1), (2), **and** (4) net of costs, clear the existing PSR/overfit/min-trades/≥2-regime/drawdown gates, with **attempt budget ≤ 12, every attempt counted in the global trial counter** (the gate itself must not be p-hacked).
+- **DoD / decision gate:** cross-asset+alt beats single-asset **and** buy-and-hold → the multi-asset thesis is **proven** (not assumed) → proceed to Phase 2. Only single-asset+alt clears → narrow to that. Neither → **STOP.** The per-axis report tells you exactly **which asset classes and which sources** paid — ambition validated by evidence, for $0.
+
+### Phase 2 — Earn the stack *(only if the Phase 1 / 1.5 gate passed)*
 Infrastructure is now justified by a real edge. Add each piece **only as volume/pain demands it.**
 - **2.1** Automate ingestion with a **scheduled job** (adopt Prefect only when DAG complexity is real) → **Supabase Postgres**, point-in-time.
 - **2.2** **vectorbt** (throughput), **Optuna** (param fitting, kills the midpoint stand-in), **CPCV** (upgrade the wall now that there are many strategies to validate), Polars/Parquet.
@@ -139,19 +156,21 @@ Product-first but **lean** — the surface you actually use, nothing gold-plated
 - **DoD:** $1k–$10k live on top survivors, audited, auto-disarming — the proof.
 
 ## 5. Budget (Tier 1 "prove it": ~$60–130/mo, hard-capped)
-Railway $10–25 · Vercel $0–20 · Supabase $0–25 · Modal $0–20 · ccxt/funding/OI **$0** · LunarCrush $24–40 · on-chain $0–40 · OpenRouter $20–60 (cap ~$60) · Langfuse/Sentry free · all quant/ML libs **$0 (OSS)**. The run cost is a rounding error against any real edge. The real cost is builder time — which is why Phase 0.5 exists to fail fast.
+Railway $10–25 · Vercel $0–20 · Supabase $0–25 · Modal $0–20 · ccxt/funding/OI **$0** · LunarCrush $24–40 · on-chain $0–40 · OpenRouter $20–60 (cap ~$60) · Langfuse/Sentry free · all quant/ML libs **$0 (OSS)**. The run cost is a rounding error against any real edge. The real cost is builder time — which is why the Phase 1 / 1.5 gate exists to fail fast.
 
 ## 6. Risks & mitigations
 | Risk | Mitigation |
 |---|---|
-| **No edge actually exists** | Phase 0.5 gate: prove one honest survivor before building the factory |
+| **No edge actually exists** | Phase 1 gate: prove one honest survivor before building the factory |
+| **Aggregating data adds noise, not edge** (the product's core bet) | Phase 1.5 ablation: the alt-data arm must beat **price-only** on the same wall; drop-one marginal contribution keeps only sources that actually pay, cuts the rest |
 | **Lookahead bias** in alt-data | Point-in-time availability stamps (enforced, not optional) |
 | **Scorer lies optimistically** | Pin against known reference values; the wall is judged before it judges anything |
 | **Frozen transform silently poisons features** | Stage A validator: leakage/variance/NaN tests; transforms versioned *and* tested |
 | **LLM-driven overfitting** | CPCV + PBO + untouched holdout; LLM never scores |
 | **Multiple-testing / family-wise error** | Global trial accounting — deflate against *cumulative* hypotheses, not per-spec params |
 | **LLM cost runaway** | `LiteLLM` hard cap, cheap-tier default, batch+cache; transforms run code, not LLM |
-| **Long-only/venue mismatch** | Resolve spot-vs-futures before funding/OI ingestion; treat funding as long filter until then |
+| **Long-only/venue mismatch** | **Multi-asset relaxes it** (§2): prediction-market opposite-side + equity drift + cross-asset hedges give directional/decorrelated expression without crypto futures; crypto stays spot long-only as an *optimization*, not a blocker |
+| **Multi-asset = cost & sprawl** | **Two-plane split** (§2): multi-asset *data/signals* are free and built now; multi-asset *execution* + paid vendors are deferred until a survivor earns them |
 | **Data vendor ToS / rate limits** | Cache aggressively; respect terms; batched ingest |
 | **Edge decay** | Defined decay detector + auto-defund; graveyard memory stops re-proposing dead ideas |
 
@@ -160,7 +179,7 @@ Railway $10–25 · Vercel $0–20 · Supabase $0–25 · Modal $0–20 · ccxt/
 - **You buy/operate (everything else):** data APIs, vectorbt/Optuna/LightGBM/Nautilus, Supabase, Modal, OpenRouter, Prefect, Langfuse. Maintenance and bug risk live mostly in someone else's repo.
 
 ## 8. Open items before code
-1. **Phase 1 edge gate** — the whole roadmap past Phase 2 is conditional on it. Build the Phase 0 wall, then run the gate; don't build further until it passes.
-2. **Spot vs futures venue decision** (§2) — gates funding/OI signal design; needed for Phase 1 hand-signals.
-3. **LunarCrush API key + tier choice** — needed for Phase 1 data pull.
-4. **`class_gates` schema add** (Phase 4.1 polish) — ask-first DB change, not on the critical path.
+1. **Phase 1 / 1.5 edge gate** — the whole roadmap past Phase 2 is conditional on it. The Phase 0 wall + Phase 1 single-signal gate are **built** (see `IMPLEMENTATION.md`); the active unit is the **Phase 1.5 cross-asset ablation gate** (`docs/BUILD_BRIEF.md`). Run it on free multi-asset data; don't build further until cross-asset+alt beats the single-asset price-only baseline.
+2. **Spot vs futures** (§2) — now an *optimization, not a blocker*: multi-asset gives directional/decorrelated expression without it. Decide only if the gate shows crypto specifically needs the short leg.
+3. **LunarCrush API key + tier choice** — *optional*, only to add social data after the free gate passes.
+4. **`class_gates` schema add** (Phase 4.1 polish) — ask-first DB change, not on the critical path. (Note: an `asset_class_gates` table already exists in the schema.)

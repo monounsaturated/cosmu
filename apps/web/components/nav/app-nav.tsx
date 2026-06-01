@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { ChartCandlestick, Dna, LayoutDashboard, Menu, SlidersHorizontal, X } from "lucide-react";
 import { CosmuWordmark } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
@@ -66,25 +67,27 @@ export function MobileNav() {
       >
         <Menu className="size-5" />
       </button>
-      {open && (
-        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-          <button aria-label="Close menu" className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
-          <div className="glass absolute left-0 top-0 flex h-full w-[260px] flex-col gap-4 border-r border-border/70 p-4">
-            <div className="flex items-center justify-between">
-              <CosmuWordmark />
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                aria-label="Close menu"
-                className="inline-flex size-8 items-center justify-center rounded-md text-muted hover:text-foreground"
-              >
-                <X className="size-5" />
-              </button>
+      {open &&
+        createPortal(
+          <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+            <button aria-label="Close menu" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)} />
+            <div className="absolute inset-y-0 left-0 flex w-[260px] flex-col gap-4 overflow-y-auto border-r border-border bg-surface p-4 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <CosmuWordmark />
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  aria-label="Close menu"
+                  className="inline-flex size-8 items-center justify-center rounded-md text-muted hover:text-foreground"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+              <SideNavLinks onNavigate={() => setOpen(false)} />
             </div>
-            <SideNavLinks onNavigate={() => setOpen(false)} />
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
