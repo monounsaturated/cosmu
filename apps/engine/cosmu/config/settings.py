@@ -50,9 +50,13 @@ class RiskSettings(BaseModel):
     sandbox_seconds_cap: int = 30
 
 
+# Repo root holds the shared .env.local (engine runs from apps/engine, so also check there + CWD).
+_ROOT = Path(__file__).resolve().parents[4]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(".env.local", ".env"),
+        env_file=(str(_ROOT / ".env.local"), str(_ROOT / ".env"), ".env.local", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
         env_nested_delimiter="__",

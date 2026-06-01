@@ -225,3 +225,51 @@ Railway $10–25 · Vercel $0–20 · Supabase $0–25 · Modal $0–20 · ccxt/
 1. **Supabase Postgres + pgvector** replaces SQLite + JSONL caches → the central, indexed store the vision needs (feature store · append-only snapshots · graveyard RAG · INDEX).
 2. **Scheduled free-data worker** pulls sources #1–5 live, point-in-time → run `evaluate_ablation` on **real** data → a true PASS/STOP.
 3. Only on real PASS: build the holistic agentic/ML/indexing layer (Phase 2+).
+
+## 10. Buy-vs-build, ML-via-LLM, and the agentic app (plan — 2026)
+
+> Principle: **coordinate, don't build.** Proprietary code stays tiny (spec schema · the exact stats wall · glue · UI). Everything dangerous or heavy is a maintained dependency we *operate*. This keeps the app from breaking and us off maintenance.
+
+### Dashboard decision
+Do **not** `shadcn add dashboard-01` (clashes with our Tailwind v4 design + ships placeholder data). **Adopt its two best pieces into our themed dashboard:** Recharts interactive chart + TanStack DataTable, fed by real data. The real fix is replacing synthetic data, not the layout.
+
+### "Use LLMs to do ML" — three meanings, all *buyable*
+1. **LLM as feature engineer / data formatter** — built (`ingest/standardize.py`). The LLM turns messy text → numeric features at ingest, frozen+cached.
+2. **Agent writes & runs ML code** — buy a **sandbox** (E2B or Modal), LLM via OpenRouter authors scikit/LightGBM code, it runs sandboxed, **the deterministic scorer judges**. Never build a sandbox.
+3. **Pretrained models you *call*** — tabular **AutoML** (AutoGluon / LightGBM, free, CPU) for the survival model; **time-series foundation models** (Chronos / TimesFM open-weights, or **Nixtla TimeGPT** API) as a *feature/signal source* — call them, don't train. The scorer still owns success.
+
+### Buy-vs-build matrix (every aspect)
+| Capability | Buy / OSS | Cost | vs building | Pick |
+|---|---|---|---|---|
+| Fast backtest screen | **vectorbt** | free | weeks → hours | adopt (Phase 2) |
+| Exec + paper/live parity | **NautilusTrader** | free | months saved | adopt (Phase 3) |
+| Stats wall (DSR/PBO/CPCV) | papers, ~150 LOC | free | exact + tiny — the *one* justified build | **built ✓** |
+| Param optimization | **Optuna** | free | adopt (Phase 2) |
+| Tabular ML / survival model | **LightGBM / AutoGluon** | free (CPU) | don't hand-build models | adopt (Phase 3) as a tool |
+| Managed AutoML (optional) | Vertex / SageMaker Autopilot | ~$ per train | skip unless needed |
+| Time-series foundation model | **Chronos / TimesFM** (OSS) · TimeGPT (API) | free / API | call, don't train | adopt as feature (Phase 3) |
+| Agent code sandbox | **E2B** or **Modal** | pay-per-use $0–50 | never build a sandbox | buy |
+| LLM inference | **OpenRouter + LiteLLM** | free models → capped | buy ✓ |
+| Agent orchestration | **Pydantic AI / LangGraph** | free | adopt (Phase 3) |
+| Tools (web/news search) | **Exa / Tavily** (MCP) | free tiers | adopt |
+| RAG / vector | **pgvector** (Supabase) | free → $25 | schema ready ✓ |
+| Database | **Supabase** (PG+pgvector) | free → $25 | chosen ✓ |
+| Data: price/funding/F&G/news | ccxt · REST · GDELT/RSS | **free** | wired ✓ |
+| Data: social | LunarCrush | $24–40 | optional, post-gate |
+| Data: on-chain | Glassnode/CryptoQuant | $0–100 | later |
+| Charts / tables | **Recharts / Tremor · TanStack** | free | adopt (dashboard) |
+| Tracing + evals | **Langfuse** | free tier | adopt (Phase 2/3) |
+| Hosting + bursts | **Railway + Modal** | $5–50 | chosen ✓ |
+
+### Agentic-first *app* (frontend + Claude Code, one tool layer)
+- **One tool layer, two drivers.** The engine exposes typed read/research/**propose-only** tools (run gate, query population, draft strategy, propose venue). Wrap them as an **MCP server** so **Claude Code/Cursor drive the same app** for heavy/messy tasks — while the in-app agent uses the identical tools. **The deterministic wall + money are out of reach in every path.**
+- **Frontend = routine ops:** monitor (real charts), toggles, run gate, browse strategies, 2-click live arm.
+- **Claude Code = heavy/structural** (rare, messy): **add a venue** (skill scaffolds adapter + catalog entry + tests), **author a complex strategy** (skill: NL ↔ typed `StrategySpec` → farm), **deep-ML experiment** (agent writes code → sandbox → scorer judges). Don't build bespoke UI for rare heavy tasks.
+- **NL-explained specs:** every strategy/feature carries a plain-language rationale + prior the LLM reads/writes; the wall judges regardless.
+
+### Modular yet clean (no DB clutter)
+- **Adapter pattern behind typed contracts** — swapping vectorbt↔Nautilus or LightGBM↔AutoGluon is one file. 
+- **Truth = normalized Postgres rows + one event ledger**; markdown/INDEX are generated views; **pgvector** only for unstructured (graveyard/notes). No blob dumping; features computed once and reused (recycle).
+
+### Sequencing (coherence — don't build the factory early)
+**Real data + Supabase → real gate (PASS/STOP) → only on PASS: ML/FM tools + RAG + agentic loop + dashboard real-charts → live.** Lucrativeness is unproven until the real gate passes; these tools raise the odds of finding edge but the wall still decides. Stay disciplined.

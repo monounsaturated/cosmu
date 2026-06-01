@@ -4,12 +4,23 @@ from __future__ import annotations
 
 import json
 import math
+import ssl
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
+
+
+def _ssl_context() -> ssl.SSLContext:
+    """certifi-backed context so HTTPS works on hosts without system CA certs (sandbox, slim images)."""
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
 
 
 @dataclass(frozen=True)
@@ -73,7 +84,7 @@ class LunarCrushProvider:
         query = urllib.parse.urlencode({"bucket": "day"})
         url = f"{self.base_url}/coins/{coin}/time-series/v2?{query}"
         req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self.api_key}", "User-Agent": "cosmu-engine/0.1"})
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
         out: list[AltDataPoint] = []
         for row in payload.get("data", [])[-limit:]:
@@ -109,6 +120,38 @@ class NewsProvider(Protocol):
         """Return ascending unstructured headlines for one symbol."""
 
 
+class PgAltDataStore:
+    """Central, append-only, point-in-time alt-data store backed by the Postgres `alt_data` table —
+    the production replacement for the JSONL `AltDataStore`. Drop-in: same append/read_asof interface,
+    so the ingestion pipeline doesn't change. Reads return the latest-revised value per ts that was
+    available by `as_of`, so vendor revisions never rewrite history."""
+
+    def __init__(self, store: Any) -> None:  # store: knowledge.store.Store (avoid import cycle)
+        self.store = store
+
+    def append(self, provider: str, symbol: str, metric: str, points: list[AltDataPoint]) -> None:
+        from cosmu.knowledge.store import utcnow
+
+        if not points:
+            return
+        now = utcnow()
+        with self.store.batch() as writer:
+            for p in points:
+                writer._con.execute(
+                    "INSERT INTO alt_data(provider, symbol, metric, ts, available_at, value, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (provider, symbol, metric, p.ts.isoformat(), p.available_at.isoformat(), float(p.value), now),
+                )
+
+    def read_asof(self, provider: str, symbol: str, metric: str, as_of: datetime) -> list[AltDataPoint]:
+        rows = self.store.rows(
+            "SELECT DISTINCT ON (ts) ts, available_at, value FROM alt_data "
+            "WHERE provider = ? AND symbol = ? AND metric = ? AND available_at <= ? "
+            "ORDER BY ts, id DESC",
+            (provider, symbol, metric, as_of.isoformat()),
+        )
+        return [AltDataPoint(ts=datetime.fromisoformat(r["ts"]), available_at=datetime.fromisoformat(r["available_at"]), value=float(r["value"])) for r in rows]
+
+
 class FundingRateProvider:
     """Binance USDⓈ-M funding rate (free REST). Numeric → no LLM. Used as a long filter (spot)."""
 
@@ -121,7 +164,7 @@ class FundingRateProvider:
         query = urllib.parse.urlencode({"symbol": symbol, "limit": min(limit, 1000)})
         url = f"{self.base_url}/fapi/v1/fundingRate?{query}"
         req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             rows = json.loads(resp.read().decode("utf-8"))
         out: list[AltDataPoint] = []
         for row in rows:
@@ -142,7 +185,7 @@ class FearGreedProvider:
         query = urllib.parse.urlencode({"limit": limit, "format": "json"})
         url = f"{self.base_url}/fng/?{query}"
         req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
         out: list[AltDataPoint] = []
         for row in payload.get("data", []):

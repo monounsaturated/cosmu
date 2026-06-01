@@ -33,7 +33,7 @@ class EngineFacade:
     def seed_catalog(self) -> None:
         for venue in self.catalog.venues:
             self.store.rows(
-                "INSERT OR IGNORE INTO venues(id, name, kind, adapter, fee_schedule, constraints, enabled) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO venues(id, name, kind, adapter, fee_schedule, constraints, enabled) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING",
                 (
                     venue.id,
                     venue.name,
@@ -46,7 +46,7 @@ class EngineFacade:
             )
         for instrument in self.catalog.instruments:
             self.store.rows(
-                "INSERT OR IGNORE INTO instruments(id, venue_id, symbol, asset_class, tick_size, lot_size, min_notional, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO instruments(id, venue_id, symbol, asset_class, tick_size, lot_size, min_notional, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING",
                 (
                     instrument.id,
                     instrument.venue_id,

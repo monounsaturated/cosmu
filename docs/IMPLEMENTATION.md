@@ -46,6 +46,12 @@
 ### Free-data ingestion pipeline (BUILT)
 - `ingest/pipeline.py` — `ingest_free_sources(...)` pulls funding/OI, Fear&Greed (market-wide), and news headlines via the free providers into the **append-only point-in-time** `AltDataStore`; news is LLM-standardized to a numeric `news_sentiment` series **at ingest only** (cached). Idempotent (re-runs never change the as-of view), offline-safe via injected providers. This is the seam the *real* gate reads once a scheduled worker runs it live.
 
+### Postgres / Supabase backend (BUILT + live-verified)
+- `knowledge/store.py` — **dual backend, one code path.** `Store` auto-detects `DATABASE_URL`: `postgres(ql)://` → psycopg2 (RealDictCursor, pooled-DSN cleaned of `pgbouncer`/`connection_limit`), else SQLite (local/test). A `_Conn` wrapper unifies `?` placeholders + dict rows; `INSERT OR IGNORE` → dialect-neutral `ON CONFLICT (id) DO NOTHING`; Postgres `migrate()` assumes `schema_postgres.sql` was applied out-of-band and only seeds the live-toggle row. `settings.py` loads the repo-root `.env.local`. **Verified end-to-end against live Supabase**: migrate, venue seeding, events, universe round-trip, trials. 50 SQLite tests stay green.
+- `data/altdata.py` `PgAltDataStore` — central append-only point-in-time alt-data over the `alt_data` table (`SELECT DISTINCT ON (ts) … ORDER BY ts, id DESC` = latest-revision-wins, available-by `as_of`). Drop-in for the JSONL store, so `ingest/pipeline.py` is unchanged. **Verified live** (point-in-time + revision).
+- **Real data flowing:** live Fear & Greed (alternative.me) ingested into Supabase `alt_data` and read back point-in-time. Fixed a production bug: the alt-data HTTP providers now use the **certifi SSL context** (HTTPS failed on hosts without system CA certs — sandbox, slim images, Railway).
+- Dep added: `psycopg2-binary`.
+
 ## Decisions
 
 - **Hosting = Railway, DB = Supabase (Postgres + pgvector).** Railway over Render (Render's free tier sleeps — unfit for a 24/7 data worker; multi-service always-on is cheaper on Railway's usage billing). Hetzner is the Tier-2/3 cost option. Supabase gives managed Postgres + pgvector for the central indexed store / graveyard RAG.
