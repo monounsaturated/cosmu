@@ -23,6 +23,7 @@ class GateSettings(BaseModel):
     min_folds_positive_pct: Decimal = Decimal("0.60")
     max_pbo: Decimal = Decimal("0.50")
     holdout_min_deflated_sharpe: Decimal = Decimal("0")
+    min_deflated_sharpe_prob: Decimal = Decimal("0.95")  # PSR against the trial-inflated benchmark
 
 
 class EvolutionSettings(BaseModel):
@@ -63,6 +64,7 @@ class Settings(BaseSettings):
     base_currency: str = "USD"
     paper_bankroll: Decimal = Decimal("100000")
     openrouter_api_key: str | None = Field(default=None, repr=False)
+    lunarcrush_api_key: str | None = Field(default=None, repr=False)
     binance_api_key: str | None = Field(default=None, repr=False)
     binance_api_secret: str | None = Field(default=None, repr=False)
     api_secret_key: str | None = Field(default=None, repr=False)

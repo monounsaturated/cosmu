@@ -8,6 +8,14 @@ coverage
 .external
 .cosmu
 
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+
+# Vendored prior-art reference (ingested into RAG later, not product code)
+TradingAgents-main/
+
 # macOS
 .DS_Store
 **/.DS_Store

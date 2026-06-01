@@ -2,6 +2,8 @@
 
 Lean pre-prompt for coding agents. The **contract is `docs/VISION.md`** (read its `§0` + INDEX, then the one section you need — never the whole file). This file is the *map + invariants*; the code is the source of detail. Keep this under ~150 lines; prune stale memory before adding.
 
+> **Continuing the build?** Read `docs/PLAN.md` (the plan + owner steps + paste-ready kickoff) and `docs/IMPLEMENTATION.md` (current state) first — they hold what's real vs. stubbed and the next priorities. The current build unit is specified in `docs/BUILD_BRIEF.md`.
+
 ## What Cosmu v2 is (one paragraph)
 An autonomous, multi-venue quant **money machine** for the owner's profit (not a product to sell). A **deterministic master** runs a **population of self-improving, LLM-authored swing strategies**, walk-forward backtested with real per-venue fees, **farming in realistic paper 24/7 with live trading OFF by default** — flip one toggle and gate-passing strategies auto-promote to real capital under hard caps. It competes on **returns, not speed**, and is steered by **plain chat (text or voice)**. The one metric: **risk-adjusted profit net of every cost.**
 
@@ -47,10 +49,5 @@ broad renames / vocab changes · schema changes unless requested · destructive 
 
 ---
 
-## Legacy (v1 — being retired)
-The running v1 is a Node/Express + Next.js app; keep it working until v2 hits parity, then retire `apps/api` and rebuild `apps/web`.
-- **Web:** `apps/web/app`. **API:** `apps/api/src` (Express routes, services, stores, jobs, venue adapters). **Shared contracts:** `packages/shared/src` (Zod, barrel `index.ts`).
-- **Venues/execution:** `apps/api/src/adapters`, `services/validator.ts` (port + harden into v2's gauntlet), execution stores, snapshots, `guardian.ts` (drawdown kill-switch → v2 risk).
-- **Migrations:** idempotent `apps/api/sql/NNN_name.sql`, applied on boot by `db-migrate.ts`. v2 uses a **fresh** schema (§10) — do not extend the v1 DB.
-- **Reuse, don't couple:** mine `TradingAgents-main` (and Freqtrade/pine libs) as **prior art into v2 RAG** (§6). Note: this supersedes the old "do not read TradingAgents" rule — ingest as reference, never couple live trading to it.
-- v1 flow (valid, don't break while it lives): `Source → Record → Signal → Index → Research → Strategy → Decision → validator → Execution → Outcome`.
+## Prior art (reference only)
+`TradingAgents-main` (and Freqtrade / Pine libs) are **prior art mined into v2 RAG** (§6) — ingest as reference, never couple live trading to them. The vendored `TradingAgents-main/` tree is gitignored; it is not product code.

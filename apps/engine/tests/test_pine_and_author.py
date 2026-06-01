@@ -1,6 +1,10 @@
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+
 import pytest
 
 from cosmu.config.settings import Settings
+from cosmu.data.market import Bar
 from cosmu.evolution.loop import FarmLoop, fit_params
 from cosmu.knowledge.store import Store
 from cosmu.lab.author import draft_from_brief
@@ -8,6 +12,36 @@ from cosmu.strategy.compiler import compile_spec
 from cosmu.strategy.pine import translate_pine
 from cosmu.strategy.pine_samples import PINE_SAMPLES
 from cosmu.strategy.static_check import validate_spec
+
+
+class FixtureProvider:
+    def __init__(self) -> None:
+        self.bars = _fixture_bars()
+
+    def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        return self.bars[-limit:]
+
+
+def _fixture_bars(count: int = 360) -> list[Bar]:
+    ts = datetime(2024, 1, 1, tzinfo=UTC)
+    price = Decimal("100")
+    bars: list[Bar] = []
+    for idx in range(count):
+        move = Decimal("0.01") if idx % 16 < 8 else Decimal("-0.008")
+        open_ = price
+        close = (price * (Decimal("1") + move)).quantize(Decimal("0.0001"))
+        bars.append(
+            Bar(
+                ts=ts + timedelta(days=idx),
+                open=open_,
+                high=(max(open_, close) * Decimal("1.005")).quantize(Decimal("0.0001")),
+                low=(min(open_, close) * Decimal("0.995")).quantize(Decimal("0.0001")),
+                close=close,
+                volume=Decimal("1000"),
+            )
+        )
+        price = close
+    return bars
 
 
 @pytest.mark.parametrize("name", list(PINE_SAMPLES))
@@ -46,7 +80,7 @@ def test_author_flags_money_adjacent_intent():
 
 def test_author_run_seeds_cohort(tmp_path):
     store = Store(Settings(database_url=f"sqlite:///{tmp_path}/author.sqlite3"))
-    loop = FarmLoop(settings=store.settings, store=store)
+    loop = FarmLoop(settings=store.settings, store=store, market_data=FixtureProvider())
     draft = draft_from_brief("momentum trend on equities")
     summary = loop.run_cohort(seed=5, cohort_size=40, extra_seeds=[draft.spec])
     assert summary.lanes["chat"] == 1

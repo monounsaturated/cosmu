@@ -234,6 +234,22 @@ CREATE TABLE IF NOT EXISTS events (
   payload TEXT NOT NULL
 );
 
+-- One-shot holdout: each strategy version may be evaluated against the untouched holdout exactly once.
+CREATE TABLE IF NOT EXISTS holdout_ledger (
+  version_id TEXT PRIMARY KEY,
+  verdict TEXT NOT NULL,
+  evaluated_at TEXT NOT NULL
+);
+
+-- Global multiple-testing ledger: every hypothesis ever scored, for trial-count deflation.
+CREATE TABLE IF NOT EXISTS trials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL,
+  source TEXT NOT NULL,
+  label TEXT,
+  sharpe_per_obs NUMERIC NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 CREATE INDEX IF NOT EXISTS idx_events_ref ON events(ref_type, ref_id);
 CREATE INDEX IF NOT EXISTS idx_backtests_version_kind ON backtests(strategy_version_id, kind);

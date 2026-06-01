@@ -34,6 +34,39 @@
         "title": "Allocation",
         "type": "object"
       },
+      "AssetClassState": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "has_data": {
+            "title": "Has Data",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "crypto",
+              "equity",
+              "prediction"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "enabled",
+          "has_data"
+        ],
+        "title": "AssetClassState",
+        "type": "object"
+      },
       "AuthorRequest": {
         "properties": {
           "brief": {
@@ -1129,6 +1162,30 @@
         "title": "ToggleResponse",
         "type": "object"
       },
+      "UniverseResponse": {
+        "properties": {
+          "asset_classes": {
+            "items": {
+              "$ref": "#/components/schemas/AssetClassState"
+            },
+            "title": "Asset Classes",
+            "type": "array"
+          },
+          "venues": {
+            "items": {
+              "$ref": "#/components/schemas/VenueState"
+            },
+            "title": "Venues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "venues",
+          "asset_classes"
+        ],
+        "title": "UniverseResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -1160,6 +1217,62 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VenueState": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "has_data": {
+            "title": "Has Data",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "crypto",
+              "equity",
+              "prediction"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "enabled",
+          "has_data"
+        ],
+        "title": "VenueState",
+        "type": "object"
+      },
+      "VenueToggleRequest": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "venue_id": {
+            "title": "Venue Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "venue_id",
+          "enabled"
+        ],
+        "title": "VenueToggleRequest",
         "type": "object"
       }
     }
@@ -1619,6 +1732,62 @@
           }
         },
         "summary": "Toggle Live"
+      }
+    },
+    "/universe": {
+      "get": {
+        "operationId": "universe_universe_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UniverseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Universe"
+      }
+    },
+    "/universe/venue": {
+      "post": {
+        "operationId": "universe_toggle_venue_universe_venue_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VenueToggleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UniverseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Universe Toggle Venue"
       }
     }
   }

@@ -8,6 +8,13 @@ export interface Allocation {
   weight: number;
 }
 
+export interface AssetClassState {
+  enabled: boolean;
+  has_data: boolean;
+  kind: "crypto" | "equity" | "prediction";
+  label: string;
+}
+
 export interface AuthorRequest {
   brief: string;
   features?: string[] | null;
@@ -230,10 +237,28 @@ export interface ToggleResponse {
   promoted: string[];
 }
 
+export interface UniverseResponse {
+  asset_classes: AssetClassState[];
+  venues: VenueState[];
+}
+
 export interface ValidationError {
   loc: string | number[];
   msg: string;
   type: string;
+}
+
+export interface VenueState {
+  enabled: boolean;
+  has_data: boolean;
+  id: string;
+  kind: "crypto" | "equity" | "prediction";
+  name: string;
+}
+
+export interface VenueToggleRequest {
+  enabled: boolean;
+  venue_id: string;
 }
 
 export type ApiRoutes = {

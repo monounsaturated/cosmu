@@ -117,6 +117,31 @@ class ToggleResponse(BaseModel):
     caps: dict[str, float]
 
 
+class VenueState(BaseModel):
+    id: str
+    name: str
+    kind: Literal["crypto", "equity", "prediction"]
+    enabled: bool
+    has_data: bool
+
+
+class AssetClassState(BaseModel):
+    kind: Literal["crypto", "equity", "prediction"]
+    label: str
+    enabled: bool
+    has_data: bool
+
+
+class UniverseResponse(BaseModel):
+    venues: list[VenueState]
+    asset_classes: list[AssetClassState]
+
+
+class VenueToggleRequest(BaseModel):
+    venue_id: str
+    enabled: bool
+
+
 class Event(BaseModel):
     id: int
     ts: str

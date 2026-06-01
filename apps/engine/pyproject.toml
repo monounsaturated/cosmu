@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Cosmu v2 deterministic engine, scorer, API, and audit spine."
 requires-python = ">=3.12"
 dependencies = [
+  "certifi>=2024.8",
+  "ccxt>=4.4",
   "fastapi>=0.115",
   "pydantic>=2.9",
   "pydantic-settings>=2.5",
@@ -30,4 +32,3 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-

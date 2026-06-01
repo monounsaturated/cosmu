@@ -39,12 +39,24 @@ from cosmu.api.models import (
     StrategyDetailResponse,
     ToggleRequest,
     ToggleResponse,
+    AssetClassState,
+    UniverseResponse,
+    VenueState,
+    VenueToggleRequest,
 )
 from cosmu.config.settings import get_settings
 from cosmu.evolution.loop import CohortSummary, FarmLoop
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.lab.author import AuthorDraft, draft_from_brief
 from cosmu.spine.engine import EngineFacade
+from cosmu.spine.universe import (
+    CLASS_LABELS,
+    CLASSES_WITH_DATA,
+    VENUES_WITH_DATA,
+    has_live_data,
+    set_venue_enabled,
+    venue_rows,
+)
 from cosmu.strategy.pine import translate_pine
 from cosmu.strategy.pine_samples import PINE_SAMPLES
 
@@ -112,6 +124,11 @@ def _summary_to_response(summary: CohortSummary) -> CohortSummaryResponse:
 
 @app.post("/evolution/run", response_model=CohortSummaryResponse)
 def evolution_run(request: CohortRunRequest) -> CohortSummaryResponse:
+    if not has_live_data(store):
+        raise HTTPException(
+            status_code=400,
+            detail="No venue with a live data path is enabled. Enable Binance (Crypto) in Settings to run cohorts.",
+        )
     loop = FarmLoop(settings=settings, store=store)
     summary = loop.run_cohort(
         seed=request.seed,
@@ -347,6 +364,41 @@ def toggle_live(request: ToggleRequest) -> ToggleResponse:
     store.rows("UPDATE live_toggle SET enabled = ?, enabled_at = ?, enabled_by = ? WHERE id = 'global'", (int(request.enabled), utcnow(), "local"))
     store.append_event(actor="human", kind="live_toggle_changed", ref_type="live_toggle", ref_id="global", payload={"enabled": request.enabled})
     return ToggleResponse(enabled=request.enabled, promoted=[] if not request.enabled else ["simulation-only"], caps={"per_strategy": float(settings.live.per_strategy_live_cap), "global": float(settings.live.global_live_cap)})
+
+
+def _universe_response() -> UniverseResponse:
+    rows = venue_rows(store)
+    venues = [
+        VenueState(id=r["id"], name=r["name"], kind=r["kind"], enabled=r["enabled"], has_data=r["id"] in VENUES_WITH_DATA)
+        for r in rows
+    ]
+    enabled_classes = {r["kind"] for r in rows if r["enabled"]}
+    asset_classes = [
+        AssetClassState(
+            kind=kind,  # type: ignore[arg-type]
+            label=CLASS_LABELS.get(kind, kind.title()),
+            enabled=kind in enabled_classes,
+            has_data=kind in CLASSES_WITH_DATA,
+        )
+        for kind in dict.fromkeys(r["kind"] for r in rows)
+    ]
+    return UniverseResponse(venues=venues, asset_classes=asset_classes)
+
+
+@app.get("/universe", response_model=UniverseResponse)
+def universe() -> UniverseResponse:
+    return _universe_response()
+
+
+@app.post("/universe/venue", response_model=UniverseResponse)
+def universe_toggle_venue(request: VenueToggleRequest) -> UniverseResponse:
+    try:
+        set_venue_enabled(store, request.venue_id, request.enabled)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"unknown venue: {request.venue_id}") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return _universe_response()
 
 
 @app.get("/events", response_model=EventsResponse)

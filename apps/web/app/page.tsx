@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { ConsoleBox } from "./console-box";
+import { UniverseSettings } from "@/components/universe/universe-settings";
 import { getEvents, getLeaderboard, getPortfolio, getRecommendations, getStrategy } from "./data";
 import type { Allocation, Backtest, CostSlice, Event, LeaderboardRow, Recommendation } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -155,6 +156,34 @@ export default async function HomePage() {
             </CardContent>
           </Card>
         </div>
+      </section>
+
+      {/* Universe gate */}
+      <section id="universe" className="space-y-4">
+        <SectionHeader
+          eyebrow="universe"
+          title="What the machine is allowed to trade"
+          aside={
+            <Link
+              href="/settings"
+              className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft hover:underline"
+            >
+              All settings <ArrowUpRight className="size-3.5" />
+            </Link>
+          }
+        />
+        <Card>
+          <CardHeader>
+            <div>
+              <CardTitle>Universe &amp; venues</CardTitle>
+              <CardDescription>Tick the asset classes and venues to research and trade.</CardDescription>
+            </div>
+            <Layers className="size-4 text-quiet" />
+          </CardHeader>
+          <CardContent>
+            <UniverseSettings />
+          </CardContent>
+        </Card>
       </section>
 
       {/* Leaderboard */}

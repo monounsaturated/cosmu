@@ -581,7 +581,7 @@ class StrategySpec(BaseModel):
 
 **Cross-asset / macro (FRED, CFTC, CBOE, free):** `vix_term_slope` (risk regime), `putcall_ratio` (sentiment extreme), `cftc_net_positioning` (crowding), `dxy` (risk-on/off), `yield_curve_2s10s`, `credit_spread` (financial conditions).
 
-**Equity events (SEC EDGAR, free):** `days_to_earnings`, `post_earnings_drift`, `insider_buy_ratio` (Form 4), `short_interest_ratio` (squeeze fuel), `inst_ownership_change` (13F).
+**Equity events (SEC EDGAR free; `days_to_earnings` calendar from the fundamentals vendor):** `days_to_earnings`, `post_earnings_drift`, `insider_buy_ratio` (Form 4), `short_interest_ratio` (squeeze fuel), `inst_ownership_change` (13F).
 
 **Equity fundamentals (Sharadar/SimFin, bought, point-in-time):** `revenue_growth_yoy`, `gross_margin_trend`, `fcf_yield`, `earnings_surprise`, `valuation_z` (sector-relative P/E or EV/EBITDA) — each as-of by filing/availability time (no restatement look-ahead).
 

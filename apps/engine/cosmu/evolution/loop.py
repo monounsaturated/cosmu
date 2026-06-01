@@ -8,10 +8,14 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from cosmu.config.settings import Settings
+from cosmu.data.backtest import run_strategy_backtest
+from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
 from cosmu.knowledge.store import Store, Writer, utcnow
-from cosmu.master.scorer import BacktestMetrics, ScoreVerdict, score
+from cosmu.master.scorer import BacktestMetrics, score
+from cosmu.spine.universe import enabled_universe
+from cosmu.spine.venue import default_catalog
 from cosmu.strategy.compiler import compile_spec
 from cosmu.strategy.pine import translate_pine
 from cosmu.strategy.spec import ParamSpace, StrategySpec
@@ -76,6 +80,16 @@ def _midpoint(ps: ParamSpace) -> float:
 class FarmLoop:
     settings: Settings
     store: Store
+    market_data: MarketDataProvider | None = None
+    _cache: dict = field(default_factory=dict, compare=False)
+
+    def _enabled(self) -> tuple[set[str], set[str]]:
+        """Global universe gate (which venues/asset classes are enabled), read once per loop."""
+        if "venues" not in self._cache:
+            venues, classes = enabled_universe(self.store)
+            self._cache["venues"] = venues
+            self._cache["classes"] = classes
+        return self._cache["venues"], self._cache["classes"]
 
     def run_cohort(
         self,
@@ -92,6 +106,7 @@ class FarmLoop:
         explore = float(cfg.explore_pct) if explore_pct is None else explore_pct
         rng = random.Random(seed)
         cohort_id = hashlib.sha256(f"cohort-{seed}-{size}-{utcnow()}".encode()).hexdigest()[:12]
+        self._enabled()  # warm the universe gate once, before the write transaction opens
 
         lanes = {"seed": 0, "chat": 0, "exploit": 0, "explore": 0, "pine": 0}
         evaluated: list[Evaluated] = []
@@ -292,46 +307,42 @@ class FarmLoop:
         )
 
     def _screen(self, cand: Candidate, code_hash: str, seed: int) -> BacktestMetrics:
-        """Cheap deterministic surrogate backtest (stands in for the vectorbt screen).
+        """Cheap real-data screen over Binance spot bars.
 
-        Per-candidate determinism comes from the code hash; the latent 'quality' draw
-        is wider in the explore lane (high-variance wildcards) and slightly better-centered
-        in the exploit lane (mutating known survivors). The real scorer/gates judge it.
+        The screen is deterministic for a fixed bar cache and fitted params. It is still the
+        cheap tier, but its return/drawdown/trade-count fields now come from actual venue OHLCV
+        and fee-net fills instead of a candidate-shape surrogate.
         """
-        local_seed = (int(code_hash[:12], 16) ^ (seed * 2654435761)) & 0xFFFFFFFF
-        r = random.Random(local_seed)
-        confluence = len(cand.spec.entry)
-
-        if cand.lane == "explore":
-            q = r.gauss(-0.35, 1.4)
-        elif cand.lane == "exploit":
-            q = r.gauss(-0.05, 0.7)
-        elif cand.lane == "pine":
-            q = r.gauss(-0.15, 1.0)
-        else:  # seed
-            q = r.gauss(0.1, 0.7)
-        # confluence helps a little but over-fitting many filters hurts robustness
-        q += 0.04 * min(confluence, 3) - 0.08 * max(0, confluence - 3)
-
-        sharpe = round(0.7 + 0.7 * q, 4)
-        oos_return = round(0.03 + 0.06 * q, 5)
-        max_dd = min(0.6, max(0.02, round(0.1 + 0.06 * abs(q) - 0.03 * q, 4)))
-        win_rate = min(0.8, max(0.3, round(0.5 + 0.05 * q, 4)))
-        num_trades = int(max(6, 22 + r.randint(-12, 58)))
-        pbo = min(0.95, max(0.02, round(0.46 - 0.13 * q + r.uniform(0.0, 0.2), 4)))
-        folds_pct = min(0.95, max(0.2, round(0.5 + 0.12 * q, 4)))
-        holdout = round(0.16 * q + r.gauss(-0.05, 0.2), 4)
-        trials = len(cand.spec.param_space) + 10
-
-        return BacktestMetrics(
-            oos_return=Decimal(str(oos_return)),
-            sharpe=Decimal(str(sharpe)),
-            sortino=Decimal(str(round(sharpe * 1.25, 4))),
-            max_drawdown=Decimal(str(max_dd)),
-            win_rate=Decimal(str(win_rate)),
-            num_trades=num_trades,
-            pbo=Decimal(str(pbo)),
-            trials_counted=trials,
-            folds_positive_pct=Decimal(str(folds_pct)),
-            holdout_deflated_sharpe=Decimal(str(holdout)),
+        del code_hash, seed
+        provider = self.market_data or BinanceSpotOHLCVProvider()
+        enabled_venues, enabled_classes = self._enabled()
+        symbols = _binance_symbols(cand.spec, enabled_venues, enabled_classes)
+        market = {
+            symbol: provider.fetch_bars(symbol, cand.spec.horizon.bar_size, limit=_bar_limit(cand.spec))
+            for symbol in symbols
+        }
+        venue = default_catalog().venue("binance")
+        return run_strategy_backtest(
+            cand.spec,
+            fit_params(cand.spec),
+            market,
+            fee_bps=venue.taker_fee_bps,
         )
+
+
+def _binance_symbols(spec: StrategySpec, enabled_venues: set[str], enabled_classes: set[str]) -> list[str]:
+    # The strategy must target crypto on Binance AND the operator must have that venue/class enabled
+    # in the global universe gate. A disabled venue/class yields no symbols → no trades → killed.
+    if "crypto" not in spec.universe.asset_classes or "binance" not in spec.universe.venues:
+        return []
+    if "crypto" not in enabled_classes or "binance" not in enabled_venues:
+        return []
+    return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]
+
+
+def _bar_limit(spec: StrategySpec) -> int:
+    if spec.horizon.bar_size == "1d":
+        return 1000
+    if spec.horizon.bar_size == "4h":
+        return 1000
+    return 1500
