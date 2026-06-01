@@ -686,6 +686,118 @@
         "title": "Execution",
         "type": "object"
       },
+      "GateStatusResponse": {
+        "properties": {
+          "preregistered_bar": {
+            "additionalProperties": true,
+            "title": "Preregistered Bar",
+            "type": "object"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateVerdictResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "verdict",
+          "preregistered_bar"
+        ],
+        "title": "GateStatusResponse",
+        "type": "object"
+      },
+      "GateVerdictResponse": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "bar": {
+            "additionalProperties": true,
+            "title": "Bar",
+            "type": "object"
+          },
+          "best_return": {
+            "title": "Best Return",
+            "type": "number"
+          },
+          "best_signal": {
+            "title": "Best Signal",
+            "type": "string"
+          },
+          "buy_and_hold_return": {
+            "title": "Buy And Hold Return",
+            "type": "number"
+          },
+          "cscv_pbo": {
+            "title": "Cscv Pbo",
+            "type": "number"
+          },
+          "data_source": {
+            "title": "Data Source",
+            "type": "string"
+          },
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "deflated_sharpe_prob": {
+            "title": "Deflated Sharpe Prob",
+            "type": "number"
+          },
+          "max_drawdown": {
+            "title": "Max Drawdown",
+            "type": "number"
+          },
+          "num_trades": {
+            "title": "Num Trades",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "regimes_positive": {
+            "title": "Regimes Positive",
+            "type": "integer"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "passed",
+          "best_signal",
+          "deflated_sharpe_prob",
+          "cscv_pbo",
+          "buy_and_hold_return",
+          "best_return",
+          "regimes_positive",
+          "num_trades",
+          "max_drawdown",
+          "attempts",
+          "reasons",
+          "bar",
+          "data_source",
+          "ts"
+        ],
+        "title": "GateVerdictResponse",
+        "type": "object"
+      },
       "GraveyardRow": {
         "properties": {
           "deflated_sharpe": {
@@ -1595,6 +1707,40 @@
           }
         },
         "summary": "Recommendations"
+      }
+    },
+    "/research/gate": {
+      "get": {
+        "operationId": "gate_status_research_gate_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GateStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Gate Status"
+      },
+      "post": {
+        "operationId": "run_gate_research_gate_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GateVerdictResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Run Gate"
       }
     },
     "/spine/backtest": {

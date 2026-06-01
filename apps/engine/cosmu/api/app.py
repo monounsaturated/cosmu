@@ -41,6 +41,8 @@ from cosmu.api.models import (
     ToggleResponse,
     AssetClassState,
     ClassToggleRequest,
+    GateStatusResponse,
+    GateVerdictResponse,
     UniverseResponse,
     VenueState,
     VenueToggleRequest,
@@ -422,6 +424,53 @@ def universe_toggle_class(request: ClassToggleRequest) -> UniverseResponse:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return _universe_response()
+
+
+def _gate_to_response(verdict: Any, *, data_source: str) -> GateVerdictResponse:
+    return GateVerdictResponse(
+        decision=verdict.decision,
+        passed=verdict.passed,
+        best_signal=verdict.best_signal,
+        deflated_sharpe_prob=verdict.deflated_sharpe_prob,
+        cscv_pbo=verdict.cscv_pbo,
+        buy_and_hold_return=verdict.buy_and_hold_return,
+        best_return=verdict.best_return,
+        regimes_positive=verdict.regimes_positive,
+        num_trades=verdict.num_trades,
+        max_drawdown=verdict.max_drawdown,
+        attempts=verdict.attempts,
+        reasons=verdict.reasons,
+        bar=verdict.bar,
+        data_source=data_source,
+        ts=utcnow(),
+    )
+
+
+@app.get("/research/gate", response_model=GateStatusResponse)
+def gate_status() -> GateStatusResponse:
+    from cosmu.research.gate import PREREGISTERED_BAR
+
+    row = store.row("SELECT payload FROM gate_verdicts ORDER BY id DESC LIMIT 1")
+    verdict = GateVerdictResponse(**_json(row["payload"])) if row else None
+    return GateStatusResponse(verdict=verdict, preregistered_bar=dict(PREREGISTERED_BAR))
+
+
+@app.post("/research/gate", response_model=GateVerdictResponse)
+def run_gate() -> GateVerdictResponse:
+    # Until live LunarCrush + bars are wired, the gate runs on a labelled synthetic fixture so the
+    # machinery is monitorable. The data_source flag keeps that honest in the UI.
+    from cosmu.research.fixtures import synthetic_gate_inputs
+    from cosmu.research.gate import evaluate_gate
+
+    market, provider = synthetic_gate_inputs()
+    verdict = evaluate_gate(market, provider, store)
+    response = _gate_to_response(verdict, data_source="synthetic")
+    store.rows(
+        "INSERT INTO gate_verdicts(ts, decision, data_source, payload) VALUES (?, ?, ?, ?)",
+        (response.ts, response.decision, response.data_source, json.dumps(response.model_dump(), sort_keys=True)),
+    )
+    store.append_event(actor="master", kind="edge_gate_run", ref_type="gate", payload={"decision": verdict.decision, "data_source": "synthetic"})
+    return response
 
 
 @app.get("/events", response_model=EventsResponse)

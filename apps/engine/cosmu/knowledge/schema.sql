@@ -248,6 +248,15 @@ CREATE TABLE IF NOT EXISTS holdout_ledger (
   evaluated_at TEXT NOT NULL
 );
 
+-- Edge-gate verdicts: each run of the stop-or-go research gate, for monitoring from the UI.
+CREATE TABLE IF NOT EXISTS gate_verdicts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  data_source TEXT NOT NULL,
+  payload TEXT NOT NULL
+);
+
 -- Global multiple-testing ledger: every hypothesis ever scored, for trial-count deflation.
 CREATE TABLE IF NOT EXISTS trials (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

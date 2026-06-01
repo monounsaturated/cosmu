@@ -149,6 +149,29 @@ class ClassToggleRequest(BaseModel):
     active: bool
 
 
+class GateVerdictResponse(BaseModel):
+    decision: str  # "PASS" | "STOP"
+    passed: bool
+    best_signal: str
+    deflated_sharpe_prob: float
+    cscv_pbo: float
+    buy_and_hold_return: float
+    best_return: float
+    regimes_positive: int
+    num_trades: int
+    max_drawdown: float
+    attempts: int
+    reasons: list[str]
+    bar: dict[str, Any]
+    data_source: str  # "synthetic" until live LunarCrush + bars are wired
+    ts: str
+
+
+class GateStatusResponse(BaseModel):
+    verdict: GateVerdictResponse | None
+    preregistered_bar: dict[str, Any]
+
+
 class Event(BaseModel):
     id: int
     ts: str

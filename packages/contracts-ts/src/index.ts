@@ -133,6 +133,29 @@ export interface Execution {
   venue: string | null;
 }
 
+export interface GateStatusResponse {
+  preregistered_bar: Record<string, unknown>;
+  verdict: GateVerdictResponse | null;
+}
+
+export interface GateVerdictResponse {
+  attempts: number;
+  bar: Record<string, unknown>;
+  best_return: number;
+  best_signal: string;
+  buy_and_hold_return: number;
+  cscv_pbo: number;
+  data_source: string;
+  decision: string;
+  deflated_sharpe_prob: number;
+  max_drawdown: number;
+  num_trades: number;
+  passed: boolean;
+  reasons: string[];
+  regimes_positive: number;
+  ts: string;
+}
+
 export interface GraveyardRow {
   deflated_sharpe: number;
   kill_reason: string;

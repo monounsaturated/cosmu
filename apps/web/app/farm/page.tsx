@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
 import { SectionHeader } from "@/components/ui/section";
 import { FarmConsole } from "./farm-console";
+import { EdgeGate } from "@/components/research/edge-gate";
 import { formatPct } from "@/lib/utils";
 
 export default async function FarmPage() {
@@ -35,6 +36,11 @@ export default async function FarmPage() {
         <Stat label="In graveyard" value={population.killed} accent="down" />
         <Stat label="Kill rate" value={formatPct(population.kill_rate * 100, 1)} accent="warn" />
       </div>
+
+      <section className="space-y-4">
+        <SectionHeader eyebrow="research" title="Is there an edge?" aside={<Badge variant="muted">stop-or-go · pre-registered bar</Badge>} />
+        <EdgeGate />
+      </section>
 
       <section className="space-y-4">
         <SectionHeader eyebrow="lab" title="Autonomous farming" />
