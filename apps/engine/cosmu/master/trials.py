@@ -8,11 +8,18 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.scorer import TrialStats
 
 
-def record_trial(store: Store, sharpe_per_obs: float, *, source: str, label: str | None = None) -> None:
+def register_trial(store: Store, sharpe_per_obs: float, *, source: str, label: str | None = None) -> None:
+    """THE single choke point every candidate-generating engine (RD-Agent, Qlib, AutoML, RL, the evolution
+    loop) must route through. If a trial bypasses this, the Deflated Sharpe / FDR deflation is invalid —
+    family-wise error is the #1 overfit risk once an LLM generates unlimited ideas."""
     store.rows(
         "INSERT INTO trials(ts, source, label, sharpe_per_obs) VALUES (?, ?, ?, ?)",
         (utcnow(), source, label, float(sharpe_per_obs)),
     )
+
+
+# Back-compat alias — `register_trial` is the canonical name going forward.
+record_trial = register_trial
 
 
 def trial_stats(store: Store) -> TrialStats:

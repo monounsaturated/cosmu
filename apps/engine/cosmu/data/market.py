@@ -92,6 +92,65 @@ class BinanceSpotOHLCVProvider:
         path.write_text(json.dumps(rows, separators=(",", ":")))
 
 
+class StooqDailyBarsProvider:
+    """Free daily equity bars via Stooq CSV (no key). Known limit: Stooq lists only CURRENTLY-traded
+    symbols — it is SURVIVORSHIP-BIASED (delisted names are absent). Declared, not hidden: this proves
+    signal *presence* cross-asset, not deployable capacity. Norgate replaces it at the live phase."""
+
+    survivorship_complete = False  # free bars have no delisted names — see class docstring
+
+    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/stooq") -> None:
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        cached = self._read_cache(symbol)
+        if cached:
+            return cached[-limit:]
+        bars = self._fetch_csv(symbol)
+        if bars:
+            self._write_cache(symbol, bars)
+        return bars[-limit:]
+
+    def _fetch_csv(self, symbol: str) -> list[Bar]:
+        # Stooq US tickers are suffixed ".us" (e.g. spy.us); pass-through if already qualified.
+        s = symbol.lower() if "." in symbol else f"{symbol.lower()}.us"
+        url = f"https://stooq.com/q/d/l/?{urllib.parse.urlencode({'s': s, 'i': 'd'})}"
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            text = resp.read().decode("utf-8")
+        out: list[Bar] = []
+        for line in text.splitlines()[1:]:  # skip CSV header
+            cols = line.split(",")
+            if len(cols) < 6 or cols[1] in ("", "null"):
+                continue
+            out.append(
+                Bar(
+                    ts=datetime.fromisoformat(cols[0]).replace(tzinfo=UTC),
+                    open=Decimal(cols[1]), high=Decimal(cols[2]), low=Decimal(cols[3]),
+                    close=Decimal(cols[4]), volume=Decimal(cols[5] or "0"),
+                )
+            )
+        return out
+
+    def _cache_path(self, symbol: str) -> Path:
+        return self.cache_dir / f"{symbol.replace('/', '_')}_1d.json"
+
+    def _read_cache(self, symbol: str) -> list[Bar]:
+        path = self._cache_path(symbol)
+        if not path.exists():
+            return []
+        return [_bar_from_json(r) for r in json.loads(path.read_text())]
+
+    def _write_cache(self, symbol: str, bars: list[Bar]) -> None:
+        rows = [
+            {"ts": int(b.ts.timestamp() * 1000), "open": str(b.open), "high": str(b.high),
+             "low": str(b.low), "close": str(b.close), "volume": str(b.volume)}
+            for b in bars
+        ]
+        self._cache_path(symbol).write_text(json.dumps(rows, separators=(",", ":")))
+
+
 def _ccxt_symbol(symbol: str) -> str:
     if "/" in symbol:
         return symbol

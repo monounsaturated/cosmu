@@ -545,37 +545,285 @@ def evaluate_ablation(
     )
 
 
+# ============================================================================================
+# Phase 1.6 — the FOUR-arm cross-asset ablation. Same wall, same costs, one extra arm: does
+# COMBINING asset classes (crypto + equity) with cross-asset transfer features beat the best
+# single-asset arm AND buy-and-hold? Built on the proven 1.5 primitives (_build_signal, _arm_metrics,
+# _simulate, _folds, sample_moments, score). The cross-asset transfer features (prediction-market
+# risk_on + FRED macro_regime) are market-wide; the single-asset arms never see them.
+# ============================================================================================
+
+CROSS_ASSET_BAR = dict(ABLATION_BAR)  # identical statistical bar; the new check is arm-(3) dominance
+
+
+@dataclass
+class ClassDrop:
+    asset_class: str
+    sharpe_without: float  # cross-asset arm's annualized Sharpe with this whole class dropped from the universe
+    delta: float           # full cross-asset Sharpe minus that — the class's marginal contribution
+
+
+@dataclass
+class CrossAssetVerdict:
+    decision: str  # "PASS" | "STOP-narrow"
+    passed: bool
+    price_only_return: float
+    single_alt_return: float
+    xasset_return: float
+    buy_and_hold_return: float
+    xasset_dsr: float
+    single_alt_dsr: float
+    cscv_pbo: float
+    regimes_positive: int
+    num_trades: int
+    max_drawdown: float
+    attempts: int
+    drop_one_source: list[DropOne] = field(default_factory=list)
+    drop_one_class: list[ClassDrop] = field(default_factory=list)
+    reasons: list[str] = field(default_factory=list)
+    bar: dict = field(default_factory=lambda: dict(CROSS_ASSET_BAR))
+    data_source: str = "synthetic"
+
+
+def _xp_price(f, i, thr=0.5):  # noqa: ANN001
+    v = f["price_z"][i]
+    return v is not None and v > thr
+
+
+def _xp_news(f, i):  # noqa: ANN001
+    z = f.get("news_z")
+    v = z[i] if z else None
+    return v is None or v > 0.0
+
+
+def _xp_fund(f, i):  # noqa: ANN001
+    z = f.get("funding_z")
+    v = z[i] if z else None
+    return v is None or v < 1.0  # crypto-only; absent for equity → pass-through
+
+
+def _xp_fg(f, i):  # noqa: ANN001
+    z = f.get("fg")
+    v = z[i] if z else None
+    return v is None or v < 65.0
+
+
+def _xp_riskon(f, i):  # noqa: ANN001
+    v = f["risk_on"][i]
+    return v is None or v > 0.5  # prediction-market risk-on tag (cross-asset transfer)
+
+
+def _xp_macro(f, i):  # noqa: ANN001
+    v = f["macro"][i]
+    return v is None or v > 0.0  # FRED macro regime (cross-asset transfer)
+
+
+def _xa_single_alt(thr):  # noqa: ANN001
+    return lambda f, i: _xp_price(f, i, thr) and _xp_news(f, i) and _xp_fund(f, i) and _xp_fg(f, i)
+
+
+def _xa_full(thr, *, drop=None):  # noqa: ANN001
+    """The cross-asset arm: single-asset alt + the transfer features. `drop` excludes one source term so the
+    drop-one report can attribute each source's marginal contribution (a diagnostic, not a counted trial)."""
+    def pred(f, i):  # noqa: ANN001
+        ok = _xp_price(f, i, thr)
+        if drop != "news":
+            ok = ok and _xp_news(f, i)
+        if drop != "funding":
+            ok = ok and _xp_fund(f, i)
+        if drop != "fear_greed":
+            ok = ok and _xp_fg(f, i)
+        if drop != "risk_on":
+            ok = ok and _xp_riskon(f, i)
+        if drop != "macro_regime":
+            ok = ok and _xp_macro(f, i)
+        return ok
+    return pred
+
+
+def _xa_features(market, class_of, alt_provider, news_provider, lookback):  # noqa: ANN001
+    cache: dict = {}
+    counter: dict = {}
+    big = 10**9
+    risk_on_pts = alt_provider.fetch_series("MARKET", "risk_on", limit=big)
+    macro_pts = alt_provider.fetch_series("MARKET", "macro_regime", limit=big)
+    feats: dict = {}
+    for symbol, bars in market.items():
+        klass = class_of[symbol]
+        closes = [float(b.close) for b in bars]
+        f: dict = {"_class": klass, "price_z": rolling_zscore(closes, lookback)}
+        news_pts = standardize_news(news_provider.fetch_news(symbol, limit=len(bars) + 10), cache=cache, counter=counter)
+        f["news_z"] = rolling_zscore(_align(bars, [(p.available_at, p.value) for p in news_pts]), lookback)
+        if klass == "crypto":
+            fund = _align(bars, [(p.available_at, p.value) for p in alt_provider.fetch_series(symbol, "funding_rate", limit=len(bars) + 10)])
+            f["funding_z"] = rolling_zscore(fund, lookback)
+            f["fg"] = _align(bars, [(p.available_at, p.value) for p in alt_provider.fetch_series(symbol, "fear_greed", limit=len(bars) + 10)])
+        f["risk_on"] = _align(bars, [(p.available_at, p.value) for p in risk_on_pts])
+        f["macro"] = _align(bars, [(p.available_at, p.value) for p in macro_pts])
+        feats[symbol] = (bars, f)
+    return feats
+
+
+def _xa_sharpe(signal_market) -> tuple[float, float]:  # noqa: ANN001
+    """Annualized Sharpe + validation return for a signal — the cheap diagnostic used for drop-one
+    attribution. It does NOT record a trial or call the scorer (it isn't a competing hypothesis)."""
+    val_returns: list[float] = []
+    val_total: list[float] = []
+    for bars, signal in signal_market.values():
+        if len(bars) < 80:
+            continue
+        split = max(40, int(len(bars) * 0.8))
+        v_eq, _ = _simulate(bars[:split], signal[:split], _ARM)
+        val_returns.extend(_bar_returns(v_eq))
+        if v_eq:
+            val_total.append(v_eq[-1] / 100000.0 - 1.0)
+    sr, *_ = sample_moments(val_returns)
+    return sr * math.sqrt(365), (statistics.fmean(val_total) if val_total else 0.0)
+
+
+def _xa_buy_and_hold(market: dict[str, list[Bar]]) -> float:
+    """Equal-weight buy-and-hold across the FULL cross-asset universe (not just BTC/ETH) — the honest
+    multi-asset baseline arm (4)."""
+    rets = []
+    for bars in market.values():
+        if len(bars) < 80:
+            continue
+        split = max(40, int(len(bars) * 0.8))
+        first, last = float(bars[0].close), float(bars[split - 1].close)
+        if first:
+            rets.append(last / first - 1.0 - 2 * _FEE)
+    return statistics.fmean(rets) if rets else 0.0
+
+
+def evaluate_cross_asset_ablation(
+    market_by_class: dict[str, dict[str, list[Bar]]],
+    alt_provider: AltDataProvider,
+    news_provider: NewsProvider,
+    store: Store,
+    *,
+    lookback: int = 20,
+) -> CrossAssetVerdict:
+    """Four arms on the SAME windows/costs/wall: (1) single-asset price-only · (2) single-asset+alt ·
+    (3) cross-asset+alt (new) · (4) buy-and-hold — plus per-source AND per-asset-class drop-one. Pre-registered
+    pass: arm (3) net return > arm (1) AND > arm (2) AND > buy-and-hold, all net of the same costs, and it
+    clears the statistical bar. Verdict PASS (multi-asset thesis real) / STOP-narrow (keep single-asset, cut
+    the classes that didn't pay). Every counted attempt hits the global trial ledger."""
+    market: dict[str, list[Bar]] = {}
+    class_of: dict[str, str] = {}
+    for klass, symbols in market_by_class.items():
+        for symbol, bars in symbols.items():
+            market[symbol] = bars
+            class_of[symbol] = klass
+
+    feats = _xa_features(market, class_of, alt_provider, news_provider, lookback)
+
+    # --- the three counted arms (each registers a trial + is scored against the trial-inflated benchmark) ---
+    price = _arm_metrics(_build_signal(feats, lambda f, i: _xp_price(f, i, 0.5)), store, "xa_price_only")
+    single = _arm_metrics(_build_signal(feats, _xa_single_alt(0.5)), store, "xa_single_alt")
+    xasset = _arm_metrics(_build_signal(feats, _xa_full(0.5)), store, "xa_cross_asset")
+
+    # --- CSCV overfit guard over a diverse cross-asset config grid (also counted trials) ---
+    variant_returns: list[list[float]] = []
+    for lb in (14, 20, 30):
+        feats_lb = feats if lb == lookback else _xa_features(market, class_of, alt_provider, news_provider, lb)
+        for thr in (0.3, 0.8):
+            variant_returns.append(_arm_metrics(_build_signal(feats_lb, _xa_full(thr)), store, f"xa_lb{lb}_z{thr}").val_returns)
+    usable = [r for r in variant_returns if r]
+    pbo = cscv_pbo(usable) if len(usable) >= 2 else 1.0
+
+    xasset_sharpe = float(xasset.metrics.sharpe)
+    # --- per-source drop-one (diagnostic — NOT a counted trial; attribution on the arm-(3) hypothesis) ---
+    drop_one_source: list[DropOne] = []
+    for src in ("news", "funding", "fear_greed", "risk_on", "macro_regime"):
+        without = _xa_sharpe(_build_signal(feats, _xa_full(0.5, drop=src)))[0]
+        drop_one_source.append(DropOne(src, round(without, 4), round(xasset_sharpe - without, 4)))
+    drop_one_source.sort(key=lambda d: d.delta, reverse=True)
+    # --- per-asset-class drop-one (diagnostic): drop a whole class from the traded universe ---
+    drop_one_class: list[ClassDrop] = []
+    for klass in market_by_class:
+        sub = {s: bf for s, bf in feats.items() if bf[1]["_class"] != klass}
+        without = _xa_sharpe(_build_signal(sub, _xa_full(0.5)))[0] if sub else 0.0
+        drop_one_class.append(ClassDrop(klass, round(without, 4), round(xasset_sharpe - without, 4)))
+    drop_one_class.sort(key=lambda d: d.delta, reverse=True)
+
+    buy_hold = _xa_buy_and_hold(market)
+    xasset_dsr = float(xasset.verdict.deflated_sharpe_prob)
+    regimes_positive = sum(1 for v in xasset.metrics.regime_returns.values() if v > 0)
+
+    reasons: list[str] = []
+    if xasset.val_return <= price.val_return:
+        reasons.append("not_beating_single_asset_price_only")
+    if xasset.val_return <= single.val_return:
+        reasons.append("not_beating_single_asset_alt")
+    if xasset.val_return <= buy_hold:
+        reasons.append("not_beating_buy_and_hold")
+    if xasset.metrics.num_trades < CROSS_ASSET_BAR["min_trades"]:
+        reasons.append("min_trades")
+    if xasset_dsr < CROSS_ASSET_BAR["min_deflated_sharpe_prob"]:
+        reasons.append("deflated_sharpe")
+    if pbo >= CROSS_ASSET_BAR["max_cscv_pbo"]:
+        reasons.append("cscv_pbo")
+    if regimes_positive < CROSS_ASSET_BAR["min_regimes_positive"]:
+        reasons.append("regimes")
+    if float(xasset.metrics.max_drawdown) >= CROSS_ASSET_BAR["max_drawdown"]:
+        reasons.append("max_drawdown")
+
+    passed = not reasons
+    return CrossAssetVerdict(
+        decision="PASS" if passed else "STOP-narrow",
+        passed=passed,
+        price_only_return=round(price.val_return, 6),
+        single_alt_return=round(single.val_return, 6),
+        xasset_return=round(xasset.val_return, 6),
+        buy_and_hold_return=round(buy_hold, 6),
+        xasset_dsr=round(xasset_dsr, 6),
+        single_alt_dsr=round(float(single.verdict.deflated_sharpe_prob), 6),
+        cscv_pbo=round(pbo, 6),
+        regimes_positive=regimes_positive,
+        num_trades=xasset.metrics.num_trades,
+        max_drawdown=round(float(xasset.metrics.max_drawdown), 6),
+        attempts=3 + len(variant_returns),  # 3 arms + CSCV grid; drop-one is diagnostic, not a trial
+        drop_one_source=drop_one_source,
+        drop_one_class=drop_one_class,
+        reasons=reasons,
+    )
+
+
 def _main() -> int:
-    """Offline three-arm ablation on synthetic fixtures. Real runs inject live bars + free providers."""
+    """Offline four-arm cross-asset ablation on synthetic fixtures. Real runs inject live bars + free providers."""
     import tempfile
 
     from cosmu.config.settings import Settings
-    from cosmu.research.fixtures import synthetic_ablation_inputs
+    from cosmu.research.fixtures import synthetic_cross_asset_inputs
 
     tmp = tempfile.mkdtemp(prefix="cosmu-gate-")
     store = Store(Settings(database_url=f"sqlite:///{tmp}/gate_demo.sqlite3"))
-    market, alt_provider, news_provider = synthetic_ablation_inputs()
-    v = evaluate_ablation(market, alt_provider, news_provider, store)
+    market_by_class, alt_provider, news_provider = synthetic_cross_asset_inputs()
+    xa = evaluate_cross_asset_ablation(market_by_class, alt_provider, news_provider, store)
 
-    print("AGGREGATION GATE —", v.decision)
-    print(f"  alt-data arm:   return {v.alt_return:+.3f} · deflated Sharpe {v.alt_dsr}")
-    print(f"  price-only arm: return {v.price_only_return:+.3f} · deflated Sharpe {v.price_only_dsr}")
-    print(f"  buy & hold:     return {v.buy_and_hold_return:+.3f}")
-    print(f"  CSCV PBO {v.cscv_pbo} (< {ABLATION_BAR['max_cscv_pbo']}) · regimes {v.regimes_positive} (≥ {ABLATION_BAR['min_regimes_positive']}) · trades {v.num_trades} · maxDD {v.max_drawdown}")
-    print("  which data paid (drop-one Δ deflated Sharpe):")
-    for d in v.drop_one:
-        print(f"    {d.source:<11} Δ {d.delta:+.3f}")
-    if v.reasons:
-        print(f"  failed checks:  {', '.join(v.reasons)}")
+    print("CROSS-ASSET GATE —", xa.decision)
+    print(f"  cross-asset+alt arm:   return {xa.xasset_return:+.3f} · deflated Sharpe {xa.xasset_dsr}")
+    print(f"  single-asset+alt arm:  return {xa.single_alt_return:+.3f} · deflated Sharpe {xa.single_alt_dsr}")
+    print(f"  single-asset price arm:return {xa.price_only_return:+.3f}")
+    print(f"  buy & hold (all):      return {xa.buy_and_hold_return:+.3f}")
+    print(f"  CSCV PBO {xa.cscv_pbo} (< {CROSS_ASSET_BAR['max_cscv_pbo']}) · regimes {xa.regimes_positive} · trades {xa.num_trades} · maxDD {xa.max_drawdown} · attempts {xa.attempts}")
+    print("  which DATA paid (drop-one Δ Sharpe):")
+    for d in xa.drop_one_source:
+        print(f"    {d.source:<13} Δ {d.delta:+.3f}")
+    print("  which ASSET CLASS paid (drop-one Δ Sharpe):")
+    for c in xa.drop_one_class:
+        print(f"    {c.asset_class:<13} Δ {c.delta:+.3f}")
+    if xa.reasons:
+        print(f"  failed checks:  {', '.join(xa.reasons)}")
     print(
         "\n"
         + (
-            "PASS — aggregating + standardizing data beats price-only and buy-and-hold. Proceed to Phase 2."
-            if v.passed
-            else "STOP — aggregation did not beat price alone. Keep only the sources with positive drop-one Δ."
+            "PASS — combining asset classes beats any single one. Proceed to Phase 2 with all classes."
+            if xa.passed
+            else "STOP-narrow — cross-asset did not beat single-asset. Keep single-asset; cut the classes with non-positive drop-one Δ."
         )
     )
-    return 0 if v.passed else 1
+    return 0 if xa.passed else 1
 
 
 if __name__ == "__main__":

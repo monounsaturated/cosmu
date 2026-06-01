@@ -195,6 +195,57 @@ class FearGreedProvider:
         return sorted(out, key=lambda p: p.ts)
 
 
+class FredMacroProvider:
+    """FRED macro series (free API, numeric → no LLM). Each observation is stamped available the day
+    AFTER its period (release lag is real for macro; next-day availability is a conservative floor).
+    `metric` is the FRED series id (e.g. "T10Y2Y" curve slope, "DGS10" 10y, "VIXCLS"). Cross-asset:
+    one macro read conditions risk premia across every class, so it feeds the cross-asset risk tag."""
+
+    def __init__(self, api_key: str | None = None, base_url: str = "https://api.stlouisfed.org/fred", release_lag_days: int = 1) -> None:
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.release_lag_days = release_lag_days
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        from datetime import timedelta
+
+        params = {"series_id": metric, "file_type": "json", "sort_order": "desc", "limit": min(limit, 100000)}
+        if self.api_key:
+            params["api_key"] = self.api_key
+        url = f"{self.base_url}/series/observations?{urllib.parse.urlencode(params)}"
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        out: list[AltDataPoint] = []
+        for row in payload.get("observations", []):
+            if row.get("value") in (None, ".", ""):  # FRED uses "." for missing
+                continue
+            ts = datetime.fromisoformat(row["date"]).replace(tzinfo=UTC)
+            out.append(AltDataPoint(ts=ts, available_at=ts + timedelta(days=self.release_lag_days), value=float(row["value"])))
+        return sorted(out, key=lambda p: p.ts)
+
+
+class PolymarketOddsProvider:
+    """Polymarket public CLOB midpoint odds (free, no wallet). `metric` = a market's token id; the
+    value is the implied probability in [0,1]. Odds-as-features only — NO execution in this pass.
+    Numeric → no LLM. Continuous feed, so a price is available at its own timestamp (no lag)."""
+
+    def __init__(self, base_url: str = "https://clob.polymarket.com") -> None:
+        self.base_url = base_url.rstrip("/")
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        query = urllib.parse.urlencode({"market": metric, "fidelity": 1440})  # daily buckets
+        url = f"{self.base_url}/prices-history?{query}"
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        out: list[AltDataPoint] = []
+        for row in payload.get("history", [])[-limit:]:
+            ts = datetime.fromtimestamp(int(row["t"]), tz=UTC)
+            out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["p"])))
+        return sorted(out, key=lambda p: p.ts)
+
+
 class FixtureNewsProvider:
     """Deterministic offline headlines so the gate + tests run with no key/network."""
 
