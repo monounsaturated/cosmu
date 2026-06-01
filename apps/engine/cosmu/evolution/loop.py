@@ -10,7 +10,7 @@ from decimal import Decimal
 from cosmu.config.settings import Settings
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
-from cosmu.knowledge.store import Store, utcnow
+from cosmu.knowledge.store import Store, Writer, utcnow
 from cosmu.master.scorer import BacktestMetrics, ScoreVerdict, score
 from cosmu.strategy.compiler import compile_spec
 from cosmu.strategy.pine import translate_pine
@@ -84,6 +84,7 @@ class FarmLoop:
         cohort_size: int | None = None,
         explore_pct: float | None = None,
         pine_scripts: list[str] | None = None,
+        extra_seeds: list[StrategySpec] | None = None,
     ) -> CohortSummary:
         cfg = self.settings.evolution
         seed = cfg.default_seed if seed is None else seed
@@ -92,25 +93,19 @@ class FarmLoop:
         rng = random.Random(seed)
         cohort_id = hashlib.sha256(f"cohort-{seed}-{size}-{utcnow()}".encode()).hexdigest()[:12]
 
-        self.store.append_event(
-            actor="master",
-            kind="cohort_started",
-            ref_type="cohort",
-            ref_id=cohort_id,
-            payload={"seed": seed, "cohort_size": size, "explore_pct": explore},
-        )
-
-        lanes = {"seed": 0, "exploit": 0, "explore": 0, "pine": 0}
+        lanes = {"seed": 0, "chat": 0, "exploit": 0, "explore": 0, "pine": 0}
         evaluated: list[Evaluated] = []
         invalid = 0
         parents: list[tuple[str, StrategySpec]] = []
         pine_notes: list[str] = []
 
-        # Wave 0 — seeds + pine imports (these become the parent pool for the exploit lane).
+        # Wave 0 — seeds + chat-authored briefs + pine imports (the parent pool for the exploit lane).
         wave0: list[Candidate] = [
             Candidate(spec=spec, origin="seed", lane="seed", rationale="diverse seed template")
             for spec in seed_population()
         ]
+        for spec in extra_seeds or []:
+            wave0.append(Candidate(spec=spec, origin="chat", lane="chat", operator="chat_author", rationale="human-authored brief"))
         for src in pine_scripts or []:
             tr = translate_pine(src)
             pine_notes.extend(tr.notes)
@@ -124,69 +119,70 @@ class FarmLoop:
                 )
             )
 
-        for cand in wave0:
-            result, vid = self._evaluate(cand, rng, seed)
-            if result is None:
-                invalid += 1
-                continue
-            evaluated.append(result)
-            lanes[cand.lane] += 1
-            parents.append((vid, cand.spec))
+        # One connection + one transaction for the whole cohort.
+        with self.store.batch() as b:
+            b.append_event(
+                actor="master",
+                kind="cohort_started",
+                ref_type="cohort",
+                ref_id=cohort_id,
+                payload={"seed": seed, "cohort_size": size, "explore_pct": explore},
+            )
 
-        if not parents:  # pine-only with all-invalid → fall back to seeds
-            for spec in seed_population():
-                cand = Candidate(spec=spec, origin="seed", lane="seed")
-                result, vid = self._evaluate(cand, rng, seed)
-                if result:
-                    evaluated.append(result)
-                    lanes["seed"] += 1
-                    parents.append((vid, spec))
+            for cand in wave0:
+                result, vid = self._evaluate(cand, b, rng, seed)
+                if result is None:
+                    invalid += 1
+                    continue
+                evaluated.append(result)
+                lanes[cand.lane] += 1
+                parents.append((vid, cand.spec))
 
-        # Waves 1..N — fill the cohort with exploit children and explore wildcards.
-        remaining = max(0, size - len(wave0))
-        explore_n = round(remaining * explore)
-        exploit_n = remaining - explore_n
-        parent_specs = [p[1] for p in parents]
+            # Waves 1..N — fill the cohort with exploit children and explore wildcards.
+            remaining = max(0, size - len(wave0))
+            explore_n = round(remaining * explore)
+            exploit_n = remaining - explore_n
+            parent_specs = [p[1] for p in parents]
 
-        for _ in range(exploit_n):
-            pvid, pspec = rng.choice(parents)
-            child = mutator.mutate_exploit(pspec, rng)
-            cand = Candidate(spec=child.spec, origin="mutation", lane="exploit", operator=child.operator, rationale=child.rationale, parent_vid=pvid)
-            result, _vid = self._evaluate(cand, rng, seed)
-            if result is None:
-                invalid += 1
-                continue
-            evaluated.append(result)
-            lanes["exploit"] += 1
+            for _ in range(exploit_n):
+                pvid, pspec = rng.choice(parents)
+                child = mutator.mutate_exploit(pspec, rng)
+                cand = Candidate(spec=child.spec, origin="mutation", lane="exploit", operator=child.operator, rationale=child.rationale, parent_vid=pvid)
+                result, _vid = self._evaluate(cand, b, rng, seed)
+                if result is None:
+                    invalid += 1
+                    continue
+                evaluated.append(result)
+                lanes["exploit"] += 1
 
-        for _ in range(explore_n):
-            child = mutator.wildcard(parent_specs, rng)
-            cand = Candidate(spec=child.spec, origin="wildcard", lane="explore", operator=child.operator, rationale=child.rationale)
-            result, _vid = self._evaluate(cand, rng, seed)
-            if result is None:
-                invalid += 1
-                continue
-            evaluated.append(result)
-            lanes["explore"] += 1
+            for _ in range(explore_n):
+                child = mutator.wildcard(parent_specs, rng)
+                cand = Candidate(spec=child.spec, origin="wildcard", lane="explore", operator=child.operator, rationale=child.rationale)
+                result, _vid = self._evaluate(cand, b, rng, seed)
+                if result is None:
+                    invalid += 1
+                    continue
+                evaluated.append(result)
+                lanes["explore"] += 1
 
-        survivors = sorted([e for e in evaluated if e.passed], key=lambda e: e.deflated_sharpe, reverse=True)
-        graveyard = sorted([e for e in evaluated if not e.passed], key=lambda e: e.deflated_sharpe, reverse=True)
-        generated = len(evaluated)
-        killed = len(graveyard)
+            survivors = sorted([e for e in evaluated if e.passed], key=lambda e: e.deflated_sharpe, reverse=True)
+            graveyard = sorted([e for e in evaluated if not e.passed], key=lambda e: e.deflated_sharpe, reverse=True)
+            generated = len(evaluated)
+            killed = len(graveyard)
 
-        self.store.append_event(
-            actor="master",
-            kind="cohort_completed",
-            ref_type="cohort",
-            ref_id=cohort_id,
-            payload={
-                "generated": generated,
-                "passed": len(survivors),
-                "killed": killed,
-                "kill_rate": round(killed / generated, 3) if generated else 0.0,
-                "lanes": lanes,
-            },
-        )
+            b.append_event(
+                actor="master",
+                kind="cohort_completed",
+                ref_type="cohort",
+                ref_id=cohort_id,
+                payload={
+                    "generated": generated,
+                    "passed": len(survivors),
+                    "killed": killed,
+                    "kill_rate": round(killed / generated, 3) if generated else 0.0,
+                    "lanes": lanes,
+                },
+            )
 
         return CohortSummary(
             cohort_id=cohort_id,
@@ -205,7 +201,7 @@ class FarmLoop:
 
     # ------------------------------------------------------------------ internals
 
-    def _evaluate(self, cand: Candidate, rng: random.Random, seed: int) -> tuple[Evaluated | None, str]:
+    def _evaluate(self, cand: Candidate, b: Writer, rng: random.Random, seed: int) -> tuple[Evaluated | None, str]:
         try:
             params = fit_params(cand.spec)
             compiled = compile_spec(cand.spec, params)
@@ -218,11 +214,11 @@ class FarmLoop:
         status = "paper" if passed else "killed"
         kill_reason = None if passed else ",".join(verdict.reasons) or "screened_out"
 
-        strategy_id = self.store.insert(
+        strategy_id = b.insert(
             "strategies",
             {"name": cand.spec.name, "thesis": cand.spec.rationale, "origin": cand.origin, "created_at": utcnow()},
         )
-        version_id = self.store.insert(
+        version_id = b.insert(
             "strategy_versions",
             {
                 "strategy_id": strategy_id,
@@ -240,7 +236,7 @@ class FarmLoop:
                 "kill_reason": kill_reason,
             },
         )
-        self.store.insert(
+        b.insert(
             "backtests",
             {
                 "strategy_version_id": version_id,
@@ -263,7 +259,7 @@ class FarmLoop:
         )
         if passed:
             equity = Decimal("100000") * (Decimal("1") + metrics.oos_return)
-            self.store.insert(
+            b.insert(
                 "sleeves",
                 {
                     "strategy_version_id": version_id,
@@ -273,7 +269,7 @@ class FarmLoop:
                     "updated_at": utcnow(),
                 },
             )
-            self.store.append_event(
+            b.append_event(
                 actor="master",
                 kind="sleeve_opened",
                 ref_type="strategy_version",

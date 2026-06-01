@@ -198,3 +198,43 @@ class PineTranslateResponse(BaseModel):
     lifted_params: dict[str, float]
     spec: dict[str, Any]
 
+
+class PineSample(BaseModel):
+    name: str
+    source: str
+
+
+class PineSamplesResponse(BaseModel):
+    samples: list[PineSample]
+
+
+# ---- chat strategy authoring ----
+
+
+class AuthorRequest(BaseModel):
+    brief: str
+    features: list[str] | None = None
+    venues: list[str] | None = None
+
+
+class AuthorResponse(BaseModel):
+    name: str
+    rationale: str
+    base_template: str
+    features: list[str]
+    data_sources: list[str]
+    venues: list[str]
+    valid: bool
+    issues: list[str]
+    requires_approval: bool
+    guardrails: list[str]
+    notes: list[str]
+    spec: dict[str, Any]
+
+
+class AuthorRunRequest(BaseModel):
+    brief: str
+    features: list[str] | None = None
+    venues: list[str] | None = None
+    cohort_size: int | None = None
+

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { FileCode, FlaskConical, Play, Skull, Sprout, Wand2 } from "lucide-react";
+import { FileCode, FlaskConical, Play, Skull, Sprout, Upload, Wand2 } from "lucide-react";
 import type { CohortSummaryResponse, PineTranslateResponse } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,13 +18,41 @@ const laneStyle: Record<string, "iris" | "up" | "warn" | "info"> = {
   pine: "up"
 };
 
-const SAMPLE_PINE = `//@version=5
+const PINE_LIBRARY: Record<string, string> = {
+  "RSI + MA cross": `//@version=5
 strategy("RSI + MA cross", overlay=true)
 rsiVal = ta.rsi(close, 14)
 fast = ta.sma(close, 10)
 slow = ta.ema(close, 30)
 longCondition = ta.crossover(fast, slow) and rsiVal < 35
-strategy.exit("x", stop=0.05, limit=0.12)`;
+strategy.exit("x", stop=0.05, limit=0.12)`,
+  "Golden cross trend": `//@version=5
+strategy("Golden Cross", overlay=true)
+fast = ta.sma(close, 50)
+slow = ta.sma(close, 200)
+longCondition = ta.crossover(fast, slow)
+strategy.entry("Long", strategy.long, when=longCondition)
+strategy.exit("Exit", stop=0.08, limit=0.2)`,
+  "Bollinger breakout": `//@version=5
+strategy("Bollinger Breakout", overlay=true)
+length = input.int(20)
+mult = input.float(2.0)
+basis = ta.sma(close, length)
+dev = mult * ta.stdev(close, length)
+upper = basis + dev
+longCondition = close > upper
+strategy.entry("L", strategy.long, when=longCondition)
+strategy.exit("X", stop=0.05, limit=0.15)`,
+  "ADX trend filter": `//@version=5
+strategy("ADX Trend", overlay=true)
+adxVal = ta.adx(14)
+rsiVal = ta.rsi(close, 14)
+longCondition = adxVal > 25 and rsiVal > 50
+strategy.entry("L", strategy.long, when=longCondition)
+strategy.exit("X", stop=0.06, limit=0.14)`
+};
+
+const SAMPLE_PINE = PINE_LIBRARY["RSI + MA cross"];
 
 export function FarmConsole({ fallback }: { fallback: CohortSummaryResponse }) {
   const [cohortSize, setCohortSize] = useState(120);
@@ -200,6 +228,30 @@ export function FarmConsole({ fallback }: { fallback: CohortSummaryResponse }) {
             <FileCode className="size-4 text-quiet" />
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                onChange={(e) => e.target.value && setPine(PINE_LIBRARY[e.target.value])}
+                defaultValue=""
+                className="h-8 rounded-md border border-border bg-surface-2/60 px-2 text-[12px] text-foreground outline-none focus-visible:border-iris/60"
+              >
+                <option value="">Load community sample…</option>
+                {Object.keys(PINE_LIBRARY).map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+              <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-surface-2/60 px-2.5 text-[12px] text-muted hover:text-foreground">
+                <Upload className="size-3.5" /> Upload .pine
+                <input
+                  type="file"
+                  accept=".pine,.txt,text/plain"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) file.text().then(setPine);
+                  }}
+                />
+              </label>
+            </div>
             <textarea
               value={pine}
               onChange={(e) => setPine(e.target.value)}

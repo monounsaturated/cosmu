@@ -34,6 +34,186 @@
         "title": "Allocation",
         "type": "object"
       },
+      "AuthorRequest": {
+        "properties": {
+          "brief": {
+            "title": "Brief",
+            "type": "string"
+          },
+          "features": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Features"
+          },
+          "venues": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venues"
+          }
+        },
+        "required": [
+          "brief"
+        ],
+        "title": "AuthorRequest",
+        "type": "object"
+      },
+      "AuthorResponse": {
+        "properties": {
+          "base_template": {
+            "title": "Base Template",
+            "type": "string"
+          },
+          "data_sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Data Sources",
+            "type": "array"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "guardrails": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Guardrails",
+            "type": "array"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "requires_approval": {
+            "title": "Requires Approval",
+            "type": "boolean"
+          },
+          "spec": {
+            "additionalProperties": true,
+            "title": "Spec",
+            "type": "object"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "venues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Venues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "rationale",
+          "base_template",
+          "features",
+          "data_sources",
+          "venues",
+          "valid",
+          "issues",
+          "requires_approval",
+          "guardrails",
+          "notes",
+          "spec"
+        ],
+        "title": "AuthorResponse",
+        "type": "object"
+      },
+      "AuthorRunRequest": {
+        "properties": {
+          "brief": {
+            "title": "Brief",
+            "type": "string"
+          },
+          "cohort_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Size"
+          },
+          "features": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Features"
+          },
+          "venues": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venues"
+          }
+        },
+        "required": [
+          "brief"
+        ],
+        "title": "AuthorRunRequest",
+        "type": "object"
+      },
       "Backtest": {
         "properties": {
           "deflated_sharpe": {
@@ -558,6 +738,40 @@
           "lineage"
         ],
         "title": "LeaderboardRow",
+        "type": "object"
+      },
+      "PineSample": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "source"
+        ],
+        "title": "PineSample",
+        "type": "object"
+      },
+      "PineSamplesResponse": {
+        "properties": {
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/PineSample"
+            },
+            "title": "Samples",
+            "type": "array"
+          }
+        },
+        "required": [
+          "samples"
+        ],
+        "title": "PineSamplesResponse",
         "type": "object"
       },
       "PineTranslateRequest": {
@@ -1094,6 +1308,82 @@
         "summary": "Health"
       }
     },
+    "/lab/author": {
+      "post": {
+        "operationId": "lab_author_lab_author_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lab Author"
+      }
+    },
+    "/lab/author/run": {
+      "post": {
+        "operationId": "lab_author_run_lab_author_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lab Author Run"
+      }
+    },
     "/leaderboard": {
       "get": {
         "operationId": "leaderboard_leaderboard_get",
@@ -1273,6 +1563,24 @@
           }
         },
         "summary": "Strategy Pine"
+      }
+    },
+    "/strategy/pine/samples": {
+      "get": {
+        "operationId": "strategy_pine_samples_strategy_pine_samples_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PineSamplesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Strategy Pine Samples"
       }
     },
     "/toggle/live": {

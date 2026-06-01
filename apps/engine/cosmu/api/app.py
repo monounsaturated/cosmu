@@ -11,6 +11,9 @@ from fastapi import FastAPI, HTTPException
 
 from cosmu.api.models import (
     Allocation,
+    AuthorRequest,
+    AuthorResponse,
+    AuthorRunRequest,
     Backtest,
     CohortRunRequest,
     CohortSummaryResponse,
@@ -24,6 +27,8 @@ from cosmu.api.models import (
     GraveyardRow,
     LeaderboardResponse,
     LeaderboardRow,
+    PineSample,
+    PineSamplesResponse,
     PineTranslateRequest,
     PineTranslateResponse,
     Point,
@@ -38,8 +43,10 @@ from cosmu.api.models import (
 from cosmu.config.settings import get_settings
 from cosmu.evolution.loop import CohortSummary, FarmLoop
 from cosmu.knowledge.store import Store, utcnow
+from cosmu.lab.author import AuthorDraft, draft_from_brief
 from cosmu.spine.engine import EngineFacade
 from cosmu.strategy.pine import translate_pine
+from cosmu.strategy.pine_samples import PINE_SAMPLES
 
 
 ORIGIN_TO_LANE = {"seed": "seed", "mutation": "exploit", "wildcard": "explore", "pine": "pine", "agent": "exploit"}
@@ -171,6 +178,48 @@ def strategy_pine(request: PineTranslateRequest) -> PineTranslateResponse:
         lifted_params=tr.lifted_params,
         spec=tr.spec.model_dump(mode="json"),
     )
+
+
+@app.get("/strategy/pine/samples", response_model=PineSamplesResponse)
+def strategy_pine_samples() -> PineSamplesResponse:
+    return PineSamplesResponse(samples=[PineSample(name=name, source=source) for name, source in PINE_SAMPLES.items()])
+
+
+def _draft_to_response(draft: AuthorDraft) -> AuthorResponse:
+    return AuthorResponse(
+        name=draft.spec.name,
+        rationale=draft.rationale,
+        base_template=draft.base_template,
+        features=draft.features,
+        data_sources=draft.data_sources,
+        venues=draft.venues,
+        valid=draft.valid,
+        issues=draft.issues,
+        requires_approval=draft.requires_approval,
+        guardrails=draft.guardrails,
+        notes=draft.notes,
+        spec=draft.spec.model_dump(mode="json"),
+    )
+
+
+@app.post("/lab/author", response_model=AuthorResponse)
+def lab_author(request: AuthorRequest) -> AuthorResponse:
+    draft = draft_from_brief(
+        request.brief,
+        features=request.features,
+        venues=request.venues,
+        llm_enabled=bool(settings.openrouter_api_key),
+    )
+    store.append_event(actor="human", kind="strategy_drafted", ref_type="strategy_spec", payload={"template": draft.base_template, "features": draft.features, "valid": draft.valid})
+    return _draft_to_response(draft)
+
+
+@app.post("/lab/author/run", response_model=CohortSummaryResponse)
+def lab_author_run(request: AuthorRunRequest) -> CohortSummaryResponse:
+    draft = draft_from_brief(request.brief, features=request.features, venues=request.venues, llm_enabled=bool(settings.openrouter_api_key))
+    loop = FarmLoop(settings=settings, store=store)
+    summary = loop.run_cohort(cohort_size=request.cohort_size, extra_seeds=[draft.spec])
+    return _summary_to_response(summary)
 
 
 @app.get("/portfolio", response_model=PortfolioResponse)

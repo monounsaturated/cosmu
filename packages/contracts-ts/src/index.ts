@@ -8,6 +8,34 @@ export interface Allocation {
   weight: number;
 }
 
+export interface AuthorRequest {
+  brief: string;
+  features?: string[] | null;
+  venues?: string[] | null;
+}
+
+export interface AuthorResponse {
+  base_template: string;
+  data_sources: string[];
+  features: string[];
+  guardrails: string[];
+  issues: string[];
+  name: string;
+  notes: string[];
+  rationale: string;
+  requires_approval: boolean;
+  spec: Record<string, unknown>;
+  valid: boolean;
+  venues: string[];
+}
+
+export interface AuthorRunRequest {
+  brief: string;
+  cohort_size?: number | null;
+  features?: string[] | null;
+  venues?: string[] | null;
+}
+
 export interface Backtest {
   deflated_sharpe: number;
   id: string;
@@ -117,6 +145,15 @@ export interface LeaderboardRow {
   sleeve_return_pct: number;
   status: string;
   version_id: string;
+}
+
+export interface PineSample {
+  name: string;
+  source: string;
+}
+
+export interface PineSamplesResponse {
+  samples: PineSample[];
 }
 
 export interface PineTranslateRequest {

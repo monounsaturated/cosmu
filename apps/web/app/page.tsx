@@ -271,10 +271,10 @@ export default async function HomePage() {
       <section id="console" className="space-y-4">
         <SectionHeader
           eyebrow="console"
-          title="Steer it in plain language"
+          title="Author a strategy in plain language"
           aside={
             <Badge variant="iris">
-              <BrainCircuit className="size-3" /> LLM proposes · master disposes
+              <BrainCircuit className="size-3" /> you propose · the scorer disposes
             </Badge>
           }
         />
