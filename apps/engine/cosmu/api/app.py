@@ -38,6 +38,8 @@ from cosmu.api.models import (
     CrossAssetVerdict,
     DefundRequest,
     DefundResponse,
+    DriftResponse,
+    DriftSleeve,
     DropOneClass,
     DropOneSource,
     EligibleStrategy,
@@ -400,7 +402,7 @@ def lab_ml(request: MlRequest) -> MlResponse:
 
 @app.get("/portfolio", response_model=PortfolioResponse)
 def portfolio() -> PortfolioResponse:
-    snapshots = store.rows("SELECT ts, equity, pnl FROM portfolio_snapshots ORDER BY ts ASC LIMIT 120")
+    snapshots = store.rows("SELECT ts, equity, pnl FROM portfolio_snapshots WHERE scope = 'pool' ORDER BY ts ASC LIMIT 120")
     curve = [Point(ts=row["ts"], value=float(row["equity"])) for row in snapshots]
     pnl_net = float(snapshots[-1]["pnl"]) if snapshots else 0.0
     # Real allocation: open positions weighted by their notional share of equity (no fabricated numbers).
@@ -970,6 +972,34 @@ def research_brain() -> BrainResponse:
     )
 
 
+@app.get("/research/drift", response_model=DriftResponse)
+def research_drift() -> DriftResponse:
+    """Per-funded-sleeve ALPHA-DECAY snapshot (master/drift): edge half-life + how far live has drifted below the
+    edge it was funded on, and whether the anticipatory monitor recommends pulling capital BEFORE P&L turns.
+    Read-only + deterministic — the monitor only recommends; the deterministic allocator + live toggle move money."""
+    from cosmu.master.drift import assess_drift, funded_sleeve_ids, sleeve_return_series
+
+    sleeves = []
+    for vid in funded_sleeve_ids(store):
+        v = assess_drift(vid, sleeve_return_series(store, vid))
+        sleeves.append(
+            DriftSleeve(
+                version_id=vid,
+                defund=v.defund,
+                reason=v.reason,
+                half_life=v.decay.half_life,
+                periods_to_zero=v.decay.periods_to_zero,
+                realized_edge=v.drift.realized_edge,
+                reference_edge=v.drift.reference_edge,
+                reference=v.drift.reference,
+                z=v.drift.z,
+                cusum=v.drift.cusum,
+                n=v.drift.n,
+            )
+        )
+    return DriftResponse(sleeves=sleeves)
+
+
 @app.get("/skills", response_model=SkillsResponse)
 def skills() -> SkillsResponse:
     """The Curator's distilled SKILL recipes — reusable, parameterized templates the brain reuses as priors.
@@ -1066,4 +1096,11 @@ def _json(value: Any) -> Any:
 
 
 if __name__ == "__main__":
-    uvicorn.run("cosmu.api.app:app", host="127.0.0.1", port=8000, reload=True)
+    import os
+
+    # Bind for BOTH local dev and production (Railway/any PaaS injects $PORT). Default 0.0.0.0 so the container
+    # is reachable; reload only in local/dev. Production (APP_ENV=production) → no reload, real $PORT.
+    _port = int(os.environ.get("PORT", "8000"))
+    _host = os.environ.get("HOST", "0.0.0.0")
+    _reload = os.environ.get("APP_ENV", "dev").strip().lower() in ("dev", "local")
+    uvicorn.run("cosmu.api.app:app", host=_host, port=_port, reload=_reload)

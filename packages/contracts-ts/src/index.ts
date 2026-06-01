@@ -233,6 +233,24 @@ export interface DefundResponse {
   ok: boolean;
 }
 
+export interface DriftResponse {
+  sleeves: DriftSleeve[];
+}
+
+export interface DriftSleeve {
+  cusum: number;
+  defund: boolean;
+  half_life: number | null;
+  n: number;
+  periods_to_zero: number | null;
+  realized_edge: number;
+  reason: string;
+  reference: string;
+  reference_edge: number;
+  version_id: string;
+  z: number;
+}
+
 export interface DropOneClass {
   asset_class: string;
   delta: number;

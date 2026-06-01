@@ -1134,6 +1134,100 @@
         "title": "DefundResponse",
         "type": "object"
       },
+      "DriftResponse": {
+        "properties": {
+          "sleeves": {
+            "items": {
+              "$ref": "#/components/schemas/DriftSleeve"
+            },
+            "title": "Sleeves",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sleeves"
+        ],
+        "title": "DriftResponse",
+        "type": "object"
+      },
+      "DriftSleeve": {
+        "description": "One funded sleeve's alpha-decay snapshot. `defund` is the anticipatory verdict (pull capital BEFORE P&L\nturns); `half_life` is the estimated periods for the realized edge to halve (null = not decaying); `z`/`cusum`\nmeasure how far live has drifted below the edge it was funded on (`reference`).",
+        "properties": {
+          "cusum": {
+            "title": "Cusum",
+            "type": "number"
+          },
+          "defund": {
+            "title": "Defund",
+            "type": "boolean"
+          },
+          "half_life": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Half Life"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "periods_to_zero": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Periods To Zero"
+          },
+          "realized_edge": {
+            "title": "Realized Edge",
+            "type": "number"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "reference_edge": {
+            "title": "Reference Edge",
+            "type": "number"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          },
+          "z": {
+            "title": "Z",
+            "type": "number"
+          }
+        },
+        "required": [
+          "version_id",
+          "defund",
+          "reason",
+          "half_life",
+          "periods_to_zero",
+          "realized_edge",
+          "reference_edge",
+          "reference",
+          "z",
+          "cusum",
+          "n"
+        ],
+        "title": "DriftSleeve",
+        "type": "object"
+      },
       "DropOneClass": {
         "properties": {
           "asset_class": {
@@ -3340,6 +3434,25 @@
           }
         },
         "summary": "Run Cross Asset Gate"
+      }
+    },
+    "/research/drift": {
+      "get": {
+        "description": "Per-funded-sleeve ALPHA-DECAY snapshot (master/drift): edge half-life + how far live has drifted below the\nedge it was funded on, and whether the anticipatory monitor recommends pulling capital BEFORE P&L turns.\nRead-only + deterministic \u2014 the monitor only recommends; the deterministic allocator + live toggle move money.",
+        "operationId": "research_drift_research_drift_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Research Drift"
       }
     },
     "/research/gate": {

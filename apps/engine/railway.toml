@@ -1,0 +1,19 @@
+# Railway config for the ENGINE service. Point the Railway service's Root Directory at `apps/engine` so this
+# file (not the repo-root railway.toml, which is the legacy web build) drives it: nixpacks auto-detects the
+# Python project (pyproject.toml with a build backend), `pip install .` brings in deps + the cosmu package, and
+# the engine binds Railway's $PORT on 0.0.0.0. The web is hosted on Vercel — it is NOT built here.
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "uvicorn cosmu.api.app:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+# Bounded, scheduled research pass (NOT a daemon): one free-data ingest + cross-asset gate run, then exits.
+[[cron]]
+schedule = "0 */6 * * *"
+command = "python3 -m cosmu.research.loop --ingest"

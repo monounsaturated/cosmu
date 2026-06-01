@@ -30,12 +30,17 @@ class RouteDecision(BaseModel):
 
 ORDER: tuple[str, ...] = ("cheap", "mid", "frontier")
 
-# Tier → OpenRouter model id. The router already decides the TIER from difficulty/confidence/budget; this maps
-# that decision onto the actual model the LLM seam calls. Cheapest sufficient tier wins (the ROI lens).
+# Tier → OpenRouter model id. The router decides the TIER from difficulty/confidence/budget; this maps that
+# decision onto the actual model the LLM seam calls. Cheapest sufficient tier wins (the ROI lens).
+# COST POLICY: all three tiers use OpenRouter ":free" models → $0 spend on the 24/7 loop (the account's >=$10
+# top-up unlocks 1000 free requests/day, 20/min). A stale ":free" id just 404s → graceful degrade to the
+# deterministic template author (no crash, no spend). To escalate to a paid model on hard/low-confidence work,
+# swap a tier here for a paid id (e.g. "anthropic/claude-3.7-sonnet"); the daily USD cap + the OpenRouter key
+# spend limit then bound the cost. Refresh ids any time from https://openrouter.ai/api/v1/models (filter :free).
 TIER_MODELS: dict[str, str] = {
-    "cheap": "openai/gpt-4o-mini",
-    "mid": "anthropic/claude-3.5-sonnet",
-    "frontier": "anthropic/claude-3.7-sonnet",
+    "cheap": "meta-llama/llama-3.3-70b-instruct:free",
+    "mid": "deepseek/deepseek-chat-v3-0324:free",
+    "frontier": "deepseek/deepseek-r1:free",
 }
 
 # xAI (Grok) model ids — used when XAI_API_KEY is set (preferred, already on Railway). Single stable

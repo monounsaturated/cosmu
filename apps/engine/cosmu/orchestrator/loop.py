@@ -8,11 +8,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import ROUND_DOWN, Decimal
 
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.knowledge.store import Store
+from cosmu.master.drift import monitor_drift
 from cosmu.master.execution import IntendedOrder, execute_orders
 from cosmu.master.portfolio import PaperPortfolio
 from cosmu.portfolio.rotation import Allocation, Sleeve, rotate
@@ -32,6 +33,7 @@ class WalletFundingReport:
     funded: int = 0
     equity: float = 0.0
     pnl: float = 0.0
+    drift_defunded: int = 0   # sleeves the anticipatory drift monitor pulled this cycle (edge half-life / live drift)
 
 
 def _survivor_sleeves(store: Store, symbols: list[str]) -> list[tuple[str, Sleeve, str]]:
@@ -86,6 +88,24 @@ def fund_wallet_from_survivors(
         report.equity = float(marks["equity"])
         report.pnl = float(marks["pnl"])
         return report
+
+    # ANTICIPATORY defund (master/drift): assess each funded sleeve's realized trajectory (edge half-life + live
+    # drift vs what it was funded on) and pull capital BEFORE P&L turns. Reads prior marks; on first funding there
+    # is no history yet → no defund (insufficient history). The deterministic allocator applies the verdict below.
+    verdicts = {v.ref_id: v for v in monitor_drift(store, [vid for vid, _, _ in triples])}
+    triples = [
+        (
+            vid,
+            replace(
+                sleeve,
+                drift_defund=verdicts[vid].defund if vid in verdicts else False,
+                edge_half_life=verdicts[vid].decay.half_life if vid in verdicts else None,
+            ),
+            symbol,
+        )
+        for vid, sleeve, symbol in triples
+    ]
+    report.drift_defunded = sum(1 for v in verdicts.values() if v.defund)
 
     sleeve_by_id = {vid: (sleeve, symbol) for vid, sleeve, symbol in triples}
     allocations = rotate([s for _, s, _ in triples], max_positions=3)

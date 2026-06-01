@@ -1,3 +1,9 @@
+# Build backend so the engine is pip-installable (nixpacks/Railway run `pip install .` from this dir, installing
+# the deps below + the cosmu package). Single source of truth for deps — no duplicated requirements.txt.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "cosmu-engine"
 version = "0.1.0"
@@ -33,3 +39,9 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+# Package discovery for the build backend: ship the `cosmu` package (and subpackages); exclude tests.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cosmu*"]
+exclude = ["tests*"]

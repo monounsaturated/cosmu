@@ -133,12 +133,13 @@ class PaperPortfolio:
         high_water = self._high_water(equity)
         drawdown = Decimal("0") if high_water == 0 else (high_water - equity) / high_water
         pnl = equity - self.bankroll
+        now = utcnow()
         self.store.insert(
             "portfolio_snapshots",
             {
                 "scope": "pool",
                 "ref_id": "global",
-                "ts": utcnow(),
+                "ts": now,
                 "equity": str(equity.quantize(Decimal("0.01"))),
                 "cash": str(cash.quantize(Decimal("0.01"))),
                 "positions_value": str(positions_value.quantize(Decimal("0.01"))),
@@ -146,14 +147,37 @@ class PaperPortfolio:
                 "drawdown": str(max(drawdown, Decimal("0")).quantize(Decimal("0.0001"))),
             },
         )
+        # Also accrue a per-SLEEVE marked-value trajectory (existing scope/ref_id columns, no schema change) so
+        # master/drift has a real per-sleeve realized series to estimate edge half-life + live drift from. A
+        # sleeve's value = its marked positions + its realized P&L; the series across marks IS its edge trajectory.
+        by_sleeve: dict[str, Decimal] = {}
+        for p in positions:
+            if p.strategy_version_id is None:
+                continue
+            value = marks.get(p.instrument_id, p.avg_price) * p.qty + p.realized_pnl
+            by_sleeve[p.strategy_version_id] = by_sleeve.get(p.strategy_version_id, Decimal("0")) + value
+        for vid, value in by_sleeve.items():
+            self.store.insert(
+                "portfolio_snapshots",
+                {
+                    "scope": "sleeve",
+                    "ref_id": vid,
+                    "ts": now,
+                    "equity": str(value.quantize(Decimal("0.01"))),
+                    "cash": "0.00",
+                    "positions_value": str(value.quantize(Decimal("0.01"))),
+                    "pnl": "0.00",
+                    "drawdown": "0.0000",
+                },
+            )
         return {"equity": equity, "cash": cash, "pnl": pnl, "drawdown": max(drawdown, Decimal("0")), "positions_value": positions_value}
 
     def equity(self) -> Decimal:
-        row = self.store.row("SELECT equity FROM portfolio_snapshots ORDER BY ts DESC LIMIT 1")
+        row = self.store.row("SELECT equity FROM portfolio_snapshots WHERE scope = 'pool' ORDER BY ts DESC LIMIT 1")
         return Decimal(str(row["equity"])) if row else self.bankroll
 
     def drawdown(self) -> Decimal:
-        row = self.store.row("SELECT drawdown FROM portfolio_snapshots ORDER BY ts DESC LIMIT 1")
+        row = self.store.row("SELECT drawdown FROM portfolio_snapshots WHERE scope = 'pool' ORDER BY ts DESC LIMIT 1")
         return Decimal(str(row["drawdown"])) if row else Decimal("0")
 
     def daily_loss(self) -> DailyLossStatus:
@@ -161,7 +185,8 @@ class PaperPortfolio:
         (or bankroll if none) — the auto-disarm trips when this meets the cap."""
         day = datetime.now(tz=UTC).date().isoformat()
         start = self.store.row(
-            "SELECT equity FROM portfolio_snapshots WHERE ts >= ? ORDER BY ts ASC LIMIT 1", (f"{day}T00:00:00+00:00",)
+            "SELECT equity FROM portfolio_snapshots WHERE scope = 'pool' AND ts >= ? ORDER BY ts ASC LIMIT 1",
+            (f"{day}T00:00:00+00:00",),
         )
         start_equity = Decimal(str(start["equity"])) if start else self.bankroll
         loss = max(start_equity - self.equity(), Decimal("0"))
@@ -170,7 +195,7 @@ class PaperPortfolio:
     # --- internals ---------------------------------------------------------------------------------
 
     def _high_water(self, current: Decimal) -> Decimal:
-        row = self.store.row("SELECT MAX(CAST(equity AS REAL)) AS hw FROM portfolio_snapshots")
+        row = self.store.row("SELECT MAX(CAST(equity AS REAL)) AS hw FROM portfolio_snapshots WHERE scope = 'pool'")
         prior = Decimal(str(row["hw"])) if row and row["hw"] is not None else self.bankroll
         return max(prior, current)
 
