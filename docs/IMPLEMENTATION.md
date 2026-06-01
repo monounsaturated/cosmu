@@ -177,7 +177,7 @@ Every sidebar item is its own route. No `/#section` jumps to a shared page.
 | `/strategies` | Search/browse any version, detail, lineage, why it died. (Replaces the old "Leaderboard" anchor.) |
 | `/settings` | Keys, caps, spend limits, data sources, model on/off — written through the app (audited), never raw SQL. |
 
-The current `/` dashboard sections (leaderboard, strategy spotlight, console) must be split into their real routes.
+**DONE (2026-06-02):** the 6-route nav is live. `/costs` merged into `/paper`; `/steer` stays as a route (accessible from Overview) but is out of the nav. Header status is dynamic (engine probe). Sidebar "Capital valve" replaced with plain-language "Safety" card. Events use human-readable labels. Inbox shows 3 items + expand.
 
 ## Sidebar component (shadcn)
 

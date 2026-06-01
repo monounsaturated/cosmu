@@ -6,8 +6,11 @@ import json
 from contextlib import asynccontextmanager
 from typing import Any
 
+import os
+
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from cosmu.api.models import (
     ActivateRequest,
@@ -177,6 +180,14 @@ def _scan_inbox_on_startup() -> None:
 
 
 app = FastAPI(title="Cosmu Engine", version="0.1.0", lifespan=lifespan)
+
+_cors_extra = [o.strip() for o in os.getenv("CORS_EXTRA_ORIGINS", "").split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"] + _cors_extra,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")

@@ -12,11 +12,9 @@ import { createPortal } from "react-dom";
 import {
   LayoutDashboard,
   ListChecks,
-  MessageSquare,
   Microscope,
   MoreHorizontal,
   Radio,
-  Receipt,
   SlidersHorizontal,
   Wallet,
   X
@@ -32,9 +30,7 @@ export const navItems: NavItem[] = [
   { href: "/lab", label: "Lab", icon: Microscope },
   { href: "/strategies", label: "Strategies", icon: ListChecks },
   { href: "/paper", label: "Paper", icon: Wallet },
-  { href: "/costs", label: "Costs", icon: Receipt },
   { href: "/live", label: "Live", icon: Radio, gated: true },
-  { href: "/steer", label: "Steer", icon: MessageSquare },
   { href: "/settings", label: "Settings", icon: SlidersHorizontal }
 ];
 

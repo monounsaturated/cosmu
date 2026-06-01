@@ -77,6 +77,11 @@ export function NeedsYouInbox({
     });
   }
 
+  const [expanded, setExpanded] = useState(false);
+  const PREVIEW_COUNT = 3;
+  const visibleItems = expanded ? items : items.slice(0, PREVIEW_COUNT);
+  const hiddenCount = items.length - PREVIEW_COUNT;
+
   return (
     <div className="space-y-2.5">
       {items.length === 0 && resolved.length === 0 ? (
@@ -93,7 +98,7 @@ export function NeedsYouInbox({
         />
       ) : null}
 
-      {items.map((rec) => (
+      {visibleItems.map((rec) => (
         <div key={rec.id} className="rounded-md border border-border/60 bg-surface-2/40 p-3">
           <Badge variant="warn">{rec.kind.replace(/_/g, " ")}</Badge>
           <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{rec.body}</p>
@@ -108,8 +113,17 @@ export function NeedsYouInbox({
         </div>
       ))}
 
-      {/* Just-resolved rows fade out of the way but confirm the action honestly. */}
-      {resolved.map((r) => (
+      {!expanded && hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full rounded-md border border-border/50 bg-surface-2/30 py-2 text-[12px] font-medium text-muted transition-colors hover:bg-surface-2/50 hover:text-foreground"
+        >
+          +{hiddenCount} more
+        </button>
+      )}
+
+      {resolved.slice(0, 3).map((r) => (
         <div
           key={`resolved-${r.id}`}
           className="flex items-center gap-2 rounded-md border border-border/40 bg-surface-2/20 px-3 py-2 text-[12px] text-quiet"

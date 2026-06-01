@@ -1,4 +1,4 @@
-import { ArrowRight, Coins, Gauge, Power, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, Coins, Gauge, MessageSquare, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { engineConfigured, getAutonomyStatus, getEvents, getLeaderboard, getPortfolio, getRecommendations } from "./data";
 import type { CostSlice, Event, LeaderboardRow } from "@cosmu/contracts-ts";
@@ -11,7 +11,8 @@ import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 import { EquityCurve } from "@/components/charts/equity-curve";
 import { AutonomyPanel } from "@/components/autonomy/autonomy-panel";
 import { NeedsYouInbox } from "@/components/autonomy/needs-you-inbox";
-import { formatPct, formatSigned, formatUsd } from "@/lib/utils";
+import { SLEEVE_VS_WALLET } from "@/lib/shared-content";
+import { formatEventKind, formatPct, formatSigned, formatUsd } from "@/lib/utils";
 
 const statusVariant: Record<string, "up" | "warn" | "down" | "info"> = {
   paper: "up",
@@ -20,21 +21,6 @@ const statusVariant: Record<string, "up" | "warn" | "down" | "info"> = {
   killed: "down"
 };
 
-// The one explanation that disambiguates the two money layers.
-const SLEEVE_VS_WALLET = (
-  <div className="space-y-1.5">
-    <p>
-      <span className="font-semibold text-foreground">Sleeve</span> — a Version&apos;s standardized $100k paper test, judged
-      in net-of-fee %.
-    </p>
-    <p>
-      <span className="font-semibold text-foreground">Wallet</span> — the single pooled paper account across every funded
-      Allocation. This is the headline number.
-    </p>
-  </div>
-);
-
-// Overview answers ONE question: are we making money + what needs me?
 export default async function OverviewPage() {
   const [
     { portfolio, connected },
@@ -59,13 +45,12 @@ export default async function OverviewPage() {
         </div>
         <NotConnected
           configured={engineConfigured}
-          what="The Overview shows the real pooled Wallet's net return and what needs you. No track record is fabricated — connect the engine to see live numbers."
+          what="The Overview shows the Wallet's net return and what needs you. Connect the engine to see live numbers."
         />
       </div>
     );
   }
 
-  // Honest: only compute a return when there is a real curve.
   const hasTrackRecord = portfolio.equity_curve.length >= 2;
   const equity = portfolio.equity_curve.at(-1)?.value ?? 0;
   const start = portfolio.equity_curve[0]?.value ?? 0;
@@ -74,7 +59,6 @@ export default async function OverviewPage() {
   const up = returnPct >= 0;
   const mode = moneyMode({ live: portfolio.live_enabled });
 
-  // Which Versions are working: top funded sleeves by net %, never the killed ones.
   const working = (leaderboard.rows as LeaderboardRow[])
     .filter((r) => r.status !== "killed")
     .sort((a, b) => b.net_pct - a.net_pct)
@@ -82,7 +66,7 @@ export default async function OverviewPage() {
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-7 lg:px-7">
-      {/* Headline money number — are we making money? */}
+      {/* Headline money number */}
       <section className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -105,13 +89,13 @@ export default async function OverviewPage() {
           ) : (
             <>
               <div className="mt-1.5 text-[2.75rem] font-semibold leading-none tracking-tight tabular text-quiet sm:text-5xl">—</div>
-              <div className="mt-2 text-[13px] text-quiet">No Wallet track record yet. Numbers appear once the engine starts trading on paper.</div>
+              <div className="mt-2 text-[13px] text-quiet">No track record yet. Numbers appear once the engine starts trading on paper.</div>
             </>
           )}
         </div>
       </section>
 
-      {/* Compact KPI row */}
+      {/* KPI row */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
           label="Wallet"
@@ -129,7 +113,7 @@ export default async function OverviewPage() {
         <Stat label="Daily opex" value={portfolio.costs.length ? formatUsd(costsTotal, 0) : "—"} accent="iris" />
       </section>
 
-      {/* Wallet equity chart */}
+      {/* Equity chart */}
       <section>
         <Card>
           <CardHeader>
@@ -147,7 +131,7 @@ export default async function OverviewPage() {
         </Card>
       </section>
 
-      {/* (b) What needs me — the actionable inbox + the gated 2-click Go-Live */}
+      {/* What needs me + autonomy controls */}
       <section className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -156,7 +140,7 @@ export default async function OverviewPage() {
               href="/steer"
               className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft transition-colors hover:underline"
             >
-              Open Steer <ArrowRight className="size-3.5" />
+              <MessageSquare className="size-3.5" /> Steer <ArrowRight className="size-3.5" />
             </Link>
           </CardHeader>
           <CardContent>
@@ -164,60 +148,24 @@ export default async function OverviewPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <div className="flex min-w-0 items-center gap-2">
-              <Power className="size-4 shrink-0 text-iris-soft" />
-              <CardTitle>Go live</CardTitle>
-            </div>
-            <MoneyState mode={mode} withInfo={false} />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-[12.5px] leading-relaxed text-muted">
-              Live trading is <span className="text-foreground">off by default</span>. Nothing autonomous moves real money:
-              arming needs the Gate to have passed on real data <span className="text-foreground">plus</span> your explicit
-              two-click confirmation.
-            </p>
-            <div className="flex items-center gap-2">
-              <Badge variant={autonomy.live_enabled && autonomyConnected ? "up" : "muted"}>
-                {autonomyConnected ? (autonomy.live_enabled ? "live armed" : "paper only") : "status unknown"}
-              </Badge>
-            </div>
-            <Link
-              href="/live"
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-strong px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2/60"
-            >
-              <Power className="size-4" /> Review &amp; arm on Live <ArrowRight className="size-3.5" />
-            </Link>
-          </CardContent>
-        </Card>
+        <AutonomyPanel initial={autonomy} connected={autonomyConnected} configured={engineConfigured} />
       </section>
 
-      {/* (c) What's the machine doing — autonomy command center + a short recent-activity line */}
+      {/* Recent activity + working Versions */}
       <section className="grid gap-3 lg:grid-cols-2">
-        <AutonomyPanel initial={autonomy} connected={autonomyConnected} configured={engineConfigured} />
-
         <Card>
           <CardHeader>
             <CardTitle>Recent activity</CardTitle>
-            <Link
-              href="/steer"
-              className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft transition-colors hover:underline"
-            >
-              Full stream <ArrowRight className="size-3.5" />
-            </Link>
           </CardHeader>
           <CardContent className="space-y-2.5">
             {events.length === 0 ? (
-              <EmptyState title="No activity yet." hint="The machine's actions (authored, gated, traded) appear here as it runs." />
+              <EmptyState title="No activity yet." hint="The machine's actions appear here as it runs." />
             ) : (
-              events.map((event: Event) => (
+              events.slice(0, 8).map((event: Event) => (
                 <div key={event.id} className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="truncate text-[12.5px] font-medium text-foreground">{event.kind.replace(/_/g, " ")}</div>
-                    <div className="text-[11px] text-quiet">
-                      {event.actor} · {event.ref_type ?? "system"}
-                    </div>
+                    <div className="truncate text-[12.5px] font-medium text-foreground">{formatEventKind(event.kind)}</div>
+                    <div className="text-[11px] text-quiet">{event.actor}</div>
                   </div>
                   <span className="size-1.5 shrink-0 rounded-full bg-info/80" />
                 </div>
@@ -225,10 +173,7 @@ export default async function OverviewPage() {
             )}
           </CardContent>
         </Card>
-      </section>
 
-      {/* Which Versions are working — top few by net %, detail lives in Strategies */}
-      <section>
         <Card>
           <CardHeader>
             <div className="flex min-w-0 items-center gap-1.5">
@@ -244,7 +189,7 @@ export default async function OverviewPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             {working.length === 0 ? (
-              <EmptyState title="No surviving Versions yet." hint="Survivors appear here once a Version's Sleeve clears the Gate." />
+              <EmptyState title="No surviving Versions yet." hint="Survivors appear here once a Version clears the Gate." />
             ) : (
               working.map((row) => (
                 <Link

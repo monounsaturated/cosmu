@@ -20,3 +20,28 @@ export function formatPct(value: number, digits = 2) {
 export function formatSigned(value: number) {
   return `${value >= 0 ? "+" : "-"}${formatUsd(Math.abs(value))}`;
 }
+
+const EVENT_LABELS: Record<string, string> = {
+  strategy_authored: "Strategy authored",
+  strategy_gated: "Strategy gated",
+  strategy_killed: "Strategy killed",
+  sleeve_opened: "Sleeve funded",
+  sleeve_defunded: "Sleeve defunded",
+  order_placed: "Order placed",
+  order_filled: "Order filled",
+  order_cancelled: "Order cancelled",
+  venue_toggle_changed: "Venue toggled",
+  cross_asset_gate_run: "Cross-asset gate ran",
+  drift_assessed: "Drift assessed",
+  live_armed: "Live trading armed",
+  live_disarmed: "Live trading disarmed",
+  recommendation_created: "Recommendation created",
+  recommendation_approved: "Recommendation approved",
+  recommendation_dismissed: "Recommendation dismissed",
+  autonomy_tick: "Autonomy cycle ran",
+  research_pass: "Research pass complete"
+};
+
+export function formatEventKind(kind: string): string {
+  return EVENT_LABELS[kind] ?? kind.replace(/_/g, " ");
+}

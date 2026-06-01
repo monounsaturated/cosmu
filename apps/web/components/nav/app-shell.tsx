@@ -6,15 +6,40 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Activity, Lock, PanelLeft, PanelLeftClose } from "lucide-react";
+import { Activity, Lock, PanelLeft, PanelLeftClose, ShieldCheck } from "lucide-react";
 import { CosmuMark, CosmuWordmark } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
 import { BottomNav, SideNavLinks } from "@/components/nav/app-nav";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { cn } from "@/lib/utils";
 
+const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
+type EngineStatus = { state: string; live: boolean; connected: boolean };
+
+function useEngineStatus(): EngineStatus {
+  const [status, setStatus] = useState<EngineStatus>({ state: "", live: false, connected: false });
+  useEffect(() => {
+    if (!ENGINE) return;
+    let alive = true;
+    async function probe() {
+      try {
+        const res = await fetch(`${ENGINE}/autonomy/status`);
+        if (!res.ok) return;
+        const data = await res.json() as { state?: string; live_enabled?: boolean };
+        if (alive) setStatus({ state: data.state ?? "idle", live: Boolean(data.live_enabled), connected: true });
+      } catch { /* stay disconnected */ }
+    }
+    probe();
+    const id = setInterval(probe, 15_000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+  return status;
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  const engine = useEngineStatus();
 
   useEffect(() => {
     try {
@@ -36,6 +61,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     });
   }
 
+  const statusLabel = engine.connected
+    ? engine.live ? "Live armed" : engine.state === "running" ? "Running · Paper" : "Paper"
+    : "Connecting…";
+  const statusColor = engine.live ? "text-info" : engine.connected ? "text-up" : "text-quiet";
+
   return (
     <div
       className={cn(
@@ -54,11 +84,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           {!collapsed && (
             <div className="rounded-lg border border-border/70 bg-surface-2/40 p-3">
               <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
-                <Lock className="size-3.5 text-warn" />
-                Capital valve
+                <ShieldCheck className="size-3.5 text-iris-soft" />
+                Safety
               </div>
               <p className="mt-1.5 text-[11.5px] leading-snug text-quiet">
-                LLM proposes, deterministic disposes. Live orders gated behind the toggle.
+                Live trading is off until you arm it. The Gate decides what gets money — never the model.
               </p>
             </div>
           )}
@@ -81,18 +111,19 @@ export function AppShell({ children }: { children: ReactNode }) {
               {collapsed ? <PanelLeft className="size-[18px]" /> : <PanelLeftClose className="size-[18px]" />}
             </button>
             <span className="relative flex size-2">
-              <span className="animate-pulse-dot absolute inline-flex size-2 rounded-full bg-up/70" />
-              <span className="relative inline-flex size-2 rounded-full bg-up" />
+              <span className={cn("animate-pulse-dot absolute inline-flex size-2 rounded-full", engine.connected ? "bg-up/70" : "bg-quiet/50")} />
+              <span className={cn("relative inline-flex size-2 rounded-full", engine.connected ? "bg-up" : "bg-quiet")} />
             </span>
-            <Activity className="size-4 text-up" />
-            <span className="hidden sm:inline">Lab discovering · Wallet on paper · Gate deterministic</span>
-            <span className="sm:hidden">Paper · Lab</span>
+            <Activity className={cn("size-4", statusColor)} />
+            <span className={cn("hidden sm:inline", statusColor)}>{statusLabel}</span>
+            <span className={cn("sm:hidden", statusColor)}>{engine.connected ? (engine.live ? "Live" : "Paper") : "…"}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="warn">
-              <Lock className="size-3" />
-              Live off by default
-            </Badge>
+            {engine.live ? (
+              <Badge variant="info"><Activity className="size-3" /> Live</Badge>
+            ) : (
+              <Badge variant="muted"><Lock className="size-3" /> Paper only</Badge>
+            )}
             <ThemeToggle />
           </div>
         </header>

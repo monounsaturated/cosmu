@@ -1,4 +1,5 @@
-import { ScrollText } from "lucide-react";
+import { ArrowLeft, ScrollText } from "lucide-react";
+import Link from "next/link";
 import { engineConfigured, getStrategy } from "../../data";
 import type { Backtest, Execution, Point } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,11 +66,12 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
   return (
     <div className="mx-auto max-w-[1200px] space-y-6 px-5 py-7 lg:px-7">
       <div>
+        <Link href="/strategies" className="mb-2 inline-flex items-center gap-1 text-[12.5px] text-muted transition-colors hover:text-foreground">
+          <ArrowLeft className="size-3.5" /> All Strategies
+        </Link>
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">{strategy.name}</h1>
         <div className="mt-1.5 flex items-center gap-2 font-mono text-[12px] text-quiet">
           <span>{strategy.version_id}</span>
-          <span className="text-border-strong">·</span>
-          <span className="font-sans text-muted">deterministic evidence</span>
         </div>
       </div>
 
