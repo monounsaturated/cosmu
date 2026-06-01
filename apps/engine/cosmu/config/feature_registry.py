@@ -46,3 +46,12 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
 def feature_names() -> set[str]:
     return {feature.name for feature in FEATURE_REGISTRY if feature.enabled}
 
+
+def features_for(asset_classes: list[str]) -> list[FeatureDefinition]:
+    wanted = set(asset_classes)
+    return [
+        feature
+        for feature in FEATURE_REGISTRY
+        if feature.enabled and (wanted & set(feature.asset_classes))
+    ]
+

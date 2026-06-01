@@ -2,8 +2,10 @@
 
 import type {
   Backtest,
+  CohortSummaryResponse,
   Event,
   LeaderboardResponse,
+  PopulationResponse,
   PortfolioResponse,
   Recommendation,
   StrategyDetailResponse
@@ -103,6 +105,50 @@ export const fallbackEvents: Event[] = [
   { id: 100, ts: "now-4m", actor: "agent", kind: "spec_authored", ref_type: "strategy_version", ref_id: "sv-btc", payload: { validated: true } },
   { id: 99, ts: "now-8m", actor: "master", kind: "gate_passed", ref_type: "backtest", ref_id: "bt-wfo", payload: { deflated_sharpe: 1.21 } }
 ];
+
+export const fallbackPopulation: PopulationResponse = {
+  total: 412,
+  paper: 9,
+  killed: 403,
+  by_origin: { seed: 16, mutation: 261, wildcard: 118, pine: 17 },
+  by_lane: { seed: 16, exploit: 261, explore: 118, pine: 17 },
+  kill_rate: 0.978,
+  graveyard: [
+    { version_id: "g1", name: "Trend momentum × RSI fade", origin: "wildcard", kill_reason: "min_trades", deflated_sharpe: 0.71 },
+    { version_id: "g2", name: "Funding carry · wide", origin: "mutation", kill_reason: "pbo,holdout", deflated_sharpe: 0.42 },
+    { version_id: "g3", name: "Oversold mean reversion · +filter", origin: "mutation", kill_reason: "folds_positive", deflated_sharpe: 0.28 },
+    { version_id: "g4", name: "Wildcard feature combo", origin: "wildcard", kill_reason: "max_drawdown", deflated_sharpe: 0.11 },
+    { version_id: "g5", name: "RSI reversal (pine)", origin: "pine", kill_reason: "holdout", deflated_sharpe: -0.04 }
+  ]
+};
+
+export const fallbackCohort: CohortSummaryResponse = {
+  cohort_id: "demo-cohort",
+  seed: 7,
+  generated: 120,
+  invalid: 0,
+  killed: 113,
+  passed: 7,
+  kill_rate: 0.9417,
+  lanes: { seed: 4, exploit: 81, explore: 35, pine: 0 },
+  pine_imported: 0,
+  survivors: [
+    { version_id: "s1", name: "Trend momentum × Cross-asset", origin: "wildcard", lane: "explore", deflated_sharpe: 2.43, oos_return_pct: 18.82, passed: true, reasons: [] },
+    { version_id: "s2", name: "Oversold mean reversion × Funding", origin: "wildcard", lane: "explore", deflated_sharpe: 2.19, oos_return_pct: 16.98, passed: true, reasons: [] },
+    { version_id: "s3", name: "Funding-pressure carry · derisk", origin: "mutation", lane: "exploit", deflated_sharpe: 1.64, oos_return_pct: 11.4, passed: true, reasons: [] },
+    { version_id: "s4", name: "Trend-confirmed momentum", origin: "seed", lane: "seed", deflated_sharpe: 1.38, oos_return_pct: 9.2, passed: true, reasons: [] }
+  ],
+  graveyard: [
+    { version_id: "k1", name: "Trend momentum × RSI", origin: "wildcard", lane: "explore", deflated_sharpe: 0.74, oos_return_pct: 5.1, passed: false, reasons: ["min_trades"] },
+    { version_id: "k2", name: "Cross-asset breakout · wide", origin: "mutation", lane: "exploit", deflated_sharpe: 0.39, oos_return_pct: 3.0, passed: false, reasons: ["holdout"] },
+    { version_id: "k3", name: "Wildcard feature combo", origin: "wildcard", lane: "explore", deflated_sharpe: -0.12, oos_return_pct: -1.4, passed: false, reasons: ["pbo", "folds_positive"] }
+  ],
+  pine_notes: []
+};
+
+export function getPopulation(): Promise<PopulationResponse> {
+  return getJson("/population", fallbackPopulation);
+}
 
 export function getPortfolio(): Promise<PortfolioResponse> {
   return getJson("/portfolio", fallbackPortfolio);

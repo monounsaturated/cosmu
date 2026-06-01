@@ -25,6 +25,15 @@ class GateSettings(BaseModel):
     holdout_min_deflated_sharpe: Decimal = Decimal("0")
 
 
+class EvolutionSettings(BaseModel):
+    cohort_size: int = 64
+    explore_pct: Decimal = Decimal("0.30")
+    seed_lane_count: int = 6
+    survive_top: int = 6
+    max_cohort_size: int = 400
+    default_seed: int = 7
+
+
 class LiveSettings(BaseModel):
     enabled: bool = False
     per_strategy_live_cap: Decimal = Decimal("2500")
@@ -61,6 +70,7 @@ class Settings(BaseSettings):
     gates: GateSettings = Field(default_factory=GateSettings)
     live: LiveSettings = Field(default_factory=LiveSettings)
     risk: RiskSettings = Field(default_factory=RiskSettings)
+    evolution: EvolutionSettings = Field(default_factory=EvolutionSettings)
 
     @property
     def sqlite_path(self) -> Path:

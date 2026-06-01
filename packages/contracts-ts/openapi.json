@@ -87,6 +87,139 @@
         "title": "Backtest",
         "type": "object"
       },
+      "CohortRunRequest": {
+        "properties": {
+          "cohort_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cohort Size"
+          },
+          "explore_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explore Pct"
+          },
+          "pine_scripts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pine Scripts"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "title": "CohortRunRequest",
+        "type": "object"
+      },
+      "CohortSummaryResponse": {
+        "properties": {
+          "cohort_id": {
+            "title": "Cohort Id",
+            "type": "string"
+          },
+          "generated": {
+            "title": "Generated",
+            "type": "integer"
+          },
+          "graveyard": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluatedStrategy"
+            },
+            "title": "Graveyard",
+            "type": "array"
+          },
+          "invalid": {
+            "title": "Invalid",
+            "type": "integer"
+          },
+          "kill_rate": {
+            "title": "Kill Rate",
+            "type": "number"
+          },
+          "killed": {
+            "title": "Killed",
+            "type": "integer"
+          },
+          "lanes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Lanes",
+            "type": "object"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "pine_imported": {
+            "title": "Pine Imported",
+            "type": "integer"
+          },
+          "pine_notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pine Notes",
+            "type": "array"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "survivors": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluatedStrategy"
+            },
+            "title": "Survivors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cohort_id",
+          "seed",
+          "generated",
+          "invalid",
+          "killed",
+          "passed",
+          "kill_rate",
+          "lanes",
+          "pine_imported",
+          "survivors",
+          "graveyard",
+          "pine_notes"
+        ],
+        "title": "CohortSummaryResponse",
+        "type": "object"
+      },
       "CommandRequest": {
         "properties": {
           "text": {
@@ -140,6 +273,57 @@
           "amount"
         ],
         "title": "CostSlice",
+        "type": "object"
+      },
+      "EvaluatedStrategy": {
+        "properties": {
+          "deflated_sharpe": {
+            "title": "Deflated Sharpe",
+            "type": "number"
+          },
+          "lane": {
+            "title": "Lane",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "oos_return_pct": {
+            "title": "Oos Return Pct",
+            "type": "number"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "origin",
+          "lane",
+          "deflated_sharpe",
+          "oos_return_pct",
+          "passed",
+          "reasons"
+        ],
+        "title": "EvaluatedStrategy",
         "type": "object"
       },
       "Event": {
@@ -266,6 +450,39 @@
         "title": "Execution",
         "type": "object"
       },
+      "GraveyardRow": {
+        "properties": {
+          "deflated_sharpe": {
+            "title": "Deflated Sharpe",
+            "type": "number"
+          },
+          "kill_reason": {
+            "title": "Kill Reason",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "origin",
+          "kill_reason",
+          "deflated_sharpe"
+        ],
+        "title": "GraveyardRow",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -343,6 +560,75 @@
         "title": "LeaderboardRow",
         "type": "object"
       },
+      "PineTranslateRequest": {
+        "properties": {
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "PineTranslateRequest",
+        "type": "object"
+      },
+      "PineTranslateResponse": {
+        "properties": {
+          "conditions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Conditions",
+            "type": "array"
+          },
+          "indicators": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Indicators",
+            "type": "array"
+          },
+          "lifted_params": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Lifted Params",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "param_count": {
+            "title": "Param Count",
+            "type": "integer"
+          },
+          "spec": {
+            "additionalProperties": true,
+            "title": "Spec",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "param_count",
+          "indicators",
+          "conditions",
+          "notes",
+          "lifted_params",
+          "spec"
+        ],
+        "title": "PineTranslateResponse",
+        "type": "object"
+      },
       "Point": {
         "properties": {
           "ts": {
@@ -359,6 +645,58 @@
           "value"
         ],
         "title": "Point",
+        "type": "object"
+      },
+      "PopulationResponse": {
+        "properties": {
+          "by_lane": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Lane",
+            "type": "object"
+          },
+          "by_origin": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Origin",
+            "type": "object"
+          },
+          "graveyard": {
+            "items": {
+              "$ref": "#/components/schemas/GraveyardRow"
+            },
+            "title": "Graveyard",
+            "type": "array"
+          },
+          "kill_rate": {
+            "title": "Kill Rate",
+            "type": "number"
+          },
+          "killed": {
+            "title": "Killed",
+            "type": "integer"
+          },
+          "paper": {
+            "title": "Paper",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "paper",
+          "killed",
+          "by_origin",
+          "by_lane",
+          "kill_rate",
+          "graveyard"
+        ],
+        "title": "PopulationResponse",
         "type": "object"
       },
       "PortfolioResponse": {
@@ -696,6 +1034,44 @@
         "summary": "Events"
       }
     },
+    "/evolution/run": {
+      "post": {
+        "operationId": "evolution_run_evolution_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CohortRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CohortSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evolution Run"
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health_health_get",
@@ -734,6 +1110,24 @@
           }
         },
         "summary": "Leaderboard"
+      }
+    },
+    "/population": {
+      "get": {
+        "operationId": "population_population_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PopulationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Population"
       }
     },
     "/portfolio": {
@@ -841,6 +1235,44 @@
           }
         },
         "summary": "Strategy Detail"
+      }
+    },
+    "/strategy/pine": {
+      "post": {
+        "operationId": "strategy_pine_strategy_pine_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PineTranslateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PineTranslateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategy Pine"
       }
     },
     "/toggle/live": {

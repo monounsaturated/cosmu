@@ -4,6 +4,7 @@ import { Inter, Geist_Mono } from "next/font/google";
 import {
   Activity,
   ChartCandlestick,
+  Dna,
   LayoutDashboard,
   Lock,
   MessagesSquare,
@@ -22,6 +23,7 @@ export const metadata = {
 
 const nav = [
   { href: "/#dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/farm", label: "Farm", icon: Dna },
   { href: "/#leaderboard", label: "Leaderboard", icon: Trophy },
   { href: "/strategy/sv-btc", label: "Strategy", icon: ChartCandlestick },
   { href: "/#console", label: "Console", icon: MessagesSquare }

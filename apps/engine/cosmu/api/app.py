@@ -12,15 +12,22 @@ from fastapi import FastAPI, HTTPException
 from cosmu.api.models import (
     Allocation,
     Backtest,
+    CohortRunRequest,
+    CohortSummaryResponse,
     CommandRequest,
     CommandResponse,
     CostSlice,
+    EvaluatedStrategy,
     Event,
     EventsResponse,
     Execution,
+    GraveyardRow,
     LeaderboardResponse,
     LeaderboardRow,
+    PineTranslateRequest,
+    PineTranslateResponse,
     Point,
+    PopulationResponse,
     PortfolioResponse,
     Recommendation,
     RecommendationsResponse,
@@ -29,8 +36,13 @@ from cosmu.api.models import (
     ToggleResponse,
 )
 from cosmu.config.settings import get_settings
+from cosmu.evolution.loop import CohortSummary, FarmLoop
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.spine.engine import EngineFacade
+from cosmu.strategy.pine import translate_pine
+
+
+ORIGIN_TO_LANE = {"seed": "seed", "mutation": "exploit", "wildcard": "explore", "pine": "pine", "agent": "exploit"}
 
 
 settings = get_settings()
@@ -57,6 +69,108 @@ def health() -> dict[str, str]:
 @app.post("/spine/backtest")
 def spine_backtest() -> dict[str, str | int | bool]:
     return EngineFacade.create(settings).run_backtest(seed=13)
+
+
+def _summary_to_response(summary: CohortSummary) -> CohortSummaryResponse:
+    def rows(items: list) -> list[EvaluatedStrategy]:
+        return [
+            EvaluatedStrategy(
+                version_id=e.version_id,
+                name=e.name,
+                origin=e.origin,
+                lane=e.lane,
+                deflated_sharpe=round(e.deflated_sharpe, 4),
+                oos_return_pct=round(e.oos_return_pct, 3),
+                passed=e.passed,
+                reasons=e.reasons,
+            )
+            for e in items
+        ]
+
+    return CohortSummaryResponse(
+        cohort_id=summary.cohort_id,
+        seed=summary.seed,
+        generated=summary.generated,
+        invalid=summary.invalid,
+        killed=summary.killed,
+        passed=summary.passed,
+        kill_rate=summary.kill_rate,
+        lanes=summary.lanes,
+        pine_imported=summary.pine_imported,
+        survivors=rows(summary.survivors),
+        graveyard=rows(summary.graveyard),
+        pine_notes=summary.pine_notes,
+    )
+
+
+@app.post("/evolution/run", response_model=CohortSummaryResponse)
+def evolution_run(request: CohortRunRequest) -> CohortSummaryResponse:
+    loop = FarmLoop(settings=settings, store=store)
+    summary = loop.run_cohort(
+        seed=request.seed,
+        cohort_size=request.cohort_size,
+        explore_pct=request.explore_pct,
+        pine_scripts=request.pine_scripts,
+    )
+    return _summary_to_response(summary)
+
+
+@app.get("/population", response_model=PopulationResponse)
+def population() -> PopulationResponse:
+    counts = store.rows("SELECT status, origin, COUNT(*) AS n FROM strategy_versions GROUP BY status, origin")
+    total = sum(int(r["n"]) for r in counts)
+    paper = sum(int(r["n"]) for r in counts if r["status"] in ("paper", "live"))
+    killed = sum(int(r["n"]) for r in counts if r["status"] == "killed")
+    by_origin: dict[str, int] = {}
+    by_lane: dict[str, int] = {}
+    for r in counts:
+        origin = r["origin"] or "unknown"
+        by_origin[origin] = by_origin.get(origin, 0) + int(r["n"])
+        lane = ORIGIN_TO_LANE.get(origin, "exploit")
+        by_lane[lane] = by_lane.get(lane, 0) + int(r["n"])
+    grave = store.rows(
+        """
+        SELECT sv.id, s.name, sv.origin, sv.kill_reason, b.deflated_sharpe
+        FROM strategy_versions sv
+        JOIN strategies s ON s.id = sv.strategy_id
+        LEFT JOIN backtests b ON b.strategy_version_id = sv.id
+        WHERE sv.status = 'killed'
+        ORDER BY CAST(COALESCE(b.deflated_sharpe, -99) AS REAL) DESC
+        LIMIT 40
+        """
+    )
+    return PopulationResponse(
+        total=total,
+        paper=paper,
+        killed=killed,
+        by_origin=by_origin,
+        by_lane=by_lane,
+        kill_rate=round(killed / total, 4) if total else 0.0,
+        graveyard=[
+            GraveyardRow(
+                version_id=r["id"],
+                name=r["name"],
+                origin=r["origin"] or "unknown",
+                kill_reason=r["kill_reason"] or "unknown",
+                deflated_sharpe=float(r["deflated_sharpe"] or 0),
+            )
+            for r in grave
+        ],
+    )
+
+
+@app.post("/strategy/pine", response_model=PineTranslateResponse)
+def strategy_pine(request: PineTranslateRequest) -> PineTranslateResponse:
+    tr = translate_pine(request.source)
+    return PineTranslateResponse(
+        name=tr.spec.name,
+        param_count=len(tr.spec.param_space),
+        indicators=tr.indicators,
+        conditions=tr.conditions,
+        notes=tr.notes,
+        lifted_params=tr.lifted_params,
+        spec=tr.spec.model_dump(mode="json"),
+    )
 
 
 @app.get("/portfolio", response_model=PortfolioResponse)

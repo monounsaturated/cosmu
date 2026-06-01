@@ -20,6 +20,28 @@ export interface Backtest {
   win_rate: number;
 }
 
+export interface CohortRunRequest {
+  cohort_size?: number | null;
+  explore_pct?: number | null;
+  pine_scripts?: string[] | null;
+  seed?: number | null;
+}
+
+export interface CohortSummaryResponse {
+  cohort_id: string;
+  generated: number;
+  graveyard: EvaluatedStrategy[];
+  invalid: number;
+  kill_rate: number;
+  killed: number;
+  lanes: Record<string, unknown>;
+  passed: number;
+  pine_imported: number;
+  pine_notes: string[];
+  seed: number;
+  survivors: EvaluatedStrategy[];
+}
+
 export interface CommandRequest {
   text: string;
 }
@@ -33,6 +55,17 @@ export interface CommandResponse {
 export interface CostSlice {
   amount: number;
   category: string;
+}
+
+export interface EvaluatedStrategy {
+  deflated_sharpe: number;
+  lane: string;
+  name: string;
+  oos_return_pct: number;
+  origin: string;
+  passed: boolean;
+  reasons: string[];
+  version_id: string;
 }
 
 export interface Event {
@@ -59,6 +92,14 @@ export interface Execution {
   venue: string | null;
 }
 
+export interface GraveyardRow {
+  deflated_sharpe: number;
+  kill_reason: string;
+  name: string;
+  origin: string;
+  version_id: string;
+}
+
 export interface HTTPValidationError {
   detail?: ValidationError[];
 }
@@ -78,9 +119,33 @@ export interface LeaderboardRow {
   version_id: string;
 }
 
+export interface PineTranslateRequest {
+  source: string;
+}
+
+export interface PineTranslateResponse {
+  conditions: string[];
+  indicators: string[];
+  lifted_params: Record<string, unknown>;
+  name: string;
+  notes: string[];
+  param_count: number;
+  spec: Record<string, unknown>;
+}
+
 export interface Point {
   ts: string;
   value: number;
+}
+
+export interface PopulationResponse {
+  by_lane: Record<string, unknown>;
+  by_origin: Record<string, unknown>;
+  graveyard: GraveyardRow[];
+  kill_rate: number;
+  killed: number;
+  paper: number;
+  total: number;
 }
 
 export interface PortfolioResponse {
