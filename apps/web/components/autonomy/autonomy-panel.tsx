@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MoneyState, moneyMode } from "@/components/ui/money-state";
 
-const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
+const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "never";
@@ -85,7 +85,7 @@ export function AutonomyPanel({
       if (!ENGINE) {
         setStatus(prev);
         setConnected(false);
-        setNote("Engine not connected — set ENGINE_API_URL to pause or resume the machine.");
+        setNote("Engine not connected — set API_BASE_URL to pause or resume the machine.");
         return;
       }
       try {
@@ -109,7 +109,7 @@ export function AutonomyPanel({
     startTick(async () => {
       if (!ENGINE) {
         setConnected(false);
-        setNote("Engine not connected — set ENGINE_API_URL to run a cycle.");
+        setNote("Engine not connected — set API_BASE_URL to run a cycle.");
         return;
       }
       try {
@@ -202,7 +202,7 @@ export function AutonomyPanel({
               Engine not connected — machine status is unknown, not fabricated.
               {!configured ? (
                 <>
-                  {" "}Set <code className="font-mono text-iris-soft">ENGINE_API_URL</code>.
+                  {" "}Set <code className="font-mono text-iris-soft">API_BASE_URL</code>.
                 </>
               ) : null}
             </span>

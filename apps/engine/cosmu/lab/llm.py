@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+XAI_URL = "https://api.x.ai/v1/chat/completions"  # xAI (Grok) — OpenAI-compatible, same request shape
 
 # The base templates the model may pick from. These map 1:1 onto the deterministic seed builders in
 # lab/author so the proposal only ever STEERS the existing magic-number-free templates — it cannot invent
@@ -148,10 +149,11 @@ def propose_structure(
     return ProposalResult(proposal=None, model_id=model_id, attempts=attempts, notes=notes)
 
 
-def openrouter_chat(api_key: str | None, *, timeout: float = 30.0) -> ChatFn:
-    """Build the REAL OpenRouter chat seam over stdlib urllib (no SDK). Returns a ChatFn that posts a single
-    completion and returns the assistant text. With no key it returns a seam that always yields None so the
-    caller uses the deterministic path. Secrets stay in the Authorization header — never in the prompt/payload."""
+def openrouter_chat(api_key: str | None, *, url: str = OPENROUTER_URL, timeout: float = 30.0) -> ChatFn:
+    """Build the REAL chat seam over stdlib urllib (no SDK) for any OpenAI-compatible endpoint — OpenRouter
+    (default) or xAI (`url=XAI_URL`). Returns a ChatFn that posts a single completion and returns the assistant
+    text. With no key it yields None so the caller uses the deterministic path. Secrets stay in the
+    Authorization header — never in the prompt/payload."""
 
     def chat(model_id: str, prompt: str) -> str | None:
         if not api_key:
@@ -164,7 +166,7 @@ def openrouter_chat(api_key: str | None, *, timeout: float = 30.0) -> ChatFn:
             }
         ).encode("utf-8")
         req = urllib.request.Request(
-            OPENROUTER_URL,
+            url,
             data=body,
             method="POST",
             headers={

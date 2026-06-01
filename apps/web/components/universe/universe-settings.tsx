@@ -10,7 +10,7 @@ import type { AssetClassState, UniverseResponse, VenueState } from "@cosmu/contr
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
+const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 const OFFLINE: UniverseResponse = {
   venues: [

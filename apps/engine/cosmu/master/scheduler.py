@@ -166,7 +166,7 @@ def run_tick(
         store,
         n=n,
         seed=seed,
-        llm_enabled=bool(settings.openrouter_api_key) or chat is not None,
+        llm_enabled=bool(settings.llm_api_key) or chat is not None,
         market_data=market_data,
         edge_market=edge_market,
         chat=chat,
@@ -223,7 +223,7 @@ def run_tick(
             "ingested": ingested,
             "survivors": survivor_names,
             "live_enabled": live,  # audited every tick: the tick never moves real money
-            "llm": "on" if (settings.openrouter_api_key or chat is not None) else "off",
+            "llm": "on" if (settings.llm_api_key or chat is not None) else "off",
         },
     )
     return TickReport(

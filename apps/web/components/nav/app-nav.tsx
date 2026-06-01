@@ -46,7 +46,7 @@ const liveItem = navItems.find((i) => i.href === "/live")!;
 // The More sheet holds the rest (Live, Steer, Costs, Settings) — i.e. anything not a primary tab.
 const moreItems = navItems.filter((i) => !PRIMARY_HREFS.includes(i.href));
 
-const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
+const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";

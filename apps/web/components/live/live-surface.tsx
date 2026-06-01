@@ -29,7 +29,7 @@ import { Stat } from "@/components/ui/stat";
 import { MoneyState, moneyMode } from "@/components/ui/money-state";
 import { cn, formatSigned, formatUsd } from "@/lib/utils";
 
-const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
+const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 const DEFAULT_CAPS: Caps = { per_strategy_cap: 250, global_cap: 1000, max_daily_loss: 100 };
 
@@ -82,7 +82,7 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { connec
     startTransition(async () => {
       if (!ENGINE) {
         setConnected(false);
-        setNote("Engine not connected — set ENGINE_API_URL. Arming requires a connected engine with the Gate passed.");
+        setNote("Engine not connected — set API_BASE_URL. Arming requires a connected engine with the Gate passed.");
         return;
       }
       try {

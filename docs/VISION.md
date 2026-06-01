@@ -45,7 +45,7 @@
 
 ## 1. What the user experiences (the product)
 
-A small, beautiful app with **four surfaces**. You mostly watch and occasionally chat; the machine farms strategies and proactively pings you.
+A small, beautiful app with **a few surfaces** (lean — collapse toward ~4–6, never 10; if a page doesn't help you *decide* or *earn*, it isn't a page). You mostly watch and occasionally chat; the machine runs strategies and proactively pings you. **Complex, rare, or heavy operations are NOT new app pages** — they live in Claude Code + `docs/` (author/migrate/research via a coding agent). The app stays a clean *monitoring + steering* surface; customization is config, not clutter.
 
 1. **Dashboard** — the pooled wallet: net equity curve (paper + live), **P&L net of all costs**, allocation across strategies/venues, a compact **Costs card** (infra · hosting · data/APIs · LLM/sandbox, drill-down per-category & per-strategy), opex-vs-profit gauge, and the **global live toggle (off by default)**.
 2. **Leaderboard** — every strategy-version on its **own standardized $100k sleeve**, ranked by **risk-adjusted %** (out-of-sample), with lineage, status (alive / paper / live / killed), and why.
@@ -144,11 +144,14 @@ The brain is genuinely autonomous *inside the lab*: it designs experiments, writ
 
 | Tier | Used for | Example models (configurable) |
 |------|----------|-------------------------------|
-| **Frontier / reasoning** | hard authoring, ML design, deep audits, judging candidates | Claude **Opus 4.8**, OpenAI **GPT-5.5 / Codex-max**, **Grok** latest |
-| **Workhorse / mid** | routine authoring, summarization, regime notes, edits | Claude Sonnet, GPT-5 mini, Grok mini, DeepSeek-V3 |
-| **Cheap / open / bulk** | mass mutation drafting, labeling, bulk reads, ingestion | DeepSeek, Qwen, Nous **Hermes-4** |
+| **Coding-agent (subscription)** | heavy, occasional, NON-realtime work: batch strategy authoring, deep research, the data-factory passes, migrations, refactors | **Claude Code / Cursor** (flat sub — not per-token) |
+| **Frontier / reasoning (API)** | hard novel judgment INSIDE the 24/7 loop where a human can't be triggered | Claude **Opus**, GPT, **Grok** latest — used sparingly |
+| **Workhorse / mid (API)** | routine authoring, summarization, regime notes | Sonnet, GPT-mini, Grok-mini, **DeepSeek-V3** |
+| **Cheap / open / free (API, DEFAULT)** | the 24/7 autonomous loop: mass mutation drafting, labeling, bulk reads, ingestion | **DeepSeek, Qwen, Hermes** — cheap/free first |
 
-**Routing policy (deterministic):** task declares difficulty + budget → router picks the cheapest tier clearing a quality bar, escalates on low confidence, respects the **daily spend cap**. *Cheap generates breadth, frontier judges depth.*
+**One gateway = OpenRouter** (one key, every model — Qwen/DeepSeek/Grok/Claude/GPT — swap by config, not code). **Default to the cheapest/free tier**; escalate to a smart model only when confidence is low, under the **daily cap**.
+
+**Cost rule (the lever):** **24/7 + cheap + deterministic → cheap/free API tier; heavy + occasional + judgment → Claude Code on the flat subscription** (the sub beats per-token for big batch/research work). The system is therefore **steerable by any coding agent**: it exposes typed seams — `StrategySpec`, `strategies/inbox/`, **skills in `.claude/skills/`**, the engine API + CLIs — so Claude Code/Cursor *drives* the heavy LLM work directly instead of the app paying API tokens for it. `docs/` names which tasks are coding-agent-driven vs automatic.
 
 ---
 

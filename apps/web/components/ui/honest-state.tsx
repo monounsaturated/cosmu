@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import { PlugZap, Inbox } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
-// Shown when ENGINE_API_URL is unset or the engine fetch failed. `configured` distinguishes
+// Shown when API_BASE_URL is unset or the engine fetch failed. `configured` distinguishes
 // "you haven't pointed the app at an engine" from "the engine is down right now".
 export function NotConnected({ configured = false, what }: { configured?: boolean; what?: ReactNode }) {
   return (
@@ -25,7 +25,7 @@ export function NotConnected({ configured = false, what }: { configured?: boolea
         </div>
         {!configured ? (
           <code className="rounded-md border border-border/70 bg-background/60 px-2.5 py-1.5 font-mono text-[11.5px] text-iris-soft">
-            set ENGINE_API_URL to your engine
+            set API_BASE_URL to your engine
           </code>
         ) : (
           <p className="text-[11.5px] text-quiet">The engine is configured but did not respond. Once it is up, real data appears here.</p>
@@ -64,7 +64,7 @@ export function NotConnectedBanner({ configured = false }: { configured?: boolea
         Engine not connected — showing honest empty states, not fabricated numbers.
         {!configured ? (
           <>
-            {" "}Set <code className="font-mono text-iris-soft">ENGINE_API_URL</code>.
+            {" "}Set <code className="font-mono text-iris-soft">API_BASE_URL</code>.
           </>
         ) : null}
       </span>

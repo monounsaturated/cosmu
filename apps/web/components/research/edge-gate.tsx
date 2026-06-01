@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
+const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 function pct(x: number) {
   return `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { formatPct } from "@/lib/utils";
 
-const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
+const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 const laneStyle: Record<string, "iris" | "up" | "warn" | "info"> = {
   seed: "info",

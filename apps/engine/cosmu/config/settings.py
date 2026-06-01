@@ -98,7 +98,14 @@ class Settings(BaseSettings):
     base_currency: str = "USD"
     paper_bankroll: Decimal = Decimal("100000")
     openrouter_api_key: str | None = Field(default=None, repr=False)
+    # LLM author: xAI (Grok) is preferred when XAI_API_KEY is set (already on Railway) — most efficient,
+    # no new key; OpenRouter is the fallback. Both are OpenAI-compatible (same request shape).
+    xai_api_key: str | None = Field(default=None, repr=False)
     lunarcrush_api_key: str | None = Field(default=None, repr=False)
+    # Ops toggles (match the existing Railway variable names): the in-process scheduler/autonomy loop
+    # and the deterministic risk guardian. Default on; flip to false to freeze the machine.
+    scheduler_enabled: bool = True
+    guardian_enabled: bool = True
     # Free cross-asset transfer sources: FRED needs a (free) key; Polymarket needs a real market token id
     # (not a secret). Wired into the ingest providers so setting them is all it takes to go live.
     fred_api_key: str | None = Field(default=None, repr=False)
@@ -113,6 +120,20 @@ class Settings(BaseSettings):
     live: LiveSettings = Field(default_factory=LiveSettings)
     risk: RiskSettings = Field(default_factory=RiskSettings)
     evolution: EvolutionSettings = Field(default_factory=EvolutionSettings)
+
+    @property
+    def llm_provider(self) -> str | None:
+        """Which LLM provider is live: xAI if XAI_API_KEY is set (preferred — already on Railway), else
+        OpenRouter, else None (deterministic template authoring). Centralizes the choice in one place."""
+        if self.xai_api_key:
+            return "xai"
+        if self.openrouter_api_key:
+            return "openrouter"
+        return None
+
+    @property
+    def llm_api_key(self) -> str | None:
+        return self.xai_api_key or self.openrouter_api_key
 
     @property
     def sqlite_path(self) -> Path:

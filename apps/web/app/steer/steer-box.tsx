@@ -13,7 +13,7 @@ import type { CommandResponse } from "@cosmu/contracts-ts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
-const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
+const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 type Reply = { md: string; applied: boolean; needsApproval: boolean } | { md: string; offline: true };
 
@@ -29,7 +29,7 @@ export function SteerBox() {
     setReply(null);
     startSteer(async () => {
       if (!ENGINE) {
-        setReply({ md: "Engine not connected — set ENGINE_API_URL to send steer commands.", offline: true });
+        setReply({ md: "Engine not connected — set API_BASE_URL to send steer commands.", offline: true });
         return;
       }
       try {
@@ -52,7 +52,7 @@ export function SteerBox() {
     setMlReply(null);
     startAsk(async () => {
       if (!ENGINE) {
-        setMlReply("Engine not connected — set ENGINE_API_URL to ask the survival model.");
+        setMlReply("Engine not connected — set API_BASE_URL to ask the survival model.");
         return;
       }
       try {

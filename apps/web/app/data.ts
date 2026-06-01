@@ -3,7 +3,7 @@
 // CRITICAL — NEVER fabricate a track record. There is no "demo" money state in the product.
 //
 // HONESTY MODEL: every fetch returns `{ data, connected }`.
-//   - connected === false  -> the engine is unreachable (no ENGINE_API_URL, fetch failed, or non-OK).
+//   - connected === false  -> the engine is unreachable (no API_BASE_URL, fetch failed, or non-OK).
 //                             The UI renders an HONEST "Engine not connected" state, never numbers.
 //   - connected === true   -> real engine data. It may still be structurally EMPTY (e.g. no
 //                             survivors yet); the UI renders an honest "nothing yet" empty state.
@@ -41,9 +41,9 @@ export type {
   CostsResponse
 };
 
-const baseUrl = process.env.ENGINE_API_URL;
+const baseUrl = process.env.API_BASE_URL;
 
-// Whether an ENGINE_API_URL is configured at all. Surfaces use this to tell the operator EXACTLY
+// Whether an API_BASE_URL is configured at all. Surfaces use this to tell the operator EXACTLY
 // what to set when the engine isn't connected (rather than implying a transient outage).
 export const engineConfigured = Boolean(baseUrl);
 

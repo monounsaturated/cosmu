@@ -12,7 +12,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from cosmu.config.settings import SpendSettings
-from cosmu.lab.llm import ChatFn, ProposalResult, openrouter_chat, propose_structure
+from cosmu.lab.llm import OPENROUTER_URL, XAI_URL, ChatFn, ProposalResult, openrouter_chat, propose_structure
 
 
 class RouteRequest(BaseModel):
@@ -38,6 +38,15 @@ TIER_MODELS: dict[str, str] = {
     "frontier": "anthropic/claude-3.7-sonnet",
 }
 
+# xAI (Grok) model ids — used when XAI_API_KEY is set (preferred, already on Railway). Single stable
+# alias across tiers to avoid a wrong-id 404; a wrong id degrades gracefully to the template author.
+# Override here if you want per-tier Grok models.
+XAI_TIER_MODELS: dict[str, str] = {
+    "cheap": "grok-2-latest",
+    "mid": "grok-2-latest",
+    "frontier": "grok-2-latest",
+}
+
 
 def route_model(request: RouteRequest, spend: SpendSettings, spent_today: Decimal) -> RouteDecision:
     if spent_today + request.estimated_cost > spend.daily_cap_usd:
@@ -58,6 +67,7 @@ def route_and_propose(
     confidence: Decimal = Decimal("1"),
     estimated_cost: Decimal = Decimal("0.02"),
     api_key: str | None = None,
+    provider: str | None = None,
     chat: ChatFn | None = None,
 ) -> ProposalResult:
     """Compose the tier router with the REAL model call: decide the tier under the spend cap, map it to a model
@@ -71,9 +81,11 @@ def route_and_propose(
     )
     if not decision.accepted or decision.tier is None:
         return ProposalResult(proposal=None, model_id=None, attempts=0, notes=[f"router declined: {decision.reason}"])
-    model_id = TIER_MODELS[decision.tier]
-    seam = chat if chat is not None else openrouter_chat(api_key)
+    models = XAI_TIER_MODELS if provider == "xai" else TIER_MODELS
+    url = XAI_URL if provider == "xai" else OPENROUTER_URL
+    model_id = models[decision.tier]
+    seam = chat if chat is not None else openrouter_chat(api_key, url=url)
     result = propose_structure(brief, model_id=model_id, valid_features=valid_features, chat=seam)
-    result.notes.insert(0, f"router tier={decision.tier} model={model_id}")
+    result.notes.insert(0, f"router tier={decision.tier} model={model_id} provider={provider or 'openrouter'}")
     return result
 

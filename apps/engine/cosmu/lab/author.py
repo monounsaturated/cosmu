@@ -210,7 +210,8 @@ def _llm_propose(brief: str, *, store: Store | None, chat):  # noqa: ANN001, ANN
             brief,
             valid_features=valid_features,
             spend=settings.spend,
-            api_key=settings.openrouter_api_key,
+            api_key=settings.llm_api_key,        # xAI (Grok) if set, else OpenRouter — centralized in settings
+            provider=settings.llm_provider,
             chat=chat,
         )
         return result.proposal, result.notes

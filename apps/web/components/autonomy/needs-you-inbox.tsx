@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/honest-state";
 
-const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
+const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 type Resolved = { id: string; label: string; tone: "up" | "muted" };
 
@@ -44,7 +44,7 @@ export function NeedsYouInbox({
     startTransition(async () => {
       if (!ENGINE) {
         setItems(prev);
-        setNote("Engine not connected — set ENGINE_API_URL to approve or dismiss.");
+        setNote("Engine not connected — set API_BASE_URL to approve or dismiss.");
         return;
       }
       try {
@@ -87,7 +87,7 @@ export function NeedsYouInbox({
               ? "When the machine proposes a decision that needs your call, it lands here."
               : configured
                 ? "The engine is configured but did not respond. Approvals appear once it is up."
-                : "Set ENGINE_API_URL to see what the machine needs from you."
+                : "Set API_BASE_URL to see what the machine needs from you."
           }
           icon={<Inbox className="size-5" />}
         />

@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 
 export type { CrossAssetVerdict, DropOneClass, DropOneSource };
 
-const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
+const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 function pct(x: number) {
   return `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
