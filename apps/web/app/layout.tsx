@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata = {
-  title: "Cosmu v2 — autonomous quant lab",
+  title: "Cosmu — autonomous quant lab",
   description: "Autonomous, self-learning swing-trading money machine. Scorer and money out of the agent's reach."
 };
 

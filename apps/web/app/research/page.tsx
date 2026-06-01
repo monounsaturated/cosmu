@@ -10,6 +10,8 @@ import { EdgeGate } from "@/components/research/edge-gate";
 import { CrossAssetGate } from "@/components/research/cross-asset-gate";
 import { StrategiesTable } from "@/components/research/strategies-table";
 import { ResearchBrain } from "@/components/research/research-brain";
+import { GateFunnel, SurvivalDistribution } from "@/components/charts/brain-charts";
+import { Tooltip } from "@/components/ui/tooltip";
 import { formatPct } from "@/lib/utils";
 
 export default async function ResearchPage() {
@@ -33,6 +35,35 @@ export default async function ResearchPage() {
       {/* Research brain: what the machine is doing — LLM state, gate funnel, survivors, ranking, sources */}
       <section className="space-y-3">
         <SectionHeader eyebrow="brain" title="What the machine is doing" aside={<Badge variant="muted">deterministic gate decides · model only orders</Badge>} />
+
+        {/* Visuals: gate funnel + survival-score distribution (read from the same brain data) */}
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-1.5">
+                Gate funnel
+                <Tooltip content="Every generated candidate runs the deterministic gate. Most are killed — the funnel shows how many survive and the kill rate." />
+              </CardTitle>
+              {brain.demo ? <Badge variant="warn">demo data</Badge> : null}
+            </CardHeader>
+            <CardContent>
+              <GateFunnel gated={brain.brain.gated} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-1.5">
+                Survival scores
+                <Tooltip content="Each survivor's survival score — the model's estimate the edge persists out-of-sample. It only orders the validation queue; it never vetoes." />
+              </CardTitle>
+              {brain.demo ? <Badge variant="warn">demo data</Badge> : null}
+            </CardHeader>
+            <CardContent>
+              <SurvivalDistribution survivors={brain.brain.survivors} />
+            </CardContent>
+          </Card>
+        </div>
+
         <ResearchBrain brain={brain.brain} demo={brain.demo} />
       </section>
 

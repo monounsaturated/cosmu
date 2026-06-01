@@ -48,6 +48,13 @@ const demoEquityCurve = Array.from({ length: 48 }, (_, index) => {
   return { ts: `T-${47 - index}`, value: Math.round(value) };
 });
 
+// DEMO ONLY — a clearly-labelled BTC buy-and-hold benchmark for the EquityCurve overlay toggle.
+// Same length/timestamps as the demo curve so it aligns; never presented as a real benchmark.
+export const demoBenchmarkCurve = Array.from({ length: 48 }, (_, index) => {
+  const value = 100000 + index * 120 + Math.sin(index / 2.2) * 2200 - Math.max(0, index - 30) * 130;
+  return { ts: `T-${47 - index}`, value: Math.round(value) };
+});
+
 export const demoPortfolio: PortfolioResponse = {
   equity_curve: demoEquityCurve,
   pnl_net: demoEquityCurve[demoEquityCurve.length - 1].value - 100000,

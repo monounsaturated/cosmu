@@ -1,13 +1,15 @@
-import { ArrowRight, Coins, Gauge, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, Coins, Gauge, PieChart, Receipt, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
-import { getEvents, getLeaderboard, getPortfolio, getRecommendations } from "./data";
+import { demoBenchmarkCurve, getEvents, getLeaderboard, getPortfolio, getRecommendations } from "./data";
 import type { CostSlice, Event, LeaderboardRow, Recommendation } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
 import { Tooltip } from "@/components/ui/tooltip";
 import { MoneyState, moneyMode } from "@/components/ui/money-state";
-import { AreaChart } from "@/components/charts/area-chart";
+import { EquityCurve } from "@/components/charts/equity-curve";
+import { AllocationChart } from "@/components/charts/allocation-chart";
+import { CostBars } from "@/components/charts/cost-bars";
 import { CrossAssetGate } from "@/components/research/cross-asset-gate";
 import { formatPct, formatSigned, formatUsd } from "@/lib/utils";
 
@@ -50,6 +52,10 @@ export default async function OverviewPage() {
 
   // One source of truth for "what kind of money is this?" — drives every label on the page.
   const mode = moneyMode({ demo, live: portfolio.live_enabled });
+
+  // BTC buy-and-hold benchmark overlay: only the clearly-labelled demo series exists offline.
+  // When the engine is reachable we don't fabricate one (no field on the contract yet).
+  const benchmark = demo ? demoBenchmarkCurve : undefined;
 
   // Which strategies are working: top few funded/working sleeves by net %, never the killed ones.
   const working = (leaderboard.rows as LeaderboardRow[])
@@ -113,7 +119,7 @@ export default async function OverviewPage() {
         <Stat label="Daily opex" value={portfolio.costs.length ? formatUsd(costsTotal, 0) : "—"} accent="iris" />
       </section>
 
-      {/* Pooled wallet equity chart */}
+      {/* Pooled wallet equity chart — interactive: time range, drawdown shading, benchmark overlay */}
       <section>
         <Card>
           <CardHeader>
@@ -121,19 +127,42 @@ export default async function OverviewPage() {
               <CardTitle>Pooled wallet</CardTitle>
               <Tooltip content={SLEEVE_VS_POOLED} />
             </div>
+          </CardHeader>
+          <CardContent>
+            <EquityCurve points={portfolio.equity_curve} benchmark={benchmark} mode={mode} height={260} />
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Allocation + costs — where the pooled capital sits and what it costs to run */}
+      <section className="grid gap-3 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <CardTitle className="flex items-center gap-1.5">
+                <PieChart className="size-4 text-iris-soft" /> Allocation
+              </CardTitle>
+              <Tooltip content="How the pooled wallet is split across funded strategy sleeves, by weight and capital." />
+            </div>
             <MoneyState mode={mode} withInfo={false} />
           </CardHeader>
           <CardContent>
-            {hasTrackRecord ? (
-              <AreaChart points={portfolio.equity_curve} height={240} />
+            <AllocationChart allocation={portfolio.allocation} height={220} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-1.5">
+              <Receipt className="size-4 text-iris-soft" /> Running costs
+            </CardTitle>
+            <Tooltip content="What it costs to run the machine each day (LLM, data, sandbox, infra) and how big that is vs the trailing edge." />
+          </CardHeader>
+          <CardContent>
+            {portfolio.costs.length ? (
+              <CostBars costs={portfolio.costs} opexVsAlpha={portfolio.opex_vs_alpha} />
             ) : (
-              <div className="flex h-[200px] flex-col items-center justify-center gap-1.5 text-center sm:h-[240px]">
-                <Coins className="size-5 text-quiet" />
-                <div className="text-[13px] text-muted">No live data yet</div>
-                <div className="max-w-sm text-[11.5px] text-quiet">
-                  The pooled wallet curve renders once the engine has a real paper portfolio.
-                </div>
-              </div>
+              <p className="text-[12.5px] text-quiet">No cost data yet. Opex appears once the engine starts spending on research.</p>
             )}
           </CardContent>
         </Card>

@@ -1,12 +1,30 @@
 import { getStrategy } from "../../data";
-import type { Backtest, Execution } from "@cosmu/contracts-ts";
+import type { Backtest, Execution, Point } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { EquityCurve } from "@/components/charts/equity-curve";
+import { FoldBars } from "@/components/charts/fold-bars";
+import { ChartEmpty } from "@/components/charts/chart-kit";
+
+// Derive a paper equity curve from the strategy's trade log: cumulative realized cash flow
+// (sells add, buys subtract, fees always subtract), seeded at 0. Honest — built only from the
+// real trades the engine returned; no fabricated track record.
+function paperCurveFromTrades(trades: Execution[]): Point[] {
+  if (trades.length < 2) return [];
+  let acc = 0;
+  return trades.map((t) => {
+    const gross = t.side === "sell" ? t.qty * t.price : -t.qty * t.price;
+    acc += gross - t.fee;
+    return { ts: t.ts, value: acc };
+  });
+}
 
 export default async function StrategyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const strategy = await getStrategy(id);
+  const paperCurve = paperCurveFromTrades(strategy.trades);
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-6 px-5 py-7 lg:px-7">
@@ -17,6 +35,37 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
           <span className="text-border-strong">·</span>
           <span className="font-sans text-muted">deterministic evidence</span>
         </div>
+      </div>
+
+      {/* Evidence visuals: paper equity from trades + per-fold OOS returns */}
+      <div className="grid gap-3 lg:grid-cols-[1.6fr_1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-1.5">
+              Paper equity
+              <Tooltip content="Cumulative realized cash flow from this sleeve's paper trades (sells add, buys and fees subtract). Built only from real trades — not a fabricated curve." />
+            </CardTitle>
+            <Badge variant="info">PAPER</Badge>
+          </CardHeader>
+          <CardContent>
+            {paperCurve.length >= 2 ? (
+              <EquityCurve points={paperCurve} mode="paper" height={220} valueLabel="Realized P&L" />
+            ) : (
+              <ChartEmpty title="Not enough trades yet" hint="A paper equity curve renders once this sleeve has at least two fills." height={220} />
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-1.5">
+              Out-of-sample by fold
+              <Tooltip content="Net return on each backtest fold (WFO, untouched holdout). Green is positive OOS return, red negative." />
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <FoldBars backtests={strategy.backtests} height={220} />
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
