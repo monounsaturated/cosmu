@@ -78,6 +78,13 @@ def test_author_flags_money_adjacent_intent():
     assert draft.requires_approval is True
 
 
+def test_author_detects_osint_air_activity_from_plane_brief():
+    # a free-text brief about watching planes / flight activity auto-detects the OSINT air-activity feature
+    draft = draft_from_brief("watching planes and flight activity as a crypto risk-appetite proxy")
+    assert "osint_air_activity" in draft.features
+    assert "opensky" in draft.data_sources
+
+
 def test_author_run_seeds_cohort(tmp_path):
     store = Store(Settings(database_url=f"sqlite:///{tmp_path}/author.sqlite3"))
     loop = FarmLoop(settings=store.settings, store=store, market_data=FixtureProvider())

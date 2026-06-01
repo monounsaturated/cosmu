@@ -25,6 +25,11 @@ _FEATURE_HINTS: dict[str, str] = {
     "adx": "adx", "bollinger": "bb_z", "band": "bb_z", "atr": "atr",
     "vix": "vix_term_slope", "dollar": "dxy", "dxy": "dxy",
     "odds": "pm_implied_prob", "probability": "pm_implied_prob",
+    # OSINT air-activity: a free-text brief about watching planes / flights auto-detects the low-confidence
+    # ADS-B macro-proxy feature so it can earn (or fail to earn) its place via the deterministic gate.
+    "plane": "osint_air_activity", "planes": "osint_air_activity", "aircraft": "osint_air_activity",
+    "flight": "osint_air_activity", "flights": "osint_air_activity", "aviation": "osint_air_activity",
+    "ads-b": "osint_air_activity", "adsb": "osint_air_activity", "opensky": "osint_air_activity",
 }
 
 _ASSET_HINTS = {

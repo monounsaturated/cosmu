@@ -70,6 +70,55 @@ export interface Backtest {
   win_rate: number;
 }
 
+export interface BrainGated {
+  generated: number;
+  kill_rate: number;
+  killed: number;
+  passed: number;
+}
+
+export interface BrainGraveyard {
+  name: string;
+  reasons: string[];
+}
+
+export interface BrainRanking {
+  name: string;
+  score: number;
+  trained: boolean;
+  version_id: string;
+}
+
+export interface BrainRegime {
+  label: string;
+  trend: string;
+  vol_bucket: string;
+}
+
+export interface BrainResponse {
+  gated: BrainGated;
+  graveyard: BrainGraveyard[];
+  llm: "on" | "off";
+  regime: BrainRegime;
+  sources: BrainSource[];
+  survival_ranking: BrainRanking[];
+  survivors: BrainSurvivor[];
+  tools: string[];
+}
+
+export interface BrainSource {
+  kind: string;
+  low_confidence: boolean;
+  name: string;
+}
+
+export interface BrainSurvivor {
+  name: string;
+  net_pct: number;
+  survival_score: number;
+  version_id: string;
+}
+
 export interface ClassToggleRequest {
   active: boolean;
   kind: string;

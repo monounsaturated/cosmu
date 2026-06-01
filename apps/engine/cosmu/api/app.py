@@ -17,6 +17,13 @@ from cosmu.api.models import (
     AuthorResponse,
     AuthorRunRequest,
     Backtest,
+    BrainGated,
+    BrainGraveyard,
+    BrainRanking,
+    BrainRegime,
+    BrainResponse,
+    BrainSource,
+    BrainSurvivor,
     CohortRunRequest,
     CohortSummaryResponse,
     CommandRequest,
@@ -430,8 +437,12 @@ def toggle_live(request: ToggleRequest) -> ToggleResponse:
 
 
 def _eligible_strategies() -> list[EligibleStrategy]:
-    """Strategies eligible to be armed: paper survivors that passed gates. Capability ≠ edge — being eligible
-    here does NOT trade live; it still requires the toggle ON + keys + the deterministic gate at execute time."""
+    """Strategies eligible to be armed: paper survivors that passed gates AND whose PROVEN regime set includes
+    the CURRENT market regime (a strategy may go live only in a regime it proved in). Capability ≠ edge — being
+    eligible here does NOT trade live; it still requires the toggle ON + keys + the deterministic gate at
+    execute time. The regime gate only BLOCKS — it never promotes."""
+    from cosmu.master.live_eligibility import live_regime_verdict
+
     rows = store.rows(
         """
         SELECT sv.id, s.name FROM strategy_versions sv
@@ -441,12 +452,15 @@ def _eligible_strategies() -> list[EligibleStrategy]:
         ORDER BY sv.created_at DESC LIMIT 20
         """
     )
+    reference = _brain_reference_bars()
     seen: set[str] = set()
     out: list[EligibleStrategy] = []
     for r in rows:
         if r["id"] in seen:
             continue
         seen.add(r["id"])
+        if not live_regime_verdict(store, r["id"], reference).eligible:
+            continue  # blocked: current regime is not one this strategy proved in
         out.append(EligibleStrategy(version_id=r["id"], name=r["name"]))
     return out
 
@@ -672,6 +686,73 @@ def run_cross_asset_gate() -> CrossAssetVerdict:
     )
     store.append_event(actor="master", kind="cross_asset_gate_run", ref_type="gate", payload={"decision": verdict.decision, "data_source": data_source})
     return response
+
+
+def _brain_reference_bars():
+    """A reference close series for the CURRENT-regime read. Prefer the real Binance BTCUSDT cache when it
+    exists; otherwise fall back to the deterministic edge-bearing fixture so the snapshot is always answerable
+    offline (no network, no keys)."""
+    from cosmu.data.market import BinanceSpotOHLCVProvider
+    from cosmu.research.fixtures import edge_bearing_screen_market
+
+    try:
+        bars = BinanceSpotOHLCVProvider().fetch_bars("BTCUSDT", "1d", limit=240)
+        if len(bars) >= 60:
+            return bars
+    except Exception:  # noqa: BLE001 — offline/no-network is expected; fall back to the fixture
+        pass
+    return edge_bearing_screen_market()["BTCUSDT"]
+
+
+@app.get("/research/brain", response_model=BrainResponse)
+def research_brain() -> BrainResponse:
+    """The live brain snapshot: LLM on/off, the latest research pass's gated counts + survivors + graveyard,
+    the propose-only sources/tools, the current market regime, and the survival model's validation-queue
+    ranking. If no pass has run yet, run one over the edge-bearing fixture so the snapshot is populated. The
+    survival ranking ORDERS the queue — it is never a veto; the deterministic gate alone decided who passed."""
+    from cosmu.config.feature_registry import FEATURE_REGISTRY
+    from cosmu.lab.research import run_research_pass
+    from cosmu.lab.tools.research_tools import research_tool_bus
+    from cosmu.ml.regime import current_regime
+
+    row = store.row("SELECT payload FROM events WHERE kind = 'research_pass' ORDER BY id DESC LIMIT 1")
+    if row is None:
+        run_research_pass(store, n=6, seed=7, edge_market=True, llm_enabled=bool(settings.openrouter_api_key))
+        row = store.row("SELECT payload FROM events WHERE kind = 'research_pass' ORDER BY id DESC LIMIT 1")
+    payload = _json(row["payload"]) if row else {}
+
+    survivors = [
+        BrainSurvivor(version_id=s["version_id"], name=s["name"], net_pct=float(s.get("net_pct", 0.0)), survival_score=float(s.get("survival_score", 0.0)))
+        for s in payload.get("survivors", [])
+    ]
+    graveyard = [BrainGraveyard(name=g["name"], reasons=list(g.get("reasons", []))) for g in payload.get("graveyard", [])]
+    ranking = [
+        BrainRanking(version_id=r["version_id"], name=r["name"], score=float(r.get("score", 0.0)), trained=bool(r.get("trained", False)))
+        for r in payload.get("survival_ranking", [])
+    ]
+    gated = BrainGated(
+        generated=int(payload.get("generated", 0)),
+        passed=int(payload.get("passed", 0)),
+        killed=int(payload.get("killed", 0)),
+        kill_rate=float(payload.get("kill_rate", 0.0)),
+    )
+    sources = [
+        BrainSource(name=f.name, kind=f.source, low_confidence=(f.tier == "tier1"))
+        for f in FEATURE_REGISTRY
+        if f.enabled
+    ]
+    tools = [t["name"] for t in research_tool_bus().list_tools()]
+    regime = current_regime(_brain_reference_bars())
+    return BrainResponse(
+        llm="on" if settings.openrouter_api_key else "off",
+        gated=gated,
+        survivors=survivors,
+        graveyard=graveyard,
+        sources=sources,
+        tools=tools,
+        regime=BrainRegime(label=regime.label, vol_bucket=regime.vol_bucket, trend=regime.trend),
+        survival_ranking=ranking,
+    )
 
 
 @app.get("/events", response_model=EventsResponse)

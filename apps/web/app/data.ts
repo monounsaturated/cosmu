@@ -2,6 +2,7 @@
 
 import type {
   Backtest,
+  BrainResponse,
   CohortSummaryResponse,
   Event,
   LeaderboardResponse,
@@ -166,6 +167,53 @@ export const fallbackCohort: CohortSummaryResponse = {
 
 export async function getPopulation(): Promise<PopulationResponse> {
   return (await getJson("/population", fallbackPopulation)).data;
+}
+
+// SHARED CONTRACT (engine builds, web consumes; snake_case). Locally-typed here until
+// @cosmu/contracts-ts ships the brain types (will be reconciled). GET /research/brain.
+// Surfaces the research "brain": LLM on/off, the deterministic gate funnel, survivors,
+// graveyard, regime, data sources, bus tools, and the survival-model ranking. The ranking
+// only ORDERS the validation queue (which candidate to compute first) — it never vetoes.
+// BrainResponse comes from the generated @cosmu/contracts-ts (no hand-written contract drift).
+export type { BrainResponse };
+
+// DEMO ONLY — clearly labelled, used solely when the engine is unreachable. The ranking is
+// shown in cold-start (trained:false) so the cold-start indicator is visible offline.
+export const fallbackBrain: BrainResponse = {
+  llm: "on",
+  gated: { generated: 120, passed: 7, killed: 113, kill_rate: 0.9417 },
+  survivors: [
+    { version_id: "s1", name: "Trend momentum × Cross-asset", net_pct: 18.82, survival_score: 0.81 },
+    { version_id: "s2", name: "Oversold mean reversion × Funding", net_pct: 16.98, survival_score: 0.74 },
+    { version_id: "s3", name: "Funding-pressure carry · derisk", net_pct: 11.4, survival_score: 0.66 },
+    { version_id: "s4", name: "Trend-confirmed momentum", net_pct: 9.2, survival_score: 0.58 }
+  ],
+  graveyard: [
+    { name: "Trend momentum × RSI", reasons: ["min_trades"] },
+    { name: "Cross-asset breakout · wide", reasons: ["holdout"] },
+    { name: "Wildcard feature combo", reasons: ["pbo", "folds_positive"] },
+    { name: "Funding carry · wide", reasons: ["pbo", "holdout"] }
+  ],
+  sources: [
+    { name: "Binance spot OHLCV", kind: "price", low_confidence: false },
+    { name: "Binance funding & OI", kind: "derivatives", low_confidence: false },
+    { name: "On-chain flows", kind: "onchain", low_confidence: false },
+    { name: "OSINT social plane", kind: "osint", low_confidence: true }
+  ],
+  tools: ["backtester", "wfo", "cscv_pbo", "regime_tagger", "cost_model", "pine_importer"],
+  regime: { label: "Risk-on drift", vol_bucket: "mid", trend: "up" },
+  survival_ranking: [
+    { version_id: "c1", name: "Funding-pressure carry · v3", score: 0.72, trained: false },
+    { version_id: "c2", name: "Cross-asset breakout · tight", score: 0.64, trained: false },
+    { version_id: "c3", name: "Oversold reversion × OI", score: 0.51, trained: false },
+    { version_id: "c4", name: "Trend momentum × social-z", score: 0.43, trained: false },
+    { version_id: "c5", name: "Liquidation fade · derisk", score: 0.31, trained: false }
+  ]
+};
+
+export async function getBrain(): Promise<{ brain: BrainResponse; demo: boolean }> {
+  const { data, demo } = await getJson("/research/brain", fallbackBrain);
+  return { brain: demo ? fallbackBrain : data, demo };
 }
 
 // Returns the REAL paper portfolio. `demo` is true only when the engine is unreachable

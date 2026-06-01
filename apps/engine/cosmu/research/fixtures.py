@@ -69,6 +69,38 @@ def _make_symbol(symbol: str, *, edge: bool, seed: int, n: int) -> tuple[list[Ba
     return bars, points
 
 
+def edge_bearing_screen_market(*, seed: int = 3, n: int = 900) -> dict[str, list[Bar]]:
+    """A deterministic, EDGE-BEARING crypto market for the research/evolution SCREEN — designed so a trend/
+    momentum seed clears the out-of-reach gate with midpoint params, exercising the survivor sleeve-open path
+    end-to-end. Construction: long bull regimes punctuated by short pullbacks, with positively autocorrelated
+    returns (a real momentum signal a trend strategy can monetize). NO synthetic return is injected into the
+    backtest — the bars themselves carry the edge and the deterministic backtest/scorer judge them honestly.
+    The price path stays positive in the bull stretches across MULTIPLE regimes so regime_returns has breadth
+    (used by the survival features and the live-eligibility passport). Reproducible for a fixed (seed, n)."""
+    rng = random.Random(f"edge-screen-{seed}")
+    start = datetime(2021, 1, 1, tzinfo=UTC)
+    price = 100.0
+    trend = 0.0
+    bars: list[Bar] = []
+    for i in range(n):
+        drift = 0.004 if i % 120 < 80 else -0.001  # ~2/3 bull, 1/3 pullback — regime breadth, net up
+        ret = drift + 0.3 * trend + rng.gauss(0, 0.012)  # momentum: returns positively autocorrelated
+        trend = ret
+        open_ = price
+        price = max(0.01, price * (1 + ret))
+        bars.append(
+            Bar(
+                ts=start + timedelta(days=i),
+                open=Decimal(str(round(open_, 6))),
+                high=Decimal(str(round(max(open_, price) * 1.004, 6))),
+                low=Decimal(str(round(min(open_, price) * 0.996, 6))),
+                close=Decimal(str(round(price, 6))),
+                volume=Decimal("5000000"),
+            )
+        )
+    return {symbol: bars for symbol in ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")}
+
+
 def synthetic_gate_inputs(*, edge: bool = True, seed: int = 7, n: int = 600) -> tuple[dict[str, list[Bar]], FixtureAltDataProvider]:
     market: dict[str, list[Bar]] = {}
     series: dict[tuple[str, str], list[AltDataPoint]] = {}

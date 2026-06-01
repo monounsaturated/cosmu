@@ -369,6 +369,223 @@
         "title": "Backtest",
         "type": "object"
       },
+      "BrainGated": {
+        "properties": {
+          "generated": {
+            "title": "Generated",
+            "type": "integer"
+          },
+          "kill_rate": {
+            "title": "Kill Rate",
+            "type": "number"
+          },
+          "killed": {
+            "title": "Killed",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generated",
+          "passed",
+          "killed",
+          "kill_rate"
+        ],
+        "title": "BrainGated",
+        "type": "object"
+      },
+      "BrainGraveyard": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "reasons"
+        ],
+        "title": "BrainGraveyard",
+        "type": "object"
+      },
+      "BrainRanking": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "trained": {
+            "title": "Trained",
+            "type": "boolean"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "score",
+          "trained"
+        ],
+        "title": "BrainRanking",
+        "type": "object"
+      },
+      "BrainRegime": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "trend": {
+            "title": "Trend",
+            "type": "string"
+          },
+          "vol_bucket": {
+            "title": "Vol Bucket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "vol_bucket",
+          "trend"
+        ],
+        "title": "BrainRegime",
+        "type": "object"
+      },
+      "BrainResponse": {
+        "description": "The live brain snapshot the web app reads: LLM on/off, the latest research pass's gated counts +\nsurvivors + graveyard, the propose-only sources/tools, the current market regime, and the survival\nmodel's validation-queue ranking (ordering only \u2014 never a veto).",
+        "properties": {
+          "gated": {
+            "$ref": "#/components/schemas/BrainGated"
+          },
+          "graveyard": {
+            "items": {
+              "$ref": "#/components/schemas/BrainGraveyard"
+            },
+            "title": "Graveyard",
+            "type": "array"
+          },
+          "llm": {
+            "enum": [
+              "on",
+              "off"
+            ],
+            "title": "Llm",
+            "type": "string"
+          },
+          "regime": {
+            "$ref": "#/components/schemas/BrainRegime"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/BrainSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "survival_ranking": {
+            "items": {
+              "$ref": "#/components/schemas/BrainRanking"
+            },
+            "title": "Survival Ranking",
+            "type": "array"
+          },
+          "survivors": {
+            "items": {
+              "$ref": "#/components/schemas/BrainSurvivor"
+            },
+            "title": "Survivors",
+            "type": "array"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "llm",
+          "gated",
+          "survivors",
+          "graveyard",
+          "sources",
+          "tools",
+          "regime",
+          "survival_ranking"
+        ],
+        "title": "BrainResponse",
+        "type": "object"
+      },
+      "BrainSource": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "low_confidence": {
+            "title": "Low Confidence",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "low_confidence"
+        ],
+        "title": "BrainSource",
+        "type": "object"
+      },
+      "BrainSurvivor": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "net_pct": {
+            "title": "Net Pct",
+            "type": "number"
+          },
+          "survival_score": {
+            "title": "Survival Score",
+            "type": "number"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "net_pct",
+          "survival_score"
+        ],
+        "title": "BrainSurvivor",
+        "type": "object"
+      },
       "ClassToggleRequest": {
         "properties": {
           "active": {
@@ -2212,6 +2429,25 @@
           }
         },
         "summary": "Recommendations"
+      }
+    },
+    "/research/brain": {
+      "get": {
+        "description": "The live brain snapshot: LLM on/off, the latest research pass's gated counts + survivors + graveyard,\nthe propose-only sources/tools, the current market regime, and the survival model's validation-queue\nranking. If no pass has run yet, run one over the edge-bearing fixture so the snapshot is populated. The\nsurvival ranking ORDERS the queue \u2014 it is never a veto; the deterministic gate alone decided who passed.",
+        "operationId": "research_brain_research_brain_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrainResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Research Brain"
       }
     },
     "/research/cross-asset-gate": {

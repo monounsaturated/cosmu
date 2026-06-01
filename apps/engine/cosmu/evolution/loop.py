@@ -14,6 +14,8 @@ from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
 from cosmu.knowledge.store import Store, Writer, utcnow
 from cosmu.master.scorer import BacktestMetrics, score
+from cosmu.ml.regime import proven_regimes
+from cosmu.ml.survival import features_from_metrics, load_survival_model
 from cosmu.spine.universe import enabled_universe
 from cosmu.spine.venue import default_catalog
 from cosmu.strategy.compiler import compile_spec
@@ -41,6 +43,11 @@ class Evaluated:
     oos_return_pct: float
     passed: bool
     reasons: list[str]
+    # The survival model's edge-persistence score in [0,1] and whether a trained model produced it. This ONLY
+    # orders which gate-survivors get full validation first (prioritize compute) — it NEVER changes `passed`.
+    survival_score: float = 0.0
+    survival_trained: bool = False
+    proven_regimes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -107,6 +114,9 @@ class FarmLoop:
         rng = random.Random(seed)
         cohort_id = hashlib.sha256(f"cohort-{seed}-{size}-{utcnow()}".encode()).hexdigest()[:12]
         self._enabled()  # warm the universe gate once, before the write transaction opens
+        # Load the survival model on the outcomes that exist BEFORE this cohort writes any rows (point-in-time:
+        # the ranker never sees its own cohort's labels). Cold-start => trained=False + heuristic ordering.
+        survival = load_survival_model(self.store)
 
         lanes = {"seed": 0, "chat": 0, "exploit": 0, "explore": 0, "pine": 0}
         evaluated: list[Evaluated] = []
@@ -145,7 +155,7 @@ class FarmLoop:
             )
 
             for cand in wave0:
-                result, vid = self._evaluate(cand, b, rng, seed)
+                result, vid = self._evaluate(cand, b, rng, seed, survival)
                 if result is None:
                     invalid += 1
                     continue
@@ -163,7 +173,7 @@ class FarmLoop:
                 pvid, pspec = rng.choice(parents)
                 child = mutator.mutate_exploit(pspec, rng)
                 cand = Candidate(spec=child.spec, origin="mutation", lane="exploit", operator=child.operator, rationale=child.rationale, parent_vid=pvid)
-                result, _vid = self._evaluate(cand, b, rng, seed)
+                result, _vid = self._evaluate(cand, b, rng, seed, survival)
                 if result is None:
                     invalid += 1
                     continue
@@ -173,14 +183,22 @@ class FarmLoop:
             for _ in range(explore_n):
                 child = mutator.wildcard(parent_specs, rng)
                 cand = Candidate(spec=child.spec, origin="wildcard", lane="explore", operator=child.operator, rationale=child.rationale)
-                result, _vid = self._evaluate(cand, b, rng, seed)
+                result, _vid = self._evaluate(cand, b, rng, seed, survival)
                 if result is None:
                     invalid += 1
                     continue
                 evaluated.append(result)
                 lanes["explore"] += 1
 
-            survivors = sorted([e for e in evaluated if e.passed], key=lambda e: e.deflated_sharpe, reverse=True)
+            # ORDER the gate-survivors by the survival model's edge-persistence score (descending) — this is the
+            # validation queue: which gate-passers get scarce full-validation compute FIRST. It is a re-sort of
+            # the SAME survivors (the gate already decided who passed); the model never adds or removes anyone.
+            # Deterministic tie-break on deflated_sharpe so equal scores (e.g. cold-start) stay reproducible.
+            survivors = sorted(
+                [e for e in evaluated if e.passed],
+                key=lambda e: (e.survival_score, e.deflated_sharpe),
+                reverse=True,
+            )
             graveyard = sorted([e for e in evaluated if not e.passed], key=lambda e: e.deflated_sharpe, reverse=True)
             generated = len(evaluated)
             killed = len(graveyard)
@@ -196,6 +214,8 @@ class FarmLoop:
                     "killed": killed,
                     "kill_rate": round(killed / generated, 3) if generated else 0.0,
                     "lanes": lanes,
+                    "survival_model": {"trained": survival.trained, "backend": survival.backend, "n_labels": survival.n_labels, "auroc": survival.auroc},
+                    "survival_ranking": [{"version_id": e.version_id, "name": e.name, "score": e.survival_score, "trained": e.survival_trained} for e in survivors[:24]],
                 },
             )
 
@@ -216,7 +236,7 @@ class FarmLoop:
 
     # ------------------------------------------------------------------ internals
 
-    def _evaluate(self, cand: Candidate, b: Writer, rng: random.Random, seed: int) -> tuple[Evaluated | None, str]:
+    def _evaluate(self, cand: Candidate, b: Writer, rng: random.Random, seed: int, survival) -> tuple[Evaluated | None, str]:  # noqa: ANN001
         try:
             params = fit_params(cand.spec)
             compiled = compile_spec(cand.spec, params)
@@ -228,6 +248,11 @@ class FarmLoop:
         passed = verdict.passed
         status = "paper" if passed else "killed"
         kill_reason = None if passed else ",".join(verdict.reasons) or "screened_out"
+
+        # Survival model: edge-persistence score (ordering only) + the regimes this screen proved positive in
+        # (the strategy's live-eligibility passport). Computed from the SCREEN metrics — never a veto.
+        survival_score = round(survival.score_features(features_from_metrics(metrics)), 6)
+        proven = sorted(proven_regimes(metrics.regime_returns))
 
         strategy_id = b.insert(
             "strategies",
@@ -289,7 +314,13 @@ class FarmLoop:
                 kind="sleeve_opened",
                 ref_type="strategy_version",
                 ref_id=version_id,
-                payload={"deflated_sharpe": str(verdict.ranking_scalar), "lane": cand.lane},
+                payload={
+                    "deflated_sharpe": str(verdict.ranking_scalar),
+                    "lane": cand.lane,
+                    "survival_score": survival_score,
+                    "survival_trained": survival.trained,
+                    "proven_regimes": proven,
+                },
             )
 
         return (
@@ -302,6 +333,9 @@ class FarmLoop:
                 oos_return_pct=float(metrics.oos_return) * 100,
                 passed=passed,
                 reasons=verdict.reasons,
+                survival_score=survival_score,
+                survival_trained=survival.trained,
+                proven_regimes=proven,
             ),
             version_id,
         )

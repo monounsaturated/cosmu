@@ -20,7 +20,7 @@ from cosmu.knowledge.store import Store
 from cosmu.lab.author import AuthorDraft, draft_from_brief
 from cosmu.lab.tools.registry import ToolBus
 from cosmu.lab.tools.research_tools import research_tool_bus
-from cosmu.research.fixtures import synthetic_cross_asset_inputs
+from cosmu.research.fixtures import edge_bearing_screen_market, synthetic_cross_asset_inputs
 from cosmu.strategy.compiler import compile_spec
 from cosmu.strategy.static_check import validate_spec
 
@@ -68,6 +68,25 @@ class ResearchReport:
     @property
     def graveyard(self) -> list[Evaluated]:
         return self.cohort.graveyard
+
+    @property
+    def survival_ranking(self) -> list[Evaluated]:
+        """The gate-survivors in validation-queue order (survival-score descending) — the model's only job:
+        prioritize scarce full-validation compute. Already ordered by FarmLoop; surfaced here for the API."""
+        return self.cohort.survivors
+
+
+class _EdgeBearingBars:
+    """Deterministic offline bars that CARRY a real momentum edge, so at least one authored crypto candidate
+    clears the deterministic gate (exercises the survivor sleeve-open path end-to-end). Reuses the shared
+    edge_bearing_screen_market fixture; the screen/scorer still judge honestly (no injected returns)."""
+
+    def __init__(self, *, seed: int = 3) -> None:
+        self._by_symbol = edge_bearing_screen_market(seed=seed)
+        self._default = next(iter(self._by_symbol.values()))
+
+    def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        return self._by_symbol.get(symbol, self._default)[-limit:]
 
 
 class _FixtureBars:
@@ -139,23 +158,36 @@ def run_research_pass(
     llm_enabled: bool = False,
     market_data: MarketDataProvider | None = None,
     tool_bus: ToolBus | None = None,
+    edge_market: bool = False,
+    persist: bool = True,
 ) -> ResearchReport:
     """ONE bounded research pass: gather context → author N specs → compile+static_check → run through the
     DETERMINISTIC evolution screen/gate (scorer out of any LLM's reach) → record survivors + graveyard. The
     authored specs enter the cohort as `extra_seeds`; FarmLoop screens + scores them exactly like seeds, so
-    the deterministic wall is the sole judge. Reproducible for a fixed (n, seed) offline."""
+    the deterministic wall is the sole judge. The survival model (loaded inside FarmLoop) ORDERS the survivors
+    for full validation — it never vetoes. Reproducible for a fixed (n, seed) offline.
+
+    `edge_market=True` runs the screen over the edge-bearing fixture so at least one candidate passes the gate
+    (the survivor sleeve-open path, end-to-end). `persist=True` writes a research_pass event so the API can
+    read the run (authored/gated/survivors/graveyard) without re-running — not CLI-only."""
     bus = tool_bus or research_tool_bus()
     context = gather_context(bus)
 
     authored = author_candidates(n, llm_enabled=llm_enabled)
     extra_seeds = [draft.spec for draft, rec in authored if rec.compiled]
 
-    loop = FarmLoop(settings=store.settings, store=store, market_data=market_data or _FixtureBars())
+    if market_data is not None:
+        provider: MarketDataProvider = market_data
+    elif edge_market:
+        provider = _EdgeBearingBars()
+    else:
+        provider = _FixtureBars()
+    loop = FarmLoop(settings=store.settings, store=store, market_data=provider)
     # Cohort = the authored candidates only (no extra mutation/explore waves) so the report maps 1:1 onto
     # what the brain proposed; the deterministic screen + out-of-reach scorer decide PASS/STOP per candidate.
     cohort = loop.run_cohort(seed=seed, cohort_size=len(extra_seeds), explore_pct=0.0, extra_seeds=extra_seeds)
 
-    return ResearchReport(
+    report = ResearchReport(
         n_requested=n,
         context_tools=context["tools"],  # type: ignore[arg-type]
         context_samples=context,
@@ -163,6 +195,39 @@ def run_research_pass(
         cohort=cohort,
         llm_enabled=llm_enabled,
         seed=seed,
+    )
+    if persist:
+        _persist_pass(store, report)
+    return report
+
+
+def _persist_pass(store: Store, report: ResearchReport) -> None:
+    """Persist the research-pass result as an audit event so GET /research/brain can read the latest pass
+    (authored/gated/survivors/graveyard) without re-running the cohort. The cohort already wrote the
+    strategy_versions/backtests/sleeves/graveyard rows; this is the one-row pass summary on top of them."""
+    store.append_event(
+        actor="master",
+        kind="research_pass",
+        ref_type="cohort",
+        ref_id=report.cohort.cohort_id,
+        payload={
+            "llm": "on" if report.llm_enabled else "off",
+            "n_requested": report.n_requested,
+            "seed": report.seed,
+            "generated": report.cohort.generated,
+            "passed": report.cohort.passed,
+            "killed": report.cohort.killed,
+            "kill_rate": report.cohort.kill_rate,
+            "survivors": [
+                {"version_id": s.version_id, "name": s.name, "net_pct": round(s.oos_return_pct, 3), "survival_score": s.survival_score}
+                for s in report.survivors
+            ],
+            "graveyard": [{"name": g.name, "reasons": g.reasons or ["screened_out"]} for g in report.graveyard],
+            "survival_ranking": [
+                {"version_id": s.version_id, "name": s.name, "score": s.survival_score, "trained": s.survival_trained}
+                for s in report.survival_ranking
+            ],
+        },
     )
 
 
@@ -185,9 +250,10 @@ def _print_report(report: ResearchReport) -> None:
             print(f"           issues: {rec.issues}")
     print(f"  GATED (deterministic disposes — scorer out of reach): generated={report.cohort.generated} passed={report.cohort.passed} killed={report.cohort.killed} kill_rate={report.cohort.kill_rate}")
     if report.survivors:
-        print("  SURVIVORS:")
+        print("  SURVIVORS (validation queue order — survival model orders, never vetoes):")
         for s in report.survivors:
-            print(f"    PASS  {s.name}  · deflated_sharpe={s.deflated_sharpe:.4f} · oos={s.oos_return_pct:+.2f}%")
+            tag = "trained" if s.survival_trained else "cold-start"
+            print(f"    PASS  {s.name}  · survival={s.survival_score:.3f} [{tag}] · deflated_sharpe={s.deflated_sharpe:.4f} · oos={s.oos_return_pct:+.2f}% · proven_regimes={','.join(s.proven_regimes) or '-'}")
     print("  GRAVEYARD (with reasons):")
     for g in report.graveyard:
         print(f"    STOP  {g.name}  · reasons={','.join(g.reasons) or 'screened_out'}")
@@ -203,7 +269,8 @@ def _main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=7, help="cohort seed for reproducibility (default 7)")
     args = parser.parse_args(argv)
 
-    report = run_research_pass(_offline_store(), n=max(1, args.n), seed=args.seed)
+    # The CLI demo runs over the edge-bearing fixture so the survivor sleeve-open path is visible offline.
+    report = run_research_pass(_offline_store(), n=max(1, args.n), seed=args.seed, edge_market=True)
     _print_report(report)
     return 0
 

@@ -1,5 +1,5 @@
 import { ChartCandlestick, Skull } from "lucide-react";
-import { getLeaderboard, getPopulation, fallbackCohort } from "../data";
+import { getBrain, getLeaderboard, getPopulation, fallbackCohort } from "../data";
 import type { GraveyardRow, LeaderboardRow } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,10 +9,11 @@ import { FarmConsole } from "@/components/research/farm-console";
 import { EdgeGate } from "@/components/research/edge-gate";
 import { CrossAssetGate } from "@/components/research/cross-asset-gate";
 import { StrategiesTable } from "@/components/research/strategies-table";
+import { ResearchBrain } from "@/components/research/research-brain";
 import { formatPct } from "@/lib/utils";
 
 export default async function ResearchPage() {
-  const [population, leaderboard] = await Promise.all([getPopulation(), getLeaderboard()]);
+  const [population, leaderboard, brain] = await Promise.all([getPopulation(), getLeaderboard(), getBrain()]);
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-8 px-5 py-7 lg:px-7">
@@ -28,6 +29,12 @@ export default async function ResearchPage() {
         <Stat label="In graveyard" value={population.killed} accent="down" />
         <Stat label="Kill rate" value={formatPct(population.kill_rate * 100, 1)} accent="warn" />
       </div>
+
+      {/* Research brain: what the machine is doing — LLM state, gate funnel, survivors, ranking, sources */}
+      <section className="space-y-3">
+        <SectionHeader eyebrow="brain" title="What the machine is doing" aside={<Badge variant="muted">deterministic gate decides · model only orders</Badge>} />
+        <ResearchBrain brain={brain.brain} demo={brain.demo} />
+      </section>
 
       {/* Gates: is there an edge, and does cross-asset add to it? */}
       <section className="space-y-3">
