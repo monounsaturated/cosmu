@@ -121,14 +121,16 @@ class VenueState(BaseModel):
     id: str
     name: str
     kind: Literal["crypto", "equity", "prediction"]
-    enabled: bool
+    enabled: bool  # the venue's own tick (remembered even when its class is off)
+    effective: bool  # enabled AND the asset class is active — what actually trades
     has_data: bool
 
 
 class AssetClassState(BaseModel):
     kind: Literal["crypto", "equity", "prediction"]
     label: str
-    enabled: bool
+    active: bool  # the class gate tick
+    enabled: bool  # effective: active AND at least one venue ticked
     has_data: bool
 
 
@@ -140,6 +142,11 @@ class UniverseResponse(BaseModel):
 class VenueToggleRequest(BaseModel):
     venue_id: str
     enabled: bool
+
+
+class ClassToggleRequest(BaseModel):
+    kind: str
+    active: bool
 
 
 class Event(BaseModel):

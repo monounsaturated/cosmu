@@ -234,6 +234,13 @@ CREATE TABLE IF NOT EXISTS events (
   payload TEXT NOT NULL
 );
 
+-- Asset-class gate: a class can be switched off while its venues keep their individual tick state
+-- (effective = venue.enabled AND class.active). Absent row defaults to active.
+CREATE TABLE IF NOT EXISTS asset_class_gates (
+  kind TEXT PRIMARY KEY,
+  active INTEGER NOT NULL DEFAULT 1
+);
+
 -- One-shot holdout: each strategy version may be evaluated against the untouched holdout exactly once.
 CREATE TABLE IF NOT EXISTS holdout_ledger (
   version_id TEXT PRIMARY KEY,

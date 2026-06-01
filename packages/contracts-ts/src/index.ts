@@ -9,6 +9,7 @@ export interface Allocation {
 }
 
 export interface AssetClassState {
+  active: boolean;
   enabled: boolean;
   has_data: boolean;
   kind: "crypto" | "equity" | "prediction";
@@ -53,6 +54,11 @@ export interface Backtest {
   passed_gates: boolean;
   pbo: number;
   win_rate: number;
+}
+
+export interface ClassToggleRequest {
+  active: boolean;
+  kind: string;
 }
 
 export interface CohortRunRequest {
@@ -249,6 +255,7 @@ export interface ValidationError {
 }
 
 export interface VenueState {
+  effective: boolean;
   enabled: boolean;
   has_data: boolean;
   id: string;

@@ -186,6 +186,37 @@ def test_set_venue_enabled_keeps_one_venue_and_audits(tmp_path):
     assert {e["ref_id"] for e in events} == {"ibkr", "polymarket"}
 
 
+def test_class_gate_greys_venue_but_keeps_its_tick(tmp_path):
+    from cosmu.spine.universe import class_active, enabled_universe, set_class_active
+
+    store = _store(tmp_path)
+    _seed_venues(store)
+    # Crypto class off while Binance stays ticked: effective universe drops it, but its tick remains.
+    set_class_active(store, "crypto", False)
+    venues, classes = enabled_universe(store)
+    assert "binance" not in venues and "crypto" not in classes
+    assert class_active(store)["crypto"] is False
+    assert store.row("SELECT enabled FROM venues WHERE id = 'binance'")["enabled"] == 1  # tick remembered
+    # Turn it back on — it returns exactly as left.
+    set_class_active(store, "crypto", True)
+    venues, _ = enabled_universe(store)
+    assert "binance" in venues
+
+
+def test_last_active_class_cannot_be_disabled(tmp_path):
+    from cosmu.spine.universe import set_class_active
+
+    store = _store(tmp_path)
+    _seed_venues(store)
+    set_class_active(store, "equity", False)
+    set_class_active(store, "prediction", False)
+    try:
+        set_class_active(store, "crypto", False)
+        raise AssertionError("expected refusal to disable the last active class")
+    except ValueError:
+        pass
+
+
 def test_real_bar_backtest_charges_binance_fees():
     spec = seed_population()[0]
     params = fit_params(spec)

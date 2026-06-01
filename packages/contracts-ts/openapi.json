@@ -36,6 +36,10 @@
       },
       "AssetClassState": {
         "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
@@ -61,6 +65,7 @@
         "required": [
           "kind",
           "label",
+          "active",
           "enabled",
           "has_data"
         ],
@@ -298,6 +303,24 @@
           "passed_gates"
         ],
         "title": "Backtest",
+        "type": "object"
+      },
+      "ClassToggleRequest": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "active"
+        ],
+        "title": "ClassToggleRequest",
         "type": "object"
       },
       "CohortRunRequest": {
@@ -1221,6 +1244,10 @@
       },
       "VenueState": {
         "properties": {
+          "effective": {
+            "title": "Effective",
+            "type": "boolean"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
@@ -1252,6 +1279,7 @@
           "name",
           "kind",
           "enabled",
+          "effective",
           "has_data"
         ],
         "title": "VenueState",
@@ -1750,6 +1778,44 @@
           }
         },
         "summary": "Universe"
+      }
+    },
+    "/universe/class": {
+      "post": {
+        "operationId": "universe_toggle_class_universe_class_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassToggleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UniverseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Universe Toggle Class"
       }
     },
     "/universe/venue": {

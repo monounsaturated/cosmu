@@ -28,12 +28,40 @@ def venue_rows(store: Store) -> list[dict[str, Any]]:
     return [{"id": v.id, "name": v.name, "kind": v.kind, "enabled": v.enabled} for v in default_catalog().venues]
 
 
+def class_active(store: Store) -> dict[str, bool]:
+    """Per-asset-class gate. A class not present in the table defaults to active."""
+    rows = store.rows("SELECT kind, active FROM asset_class_gates")
+    return {r["kind"]: bool(r["active"]) for r in rows}
+
+
 def enabled_universe(store: Store) -> tuple[set[str], set[str]]:
-    """(enabled venue ids, enabled asset classes). The farm and execution only touch these."""
+    """Effective (venue ids, asset classes) the farm/execution may touch.
+
+    Effective = the venue is ticked AND its asset class is active. This is what lets a venue stay
+    ticked (its choice remembered) while greyed out because its parent class is switched off.
+    """
     rows = venue_rows(store)
-    venues = {r["id"] for r in rows if r["enabled"]}
-    classes = {r["kind"] for r in rows if r["enabled"]}
+    gates = class_active(store)
+    venues = {r["id"] for r in rows if r["enabled"] and gates.get(r["kind"], True)}
+    classes = {r["kind"] for r in rows if r["enabled"] and gates.get(r["kind"], True)}
     return venues, classes
+
+
+def set_class_active(store: Store, kind: str, active: bool) -> None:
+    """Flip an asset-class gate, audited. Refuses to switch off the last active class."""
+    rows = venue_rows(store)
+    kinds = {r["kind"] for r in rows}
+    if kind not in kinds:
+        raise KeyError(kind)
+    gates = class_active(store)
+    if not active and not any(gates.get(k, True) and k != kind for k in kinds):
+        raise ValueError("at least one asset class must stay active")
+    store.rows(
+        "INSERT INTO asset_class_gates(kind, active) VALUES (?, ?) "
+        "ON CONFLICT(kind) DO UPDATE SET active = excluded.active",
+        (kind, int(active)),
+    )
+    store.append_event(actor="human", kind="asset_class_toggle_changed", ref_type="asset_class", ref_id=kind, payload={"active": active})
 
 
 def has_live_data(store: Store) -> bool:
