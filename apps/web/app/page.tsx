@@ -1,37 +1,33 @@
-import { ArrowUpRight, BadgeDollarSign, BrainCircuit, CircleDollarSign, Gauge, LockKeyhole, RadioTower, ShieldCheck } from "lucide-react";
+import {
+  ArrowUpRight,
+  BrainCircuit,
+  Coins,
+  Gauge,
+  Layers,
+  Radio,
+  ShieldCheck,
+  Sparkles,
+  TrendingDown,
+  TrendingUp
+} from "lucide-react";
+import Link from "next/link";
 import { ConsoleBox } from "./console-box";
 import { getEvents, getLeaderboard, getPortfolio, getRecommendations, getStrategy } from "./data";
 import type { Allocation, Backtest, CostSlice, Event, LeaderboardRow, Recommendation } from "@cosmu/contracts-ts";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Stat } from "@/components/ui/stat";
+import { SectionHeader } from "@/components/ui/section";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { AreaChart } from "@/components/charts/area-chart";
+import { formatPct, formatSigned, formatUsd } from "@/lib/utils";
 
-function formatUsd(value: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
-}
-
-function formatPct(value: number) {
-  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
-}
-
-function EquityChart({ points }: { points: { ts: string; value: number }[] }) {
-  const width = 720;
-  const height = 260;
-  const min = Math.min(...points.map((point) => point.value));
-  const max = Math.max(...points.map((point) => point.value));
-  const span = Math.max(max - min, 1);
-  const path = points
-    .map((point, index) => {
-      const x = (index / Math.max(points.length - 1, 1)) * width;
-      const y = height - ((point.value - min) / span) * (height - 20) - 10;
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(" ");
-  return (
-    <svg className="chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Pooled wallet equity curve">
-      <path d={path} fill="none" stroke="var(--green)" strokeWidth="3" />
-      <path d={`${path} L ${width} ${height} L 0 ${height} Z`} fill="rgba(53,208,127,.08)" />
-      <line x1="0" y1={height - 1} x2={width} y2={height - 1} stroke="var(--line)" />
-    </svg>
-  );
-}
+const statusVariant: Record<string, "up" | "warn" | "down" | "info"> = {
+  paper: "up",
+  live: "info",
+  screening: "warn",
+  killed: "down"
+};
 
 export default async function HomePage() {
   const [portfolio, leaderboard, strategy, recommendations, events] = await Promise.all([
@@ -41,179 +37,286 @@ export default async function HomePage() {
     getRecommendations(),
     getEvents()
   ]);
+
   const equity = portfolio.equity_curve.at(-1)?.value ?? 100000;
-  const costsTotal = portfolio.costs.reduce((sum: number, item: CostSlice) => sum + item.amount, 0);
+  const start = portfolio.equity_curve[0]?.value ?? 100000;
+  const returnPct = ((equity - start) / start) * 100;
+  const costsTotal = portfolio.costs.reduce((sum: number, c: CostSlice) => sum + c.amount, 0);
+  const pnlUp = portfolio.pnl_net >= 0;
 
   return (
-    <div className="page">
-      <section className="surface" id="dashboard">
-        <div className="eyebrow">deterministic master + autonomous lab</div>
-        <h1>Autonomous strategy farming with the scorer and money out of the agent&apos;s reach.</h1>
-        <div className="grid metrics" style={{ marginTop: 18 }}>
-          <div className="card metric">
-            <small>Pooled paper equity</small>
-            <strong>{formatUsd(equity)}</strong>
-            <span className="pill good"><ArrowUpRight size={14} /> {formatUsd(portfolio.pnl_net)} net</span>
-          </div>
-          <div className="card metric">
-            <small>Opex vs alpha</small>
-            <strong>{Math.round(portfolio.opex_vs_alpha * 100)}%</strong>
-            <span className="subtle">auto-throttle below edge</span>
-          </div>
-          <div className="card metric">
-            <small>Live gate</small>
-            <strong>{portfolio.live_enabled ? "ON" : "OFF"}</strong>
-            <span className="pill warn"><LockKeyhole size={14} /> approval required</span>
-          </div>
-          <div className="card metric">
-            <small>Capital valve</small>
-            <strong>4 gates</strong>
-            <span className="subtle">WFO, holdout, paper, caps</span>
+    <div className="mx-auto max-w-[1400px] space-y-10 px-5 py-7 lg:px-7">
+      {/* Hero */}
+      <section id="dashboard" className="space-y-6">
+        <div className="relative overflow-hidden rounded-xl border border-border/70 card-grad p-6 lg:p-8">
+          <div className="ring-grid pointer-events-none absolute inset-0 opacity-[0.35] [mask-image:radial-gradient(700px_280px_at_85%_0%,black,transparent)]" />
+          <div className="relative max-w-3xl">
+            <Badge variant="iris">
+              <Sparkles className="size-3" />
+              deterministic master · autonomous lab
+            </Badge>
+            <h1 className="mt-4 text-balance text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl lg:text-[44px]">
+              A self-learning money machine that <span className="text-iris-soft">refuses to fool itself.</span>
+            </h1>
+            <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-muted">
+              A population of LLM-authored swing strategies, walk-forward backtested with real per-venue fees and farmed
+              24/7 in realistic paper. The scorer and the money stay out of the agent&apos;s reach.
+            </p>
           </div>
         </div>
-        <div className="grid two" style={{ marginTop: 12 }}>
-          <div className="card">
-            <div className="surface-header">
+
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Stat
+            label="Pooled paper equity"
+            value={formatUsd(equity)}
+            accent="iris"
+            icon={<Coins className="size-4" />}
+            hint={
+              <span className="inline-flex items-center gap-1 text-up">
+                <ArrowUpRight className="size-3.5" /> {formatPct(returnPct)} since inception
+              </span>
+            }
+          />
+          <Stat
+            label="Net P&L (after costs)"
+            value={<span className={pnlUp ? "text-up" : "text-down"}>{formatSigned(portfolio.pnl_net)}</span>}
+            accent={pnlUp ? "up" : "down"}
+            icon={pnlUp ? <TrendingUp className="size-4" /> : <TrendingDown className="size-4" />}
+            hint="money truth, net of every fee"
+          />
+          <Stat
+            label="Opex vs alpha"
+            value={`${Math.round(portfolio.opex_vs_alpha * 100)}%`}
+            accent="warn"
+            icon={<Gauge className="size-4" />}
+            hint="auto-throttles below trailing edge"
+          />
+          <Stat
+            label="Live capital gate"
+            value={portfolio.live_enabled ? "ON" : "OFF"}
+            accent={portfolio.live_enabled ? "up" : "warn"}
+            icon={<ShieldCheck className="size-4" />}
+            hint="WFO · holdout · paper · caps"
+          />
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[1.55fr_1fr]">
+          <Card>
+            <CardHeader>
               <div>
-                <h2>Pooled wallet</h2>
-                <p className="subtle">Paper and live share one code path; this view shows money truth net of costs.</p>
+                <CardTitle>Pooled wallet</CardTitle>
+                <CardDescription>One code path for backtest, paper and live — net of fees.</CardDescription>
               </div>
-              <span className="pill good"><CircleDollarSign size={14} /> net of fees</span>
-            </div>
-            <EquityChart points={portfolio.equity_curve} />
-          </div>
-          <div className="card stack">
-            <h2>Allocation and costs</h2>
-            {portfolio.allocation.map((item: Allocation) => (
-              <div className="row" key={item.strategy_id}>
-                <div>
-                  <strong>{item.name}</strong>
-                  <div className="subtle">{item.venue}</div>
-                </div>
-                <div className="mono">{Math.round(item.weight * 100)}%</div>
-              </div>
-            ))}
-            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 10 }} className="stack">
-              {portfolio.costs.map((item: CostSlice) => (
-                <div className="row" key={item.category}>
-                  <span className="subtle">{item.category}</span>
-                  <span className="mono">{formatUsd(item.amount)}</span>
-                </div>
-              ))}
-              <div className="row">
-                <strong>Total daily opex</strong>
-                <strong>{formatUsd(costsTotal)}</strong>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+              <Badge variant="up">
+                <Coins className="size-3" /> net of fees
+              </Badge>
+            </CardHeader>
+            <CardContent>
+              <AreaChart points={portfolio.equity_curve} height={244} />
+            </CardContent>
+          </Card>
 
-      <section className="surface" id="leaderboard">
-        <div className="surface-header">
-          <div>
-            <div className="eyebrow">leaderboard</div>
-            <h2>Every version earns its own standardized sleeve.</h2>
-          </div>
-          <span className="pill"><Gauge size={14} /> ranked by deflated OOS Sharpe</span>
-        </div>
-        <div className="card table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Strategy</th>
-                <th>Status</th>
-                <th>Sleeve</th>
-                <th>Net</th>
-                <th>D Sharpe</th>
-                <th>PBO</th>
-                <th>Lineage</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leaderboard.rows.map((row: LeaderboardRow) => (
-                <tr key={row.version_id}>
-                  <td><a href={`/strategy/${row.version_id}`}><strong>{row.name}</strong></a></td>
-                  <td><span className={`pill ${row.status === "killed" ? "bad" : row.status === "paper" ? "good" : "warn"}`}>{row.status}</span></td>
-                  <td className="mono">{formatPct(row.sleeve_return_pct)}</td>
-                  <td className="mono">{formatPct(row.net_pct)}</td>
-                  <td className="mono">{row.deflated_sharpe.toFixed(2)}</td>
-                  <td className="mono">{row.pbo.toFixed(2)}</td>
-                  <td className="subtle">{row.lineage}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="surface" id="strategy">
-        <div className="surface-header">
-          <div>
-            <div className="eyebrow">strategy detail</div>
-            <h2>{strategy.name}</h2>
-          </div>
-          <span className="pill good"><ShieldCheck size={14} /> scorer-owned gates</span>
-        </div>
-        <div className="grid two">
-          <div className="card stack">
-            <h3>Evidence</h3>
-            {strategy.backtests.map((backtest: Backtest) => (
-              <div className="row" key={backtest.id}>
-                <div>
-                  <strong>{backtest.kind}</strong>
-                  <div className="subtle">{backtest.num_trades} trades · max DD {(backtest.max_dd * 100).toFixed(1)}%</div>
-                </div>
-                <div className="mono">{backtest.deflated_sharpe.toFixed(2)} dS</div>
+          <Card>
+            <CardHeader>
+              <div>
+                <CardTitle>Allocation &amp; costs</CardTitle>
+                <CardDescription>Capital split across decorrelated sleeves.</CardDescription>
               </div>
-            ))}
-            <p className="subtle">{strategy.notes_md}</p>
-          </div>
-          <div className="card stack">
-            <h3>Compiled artifact</h3>
-            <pre className="code">{strategy.generated_code}</pre>
-            <div className="row">
-              <span className="subtle">Holdout</span>
-              <span className="pill good">seen once · passed</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="surface" id="console">
-        <div className="surface-header">
-          <div>
-            <div className="eyebrow">console</div>
-            <h2>Chat, voice, images, recommendations.</h2>
-          </div>
-          <span className="pill"><BrainCircuit size={14} /> LLM proposes, master disposes</span>
-        </div>
-        <div className="console">
-          <div className="card">
-            <ConsoleBox />
-          </div>
-          <div className="stack">
-            <div className="card stack">
-              <h3>Recommendations</h3>
-              {recommendations.map((item: Recommendation) => (
-                <div className="stack" key={item.id} style={{ borderTop: "1px solid var(--line)", paddingTop: 10 }}>
-                  <span className="pill warn">{item.kind}</span>
-                  <p>{item.body}</p>
-                </div>
-              ))}
-            </div>
-            <div className="card stack">
-              <h3>Audit stream</h3>
-              {events.map((event: Event) => (
-                <div className="row" key={event.id}>
-                  <div>
-                    <strong>{event.kind}</strong>
-                    <div className="subtle">{event.actor} · {event.ref_type ?? "system"}</div>
+              <Layers className="size-4 text-quiet" />
+            </CardHeader>
+            <CardContent className="space-y-3.5">
+              {portfolio.allocation.map((item: Allocation) => (
+                <div key={item.strategy_id} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[13px]">
+                    <span className="font-medium text-foreground">{item.name}</span>
+                    <span className="tabular text-muted">{Math.round(item.weight * 100)}%</span>
                   </div>
-                  <RadioTower size={15} color="var(--cyan)" />
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+                    <div
+                      className="h-full rounded-full bg-iris/80"
+                      style={{ width: `${Math.round(item.weight * 100)}%` }}
+                    />
+                  </div>
+                  <div className="text-[11.5px] text-quiet">{item.venue}</div>
                 </div>
               ))}
-            </div>
+              <div className="space-y-1.5 border-t border-border/60 pt-3">
+                {portfolio.costs.map((item: CostSlice) => (
+                  <div key={item.category} className="flex items-center justify-between text-[12.5px]">
+                    <span className="capitalize text-muted">{item.category}</span>
+                    <span className="tabular text-foreground">{formatUsd(item.amount, 1)}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between border-t border-border/60 pt-2 text-[13px] font-semibold">
+                  <span>Total daily opex</span>
+                  <span className="tabular">{formatUsd(costsTotal, 1)}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      {/* Leaderboard */}
+      <section id="leaderboard" className="space-y-4">
+        <SectionHeader
+          eyebrow="leaderboard"
+          title="Every version earns its own standardized sleeve"
+          aside={
+            <Badge variant="iris">
+              <Gauge className="size-3" /> ranked by deflated OOS Sharpe
+            </Badge>
+          }
+        />
+        <Card>
+          <CardContent className="pt-5">
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Strategy</TH>
+                  <TH>Status</TH>
+                  <TH className="text-right">Sleeve</TH>
+                  <TH className="text-right">Net</TH>
+                  <TH className="text-right">D-Sharpe</TH>
+                  <TH className="text-right">PBO</TH>
+                  <TH>Lineage</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {leaderboard.rows.map((row: LeaderboardRow) => (
+                  <TR key={row.version_id}>
+                    <TD>
+                      <Link
+                        href={`/strategy/${row.version_id}`}
+                        className="font-medium text-foreground underline-offset-4 hover:text-iris-soft hover:underline"
+                      >
+                        {row.name}
+                      </Link>
+                    </TD>
+                    <TD>
+                      <Badge variant={statusVariant[row.status] ?? "muted"}>{row.status}</Badge>
+                    </TD>
+                    <TD className={`text-right tabular ${row.sleeve_return_pct >= 0 ? "text-up" : "text-down"}`}>
+                      {formatPct(row.sleeve_return_pct)}
+                    </TD>
+                    <TD className={`text-right tabular ${row.net_pct >= 0 ? "text-up" : "text-down"}`}>
+                      {formatPct(row.net_pct)}
+                    </TD>
+                    <TD className="text-right tabular text-foreground">{row.deflated_sharpe.toFixed(2)}</TD>
+                    <TD className="text-right tabular text-muted">{row.pbo.toFixed(2)}</TD>
+                    <TD className="text-[12px] text-quiet">{row.lineage}</TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Strategy spotlight */}
+      <section id="strategy" className="space-y-4">
+        <SectionHeader
+          eyebrow="strategy spotlight"
+          title={strategy.name}
+          aside={
+            <Badge variant="up">
+              <ShieldCheck className="size-3" /> scorer-owned gates
+            </Badge>
+          }
+        />
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Evidence</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {strategy.backtests.map((bt: Backtest) => (
+                <div
+                  key={bt.id}
+                  className="flex items-center justify-between rounded-md border border-border/60 bg-surface-2/40 px-3 py-2.5"
+                >
+                  <div>
+                    <div className="text-[13px] font-medium uppercase tracking-wide text-foreground">{bt.kind}</div>
+                    <div className="text-[11.5px] text-quiet">
+                      {bt.num_trades} trades · max DD {(bt.max_dd * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  <Badge variant={bt.passed_gates ? "up" : "down"}>{bt.deflated_sharpe.toFixed(2)} dS</Badge>
+                </div>
+              ))}
+              <p className="text-[12.5px] leading-relaxed text-muted">{strategy.notes_md}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Compiled artifact</CardTitle>
+              <Badge variant="up">holdout · seen once · passed</Badge>
+            </CardHeader>
+            <CardContent>
+              <pre className="overflow-x-auto rounded-md border border-border/60 bg-background/60 p-3 font-mono text-[12px] leading-relaxed text-iris-soft">
+                {strategy.generated_code}
+              </pre>
+              <Link
+                href={`/strategy/${strategy.version_id}`}
+                className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft hover:underline"
+              >
+                Full strategy detail <ArrowUpRight className="size-3.5" />
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      {/* Console */}
+      <section id="console" className="space-y-4">
+        <SectionHeader
+          eyebrow="console"
+          title="Steer it in plain language"
+          aside={
+            <Badge variant="iris">
+              <BrainCircuit className="size-3" /> LLM proposes · master disposes
+            </Badge>
+          }
+        />
+        <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
+          <Card>
+            <CardContent className="pt-5">
+              <ConsoleBox />
+            </CardContent>
+          </Card>
+          <div className="space-y-3">
+            <Card>
+              <CardHeader>
+                <CardTitle>Recommendations</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {recommendations.map((rec: Recommendation) => (
+                  <div key={rec.id} className="rounded-md border border-border/60 bg-surface-2/40 p-3">
+                    <Badge variant="warn">{rec.kind.replace(/_/g, " ")}</Badge>
+                    <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{rec.body}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Audit stream</CardTitle>
+                <Radio className="size-4 text-info" />
+              </CardHeader>
+              <CardContent className="space-y-2.5">
+                {events.map((event: Event) => (
+                  <div key={event.id} className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[12.5px] font-medium text-foreground">{event.kind.replace(/_/g, " ")}</div>
+                      <div className="text-[11px] text-quiet">
+                        {event.actor} · {event.ref_type ?? "system"}
+                      </div>
+                    </div>
+                    <span className="size-1.5 rounded-full bg-info/80" />
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </section>

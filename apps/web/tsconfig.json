@@ -6,6 +6,10 @@
     "moduleResolution": "bundler",
     "lib": ["dom", "dom.iterable", "es2022"],
     "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    },
     "allowJs": false,
     "noEmit": true,
     "incremental": true,

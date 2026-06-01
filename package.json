@@ -8,7 +8,7 @@
   "scripts": {
     "build": "pnpm contracts:generate && pnpm --filter @cosmu/contracts-ts build && pnpm --filter @cosmu/web build",
     "build:all": "pnpm -r build",
-    "build:railway": "python3 -m compileall apps/engine/cosmu",
+    "build:railway": "pnpm --filter @cosmu/web build",
     "contracts:generate": "python3 scripts/generate_contracts.py",
     "db:reset:local": "node scripts/reset-local-db.mjs",
     "dev": "pnpm contracts:generate && pnpm --parallel --filter @cosmu/web dev",
