@@ -143,3 +143,16 @@
     animation: pulse-dot 2s ease-in-out infinite;
   }
 }
+
+@layer utilities {
+  @keyframes menu-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes overlay-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .animate-menu-in { animation: menu-in 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+  .animate-overlay-in { animation: overlay-in 180ms ease-out; }
+}

@@ -58,6 +58,7 @@ export function SideNavLinks({ onNavigate, collapsed = false }: { onNavigate?: (
 export function MobileNav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+
   return (
     <div className="lg:hidden">
       <button
@@ -72,9 +73,13 @@ export function MobileNav() {
       {open &&
         createPortal(
           <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
-            <button aria-label="Close menu" className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
-            {/* compact, content-sized rounded panel at the top — not a full-height block */}
-            <div className="absolute inset-x-3 top-3 rounded-2xl border border-border bg-surface p-2 shadow-2xl">
+            <button
+              aria-label="Close menu"
+              onClick={() => setOpen(false)}
+              className="animate-overlay-in absolute inset-0 bg-black/40"
+            />
+            {/* compact, content-sized rounded panel that slides + fades in from the top (pure CSS) */}
+            <div className="animate-menu-in absolute inset-x-3 top-3 origin-top rounded-2xl border border-border bg-surface p-2 shadow-2xl">
               <div className="flex items-center justify-between px-1.5 pb-2 pt-1">
                 <CosmuWordmark />
                 <button
