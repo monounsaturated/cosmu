@@ -118,7 +118,7 @@ def gather_context(bus: ToolBus, *, symbol: str = "BTCUSDT", offline: bool = Tru
     }
 
 
-def author_candidates(n: int, *, llm_enabled: bool = False, store: Store | None = None) -> list[tuple[AuthorDraft, CandidateRecord]]:
+def author_candidates(n: int, *, llm_enabled: bool = False, store: Store | None = None, chat=None) -> list[tuple[AuthorDraft, CandidateRecord]]:  # noqa: ANN001
     """Author N candidate specs via lab/author (LLM-OPTIONAL), compile + static-check each. The author only
     produces STRUCTURE (thresholds stay in param_space); the gate, not this path, decides what survives. When a
     `store` is given the author consults LONG-TERM MEMORY (graveyard RAG + distilled skills) to avoid recently
@@ -126,7 +126,10 @@ def author_candidates(n: int, *, llm_enabled: bool = False, store: Store | None 
     out: list[tuple[AuthorDraft, CandidateRecord]] = []
     briefs = [_BRIEFS[i % len(_BRIEFS)] for i in range(max(1, n))]
     for brief, feats in briefs:
-        draft = draft_from_brief(brief, features=feats, llm_enabled=llm_enabled, store=store)
+        # When the LLM is enabled the model PROPOSES the structure from the plain-language brief (the named-feature
+        # hints become a fallback, not a hard pin); offline the deterministic template matcher uses the hints.
+        author_feats = None if llm_enabled else feats
+        draft = draft_from_brief(brief, features=author_feats, llm_enabled=llm_enabled, store=store, chat=chat)
         issues = list(draft.issues) or validate_spec(draft.spec)
         compiled_ok = False
         code_hash: str | None = None
@@ -162,6 +165,7 @@ def run_research_pass(
     tool_bus: ToolBus | None = None,
     edge_market: bool = False,
     persist: bool = True,
+    chat=None,  # noqa: ANN001 — injectable LLM seam; None → real OpenRouter seam from settings (offline → fallback)
 ) -> ResearchReport:
     """ONE bounded research pass: gather context → author N specs → compile+static_check → run through the
     DETERMINISTIC evolution screen/gate (scorer out of any LLM's reach) → record survivors + graveyard. The
@@ -176,7 +180,7 @@ def run_research_pass(
     context = gather_context(bus)
 
     # Consult long-term memory while authoring (avoid recently-dead structures, lean toward winners + skills).
-    authored = author_candidates(n, llm_enabled=llm_enabled, store=store)
+    authored = author_candidates(n, llm_enabled=llm_enabled, store=store, chat=chat)
     extra_seeds = [draft.spec for draft, rec in authored if rec.compiled]
 
     if market_data is not None:

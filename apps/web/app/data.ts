@@ -27,6 +27,7 @@ import type {
   StrategyDetailResponse
 } from "@cosmu/contracts-ts";
 import type { PositionsResponse } from "@/components/live/contracts";
+import { EMPTY_AUTONOMY_STATUS, type AutonomyStatus } from "./autonomy-contracts";
 
 // Skills, memory insights, and costs come from the generated @cosmu/contracts-ts (no hand-typed
 // contract drift). Re-exported here so the surfaces that consume them keep importing from data.ts.
@@ -185,6 +186,15 @@ export async function getInsights(): Promise<{ insights: MemoryInsight[]; connec
 export async function getCosts(): Promise<{ costs: CostsResponse; connected: boolean }> {
   const { data, connected } = await getJson("/costs", emptyCosts);
   return { costs: data, connected };
+}
+
+// GET /autonomy/status — the command-center status of the autonomous machine the human oversees:
+// running/paused, live on/off, cycles run, what it last did + will do next, and the last cycle's
+// counts. `connected:false` renders an honest "machine status unknown" state — never a fake running
+// machine. The deterministic Gate/scorer still disposes; this status only reports, never decides.
+export async function getAutonomyStatus(): Promise<{ status: AutonomyStatus; connected: boolean }> {
+  const { data, connected } = await getJson("/autonomy/status", EMPTY_AUTONOMY_STATUS);
+  return { status: data, connected };
 }
 
 // Live trading positions snapshot for the /live surface. `connected:false` is shown as engine-

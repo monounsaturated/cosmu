@@ -1,20 +1,23 @@
 import { MessageSquare, Radio } from "lucide-react";
 import { SteerBox } from "./steer-box";
-import { engineConfigured, getEvents, getRecommendations } from "../data";
-import type { Event, Recommendation } from "@cosmu/contracts-ts";
+import { engineConfigured, getAutonomyStatus, getEvents, getRecommendations } from "../data";
+import type { Event } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/ui/section";
 import { EmptyState, NotConnectedBanner } from "@/components/ui/honest-state";
+import { AutonomyPanel } from "@/components/autonomy/autonomy-panel";
+import { NeedsYouInbox } from "@/components/autonomy/needs-you-inbox";
 
 // Steer answers ONE question: how do I nudge the machine?
 // NL steer commands + recommendations + ML-through-NL asks. Authoring lives in Claude Code / the
 // Overview inbox — Steer stays slim and ops-focused.
 export default async function SteerPage() {
-  const [{ items: recommendations, connected: recConnected }, { events, connected: evtConnected }] = await Promise.all([
-    getRecommendations(),
-    getEvents()
-  ]);
+  const [
+    { items: recommendations, connected: recConnected },
+    { events, connected: evtConnected },
+    { status: autonomy, connected: autonomyConnected }
+  ] = await Promise.all([getRecommendations(), getEvents(), getAutonomyStatus()]);
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-8 px-5 py-7 lg:px-7">
@@ -29,6 +32,9 @@ export default async function SteerPage() {
       />
 
       {!recConnected && !evtConnected ? <NotConnectedBanner configured={engineConfigured} /> : null}
+
+      {/* The autonomy control: pause / resume / run-a-cycle for the machine the human oversees. */}
+      <AutonomyPanel initial={autonomy} connected={autonomyConnected} configured={engineConfigured} />
 
       <Card>
         <CardHeader>
@@ -45,23 +51,11 @@ export default async function SteerPage() {
       <div className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Recommendations</CardTitle>
-            <Badge variant="warn">needs you</Badge>
+            <CardTitle>Needs you</CardTitle>
+            <Badge variant="warn">approve · dismiss</Badge>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {recommendations.length === 0 ? (
-              <EmptyState
-                title={recConnected ? "Nothing waiting on you right now." : "Connect the engine to see recommendations."}
-                hint={recConnected ? "The engine raises a recommendation when a decision needs your call." : undefined}
-              />
-            ) : (
-              recommendations.map((rec: Recommendation) => (
-                <div key={rec.id} className="rounded-md border border-border/60 bg-surface-2/40 p-3">
-                  <Badge variant="warn">{rec.kind.replace(/_/g, " ")}</Badge>
-                  <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{rec.body}</p>
-                </div>
-              ))
-            )}
+          <CardContent>
+            <NeedsYouInbox initial={recommendations} connected={recConnected} configured={engineConfigured} />
           </CardContent>
         </Card>
 

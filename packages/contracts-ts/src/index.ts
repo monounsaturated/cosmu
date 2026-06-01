@@ -58,6 +58,28 @@ export interface AuthorRunRequest {
   venues?: string[] | null;
 }
 
+export interface AutonomyPauseResponse {
+  paused: boolean;
+}
+
+export interface AutonomyStatusResponse {
+  cycles_run: number;
+  last_action: string;
+  last_summary: TickSummary;
+  last_tick_at: string | null;
+  live_enabled: boolean;
+  next_action: string;
+  paused: boolean;
+  running: boolean;
+}
+
+export interface AutonomyTickResponse {
+  authored: number;
+  funded: number;
+  gated_passed: number;
+  recommendations: number;
+}
+
 export interface Backtest {
   deflated_sharpe: number;
   id: string;
@@ -459,6 +481,12 @@ export interface Recommendation {
   ts: string;
 }
 
+export interface RecommendationActionResponse {
+  applied?: boolean;
+  ok: boolean;
+  reason?: string | null;
+}
+
 export interface RecommendationsResponse {
   items: Recommendation[];
 }
@@ -486,6 +514,13 @@ export interface StrategyDetailResponse {
   spec: Record<string, unknown>;
   trades: Execution[];
   version_id: string;
+}
+
+export interface TickSummary {
+  authored: number;
+  funded: number;
+  gated_passed: number;
+  recommendations: number;
 }
 
 export interface ToggleRequest {

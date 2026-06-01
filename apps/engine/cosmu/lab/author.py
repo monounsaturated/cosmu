@@ -62,6 +62,26 @@ class AuthorDraft:
     memory_leaned: list[str] = field(default_factory=list)
 
 
+_TEMPLATE_BUILDERS = {
+    "mean_reversion": seed_meanrev_spec,
+    "carry": seed_carry_spec,
+    "momentum": seed_momentum_spec,
+    "breakout": seed_breakout_spec,
+}
+
+
+def _template_from_text(text: str) -> str:
+    """The deterministic intent→template matcher (the keyless fallback). An LLM proposal, when present, overrides
+    this choice — but the proposal can only pick one of these same magic-number-free templates."""
+    if any(k in text for k in ("revert", "reversion", "oversold", "mean", "dip", "bounce")):
+        return "mean_reversion"
+    if any(k in text for k in ("funding", "carry", "basis", "leverage")):
+        return "carry"
+    if any(k in text for k in ("momentum", "trend", "breakout")):
+        return "momentum"
+    return "breakout"
+
+
 def draft_from_brief(
     brief: str,
     *,
@@ -69,22 +89,27 @@ def draft_from_brief(
     venues: list[str] | None = None,
     llm_enabled: bool = False,
     store: Store | None = None,
+    chat=None,  # noqa: ANN001 — injectable LLM seam (lab.llm.ChatFn); None → real OpenRouter seam from settings
 ) -> AuthorDraft:
     text = brief.lower()
     notes: list[str] = []
     memory_avoided: list[str] = []
     memory_leaned: list[str] = []
 
-    # 1) pick a base template from intent
-    if any(k in text for k in ("revert", "reversion", "oversold", "mean", "dip", "bounce")):
-        spec, base = seed_meanrev_spec(), "mean_reversion"
-    elif any(k in text for k in ("funding", "carry", "basis", "leverage")):
-        spec, base = seed_carry_spec(), "carry"
-    elif any(k in text for k in ("momentum", "trend", "breakout")):
-        spec, base = seed_momentum_spec(), "momentum"
-    else:
-        spec, base = seed_breakout_spec(), "breakout"
-    spec = spec.model_copy(deep=True)
+    # 1) pick a base template from intent. Deterministic by default; when an LLM key is set the model PROPOSES
+    # the structure (template + named features + horizon) and we use it — but only ever to steer the same
+    # magic-number-free templates below, so the LLM cannot smuggle a threshold in. The Gate still disposes.
+    base = _template_from_text(text)
+    llm_features: list[str] | None = None
+    llm_bar: str | None = None
+    if llm_enabled:
+        proposal, llm_notes = _llm_propose(brief, store=store, chat=chat)
+        notes.extend(llm_notes)
+        if proposal is not None:
+            base = proposal.base_template
+            llm_features = proposal.features or None
+            llm_bar = proposal.bar_size
+    spec = _TEMPLATE_BUILDERS[base]().model_copy(deep=True)
 
     # 2) retarget universe from asset intent or explicit venues
     asset_class, venue = _pick_asset(text)
@@ -94,8 +119,10 @@ def draft_from_brief(
         spec.universe.venues = [venue]
         spec.universe.asset_classes = [asset_class]
 
-    # 3) horizon hints
-    if any(k in text for k in ("intraday", "hourly", "1h", "scalp")):
+    # 3) horizon hints — the LLM's proposed bar_size (validated to 1h|4h|1d) wins; else detect from the brief.
+    if llm_bar in ("1h", "4h", "1d"):
+        spec.horizon.bar_size = llm_bar  # type: ignore[assignment]
+    elif any(k in text for k in ("intraday", "hourly", "1h", "scalp")):
         spec.horizon.bar_size = "1h"
     elif any(k in text for k in ("daily", "swing", "1d")):
         spec.horizon.bar_size = "1d"
@@ -108,9 +135,10 @@ def draft_from_brief(
     if any(k in text for k in ("conservative", "safe", "careful", "low risk")):
         spec.risk.max_position_pct = round(max(0.01, spec.risk.max_position_pct * 0.7), 4)
 
-    # 5) feature picks: explicit list (from UI) or detected from the brief, validated to the asset class
+    # 5) feature picks: explicit list (from UI) wins; else the LLM's proposed named features; else detected from
+    # the brief. All are validated to the asset class — the LLM cannot pick a feature it isn't allowed to use.
     valid_feats = {f.name for f in features_for(spec.universe.asset_classes)}
-    wanted = features or _detect_features(text)
+    wanted = features or llm_features or _detect_features(text)
     chosen = [f for f in wanted if f in valid_feats]
     rejected = [f for f in wanted if f and f not in valid_feats]
     if rejected:
@@ -145,6 +173,10 @@ def draft_from_brief(
     ]
     if not llm_enabled:
         notes.append("model router disabled (no key) — deterministic template match used")
+    # The spec builder GUARANTEES no magic numbers (thresholds are ParamRefs into param_space) regardless of who
+    # proposed the structure; re-validate so an LLM proposal is held to the exact same static_check bar.
+    if "literal_threshold" in issues or any(i.startswith("unknown_feature") for i in issues):
+        notes.append("proposed structure failed static_check — see issues")
 
     return AuthorDraft(
         spec=spec,
@@ -161,6 +193,29 @@ def draft_from_brief(
         memory_avoided=memory_avoided,
         memory_leaned=memory_leaned,
     )
+
+
+def _llm_propose(brief: str, *, store: Store | None, chat):  # noqa: ANN001, ANN202
+    """Ask the model (via the tier router) for a STRUCTURED proposal. Returns (LlmProposal | None, notes). Never
+    raises into authoring — any failure degrades to the deterministic path. Reads the OpenRouter key from
+    settings (server-side) unless an explicit `chat` seam is injected (tests). Structure-only; Gate disposes."""
+    try:
+        from cosmu.config.settings import get_settings
+        from cosmu.lab.router import route_and_propose
+
+        # Vocab the model is allowed to pick from — the full registry (the spec builder re-validates per asset).
+        valid_features = [f.name for f in FEATURE_REGISTRY if f.enabled]
+        settings = store.settings if store is not None else get_settings()
+        result = route_and_propose(
+            brief,
+            valid_features=valid_features,
+            spend=settings.spend,
+            api_key=settings.openrouter_api_key,
+            chat=chat,
+        )
+        return result.proposal, result.notes
+    except Exception as exc:  # noqa: BLE001 — the LLM seam is advisory; a hiccup falls back to the template path
+        return None, [f"llm proposal unavailable ({type(exc).__name__}) — deterministic fallback"]
 
 
 def _apply_memory(

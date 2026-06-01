@@ -13,6 +13,9 @@ from cosmu.api.models import (
     ActivateRequest,
     ActivateResponse,
     Allocation,
+    AutonomyPauseResponse,
+    AutonomyStatusResponse,
+    AutonomyTickResponse,
     AuthorRequest,
     AuthorResponse,
     AuthorRunRequest,
@@ -65,6 +68,7 @@ from cosmu.api.models import (
     PopulationResponse,
     PortfolioResponse,
     Recommendation,
+    RecommendationActionResponse,
     RecommendationsResponse,
     Skill,
     SkillsResponse,
@@ -517,6 +521,112 @@ def recommendations() -> RecommendationsResponse:
             for row in rows
         ]
     )
+
+
+def _autonomy_status_response() -> AutonomyStatusResponse:
+    from cosmu.api.models import TickSummary as _TickSummary
+    from cosmu.master.scheduler import autonomy_status
+
+    st = autonomy_status(store)
+    return AutonomyStatusResponse(
+        running=st.running,
+        paused=st.paused,
+        live_enabled=st.live_enabled,
+        cycles_run=st.cycles_run,
+        last_tick_at=st.last_tick_at,
+        last_action=st.last_action,
+        next_action=st.next_action,
+        last_summary=_TickSummary(
+            authored=st.last_summary.authored,
+            gated_passed=st.last_summary.gated_passed,
+            funded=st.last_summary.funded,
+            recommendations=st.last_summary.recommendations,
+        ),
+    )
+
+
+@app.get("/autonomy/status", response_model=AutonomyStatusResponse)
+def autonomy_status_route() -> AutonomyStatusResponse:
+    """The human-overview snapshot of the autonomous master tick — running/paused, live on/off (reported, never
+    armed here), cycles run, and the last tick's headline counts. Read entirely off the persisted ledger."""
+    return _autonomy_status_response()
+
+
+@app.post("/autonomy/pause", response_model=AutonomyPauseResponse)
+def autonomy_pause() -> AutonomyPauseResponse:
+    from cosmu.master.scheduler import pause
+
+    pause(store)
+    return AutonomyPauseResponse(paused=True)
+
+
+@app.post("/autonomy/resume", response_model=AutonomyPauseResponse)
+def autonomy_resume() -> AutonomyPauseResponse:
+    from cosmu.master.scheduler import resume
+
+    resume(store)
+    return AutonomyPauseResponse(paused=False)
+
+
+@app.post("/autonomy/tick", response_model=AutonomyTickResponse)
+def autonomy_tick() -> AutonomyTickResponse:
+    """Run ONE bounded, idempotent, audited autonomous cycle: ingest → author (LLM proposes if a key is set, else
+    deterministic) → DETERMINISTIC gate + flywheel → fund the PAPER Wallet from survivors → emit recommendations.
+    LIVE STAYS OFF — paper fills only; the tick never arms live. Cron-able (one tick per call, not a daemon)."""
+    from cosmu.master.scheduler import run_tick
+
+    # Run over the edge-bearing fixture so a survivor (and the fund/recommend path) is exercised offline too.
+    report = run_tick(store, n=6, seed=7, edge_market=True)
+    s = report.summary
+    return AutonomyTickResponse(
+        authored=s.authored,
+        gated_passed=s.gated_passed,
+        funded=s.funded,
+        recommendations=s.recommendations,
+    )
+
+
+@app.post("/recommendations/{rec_id}/approve", response_model=RecommendationActionResponse)
+def recommendation_approve(rec_id: str) -> RecommendationActionResponse:
+    """Approve a recommendation: mark it approved and apply the validated action via policy + audit. Money-adjacent
+    recommendations (live/funding/cap moves) are recorded as a policy that STAYS GATED — approval here never moves
+    real money; that still requires the explicit 2-click live arming + a passed gate."""
+    row = store.row("SELECT * FROM recommendations WHERE id = ?", (rec_id,))
+    if row is None:
+        raise HTTPException(status_code=404, detail="recommendation not found")
+    if row["state"] != "open":
+        return RecommendationActionResponse(ok=False, applied=False, reason=f"already {row['state']}")
+    payload = _json(row["payload"]) or {}
+    kind = row["kind"]
+    money_adjacent = kind in {"live_promotion", "fund_capital", "cap_change"} or bool(payload.get("requires_money_move"))
+    store.rows("UPDATE recommendations SET state = 'approved' WHERE id = ?", (rec_id,))
+    # The approved action is applied as a research-routing policy (auditable); money-adjacent stays gated.
+    store.insert(
+        "policies",
+        {
+            "ts": utcnow(),
+            "source": "recommendation",
+            "raw_text": row["body"],
+            "parsed": {"recommendation_id": rec_id, "kind": kind, "requires_money_move": money_adjacent},
+            "scope": "policy",
+            "applied": int(not money_adjacent),
+            "applied_at": utcnow() if not money_adjacent else None,
+        },
+    )
+    store.append_event(actor="human", kind="recommendation_approved", ref_type="recommendation", ref_id=rec_id, payload={"kind": kind, "applied": not money_adjacent})
+    if money_adjacent:
+        return RecommendationActionResponse(ok=True, applied=False, reason="money-adjacent — recorded but stays gated until live is armed")
+    return RecommendationActionResponse(ok=True, applied=True)
+
+
+@app.post("/recommendations/{rec_id}/dismiss", response_model=RecommendationActionResponse)
+def recommendation_dismiss(rec_id: str) -> RecommendationActionResponse:
+    row = store.row("SELECT state FROM recommendations WHERE id = ?", (rec_id,))
+    if row is None:
+        raise HTTPException(status_code=404, detail="recommendation not found")
+    store.rows("UPDATE recommendations SET state = 'dismissed' WHERE id = ?", (rec_id,))
+    store.append_event(actor="human", kind="recommendation_dismissed", ref_type="recommendation", ref_id=rec_id)
+    return RecommendationActionResponse(ok=True)
 
 
 @app.post("/toggle/live", response_model=ToggleResponse)

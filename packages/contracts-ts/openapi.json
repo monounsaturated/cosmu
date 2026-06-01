@@ -316,6 +316,102 @@
         "title": "AuthorRunRequest",
         "type": "object"
       },
+      "AutonomyPauseResponse": {
+        "properties": {
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paused"
+        ],
+        "title": "AutonomyPauseResponse",
+        "type": "object"
+      },
+      "AutonomyStatusResponse": {
+        "description": "The human-overview snapshot of the autonomous master tick. `running` = armed (not paused); the loop is\ncron-driven (one tick per call), so there is no 24/7 daemon. `live_enabled` is reported but the tick never\narms live \u2014 money-adjacent stays gated.",
+        "properties": {
+          "cycles_run": {
+            "title": "Cycles Run",
+            "type": "integer"
+          },
+          "last_action": {
+            "title": "Last Action",
+            "type": "string"
+          },
+          "last_summary": {
+            "$ref": "#/components/schemas/TickSummary"
+          },
+          "last_tick_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Tick At"
+          },
+          "live_enabled": {
+            "title": "Live Enabled",
+            "type": "boolean"
+          },
+          "next_action": {
+            "title": "Next Action",
+            "type": "string"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "running",
+          "paused",
+          "live_enabled",
+          "cycles_run",
+          "last_tick_at",
+          "last_action",
+          "next_action",
+          "last_summary"
+        ],
+        "title": "AutonomyStatusResponse",
+        "type": "object"
+      },
+      "AutonomyTickResponse": {
+        "properties": {
+          "authored": {
+            "title": "Authored",
+            "type": "integer"
+          },
+          "funded": {
+            "title": "Funded",
+            "type": "integer"
+          },
+          "gated_passed": {
+            "title": "Gated Passed",
+            "type": "integer"
+          },
+          "recommendations": {
+            "title": "Recommendations",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "authored",
+          "gated_passed",
+          "funded",
+          "recommendations"
+        ],
+        "title": "AutonomyTickResponse",
+        "type": "object"
+      },
       "Backtest": {
         "properties": {
           "deflated_sharpe": {
@@ -2180,6 +2276,35 @@
         "title": "Recommendation",
         "type": "object"
       },
+      "RecommendationActionResponse": {
+        "properties": {
+          "applied": {
+            "default": false,
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "RecommendationActionResponse",
+        "type": "object"
+      },
       "RecommendationsResponse": {
         "properties": {
           "items": {
@@ -2311,6 +2436,34 @@
           "holdout"
         ],
         "title": "StrategyDetailResponse",
+        "type": "object"
+      },
+      "TickSummary": {
+        "properties": {
+          "authored": {
+            "title": "Authored",
+            "type": "integer"
+          },
+          "funded": {
+            "title": "Funded",
+            "type": "integer"
+          },
+          "gated_passed": {
+            "title": "Gated Passed",
+            "type": "integer"
+          },
+          "recommendations": {
+            "title": "Recommendations",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "authored",
+          "gated_passed",
+          "funded",
+          "recommendations"
+        ],
+        "title": "TickSummary",
         "type": "object"
       },
       "ToggleRequest": {
@@ -2502,6 +2655,80 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/autonomy/pause": {
+      "post": {
+        "operationId": "autonomy_pause_autonomy_pause_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyPauseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Autonomy Pause"
+      }
+    },
+    "/autonomy/resume": {
+      "post": {
+        "operationId": "autonomy_resume_autonomy_resume_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyPauseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Autonomy Resume"
+      }
+    },
+    "/autonomy/status": {
+      "get": {
+        "description": "The human-overview snapshot of the autonomous master tick \u2014 running/paused, live on/off (reported, never\narmed here), cycles run, and the last tick's headline counts. Read entirely off the persisted ledger.",
+        "operationId": "autonomy_status_route_autonomy_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Autonomy Status Route"
+      }
+    },
+    "/autonomy/tick": {
+      "post": {
+        "description": "Run ONE bounded, idempotent, audited autonomous cycle: ingest \u2192 author (LLM proposes if a key is set, else\ndeterministic) \u2192 DETERMINISTIC gate + flywheel \u2192 fund the PAPER Wallet from survivors \u2192 emit recommendations.\nLIVE STAYS OFF \u2014 paper fills only; the tick never arms live. Cron-able (one tick per call, not a daemon).",
+        "operationId": "autonomy_tick_autonomy_tick_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyTickResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Autonomy Tick"
+      }
+    },
     "/console/command": {
       "post": {
         "operationId": "console_command_console_command_post",
@@ -2996,6 +3223,85 @@
           }
         },
         "summary": "Recommendations"
+      }
+    },
+    "/recommendations/{rec_id}/approve": {
+      "post": {
+        "description": "Approve a recommendation: mark it approved and apply the validated action via policy + audit. Money-adjacent\nrecommendations (live/funding/cap moves) are recorded as a policy that STAYS GATED \u2014 approval here never moves\nreal money; that still requires the explicit 2-click live arming + a passed gate.",
+        "operationId": "recommendation_approve_recommendations__rec_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rec_id",
+            "required": true,
+            "schema": {
+              "title": "Rec Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recommendation Approve"
+      }
+    },
+    "/recommendations/{rec_id}/dismiss": {
+      "post": {
+        "operationId": "recommendation_dismiss_recommendations__rec_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rec_id",
+            "required": true,
+            "schema": {
+              "title": "Rec Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recommendation Dismiss"
       }
     },
     "/research/brain": {

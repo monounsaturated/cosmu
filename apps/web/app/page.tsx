@@ -1,7 +1,7 @@
-import { ArrowRight, Coins, Gauge, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, Coins, Gauge, Power, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
-import { engineConfigured, getEvents, getLeaderboard, getPortfolio, getRecommendations } from "./data";
-import type { CostSlice, Event, LeaderboardRow, Recommendation } from "@cosmu/contracts-ts";
+import { engineConfigured, getAutonomyStatus, getEvents, getLeaderboard, getPortfolio, getRecommendations } from "./data";
+import type { CostSlice, Event, LeaderboardRow } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
@@ -9,6 +9,8 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { MoneyState, moneyMode } from "@/components/ui/money-state";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 import { EquityCurve } from "@/components/charts/equity-curve";
+import { AutonomyPanel } from "@/components/autonomy/autonomy-panel";
+import { NeedsYouInbox } from "@/components/autonomy/needs-you-inbox";
 import { formatPct, formatSigned, formatUsd } from "@/lib/utils";
 
 const statusVariant: Record<string, "up" | "warn" | "down" | "info"> = {
@@ -34,11 +36,18 @@ const SLEEVE_VS_WALLET = (
 
 // Overview answers ONE question: are we making money + what needs me?
 export default async function OverviewPage() {
-  const [{ portfolio, connected }, { leaderboard }, { items: recommendations }, { events }] = await Promise.all([
+  const [
+    { portfolio, connected },
+    { leaderboard },
+    { items: recommendations, connected: recConnected },
+    { events },
+    { status: autonomy, connected: autonomyConnected }
+  ] = await Promise.all([
     getPortfolio(),
     getLeaderboard(),
     getRecommendations(),
-    getEvents()
+    getEvents(),
+    getAutonomyStatus()
   ]);
 
   if (!connected) {
@@ -138,7 +147,7 @@ export default async function OverviewPage() {
         </Card>
       </section>
 
-      {/* Needs you (the recommendations inbox) + recent activity */}
+      {/* (b) What needs me — the actionable inbox + the gated 2-click Go-Live */}
       <section className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -150,19 +159,43 @@ export default async function OverviewPage() {
               Open Steer <ArrowRight className="size-3.5" />
             </Link>
           </CardHeader>
-          <CardContent className="space-y-2.5">
-            {recommendations.length === 0 ? (
-              <EmptyState title="Nothing waiting on you right now." hint="Recommendations from the engine land here when a decision needs your call." />
-            ) : (
-              recommendations.map((rec: Recommendation) => (
-                <div key={rec.id} className="rounded-md border border-border/60 bg-surface-2/40 p-3">
-                  <Badge variant="warn">{rec.kind.replace(/_/g, " ")}</Badge>
-                  <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{rec.body}</p>
-                </div>
-              ))
-            )}
+          <CardContent>
+            <NeedsYouInbox initial={recommendations} connected={recConnected} configured={engineConfigured} />
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex min-w-0 items-center gap-2">
+              <Power className="size-4 shrink-0 text-iris-soft" />
+              <CardTitle>Go live</CardTitle>
+            </div>
+            <MoneyState mode={mode} withInfo={false} />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-[12.5px] leading-relaxed text-muted">
+              Live trading is <span className="text-foreground">off by default</span>. Nothing autonomous moves real money:
+              arming needs the Gate to have passed on real data <span className="text-foreground">plus</span> your explicit
+              two-click confirmation.
+            </p>
+            <div className="flex items-center gap-2">
+              <Badge variant={autonomy.live_enabled && autonomyConnected ? "up" : "muted"}>
+                {autonomyConnected ? (autonomy.live_enabled ? "live armed" : "paper only") : "status unknown"}
+              </Badge>
+            </div>
+            <Link
+              href="/live"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-strong px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-2/60"
+            >
+              <Power className="size-4" /> Review &amp; arm on Live <ArrowRight className="size-3.5" />
+            </Link>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* (c) What's the machine doing — autonomy command center + a short recent-activity line */}
+      <section className="grid gap-3 lg:grid-cols-2">
+        <AutonomyPanel initial={autonomy} connected={autonomyConnected} configured={engineConfigured} />
 
         <Card>
           <CardHeader>
