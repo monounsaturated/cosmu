@@ -98,6 +98,39 @@ export interface CostSlice {
   category: string;
 }
 
+export interface CrossAssetVerdict {
+  attempts: number;
+  bar: Record<string, unknown>;
+  buy_and_hold_return: number;
+  cscv_pbo: number;
+  data_source: "live" | "synthetic";
+  decision: "PASS" | "STOP-narrow";
+  drop_one_class: DropOneClass[];
+  drop_one_source: DropOneSource[];
+  max_drawdown: number;
+  num_trades: number;
+  passed: boolean;
+  price_only_return: number;
+  reasons: string[];
+  regimes_positive: number;
+  single_alt_dsr: number;
+  single_alt_return: number;
+  xasset_dsr: number;
+  xasset_return: number;
+}
+
+export interface DropOneClass {
+  asset_class: string;
+  delta: number;
+  sharpe_without: number;
+}
+
+export interface DropOneSource {
+  delta: number;
+  sharpe_without: number;
+  source: string;
+}
+
 export interface EvaluatedStrategy {
   deflated_sharpe: number;
   lane: string;

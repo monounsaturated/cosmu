@@ -20,6 +20,9 @@ from cosmu.api.models import (
     CommandRequest,
     CommandResponse,
     CostSlice,
+    CrossAssetVerdict,
+    DropOneClass,
+    DropOneSource,
     EvaluatedStrategy,
     Event,
     EventsResponse,
@@ -470,6 +473,67 @@ def run_gate() -> GateVerdictResponse:
         (response.ts, response.decision, response.data_source, json.dumps(response.model_dump(), sort_keys=True)),
     )
     store.append_event(actor="master", kind="edge_gate_run", ref_type="gate", payload={"decision": verdict.decision, "data_source": "synthetic"})
+    return response
+
+
+def _alt_store():  # noqa: ANN202 - returns AltDataStore
+    """The append-only point-in-time JSONL alt-data store a scheduled worker fills from the free sources."""
+    from cosmu.data.altdata import AltDataStore
+
+    return AltDataStore()
+
+
+def _has_cross_asset_data(alt_store) -> bool:  # noqa: ANN001
+    """True once the two cross-asset transfer series (prediction-market risk_on + FRED macro_regime) have
+    been ingested — that is exactly what the cross-asset gate's arm (3) needs to differ from price-only."""
+    return bool(alt_store.read_all("polymarket", "MARKET", "risk_on")) and bool(alt_store.read_all("fred", "MARKET", "macro_regime"))
+
+
+@app.post("/research/cross-asset-gate", response_model=CrossAssetVerdict)
+def run_cross_asset_gate() -> CrossAssetVerdict:
+    """Run the four-arm cross-asset ablation from the UI. If the append-only alt-data store has the
+    ingested cross-asset transfer series, run the SAME gate against a StoreBackedAltProvider (data_source
+    "live", news read as a pre-standardized numeric series — zero LLM). Otherwise fall back to the labelled
+    synthetic fixture (data_source "synthetic") so the machinery stays monitorable with no keys/network."""
+    from cosmu.data.altdata import StoreBackedAltProvider
+    from cosmu.research.fixtures import synthetic_cross_asset_inputs
+    from cosmu.research.gate import evaluate_cross_asset_ablation
+
+    market_by_class, synth_alt, synth_news = synthetic_cross_asset_inputs()
+    alt_store = _alt_store()
+    if _has_cross_asset_data(alt_store):
+        provider = StoreBackedAltProvider(alt_store, market_wide=frozenset({"risk_on", "macro_regime", "putcall_ratio"}))
+        verdict = evaluate_cross_asset_ablation(market_by_class, provider, None, store)
+        data_source = "live"
+    else:
+        verdict = evaluate_cross_asset_ablation(market_by_class, synth_alt, synth_news, store)
+        data_source = "synthetic"
+
+    response = CrossAssetVerdict(
+        decision=verdict.decision,
+        passed=verdict.passed,
+        price_only_return=verdict.price_only_return,
+        single_alt_return=verdict.single_alt_return,
+        xasset_return=verdict.xasset_return,
+        buy_and_hold_return=verdict.buy_and_hold_return,
+        xasset_dsr=verdict.xasset_dsr,
+        single_alt_dsr=verdict.single_alt_dsr,
+        cscv_pbo=verdict.cscv_pbo,
+        regimes_positive=verdict.regimes_positive,
+        num_trades=verdict.num_trades,
+        max_drawdown=verdict.max_drawdown,
+        attempts=verdict.attempts,
+        drop_one_source=[DropOneSource(source=d.source, sharpe_without=d.sharpe_without, delta=d.delta) for d in verdict.drop_one_source],
+        drop_one_class=[DropOneClass(asset_class=c.asset_class, sharpe_without=c.sharpe_without, delta=c.delta) for c in verdict.drop_one_class],
+        reasons=verdict.reasons,
+        bar=verdict.bar,
+        data_source=data_source,
+    )
+    store.rows(
+        "INSERT INTO gate_verdicts(ts, decision, data_source, payload) VALUES (?, ?, ?, ?)",
+        (utcnow(), response.decision, data_source, json.dumps(response.model_dump(), sort_keys=True)),
+    )
+    store.append_event(actor="master", kind="cross_asset_gate_run", ref_type="gate", payload={"decision": verdict.decision, "data_source": data_source})
     return response
 
 

@@ -22,13 +22,13 @@ export function CosmuMark({ className, size = 32 }: { className?: string; size?:
   );
 }
 
-export function CosmuWordmark({ subtitle = "v2 autonomous lab" }: { subtitle?: string }) {
+export function CosmuWordmark({ subtitle = "" }: { subtitle?: string }) {
   return (
     <div className="flex items-center gap-2.5">
       <CosmuMark />
       <div className="leading-tight">
         <div className="text-[15px] font-semibold tracking-tight text-foreground">Cosmu</div>
-        <div className={cn("text-[11px] text-quiet")}>{subtitle}</div>
+        {subtitle ? <div className={cn("text-[11px] text-quiet")}>{subtitle}</div> : null}
       </div>
     </div>
   );

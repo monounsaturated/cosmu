@@ -652,8 +652,14 @@ def _xa_features(market, class_of, alt_provider, news_provider, lookback):  # no
         klass = class_of[symbol]
         closes = [float(b.close) for b in bars]
         f: dict = {"_class": klass, "price_z": rolling_zscore(closes, lookback)}
-        news_pts = standardize_news(news_provider.fetch_news(symbol, limit=len(bars) + 10), cache=cache, counter=counter)
-        f["news_z"] = rolling_zscore(_align(bars, [(p.available_at, p.value) for p in news_pts]), lookback)
+        if news_provider is None:
+            # Real/store path: news was LLM-standardized ONCE at ingest → read the numeric series. Zero LLM here.
+            news_aligned = _align(bars, [(p.available_at, p.value) for p in alt_provider.fetch_series(symbol, "news_sentiment", limit=len(bars) + 10)])
+        else:
+            # Fixture path: raw headlines standardized via the deterministic offline lexicon (no LLM, cached).
+            news_pts = standardize_news(news_provider.fetch_news(symbol, limit=len(bars) + 10), cache=cache, counter=counter)
+            news_aligned = _align(bars, [(p.available_at, p.value) for p in news_pts])
+        f["news_z"] = rolling_zscore(news_aligned, lookback)
         if klass == "crypto":
             fund = _align(bars, [(p.available_at, p.value) for p in alt_provider.fetch_series(symbol, "funding_rate", limit=len(bars) + 10)])
             f["funding_z"] = rolling_zscore(fund, lookback)
@@ -698,7 +704,7 @@ def _xa_buy_and_hold(market: dict[str, list[Bar]]) -> float:
 def evaluate_cross_asset_ablation(
     market_by_class: dict[str, dict[str, list[Bar]]],
     alt_provider: AltDataProvider,
-    news_provider: NewsProvider,
+    news_provider: NewsProvider | None,
     store: Store,
     *,
     lookback: int = 20,

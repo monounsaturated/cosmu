@@ -10,14 +10,15 @@
 You don't write code. Your job is 3 steps:
 
 1. **Buy nothing yet.** The first real gate runs on **free data ($0) across three asset classes** — crypto (funding/OI, Fear & Greed), equities (free daily bars + macro), and prediction-market odds — plus free news headlines. A **LunarCrush key** (~$24–40/mo) is *optional*, only to add social data **after** the free gate shows the cross-asset thesis has legs. Real money and paid data vendors come later, gated on a proven survivor.
-2. **Hand the build to an agent** — paste this one line into a fresh coding agent:
-   > *Build everything in `docs/BUILD_BRIEF.md`. Show me a plan first, then run the tests before saying it's done.*
-3. **Run one command** when it's finished — it tells you if aggregating data actually adds edge:
+2. **The harness is built** (Phase 0 → 1.6 + the functional Overview-led app — see `docs/IMPLEMENTATION.md`). To *extend* it, hand a coding agent (Claude Code / Cursor) a typed spec for the one feature you want and review the plan + tests before merging. You don't write code.
+3. **Run it on real data** — these are bounded, cron-able commands (no 24/7 process):
    ```
-   python3 -m cosmu.research.gate
+   python3 -m cosmu.ingest.run          # one free-data pass into the point-in-time store ($0, no keys)
+   python3 -m cosmu.research.loop --ingest   # ingest → run the four-arm cross-asset gate → record the verdict
+   python3 -m cosmu.research.gate       # just print the four-arm verdict (PASS / STOP-narrow)
    ```
-   - **PASS** → the aggregated/standardized data beats price-only *and* buy-and-hold → tell me to plan the next build.
-   - **STOP** → it doesn't hold up → you spent days, not months, and the per-source report tells you which data (if any) to keep. That's still a win.
+   - **PASS** → cross-asset + aggregated data beats single-asset *and* buy-and-hold on real data → plan the next build.
+   - **STOP-narrow** → it doesn't hold up → days not months spent, and the per-source + per-asset-class report tells you which data/classes (if any) to keep. Still a win.
 
 **Cost to run:** ~$60–130/month, hard-capped. **Live trading stays OFF** until you flip it.
 **One optional choice** (default is fine): trade **spot only** (default), or add **futures** later (lets you short; bigger idea space).
@@ -181,14 +182,14 @@ Railway $10–25 · Vercel $0–20 · Supabase $0–25 · Modal $0–20 · ccxt/
 - **You buy/operate (everything else):** data APIs, vectorbt/Optuna/LightGBM/Nautilus, Supabase, Modal, OpenRouter, Prefect, Langfuse. Maintenance and bug risk live mostly in someone else's repo.
 
 ## 8. Open items before code
-1. **Phase 1 → 1.6 edge gate** — the whole roadmap past Phase 2 is conditional on it. The Phase 0 wall, Phase 1 single-signal gate, and the **Phase 1.5 single-asset aggregation gate are built** (see `IMPLEMENTATION.md`); the active unit is the **Phase 1.6 cross-asset extension** (`docs/BUILD_BRIEF.md`). Run it on free multi-asset data; don't build further until cross-asset+alt beats the single-asset price-only baseline.
+1. **Phase 1 → 1.6 edge gate** — the whole roadmap past Phase 2 is conditional on it. Phase 0 wall, Phase 1 single-signal gate, Phase 1.5 single-asset aggregation gate, and **Phase 1.6 the cross-asset extension are all built** (see `IMPLEMENTATION.md`), PASS on the fixture. The remaining step is **running the gate on real free multi-asset data** (`python3 -m cosmu.research.loop --ingest`); don't build the factory until cross-asset+alt beats the single-asset price-only baseline on real data.
 2. **Spot vs futures** (§2) — now an *optimization, not a blocker*: multi-asset gives directional/decorrelated expression without it. Decide only if the gate shows crypto specifically needs the short leg.
 3. **LunarCrush API key + tier choice** — *optional*, only to add social data after the free gate passes.
 4. **`class_gates` schema add** (Phase 4.1 polish) — ask-first DB change, not on the critical path. (Note: an `asset_class_gates` table already exists in the schema.)
 
 ## 9. Data sources (impact-ranked) + stack & pricing tiers
 
-> Principle (aligned with §1 + BUILD_BRIEF): **free data first, gate before factory.** Wire the cheap high-impact sources, run the *real* gate, and only build the big agentic/ML/indexing machine if real data beats price-only. Don't build the factory on a synthetic PASS.
+> Principle (aligned with §1): **free data first, gate before factory.** Wire the cheap high-impact sources, run the *real* gate, and only build the big agentic/ML/indexing machine if real data beats price-only. Don't build the factory on a synthetic PASS.
 
 ### Data sources, ranked by impact-per-cost (crypto, free-first)
 | # | Source | Cost | Edge prior | Status |

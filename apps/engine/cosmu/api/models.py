@@ -172,6 +172,42 @@ class GateStatusResponse(BaseModel):
     preregistered_bar: dict[str, Any]
 
 
+class DropOneSource(BaseModel):
+    source: str
+    sharpe_without: float
+    delta: float
+
+
+class DropOneClass(BaseModel):
+    asset_class: str
+    sharpe_without: float
+    delta: float
+
+
+class CrossAssetVerdict(BaseModel):
+    """The four-arm cross-asset ablation verdict — shared snake_case contract used by the UI gate run.
+    Mirrors cosmu.research.gate.CrossAssetVerdict exactly so the dataclass maps field-for-field."""
+
+    decision: Literal["PASS", "STOP-narrow"]
+    passed: bool
+    price_only_return: float
+    single_alt_return: float
+    xasset_return: float
+    buy_and_hold_return: float
+    xasset_dsr: float
+    single_alt_dsr: float
+    cscv_pbo: float
+    regimes_positive: int
+    num_trades: int
+    max_drawdown: float
+    attempts: int
+    drop_one_source: list[DropOneSource]
+    drop_one_class: list[DropOneClass]
+    reasons: list[str]
+    bar: dict[str, Any]
+    data_source: Literal["live", "synthetic"]
+
+
 class Event(BaseModel):
     id: int
     ts: str

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
@@ -50,20 +51,45 @@ class RiskSettings(BaseModel):
     sandbox_seconds_cap: int = 30
 
 
-# Repo root holds the shared .env.local (engine runs from apps/engine, so also check there + CWD).
+# Repo root holds the shared .env files (engine runs from apps/engine, so also check CWD).
 _ROOT = Path(__file__).resolve().parents[4]
+
+# APP_ENV (dev|test|qa|production, default dev) picks WHICH env file the profile loads. Production loads
+# NO file — it reads process env only (secrets injected by the platform, never committed). dev maps to the
+# existing .env.local so nothing breaks; the typed `environment` Literal below maps dev→local for back-compat.
+_ENV_FILE_BY_PROFILE = {
+    "dev": ".env.local",
+    "test": ".env.test.local",
+    "qa": ".env.qa.local",
+    "production": None,  # process env only — no file is read
+}
+_PROFILE_TO_ENVIRONMENT = {"dev": "local", "test": "test", "qa": "production", "production": "production"}
+
+
+def _profile() -> str:
+    profile = os.environ.get("APP_ENV", "dev").strip().lower()
+    return profile if profile in _ENV_FILE_BY_PROFILE else "dev"
+
+
+def _profile_env_files() -> tuple[str, ...]:
+    """Resolve the env files for the active APP_ENV profile. Root file first, then a CWD-relative copy so
+    the engine works whether launched from the repo root or apps/engine. Production resolves to () (no file)."""
+    name = _ENV_FILE_BY_PROFILE[_profile()]
+    if name is None:
+        return ()
+    return (str(_ROOT / name), name)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(str(_ROOT / ".env.local"), str(_ROOT / ".env"), ".env.local", ".env"),
+        env_file=_profile_env_files(),
         env_file_encoding="utf-8",
         extra="ignore",
         env_nested_delimiter="__",
     )
 
     app_name: str = "Cosmu v2"
-    environment: Literal["local", "test", "production"] = "local"
+    environment: Literal["local", "test", "production"] = Field(default_factory=lambda: _PROFILE_TO_ENVIRONMENT[_profile()])  # type: ignore[arg-type]
     database_url: str = Field(default="sqlite:///./.cosmu/cosmu.sqlite3")
     base_currency: str = "USD"
     paper_bankroll: Decimal = Decimal("100000")

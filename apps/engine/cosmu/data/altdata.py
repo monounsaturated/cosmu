@@ -70,6 +70,21 @@ class AltDataStore:
             latest[row["ts"]] = AltDataPoint(ts=datetime.fromisoformat(row["ts"]), available_at=available, value=float(row["value"]))
         return sorted(latest.values(), key=lambda p: p.ts)
 
+    def read_all(self, provider: str, symbol: str, metric: str) -> list[AltDataPoint]:
+        """Every appended point, every revision, sorted by availability — the full point-in-time history.
+        A backtest's per-bar as-of join (it keeps the latest value with available_at <= bar time) needs the
+        whole revision trail, so this does NOT collapse revisions the way read_asof does."""
+        path = self._path(provider, symbol, metric)
+        if not path.exists():
+            return []
+        out: list[AltDataPoint] = []
+        for line in path.read_text().splitlines():
+            if not line:
+                continue
+            row = json.loads(line)
+            out.append(AltDataPoint(ts=datetime.fromisoformat(row["ts"]), available_at=datetime.fromisoformat(row["available_at"]), value=float(row["value"])))
+        return sorted(out, key=lambda p: (p.available_at, p.ts))
+
 
 class LunarCrushProvider:
     """LunarCrush social metrics over HTTP (stdlib, no extra dep). Key is server-side only.
@@ -148,6 +163,14 @@ class PgAltDataStore:
             "WHERE provider = ? AND symbol = ? AND metric = ? AND available_at <= ? "
             "ORDER BY ts, id DESC",
             (provider, symbol, metric, as_of.isoformat()),
+        )
+        return [AltDataPoint(ts=datetime.fromisoformat(r["ts"]), available_at=datetime.fromisoformat(r["available_at"]), value=float(r["value"])) for r in rows]
+
+    def read_all(self, provider: str, symbol: str, metric: str) -> list[AltDataPoint]:
+        """Full revision history (see AltDataStore.read_all) — the per-bar as-of join collapses it correctly."""
+        rows = self.store.rows(
+            "SELECT ts, available_at, value FROM alt_data WHERE provider = ? AND symbol = ? AND metric = ? ORDER BY available_at, id",
+            (provider, symbol, metric),
         )
         return [AltDataPoint(ts=datetime.fromisoformat(r["ts"]), available_at=datetime.fromisoformat(r["available_at"]), value=float(r["value"])) for r in rows]
 
@@ -244,6 +267,187 @@ class PolymarketOddsProvider:
             ts = datetime.fromtimestamp(int(row["t"]), tz=UTC)
             out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["p"])))
         return sorted(out, key=lambda p: p.ts)
+
+
+class CoinglassLiquidationProvider:
+    """Coinglass free liquidations history (no key on the public history endpoint). Numeric → no LLM.
+    Per-symbol metric "liquidations" (total long+short USD liquidated in the bucket). Coinglass closes a
+    bucket before it publishes it, so a bucket observed at time T is available at the NEXT bucket boundary
+    (here +1 day for the daily interval) — a conservative point-in-time floor, never look-ahead."""
+
+    def __init__(self, base_url: str = "https://open-api.coinglass.com", interval: str = "1d", bucket_seconds: int = 86400) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.interval = interval
+        self.bucket_seconds = bucket_seconds
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "liquidations":
+            return []
+        coin = symbol[:-4] if symbol.endswith("USDT") else symbol
+        query = urllib.parse.urlencode({"symbol": coin, "interval": self.interval})
+        url = f"{self.base_url}/public/v2/liquidation_history?{query}"
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        return _points_from_coinglass(payload, self.bucket_seconds)[-limit:]
+
+
+class CboePutCallProvider:
+    """CBOE free total put/call ratio (daily CSV, no key). Market-wide metric "putcall_ratio"; symbol
+    ignored (one series for the whole tape). The ratio for a session is finalized AFTER the close, so each
+    point is stamped available the NEXT day — a conservative point-in-time floor, never look-ahead."""
+
+    def __init__(self, url: str = "https://cdn.cboe.com/api/global/us_indices/daily_prices/total_pc.csv", release_lag_days: int = 1) -> None:
+        self.url = url
+        self.release_lag_days = release_lag_days
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "putcall_ratio":
+            return []
+        req = urllib.request.Request(self.url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            text = resp.read().decode("utf-8")
+        return _points_from_cboe_putcall(text, self.release_lag_days)[-limit:]
+
+
+class GdeltNewsProvider:
+    """Real free news via the GDELT 2.0 doc API (no key). Returns NewsItem headlines stamped point-in-time
+    (a headline's `seendate` IS its availability time — we knew it when GDELT indexed it, never before).
+    Standardization to a numeric sentiment series still happens ONCE downstream at ingest (the LLM seam),
+    never here. Offline tests use FixtureNewsProvider; this is the live path."""
+
+    def __init__(self, base_url: str = "https://api.gdeltproject.org/api/v2/doc/doc", timespan: str = "3d") -> None:
+        self.base_url = base_url.rstrip("/")
+        self.timespan = timespan
+
+    def fetch_news(self, symbol: str, *, limit: int) -> list[NewsItem]:
+        coin = symbol[:-4] if symbol.endswith("USDT") else symbol
+        query = urllib.parse.urlencode(
+            {"query": _gdelt_query(coin), "mode": "ArtList", "format": "json", "maxrecords": min(limit, 250), "timespan": self.timespan, "sort": "DateAsc"}
+        )
+        url = f"{self.base_url}?{query}"
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        return _news_from_gdelt(payload)[-limit:]
+
+
+def _gdelt_query(coin: str) -> str:
+    """Map a coin ticker to a GDELT keyword query. Tickers alone are too noisy, so the common majors get a
+    name; everything else falls back to the ticker plus "crypto" to keep the topic anchored."""
+    names = {"BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana", "XRP": "ripple", "DOGE": "dogecoin"}
+    return names.get(coin.upper(), f"{coin} crypto")
+
+
+def _points_from_coinglass(payload: dict, bucket_seconds: int) -> list[AltDataPoint]:
+    """Coinglass liquidation_history: {"data": [{"createTime"/"t": ms, "longLiquidationUsd",
+    "shortLiquidationUsd"} | {"turnoverNumber"/"value": usd}]}. Sum long+short into one total liquidated
+    USD per bucket; a bucket observed at ts is available one bucket later (it closes before publication)."""
+    rows = payload.get("data", []) or []
+    out: list[AltDataPoint] = []
+    for row in rows:
+        raw_ts = row.get("createTime", row.get("t", row.get("time")))
+        if raw_ts is None:
+            continue
+        ts_seconds = int(raw_ts) / 1000 if int(raw_ts) > 10**11 else int(raw_ts)
+        ts = datetime.fromtimestamp(ts_seconds, tz=UTC)
+        if "longLiquidationUsd" in row or "shortLiquidationUsd" in row:
+            value = float(row.get("longLiquidationUsd", 0) or 0) + float(row.get("shortLiquidationUsd", 0) or 0)
+        else:
+            value = float(row.get("turnoverNumber", row.get("value", 0)) or 0)
+        out.append(AltDataPoint(ts=ts, available_at=datetime.fromtimestamp(ts_seconds + bucket_seconds, tz=UTC), value=value))
+    return sorted(out, key=lambda p: p.ts)
+
+
+def _points_from_cboe_putcall(csv_text: str, release_lag_days: int) -> list[AltDataPoint]:
+    """CBOE total put/call CSV: a few preamble lines then `DATE,PUT/CALL RATIO` (or `Date,...`). Each
+    session's ratio is finalized after the close → available `release_lag_days` later (next-day floor)."""
+    from datetime import timedelta
+
+    out: list[AltDataPoint] = []
+    for line in csv_text.splitlines():
+        cols = [c.strip() for c in line.split(",")]
+        if len(cols) < 2:
+            continue
+        date_raw, value_raw = cols[0], cols[1]
+        ts = _parse_cboe_date(date_raw)
+        if ts is None:
+            continue  # header/preamble line
+        try:
+            value = float(value_raw)
+        except ValueError:
+            continue
+        out.append(AltDataPoint(ts=ts, available_at=ts + timedelta(days=release_lag_days), value=value))
+    return sorted(out, key=lambda p: p.ts)
+
+
+def _parse_cboe_date(raw: str) -> datetime | None:
+    """CBOE dates appear as MM/DD/YYYY or YYYY-MM-DD; return None for non-date cells (headers)."""
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(raw, fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+    return None
+
+
+def _news_from_gdelt(payload: dict) -> list[NewsItem]:
+    """GDELT ArtList JSON: {"articles": [{"title", "seendate": "YYYYMMDDTHHMMSSZ", "url"}]}. `seendate`
+    is when GDELT indexed it — its point-in-time availability (ts == available_at; we knew it then)."""
+    out: list[NewsItem] = []
+    for art in payload.get("articles", []) or []:
+        title = (art.get("title") or "").strip()
+        seen = art.get("seendate")
+        if not title or not seen:
+            continue
+        ts = _parse_gdelt_date(seen)
+        if ts is None:
+            continue
+        out.append(NewsItem(ts=ts, available_at=ts, headline=title))
+    return sorted(out, key=lambda n: n.ts)
+
+
+def _parse_gdelt_date(raw: str) -> datetime | None:
+    """GDELT seendate is "YYYYMMDDTHHMMSSZ" (sometimes "YYYYMMDDHHMMSS"). Return None if unparseable."""
+    for fmt in ("%Y%m%dT%H%M%SZ", "%Y%m%d%H%M%S"):
+        try:
+            return datetime.strptime(raw, fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+    return None
+
+
+# Default routing: the gate asks for a SEMANTIC metric name; the store keyed it under the ingesting
+# provider. Market-wide metrics live under the "MARKET" symbol (one series for the whole tape).
+_STORE_PROVIDER_OF = {
+    "funding_rate": "binance",
+    "fear_greed": "alternative.me",
+    "news_sentiment": "news",
+    "risk_on": "polymarket",
+    "macro_regime": "fred",
+    "liquidations": "coinglass",
+    "putcall_ratio": "cboe",
+}
+_STORE_MARKET_WIDE = frozenset({"fear_greed", "risk_on", "macro_regime", "putcall_ratio"})
+
+
+class StoreBackedAltProvider:
+    """Adapts the append-only point-in-time store (AltDataStore / PgAltDataStore) into the AltDataProvider
+    seam the gate consumes — so the SAME `evaluate_*` code runs on real ingested data, not just fixtures.
+    Returns the full revision history (read_all); the gate's per-bar as-of join does the point-in-time
+    selection, so no future revision can leak into a past bar."""
+
+    def __init__(self, store: Any, *, provider_of: dict[str, str] | None = None, market_wide: frozenset[str] = _STORE_MARKET_WIDE) -> None:
+        self._store = store
+        self._provider_of = provider_of or dict(_STORE_PROVIDER_OF)
+        self._market_wide = market_wide
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        provider = self._provider_of.get(metric)
+        if provider is None:
+            return []
+        key = "MARKET" if metric in self._market_wide else symbol
+        return self._store.read_all(provider, key, metric)[-limit:]
 
 
 class FixtureNewsProvider:

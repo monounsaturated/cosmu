@@ -8,20 +8,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { ChartCandlestick, Dna, LayoutDashboard, Menu, SlidersHorizontal, X } from "lucide-react";
+import { LayoutDashboard, Menu, MessageSquare, Microscope, SlidersHorizontal, X } from "lucide-react";
 import { CosmuWordmark } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 
 export const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/farm", label: "Farm", icon: Dna },
-  { href: "/strategy/sv-btc", label: "Strategies", icon: ChartCandlestick },
+  { href: "/", label: "Overview", icon: LayoutDashboard },
+  { href: "/research", label: "Research", icon: Microscope },
+  { href: "/console", label: "Console", icon: MessageSquare },
   { href: "/settings", label: "Settings", icon: SlidersHorizontal }
 ];
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
-  if (href.startsWith("/strategy")) return pathname.startsWith("/strategy");
+  // Strategy detail pages live under Research, so keep Research highlighted there.
+  if (href === "/research") return pathname.startsWith("/research") || pathname.startsWith("/strategy") || pathname.startsWith("/farm");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

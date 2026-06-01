@@ -511,6 +511,169 @@
         "title": "CostSlice",
         "type": "object"
       },
+      "CrossAssetVerdict": {
+        "description": "The four-arm cross-asset ablation verdict \u2014 shared snake_case contract used by the UI gate run.\nMirrors cosmu.research.gate.CrossAssetVerdict exactly so the dataclass maps field-for-field.",
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "bar": {
+            "additionalProperties": true,
+            "title": "Bar",
+            "type": "object"
+          },
+          "buy_and_hold_return": {
+            "title": "Buy And Hold Return",
+            "type": "number"
+          },
+          "cscv_pbo": {
+            "title": "Cscv Pbo",
+            "type": "number"
+          },
+          "data_source": {
+            "enum": [
+              "live",
+              "synthetic"
+            ],
+            "title": "Data Source",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "PASS",
+              "STOP-narrow"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "drop_one_class": {
+            "items": {
+              "$ref": "#/components/schemas/DropOneClass"
+            },
+            "title": "Drop One Class",
+            "type": "array"
+          },
+          "drop_one_source": {
+            "items": {
+              "$ref": "#/components/schemas/DropOneSource"
+            },
+            "title": "Drop One Source",
+            "type": "array"
+          },
+          "max_drawdown": {
+            "title": "Max Drawdown",
+            "type": "number"
+          },
+          "num_trades": {
+            "title": "Num Trades",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "price_only_return": {
+            "title": "Price Only Return",
+            "type": "number"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "regimes_positive": {
+            "title": "Regimes Positive",
+            "type": "integer"
+          },
+          "single_alt_dsr": {
+            "title": "Single Alt Dsr",
+            "type": "number"
+          },
+          "single_alt_return": {
+            "title": "Single Alt Return",
+            "type": "number"
+          },
+          "xasset_dsr": {
+            "title": "Xasset Dsr",
+            "type": "number"
+          },
+          "xasset_return": {
+            "title": "Xasset Return",
+            "type": "number"
+          }
+        },
+        "required": [
+          "decision",
+          "passed",
+          "price_only_return",
+          "single_alt_return",
+          "xasset_return",
+          "buy_and_hold_return",
+          "xasset_dsr",
+          "single_alt_dsr",
+          "cscv_pbo",
+          "regimes_positive",
+          "num_trades",
+          "max_drawdown",
+          "attempts",
+          "drop_one_source",
+          "drop_one_class",
+          "reasons",
+          "bar",
+          "data_source"
+        ],
+        "title": "CrossAssetVerdict",
+        "type": "object"
+      },
+      "DropOneClass": {
+        "properties": {
+          "asset_class": {
+            "title": "Asset Class",
+            "type": "string"
+          },
+          "delta": {
+            "title": "Delta",
+            "type": "number"
+          },
+          "sharpe_without": {
+            "title": "Sharpe Without",
+            "type": "number"
+          }
+        },
+        "required": [
+          "asset_class",
+          "sharpe_without",
+          "delta"
+        ],
+        "title": "DropOneClass",
+        "type": "object"
+      },
+      "DropOneSource": {
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "number"
+          },
+          "sharpe_without": {
+            "title": "Sharpe Without",
+            "type": "number"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "sharpe_without",
+          "delta"
+        ],
+        "title": "DropOneSource",
+        "type": "object"
+      },
       "EvaluatedStrategy": {
         "properties": {
           "deflated_sharpe": {
@@ -1707,6 +1870,25 @@
           }
         },
         "summary": "Recommendations"
+      }
+    },
+    "/research/cross-asset-gate": {
+      "post": {
+        "description": "Run the four-arm cross-asset ablation from the UI. If the append-only alt-data store has the\ningested cross-asset transfer series, run the SAME gate against a StoreBackedAltProvider (data_source\n\"live\", news read as a pre-standardized numeric series \u2014 zero LLM). Otherwise fall back to the labelled\nsynthetic fixture (data_source \"synthetic\") so the machinery stays monitorable with no keys/network.",
+        "operationId": "run_cross_asset_gate_research_cross_asset_gate_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrossAssetVerdict"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Run Cross Asset Gate"
       }
     },
     "/research/gate": {

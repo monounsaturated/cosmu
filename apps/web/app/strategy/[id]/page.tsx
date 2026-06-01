@@ -1,5 +1,3 @@
-import { ArrowLeft, ShieldCheck } from "lucide-react";
-import Link from "next/link";
 import { getStrategy } from "../../data";
 import type { Backtest, Execution } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,22 +10,13 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-6 px-5 py-7 lg:px-7">
-      <Link
-        href="/#leaderboard"
-        className="inline-flex items-center gap-1.5 text-[13px] text-muted transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" /> Leaderboard
-      </Link>
-
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">strategy version</div>
-          <h1 className="mt-1.5 text-3xl font-semibold tracking-tight text-foreground">{strategy.name}</h1>
-          <div className="mt-1 font-mono text-[12px] text-quiet">{strategy.version_id}</div>
+      <div>
+        <h1 className="text-3xl font-semibold tracking-tight text-foreground">{strategy.name}</h1>
+        <div className="mt-1.5 flex items-center gap-2 font-mono text-[12px] text-quiet">
+          <span>{strategy.version_id}</span>
+          <span className="text-border-strong">·</span>
+          <span className="font-sans text-muted">deterministic evidence</span>
         </div>
-        <Badge variant="up">
-          <ShieldCheck className="size-3" /> deterministic evidence
-        </Badge>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
