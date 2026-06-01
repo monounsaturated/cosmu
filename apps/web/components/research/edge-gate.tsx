@@ -2,7 +2,7 @@
 
 // module: Edge Gate surface. The system's stop-or-go decision — "does an exploitable edge exist
 // after costs?" — made monitorable: one-click run, a plain pass/fail checklist against the
-// pre-registered bar, and an honest data-source badge. Conceptually upstream of farming.
+// pre-registered bar, and an honest data-source badge. Conceptually upstream of the Lab.
 
 import { useEffect, useState, useTransition } from "react";
 import { Check, FlaskConical, Play, X } from "lucide-react";
@@ -13,24 +13,6 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
-
-const OFFLINE: GateVerdictResponse = {
-  decision: "PASS",
-  passed: true,
-  best_signal: "social_z>0.5@14/5",
-  deflated_sharpe_prob: 1.0,
-  cscv_pbo: 0.0,
-  buy_and_hold_return: 0.03,
-  best_return: 1.63,
-  regimes_positive: 3,
-  num_trades: 181,
-  max_drawdown: 0.088,
-  attempts: 12,
-  reasons: [],
-  bar: { min_trades: 30, min_deflated_sharpe_prob: 0.95, max_cscv_pbo: 0.5, min_regimes_positive: 2, max_drawdown: 0.25 },
-  data_source: "synthetic",
-  ts: "demo"
-};
 
 function pct(x: number) {
   return `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
@@ -49,8 +31,8 @@ function checklist(v: GateVerdictResponse) {
 }
 
 export function EdgeGate() {
-  const [verdict, setVerdict] = useState<GateVerdictResponse | null>(ENGINE ? null : OFFLINE);
-  const [offline, setOffline] = useState(false);
+  const [verdict, setVerdict] = useState<GateVerdictResponse | null>(null);
+  const [offline, setOffline] = useState(!ENGINE);
   const [running, startRun] = useTransition();
 
   useEffect(() => {
@@ -60,22 +42,25 @@ export function EdgeGate() {
     }
     fetch(`${ENGINE}/research/gate`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("offline"))))
-      .then((s: GateStatusResponse) => setVerdict(s.verdict))
-      .catch(() => {
-        setOffline(true);
-        setVerdict(OFFLINE);
-      });
+      .then((s: GateStatusResponse) => {
+        setVerdict(s.verdict);
+        setOffline(false);
+      })
+      .catch(() => setOffline(true));
   }, []);
 
   function run() {
+    setOffline(false);
     if (!ENGINE) {
-      setVerdict(OFFLINE);
+      setOffline(true);
       return;
     }
     startRun(async () => {
       try {
         const res = await fetch(`${ENGINE}/research/gate`, { method: "POST" });
-        if (res.ok) setVerdict((await res.json()) as GateVerdictResponse);
+        if (!res.ok) throw new Error("offline");
+        setVerdict((await res.json()) as GateVerdictResponse);
+        setOffline(false);
       } catch {
         setOffline(true);
       }
@@ -91,7 +76,7 @@ export function EdgeGate() {
           <CardTitle className="flex items-center gap-2">
             <FlaskConical className="size-4 text-iris-soft" /> Edge gate
           </CardTitle>
-          <CardDescription>Does an exploitable edge exist on Binance spot, after costs? Prove it before farming.</CardDescription>
+          <CardDescription>Does an exploitable edge exist on Binance spot, after costs? Prove it before the Lab tests strategies.</CardDescription>
         </div>
         <Button onClick={run} disabled={running} size="sm">
           <Play className="size-3.5" /> {running ? "Running…" : "Run edge gate"}
@@ -99,7 +84,11 @@ export function EdgeGate() {
       </CardHeader>
       <CardContent className="space-y-4">
         {!verdict ? (
-          <p className="text-[13px] text-muted">No run yet. Press “Run edge gate” to get a stop-or-go verdict.</p>
+          <p className="text-[13px] text-muted">
+            {offline
+              ? "Engine not connected — run the edge gate once the engine is up. No demo verdict is shown."
+              : "No run yet. Press “Run edge gate” to get a stop-or-go verdict."}
+          </p>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3">
@@ -130,7 +119,7 @@ export function EdgeGate() {
 
             <p className="text-[11.5px] leading-relaxed text-quiet">
               {passed
-                ? "A signal cleared the deterministic wall (deflated Sharpe, CSCV overfit, regimes, costs). Proceed to farming and paper."
+                ? "A signal cleared the deterministic wall (deflated Sharpe, CSCV overfit, regimes, costs). Proceed to the Lab and paper."
                 : "Nothing cleared the wall. That is a real result — the alt-data thesis isn’t worth building further on this data."}
             </p>
           </>

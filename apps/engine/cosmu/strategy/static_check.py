@@ -21,6 +21,7 @@ def validate_spec(spec: StrategySpec) -> list[str]:
     if spec.exit.time_stop_days:
         refs.append(spec.exit.time_stop_days.param)
     refs.extend(condition.threshold.param for condition in spec.exit.signal_exits)
+    refs.extend(_composable_param_refs(spec))
     for ref in refs:
         if ref not in params:
             issues.append(f"unknown_param:{ref}")
@@ -34,6 +35,27 @@ def validate_spec(spec: StrategySpec) -> list[str]:
     if spec.horizon.min_hold_days < 1 or spec.horizon.max_hold_days < spec.horizon.min_hold_days:
         issues.append("invalid_horizon")
     return issues
+
+
+def _composable_param_refs(spec: StrategySpec) -> list[str]:
+    """Every ParamRef introduced by the composable exit-plan / entry-setup modules, so static_check enforces
+    the same 'no magic numbers' rule on them (all thresholds must resolve in param_space)."""
+    refs: list[str] = []
+    plan = spec.exit.plan
+    if plan is not None:
+        for leg in plan.multi_tp:
+            refs.extend([leg.at.param, leg.size_pct.param])
+        if plan.runner_trail is not None:
+            refs.append(plan.runner_trail.param)
+    setup = spec.setup
+    if setup is not None:
+        if setup.ma_trend_filter is not None:
+            refs.append(setup.ma_trend_filter.ma_lookback.param)
+        if setup.orb is not None:
+            refs.extend([setup.orb.range_bars.param, setup.orb.buffer.param])
+        if setup.fvg is not None:
+            refs.extend([setup.fvg.max_retests.param, setup.fvg.gap_min.param])
+    return refs
 
 
 def validate_python(code: str) -> list[str]:

@@ -74,6 +74,7 @@ def run_strategy_backtest(
     trials = max(1, len(spec.param_space))
     pbo = _pbo_proxy(val, trials)
     win_rate = _win_rate(val.trades)
+    profit_factor = _profit_factor(val.trades)
     folds_positive = sum(1 for value in val.fold_returns if value > 0)
     folds_pct = folds_positive / len(val.fold_returns) if val.fold_returns else 0.0
 
@@ -98,6 +99,7 @@ def run_strategy_backtest(
         folds_positive_pct=Decimal(str(round(folds_pct, 6))),
         holdout_deflated_sharpe=Decimal(str(round(holdout_dsr, 6))),
         regime_returns={k: round(v, 8) for k, v in val.regime_pnl.items()},
+        profit_factor=Decimal(str(round(profit_factor, 6))),
     )
 
 
@@ -111,53 +113,93 @@ def _run_symbol(
     size_multiplier: float,
 ) -> SymbolRun:
     closes = [float(bar.close) for bar in bars]
+    highs = [float(bar.high) for bar in bars]
+    lows = [float(bar.low) for bar in bars]
     features = _feature_matrix(spec, params, bars)
     regimes = _regime_labels(closes)
     fee = float(fee_bps) / 10000.0
     base_slip = float(slippage_bps) / 10000.0
     impact = float(impact_bps) / 10000.0
     cash = 100000.0
-    position = 0.0
+    position = 0.0          # current (possibly partially-exited) base-currency position
+    entry_qty = 0.0         # the qty originally opened (for sizing partial legs)
     entry_price = 0.0
     entry_idx = 0
+    stop_price = 0.0        # the live stop level (moves to break-even / trails for the runner)
+    tp1_filled = False
+    legs_filled: set[int] = set()
+    high_since_entry = 0.0
     high_water = cash
     equity_points: list[float] = []
     trades: list[Trade] = []
     stop_pct = max(0.0, float(params[spec.exit.stop_loss.param]))
     take_pct = max(0.0, float(params[spec.exit.take_profit.param]))
     max_hold_bars = max(1, int(spec.horizon.max_hold_days * _bars_per_day(spec.horizon.bar_size)))
+    legs = _resolved_tp_legs(spec, params)          # [] when no multi_tp plan
+    plan = spec.exit.plan
+    runner_trail = (
+        max(0.0, float(params[plan.runner_trail.param])) if plan and plan.runner_trail is not None else None
+    )
+    break_even = bool(plan and plan.break_even_after_tp1)
+    # Precompute the entry-setup gates (MA filter / ORB breakout high / FVG retest) — long/upside-only.
+    setup_ok = _setup_entry_gate(spec, params, highs, lows, closes)
+
+    def _book(exit_qty: float, exit_px: float, idx_now: int) -> None:
+        nonlocal cash, position
+        cash += exit_qty * exit_px * (1 - fee)
+        pnl_pct = (exit_px * (1 - fee) - entry_price * (1 + fee)) / entry_price
+        trades.append(Trade(entry=entry_price, exit=exit_px, pnl_pct=pnl_pct, regime=regimes[entry_idx]))
+        position -= exit_qty
 
     start = max(_warmup_bars(spec, params), 2)
     for idx in range(start, len(bars)):
         bar = bars[idx]
         slip = _slippage(base_slip, impact, _entry_notional(cash, spec, size_multiplier), bar)
         if position > 0:
-            stop_price = entry_price * (1 - stop_pct)
-            take_price = entry_price * (1 + take_pct)
-            exit_price: float | None = None
-            if float(bar.low) <= stop_price:
-                exit_price = stop_price * (1 - slip)
-            elif float(bar.high) >= take_price:
-                exit_price = take_price * (1 - slip)
-            elif idx - entry_idx >= max_hold_bars or _exit_signal(spec, params, features, idx - 1):
-                exit_price = float(bar.open) * (1 - slip)
-
-            if exit_price is not None:
-                gross = position * exit_price
-                cash += gross * (1 - fee)
-                pnl_pct = (exit_price * (1 - fee) - entry_price * (1 + fee)) / entry_price
-                trades.append(Trade(entry=entry_price, exit=exit_price, pnl_pct=pnl_pct, regime=regimes[entry_idx]))
+            high_since_entry = max(high_since_entry, float(bar.high))
+            if runner_trail is not None and tp1_filled:
+                stop_price = max(stop_price, high_since_entry * (1 - runner_trail))  # asymmetric runner trail
+            # 1) stop / runner-trail first (worst-case priority)
+            if float(bar.low) <= stop_price and position > 0:
+                _book(position, stop_price * (1 - slip), idx)
+            # 2) partial take-profit legs (multi_tp) in ascending order
+            if position > 0 and legs:
+                for li, (at, size_pct) in enumerate(legs):
+                    if li in legs_filled:
+                        continue
+                    leg_price = entry_price * (1 + at)
+                    if float(bar.high) >= leg_price:
+                        leg_qty = min(position, entry_qty * size_pct)
+                        if leg_qty > 0:
+                            _book(leg_qty, leg_price * (1 - slip), idx)
+                            legs_filled.add(li)
+                            if not tp1_filled:
+                                tp1_filled = True
+                                if break_even:
+                                    stop_price = max(stop_price, entry_price)  # risk-free runner
+            # 3) single take-profit (only when there is no multi_tp plan)
+            if position > 0 and not legs and float(bar.high) >= entry_price * (1 + take_pct):
+                _book(position, entry_price * (1 + take_pct) * (1 - slip), idx)
+            # 4) time-stop / signal exit closes whatever remains
+            if position > 0 and (idx - entry_idx >= max_hold_bars or _exit_signal(spec, params, features, idx - 1)):
+                _book(position, float(bar.open) * (1 - slip), idx)
+            if position <= 1e-12:
                 position = 0.0
                 entry_price = 0.0
 
-        if position == 0 and _entry_signal(spec, params, features, idx - 1):
+        if position == 0 and setup_ok[idx - 1] and _entry_signal(spec, params, features, idx - 1):
             notional = _entry_notional(cash, spec, size_multiplier)
             if notional > 0:
                 fill = float(bar.open) * (1 + slip)
                 position = (notional * (1 - fee)) / fill
+                entry_qty = position
                 cash -= notional
                 entry_price = fill
                 entry_idx = idx
+                stop_price = entry_price * (1 - stop_pct)
+                tp1_filled = False
+                legs_filled = set()
+                high_since_entry = float(bar.high)
 
         equity = cash + position * closes[idx]
         high_water = max(high_water, equity)
@@ -165,15 +207,98 @@ def _run_symbol(
 
     if position > 0:
         slip = _slippage(base_slip, impact, position * closes[-1], bars[-1])
-        exit_price = closes[-1] * (1 - slip)
-        gross = position * exit_price
-        cash += gross * (1 - fee)
-        pnl_pct = (exit_price * (1 - fee) - entry_price * (1 + fee)) / entry_price
-        trades.append(Trade(entry=entry_price, exit=exit_price, pnl_pct=pnl_pct, regime=regimes[entry_idx]))
+        _book(position, closes[-1] * (1 - slip), len(bars) - 1)
+        position = 0.0
         equity_points.append(cash)
 
     periods_per_year = 365.0 * _bars_per_day(spec.horizon.bar_size)
     return _symbol_metrics(equity_points, trades, periods_per_year=periods_per_year)
+
+
+def _resolved_tp_legs(spec: StrategySpec, params: dict[str, float]) -> list[tuple[float, float]]:
+    """Resolve the multi_tp legs to concrete (take-distance, size-fraction) pairs from fitted params, sorted by
+    take distance ascending so partials fill in order. Returns [] when no multi_tp plan is set (single-TP path)."""
+    plan = spec.exit.plan
+    if plan is None or not plan.multi_tp:
+        return []
+    legs: list[tuple[float, float]] = []
+    for leg in plan.multi_tp:
+        at = max(0.0, float(params[leg.at.param]))
+        size = max(0.0, min(1.0, float(params[leg.size_pct.param])))
+        legs.append((at, size))
+    return sorted(legs, key=lambda pair: pair[0])
+
+
+def _setup_entry_gate(
+    spec: StrategySpec, params: dict[str, float], highs: list[float], lows: list[float], closes: list[float]
+) -> list[bool]:
+    """Per-bar boolean: is the entry SETUP satisfied at this bar? Composes the optional long/upside-only setups
+    (MA-trend filter AND ORB breakout AND FVG retest) — all that are present must hold. No setup => always True,
+    so plain condition-only strategies are unchanged. Point-in-time: each index reads only bars up to it."""
+    n = len(closes)
+    gate = [True] * n
+    setup = spec.setup
+    if setup is None:
+        return gate
+    if setup.ma_trend_filter is not None:
+        lb = max(2, int(round(params[setup.ma_trend_filter.ma_lookback.param])))
+        ma = _sma(closes, lb)
+        gate = [gate[i] and ma[i] is not None and closes[i] > ma[i] for i in range(n)]
+    if setup.orb is not None:
+        rng = max(2, int(round(params[setup.orb.range_bars.param])))
+        buf = max(0.0, float(params[setup.orb.buffer.param]))
+        rng_high = _rolling_high(highs, rng)
+        gate = [gate[i] and rng_high[i] is not None and closes[i] > rng_high[i] * (1 + buf) for i in range(n)]
+    if setup.fvg is not None:
+        gap_min = max(0.0, float(params[setup.fvg.gap_min.param]))
+        max_retests = max(1, int(round(params[setup.fvg.max_retests.param])))
+        gate = [gate[i] and v for i, v in enumerate(_fvg_retest_signal(highs, lows, closes, gap_min, max_retests))]
+    return gate
+
+
+def _sma(values: list[float], lookback: int) -> list[float | None]:
+    out: list[float | None] = [None] * len(values)
+    for idx in range(lookback - 1, len(values)):
+        out[idx] = statistics.fmean(values[idx - lookback + 1 : idx + 1])
+    return out
+
+
+def _rolling_high(highs: list[float], lookback: int) -> list[float | None]:
+    """Rolling opening-range high over the PRIOR `lookback` bars (excludes the current bar — no look-ahead)."""
+    out: list[float | None] = [None] * len(highs)
+    for idx in range(lookback, len(highs)):
+        out[idx] = max(highs[idx - lookback : idx])
+    return out
+
+
+def _fvg_retest_signal(
+    highs: list[float], lows: list[float], closes: list[float], gap_min: float, max_retests: int
+) -> list[bool]:
+    """Upside fair-value-gap retest signal. A bullish FVG forms at bar i when highs[i-2] < lows[i] (a 3-bar
+    imbalance) and the gap fraction (lows[i]-highs[i-2])/highs[i-2] >= gap_min. Once formed, the signal fires
+    on each later bar whose low dips back INTO the gap [highs[i-2], lows[i]] (a retest), up to `max_retests`
+    times. Long/upside-only. Point-in-time: a gap is only active for bars after it formed."""
+    n = len(closes)
+    out = [False] * n
+    # active gaps: [gap_lo, gap_hi, retests_used]. A gap is retired once it is fully used OR price has dropped
+    # below it (the gap filled / invalidated) — bounding the live set keeps this linear, not quadratic.
+    gaps: list[list[float]] = []
+    for i in range(n):
+        if i >= 2:
+            gap_lo, gap_hi = highs[i - 2], lows[i]
+            if gap_hi > gap_lo and (gap_hi - gap_lo) / gap_lo >= gap_min:
+                gaps.append([gap_lo, gap_hi, 0.0])
+        still_active: list[list[float]] = []
+        for g in gaps:
+            gap_lo, gap_hi, used = g
+            if used < max_retests and lows[i] <= gap_hi and closes[i] >= gap_lo:
+                out[i] = True
+                g[2] = used + 1
+                used += 1
+            if used < max_retests and closes[i] >= gap_lo:  # retire used-up or filled-below gaps
+                still_active.append(g)
+        gaps = still_active
+    return out
 
 
 def _entry_notional(cash: float, spec: StrategySpec, size_multiplier: float) -> float:
@@ -276,6 +401,12 @@ def _lookback_for(name: str, spec: StrategySpec, params: dict[str, float]) -> in
 
 def _warmup_bars(spec: StrategySpec, params: dict[str, float]) -> int:
     lookbacks = [_lookback_for(condition.feature.name, spec, params) for condition in [*spec.entry, *spec.exit.signal_exits]]
+    setup = spec.setup
+    if setup is not None:
+        if setup.ma_trend_filter is not None:
+            lookbacks.append(int(round(params.get(setup.ma_trend_filter.ma_lookback.param, 20))))
+        if setup.orb is not None:
+            lookbacks.append(int(round(params.get(setup.orb.range_bars.param, 20))))
     return max([20, *lookbacks]) + 2
 
 
@@ -357,6 +488,7 @@ def _empty_metrics(spec: StrategySpec) -> BacktestMetrics:
         folds_positive_pct=Decimal("0"),
         holdout_deflated_sharpe=Decimal("-1"),
         regime_returns={},
+        profit_factor=Decimal("0"),
     )
 
 
@@ -378,6 +510,16 @@ def _win_rate(trades: list[Trade]) -> float:
     if not trades:
         return 0.0
     return sum(1 for trade in trades if trade.pnl_pct > 0) / len(trades)
+
+
+def _profit_factor(trades: list[Trade]) -> float:
+    """Gross wins / gross losses across trade net-of-fee returns. A DISPLAYED secondary metric only — never
+    a ranking input. No trades => 0; only-winners (no losses) => a capped sentinel so it stays finite."""
+    gross_win = sum(trade.pnl_pct for trade in trades if trade.pnl_pct > 0)
+    gross_loss = -sum(trade.pnl_pct for trade in trades if trade.pnl_pct < 0)
+    if gross_loss <= 0:
+        return min(gross_win / 1e-9, 1000.0) if gross_win > 0 else 0.0
+    return gross_win / gross_loss
 
 
 def _sharpe(returns: list[float], periods_per_year: float) -> float:

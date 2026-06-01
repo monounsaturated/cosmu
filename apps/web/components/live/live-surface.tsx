@@ -33,20 +33,6 @@ const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
 
 const DEFAULT_CAPS: Caps = { per_strategy_cap: 250, global_cap: 1000, max_daily_loss: 100 };
 
-// Offline demo: a not-armed, paper-mode snapshot so the page renders without an engine.
-// Clearly labelled "demo" in the UI; never presents itself as live or armed.
-const OFFLINE: PositionsResponse = {
-  armed: false,
-  mode: "paper",
-  daily_loss: 0,
-  caps: DEFAULT_CAPS,
-  positions: []
-};
-
-const OFFLINE_ELIGIBLE: EligibleStrategy[] = [
-  { version_id: "sv-btc", name: "Funding-aware BTC swing" }
-];
-
 function modeBadge(mode: LiveMode) {
   const map: Record<LiveMode, { variant: "up" | "warn" | "info"; label: string }> = {
     paper: { variant: "info", label: "paper" },
@@ -56,25 +42,25 @@ function modeBadge(mode: LiveMode) {
   return map[mode];
 }
 
-export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: boolean } }) {
+export function LiveSurface({ initial }: { initial: PositionsResponse & { connected: boolean } }) {
   const [state, setState] = useState<PositionsResponse>(initial);
-  const [demo, setDemo] = useState(initial.demo);
+  const [connected, setConnected] = useState(initial.connected);
   const [modalOpen, setModalOpen] = useState(false);
   const [caps, setCaps] = useState<Caps>(initial.caps ?? DEFAULT_CAPS);
-  const [eligible, setEligible] = useState<EligibleStrategy[]>(OFFLINE_ELIGIBLE);
+  const [eligible, setEligible] = useState<EligibleStrategy[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const armed = state.armed;
   const mode = modeBadge(state.mode);
-  // The single money-state label for every $ on this surface: DEMO offline, LIVE only when armed
-  // on the live venue, otherwise PAPER (simulated / testnet).
-  const money = moneyMode({ demo, live: armed && state.mode === "live" });
+  // The single money-state label for every $ on this surface: LIVE only when armed on the live
+  // venue, otherwise PAPER. There is no demo money state — offline shows an honest not-connected note.
+  const money = moneyMode({ live: armed && state.mode === "live" });
   const dailyLossPct = state.caps.max_daily_loss > 0 ? Math.min(100, (state.daily_loss / state.caps.max_daily_loss) * 100) : 0;
 
   async function refreshPositions() {
     if (!ENGINE) {
-      setDemo(true);
+      setConnected(false);
       return;
     }
     try {
@@ -83,9 +69,9 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
       const data = (await res.json()) as PositionsResponse;
       setState(data);
       setCaps(data.caps);
-      setDemo(false);
+      setConnected(true);
     } catch {
-      setDemo(true);
+      setConnected(false);
     }
   }
 
@@ -95,8 +81,8 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
     setNote(null);
     startTransition(async () => {
       if (!ENGINE) {
-        setEligible(OFFLINE_ELIGIBLE);
-        setModalOpen(true);
+        setConnected(false);
+        setNote("Engine not connected — set ENGINE_API_URL. Arming requires a connected engine with the Gate passed.");
         return;
       }
       try {
@@ -108,13 +94,11 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
         if (!res.ok) throw new Error("engine unavailable");
         const data = (await res.json()) as { enabled: boolean; requires_confirm: boolean; reason?: string };
         if (data.reason) setNote(data.reason);
-        setEligible(OFFLINE_ELIGIBLE);
         setModalOpen(true);
-        setDemo(false);
+        setConnected(true);
       } catch {
-        setDemo(true);
-        setEligible(OFFLINE_ELIGIBLE);
-        setModalOpen(true);
+        setConnected(false);
+        setNote("Engine not connected — cannot review eligible strategies.");
       }
     });
   }
@@ -123,7 +107,7 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
   function confirmActivate() {
     startTransition(async () => {
       if (!ENGINE) {
-        setNote("Engine unreachable — cannot arm. This is a labelled paper demo only.");
+        setNote("Engine not connected — cannot arm.");
         return;
       }
       try {
@@ -144,8 +128,8 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
           setNote(data.reason ?? "Not armed — the gate has not passed on real data.");
         }
       } catch {
-        setDemo(true);
-        setNote("Engine unreachable — cannot arm.");
+        setConnected(false);
+        setNote("Engine not connected — cannot arm.");
       }
     });
   }
@@ -153,7 +137,7 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
   function defund(scope: "all" | "strategy", versionId?: string) {
     startTransition(async () => {
       if (!ENGINE) {
-        setNote("Engine unreachable — defund is a no-op in the demo.");
+        setNote("Engine not connected — defund unavailable.");
         return;
       }
       try {
@@ -166,8 +150,8 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
         (await res.json()) as DefundResponse;
         await refreshPositions();
       } catch {
-        setDemo(true);
-        setNote("Engine unreachable — could not defund.");
+        setConnected(false);
+        setNote("Engine not connected — could not defund.");
       }
     });
   }
@@ -192,7 +176,7 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
           <Badge variant={mode.variant}>
             <ShieldCheck className="size-3" /> mode · {mode.label}
           </Badge>
-          {demo ? <Badge variant="warn">engine offline</Badge> : null}
+          {!connected ? <Badge variant="warn">engine not connected</Badge> : null}
           {!armed ? (
             <Button variant="primary" size="md" onClick={openGoLive} disabled={pending}>
               <Power className="size-4" /> Go live
@@ -305,7 +289,7 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { demo: 
           eligible={eligible}
           note={note}
           pending={pending}
-          demo={demo}
+          connected={connected}
           onChangeCaps={setCaps}
           onConfirm={confirmActivate}
           onClose={() => setModalOpen(false)}
@@ -320,7 +304,7 @@ function ActivationModal({
   eligible,
   note,
   pending,
-  demo,
+  connected,
   onChangeCaps,
   onConfirm,
   onClose
@@ -329,7 +313,7 @@ function ActivationModal({
   eligible: EligibleStrategy[];
   note: string | null;
   pending: boolean;
-  demo: boolean;
+  connected: boolean;
   onChangeCaps: (c: Caps) => void;
   onConfirm: () => void;
   onClose: () => void;
@@ -394,7 +378,7 @@ function ActivationModal({
           <Button variant="ghost" size="md" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" size="md" onClick={onConfirm} disabled={pending || demo}>
+          <Button variant="primary" size="md" onClick={onConfirm} disabled={pending || !connected}>
             <ShieldCheck className="size-4" /> Confirm — arm live
           </Button>
         </div>

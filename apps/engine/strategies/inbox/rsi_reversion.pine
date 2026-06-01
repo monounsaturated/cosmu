@@ -1,0 +1,9 @@
+//@version=5
+strategy("RSI Oversold Reversion", overlay=true)
+rsiLen = input.int(14, "RSI Length")
+oversold = input.int(30, "Oversold")
+rsiVal = ta.rsi(close, rsiLen)
+longCondition = ta.crossover(rsiVal, oversold)
+if longCondition
+    strategy.entry("Long", strategy.long)
+strategy.exit("Exit", "Long", stop=0.04, limit=0.10)

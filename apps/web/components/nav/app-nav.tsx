@@ -8,26 +8,28 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { LayoutDashboard, Menu, MessageSquare, Microscope, Radio, SlidersHorizontal, X } from "lucide-react";
+import { LayoutDashboard, ListChecks, Menu, MessageSquare, Microscope, Radio, SlidersHorizontal, Wallet, X } from "lucide-react";
 import { CosmuWordmark } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 
-// `gated` items are kept deliberately dimmed (live trading is in scope but off by default —
-// the screen itself stays lean and the gate must pass before anything can arm).
+// One route per user question. `gated` items are kept deliberately dimmed (live trading is in
+// scope but off by default — the screen stays lean and the gate must pass before anything arms).
 type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; gated?: boolean };
 
 export const navItems: NavItem[] = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/research", label: "Research", icon: Microscope },
-  { href: "/console", label: "Console", icon: MessageSquare },
+  { href: "/lab", label: "Lab", icon: Microscope },
+  { href: "/strategies", label: "Strategies", icon: ListChecks },
+  { href: "/paper", label: "Paper", icon: Wallet },
   { href: "/live", label: "Live", icon: Radio, gated: true },
+  { href: "/steer", label: "Steer", icon: MessageSquare },
   { href: "/settings", label: "Settings", icon: SlidersHorizontal }
 ];
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
-  // Strategy detail pages live under Research, so keep Research highlighted there.
-  if (href === "/research") return pathname.startsWith("/research") || pathname.startsWith("/strategy") || pathname.startsWith("/farm");
+  // Strategy detail pages are browsed from Strategies, so keep Strategies highlighted there.
+  if (href === "/strategies") return pathname.startsWith("/strategies") || pathname.startsWith("/strategy");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -69,7 +71,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-7 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       {navItems.map((item) => {
         const active = isActive(pathname, item.href);
@@ -79,12 +81,12 @@ export function BottomNav() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex min-h-[56px] flex-col items-center justify-center gap-1 text-[10.5px] font-medium transition-colors",
+              "flex min-h-[56px] flex-col items-center justify-center gap-1 px-0.5 text-[9.5px] font-medium transition-colors",
               active ? "text-iris-soft" : "text-quiet hover:text-foreground",
               item.gated && !active && "opacity-70"
             )}
           >
-            <item.icon className={cn("size-[20px] shrink-0", active && "text-iris-soft")} />
+            <item.icon className={cn("size-[19px] shrink-0", active && "text-iris-soft")} />
             <span>{item.label}</span>
           </Link>
         );

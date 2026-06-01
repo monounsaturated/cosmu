@@ -48,6 +48,9 @@ v2 lives in **`apps/engine/`** (Python) + **`apps/web/`** (Next.js, Overview-led
 - Structured-first, markdown views generated, INDEX over everything (`§6`). Token-frugal always.
 - Use **actual venue names** everywhere (Binance, Binance Testnet, IBKR). No "paper/live/testnet mode" labels — paper vs live is the same code path routed differently, gated by the live toggle.
 
+## How strategies are created
+One **standard** so Claude Code and the autonomous LLM author strategies identically and auditably. Vocabulary is fixed in **`docs/GLOSSARY.md`** (Strategy · Version · Sleeve · Wallet · Allocation · Lab · Paper · Live · Score=deflated Sharpe · Gate · Profit factor). Author a Version as a typed `StrategySpec` via the **`.claude/skills/create-strategy`** skill (named features from the registry, thresholds in `param_space` — **no magic numbers**, **required** `stop_loss`/`take_profit`, composable modules: `multi_tp`, `break_even+runner`, `ma_trend_filter`, `orb`, `fvg_retest`/`fvg_multiple`). Drop the file in **`strategies/inbox/`** (`*.md`/`*.pine`/`*.json`, scanned on deploy/boot); it flows `static_check → Lab → Finder → Gate`. There is **no "demo" state** — when there's no engine/data, show an honest empty/connect state, never fabricated numbers.
+
 ## Stop & report before
 broad renames / vocab changes · schema changes unless requested · destructive commands or data resets · touching unrelated modules · changing live-execution behavior · moving secrets into DB/frontend.
 

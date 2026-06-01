@@ -33,6 +33,9 @@ class BacktestMetrics(BaseModel):
     folds_positive_pct: Decimal = Decimal("0")
     holdout_deflated_sharpe: Decimal = Decimal("0")
     regime_returns: dict[str, float] = Field(default_factory=dict)
+    # profit_factor = gross wins / gross losses across trades. DISPLAYED secondary metric ONLY — the ranking
+    # metric stays the deflated Sharpe. It never enters score()'s pass/fail or ranking_scalar.
+    profit_factor: Decimal = Decimal("0")
 
 
 class TrialStats(BaseModel):

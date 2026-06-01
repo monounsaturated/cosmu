@@ -85,8 +85,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="relative inline-flex size-2 rounded-full bg-up" />
             </span>
             <Activity className="size-4 text-up" />
-            <span className="hidden sm:inline">Paper farming on live-shadow data · scorer deterministic</span>
-            <span className="sm:hidden">Paper farming</span>
+            <span className="hidden sm:inline">Lab discovering · Wallet on paper · Gate deterministic</span>
+            <span className="sm:hidden">Paper · Lab</span>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="warn">

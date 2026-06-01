@@ -14,15 +14,15 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { cn, formatPct } from "@/lib/utils";
 
 // Disambiguate the two money layers right where the columns live.
-const SLEEVE_VS_POOLED = (
+const SLEEVE_VS_WALLET = (
   <div className="space-y-1.5">
     <p>
-      <span className="font-semibold text-foreground">Sleeve</span> — this strategy&apos;s raw return on its standardized
-      capital sleeve.
+      <span className="font-semibold text-foreground">Sleeve</span> — this Version&apos;s raw return on its standardized
+      $100k Sleeve.
     </p>
     <p>
-      <span className="font-semibold text-foreground">Net</span> — the same sleeve after fees and costs. The pooled wallet
-      on Overview aggregates these.
+      <span className="font-semibold text-foreground">Net</span> — the same Sleeve after fees and costs. The Wallet on
+      Overview aggregates funded Allocations.
     </p>
   </div>
 );
@@ -73,22 +73,22 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search strategies…"
+            placeholder="Search Strategies…"
             className="h-8 w-full rounded-md border border-border bg-background/60 pl-8 pr-2 text-[12.5px] text-foreground outline-none transition-colors placeholder:text-quiet focus-visible:border-iris/60 focus-visible:ring-2 focus-visible:ring-ring/40"
           />
         </div>
         <span className="ml-auto inline-flex items-center gap-1 text-[11.5px] text-quiet">
-          sleeve vs net <Tooltip content={SLEEVE_VS_POOLED} /> · {sorted.length} versions
+          Sleeve vs net <Tooltip content={SLEEVE_VS_WALLET} /> · {sorted.length} Versions
         </span>
       </div>
       <Table>
         <THead>
           <TR>
-            <SortTH label="Strategy" col="name" sortKey={sortKey} dir={dir} onClick={toggleSort} sticky />
+            <SortTH label="Version" col="name" sortKey={sortKey} dir={dir} onClick={toggleSort} sticky />
             <SortTH label="Status" col="status" sortKey={sortKey} dir={dir} onClick={toggleSort} />
             <SortTH label="Sleeve" col="sleeve_return_pct" sortKey={sortKey} dir={dir} onClick={toggleSort} align="right" />
             <SortTH label="Net" col="net_pct" sortKey={sortKey} dir={dir} onClick={toggleSort} align="right" />
-            <SortTH label="D-Sharpe" col="deflated_sharpe" sortKey={sortKey} dir={dir} onClick={toggleSort} align="right" />
+            <SortTH label="Score" col="deflated_sharpe" sortKey={sortKey} dir={dir} onClick={toggleSort} align="right" />
             <SortTH label="PBO" col="pbo" sortKey={sortKey} dir={dir} onClick={toggleSort} align="right" />
           </TR>
         </THead>

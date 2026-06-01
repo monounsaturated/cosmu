@@ -2,7 +2,23 @@
 
 from __future__ import annotations
 
-from cosmu.strategy.spec import Condition, ExitRules, FeatureRef, Horizon, ParamRef, ParamSpace, RiskRules, StrategySpec, UniverseSelector
+from cosmu.strategy.spec import (
+    Condition,
+    EntrySetup,
+    ExitPlan,
+    ExitRules,
+    FairValueGap,
+    FeatureRef,
+    Horizon,
+    MaTrendFilter,
+    OpeningRangeBreakout,
+    ParamRef,
+    ParamSpace,
+    RiskRules,
+    StrategySpec,
+    TakeProfitLeg,
+    UniverseSelector,
+)
 
 
 def seed_breakout_spec() -> StrategySpec:
@@ -96,6 +112,59 @@ def seed_momentum_spec() -> StrategySpec:
             "take": ParamSpace(kind="float", lo=0.06, hi=0.3),
             "time_stop": ParamSpace(kind="int", lo=5, hi=21, step=1),
         },
+    )
+
+
+def seed_orb_fvg_spec() -> StrategySpec:
+    """The composable ORB + FVG-multiple seed — the first Finder input. An upside opening-range breakout, gated
+    by an MA trend filter (long only above the MA), entering on a fair-value-gap retest (re-entered up to N
+    times), with a multi-leg take-profit (partial exits) and a break-even-after-TP1 asymmetric runner. Every
+    threshold lives in param_space (no magic numbers) so the Finder/optimizer fits the whole structure. Spot,
+    long-only crypto."""
+    return StrategySpec(
+        name="ORB + FVG-multiple (composable seed)",
+        rationale="Upside opening-range breakout into a fair-value-gap retest, trend-filtered, scaled out in legs with a break-even runner — a fully composable, optimizer-fittable setup.",
+        universe=UniverseSelector(venues=["binance"], asset_classes=["crypto"], min_liquidity_usd=10_000_000, min_instruments=5),
+        horizon=Horizon(bar_size="1h", min_hold_days=1, max_hold_days=10),
+        entry=[
+            Condition(feature=FeatureRef(name="ret_Nd", lookback=ParamRef(param="mom_lookback")), op="gt", threshold=ParamRef(param="mom_floor")),
+        ],
+        exit=ExitRules(
+            stop_loss=ParamRef(param="stop"),
+            take_profit=ParamRef(param="take"),
+            time_stop_days=ParamRef(param="time_stop"),
+            plan=ExitPlan(
+                multi_tp=[
+                    TakeProfitLeg(at=ParamRef(param="tp1_at"), size_pct=ParamRef(param="tp1_size")),
+                    TakeProfitLeg(at=ParamRef(param="tp2_at"), size_pct=ParamRef(param="tp2_size")),
+                ],
+                break_even_after_tp1=True,
+                runner_trail=ParamRef(param="runner_trail"),
+            ),
+        ),
+        risk=RiskRules(max_concurrent_positions=4, max_position_pct=0.04, conviction=0.55),
+        param_space={
+            "mom_lookback": ParamSpace(kind="int", lo=5, hi=40, step=1),
+            "mom_floor": ParamSpace(kind="float", lo=0.0, hi=0.05),
+            "stop": ParamSpace(kind="float", lo=0.02, hi=0.1),
+            "take": ParamSpace(kind="float", lo=0.04, hi=0.24),
+            "time_stop": ParamSpace(kind="int", lo=2, hi=14, step=1),
+            "tp1_at": ParamSpace(kind="float", lo=0.02, hi=0.08),
+            "tp1_size": ParamSpace(kind="float", lo=0.25, hi=0.6),
+            "tp2_at": ParamSpace(kind="float", lo=0.08, hi=0.2),
+            "tp2_size": ParamSpace(kind="float", lo=0.2, hi=0.5),
+            "runner_trail": ParamSpace(kind="float", lo=0.02, hi=0.1),
+            "ma_lookback": ParamSpace(kind="int", lo=20, hi=100, step=1),
+            "orb_range": ParamSpace(kind="int", lo=4, hi=24, step=1),
+            "orb_buffer": ParamSpace(kind="float", lo=0.0, hi=0.01),
+            "fvg_retests": ParamSpace(kind="int", lo=1, hi=4, step=1),
+            "fvg_gap_min": ParamSpace(kind="float", lo=0.0, hi=0.02),
+        },
+        setup=EntrySetup(
+            ma_trend_filter=MaTrendFilter(ma_lookback=ParamRef(param="ma_lookback")),
+            orb=OpeningRangeBreakout(range_bars=ParamRef(param="orb_range"), buffer=ParamRef(param="orb_buffer"), anchor="rolling"),
+            fvg=FairValueGap(max_retests=ParamRef(param="fvg_retests"), gap_min=ParamRef(param="fvg_gap_min")),
+        ),
     )
 
 

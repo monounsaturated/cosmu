@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-// The Farm surface moved into the unified Research route. Keep the old path working.
+// The Farm surface (Strategy Finder) moved into the unified Lab route. Keep the old path working.
 export default function FarmPage() {
-  redirect("/research");
+  redirect("/lab");
 }

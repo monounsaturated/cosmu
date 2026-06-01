@@ -1,4 +1,4 @@
-import { getStrategy } from "../../data";
+import { engineConfigured, getStrategy } from "../../data";
 import type { Backtest, Execution, Point } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { EquityCurve } from "@/components/charts/equity-curve";
 import { FoldBars } from "@/components/charts/fold-bars";
 import { ChartEmpty } from "@/components/charts/chart-kit";
+import { NotConnected } from "@/components/ui/honest-state";
 
 // Derive a paper equity curve from the strategy's trade log: cumulative realized cash flow
 // (sells add, buys subtract, fees always subtract), seeded at 0. Honest — built only from the
@@ -23,8 +24,23 @@ function paperCurveFromTrades(trades: Execution[]): Point[] {
 
 export default async function StrategyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const strategy = await getStrategy(id);
+  const { strategy, connected } = await getStrategy(id);
   const paperCurve = paperCurveFromTrades(strategy.trades);
+
+  if (!connected || !strategy.version_id) {
+    return (
+      <div className="mx-auto max-w-[1200px] space-y-6 px-5 py-7 lg:px-7">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">version</div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{id}</h1>
+        </div>
+        <NotConnected
+          configured={engineConfigured}
+          what="This Version's evidence — Sleeve %, lineage, why it died, and charts — comes from the live engine. Nothing is fabricated."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-6 px-5 py-7 lg:px-7">

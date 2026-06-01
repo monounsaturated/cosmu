@@ -19,34 +19,6 @@ export type { CrossAssetVerdict, DropOneClass, DropOneSource };
 
 const ENGINE = process.env.NEXT_PUBLIC_ENGINE_API_URL ?? "";
 
-const OFFLINE: CrossAssetVerdict = {
-  decision: "PASS",
-  passed: true,
-  price_only_return: 0.41,
-  single_alt_return: 0.92,
-  xasset_return: 1.47,
-  buy_and_hold_return: 0.03,
-  xasset_dsr: 0.98,
-  single_alt_dsr: 0.82,
-  cscv_pbo: 0.04,
-  regimes_positive: 3,
-  num_trades: 168,
-  max_drawdown: 0.094,
-  attempts: 14,
-  drop_one_source: [
-    { source: "social_z", sharpe_without: 1.02, delta: -0.61 },
-    { source: "funding", sharpe_without: 1.28, delta: -0.35 },
-    { source: "onchain_flow", sharpe_without: 1.44, delta: -0.19 }
-  ],
-  drop_one_class: [
-    { asset_class: "crypto", sharpe_without: 0.74, delta: -0.89 },
-    { asset_class: "equity", sharpe_without: 1.39, delta: -0.24 }
-  ],
-  reasons: [],
-  bar: { min_trades: 30, min_xasset_dsr: 0.95, max_cscv_pbo: 0.5, min_regimes_positive: 2, max_drawdown: 0.25 },
-  data_source: "synthetic"
-};
-
 function pct(x: number) {
   return `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
 }
@@ -62,14 +34,14 @@ function arm(label: string, value: number, tone: "iris" | "up" | "muted") {
 }
 
 export function CrossAssetGate({ compact = false }: { compact?: boolean }) {
-  const [verdict, setVerdict] = useState<CrossAssetVerdict | null>(ENGINE ? null : OFFLINE);
+  const [verdict, setVerdict] = useState<CrossAssetVerdict | null>(null);
   const [offline, setOffline] = useState(!ENGINE);
   const [running, startRun] = useTransition();
 
   function run() {
+    setOffline(false);
     startRun(async () => {
       if (!ENGINE) {
-        setVerdict(OFFLINE);
         setOffline(true);
         return;
       }
@@ -83,7 +55,6 @@ export function CrossAssetGate({ compact = false }: { compact?: boolean }) {
         setVerdict((await res.json()) as CrossAssetVerdict);
         setOffline(false);
       } catch {
-        setVerdict(OFFLINE);
         setOffline(true);
       }
     });
@@ -108,7 +79,11 @@ export function CrossAssetGate({ compact = false }: { compact?: boolean }) {
       </CardHeader>
       <CardContent className="space-y-4">
         {!verdict ? (
-          <p className="text-[13px] text-muted">No run yet. Press &ldquo;Run cross-asset gate&rdquo; for a four-arm verdict.</p>
+          <p className="text-[13px] text-muted">
+            {offline
+              ? "Engine not connected — run the cross-asset gate once the engine is up. No demo verdict is shown."
+              : "No run yet. Press “Run cross-asset gate” for a four-arm verdict."}
+          </p>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3">

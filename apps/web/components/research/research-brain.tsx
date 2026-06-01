@@ -47,7 +47,7 @@ function FunnelStep({ label, value, tone }: { label: string; value: number | str
   );
 }
 
-export function ResearchBrain({ brain, demo }: { brain: BrainResponse; demo: boolean }) {
+export function ResearchBrain({ brain }: { brain: BrainResponse }) {
   const { llm, gated, survivors, graveyard, sources, tools, regime, survival_ranking } = brain;
   const anyTrained = survival_ranking.some((r) => r.trained);
 
@@ -61,7 +61,6 @@ export function ResearchBrain({ brain, demo }: { brain: BrainResponse; demo: boo
           <p className="mt-1 text-[13px] leading-snug text-muted">What the machine is doing right now — authoring, gating, and ranking what to validate next.</p>
         </div>
         <div className="flex items-center gap-2">
-          {demo ? <Badge variant="warn">demo data — engine offline</Badge> : null}
           <span className="inline-flex items-center gap-1.5">
             <Badge variant={llm === "on" ? "up" : "muted"}>
               <Sparkles className="size-3" /> LLM {llm}

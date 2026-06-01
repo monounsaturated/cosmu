@@ -39,7 +39,14 @@ from cosmu.api.models import (
     Event,
     EventsResponse,
     Execution,
+    FinderResponse,
+    FinderRunRequest,
+    FinderVariant,
     GraveyardRow,
+    MlFeatureWeight,
+    MlRankedItem,
+    MlRequest,
+    MlResponse,
     LeaderboardResponse,
     LeaderboardRow,
     LiveCaps,
@@ -124,7 +131,36 @@ async def lifespan(_: FastAPI):
     if not store.row("SELECT id FROM runs LIMIT 1"):
         facade.run_backtest(seed=11)
     ensure_recommendations()
+    _scan_inbox_on_startup()
+    _fund_wallet_on_startup()
     yield
+
+
+def _fund_wallet_on_startup() -> None:
+    """Close the loop on boot: if gate-passed survivors exist with sleeves but the paper Wallet holds no
+    positions yet, size them with the capped-Kelly allocator and open paper positions so GET /portfolio reflects
+    a genuinely funded Wallet (no fabricated numbers). Best-effort + offline-safe; never blocks startup."""
+    try:
+        from cosmu.orchestrator import fund_wallet_from_survivors
+
+        if store.row("SELECT id FROM positions WHERE CAST(qty AS REAL) != 0 LIMIT 1"):
+            return  # already funded — idempotent, don't double-open
+        if not store.row("SELECT sv.id FROM strategy_versions sv JOIN sleeves sl ON sl.strategy_version_id = sv.id WHERE sv.status IN ('paper','live') LIMIT 1"):
+            return  # no survivors yet — honest empty Wallet
+        fund_wallet_from_survivors(store, bankroll=settings.paper_bankroll)
+    except Exception:  # noqa: BLE001 — funding is best-effort; a data/network hiccup must not break boot
+        pass
+
+
+def _scan_inbox_on_startup() -> None:
+    """Scan strategies/inbox/*.{md,pine,json} on boot — idempotent (unchanged files skipped) and offline-safe, so
+    a dropped-in strategy is translated into the Lab automatically. Never blocks startup on failure."""
+    try:
+        from cosmu.lab.inbox import scan_inbox
+
+        scan_inbox(store, run_cohort=has_live_data(store))
+    except Exception:  # noqa: BLE001 — inbox import is best-effort; a bad file must not break boot
+        pass
 
 
 app = FastAPI(title="Cosmu Engine", version="0.1.0", lifespan=lifespan)
@@ -287,6 +323,67 @@ def lab_author_run(request: AuthorRunRequest) -> CohortSummaryResponse:
     loop = FarmLoop(settings=settings, store=store)
     summary = loop.run_cohort(cohort_size=request.cohort_size, extra_seeds=[draft.spec])
     return _summary_to_response(summary)
+
+
+def _finder_variant(r) -> FinderVariant:  # noqa: ANN001 — VariantResult
+    return FinderVariant(
+        config_tag=r.config_tag,
+        version_id=r.version_id,
+        profit_factor=round(r.profit_factor, 4),
+        deflated_sharpe=round(r.deflated_sharpe, 6),
+        net_profit=round(r.net_profit, 6),
+        num_trades=r.metrics.num_trades,
+        gate_passed=r.gate_passed,
+        promoted=r.promoted,
+        holdout_passed=r.holdout_passed,
+    )
+
+
+@app.post("/lab/finder", response_model=FinderResponse)
+def lab_finder(request: FinderRunRequest) -> FinderResponse:
+    """Run the Strategy Finder: grid-search the ORB+FVG seed's param space → screen each variant on REAL Binance
+    spot bars (cached, offline-safe) → register every variant as a trial → rank by profit_factor (displayed) while
+    the deterministic Gate + FDR + one-shot holdout decide promotion → persist winners to the config library."""
+    if not has_live_data(store):
+        raise HTTPException(status_code=400, detail="No venue with a live data path is enabled. Enable Binance (Crypto) in Settings to run the Finder.")
+    from cosmu.lab.finder import StrategyFinder, seed_real
+    from cosmu.evolution.seeder import seed_orb_fvg_spec
+
+    if request.seed_real:
+        report = seed_real(store, max_variants=request.max_variants or 64)
+    else:
+        finder = StrategyFinder(settings=settings, store=store)
+        report = finder.find(seed_orb_fvg_spec(), max_variants=request.max_variants or 64, persist=True)
+    return FinderResponse(
+        strategy_name=report.strategy_name,
+        grid_size=report.grid_size,
+        screened=report.screened,
+        gate_passed=report.gate_passed,
+        promoted=report.promoted,
+        leaderboard=[_finder_variant(r) for r in report.leaderboard],
+        survivors=[_finder_variant(r) for r in report.survivors],
+    )
+
+
+@app.post("/lab/ml", response_model=MlResponse)
+def lab_ml(request: MlRequest) -> MlResponse:
+    """The ML-through-natural-language seam. A plain-language ML request → (LLM-optional, deterministic fallback)
+    intent classification → runs the survival-ranking or feature-importance pass over REAL persisted outcomes →
+    returns a result JUDGED by the deterministic scorer (gate verdict per item) but never alters it."""
+    from cosmu.lab.ml import run_ml_request
+
+    result = run_ml_request(store, request.request, llm_enabled=bool(settings.openrouter_api_key), limit=request.limit or 24)
+    return MlResponse(
+        task=result.task,
+        request=result.request,
+        llm=result.llm,
+        trained=result.trained,
+        backend=result.backend,
+        n_labels=result.n_labels,
+        ranking=[MlRankedItem(version_id=i.version_id, name=i.name, score=i.score, gate_passed=i.gate_passed, deflated_sharpe=i.deflated_sharpe) for i in result.ranking],
+        feature_importance=[MlFeatureWeight(feature=w.feature, weight=w.weight) for w in result.feature_importance],
+        notes=result.notes,
+    )
 
 
 @app.get("/portfolio", response_model=PortfolioResponse)

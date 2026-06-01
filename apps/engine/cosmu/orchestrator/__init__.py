@@ -16,6 +16,7 @@ from cosmu.orchestrator.agent import (
     gate_stage,
 )
 from cosmu.orchestrator.efficiency import EfficiencyMeter
+from cosmu.orchestrator.loop import WalletFundingReport, fund_wallet_from_survivors
 
 __all__ = [
     "AutonomyEnvelope",
@@ -23,8 +24,10 @@ __all__ = [
     "EfficiencyMeter",
     "Stage",
     "TradingAgent",
+    "WalletFundingReport",
     "allocate_stage",
     "execute_stage",
     "execution_plan_stage",
+    "fund_wallet_from_survivors",
     "gate_stage",
 ]
