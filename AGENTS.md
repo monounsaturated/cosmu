@@ -8,6 +8,12 @@ Autonomous quant money machine. Python engine (`apps/engine/`) on Railway. Next.
 ## North star
 Simple to use. Powerful. Agentic-first — use skills for common tasks, don't improvise. Buy > build. The one metric: risk-adjusted profit net of every cost. Live stays OFF by default.
 
+## Ship workflow (standing — don't wait to be asked)
+When a turn ends with code edits, **commit and push to `main` right away, at the end** — no need to ask.
+- **Push = deploy.** Railway (engine) and Vercel (web) both auto-deploy from `main`. One trigger only: `git push`. Never also run `railway up`/`vercel deploy` (double-deploy race).
+- Tokens (`RAILWAY_TOKEN`/`VERCEL_TOKEN` in `.env.local`, gitignored) are for **reading logs while debugging**, not for deploying. Don't need them to ship.
+- One small commit per fix; message states cause + fix. Verify locally first (tests / `/health`). Debug loop: see `/deploy-iterate`.
+
 ## Read order (one doc, not all)
 1. **This file** — invariants, skills, task queue
 2. **`docs/IMPLEMENTATION.md`** — what's built, what's next (read the last 3 "### Built" sections)
