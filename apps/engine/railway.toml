@@ -17,3 +17,8 @@ restartPolicyMaxRetries = 3
 [[cron]]
 schedule = "0 */6 * * *"
 command = "python3 -m cosmu.research.loop --ingest"
+
+# Full autonomous cycle: ingest -> author -> gate/screen -> fund paper survivors -> recommendations.
+[[cron]]
+schedule = "0 */4 * * *"
+command = "python3 -m cosmu.master.scheduler"

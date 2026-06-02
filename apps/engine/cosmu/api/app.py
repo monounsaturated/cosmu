@@ -181,10 +181,11 @@ def _scan_inbox_on_startup() -> None:
 
 app = FastAPI(title="Cosmu Engine", version="0.1.0", lifespan=lifespan)
 
-_cors_extra = [o.strip() for o in os.getenv("CORS_EXTRA_ORIGINS", "").split(",") if o.strip()]
+# Private single-user app behind API_SECRET_KEY — allow all origins so Vercel preview
+# deploys (which get new URLs) work without updating CORS_EXTRA_ORIGINS every time.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"] + _cors_extra,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

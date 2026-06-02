@@ -1,60 +1,68 @@
-# Cosmu — Agent Map
+# Cosmu — Agent Entry Point
 
-Lean pre-prompt for coding agents. The **contract is `docs/VISION.md`** (read its `§0` + INDEX, then the one section you need — never the whole file). This file is the *map + invariants*; the code is the source of detail. Keep this under ~150 lines; prune stale memory before adding.
+> New chat? Start here. Read this file, then build. That's the whole prompt.
 
-> **Continuing the build?** `docs/IMPLEMENTATION.md` is current state (what's real vs stubbed + next steps); `docs/PLAN.md` is the gate-first sequencing; `docs/VISION.md` is the ambitious contract. Read IMPLEMENTATION first, then the one section you need. **Doc map (read one, not all):** VISION = what/why · PLAN = build order · IMPLEMENTATION = state + next · this file = invariants + how-we-work.
+## What Cosmu is
+Autonomous quant money machine. Python engine (`apps/engine/`) on Railway. Next.js web (`apps/web/`) on Vercel. Supabase Postgres + pgvector. The deterministic scorer/gate decides what lives — LLMs only propose, never score or move money.
 
-## What Cosmu v2 is (one paragraph)
-An autonomous, multi-venue quant **money machine** for the owner's profit (not a product to sell). A **deterministic master** runs a **population of self-improving, LLM-authored swing strategies**, walk-forward backtested with real per-venue fees, **farming in realistic paper 24/7 with live trading OFF by default** — flip one toggle and gate-passing strategies auto-promote to real capital under hard caps. It competes on **returns, not speed**, and is steered by **plain chat (text or voice)**. The one metric: **risk-adjusted profit net of every cost.**
+## North star
+Simple to use. Powerful. Agentic-first — use skills for common tasks, don't improvise. Buy > build. The one metric: risk-adjusted profit net of every cost. Live stays OFF by default.
 
-**The rule that makes autonomy safe:** the **SCORER** (walk-forward OOS + untouched holdout) and the **MONEY** are deterministic and **out of the agent's reach**. The LLM can write/run any code or ML in a sandbox, but cannot define success or move capital.
+## Read order (one doc, not all)
+1. **This file** — invariants, skills, task queue
+2. **`docs/IMPLEMENTATION.md`** — what's built, what's next (read the last 3 "### Built" sections)
+3. **The module's `# intent:` header** — every file opens with purpose/inputs/outputs/invariants
+4. **`rg` for the exact symbol** — don't crawl the repo
 
-## Start here (current state)
-v2 lives in **`apps/engine/`** (Python) + **`apps/web/`** (Next.js, Overview-led: Overview · Research · Console · Settings). Spine, deterministic scorer/gates, the cross-asset gate (Phase 1.6), free data providers, and the self-sustained ingest/auto-research loop are **built** — see `docs/IMPLEMENTATION.md`. **Gate-first holds:** paid vendors, live execution, and the Phase-2 factory stay deferred until the gate PASSES on real free data.
+## Self-route
+Check state, then pick the highest-impact unblocked task:
+1. Tests green? `cd apps/engine && python3 -m pytest -x -q --tb=line`
+2. Web green? `pnpm --filter @cosmu/web typecheck`
+3. Engine deployed? See `docs/OWNER_SETUP.md §F`
+4. Pick from **Task queue** below. **Use a skill if one matches.**
 
-## Build discipline & where work runs
-- **Buy > build; control runtime cost.** Wire a vendor/OSS for every commodity; hand-build ONLY the differentiator (farming loop · deterministic gates · scorer · allocator · spec compiler). The product's own LLM/compute spend is **ROI-throttled** (≤ a % of trailing realized edge): cheap tier by default, frontier only when it earns; daily spend cap respected.
-- **Where work runs.** Complicated, must-standardize features → author directly in **Claude Code / Cursor** as typed, reviewed specs (don't hand-roll bespoke generators). **Workflows that don't need 24/7** (research, ingest passes, gate runs, DB migrations) → bounded Claude Code sessions or **scheduled crons**, never always-on services. Only the farm/paper loop is persistent.
-- **Auto-research framing:** arrange a *verifiable* metric + boundaries, then remove the human from the loop. Our gate **is** this — expensive LLM/search proposes, the cheap deterministic scorer verifies and gates the money (out of any LLM's reach). Keep instruction files (this file, `# intent:` headers, skills) **lean and agent-readable** — they are the optimizable "program", not human docs.
-- **Self-sustained, not cluttered.** Modules compose (never duplicate); delete stale code/docs on sight; structured Postgres is truth, markdown is a lean agent-facing view. Don't accumulate.
-
-## Read order (token-frugal)
-1. This file. 2. `docs/VISION.md` `§0` + INDEX → the one relevant section. 3. The module's `# intent:` / `// module:` header. 4. `rg` for the exact symbol. Don't crawl the repo; don't do broad cleanup inside a narrow task.
+## Skills (use these — don't improvise)
+| Skill | Trigger phrases |
+|-------|----------------|
+| `/create-strategy` | "new strategy", "add a thesis", "draft a Version" |
+| `/add-data-source` | "add X data", "wire Y source" |
+| `/add-venue` | "add X exchange", "wire Y venue" |
+| `/deploy-check` | "check deploy", "is engine up", "fix deploy" |
+| `/run-gate` | "run the gate", "test the edge" |
+| `/debug-strategy` | "why did X die", "post-mortem on Y" |
 
 ## Non-negotiables
-- **Always:** keep the scorer + money deterministic and outside any LLM path; validate every LLM output with `instructor`/Pydantic before it counts; run every order through the validator gauntlet (§9); audit every decision/fill/model-call/dollar to structured tables; keep secrets server-side only (never in prompts/sandbox).
-- **Ask first:** schema/DB changes; new vendor/spend; touching live-execution behavior; product-vocabulary or broad renames; anything that could move real money.
-- **Never:** let an LLM fire a live order; let the agent define its own fitness metric; hand-maintain Python↔TS types (generate from OpenAPI); commit secrets; martingale / averaging-down / revenge sizing (size = f(equity, vol, conviction), never f(past losses)).
+- **Scorer + money** = deterministic, out of any LLM path. LLM only PROPOSES.
+- **No magic numbers** in specs (thresholds in `param_space`). Point-in-time, no look-ahead.
+- **Live OFF** by default. Nothing autonomous moves real money.
+- **Generated types**: `@cosmu/contracts-ts` from OpenAPI — never hand-type TS models.
+- **LLM-optional** + offline-testable everywhere (mock network, inject providers).
+- **One gateway** = OpenRouter. Model IDs from `lab/router.py` config. Secrets server-side only.
+- **Ask first**: schema changes, new vendor/spend, live-execution changes, broad renames.
+- **Never**: LLM fires a live order, agent defines its own fitness, hand-maintain Python↔TS types, commit secrets, martingale/revenge sizing.
 
-## Decision tables (do this → not that)
-| Task | Do | Not |
-|------|----|-----|
-| Call a model | OpenRouter, model ID from config, `instructor` for structured out | self-hosted router; raw unvalidated JSON |
-| Add market access | Nautilus adapter + per-venue fee/slippage model | bespoke fills; fee-free paper |
-| Persist anything | typed Postgres table + append to `events` ledger | free-form markdown as source of truth |
-| Observe/trace | OpenTelemetry spans → Langfuse | bespoke logging; audit ledger stays money-truth |
-| Enforce a constraint | type/lint/test/CI (the tool *is* the constraint) | restating the rule in prose/docs |
-| Score a strategy | deterministic master's walk-forward OOS + holdout | any agent-tunable success metric |
+## Standards
+Follow `docs/CODING_STANDARDS.md` exactly. Key patterns:
+- Every module: `# intent:` header (purpose · inputs · outputs · invariants)
+- Data source: `DataSourceRegistry` + numeric + point-in-time `available_at` + pinned `transform_version` + offline fixture + certifi SSL
+- Test: `tests/test_<area>.py`, deterministic + offline, inject providers/mock HTTP
+- Persistence: typed Postgres table + `events` ledger. Web types generated from OpenAPI.
 
-## Toolchain & verify
-- **Python (`apps/engine`):** `uv` (deps), `ruff` (lint/format), `pytest` (+ eval gates), Pydantic + `instructor`. FastAPI exposes OpenAPI.
-- **Web (`apps/web`):** generate the TS client **from the engine's OpenAPI** (never type twice); Next.js + shadcn/ui + Tremor + TanStack Table; lean Overview-led routes (Overview · Research · Console · Settings) — see `docs/IMPLEMENTATION.md`.
-- **Eval-driven (SOTA):** unit evals on agent steps · LLM-judge regression suites · prod-trace sampling. Failed online scores → eval cases; **CI eval gates block bad merges.**
-- v1 verify (until retired): `pnpm --filter @cosmu/web typecheck`, `pnpm --filter @cosmu/api typecheck`.
+## Task queue
+Highest impact first. Completed items are deleted, not checkmarked.
+1. **Deploy verification** — owner: Railway Root Dir = `apps/engine`, Vercel: `API_BASE_URL` + `NEXT_PUBLIC_API_BASE_URL`. See `docs/OWNER_SETUP.md §F`.
+2. **Web polish** — make the 6 surfaces feel complete (real Recharts/Tremor charts, Settings key-status, strategy lifecycle tabs, costs merged into Paper).
+3. **More data sources** — FRED expansion (VIX, fed funds), DeFiLlama TVL, CoinGecko — via `/add-data-source` skill.
 
-## Conventions
-- Every `services/`, `lib/`, `adapters/`, `tools/` file opens with a tiny **intent-spec** (`# intent:` purpose · inputs · outputs · invariants) — read it before the file.
-- Two modularities: **code** modules for the coding agent (small packages, intent-specs) and **runtime tool** modules for the agent (each independently callable; tools are read/research/propose only — **execution is deterministic**).
-- Structured-first, markdown views generated, INDEX over everything (`§6`). Token-frugal always.
-- Use **actual venue names** everywhere (Binance, Binance Testnet, IBKR). No "paper/live/testnet mode" labels — paper vs live is the same code path routed differently, gated by the live toggle.
+## Architecture
+```
+apps/engine/cosmu/     Python 3.12, FastAPI, Pydantic, pytest
+apps/web/              Next.js 16, Tailwind v4, shadcn, Tremor
+packages/contracts-ts/ Generated from engine OpenAPI (never hand-typed)
+.claude/skills/        Claude Code skill definitions
+strategies/inbox/      Drop specs here — scanned on deploy
+```
+Hosting: **Railway** (engine API + 6h cron) · **Vercel** (web) · **Supabase** (Postgres + pgvector)
 
-## How strategies are created
-One **standard** so Claude Code and the autonomous LLM author strategies identically and auditably. Vocabulary is fixed in **`docs/GLOSSARY.md`** (Strategy · Version · Sleeve · Wallet · Allocation · Lab · Paper · Live · Score=deflated Sharpe · Gate · Profit factor). Author a Version as a typed `StrategySpec` via the **`.claude/skills/create-strategy`** skill (named features from the registry, thresholds in `param_space` — **no magic numbers**, **required** `stop_loss`/`take_profit`, composable modules: `multi_tp`, `break_even+runner`, `ma_trend_filter`, `orb`, `fvg_retest`/`fvg_multiple`). Drop the file in **`strategies/inbox/`** (`*.md`/`*.pine`/`*.json`, scanned on deploy/boot); it flows `static_check → Lab → Finder → Gate`. There is **no "demo" state** — when there's no engine/data, show an honest empty/connect state, never fabricated numbers.
-
-## Stop & report before
-broad renames / vocab changes · schema changes unless requested · destructive commands or data resets · touching unrelated modules · changing live-execution behavior · moving secrets into DB/frontend.
-
----
-
-## Prior art (reference only)
-`TradingAgents-main` (and Freqtrade / Pine libs) are **prior art mined into v2 RAG** (§6) — ingest as reference, never couple live trading to them. The vendored `TradingAgents-main/` tree is gitignored; it is not product code.
+## Prior art
+`TradingAgents-main` is reference only, not product code. Gitignored.

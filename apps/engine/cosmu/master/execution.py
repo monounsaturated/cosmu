@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from cosmu.adapters.exec.binance import to_ccxt_symbol
@@ -151,6 +151,8 @@ def execute_orders(
                 ref_id=intent.strategy_version_id,
                 payload={"symbol": intent.symbol, "client_order_id": order_id.client_order_id, "venue": venue_label, "venue_order_id": order_id.venue_order_id},
             )
+            if intent.side > 0 and intent.take_profit is not None and intent.stop_loss is not None:
+                _try_oco_bracket(adapter, intent, coid, store)
 
         # Record the fill (deterministic for paper; for live we book the intended fill and reconcile via
         # adapter.fills() out-of-band). Idempotent: a duplicate client_order_id is not re-applied.
@@ -193,6 +195,23 @@ def _already_filled(store: Store, coid: str) -> bool:
     return row is not None
 
 
+def _try_oco_bracket(adapter, intent: IntendedOrder, coid: str, store: Store) -> None:
+    """Best-effort OCO bracket after a live BUY. Failure is logged, never fails the parent."""
+    if not hasattr(adapter, "place_oco_bracket"):
+        return
+    result = adapter.place_oco_bracket(
+        intent.symbol, intent.qty, intent.take_profit, intent.stop_loss, client_order_id_prefix=coid
+    )
+    kind = "oco_bracket_placed" if result is not None else "oco_bracket_failed"
+    store.append_event(
+        actor="master",
+        kind=kind,
+        ref_type="strategy_version",
+        ref_id=intent.strategy_version_id,
+        payload={"symbol": intent.symbol, "client_order_id": coid, "take_profit": str(intent.take_profit), "stop_loss": str(intent.stop_loss)},
+    )
+
+
 def _write_execution(store: Store, run_id: str, intent: IntendedOrder, instrument_id: str, venue_id: str, fee: Decimal, *, is_paper: bool, coid: str) -> None:
     payload = {
         "side": "buy" if intent.side > 0 else "sell",
@@ -223,3 +242,58 @@ def _write_execution(store: Store, run_id: str, intent: IntendedOrder, instrumen
         },
     )
     store.append_event(actor="master", kind="execution_filled", ref_type="execution", ref_id=execution_id, payload=payload)
+
+
+def reconcile_fills(
+    adapter,
+    store: Store,
+    portfolio: PaperPortfolio,
+    *,
+    since: datetime | None = None,
+) -> list[dict[str, str]]:
+    """Fetch actual fills from the venue, compare with intended executions, update records, and log slippage.
+    Called out-of-band after live orders (e.g. during the master tick's mark-to-market phase)."""
+    if not getattr(adapter, "active", False):
+        return []
+    lookback = since or (datetime.now(tz=UTC) - timedelta(hours=24))
+    actual_fills = adapter.fills(lookback)
+    events: list[dict[str, str]] = []
+
+    for fill in actual_fills:
+        coid = fill.order_id.client_order_id
+        if not coid:
+            continue
+        exec_row = store.row(
+            "SELECT id, price, qty, strategy_version_id, instrument_id, venue_id FROM executions WHERE fill_log LIKE ? LIMIT 1",
+            (f'%"client_order_id": "{coid}"%',),
+        )
+        if exec_row is None:
+            continue
+        intended_price = Decimal(str(exec_row["price"]))
+        actual_price = fill.price
+        slippage = actual_price - intended_price
+        slippage_bps = (slippage / intended_price * Decimal("10000")) if intended_price else Decimal("0")
+
+        store.rows(
+            "UPDATE executions SET price = ?, fee = ? WHERE id = ?",
+            (str(actual_price), str(fill.fee), exec_row["id"]),
+        )
+
+        event_payload = {
+            "client_order_id": coid,
+            "intended_price": str(intended_price),
+            "actual_price": str(actual_price),
+            "slippage": str(slippage),
+            "slippage_bps": str(slippage_bps.quantize(Decimal("0.01"))),
+            "actual_fee": str(fill.fee),
+        }
+        store.append_event(
+            actor="master",
+            kind="fill_reconciled",
+            ref_type="execution",
+            ref_id=str(exec_row["id"]),
+            payload=event_payload,
+        )
+        events.append(event_payload)
+
+    return events

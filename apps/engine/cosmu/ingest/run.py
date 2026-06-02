@@ -12,11 +12,13 @@ from cosmu.data.altdata import (
     AltDataStore,
     CboePutCallProvider,
     CoinglassLiquidationProvider,
+    DefiLlamaTvlProvider,
     FearGreedProvider,
     FredMacroProvider,
     FundingRateProvider,
     GdeltNewsProvider,
     NewsProvider,
+    PolymarketGammaProvider,
     PolymarketOddsProvider,
 )
 from cosmu.ingest.pipeline import (
@@ -47,9 +49,10 @@ class Providers:
     feargreed: AltDataProvider = field(default_factory=FearGreedProvider)
     news: NewsProvider = field(default_factory=GdeltNewsProvider)
     fred: AltDataProvider = field(default_factory=FredMacroProvider)
-    polymarket: AltDataProvider = field(default_factory=PolymarketOddsProvider)
+    polymarket: AltDataProvider = field(default_factory=lambda: PolymarketGammaProvider())
     liquidations: AltDataProvider = field(default_factory=CoinglassLiquidationProvider)
     putcall: AltDataProvider = field(default_factory=CboePutCallProvider)
+    defillama: AltDataProvider = field(default_factory=DefiLlamaTvlProvider)
     llm: Callable[[str], StandardizedNews] | None = None
     fred_series: str = DEFAULT_FRED_SERIES
     polymarket_token: str = DEFAULT_POLYMARKET_TOKEN
@@ -60,9 +63,11 @@ class Providers:
         (free) and POLYMARKET_TOKEN (a real market id) is all it takes for macro_regime / risk_on to connect.
         Sources needing nothing (Binance/Fear&Greed/GDELT) work regardless; missing key/token → that one
         source stays empty (caught by _safe), never crashing the pass."""
+        pin = settings.polymarket_token or None
         return cls(
             fred=FredMacroProvider(api_key=settings.fred_api_key),
-            polymarket_token=settings.polymarket_token or DEFAULT_POLYMARKET_TOKEN,
+            polymarket=PolymarketGammaProvider(pin_token=pin),
+            polymarket_token="risk_on",
         )
 
 
@@ -111,6 +116,24 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
         "macro_regime",
         lambda: ingest_market_wide_numeric(
             store, p.fred, source_metric=p.fred_series, stored_metric="macro_regime", provider_name="fred"
+        ),
+    )
+    counts["vix_level"] = _safe(
+        "vix_level",
+        lambda: ingest_market_wide_numeric(
+            store, p.fred, source_metric="VIXCLS", stored_metric="vix_level", provider_name="fred"
+        ),
+    )
+    counts["fed_funds_rate"] = _safe(
+        "fed_funds_rate",
+        lambda: ingest_market_wide_numeric(
+            store, p.fred, source_metric="DFF", stored_metric="fed_funds_rate", provider_name="fred"
+        ),
+    )
+    counts["defi_tvl"] = _safe(
+        "defi_tvl",
+        lambda: ingest_market_wide_numeric(
+            store, p.defillama, source_metric="defi_tvl", stored_metric="defi_tvl", provider_name="defillama"
         ),
     )
     counts["risk_on"] = _safe(

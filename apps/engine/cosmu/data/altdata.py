@@ -10,7 +10,8 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from collections.abc import Callable
+from typing import Any, Protocol
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -269,6 +270,152 @@ class PolymarketOddsProvider:
         return sorted(out, key=lambda p: p.ts)
 
 
+class PolymarketGammaProvider:
+    """Auto-discovers macro/risk markets via Polymarket's public Gamma API and aggregates their CLOB
+    midpoint odds into a composite risk_on feature. No manual token needed.
+
+    Discovery uses TWO passes: (1) the ``/events`` endpoint filtered by macro-relevant tags (Economy,
+    Finance, Stocks, Geopolitics, Fiscal, Crypto Prices), extracting nested markets; (2) a keyword
+    scan on ``/markets`` for any the events pass missed. Sorted by liquidity, top N aggregated.
+
+    If ``pin_token`` is set, that specific market is always included (backward-compatible with the
+    old single-token flow). Numeric → no LLM. Offline-testable via constructor injection of canned
+    payloads (``_gamma_fetcher``)."""
+
+    MACRO_TAGS = ("Economy", "Finance", "Stocks", "Fiscal", "Crypto Prices", "Taxes", "Macro Geopolitics")
+
+    MACRO_KEYWORDS = (
+        "recession", "gdp", "inflation", "cpi", "interest rate", "rate cut", "rate hike",
+        "fed ", "federal reserve", "fomc", "unemployment", "jobs report", "tariff", "trade war",
+        "stock market", "s&p 500", "s&p500", "dow jones", "nasdaq", "crash", "bear market",
+        "economic", "economy", "debt ceiling", "default", "treasury", "bitcoin price",
+        "btc price", "crypto price", "ipo", "invade", "invasion", "military clash",
+        "sanctions", "nato", "war ",
+    )
+
+    def __init__(
+        self,
+        gamma_url: str = "https://gamma-api.polymarket.com",
+        pin_token: str | None = None,
+        max_markets: int = 8,
+        *,
+        _gamma_fetcher: Callable | None = None,
+    ) -> None:
+        self.gamma_url = gamma_url.rstrip("/")
+        self.pin_token = pin_token
+        self.max_markets = max_markets
+        self._gamma_fetcher = _gamma_fetcher or self._fetch_gamma
+
+    def _fetch_gamma(self, url: str) -> list | dict:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    @staticmethod
+    def _extract_market_info(m: dict) -> dict | None:
+        mid = m.get("id")
+        if not mid:
+            return None
+        raw_prices = m.get("outcomePrices") or "[]"
+        if isinstance(raw_prices, str):
+            try:
+                raw_prices = json.loads(raw_prices)
+            except (json.JSONDecodeError, TypeError):
+                raw_prices = []
+        yes_prob = float(raw_prices[0]) if raw_prices else None
+        liq = m.get("liquidity") or m.get("liquidityClob") or 0
+        return {"id": str(mid), "question": m.get("question", ""), "liquidity": float(liq), "yes_prob": yes_prob}
+
+    def _discover_via_events(self) -> list[dict]:
+        macro_tags_lower = {t.lower() for t in self.MACRO_TAGS}
+        seen: set[str] = set()
+        hits: list[dict] = []
+        for tag in self.MACRO_TAGS:
+            url = f"{self.gamma_url}/events?tag={urllib.parse.quote(tag)}&closed=false&limit=30"
+            try:
+                events = self._gamma_fetcher(url)
+            except Exception:
+                continue
+            if not isinstance(events, list):
+                continue
+            for ev in events:
+                ev_tags = {(t.get("label") or "").lower() for t in (ev.get("tags") or [])}
+                if not ev_tags & macro_tags_lower:
+                    continue
+                for m in ev.get("markets") or []:
+                    if not m.get("active") or m.get("closed"):
+                        continue
+                    info = self._extract_market_info(m)
+                    if not info or info["id"] in seen:
+                        continue
+                    seen.add(info["id"])
+                    hits.append(info)
+        return hits
+
+    def _discover_via_keywords(self, exclude: set[str]) -> list[dict]:
+        url = f"{self.gamma_url}/markets?closed=false&active=true&limit=100"
+        try:
+            raw = self._gamma_fetcher(url)
+        except Exception:
+            return []
+        if not isinstance(raw, list):
+            return []
+        hits: list[dict] = []
+        for m in raw:
+            q = (m.get("question") or "").lower()
+            if not any(kw in q for kw in self.MACRO_KEYWORDS):
+                continue
+            info = self._extract_market_info(m)
+            if not info or info["id"] in exclude:
+                continue
+            hits.append(info)
+        return hits
+
+    def discover_markets(self) -> list[dict]:
+        hits = self._discover_via_events()
+        seen = {h["id"] for h in hits}
+        hits.extend(self._discover_via_keywords(seen))
+        hits.sort(key=lambda h: h["liquidity"], reverse=True)
+        return hits[: self.max_markets]
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        markets = self.discover_markets()
+        if not markets:
+            return []
+        probs = [m["yes_prob"] for m in markets if m.get("yes_prob") is not None]
+        if not probs:
+            return []
+        avg = sum(probs) / len(probs)
+        now = datetime.now(tz=UTC)
+        return [AltDataPoint(ts=now, available_at=now, value=avg)]
+
+
+class DefiLlamaTvlProvider:
+    """DeFiLlama total DeFi TVL (free, no key). Market-wide metric. TVL for a day is finalized
+    after the day closes, so each point is stamped available the NEXT day — no look-ahead."""
+
+    def __init__(self, url: str = "https://api.llama.fi/v2/historicalChainTvl") -> None:
+        self.url = url
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "defi_tvl":
+            return []
+        req = urllib.request.Request(self.url, headers={"User-Agent": "cosmu-engine/0.1"})
+        try:
+            with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return []
+        out: list[AltDataPoint] = []
+        for row in payload[-limit:] if isinstance(payload, list) else []:
+            ts = datetime.fromtimestamp(int(row.get("date", 0)), tz=UTC)
+            tvl = float(row.get("tvl", 0))
+            if tvl > 0:
+                from datetime import timedelta
+                out.append(AltDataPoint(ts=ts, available_at=ts + timedelta(days=1), value=tvl))
+        return sorted(out, key=lambda p: p.ts)
+
+
 class CoinglassLiquidationProvider:
     """Coinglass free liquidations history (no key on the public history endpoint). Numeric → no LLM.
     Per-symbol metric "liquidations" (total long+short USD liquidated in the bucket). Coinglass closes a
@@ -434,8 +581,11 @@ _STORE_PROVIDER_OF = {
     "macro_regime": "fred",
     "liquidations": "coinglass",
     "putcall_ratio": "cboe",
+    "vix_level": "fred",
+    "fed_funds_rate": "fred",
+    "defi_tvl": "defillama",
 }
-_STORE_MARKET_WIDE = frozenset({"fear_greed", "risk_on", "macro_regime", "putcall_ratio"})
+_STORE_MARKET_WIDE = frozenset({"fear_greed", "risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate", "defi_tvl"})
 
 
 class StoreBackedAltProvider:

@@ -160,6 +160,13 @@ def crossover(parent_a: StrategySpec, parent_b: StrategySpec, rng: random.Random
                 if kind == "int"
                 else ParamSpace(kind="float", lo=0.02, hi=0.2)
             )
+    if child.exit.plan:
+        for leg in child.exit.plan.multi_tp:
+            for ref in (leg.at, leg.size_pct):
+                if ref.param not in child.param_space:
+                    child.param_space[ref.param] = ParamSpace(kind="float", lo=0.02, hi=0.3)
+        if child.exit.plan.runner_trail and child.exit.plan.runner_trail.param not in child.param_space:
+            child.param_space[child.exit.plan.runner_trail.param] = ParamSpace(kind="float", lo=0.02, hi=0.1)
     child.name = f"{parent_a.name} × {parent_b.name}"
     return Child(spec=child, operator="crossover", rationale=f"recombine entry of '{parent_a.name}' with exit of '{parent_b.name}'")
 

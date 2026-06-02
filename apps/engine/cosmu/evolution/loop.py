@@ -173,10 +173,15 @@ class FarmLoop:
             exploit_n = remaining - explore_n
             parent_specs = [p[1] for p in parents]
 
+            live_specs = [p[1] for p in parents] if parents else []
+
             for _ in range(exploit_n):
                 pvid, pspec = rng.choice(parents)
                 child = mutator.mutate_exploit(pspec, rng)
                 cand = Candidate(spec=child.spec, origin="mutation", lane="exploit", operator=child.operator, rationale=child.rationale, parent_vid=pvid)
+                if not self._novelty_ok(cand.spec, live_specs):
+                    invalid += 1
+                    continue
                 result, vid = self._evaluate(cand, b, rng, seed, survival)
                 if result is None:
                     invalid += 1
@@ -188,6 +193,9 @@ class FarmLoop:
             for _ in range(explore_n):
                 child = mutator.wildcard(parent_specs, rng)
                 cand = Candidate(spec=child.spec, origin="wildcard", lane="explore", operator=child.operator, rationale=child.rationale)
+                if not self._novelty_ok(cand.spec, live_specs):
+                    invalid += 1
+                    continue
                 result, vid = self._evaluate(cand, b, rng, seed, survival)
                 if result is None:
                     invalid += 1
@@ -269,6 +277,16 @@ class FarmLoop:
             pass
 
     # ------------------------------------------------------------------ internals
+
+    def _novelty_ok(self, spec: StrategySpec, live_specs: list[StrategySpec]) -> bool:
+        """Quick novelty gate: reject specs too similar to recent dead-ends or the live population."""
+        try:
+            from cosmu.knowledge.memory import novelty_gate
+
+            ok, _reason = novelty_gate(spec, self.store, live_specs=live_specs)
+            return ok
+        except Exception:  # noqa: BLE001 — novelty is advisory; never blocks what the Gate should judge
+            return True
 
     def _evaluate(self, cand: Candidate, b: Writer, rng: random.Random, seed: int, survival) -> tuple[Evaluated | None, str]:  # noqa: ANN001
         try:

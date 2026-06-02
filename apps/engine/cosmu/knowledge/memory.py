@@ -317,6 +317,69 @@ def _hit(kind: str, score: float, row: dict[str, Any]) -> RecallHit:
     )
 
 
+# --------------------------------------------------------------------------- novelty gate
+
+
+def _feature_set(spec: StrategySpec) -> frozenset[str]:
+    return frozenset(c.feature.name for c in spec.entry)
+
+
+def structural_distance(a: StrategySpec, b: StrategySpec) -> float:
+    """Jaccard distance over the entry-feature sets + bar_size penalty. 0 = identical structure, 1 = disjoint."""
+    fa, fb = _feature_set(a), _feature_set(b)
+    if not fa and not fb:
+        return 0.0
+    jaccard = len(fa & fb) / len(fa | fb) if (fa | fb) else 1.0
+    bar_penalty = 0.0 if a.horizon.bar_size == b.horizon.bar_size else 0.15
+    return round(1.0 - jaccard + bar_penalty, 6)
+
+
+def complexity_score(spec: StrategySpec) -> int:
+    """The number of entry conditions + signal exit conditions. More conditions = more overfitting surface."""
+    return len(spec.entry) + len(spec.exit.signal_exits)
+
+
+def novelty_gate(
+    spec: StrategySpec,
+    store: Store,
+    *,
+    live_specs: list[StrategySpec] | None = None,
+    min_distance: float = 0.25,
+    max_complexity: int = 6,
+) -> tuple[bool, str]:
+    """Check whether a candidate spec is sufficiently novel vs. (1) recent dead-ends in memory and
+    (2) the live population. Returns (pass, reason). Deterministic, offline, no LLM."""
+    cx = complexity_score(spec)
+    if cx > max_complexity:
+        return False, f"too_complex ({cx} conditions, max {max_complexity})"
+
+    memory = GraveyardMemory(store)
+    recall = memory.recall(spec, k=8)
+
+    for hit in recall.dead_ends:
+        feats = hit.structure.get("entry_features", [])
+        if not feats:
+            continue
+        dead_features = frozenset(feats)
+        spec_features = _feature_set(spec)
+        if not spec_features:
+            continue
+        overlap = len(spec_features & dead_features) / len(spec_features | dead_features) if (spec_features | dead_features) else 0
+        bar_match = hit.structure.get("bar_size") == spec.horizon.bar_size
+        dist = 1.0 - overlap + (0.0 if bar_match else 0.15)
+        if dist < min_distance:
+            return False, f"too_similar_to_dead_end (dist={dist:.3f}, features={sorted(dead_features)})"
+
+    if live_specs:
+        for live in live_specs:
+            dist = structural_distance(spec, live)
+            if dist >= min_distance:
+                return True, "novel"
+        return False, f"monoculture (all live specs within dist {min_distance})"
+
+    return True, "novel"
+
+
 def memory_insights(store: Store, *, limit: int = 12) -> list[dict[str, Any]]:
     """The GET /memory/insights feed: the most recent things the brain has LEARNED — dead-end structures to
     avoid and winning patterns to reuse. Read straight off the persisted notes (no recompute, no LLM)."""

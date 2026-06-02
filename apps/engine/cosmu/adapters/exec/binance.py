@@ -210,6 +210,27 @@ class BinanceSpotExecutionAdapter:
         assert client is not None
         return parse_positions(client.fetch_balance())
 
+    def place_oco_bracket(
+        self, symbol: str, qty: Decimal, take_profit: Decimal, stop_loss: Decimal, *, client_order_id_prefix: str = ""
+    ) -> dict[str, Any] | None:
+        """Best-effort OCO sell bracket (limit TP + stop-limit SL) after a BUY fill. Returns the raw
+        response on success, None on any failure — the parent buy is never affected."""
+        if not self.active:
+            return None
+        client = self._client
+        assert client is not None
+        params: dict[str, Any] = {
+            "stopPrice": float(stop_loss),
+            "stopLimitPrice": float(stop_loss),
+            "stopLimitTimeInForce": "GTC",
+        }
+        if client_order_id_prefix:
+            params["listClientOrderId"] = f"{client_order_id_prefix}-oco"
+        try:
+            return client.create_order(to_ccxt_symbol(symbol), "oco", "sell", float(qty), float(take_profit), params)
+        except Exception:  # noqa: BLE001 — best-effort; OCO failure must never fail the parent buy
+            return None
+
     def fills(self, since: datetime) -> list[Fill]:
         if not self.active:
             return []
