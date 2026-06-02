@@ -85,6 +85,10 @@ class Writer:
         )
         return str(record["id"])
 
+    def execute(self, sql: str, params: Iterable[Any] = ()) -> None:
+        """Run a raw write statement (e.g. DELETE/UPDATE) on this batch's single transaction."""
+        self._con.execute(sql, params)
+
     def append_event(
         self,
         *,

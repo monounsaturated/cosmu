@@ -69,9 +69,19 @@ python3 -m cosmu.research.gate      # run the funding gate and read the verdict
 - a **research ingest pass** every 6h: `python3 -m cosmu.research.loop --ingest`
   (bounded — one free-data ingest + gate run, then exits; not a daemon),
 - the **full autonomous cycle** every 4h: `python3 -m cosmu.master.scheduler`
-  (ingest -> author -> gate/screen -> fund paper survivors -> recommendations).
+  (ingest -> author -> gate/screen -> fund paper survivors -> recommendations),
+- the **forward-test clock** hourly: `python3 -m cosmu.orchestrator.loop`
+  (re-marks held paper positions to the latest real close — no orders).
 
 The deployed autonomous tick runs on **real Binance bars** (`edge_market=False`).
+
+**Clean cutover (one-time).** When switching from a synthetic-era DB to the honest
+loop, purge the old paper/discovery state so the displayed wallet is real:
+
+```bash
+python3 -m cosmu.master.reset            # dry-run: shows what would be purged
+python3 -m cosmu.master.reset --confirm  # purge (keeps config, live toggle/caps, real alt-data)
+```
 
 ## Adding a strategy
 
