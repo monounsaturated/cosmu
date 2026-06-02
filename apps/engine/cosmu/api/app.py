@@ -113,7 +113,11 @@ ORIGIN_TO_LANE = {"seed": "seed", "mutation": "exploit", "wildcard": "explore", 
 
 
 settings = get_settings()
-store = Store(settings)
+try:
+    store = Store(settings)
+except Exception:
+    from cosmu.config.settings import Settings as _S
+    store = Store(_S(database_url="sqlite:///.cosmu/fallback.sqlite3"))
 
 
 def _portfolio() -> PaperPortfolio:
