@@ -1,0 +1,10 @@
+# Keep the build context (and image) lean and the wheel honest. Tests are excluded from the package by
+# pyproject anyway; the local sqlite, caches, and build cruft never belong in the image.
+.cosmu
+.pytest_cache
+**/__pycache__
+*.pyc
+*.pyo
+build/
+*.egg-info/
+tests/

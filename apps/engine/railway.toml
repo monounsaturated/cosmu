@@ -1,14 +1,13 @@
 # Railway config for the ENGINE service. Point the Railway service's Root Directory at `apps/engine` so this
-# file (not the repo-root railway.toml, which is the legacy web build) drives it: nixpacks auto-detects the
-# Python project (pyproject.toml with a build backend) and `pip install .` brings in the deps. NOTE: nixpacks
-# copies only pyproject.toml before `pip install .`, so the built wheel contains NO cosmu source (deps install
-# from the metadata; the package files arrive later via `COPY . /app`). We therefore run uvicorn via
-# `python -m` so the WORKDIR (/app, where the copied cosmu source lives) is on sys.path — a bare `uvicorn`
-# console script puts only the venv bin dir on the path and fails with ModuleNotFoundError. The crons below
-# already use `python -m` for the same reason. The web is hosted on Vercel — it is NOT built here.
+# file drives it. We build via our own Dockerfile (Docker Hub python base) rather than nixpacks: nixpacks pulls
+# its base from ghcr.io on every build (a ghcr.io 502 was failing deploys before they reached our code) and
+# copied only pyproject.toml before install (empty wheel → runtime ModuleNotFoundError). The Dockerfile copies
+# the full source before `pip install .`, so the package is real. We still run uvicorn via `python -m` so /app
+# is on sys.path even if the install layer regresses. The web is hosted on Vercel — it is NOT built here.
 
 [build]
-builder = "nixpacks"
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "python -m uvicorn cosmu.api.app:app --host 0.0.0.0 --port $PORT"
