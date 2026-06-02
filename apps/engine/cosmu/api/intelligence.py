@@ -44,7 +44,7 @@ def _funnel(store: Store) -> dict[str, int]:
 
 def _gate_efficiency(store: Store) -> dict[str, Any]:
     """Gate pass rate over recent ticks — is the author learning from the graveyard?"""
-    rows = store.rows(
+    rows = _safe_rows(store,
         "SELECT payload FROM events WHERE kind = 'autonomy_tick_completed' ORDER BY id DESC LIMIT 12"
     )
     trend: list[float] = []
@@ -71,7 +71,7 @@ def _memory_depth(store: Store) -> dict[str, int]:
 
 def _regime_coverage(store: Store) -> dict[str, Any]:
     """Which market regimes do funded strategies have proven edge in?"""
-    rows = store.rows(
+    rows = _safe_rows(store,
         "SELECT sv.id, b.regime_label FROM strategy_versions sv "
         "JOIN backtests b ON b.strategy_version_id = sv.id "
         "WHERE sv.status IN ('paper', 'live') AND b.passed_gates = 1"
@@ -94,7 +94,7 @@ def _regime_coverage(store: Store) -> dict[str, Any]:
 
 def _data_freshness(store: Store) -> list[dict[str, Any]]:
     """When was the last successful ingest per source?"""
-    rows = store.rows(
+    rows = _safe_rows(store,
         "SELECT provider, MAX(available_at) AS last_at, COUNT(*) AS points "
         "FROM alt_data GROUP BY provider ORDER BY provider"
     )
@@ -107,12 +107,15 @@ def _data_freshness(store: Store) -> list[dict[str, Any]]:
 def _tick_stats(store: Store) -> dict[str, Any]:
     """Autonomous tick history."""
     total = _count(store, "SELECT COUNT(*) AS n FROM events WHERE kind = 'autonomy_tick_completed'")
-    last_row = store.row(
-        "SELECT ts, payload FROM events WHERE kind = 'autonomy_tick_completed' ORDER BY id DESC LIMIT 1"
-    )
+    try:
+        last_row = store.row(
+            "SELECT ts, payload FROM events WHERE kind = 'autonomy_tick_completed' ORDER BY id DESC LIMIT 1"
+        )
+    except Exception:  # noqa: BLE001
+        last_row = None
     last_at = last_row["ts"] if last_row else None
 
-    rows = store.rows(
+    rows = _safe_rows(store,
         "SELECT payload FROM events WHERE kind = 'autonomy_tick_completed' ORDER BY id DESC LIMIT 20"
     )
     total_survivors = 0
@@ -142,7 +145,7 @@ def _tick_stats(store: Store) -> dict[str, Any]:
 
 def _lineage_stats(store: Store) -> dict[str, Any]:
     """Which origins/mutation operators produce the most gate-passers?"""
-    rows = store.rows(
+    rows = _safe_rows(store,
         "SELECT sv.origin, sv.mutation_operator, b.passed_gates "
         "FROM strategy_versions sv LEFT JOIN backtests b ON b.strategy_version_id = sv.id"
     )
@@ -175,8 +178,18 @@ def _lineage_stats(store: Store) -> dict[str, Any]:
 
 
 def _count(store: Store, sql: str) -> int:
-    row = store.row(sql)
-    return int(row["n"]) if row else 0
+    try:
+        row = store.row(sql)
+        return int(row["n"]) if row else 0
+    except Exception:  # noqa: BLE001 — table may not exist on fresh stores
+        return 0
+
+
+def _safe_rows(store: Store, sql: str, params: tuple = ()) -> list[dict[str, Any]]:
+    try:
+        return store.rows(sql, params)
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def _parse_payload(raw: Any) -> dict[str, Any]:
