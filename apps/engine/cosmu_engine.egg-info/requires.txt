@@ -1,0 +1,12 @@
+certifi>=2024.8
+ccxt>=4.4
+fastapi>=0.115
+psycopg2-binary>=2.9
+pydantic>=2.9
+pydantic-settings>=2.5
+sqlalchemy>=2.0
+uvicorn>=0.30
+
+[dev]
+pytest>=8.3
+ruff>=0.7

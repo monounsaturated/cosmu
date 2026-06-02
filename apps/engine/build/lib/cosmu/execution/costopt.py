@@ -1,0 +1,74 @@
+# intent: execution-cost optimization — pick maker vs taker and the right fee tier so high-turnover crypto keeps
+# its edge; inputs: gross edge, spread, fee schedule, urgency, maker fill probability; outputs: an OrderPlan in
+# net-of-cost bps; invariants: a trade is only worth doing if expected NET edge > 0, and maker rebates/half-spread
+# capture are credited honestly (a maker order that won't fill in time is worth less than its rebate).
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class FeeSchedule:
+    """Per-venue fees in basis points. `maker_bps` may be negative (a rebate you EARN)."""
+
+    maker_bps: float
+    taker_bps: float
+
+
+@dataclass(frozen=True)
+class FeeTier:
+    min_volume_30d_usd: float
+    schedule: FeeSchedule
+
+
+def fee_for_volume(volume_30d_usd: float, tiers: list[FeeTier]) -> FeeSchedule:
+    """The fee schedule for a 30-day volume — the highest tier whose threshold is met. Fee-tier routing is a
+    real profit lever: more volume → cheaper fills → more strategies clear net-of-cost."""
+    eligible = [t for t in tiers if volume_30d_usd >= t.min_volume_30d_usd]
+    if not eligible:
+        # below the lowest threshold → use the lowest tier's schedule
+        return min(tiers, key=lambda t: t.min_volume_30d_usd).schedule
+    return max(eligible, key=lambda t: t.min_volume_30d_usd).schedule
+
+
+@dataclass(frozen=True)
+class OrderPlan:
+    order_type: str          # "maker" (post-only) | "market" (taker)
+    expected_net_bps: float  # expected edge after fees + slippage
+    reason: str
+
+
+def taker_net_bps(gross_edge_bps: float, fee: FeeSchedule, spread_bps: float, extra_slippage_bps: float = 0.0) -> float:
+    """Crossing the book: pay the taker fee + half the spread + any impact slippage."""
+    return gross_edge_bps - fee.taker_bps - 0.5 * spread_bps - extra_slippage_bps
+
+
+def maker_expected_net_bps(
+    gross_edge_bps: float, fee: FeeSchedule, spread_bps: float, *, fill_prob: float, urgency: float
+) -> float:
+    """Posting passively: if filled you avoid crossing the spread and pay maker fee (or earn a rebate, negative
+    bps); if not filled you forgo the edge in proportion to urgency. Expected value blends the two."""
+    fill_prob = min(max(fill_prob, 0.0), 1.0)
+    urgency = min(max(urgency, 0.0), 1.0)
+    filled_value = gross_edge_bps - fee.maker_bps + 0.5 * spread_bps  # capture half-spread, pay maker (or +rebate)
+    miss_cost = urgency * gross_edge_bps                              # urgent misses forfeit the edge
+    return fill_prob * filled_value - (1.0 - fill_prob) * miss_cost
+
+
+def choose_order(
+    gross_edge_bps: float,
+    fee: FeeSchedule,
+    spread_bps: float,
+    *,
+    urgency: float = 0.5,
+    maker_fill_prob: float = 0.6,
+    extra_slippage_bps: float = 0.0,
+) -> OrderPlan:
+    """Pick the order type that maximizes expected net-of-cost edge. Prefers passive (maker) fills — which
+    capture spread and rebates — unless urgency/low fill-probability makes crossing worth it."""
+    taker = taker_net_bps(gross_edge_bps, fee, spread_bps, extra_slippage_bps)
+    maker = maker_expected_net_bps(gross_edge_bps, fee, spread_bps, fill_prob=maker_fill_prob, urgency=urgency)
+    if maker >= taker:
+        return OrderPlan("maker", maker, "passive fill: captures spread/rebate, beats crossing")
+    return OrderPlan("market", taker, "cross the book: urgency/low fill-prob outweighs maker savings")
