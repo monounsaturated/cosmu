@@ -1085,6 +1085,36 @@
         "title": "CrossAssetVerdict",
         "type": "object"
       },
+      "DataSource": {
+        "properties": {
+          "last_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last At"
+          },
+          "points": {
+            "title": "Points",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "last_at",
+          "points"
+        ],
+        "title": "DataSource",
+        "type": "object"
+      },
       "DefundRequest": {
         "properties": {
           "scope": {
@@ -1598,6 +1628,70 @@
         "title": "FinderVariant",
         "type": "object"
       },
+      "FunnelStats": {
+        "properties": {
+          "authored": {
+            "title": "Authored",
+            "type": "integer"
+          },
+          "funded": {
+            "title": "Funded",
+            "type": "integer"
+          },
+          "gate_passed": {
+            "title": "Gate Passed",
+            "type": "integer"
+          },
+          "killed": {
+            "title": "Killed",
+            "type": "integer"
+          },
+          "live": {
+            "title": "Live",
+            "type": "integer"
+          },
+          "screened": {
+            "title": "Screened",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "authored",
+          "screened",
+          "gate_passed",
+          "funded",
+          "live",
+          "killed"
+        ],
+        "title": "FunnelStats",
+        "type": "object"
+      },
+      "GateEfficiency": {
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "number"
+          },
+          "improving": {
+            "title": "Improving",
+            "type": "boolean"
+          },
+          "trend": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Trend",
+            "type": "array"
+          }
+        },
+        "required": [
+          "current",
+          "trend",
+          "improving"
+        ],
+        "title": "GateEfficiency",
+        "type": "object"
+      },
       "GateStatusResponse": {
         "properties": {
           "preregistered_bar": {
@@ -1756,6 +1850,46 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "IntelligenceResponse": {
+        "properties": {
+          "data_freshness": {
+            "items": {
+              "$ref": "#/components/schemas/DataSource"
+            },
+            "title": "Data Freshness",
+            "type": "array"
+          },
+          "funnel": {
+            "$ref": "#/components/schemas/FunnelStats"
+          },
+          "gate_efficiency": {
+            "$ref": "#/components/schemas/GateEfficiency"
+          },
+          "lineage": {
+            "$ref": "#/components/schemas/LineageStats"
+          },
+          "memory": {
+            "$ref": "#/components/schemas/MemoryDepth"
+          },
+          "regime_coverage": {
+            "$ref": "#/components/schemas/RegimeCoverage"
+          },
+          "ticks": {
+            "$ref": "#/components/schemas/TickStats"
+          }
+        },
+        "required": [
+          "funnel",
+          "gate_efficiency",
+          "memory",
+          "regime_coverage",
+          "data_freshness",
+          "ticks",
+          "lineage"
+        ],
+        "title": "IntelligenceResponse",
+        "type": "object"
+      },
       "LeaderboardResponse": {
         "properties": {
           "rows": {
@@ -1818,6 +1952,75 @@
           "lineage"
         ],
         "title": "LeaderboardRow",
+        "type": "object"
+      },
+      "LineageEntry": {
+        "properties": {
+          "operator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "rate": {
+            "title": "Rate",
+            "type": "number"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "passed",
+          "rate"
+        ],
+        "title": "LineageEntry",
+        "type": "object"
+      },
+      "LineageStats": {
+        "properties": {
+          "by_operator": {
+            "items": {
+              "$ref": "#/components/schemas/LineageEntry"
+            },
+            "title": "By Operator",
+            "type": "array"
+          },
+          "by_origin": {
+            "items": {
+              "$ref": "#/components/schemas/LineageEntry"
+            },
+            "title": "By Origin",
+            "type": "array"
+          }
+        },
+        "required": [
+          "by_origin",
+          "by_operator"
+        ],
+        "title": "LineageStats",
         "type": "object"
       },
       "LiveCaps": {
@@ -1919,6 +2122,34 @@
           "positions"
         ],
         "title": "LivePositionsResponse",
+        "type": "object"
+      },
+      "MemoryDepth": {
+        "properties": {
+          "dead_ends": {
+            "title": "Dead Ends",
+            "type": "integer"
+          },
+          "skills": {
+            "title": "Skills",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "winners": {
+            "title": "Winners",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dead_ends",
+          "winners",
+          "skills",
+          "total"
+        ],
+        "title": "MemoryDepth",
         "type": "object"
       },
       "MemoryInsight": {
@@ -2415,6 +2646,68 @@
         "title": "RecommendationsResponse",
         "type": "object"
       },
+      "RegimeCell": {
+        "properties": {
+          "regime": {
+            "title": "Regime",
+            "type": "string"
+          },
+          "strategies": {
+            "title": "Strategies",
+            "type": "integer"
+          },
+          "trend": {
+            "title": "Trend",
+            "type": "string"
+          },
+          "vol": {
+            "title": "Vol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "regime",
+          "trend",
+          "vol",
+          "strategies"
+        ],
+        "title": "RegimeCell",
+        "type": "object"
+      },
+      "RegimeCoverage": {
+        "properties": {
+          "by_label": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Label",
+            "type": "object"
+          },
+          "covered": {
+            "title": "Covered",
+            "type": "integer"
+          },
+          "grid": {
+            "items": {
+              "$ref": "#/components/schemas/RegimeCell"
+            },
+            "title": "Grid",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "grid",
+          "covered",
+          "total",
+          "by_label"
+        ],
+        "title": "RegimeCoverage",
+        "type": "object"
+      },
       "Skill": {
         "description": "A reusable, parameterized SKILL recipe the Curator distilled from a gate-passing Version. `grade` is the\ndownstream OOS pass-rate of Versions derived from it (the deterministic Gate's verdicts \u2014 never the Curator's).",
         "properties": {
@@ -2530,6 +2823,77 @@
           "holdout"
         ],
         "title": "StrategyDetailResponse",
+        "type": "object"
+      },
+      "TickDetail": {
+        "properties": {
+          "authored": {
+            "title": "Authored",
+            "type": "integer"
+          },
+          "funded": {
+            "title": "Funded",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "authored",
+          "passed",
+          "funded"
+        ],
+        "title": "TickDetail",
+        "type": "object"
+      },
+      "TickStats": {
+        "properties": {
+          "avg_survivors_per_tick": {
+            "title": "Avg Survivors Per Tick",
+            "type": "number"
+          },
+          "last_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last At"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/TickDetail"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "total_authored": {
+            "title": "Total Authored",
+            "type": "integer"
+          },
+          "total_survivors": {
+            "title": "Total Survivors",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "last_at",
+          "avg_survivors_per_tick",
+          "total_authored",
+          "total_survivors",
+          "recent"
+        ],
+        "title": "TickStats",
         "type": "object"
       },
       "TickSummary": {
@@ -2978,6 +3342,24 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/intelligence": {
+      "get": {
+        "operationId": "intelligence_intelligence_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntelligenceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Intelligence"
       }
     },
     "/lab/author": {

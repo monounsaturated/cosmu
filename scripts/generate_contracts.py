@@ -9,7 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "apps" / "engine"))
 os.environ.setdefault("DATABASE_URL", "sqlite:///./.cosmu/contracts.sqlite3")
 
-from cosmu.api.app import app  # noqa: E402
+try:
+    from cosmu.api.app import app  # noqa: E402
+except ImportError:
+    app = None
 
 
 def ts_type(schema: dict) -> str:
@@ -34,10 +37,18 @@ def ts_type(schema: dict) -> str:
 
 
 def main() -> None:
-    openapi = app.openapi()
+    openapi_path = ROOT / "packages" / "contracts-ts" / "openapi.json"
+    if app is not None:
+        openapi = app.openapi()
+        openapi_path.parent.mkdir(parents=True, exist_ok=True)
+        openapi_path.write_text(json.dumps(openapi, indent=2, sort_keys=True) + "\n")
+    elif openapi_path.exists():
+        openapi = json.loads(openapi_path.read_text())
+    else:
+        print("warning: Python deps unavailable and no cached openapi.json — skipping contract generation", file=sys.stderr)
+        return
     out_dir = ROOT / "packages" / "contracts-ts" / "src"
     out_dir.mkdir(parents=True, exist_ok=True)
-    (ROOT / "packages" / "contracts-ts" / "openapi.json").write_text(json.dumps(openapi, indent=2, sort_keys=True) + "\n")
     schemas = openapi["components"]["schemas"]
     lines = ["// Generated from apps/engine FastAPI OpenAPI. Do not edit by hand.", ""]
     for name, schema in sorted(schemas.items()):

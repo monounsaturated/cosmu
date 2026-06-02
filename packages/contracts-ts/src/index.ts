@@ -223,6 +223,12 @@ export interface CrossAssetVerdict {
   xasset_return: number;
 }
 
+export interface DataSource {
+  last_at: string | null;
+  points: number;
+  source: string;
+}
+
 export interface DefundRequest {
   scope: "all" | "strategy";
   version_id?: string | null;
@@ -330,6 +336,21 @@ export interface FinderVariant {
   version_id: string | null;
 }
 
+export interface FunnelStats {
+  authored: number;
+  funded: number;
+  gate_passed: number;
+  killed: number;
+  live: number;
+  screened: number;
+}
+
+export interface GateEfficiency {
+  current: number;
+  improving: boolean;
+  trend: number[];
+}
+
 export interface GateStatusResponse {
   preregistered_bar: Record<string, unknown>;
   verdict: GateVerdictResponse | null;
@@ -365,6 +386,16 @@ export interface HTTPValidationError {
   detail?: ValidationError[];
 }
 
+export interface IntelligenceResponse {
+  data_freshness: DataSource[];
+  funnel: FunnelStats;
+  gate_efficiency: GateEfficiency;
+  lineage: LineageStats;
+  memory: MemoryDepth;
+  regime_coverage: RegimeCoverage;
+  ticks: TickStats;
+}
+
 export interface LeaderboardResponse {
   rows: LeaderboardRow[];
 }
@@ -378,6 +409,19 @@ export interface LeaderboardRow {
   sleeve_return_pct: number;
   status: string;
   version_id: string;
+}
+
+export interface LineageEntry {
+  operator?: string | null;
+  origin?: string | null;
+  passed: number;
+  rate: number;
+  total: number;
+}
+
+export interface LineageStats {
+  by_operator: LineageEntry[];
+  by_origin: LineageEntry[];
 }
 
 export interface LiveCaps {
@@ -401,6 +445,13 @@ export interface LivePositionsResponse {
   daily_loss: number;
   mode: "testnet" | "live" | "paper";
   positions: LivePosition[];
+}
+
+export interface MemoryDepth {
+  dead_ends: number;
+  skills: number;
+  total: number;
+  winners: number;
 }
 
 export interface MemoryInsight {
@@ -509,6 +560,20 @@ export interface RecommendationsResponse {
   items: Recommendation[];
 }
 
+export interface RegimeCell {
+  regime: string;
+  strategies: number;
+  trend: string;
+  vol: string;
+}
+
+export interface RegimeCoverage {
+  by_label: Record<string, unknown>;
+  covered: number;
+  grid: RegimeCell[];
+  total: number;
+}
+
 export interface Skill {
   created_at: string;
   grade: number;
@@ -532,6 +597,21 @@ export interface StrategyDetailResponse {
   spec: Record<string, unknown>;
   trades: Execution[];
   version_id: string;
+}
+
+export interface TickDetail {
+  authored: number;
+  funded: number;
+  passed: number;
+}
+
+export interface TickStats {
+  avg_survivors_per_tick: number;
+  last_at: string | null;
+  recent: TickDetail[];
+  total: number;
+  total_authored: number;
+  total_survivors: number;
 }
 
 export interface TickSummary {

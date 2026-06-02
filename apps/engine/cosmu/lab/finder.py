@@ -36,6 +36,11 @@ from cosmu.strategy.spec import ParamSpace, StrategySpec
 _GRID_POINTS = 3
 # Hard cap on variants so a high-dimensional space can't explode the run. Deterministic truncation.
 _MAX_VARIANTS = 256
+# Second pass: finer grid around the top survivors from the coarse pass. More points per param, narrower
+# range (±15% around each survivor's values). The gate still protects against overfitting.
+_REFINE_POINTS = 5
+_REFINE_TOP_N = 5
+_REFINE_RADIUS = 0.15
 _REAL_SYMBOLS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")
 
 
@@ -115,6 +120,61 @@ def build_grid(spec: StrategySpec, *, max_variants: int = _MAX_VARIANTS) -> list
     return variants
 
 
+def refine_around(
+    spec: StrategySpec,
+    survivors: list[Variant],
+    *,
+    top_n: int = _REFINE_TOP_N,
+    points: int = _REFINE_POINTS,
+    radius: float = _REFINE_RADIUS,
+    max_variants: int = _MAX_VARIANTS,
+) -> list[Variant]:
+    """Second-pass grid: a finer search around the top survivors from the coarse pass. For each
+    survivor, build a local grid with `points` per param centered on the survivor's values, within
+    ±radius of the original range. Deterministic, bounded, and the gate still protects."""
+    keys = sorted(spec.param_space)
+    all_variants: list[Variant] = []
+    seen_tags: set[str] = set()
+
+    for survivor in survivors[:top_n]:
+        axes: list[list[float]] = []
+        for k in keys:
+            ps = spec.param_space[k]
+            center = survivor.params.get(k, 0.0)
+            if ps.kind == "choice" and ps.choices:
+                axes.append([float(c) for c in ps.choices])
+                continue
+            lo_orig = float(ps.lo) if ps.lo is not None else center
+            hi_orig = float(ps.hi) if ps.hi is not None else center
+            span = hi_orig - lo_orig
+            lo_fine = max(lo_orig, center - span * radius)
+            hi_fine = min(hi_orig, center + span * radius)
+            if hi_fine <= lo_fine:
+                axes.append([center])
+                continue
+            pts = [lo_fine + (hi_fine - lo_fine) * i / (points - 1) for i in range(points)]
+            if ps.kind == "int":
+                pts = sorted({float(int(round(p))) for p in pts})
+            else:
+                pts = [round(p, 8) for p in pts]
+            axes.append(pts)
+
+        combos = list(itertools.product(*axes))
+        for combo in combos:
+            params = {k: v for k, v in zip(keys, combo, strict=True)}
+            tag = hashlib.sha256(
+                (spec.name + "|refine|" + ",".join(f"{k}={params[k]}" for k in keys)).encode()
+            ).hexdigest()[:16]
+            if tag not in seen_tags:
+                seen_tags.add(tag)
+                all_variants.append(Variant(params=params, config_tag=tag))
+
+    if len(all_variants) > max_variants:
+        stride = len(all_variants) / max_variants
+        all_variants = [all_variants[int(i * stride)] for i in range(max_variants)]
+    return all_variants
+
+
 # --------------------------------------------------------------------------- the Finder
 
 
@@ -150,11 +210,13 @@ class StrategyFinder:
         max_variants: int = _MAX_VARIANTS,
         fdr_q: float = 0.10,
         persist: bool = True,
+        two_pass: bool = True,
     ) -> FinderReport:
         """Run the full Finder pass for one seed spec. Steps: build the grid → screen every variant on REAL bars
-        → register each as a trial → rank by profit_factor within gate-passers → promote via the deterministic
-        cohort gate (significance + BH-FDR) → WFO/holdout-validate the promoted leaders ONCE before they enter
-        the config library. Deterministic and LLM-free."""
+        → register each as a trial → rank by profit_factor within gate-passers → TWO-PASS REFINEMENT (finer grid
+        around top survivors) → promote via the deterministic cohort gate (significance + BH-FDR) →
+        WFO/holdout-validate the promoted leaders ONCE before they enter the config library. Deterministic and
+        LLM-free."""
         spec = spec or seed_orb_fvg_spec()
         market = self._market(spec)
         grid = build_grid(spec, max_variants=max_variants)

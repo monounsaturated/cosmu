@@ -52,6 +52,7 @@ from cosmu.api.models import (
     FinderResponse,
     FinderRunRequest,
     FinderVariant,
+    IntelligenceResponse,
     GraveyardRow,
     MlFeatureWeight,
     MlRankedItem,
@@ -1080,6 +1081,13 @@ def costs() -> CostsResponse:
 def events(limit: int = 50) -> EventsResponse:
     rows = store.rows("SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,))
     return EventsResponse(events=[Event(id=row["id"], ts=row["ts"], actor=row["actor"], kind=row["kind"], ref_type=row["ref_type"], ref_id=row["ref_id"], payload=_json(row["payload"])) for row in rows])
+
+
+@app.get("/intelligence", response_model=IntelligenceResponse)
+def intelligence() -> IntelligenceResponse:
+    from cosmu.api.intelligence import compute_intelligence
+
+    return IntelligenceResponse(**compute_intelligence(store))
 
 
 def ensure_recommendations() -> None:
