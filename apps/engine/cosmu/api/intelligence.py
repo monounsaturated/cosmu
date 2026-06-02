@@ -12,16 +12,19 @@ from cosmu.knowledge.store import Store
 
 
 def compute_intelligence(store: Store) -> dict[str, Any]:
-    """The system intelligence snapshot — everything the overview needs to show the machine's brain."""
-    return {
-        "funnel": _funnel(store),
-        "gate_efficiency": _gate_efficiency(store),
-        "memory": _memory_depth(store),
-        "regime_coverage": _regime_coverage(store),
-        "data_freshness": _data_freshness(store),
-        "ticks": _tick_stats(store),
-        "lineage": _lineage_stats(store),
-    }
+    """The system intelligence snapshot — everything the overview needs to show the machine's brain.
+    All reads run on ONE shared connection (store.reading()); opening one per query made this ~26s on
+    remote Postgres and timed out the web."""
+    with store.reading():
+        return {
+            "funnel": _funnel(store),
+            "gate_efficiency": _gate_efficiency(store),
+            "memory": _memory_depth(store),
+            "regime_coverage": _regime_coverage(store),
+            "data_freshness": _data_freshness(store),
+            "ticks": _tick_stats(store),
+            "lineage": _lineage_stats(store),
+        }
 
 
 def _funnel(store: Store) -> dict[str, int]:

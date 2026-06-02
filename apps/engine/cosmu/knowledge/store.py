@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -24,6 +25,11 @@ def _serialize(value: Any) -> Any:
     if isinstance(value, dict | list):
         return json.dumps(value, sort_keys=True)
     return value
+
+
+# Per-thread "current read connection" set by Store.reading(); lets row()/rows() reuse one connection
+# across many small reads instead of opening one per query. Thread-local so concurrent requests don't share.
+_session = threading.local()
 
 
 def _is_postgres(url: str) -> bool:
@@ -107,26 +113,46 @@ class Store:
     def _is_pg(self) -> bool:
         return _is_postgres(self.settings.database_url)
 
-    @contextmanager
-    def connect(self) -> Iterator[_Conn]:
+    def _open(self, *, autocommit: bool = False) -> _Conn:
+        """Open one raw backend connection. autocommit=True is for read batches (see `reading`)."""
         if self._is_pg:
             import psycopg2
             import psycopg2.extras
 
             raw = psycopg2.connect(_pg_dsn(self.settings.database_url), connect_timeout=15)
+            raw.autocommit = autocommit
             raw.cursor_factory = psycopg2.extras.RealDictCursor
-            con = _Conn(raw, True)
-        else:
-            raw = sqlite3.connect(self.settings.sqlite_path, timeout=30)
-            raw.row_factory = sqlite3.Row
-            raw.execute("PRAGMA foreign_keys = ON")
-            raw.execute("PRAGMA journal_mode = WAL")
-            raw.execute("PRAGMA synchronous = NORMAL")
-            con = _Conn(raw, False)
+            return _Conn(raw, True)
+        raw = sqlite3.connect(self.settings.sqlite_path, timeout=30)
+        raw.row_factory = sqlite3.Row
+        raw.execute("PRAGMA foreign_keys = ON")
+        raw.execute("PRAGMA journal_mode = WAL")
+        raw.execute("PRAGMA synchronous = NORMAL")
+        return _Conn(raw, False)
+
+    @contextmanager
+    def connect(self) -> Iterator[_Conn]:
+        con = self._open()
         try:
             yield con
             con.commit()
         finally:
+            con.close()
+
+    @contextmanager
+    def reading(self) -> Iterator[None]:
+        """Reuse ONE autocommit connection for every row()/rows() call in this block (per thread). Opening a
+        fresh remote-Postgres connection per query made the /intelligence overview fire ~15 connects and take
+        ~26s, which timed out the web ("Engine not connected"). Read-only; nested calls reuse the outer conn."""
+        if getattr(_session, "con", None) is not None:
+            yield  # already inside a reading() — the outer block owns the connection
+            return
+        con = self._open(autocommit=True)
+        _session.con = con
+        try:
+            yield
+        finally:
+            _session.con = None
             con.close()
 
     @contextmanager
@@ -164,6 +190,10 @@ class Store:
             writer.append_event(actor=actor, kind=kind, ref_type=ref_type, ref_id=ref_id, payload=payload)
 
     def rows(self, query: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+        active = getattr(_session, "con", None)  # inside a reading() block → reuse the one open connection
+        if active is not None:
+            cur = active.execute(query, params)
+            return [] if cur.description is None else [dict(r) for r in cur.fetchall()]
         with self.connect() as con:
             cur = con.execute(query, params)
             if cur.description is None:  # non-SELECT (INSERT/UPDATE) — nothing to fetch on either backend
