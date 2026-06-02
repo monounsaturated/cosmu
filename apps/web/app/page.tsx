@@ -1,6 +1,6 @@
 import { ArrowRight, Coins, Gauge, MessageSquare, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
-import { engineConfigured, getAutonomyStatus, getEvents, getLeaderboard, getPortfolio, getRecommendations } from "./data";
+import { engineConfigured, getAutonomyStatus, getEvents, getIntelligence, getLeaderboard, getPortfolio, getRecommendations } from "./data";
 import type { CostSlice, Event, LeaderboardRow } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 import { EquityCurve } from "@/components/charts/equity-curve";
 import { AutonomyPanel } from "@/components/autonomy/autonomy-panel";
 import { NeedsYouInbox } from "@/components/autonomy/needs-you-inbox";
+import { SystemIntelligence } from "@/components/intelligence/system-intelligence";
 import { SLEEVE_VS_WALLET } from "@/lib/shared-content";
 import { formatEventKind, formatPct, formatSigned, formatUsd } from "@/lib/utils";
 
@@ -27,13 +28,15 @@ export default async function OverviewPage() {
     { leaderboard },
     { items: recommendations, connected: recConnected },
     { events },
-    { status: autonomy, connected: autonomyConnected }
+    { status: autonomy, connected: autonomyConnected },
+    { intelligence, connected: intelConnected }
   ] = await Promise.all([
     getPortfolio(),
     getLeaderboard(),
     getRecommendations(),
     getEvents(),
-    getAutonomyStatus()
+    getAutonomyStatus(),
+    getIntelligence()
   ]);
 
   if (!connected) {
@@ -130,6 +133,9 @@ export default async function OverviewPage() {
           </CardContent>
         </Card>
       </section>
+
+      {/* System intelligence — is the machine getting smarter? */}
+      <SystemIntelligence intelligence={intelligence} connected={intelConnected} />
 
       {/* What needs me + autonomy controls */}
       <section className="grid gap-3 lg:grid-cols-2">
