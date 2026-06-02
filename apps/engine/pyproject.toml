@@ -45,3 +45,9 @@ select = ["E", "F", "I", "UP", "B"]
 where = ["."]
 include = ["cosmu*"]
 exclude = ["tests*"]
+
+# Ship non-Python data files INSIDE the wheel. Without this the SQL schema is left out of the installed
+# package, so Store.migrate() (run at import) hits FileNotFoundError on schema.sql and the app never boots —
+# the runtime "service unavailable" healthcheck failure. Keep the package self-contained, not cwd-dependent.
+[tool.setuptools.package-data]
+"*" = ["*.sql"]
