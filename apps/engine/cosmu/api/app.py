@@ -143,12 +143,20 @@ def _live_caps_row() -> dict[str, float]:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    facade = EngineFacade.create(settings)
-    if not store.row("SELECT id FROM runs LIMIT 1"):
-        facade.run_backtest(seed=11)
-    ensure_recommendations()
-    _scan_inbox_on_startup()
-    _fund_wallet_on_startup()
+    import threading
+
+    def _boot():
+        try:
+            facade = EngineFacade.create(settings)
+            if not store.row("SELECT id FROM runs LIMIT 1"):
+                facade.run_backtest(seed=11)
+            ensure_recommendations()
+            _scan_inbox_on_startup()
+            _fund_wallet_on_startup()
+        except Exception:  # noqa: BLE001 — boot tasks are best-effort; never crash the app
+            pass
+
+    threading.Thread(target=_boot, daemon=True).start()
     yield
 
 
