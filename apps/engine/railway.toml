@@ -10,7 +10,7 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python -m uvicorn cosmu.api.app:app --host 0.0.0.0 --port $PORT"
+startCommand = "sh -c 'python -m uvicorn cosmu.api.app:app --host 0.0.0.0 --port ${PORT:-8000}'"
 healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "on_failure"
