@@ -8,7 +8,6 @@ from typing import Any
 
 import os
 
-import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -1115,4 +1114,6 @@ if __name__ == "__main__":
     _port = int(os.environ.get("PORT", "8000"))
     _host = os.environ.get("HOST", "0.0.0.0")
     _reload = os.environ.get("APP_ENV", "dev").strip().lower() in ("dev", "local")
+    import uvicorn
+
     uvicorn.run("cosmu.api.app:app", host=_host, port=_port, reload=_reload)
