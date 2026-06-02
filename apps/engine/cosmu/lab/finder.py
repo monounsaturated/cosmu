@@ -255,6 +255,57 @@ class StrategyFinder:
                 )
             )
 
+        # TWO-PASS REFINEMENT: take the top coarse-pass gate-passers and run a finer grid around their
+        # parameter neighborhoods. The gate still protects — refinement only finds better configurations
+        # within the already-validated structural region, never overfits.
+        if two_pass:
+            coarse_passers = sorted(
+                [r for r in results if r.gate_passed],
+                key=lambda r: (r.profit_factor, r.deflated_sharpe),
+                reverse=True,
+            )[:_REFINE_TOP_N]
+            if coarse_passers:
+                survivor_variants = []
+                for r in coarse_passers:
+                    for v in grid:
+                        if v.config_tag == r.config_tag:
+                            survivor_variants.append(v)
+                            break
+                fine_grid = refine_around(spec, survivor_variants)
+                existing_tags = {r.config_tag for r in results}
+                for variant in fine_grid:
+                    if variant.config_tag in existing_tags:
+                        continue
+                    try:
+                        compiled = compile_spec(spec, variant.params)
+                    except ValueError:
+                        continue
+                    metrics = run_strategy_backtest(spec, variant.params, market, fee_bps=venue.taker_fee_bps)
+                    verdict = score(metrics, self.settings.gates)
+                    net_profit = float(metrics.oos_return) - _round_trip_cost(metrics, venue)
+                    results.append(
+                        VariantResult(
+                            config_tag=variant.config_tag,
+                            code_hash=compiled.code_hash,
+                            metrics=metrics,
+                            deflated_sharpe=float(verdict.ranking_scalar),
+                            profit_factor=float(metrics.profit_factor),
+                            net_profit=net_profit,
+                            gate_passed=verdict.passed,
+                            reasons=verdict.reasons,
+                        )
+                    )
+                    cohort.append(
+                        CohortCandidate(
+                            id=variant.config_tag,
+                            metrics=metrics,
+                            net_profit=net_profit,
+                            source="finder_refine",
+                            label=f"{spec.name}:refine:{variant.config_tag}",
+                            return_variance=max(1e-6, float(metrics.max_drawdown) ** 2 + 1e-3),
+                        )
+                    )
+
         # The cohort gate registers EVERY variant as a trial (deflation validity) and promotes only those that
         # clear significance AND survive BH-FDR — never a raw top-of-leaderboard pick.
         promotions = {p.candidate_id: p for p in promote_cohort(self.store, cohort, self.settings.gates, fdr_q=fdr_q)}

@@ -129,7 +129,38 @@ def execute_orders(
             outcomes.append(OrderOutcome(coid, intent.symbol, accepted=False, routed_live=False, venue="paper", issues=decision.issues))
             continue
 
-        route_live = bool(live_enabled and not kill_switch and intent.gate_passed and getattr(adapter, "active", False))
+        # Regime eligibility gate: a live-routed order must be in a regime the strategy proved in.
+        # If regime data is available (adapter can provide reference bars), check eligibility before
+        # routing live. Failure → paper-fill with an audit event (never silently drops).
+        regime_blocked = False
+        if live_enabled and intent.gate_passed and getattr(adapter, "active", False):
+            try:
+                from cosmu.ml.regime import current_regime, proven_regimes, regime_eligible
+
+                regime_returns = _regime_returns(store, intent.strategy_version_id)
+                if regime_returns is not None:
+                    ref_bars = _reference_bars(adapter, intent.symbol)
+                    if ref_bars:
+                        now_regime = current_regime(ref_bars)
+                        proven = proven_regimes(regime_returns)
+                        if not regime_eligible(now_regime, proven):
+                            regime_blocked = True
+                            store.append_event(
+                                actor="master",
+                                kind="order_regime_blocked",
+                                ref_type="strategy_version",
+                                ref_id=intent.strategy_version_id,
+                                payload={
+                                    "symbol": intent.symbol,
+                                    "current_regime": now_regime.label,
+                                    "proven_regimes": sorted(proven),
+                                    "client_order_id": coid,
+                                },
+                            )
+            except Exception:  # noqa: BLE001 — regime check is advisory; failure falls through to paper
+                pass
+
+        route_live = bool(live_enabled and not kill_switch and intent.gate_passed and getattr(adapter, "active", False) and not regime_blocked)
         venue_label = _live_venue(adapter) if route_live else "paper"
         fee = order_intent.notional * (venue.taker_fee_bps / Decimal("10000"))
 
@@ -242,6 +273,37 @@ def _write_execution(store: Store, run_id: str, intent: IntendedOrder, instrumen
         },
     )
     store.append_event(actor="master", kind="execution_filled", ref_type="execution", ref_id=execution_id, payload=payload)
+
+
+def _regime_returns(store: Store, strategy_version_id: str) -> dict[str, float] | None:
+    """Read the regime-tagged returns from the strategy's backtest. Returns None if no backtest exists."""
+    row = store.row(
+        "SELECT regime_label FROM backtests WHERE strategy_version_id = ? AND passed_gates = 1 ORDER BY id DESC LIMIT 1",
+        (strategy_version_id,),
+    )
+    if not row or not row.get("regime_label"):
+        return None
+    import json
+    raw = row["regime_label"]
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                return {k: float(v) for k, v in parsed.items()}
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    return {str(raw): 1.0}
+
+
+def _reference_bars(adapter, symbol: str) -> list[float]:
+    """Get recent close prices from the adapter for regime classification. Best-effort."""
+    if not hasattr(adapter, "reference_bars"):
+        return []
+    try:
+        bars = adapter.reference_bars(symbol, limit=60)
+        return [float(b.close) if hasattr(b, "close") else float(b) for b in bars]
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def reconcile_fills(
