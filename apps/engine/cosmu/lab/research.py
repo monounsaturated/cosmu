@@ -20,7 +20,7 @@ from cosmu.knowledge.store import Store
 from cosmu.lab.author import AuthorDraft, draft_from_brief
 from cosmu.lab.tools.registry import ToolBus
 from cosmu.lab.tools.research_tools import research_tool_bus
-from cosmu.research.fixtures import edge_bearing_screen_market, synthetic_cross_asset_inputs
+from cosmu.research.fixtures import edge_bearing_screen_market
 from cosmu.strategy.compiler import compile_spec
 from cosmu.strategy.static_check import validate_spec
 
@@ -87,22 +87,6 @@ class _EdgeBearingBars:
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
         return self._by_symbol.get(symbol, self._default)[-limit:]
-
-
-class _FixtureBars:
-    """Deterministic offline bars (the cross-asset crypto fixtures) so the screen runs with no network/DB.
-    The screen asks for crypto symbols; we return the same edge-bearing series for each so the gate has
-    something real (and reproducible) to judge."""
-
-    def __init__(self) -> None:
-        market_by_class, *_ = synthetic_cross_asset_inputs()
-        crypto = market_by_class["crypto"]
-        self._default = next(iter(crypto.values()))
-        self._by_symbol = dict(crypto)
-
-    def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
-        bars = self._by_symbol.get(symbol, self._default)
-        return bars[-limit:]
 
 
 def gather_context(bus: ToolBus, *, symbol: str = "BTCUSDT", offline: bool = True) -> dict[str, object]:
@@ -173,9 +157,11 @@ def run_research_pass(
     the deterministic wall is the sole judge. The survival model (loaded inside FarmLoop) ORDERS the survivors
     for full validation — it never vetoes. Reproducible for a fixed (n, seed) offline.
 
-    `edge_market=True` runs the screen over the edge-bearing fixture so at least one candidate passes the gate
-    (the survivor sleeve-open path, end-to-end). `persist=True` writes a research_pass event so the API can
-    read the run (authored/gated/survivors/graveyard) without re-running — not CLI-only."""
+    By DEFAULT (edge_market=False, no injected market_data) the screen runs on REAL Binance spot bars — the
+    only honest source. `edge_market=True` is CI/offline ONLY: it screens over the edge-bearing fixture so the
+    survivor sleeve-open path is exercised deterministically with no network. Production must never run with
+    edge_market=True. `persist=True` writes a research_pass event so the API can read the run
+    (authored/gated/survivors/graveyard) without re-running — not CLI-only."""
     bus = tool_bus or research_tool_bus()
     context = gather_context(bus)
 
@@ -184,11 +170,14 @@ def run_research_pass(
     extra_seeds = [draft.spec for draft, rec in authored if rec.compiled]
 
     if market_data is not None:
-        provider: MarketDataProvider = market_data
+        provider: MarketDataProvider | None = market_data
     elif edge_market:
         provider = _EdgeBearingBars()
     else:
-        provider = _FixtureBars()
+        # PRODUCTION default: no provider → FarmLoop._screen fetches REAL Binance spot bars
+        # (BinanceSpotOHLCVProvider, cache-backed). Synthetic fixtures are CI/offline only. We never
+        # screen — or fund — paper sleeves on fabricated data; the app must not display synthetic edge.
+        provider = None
     loop = FarmLoop(settings=store.settings, store=store, market_data=provider)
     # Cohort = the authored candidates only (no extra mutation/explore waves) so the report maps 1:1 onto
     # what the brain proposed; the deterministic screen + out-of-reach scorer decide PASS/STOP per candidate.

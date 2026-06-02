@@ -284,18 +284,29 @@ def _emit_recommendations(store: Store, *, survivors: list[str], ingested: dict[
 
 
 def _main(argv: list[str] | None = None) -> int:
-    """CLI: one bounded tick (cron-able). Runs over the edge-bearing fixture so a survivor is visible offline."""
+    """CLI / Railway cron entrypoint: one bounded tick on the REAL production store + REAL Binance data.
+
+    This is what `python3 -m cosmu.master.scheduler` runs every 4h on Railway, so it MUST connect to the
+    production DB (Settings() reads DATABASE_URL etc. from the env) and screen on real bars — never a
+    throwaway temp DB or synthetic fixture. Use --offline for a self-contained demo (temp sqlite, edge-bearing
+    fixture, no network/keys) when running locally without a DB."""
     import argparse
     import tempfile
 
-    parser = argparse.ArgumentParser(description="Run ONE bounded autonomous master tick (cron-able, paper-only, no keys).")
+    parser = argparse.ArgumentParser(description="Run ONE bounded autonomous master tick (cron-able, paper-only, never arms live).")
     parser.add_argument("--n", type=int, default=4, help="candidates to author this tick (default 4)")
     parser.add_argument("--seed", type=int, default=7, help="cohort seed (default 7)")
+    parser.add_argument("--offline", action="store_true", help="self-contained demo: temp sqlite + edge-bearing fixture, no network/keys (NOT for prod)")
     args = parser.parse_args(argv)
 
-    tmp = tempfile.mkdtemp(prefix="cosmu-tick-")
-    store = Store(Settings(database_url=f"sqlite:///{tmp}/tick.sqlite3", openrouter_api_key=None))
-    report = run_tick(store, n=max(1, args.n), seed=args.seed, edge_market=True, ingest=lambda _s: {})
+    if args.offline:
+        tmp = tempfile.mkdtemp(prefix="cosmu-tick-")
+        store = Store(Settings(database_url=f"sqlite:///{tmp}/tick.sqlite3", openrouter_api_key=None))
+        report = run_tick(store, n=max(1, args.n), seed=args.seed, edge_market=True, ingest=lambda _s: {})
+    else:
+        # PRODUCTION: real store (DATABASE_URL from env), real free-data ingest, real Binance bars (edge_market=False).
+        store = Store(Settings())
+        report = run_tick(store, n=max(1, args.n), seed=args.seed, edge_market=False)
     s = report.summary
     print("AUTONOMOUS MASTER TICK — one bounded cycle complete (paper-only, live off)")
     print(f"  authored={s.authored} gated_passed={s.gated_passed} funded={s.funded} recommendations={s.recommendations}")

@@ -601,8 +601,9 @@ def autonomy_tick() -> AutonomyTickResponse:
     LIVE STAYS OFF — paper fills only; the tick never arms live. Cron-able (one tick per call, not a daemon)."""
     from cosmu.master.scheduler import run_tick
 
-    # Run over the edge-bearing fixture so a survivor (and the fund/recommend path) is exercised offline too.
-    report = run_tick(store, n=6, seed=7, edge_market=True)
+    # REAL data only: screen + fund on actual Binance spot bars. Synthetic fixtures are CI/offline only —
+    # the app must never display or fund on fabricated edge.
+    report = run_tick(store, n=6, seed=7, edge_market=False)
     s = report.summary
     return AutonomyTickResponse(
         authored=s.authored,
@@ -930,36 +931,34 @@ def run_cross_asset_gate() -> CrossAssetVerdict:
 
 
 def _brain_reference_bars():
-    """A reference close series for the CURRENT-regime read. Prefer the real Binance BTCUSDT cache when it
-    exists; otherwise fall back to the deterministic edge-bearing fixture so the snapshot is always answerable
-    offline (no network, no keys)."""
+    """A reference close series for the CURRENT-regime read — REAL Binance BTCUSDT only. If the cache/network is
+    unavailable we return no bars (current_regime then reports a neutral 'chop' default) rather than reading a
+    synthetic fixture: the displayed regime must never be derived from fabricated data."""
     from cosmu.data.market import BinanceSpotOHLCVProvider
-    from cosmu.research.fixtures import edge_bearing_screen_market
 
     try:
         bars = BinanceSpotOHLCVProvider().fetch_bars("BTCUSDT", "1d", limit=240)
         if len(bars) >= 60:
             return bars
-    except Exception:  # noqa: BLE001 — offline/no-network is expected; fall back to the fixture
+    except Exception:  # noqa: BLE001 — offline/no-network: report neutral, never fabricate a regime
         pass
-    return edge_bearing_screen_market()["BTCUSDT"]
+    return []
 
 
 @app.get("/research/brain", response_model=BrainResponse)
 def research_brain() -> BrainResponse:
     """The live brain snapshot: LLM on/off, the latest research pass's gated counts + survivors + graveyard,
     the propose-only sources/tools, the current market regime, and the survival model's validation-queue
-    ranking. If no pass has run yet, run one over the edge-bearing fixture so the snapshot is populated. The
+    ranking. If no real pass has run yet, the snapshot is empty (we never seed a synthetic pass into prod). The
     survival ranking ORDERS the queue — it is never a veto; the deterministic gate alone decided who passed."""
     from cosmu.config.feature_registry import FEATURE_REGISTRY
-    from cosmu.lab.research import run_research_pass
     from cosmu.lab.tools.research_tools import research_tool_bus
     from cosmu.ml.regime import current_regime
 
+    # Read the latest REAL research pass (written by the 4h cron / POST /autonomy/tick on live Binance data).
+    # If none has run yet we return an honest empty snapshot — we never seed a synthetic pass into prod just to
+    # populate a page (the app must not display fabricated edge).
     row = store.row("SELECT payload FROM events WHERE kind = 'research_pass' ORDER BY id DESC LIMIT 1")
-    if row is None:
-        run_research_pass(store, n=6, seed=7, edge_market=True, llm_enabled=bool(settings.openrouter_api_key))
-        row = store.row("SELECT payload FROM events WHERE kind = 'research_pass' ORDER BY id DESC LIMIT 1")
     payload = _json(row["payload"]) if row else {}
 
     survivors = [

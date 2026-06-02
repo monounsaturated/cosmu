@@ -18,6 +18,7 @@
     "start:api": "PYTHONPATH=apps/engine python3 -m cosmu.api.app",
     "start:web": "pnpm --filter @cosmu/web start",
     "lint": "pnpm -r lint",
-    "typecheck": "pnpm --filter @cosmu/contracts-ts typecheck && pnpm --filter @cosmu/web typecheck"
+    "typecheck": "pnpm --filter @cosmu/contracts-ts typecheck && pnpm --filter @cosmu/web typecheck",
+    "verify": "pnpm contracts:generate && pnpm engine:test && pnpm typecheck"
   }
 }

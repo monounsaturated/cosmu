@@ -1,74 +1,80 @@
 # Cosmu — Agent Entry Point
 
-> New chat? Start here. Read this file, then build. That's the whole prompt.
+> **This is the single canonical entry doc.** It is agent-agnostic — Claude Code, OpenAI Codex, and Cursor all drive from this file. New chat? Read this, then build. That's the whole prompt.
 
 ## What Cosmu is
-Autonomous quant money machine. Python engine (`apps/engine/`) on Railway. Next.js web (`apps/web/`) on Vercel. Supabase Postgres + pgvector. The deterministic scorer/gate decides what lives — LLMs only propose, never score or move money.
+A self-learning autonomous quant money machine on Binance spot. The one metric: profit, net of every fee. LLMs only **propose** strategies — a deterministic gate decides what gets funded and what moves money. Live trading stays **OFF** by default.
 
-## North star
-Simple to use. Powerful. Agentic-first — use skills for common tasks, don't improvise. Buy > build. The one metric: risk-adjusted profit net of every cost. Live stays OFF by default.
+Stack:
+- **Engine** — Python 3.12 FastAPI (`apps/engine/cosmu`) on **Railway**.
+- **Web** — Next.js (`apps/web`) on **Vercel**.
+- **Data** — Postgres / Supabase.
+- **LLM** — via **OpenRouter**, free `:free` tier by default. One gateway only; secrets server-side.
 
-## Ship workflow (standing — don't wait to be asked)
-When a turn ends with code edits, **commit and push to `main` right away, at the end** — no need to ask.
-- **Push = deploy.** Railway (engine) and Vercel (web) both auto-deploy from `main`. One trigger only: `git push`. Never also run `railway up`/`vercel deploy` (double-deploy race).
-- Tokens (`RAILWAY_TOKEN`/`VERCEL_TOKEN` in `.env.local`, gitignored) are for **reading logs while debugging**, not for deploying. Don't need them to ship.
-- One small commit per fix; message states cause + fix. Verify locally first (tests / `/health`). Debug loop: see `/deploy-iterate`.
+## How it actually runs (read this twice)
+- **Honest loop.** The deployed autonomous tick runs on **REAL Binance bars** (`edge_market=False`). Synthetic edge-bearing fixtures are quarantined to **CI/tests ONLY** — they must NEVER be shown in the app or run in prod. *Do not display synthetic things — hard rule.*
+- **Local-first compute.** Heavy discovery (grid-search, walk-forward, backtest sweeps) runs **locally on the owner's M2 Mac** and emits only winning `StrategySpec`s to Postgres. Backtests are deterministic + offline-capable, so the whole test/verify loop runs locally for $0.
+- **Cloud runs only:** the always-on API for the UI, gate disposition on authored specs, a mark-to-market cron, and (eventually) live execution.
+- **Forward-test clock.** Funded paper sleeves are **held and marked-to-market across bars**. A sleeve must show positive net-of-fee paper P&L over **N ≥ 30 forward days** before it is live-eligible.
+- **Deterministic funding gate.** A deterministic scorer — not any LLM — is the only judge that funds paper sleeves: deflated Sharpe, CSCV-PBO, holdout, regime folds. *Hardening in progress:* route the funding cohort through the global trial ledger + Benjamini-Hochberg FDR + `must_beat_buy_and_hold` (the rigorous `research/gate.py:PREREGISTERED_BAR`), so the rigorous bar — not the lighter cohort scorer — is what authorizes capital.
 
-## Read order (one doc, not all)
-1. **This file** — invariants, skills, task queue
-2. **`docs/IMPLEMENTATION.md`** — what's built, what's next (read the last 3 "### Built" sections)
-3. **The module's `# intent:` header** — every file opens with purpose/inputs/outputs/invariants
-4. **`rg` for the exact symbol** — don't crawl the repo
+## Lifecycle
+**Discover (Lab)** → **Paper / forward-test (Incubate)** → **Live (capital ramp).**
+Live is OFF by default behind **5 interlocks**: toggle on + real keys + gate passed + caps available + no kill-switch. All five, or nothing moves.
 
-## Self-route
-Check state, then pick the highest-impact unblocked task:
-1. Tests green? `cd apps/engine && python3 -m pytest -x -q --tb=line`
-2. Web green? `pnpm --filter @cosmu/web typecheck`
-3. Engine deployed? See `docs/OWNER_SETUP.md §F`
-4. Pick from **Task queue** below. **Use a skill if one matches.**
+## Dev gate (before every push)
+```
+pnpm verify          # = contracts:generate && engine:test && typecheck
+```
+All offline, no keys required. **Run `pnpm verify` before every push.**
 
-## Skills (use these — don't improvise)
-| Skill | Trigger phrases |
-|-------|----------------|
-| `/create-strategy` | "new strategy", "add a thesis", "draft a Version" |
-| `/add-data-source` | "add X data", "wire Y source" |
-| `/add-venue` | "add X exchange", "wire Y venue" |
-| `/deploy-check` | "check deploy", "is engine up", "fix deploy" |
-| `/run-gate` | "run the gate", "test the edge" |
-| `/debug-strategy` | "why did X die", "post-mortem on Y" |
+**Push = deploy.** Railway (engine) and Vercel (web) auto-deploy on push to the working branch. One trigger only: `git push`. Never also run `railway up` / `vercel deploy` (double-deploy race). Tokens in `.env.local` (gitignored) are for **reading logs while debugging**, not for deploying.
+
+## Environment (canonical names)
+| Var | Value |
+|-----|-------|
+| `API_BASE_URL` | the Railway engine URL — `https://cosmu.up.railway.app` |
+| `NEXT_PUBLIC_API_BASE_URL` | same Railway engine URL (web reads the engine here) |
+
+## Skills (any agent)
+Skills are **runnable playbooks** — the canonical procedure for each common task. Use one whenever it matches; don't improvise.
+- **Claude Code:** type the slash command (e.g. `/run-gate`).
+- **Any other agent (Codex, Cursor, …):** open `.claude/skills/<name>/SKILL.md` and follow it.
+
+| Skill | Path |
+|-------|------|
+| create-strategy | `.claude/skills/create-strategy/SKILL.md` |
+| add-data-source | `.claude/skills/add-data-source/SKILL.md` |
+| add-venue | `.claude/skills/add-venue/SKILL.md` |
+| run-gate | `.claude/skills/run-gate/SKILL.md` |
+| deploy-check | `.claude/skills/deploy-check/SKILL.md` |
+| deploy-iterate | `.claude/skills/deploy-iterate/SKILL.md` |
+| debug-strategy | `.claude/skills/debug-strategy/SKILL.md` |
+| import-pine | `.claude/skills/import-pine/SKILL.md` |
 
 ## Non-negotiables
-- **Scorer + money** = deterministic, out of any LLM path. LLM only PROPOSES.
+- **Gate + money** = deterministic, out of any LLM path. The LLM only PROPOSES; the FDR gate funds.
+- **Never display synthetic data** in the app or run it in prod. Synthetic fixtures live in CI/tests only.
+- **Never collapse the model decision and the venue execution** — keep them as distinct fields/rows. The signal (what the model decided) and the fill (how the venue executed) are separate records, always.
 - **No magic numbers** in specs (thresholds in `param_space`). Point-in-time, no look-ahead.
-- **Live OFF** by default. Nothing autonomous moves real money.
+- **Live OFF** by default; the 5 interlocks are the only path to real orders.
 - **Generated types**: `@cosmu/contracts-ts` from OpenAPI — never hand-type TS models.
 - **LLM-optional** + offline-testable everywhere (mock network, inject providers).
-- **One gateway** = OpenRouter. Model IDs from `lab/router.py` config. Secrets server-side only.
 - **Ask first**: schema changes, new vendor/spend, live-execution changes, broad renames.
 - **Never**: LLM fires a live order, agent defines its own fitness, hand-maintain Python↔TS types, commit secrets, martingale/revenge sizing.
 
-## Standards
-Follow `docs/CODING_STANDARDS.md` exactly. Key patterns:
-- Every module: `# intent:` header (purpose · inputs · outputs · invariants)
-- Data source: `DataSourceRegistry` + numeric + point-in-time `available_at` + pinned `transform_version` + offline fixture + certifi SSL
-- Test: `tests/test_<area>.py`, deterministic + offline, inject providers/mock HTTP
-- Persistence: typed Postgres table + `events` ledger. Web types generated from OpenAPI.
-
-## Task queue
-Highest impact first. Completed items are deleted, not checkmarked.
-1. **Deploy verification** — owner: Railway Root Dir = `apps/engine`, Vercel: `API_BASE_URL` + `NEXT_PUBLIC_API_BASE_URL`. See `docs/OWNER_SETUP.md §F`.
-2. **Web polish** — make the 6 surfaces feel complete (real Recharts/Tremor charts, Settings key-status, strategy lifecycle tabs, costs merged into Paper).
-3. **More data sources** — FRED expansion (VIX, fed funds), DeFiLlama TVL, CoinGecko — via `/add-data-source` skill.
+## Read order (one doc, not all)
+1. **This file** — invariants, env, skills.
+2. **`docs/IMPLEMENTATION.md`** — what's built, what's next (last 3 "### Built" sections).
+3. **The module's `# intent:` header** — every file opens with purpose · inputs · outputs · invariants.
+4. **`rg` for the exact symbol** — don't crawl the repo.
 
 ## Architecture
 ```
 apps/engine/cosmu/     Python 3.12, FastAPI, Pydantic, pytest
-apps/web/              Next.js 16, Tailwind v4, shadcn, Tremor
+apps/web/              Next.js, Tailwind, shadcn
 packages/contracts-ts/ Generated from engine OpenAPI (never hand-typed)
-.claude/skills/        Claude Code skill definitions
+.claude/skills/        Runnable playbooks (this repo's source of truth for procedures)
 strategies/inbox/      Drop specs here — scanned on deploy
 ```
-Hosting: **Railway** (engine API + 6h cron) · **Vercel** (web) · **Supabase** (Postgres + pgvector)
-
-## Prior art
-`TradingAgents-main` is reference only, not product code. Gitignored.
+Hosting: **Railway** (engine API + cron) · **Vercel** (web) · **Supabase** (Postgres + pgvector).

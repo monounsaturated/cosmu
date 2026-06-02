@@ -111,12 +111,22 @@ def fund_wallet_from_survivors(
     allocations = rotate([s for _, s, _ in triples], max_positions=3)
     report.allocations = allocations
 
-    # Build the latest marks + the intended paper orders for each funded sleeve.
+    # A sleeve already holding an open paper position is NOT re-opened: re-funding it every tick would
+    # average a fresh same-bar entry into the basis (entry==mark → unrealized 0) and reset its forward-test
+    # clock. Held sleeves accrue honest P&L via mark_paper_positions() instead; only NEW survivors open here.
+    already_funded = {
+        r["strategy_version_id"]
+        for r in store.rows(
+            "SELECT DISTINCT strategy_version_id FROM positions WHERE CAST(qty AS REAL) != 0 AND strategy_version_id IS NOT NULL"
+        )
+    }
+
+    # Build the latest marks + the intended paper orders for each NEW funded sleeve.
     marks: dict[str, Decimal] = {}
     intents: list[IntendedOrder] = []
     equity = portfolio.equity()
     for alloc in allocations:
-        if alloc.weight <= 0 or alloc.sleeve_id not in sleeve_by_id:
+        if alloc.weight <= 0 or alloc.sleeve_id not in sleeve_by_id or alloc.sleeve_id in already_funded:
             continue
         _sleeve, symbol = sleeve_by_id[alloc.sleeve_id]
         price = _last_price(provider, symbol, cat)
@@ -173,6 +183,52 @@ def fund_wallet_from_survivors(
     return report
 
 
+def mark_paper_positions(
+    store: Store,
+    *,
+    market_data: MarketDataProvider | None = None,
+    catalog: VenueCatalog | None = None,
+) -> dict[str, Decimal]:
+    """THE FORWARD-TEST CLOCK. Re-mark every HELD paper position against the latest REAL close — without
+    opening, re-funding, or averaging anything — and write a portfolio_snapshot. This is what makes paper a
+    genuine forward test: a funded sleeve lives across bars and reveals honest net-of-fee P&L over calendar
+    time, instead of the same-bar entry==mark snapshot the funding step produces. Cron-able (run on a schedule
+    independent of the 4h author/fund tick); offline-safe (a missing mark just leaves that position at its
+    last basis); live stays OFF (no orders — marks only)."""
+    cat = catalog or default_catalog()
+    provider = market_data or BinanceSpotOHLCVProvider()
+    portfolio = PaperPortfolio(store, bankroll=store.settings.paper_bankroll)
+    positions = [p for p in portfolio.positions() if p.qty != 0]
+    marks: dict[str, Decimal] = {}
+    for p in positions:
+        price = _last_price(provider, p.symbol, cat)
+        if price > 0:
+            marks[p.instrument_id] = price
+    snapshot = portfolio.mark_to_market(marks)
+    store.append_event(
+        actor="master",
+        kind="paper_marked",
+        ref_type="portfolio",
+        ref_id="global",
+        payload={"positions": len(positions), "marked": len(marks), "equity": float(snapshot["equity"]), "pnl": float(snapshot["pnl"])},
+    )
+    return snapshot
+
+
+def _main(argv: list[str] | None = None) -> int:
+    """Railway cron entrypoint for the FORWARD-TEST CLOCK: re-mark held paper positions on the real prod store
+    against the latest Binance closes. `python3 -m cosmu.orchestrator.loop`."""
+    import argparse
+
+    from cosmu.config.settings import Settings
+
+    argparse.ArgumentParser(description="Mark held paper positions to the latest real close (forward-test clock; paper-only, no orders).").parse_args(argv)
+    store = Store(Settings())
+    snap = mark_paper_positions(store)
+    print(f"PAPER MARK-TO-MARKET — equity={float(snap['equity']):.2f} pnl={float(snap['pnl']):+.2f} drawdown={float(snap['drawdown']):.4f}")
+    return 0
+
+
 def _last_price(provider: MarketDataProvider, symbol: str, catalog: VenueCatalog) -> Decimal:
     try:
         bars = provider.fetch_bars(symbol, "1d", limit=2)
@@ -181,3 +237,7 @@ def _last_price(provider: MarketDataProvider, symbol: str, catalog: VenueCatalog
     if not bars:
         return Decimal("0")
     return bars[-1].close
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

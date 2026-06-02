@@ -3782,7 +3782,7 @@
     },
     "/research/brain": {
       "get": {
-        "description": "The live brain snapshot: LLM on/off, the latest research pass's gated counts + survivors + graveyard,\nthe propose-only sources/tools, the current market regime, and the survival model's validation-queue\nranking. If no pass has run yet, run one over the edge-bearing fixture so the snapshot is populated. The\nsurvival ranking ORDERS the queue \u2014 it is never a veto; the deterministic gate alone decided who passed.",
+        "description": "The live brain snapshot: LLM on/off, the latest research pass's gated counts + survivors + graveyard,\nthe propose-only sources/tools, the current market regime, and the survival model's validation-queue\nranking. If no real pass has run yet, the snapshot is empty (we never seed a synthetic pass into prod). The\nsurvival ranking ORDERS the queue \u2014 it is never a veto; the deterministic gate alone decided who passed.",
         "operationId": "research_brain_research_brain_get",
         "responses": {
           "200": {

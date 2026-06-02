@@ -1,60 +1,24 @@
 # Deployment
 
-Cosmu v2 deploys as three explicit pieces:
+Two services, both auto-deployed on push to the working branch.
 
-- **FastAPI engine/API** on an always-on worker/service such as Render.
-- **Next.js web app** on Vercel.
-- **Supabase Postgres + pgvector** for the fresh v2 control-plane schema and RAG.
+## Engine (Railway)
 
-The retired v1 Railway/Express deployment is no longer the active target.
-
-## Engine
-
-Run from `apps/engine` with Python 3.12+.
-
-Required production env vars:
+Python FastAPI engine at `apps/engine`. Railway builds from the Dockerfile and starts via (see `apps/engine/railway.toml`):
 
 ```bash
-DATABASE_URL=<supabase postgres connection string>
-API_SECRET_KEY=<server-side API secret>
+python -m uvicorn cosmu.api.app:app --host 0.0.0.0 --port ${PORT:-8000}
 ```
 
-Optional vendor/env vars are enabled only when that module is active:
+Live URL: https://cosmu.up.railway.app
+
+## Web (Vercel)
+
+Next.js app at `apps/web`. Set both env vars to the Railway engine URL:
 
 ```bash
-OPENROUTER_API_KEY=<model router key>
-BINANCE_API_KEY=<trade-only key, withdrawals disabled>
-BINANCE_API_SECRET=<trade-only secret>
+API_BASE_URL=https://cosmu.up.railway.app
+NEXT_PUBLIC_API_BASE_URL=https://cosmu.up.railway.app
 ```
 
-Start command:
-
-```bash
-PYTHONPATH=apps/engine python3 -m cosmu.api.app
-```
-
-Migrations are represented by the v2 schema in `apps/engine/cosmu/knowledge/schema.sql`; the production path should run the equivalent Alembic migration before the worker starts.
-
-## Web
-
-Vercel runs `apps/web`.
-
-Required env vars:
-
-```bash
-ENGINE_API_URL=https://<engine-service>
-NEXT_PUBLIC_ENGINE_API_URL=https://<engine-service>
-```
-
-`ENGINE_API_URL` is used by server components. `NEXT_PUBLIC_ENGINE_API_URL` is used only for the local Console interaction path and must never carry secrets.
-
-## Verification
-
-```bash
-pnpm contracts:generate
-PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests
-pnpm typecheck
-pnpm build
-```
-
-Live trading remains off by default. Any mutating route that can affect money must stay authenticated server-side and gated by explicit confirmation.
+Push to the working branch auto-deploys both. Run `pnpm verify` first. Live trading is off by default.

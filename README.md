@@ -28,14 +28,14 @@ pnpm build
 Run the engine API:
 
 ```bash
-PYTHONPATH=apps/engine python3 -m cosmu.api.app
+PYTHONPATH=apps/engine python -m uvicorn cosmu.api.app:app --host 0.0.0.0 --port 8000
 ```
 
 Run the web app:
 
 ```bash
-ENGINE_API_URL=http://127.0.0.1:8000 \
-NEXT_PUBLIC_ENGINE_API_URL=http://127.0.0.1:8000 \
+API_BASE_URL=http://127.0.0.1:8000 \
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 \
 pnpm --filter @cosmu/web dev --port 3000
 ```
 

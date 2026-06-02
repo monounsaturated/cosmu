@@ -1,3 +1,5 @@
+> Historical/aspirational. Operational truth = AGENTS.md + docs/IMPLEMENTATION.md (Built sections). Hosting/runtime details here may be stale.
+
 # Cosmu v2 — Product Memo & Build Plan
 
 > **One line:** an autonomous, multi-venue quant **money machine**. A *deterministic master* runs a *population of self-improving, LLM-authored swing strategies*, backtested walk-forward with real per-venue fees, **farming strategies in realistic paper 24/7 with live trading OFF by default** — flip one toggle and qualifying strategies auto-promote to real capital. It competes on **returns, not speed**, and is steered by **plain chat (text or voice)**.

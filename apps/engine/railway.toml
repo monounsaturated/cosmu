@@ -21,7 +21,14 @@ restartPolicyMaxRetries = 3
 schedule = "0 */6 * * *"
 command = "python3 -m cosmu.research.loop --ingest"
 
-# Full autonomous cycle: ingest -> author -> gate/screen -> fund paper survivors -> recommendations.
+# Full autonomous cycle on REAL Binance data: ingest -> author -> gate/screen -> fund paper survivors ->
+# recommendations. Writes to the production DB (no --offline) and never runs the synthetic fixture.
 [[cron]]
 schedule = "0 */4 * * *"
 command = "python3 -m cosmu.master.scheduler"
+
+# FORWARD-TEST CLOCK: re-mark held paper positions against the latest real close (no orders, paper-only) so
+# funded sleeves accrue honest net-of-fee P&L over calendar time. Hourly is plenty for daily-bar strategies.
+[[cron]]
+schedule = "0 * * * *"
+command = "python3 -m cosmu.orchestrator.loop"

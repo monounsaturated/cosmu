@@ -1,3 +1,5 @@
+> Historical/aspirational. Operational truth = AGENTS.md + docs/IMPLEMENTATION.md (Built sections). Hosting/runtime details here may be stale.
+
 # Cosmu v2 — V1 Build Plan (definitive)
 
 > **`docs/VISION.md` is the contract (the *what* & *why*). This is the *how* — the deep, agent-followable build of V1.** If they disagree, fix one on purpose. This is a reference doc: read `§0` (index), jump to the one section you need. Don't load it whole.

@@ -1,3 +1,5 @@
+> Historical/aspirational. Operational truth = AGENTS.md + docs/IMPLEMENTATION.md (Built sections). Hosting/runtime details here may be stale.
+
 # Cosmu v2 — Master Plan
 
 > Status: **planning, pre-build.** Owner: read the box below. A fresh agent: read this whole file.
