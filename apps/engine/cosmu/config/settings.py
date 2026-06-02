@@ -55,8 +55,11 @@ class RiskSettings(BaseModel):
     sandbox_seconds_cap: int = 30
 
 
-# Repo root holds the shared .env files (engine runs from apps/engine, so also check CWD).
-_ROOT = Path(__file__).resolve().parents[4]
+# Repo root holds the shared .env files (engine runs from apps/engine, so also check CWD). In a deployed
+# container the package sits shallow (e.g. /app/cosmu/config/settings.py), so guard the index — production
+# reads process env only and never loads a file, so a best-effort root is fine.
+_parents = Path(__file__).resolve().parents
+_ROOT = _parents[4] if len(_parents) > 4 else _parents[-1]
 
 # APP_ENV (dev|test|qa|production, default dev) picks WHICH env file the profile loads. Production loads
 # NO file — it reads process env only (secrets injected by the platform, never committed). dev maps to the
