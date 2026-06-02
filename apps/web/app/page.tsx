@@ -9,6 +9,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { MoneyState, moneyMode } from "@/components/ui/money-state";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 import { EquityCurve } from "@/components/charts/equity-curve";
+import { LifecycleStrip } from "@/components/ui/lifecycle-strip";
 import { AutonomyPanel } from "@/components/autonomy/autonomy-panel";
 import { NeedsYouInbox } from "@/components/autonomy/needs-you-inbox";
 import { SystemIntelligence } from "@/components/intelligence/system-intelligence";
@@ -115,6 +116,9 @@ export default async function OverviewPage() {
         <Stat label="Opex vs alpha" value={portfolio.costs.length ? `${Math.round(portfolio.opex_vs_alpha * 100)}%` : "—"} accent="warn" icon={<Gauge className="size-4" />} />
         <Stat label="Daily opex" value={portfolio.costs.length ? formatUsd(costsTotal, 0) : "—"} accent="iris" />
       </section>
+
+      {/* How Cosmu works — the four stages, clickable. Clears up Lab / Paper / Live at a glance. */}
+      <LifecycleStrip />
 
       {/* Equity chart */}
       <section>

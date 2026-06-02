@@ -1,4 +1,5 @@
-import { Coins, Gauge, PieChart, Receipt, Scale, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, Coins, Gauge, PieChart, Radio, Receipt, Scale, TrendingDown, TrendingUp } from "lucide-react";
+import Link from "next/link";
 import { engineConfigured, getCosts, getLivePositions, getPortfolio } from "../data";
 import type { Allocation, CostSlice } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,6 +67,13 @@ export default async function PaperPage() {
             <div className="mt-1.5 text-[2.5rem] font-semibold leading-none tracking-tight tabular text-quiet sm:text-5xl">—</div>
           )}
         </div>
+        {/* The next step in the lifecycle: a forward-tested sleeve graduates to real money on Live. */}
+        <Link
+          href="/live"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-surface-2/40 px-3 py-2 text-[12.5px] font-medium text-foreground transition-colors hover:border-info/60 hover:bg-info/10 hover:text-info"
+        >
+          <Radio className="size-3.5 text-info" /> Promote to Live <ArrowRight className="size-3.5" />
+        </Link>
       </section>
 
       {/* KPIs */}

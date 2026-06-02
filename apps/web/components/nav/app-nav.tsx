@@ -23,15 +23,17 @@ import { cn } from "@/lib/utils";
 
 // One route per user question. `gated` items are kept deliberately dimmed (live trading is in
 // scope but off by default — the screen stays lean and the gate must pass before anything arms).
-type NavItem = { href: string; label: string; icon: typeof LayoutDashboard; gated?: boolean };
+type NavItem = { href: string; label: string; desc?: string; icon: typeof LayoutDashboard; gated?: boolean };
 
+// `desc` = the stage's role in the lifecycle, shown under the label in the sidebar so the mental model
+// (discover → screen → forward-test → live) reads straight off the nav. Lab == Research.
 export const navItems: NavItem[] = [
-  { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/lab", label: "Lab", icon: Microscope },
-  { href: "/strategies", label: "Strategies", icon: ListChecks },
-  { href: "/paper", label: "Paper", icon: Wallet },
-  { href: "/live", label: "Live", icon: Radio, gated: true },
-  { href: "/settings", label: "Settings", icon: SlidersHorizontal }
+  { href: "/", label: "Overview", desc: "Are we making money?", icon: LayoutDashboard },
+  { href: "/lab", label: "Lab", desc: "Discover · research", icon: Microscope },
+  { href: "/strategies", label: "Strategies", desc: "Screened pipeline", icon: ListChecks },
+  { href: "/paper", label: "Paper", desc: "Forward-test", icon: Wallet },
+  { href: "/live", label: "Live", desc: "Real money", icon: Radio, gated: true },
+  { href: "/settings", label: "Settings", desc: "Universe · data", icon: SlidersHorizontal }
 ];
 
 // Mobile dock: the four primary monitoring tabs always pinned; everything else lives in the More
@@ -74,7 +76,12 @@ export function SideNavLinks({ onNavigate, collapsed = false }: { onNavigate?: (
             )}
           >
             <item.icon className={cn("size-[17px] shrink-0 transition-colors", active ? "text-iris-soft" : "text-quiet group-hover:text-iris-soft")} />
-            {!collapsed && <span>{item.label}</span>}
+            {!collapsed && (
+              <span className="flex min-w-0 flex-col leading-tight">
+                <span>{item.label}</span>
+                {item.desc && <span className="text-[10.5px] text-quiet">{item.desc}</span>}
+              </span>
+            )}
           </Link>
         );
       })}
