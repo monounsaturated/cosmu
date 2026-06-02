@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from cosmu.config.settings import Settings
-from cosmu.data.backtest import run_strategy_backtest
+from cosmu.data.backtest import align_asof, run_strategy_backtest
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
@@ -21,6 +21,16 @@ from cosmu.spine.venue import default_catalog
 from cosmu.strategy.compiler import compile_spec
 from cosmu.strategy.pine import translate_pine
 from cosmu.strategy.spec import ParamSpace, StrategySpec
+
+
+# Leading-signal (alt-data) features wired into the screen's point-in-time join: feature name →
+# (provider, metric) in the alt-data store, keyed per SYMBOL. Without an entry here a feature is price/TA
+# only; alt features absent from this map (or with no stored data) read None and their conditions can't fire.
+# funding_rate is the first wired in (the research's #1 contrarian filter). Add OI/liquidations/etc. as they
+# earn their place — each must match how cosmu/ingest stores it (provider_name + metric).
+_ALT_FEATURE_KEYS: dict[str, tuple[str, str]] = {
+    "funding_rate": ("binance", "funding_rate"),
+}
 
 
 @dataclass
@@ -413,7 +423,50 @@ class FarmLoop:
             fit_params(cand.spec),
             market,
             fee_bps=venue.taker_fee_bps,
+            alt_by_symbol=self._alt_by_symbol(cand.spec, market),
         )
+
+    def _alt_store(self):  # noqa: ANN202 — AltDataStore | PgAltDataStore
+        """The point-in-time alt-data store, chosen the SAME way ingest/api do: postgres URL → PgAltDataStore
+        over the knowledge Store, else the JSONL AltDataStore. Cached per loop."""
+        if "alt_store" not in self._cache:
+            url = self.settings.database_url
+            if url.startswith("postgres://") or url.startswith("postgresql://"):
+                from cosmu.data.altdata import PgAltDataStore
+
+                self._cache["alt_store"] = PgAltDataStore(self.store)
+            else:
+                from cosmu.data.altdata import AltDataStore
+
+                self._cache["alt_store"] = AltDataStore()
+        return self._cache["alt_store"]
+
+    def _alt_by_symbol(self, spec: StrategySpec, market: dict[str, list]) -> dict | None:
+        """Build the per-symbol point-in-time alt-data join for the leading-signal features this spec uses
+        (funding_rate, …). Without this the screen can only evaluate price/TA features and any alt condition
+        silently fails (no trades). Offline / no alt data → None (price-only, unchanged). Never raises."""
+        names = {c.feature.name for c in [*spec.entry, *spec.exit.signal_exits]} & set(_ALT_FEATURE_KEYS)
+        if not names:
+            return None
+        try:
+            store = self._alt_store()
+        except Exception:  # noqa: BLE001 — no alt store available → price-only screen, never abort
+            return None
+        out: dict[str, dict[str, dict[str, float]]] = {}
+        for symbol, bars in market.items():
+            feats: dict[str, dict[str, float]] = {}
+            for name in names:
+                provider, metric = _ALT_FEATURE_KEYS[name]
+                try:
+                    points = store.read_all(provider, symbol, metric)
+                except Exception:  # noqa: BLE001 — a missing series is just no data for that feature
+                    points = []
+                aligned = align_asof(points, bars)
+                if aligned:
+                    feats[name] = aligned
+            if feats:
+                out[symbol] = feats
+        return out or None
 
 
 def _binance_symbols(spec: StrategySpec, enabled_venues: set[str], enabled_classes: set[str]) -> list[str]:

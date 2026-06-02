@@ -1,0 +1,47 @@
+{
+  "name": "Cross-sectional momentum (weekly, funding + vol gated)",
+  "rationale": "Relative-strength momentum is the one long-only crypto class with published cost-survival headroom: a ~30d lookback rebalanced weekly survives to ~125bps round-trip, an order of magnitude above Binance spot's ~20bps. The edge is amplified beta, so two filters keep us out of the regimes where it bleeds: perp funding below a fitted ceiling (avoid crowded, over-levered tops - high carry predicts crashes) and realized vol below a fitted ceiling (sit out turbulent regimes). Per-instrument approximation of a true top-k cross-sectional rank: each held name must independently be strong, trend-aligned, uncrowded, and calm.",
+  "catalyst": "weekly momentum rotation in a calm, non-crowded regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 7,
+    "max_hold_days": 7
+  },
+  "entry": [
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lookback" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "funding_rate" }, "op": "lt", "threshold": { "param": "funding_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "ma_lookback" } }, "op": "gt", "threshold": { "param": "trend_floor" } },
+    { "feature": { "name": "vol_realized" }, "op": "lt", "threshold": { "param": "vol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lookback" } }, "op": "lt", "threshold": { "param": "mom_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lookback":    { "kind": "int",   "lo": 20,      "hi": 35,   "step": 1 },
+    "mom_floor":       { "kind": "float", "lo": 0.02,    "hi": 0.15 },
+    "mom_exit":        { "kind": "float", "lo": -0.05,   "hi": 0.01 },
+    "funding_ceiling": { "kind": "float", "lo": 0.0001,  "hi": 0.01 },
+    "ma_lookback":     { "kind": "int",   "lo": 30,      "hi": 100,  "step": 1 },
+    "trend_floor":     { "kind": "float", "lo": 0.0,     "hi": 0.05 },
+    "vol_ceiling":     { "kind": "float", "lo": 0.02,    "hi": 0.12 },
+    "stop":            { "kind": "float", "lo": 0.05,    "hi": 0.15 },
+    "tp":              { "kind": "float", "lo": 0.08,    "hi": 0.30 },
+    "time_stop":       { "kind": "int",   "lo": 5,       "hi": 10,   "step": 1 }
+  }
+}

@@ -9,6 +9,7 @@ from decimal import Decimal
 
 from cosmu.data.market import Bar
 from cosmu.master.scorer import BacktestMetrics, probabilistic_sharpe, sample_moments
+from cosmu.data.altdata import AltDataPoint
 from cosmu.strategy.spec import Condition, ParamRef, StrategySpec
 
 _REGIMES = ("bull", "bear", "chop")
@@ -44,12 +45,17 @@ def run_strategy_backtest(
     slippage_bps: Decimal = Decimal("5"),
     impact_bps: Decimal = Decimal("50"),
     size_multiplier: float = 1.0,
+    alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
 ) -> BacktestMetrics:
     """Backtest a strategy over real bars, reserving the last fifth as holdout.
 
     `slippage_bps` is the fixed half-spread; `impact_bps` scales market impact with participation
     (order notional / bar quote-volume), so larger size erodes the edge — the capacity dimension.
     `size_multiplier` scales position notional, used to probe capacity decay.
+    `alt_by_symbol` maps symbol → feature → {bar.ts.isoformat(): value}: the point-in-time alt-data join
+    (funding_rate, etc.) so leading-signal strategies are actually evaluable, not just price/TA ones. The
+    values are keyed by bar timestamp, so the validation/holdout slice carries the right value automatically.
+    None → price/TA only (alt features read None), i.e. exactly the prior behaviour.
     """
 
     if not market:
@@ -57,13 +63,14 @@ def run_strategy_backtest(
 
     validation_runs: list[SymbolRun] = []
     holdout_runs: list[SymbolRun] = []
-    for bars in market.values():
+    for symbol, bars in market.items():
         if len(bars) < 80:
             continue
+        alt = (alt_by_symbol or {}).get(symbol)
         split = max(40, int(len(bars) * 0.8))
-        validation_runs.append(_run_symbol(spec, params, bars[:split], fee_bps, slippage_bps, impact_bps, size_multiplier))
+        validation_runs.append(_run_symbol(spec, params, bars[:split], fee_bps, slippage_bps, impact_bps, size_multiplier, alt))
         holdout_runs.append(
-            _run_symbol(spec, params, bars[split - _warmup_bars(spec, params) :], fee_bps, slippage_bps, impact_bps, size_multiplier)
+            _run_symbol(spec, params, bars[split - _warmup_bars(spec, params) :], fee_bps, slippage_bps, impact_bps, size_multiplier, alt)
         )
 
     if not validation_runs:
@@ -111,11 +118,12 @@ def _run_symbol(
     slippage_bps: Decimal,
     impact_bps: Decimal,
     size_multiplier: float,
+    alt: dict[str, dict[str, float]] | None = None,
 ) -> SymbolRun:
     closes = [float(bar.close) for bar in bars]
     highs = [float(bar.high) for bar in bars]
     lows = [float(bar.low) for bar in bars]
-    features = _feature_matrix(spec, params, bars)
+    features = _feature_matrix(spec, params, bars, alt)
     regimes = _regime_labels(closes)
     fee = float(fee_bps) / 10000.0
     base_slip = float(slippage_bps) / 10000.0
@@ -324,7 +332,37 @@ def _regime_labels(closes: list[float], lookback: int = 30, band: float = 0.05) 
     return labels
 
 
-def _feature_matrix(spec: StrategySpec, params: dict[str, float], bars: list[Bar]) -> dict[str, list[float | None]]:
+def align_asof(points: list[AltDataPoint], bars: list[Bar]) -> dict[str, float]:
+    """Point-in-time join of an alt-data series onto a bar series. Each bar gets the LATEST alt value whose
+    `available_at` is <= that bar's timestamp — i.e. what we would actually have known at the bar. A point
+    published after the bar is NEVER used (no look-ahead). Keyed by bar.ts.isoformat() so the value travels
+    with the bar through any later slice (validation / holdout). Bars before the first available point get no
+    entry (the feature reads None there, exactly as if the data did not exist yet)."""
+    if not points or not bars:
+        return {}
+    pts = sorted(points, key=lambda p: p.available_at)
+    out: dict[str, float] = {}
+    i = 0
+    current: float | None = None
+    for bar in sorted(bars, key=lambda b: b.ts):
+        while i < len(pts) and pts[i].available_at <= bar.ts:
+            current = pts[i].value
+            i += 1
+        if current is not None:
+            out[bar.ts.isoformat()] = current
+    return out
+
+
+# Features computed directly from the bar series; everything else is alt-data joined point-in-time.
+_PRICE_FEATURES = {"ret_Nd", "rsi", "bb_z", "vol_realized", "atr", "adx"}
+
+
+def _feature_matrix(
+    spec: StrategySpec,
+    params: dict[str, float],
+    bars: list[Bar],
+    alt: dict[str, dict[str, float]] | None = None,
+) -> dict[str, list[float | None]]:
     wanted = {condition.feature.name for condition in [*spec.entry, *spec.exit.signal_exits]}
     closes = [float(bar.close) for bar in bars]
     highs = [float(bar.high) for bar in bars]
@@ -345,7 +383,10 @@ def _feature_matrix(spec: StrategySpec, params: dict[str, float], bars: list[Bar
         elif name == "adx":
             out[name] = _adx(highs, lows, closes, lookback)
         else:
-            out[name] = [None] * len(bars)
+            # Alt-data feature (funding_rate, etc.): read the point-in-time series joined by the caller,
+            # looked up per bar timestamp. Absent series → None (the condition then can't fire — honest).
+            series = (alt or {}).get(name, {})
+            out[name] = [series.get(bar.ts.isoformat()) for bar in bars]
     return out
 
 
