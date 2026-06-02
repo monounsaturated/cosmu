@@ -14,6 +14,8 @@ coverage
 __pycache__/
 *.pyc
 *.pyo
+build/
+*.egg-info/
 
 # Vendored prior-art reference (ingested into RAG later, not product code)
 TradingAgents-main/

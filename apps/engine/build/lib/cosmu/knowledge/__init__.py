@@ -1,2 +1,0 @@
-"""Knowledge and persistence package."""
-
