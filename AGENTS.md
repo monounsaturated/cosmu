@@ -77,6 +77,7 @@ Skills are **runnable playbooks** — the canonical procedure for each common ta
 | deploy-iterate | `.claude/skills/deploy-iterate/SKILL.md` |
 | debug-strategy | `.claude/skills/debug-strategy/SKILL.md` |
 | import-pine | `.claude/skills/import-pine/SKILL.md` |
+| pine-from-url | `.claude/skills/pine-from-url/SKILL.md` |
 | start-session | `.claude/skills/start-session/SKILL.md` |
 | split-tasks | `.claude/skills/split-tasks/SKILL.md` |
 | dump-idea | `.claude/skills/dump-idea/SKILL.md` |
