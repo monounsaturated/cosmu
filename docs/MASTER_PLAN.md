@@ -1,6 +1,6 @@
 # Cosmu — Master Plan
 
-> **The single operating plan.** What Cosmu *is now* (verified against code), the real gaps, the target, and the ordered roadmap with copy-paste agent prompts. Integrates rather than duplicates: the strategic contract is [VISION.md](VISION.md), deep specs are [BUILD_PLAN.md](BUILD_PLAN.md), current built-state is [IMPLEMENTATION.md](IMPLEMENTATION.md), invariants/skills are [../AGENTS.md](../AGENTS.md). This supersedes the operator topology in HOW_TO_USE / OWNER_SETUP / DEPLOYMENT.
+> **The single operating plan.** What Cosmu *is now* (verified against code), the real gaps, the target, and the ordered roadmap with copy-paste agent prompts. Integrates rather than duplicates: the strategic contract is [VISION.md](VISION.md), deep specs are [BUILD_PLAN.md](BUILD_PLAN.md), current built-state is [IMPLEMENTATION.md](IMPLEMENTATION.md), invariants/skills are [../AGENTS.md](../AGENTS.md). Operator/deploy detail that used to live in HOW_TO_USE & DEPLOYMENT is folded in here (those docs retired); first-time setup stays in [OWNER_SETUP.md](OWNER_SETUP.md).
 
 ## Index (jump to the answer)
 1. What's real today (verified) · 2. The real remaining gaps · 3. North star & non-negotiables · 4. Target architecture · 5. Data & signals · 6. ML discipline (and why no RL yet) · 7. Strategy-invention loop · 8. Live + SIM together · 9. Infra · 10. Control surfaces · 11. Orchestration as a reflex · 12. Roadmap (waves) · 13. Operator guide · 14. Locked decisions · 15. Open questions.
@@ -19,7 +19,7 @@ The engine is **~85% real, deterministic, and honest.** Confirmed in code:
 - **DB** (`knowledge/schema_postgres.sql`): 26 tables incl. append-only `events` (money-truth ledger), global `trials` ledger (DSR deflation), `alt_data`, `tracks`, pgvector on `skills`/`sources`.
 
 ## 2. The real remaining gaps (this is the actual work)
-1. **Forward-test clock has no 30-day minimum lock.** `mark_tracks()` marks held positions daily, but nothing enforces "≥30 forward days net-positive before live-eligible." Today it's advisory text, not a circuit breaker. **← highest-integrity fix.**
+1. **Forward-test maturity isn't surfaced.** `mark_tracks()` marks held positions daily on real closes, but the **≥30-day net-positive proof** isn't computed/shown as a live-readiness signal. Per owner decision it's **advisory** (the human launches via the modal) — so the fix is to **surface it clearly**, not hard-block. **← surface it.**
 2. **No automated CI.** `pnpm verify` is manual; push = deploy. A skipped verify can ship a broken `main`. **← cheapest high-ROI fix.**
 3. **Authoring lacks adversarial disconfirmers.** Only ~6 hard-coded briefs; the gate culls junk but the author isn't structurally pushed to test anti-patterns.
 4. **No self-reinforcement of *logic*.** Evolution mutates params; it does not yet *isolate a winning signal and graft it onto other assets/strategies* (the "thinking machine" you want).
@@ -51,7 +51,7 @@ Every source = timestamped point-in-time feature + a **trust score** (realized c
 Keep ML **classical and explainable** (survival model + meta-labeling + regime). **No RL / deep nets yet** — they overfit financial series and are unverifiable; SOTA-for-its-own-sake is a trap. The edge is clean point-in-time data + ruthless cost accounting + FDR discipline + a few real signals. Revisit deep methods only with a proven, profitable classical baseline to beat.
 
 ## 7. Strategy-invention loop (self-reinforcing core)
-`scan-signals` / `pine-from-url` / `evolve-strategy` → **COHORT GATE (FDR)** → forward-test clock (≥30d SIM net-positive) → your click → LIVE (5 interlocks, tiny size). Volume of candidates can't manufacture a winner — FDR is the brake. `evolve-strategy` = isolate a gate-passed signal's logic, graft onto other assets, mix survivors → new cohort → re-Gate.
+`scan-signals` / `pine-from-url` / `evolve-strategy` → **COHORT GATE (FDR)** → forward-test proof (≥30d net-positive, **advisory**) → **human launch via modal** → LIVE (5 interlocks, tiny size). Volume of candidates can't manufacture a winner — FDR is the brake. `evolve-strategy` = isolate a gate-passed signal's logic, graft onto other assets, mix survivors → new cohort → re-Gate.
 
 ## 8. Live + SIM together (human launches; LLM only suggests)
 SIM always runs (everything proves itself on its own $100k track). **Going live is a deliberate human action — no time gate.** Clicking a strategy → **Launch-live modal**: pick asset + venue, see **fees fetched live & shown** (per-venue, refreshed daily), set **budget (default $100, editable)** + risk settings, confirm. The **5 interlocks remain the hard safety**; the **30-day forward-test is now ADVISORY** — surfaced as an LLM/UI recommendation ("eligible / not yet proven"), the human may launch anyway. **Venue key-gating:** a venue is greyed-out / cannot arm unless its API keys are present in the engine env (Railway server-side; the UI reads a `configured: bool` flag, never the keys). Prep both crypto (Binance) and equities (IBKR) this way; each stays inert until its keys are plugged.
@@ -87,7 +87,7 @@ This table is the **source of truth for infra/cost**; an in-app **cost/infra vie
 ## 12. Roadmap (waves)
 **Wave 1 — foundations + highest integrity/ROI**
 - W1.1 CI GitHub Action (`pnpm verify` on PRs to main) — *config · local · sonnet · PR*
-- W1.2 Forward-test **30-day lock** (enforce in code) — *engine · cloud · opus · worktree · PR*
+- W1.2 Forward-test **maturity signal** (compute + surface ≥30d net-positive as *advisory* live-readiness; do NOT hard-block — human decides) — *engine · cloud · opus · PR*
 - W1.3 xAI/Grok **Twitter source + influencer scoring** (follow `/add-data-source`) — *engine · cloud · sonnet · worktree · PR*
 - W1.4 **Launch-live modal + dynamic fees + venue key-gating** (pick asset/venue, live fees, budget default $100, grey-out venues with no keys; prep crypto+equities) — *web+engine · cloud · sonnet · PR*
 - W1.5 **Cost/ROI + infra view** (wire `costs`+`llm_calls` writers; render the infra cost table + per-strategy ROI) — *web+engine · cloud · sonnet · PR*
@@ -112,6 +112,7 @@ This table is the **source of truth for infra/cost**; an in-app **cost/infra vie
 - **Maintain:** `/groom` + `/tech-debt` (prune), `/align-check` (drift check).
 - **Go live:** open a strategy → **Launch-live modal** → pick venue (must have keys), confirm budget ($100 default) → arm. 30-day proof is shown as advice, not a blocker; the 5 interlocks are the hard safety.
 - **Watch:** `/` overview, `/lab`, `/forward-test`, `/mind`, `/live`.
+- **Cadence (Railway crons):** ~6h ingest · 4h autonomous tick · hourly mark-to-market. Setup checklist: [OWNER_SETUP.md](OWNER_SETUP.md).
 
 ## 14. Locked decisions (this cycle)
 - **Live:** human launches via a modal (asset/venue, live fees, **budget default $100 editable**, settings); **no time gate** — 30-day proof is advisory, LLM may suggest, human decides; 5 interlocks are the hard safety; **venues grey-out without keys**.

@@ -105,7 +105,7 @@ the new surface + glossary, since renaming live Postgres columns risks breaking 
 - **Regime persistence** — `regime_label` hardcoded `"mixed"` (`evolution/loop.py`, `lab/finder.py`); per-trade
   regimes computed then discarded. Persist one representation; couple the web regime grid **and the Mind's
   regime-coverage read** (which already consumes it).
-- **Forward-test → Live auto-promotion** — enforce/surface the N≥30-forward-day eligibility as a clock-driven gate.
+- **Forward-test → Live** — surface the N≥30-forward-day proof as an **advisory** live-readiness signal (the operator decides when to launch; not an auto-promotion gate).
 - **Gate hardening** — add `must_beat_buy_and_hold` + route the cohort through `research/gate.py:PREREGISTERED_BAR`.
 - **Wire alt-data feeds** (`fear_greed` is live; `news_sentiment`, `liquidation_cascade`, `macro_regime`, etc.)
   via the **`add-data-source`** skill so the Mind's market analysts stop abstaining and the inert inbox strategies

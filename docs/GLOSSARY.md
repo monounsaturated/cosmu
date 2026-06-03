@@ -19,7 +19,7 @@ The single source of truth for product terms. **DB tables, API fields, UI labels
 |------|---------------------|
 | **Lab** | Discovery. The research brain + **Strategy Finder** + the config-library author screen Versions before any SIM money. |
 | **Strategies** | The screened pipeline — Versions that cleared the screen, grouped by stage. |
-| **Forward-test** | The validation stage — each proven Version trades on its **own standalone Track** in SIM 24/7 to prove an edge over **N ≥ 30 forward days** before it is live-eligible. (This stage was formerly mislabelled "Paper".) |
+| **Forward-test** | The validation stage — each proven Version trades on its **own standalone Track** in SIM 24/7. A **≥ N=30 forward-day** net-of-fee proof is the **recommended** live-readiness signal (surfaced, advisory — the operator decides when to launch; the 5 interlocks are the hard gate). (This stage was formerly mislabelled "Paper".) |
 | **Live** | Real money. Off by default; only gate-passing Versions promote, and only when the live toggle is armed. Live bots are launched manually with dedicated capital (1-button + confirm). |
 
 ## Judging

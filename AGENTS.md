@@ -18,7 +18,7 @@ Stack:
   - **Cloud Claude Code session:** anything heavy — the **full `pnpm verify` / `engine:test`**, **`next build`**, **grid-search / walk-forward / backtest sweeps**, broad multi-file refactors. Don't fight OOM locally; switch to cloud.
   - **Cost lever:** heavy *LLM* work (mass authoring, research, judgment) belongs to **Claude Code on the flat Max subscription**, NOT per-token API calls — the sub is already paid. The deployed engine's autonomous loop uses cheap/free OpenRouter models. **Any coding agent: if a task will spike RAM or burn many tokens, say so and recommend a cloud session — don't silently grind locally.**
 - **Cloud runs only:** the always-on API for the UI, gate disposition on authored specs, a mark-to-market cron, and (eventually) live execution.
-- **Forward-test clock.** Funded SIM tracks are **held and marked-to-market across bars**. A track must show positive net-of-fee SIM P&L over **N ≥ 30 forward days** before it is live-eligible. Each survivor proves itself on its **own standalone track** — there is NO pooled wallet.
+- **Forward-test clock.** Funded SIM tracks are **held and marked-to-market across bars** on real closes. A track's **≥ 30 forward-day net-of-fee proof** is the **recommended** live-readiness signal — *surfaced, not enforced*: the operator may launch a strategy live sooner via the launch modal, at their discretion. The **hard requirement is the 5 interlocks** (incl. gate-passed). Each survivor proves itself on its **own standalone track** — there is NO pooled wallet.
 - **Deterministic funding gate.** A deterministic scorer — not any LLM — is the only judge that funds SIM tracks: deflated Sharpe, CSCV-PBO, holdout, regime folds, **and a cohort-level Benjamini-Hochberg FDR**. The FDR control is wired into the deployed `FarmLoop.run_cohort` (`GateSettings.fdr_q`, default 0.10): a candidate that clears `score()` but fails BH-FDR across its cohort is demoted (`passed_gates→0`, status `killed`, Track removed) before the orchestrator can fund it — so authoring more candidates per tick can't manufacture a winner. *Still pending:* `must_beat_buy_and_hold` + routing the cohort through the full `research/gate.py:PREREGISTERED_BAR`.
 
 ## Lifecycle
@@ -41,7 +41,7 @@ Cheapest path = author+validate locally → screen locally or in a cloud session
 - **Look-ahead / survivorship** → point-in-time feature joins; no magic numbers (params fit from data); the **graveyard is kept** (dead strategies stay visible, no survivor bias).
 - **Costs hand-waved** → every screen is **net of per-venue fees + slippage**; ranking is net-of-cost profit, never gross Sharpe.
 - **Crowded-leverage blowups** → funding/vol gates. **Ruin** → live OFF + 5 interlocks + per-strategy caps, no pooled wallet, **no martingale/revenge sizing**.
-- **Curve-fit to one regime** → walk-forward OOS + regime folds; a track must also survive **N ≥ 30 forward days** of real-time SIM before it's live-eligible.
+- **Curve-fit to one regime** → walk-forward OOS + regime folds; **≥ 30 forward days** of real-time SIM is the recommended live-readiness proof (advisory — the operator decides when to launch; the 5 interlocks are the hard gate).
 
 ## Dev gate (before every push)
 ```
@@ -111,12 +111,12 @@ Skills are **runnable playbooks** — the canonical procedure for each common ta
 - **Never**: LLM fires a live order, agent defines its own fitness, hand-maintain Python↔TS types, commit secrets, martingale/revenge sizing.
 
 ## Read order (one doc, not all)
-0. **`docs/MASTER_PLAN.md`** — the single operating plan: current verified state, real gaps, target, roadmap (waves). Start here for "what now?".
 1. **This file** — invariants, env, skills.
-2. **`docs/IMPLEMENTATION.md`** — what's built, what's next (last 3 "### Built" sections).
-2b. **`IDEAS.md`** — the product/engineering idea inbox (`/triage-ideas` promotes ripe ideas into `BACKLOG.md`).
-3. **The module's `# intent:` header** — every file opens with purpose · inputs · outputs · invariants.
-4. **`rg` for the exact symbol** — don't crawl the repo.
+2. **`docs/MASTER_PLAN.md`** — the single operating plan: verified state, real gaps, target, roadmap (waves). Start here for "what now?".
+3. **`docs/IMPLEMENTATION.md`** — what's built, what's next (last 3 "### Built" sections).
+4. **`IDEAS.md`** — the product/engineering idea inbox (`/triage-ideas` promotes ripe ideas into `BACKLOG.md`).
+5. **The module's `# intent:` header** — every file opens with purpose · inputs · outputs · invariants.
+6. **`rg` for the exact symbol** — don't crawl the repo.
 
 ## Architecture
 ```
