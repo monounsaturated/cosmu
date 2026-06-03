@@ -94,6 +94,24 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         ),
         transform_version=TWITTER_TRANSFORM_VERSION,
     ),
+    # Event/news scorer: a typed, dated, point-in-time signal with sign [-1,+1] and magnitude [0,1].
+    # The LLM (when keyed) standardizes/scores the headline text — ONLY at ingest, NEVER on the gate path.
+    # Without an LLM key the offline lexicon is used (StandardizedNews path). tier1 + low-confidence
+    # until validated OOS; the gate down-weights until it earns its place.
+    FeatureDefinition(
+        name="news_event_score",
+        source="news",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="headline availability time (ts == available_at; point-in-time, no look-ahead)",
+        prior=(
+            "A typed, dated event/news signal: sign + magnitude derived from the headline text at ingest. "
+            "Positive = bullish catalyst (approval, surge, adoption); negative = bearish event (hack, ban, crash). "
+            "The LLM standardizes text only at ingest; NEVER on the gate/scoring/money path. "
+            "tier1 + low-confidence until validated OOS."
+        ),
+        transform_version="news-event-score-v1",
+    ),
     FeatureDefinition(name="pm_implied_prob", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Odds are a cross-market probability signal."),
     FeatureDefinition(name="pm_prob_velocity", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Probability repricing speed identifies changing beliefs."),
     FeatureDefinition(name="pm_book_depth", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Depth defines fillable capacity."),

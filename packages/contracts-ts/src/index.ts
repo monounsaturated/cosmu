@@ -620,6 +620,19 @@ export interface MlResponse {
   trained: boolean;
 }
 
+export interface NewsEventRow {
+  available_at?: string | null;
+  event_type: "bullish" | "bearish" | "neutral";
+  symbol: string;
+  ts?: string | null;
+  value: number;
+}
+
+export interface NewsIntelResponse {
+  events: NewsEventRow[];
+  symbol: string;
+}
+
 export interface OverviewResponse {
   costs: CostSlice[];
   equity_curve: Point[];
@@ -715,6 +728,24 @@ export interface Skill {
 
 export interface SkillsResponse {
   skills: Skill[];
+}
+
+export interface SourceTrustResponse {
+  as_of: string;
+  rows: SourceTrustRow[];
+}
+
+export interface SourceTrustRow {
+  features: string[];
+  freshness_label: string;
+  gate_pass_count: number;
+  hours_since?: number | null;
+  last_at?: string | null;
+  source: string;
+  status: "fresh" | "recent" | "aging" | "stale" | "no data";
+  summary: string;
+  tier: string;
+  trust_score: number;
 }
 
 export interface StrategyDetailResponse {

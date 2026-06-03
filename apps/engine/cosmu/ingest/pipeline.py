@@ -6,7 +6,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from cosmu.data.altdata import AltDataProvider, AltDataStore, NewsProvider
-from cosmu.ingest.standardize import StandardizedNews, standardize_news
+from cosmu.ingest.standardize import (
+    NewsEventScore,
+    StandardizedNews,
+    score_news_events,
+    scored_events_to_altdata,
+    standardize_news,
+)
 
 
 @dataclass(frozen=True)
@@ -82,6 +88,31 @@ def ingest_free_sources(
         "news_sentiment": ingest_news_sentiment(alt_store, news_provider, symbols, llm=llm),
     }
     return IngestSummary(counts=counts)
+
+
+def ingest_news_event_score(
+    alt_store: AltDataStore,
+    news_provider: NewsProvider,
+    symbols: list[str],
+    *,
+    provider_name: str = "news",
+    limit: int = 500,
+    llm: Callable[[str], NewsEventScore] | None = None,
+) -> int:
+    """Score headlines into typed point-in-time `news_event_score` (sign × magnitude) and store them.
+
+    The LLM (when present) ONLY standardizes the text — it is NEVER on the gate/scoring/money path.
+    Content-hash cached across symbols so a repeated headline costs nothing. Offline path uses the
+    deterministic lexicon scorer. Returns the total number of scored points appended."""
+    cache: dict = {}
+    total = 0
+    for symbol in symbols:
+        events = score_news_events(news_provider.fetch_news(symbol, limit=limit), cache=cache, llm=llm)
+        points = scored_events_to_altdata(events)
+        if points:
+            alt_store.append(provider_name, symbol, "news_event_score", points)
+            total += len(points)
+    return total
 
 
 def ingest_liquidations(alt_store: AltDataStore, provider: AltDataProvider, symbols: list[str], *, provider_name: str = "coinglass", limit: int = 1000) -> int:

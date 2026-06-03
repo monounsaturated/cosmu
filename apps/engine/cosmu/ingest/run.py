@@ -32,6 +32,7 @@ from cosmu.data.sources.xai_twitter import XaiTwitterProvider
 from cosmu.ingest.pipeline import (
     ingest_liquidations,
     ingest_market_wide_numeric,
+    ingest_news_event_score,
     ingest_news_sentiment,
     ingest_numeric,
     ingest_putcall,
@@ -266,6 +267,11 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
         lambda: ingest_market_wide_numeric(
             store, p.xai_twitter, source_metric="twitter_influencer_sentiment", stored_metric="twitter_influencer_sentiment", provider_name="xai"
         ),
+    )
+    # Event/news scorer: typed, dated, point-in-time signal (sign × magnitude). The LLM standardizes text
+    # ONLY at ingest (cached); the offline lexicon is used when no LLM key is set.
+    counts["news_event_score"] = _safe(
+        "news_event_score", lambda: ingest_news_event_score(store, p.news, symbols, llm=p.llm)
     )
     return counts
 

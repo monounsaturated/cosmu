@@ -767,6 +767,7 @@ _STORE_PROVIDER_OF = {
     "funding_rate": "binance",
     "fear_greed": "alternative.me",
     "news_sentiment": "news",
+    "news_event_score": "news",  # typed event/news scorer: sign × magnitude, stored per-symbol
     "risk_on": "polymarket",
     "macro_regime": "fred",
     "liquidations": "coinglass",

@@ -2,9 +2,12 @@
 // THINKS (the analyst panel debating a market read), and what it has LEARNED (memory, the ML model, regimes,
 // gate efficiency). A reasoning surface only: the railguard is shown up front — it reasons, it never moves
 // money. The deterministic gate alone disposes.
+//
+// Source scoreboard + news/intel panel are shown on this page. Trust = freshness × gate contribution.
+// Honest: a source with no data shows "no data" — never fabricated.
 
-import { BookOpen, Brain, Database, GraduationCap, ShieldCheck } from "lucide-react";
-import { getMind, getSkills, engineConfigured } from "../data";
+import { BookOpen, Brain, Database, GraduationCap, Newspaper, ShieldCheck, Star } from "lucide-react";
+import { getMind, getSkills, getSourceTrust, getNewsIntel, engineConfigured } from "../data";
 import { SectionHeader } from "@/components/ui/section";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,9 +17,16 @@ import { MindKnows } from "@/components/mind/mind-knows";
 import { MindLearnings } from "@/components/mind/mind-learnings";
 import { MemoryInsights } from "@/components/learning/memory-insights";
 import { SkillsGrid } from "@/components/learning/skills-grid";
+import { SourceTrustScoreboard } from "@/components/mind/source-trust-scoreboard";
+import { NewsIntelPanel } from "@/components/mind/news-intel-panel";
 
 export default async function MindPage() {
-  const [{ mind, connected }, { skills }] = await Promise.all([getMind(), getSkills()]);
+  const [{ mind, connected }, { skills }, { trust }, { intel }] = await Promise.all([
+    getMind(),
+    getSkills(),
+    getSourceTrust(),
+    getNewsIntel("BTCUSDT", 20),
+  ]);
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-8 lg:px-7">
@@ -46,6 +56,20 @@ export default async function MindPage() {
           <Database className="size-4 text-iris-soft" /> What it knows
         </h3>
         <MindKnows knows={mind.knows} />
+      </section>
+
+      {/* SOURCE SCOREBOARD + NEWS/INTEL — freshness × gate contribution per source; recent news events */}
+      <section className="space-y-3">
+        <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
+          <Star className="size-4 text-iris-soft" /> Source trust &amp; news/intel
+        </h3>
+        <p className="text-[11.5px] text-muted">
+          Trust = freshness × realized gate contribution. Honest: sources with no data show &quot;no data&quot;. Never fabricated.
+        </p>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <SourceTrustScoreboard rows={trust.rows} asOf={trust.as_of} />
+          <NewsIntelPanel events={intel.events} symbol={intel.symbol} />
+        </div>
       </section>
 
       {/* WHAT IT HAS LEARNED — ML, regimes, gate efficiency, memory, skills */}
