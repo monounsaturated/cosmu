@@ -24,6 +24,22 @@ export function formatSigned(value: number) {
   return `${value >= 0 ? "+" : "-"}${formatUsd(Math.abs(value))}`;
 }
 
+// Compact "how long ago" for timestamps (last tick, last event). Returns null for a null/unparseable
+// input so callers render an honest "—" rather than a fabricated time. Tense-free, terse: "3m", "2h", "5d".
+export function timeAgo(ts: string | null | undefined): string | null {
+  if (!ts) return null;
+  const then = Date.parse(ts);
+  if (Number.isNaN(then)) return null;
+  const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (secs < 45) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
 const EVENT_LABELS: Record<string, string> = {
   strategy_authored: "Strategy authored",
   strategy_gated: "Strategy gated",
