@@ -53,15 +53,29 @@ Keep ML **classical and explainable** (survival model + meta-labeling + regime).
 ## 7. Strategy-invention loop (self-reinforcing core)
 `scan-signals` / `pine-from-url` / `evolve-strategy` → **COHORT GATE (FDR)** → forward-test clock (≥30d SIM net-positive) → your click → LIVE (5 interlocks, tiny size). Volume of candidates can't manufacture a winner — FDR is the brake. `evolve-strategy` = isolate a gate-passed signal's logic, graft onto other assets, mix survivors → new cohort → re-Gate.
 
-## 8. Live + SIM together
-SIM always runs (everything proves itself on its own $100k track). Proven survivors run **live, small**, behind interlocks + your manual launch. Manual launch off a strong backtest is allowed — a human owns the risk via the toggle.
+## 8. Live + SIM together (human launches; LLM only suggests)
+SIM always runs (everything proves itself on its own $100k track). **Going live is a deliberate human action — no time gate.** Clicking a strategy → **Launch-live modal**: pick asset + venue, see **fees fetched live & shown** (per-venue, refreshed daily), set **budget (default $100, editable)** + risk settings, confirm. The **5 interlocks remain the hard safety**; the **30-day forward-test is now ADVISORY** — surfaced as an LLM/UI recommendation ("eligible / not yet proven"), the human may launch anyway. **Venue key-gating:** a venue is greyed-out / cannot arm unless its API keys are present in the engine env (Railway server-side; the UI reads a `configured: bool` flag, never the keys). Prep both crypto (Binance) and equities (IBKR) this way; each stays inert until its keys are plugged.
 
 ## 9. Infra
-Keep **Railway** (light always-on API + cron). Add a **Fly.io scale-to-zero worker** for big sims + **burst scraping** (xAI/Grok, social) — pay ~$0 idle, spin up per job; this is the "not-always-on, cloud-card" model, and can go always-on later if needed. Reserve **Modal/Hetzner** for genuinely large/always-on compute. ML runs on the worker, **not inside Claude Code** (Claude authors/orchestrates; the worker computes).
+Keep **Railway** (light always-on API + cron). Add a **Fly.io worker** for continuous big sims + ML + burst scraping (xAI/Grok, social). Owner wants **24/7 max-iteration**, so run it **always-on at 4 GB / 2 vCPU** (`shared-cpu-2x`, ~$25–35/mo) — the sweet spot for classical ML + parallel vectorbt backtests; **2 GB is too tight** for sweeps+model-train, **8 GB only if cohorts OOM** (~$45–60/mo). Can autostop to cut idle cost later. ML runs on the worker, **not inside Claude Code** (Claude authors/orchestrates; the worker computes).
 
-## 10. Control surfaces (both)
-- **In-app ⌘K palette + chatbot** → calls the same skills/endpoints ("scan signals", "import this Pine URL", "evolve top BTC strategy", "why is X winning?", "launch X live small"). App-use, deep, not a toy chat.
-- **Claude Code cockpit** → same skills as slash commands.
+**Latest infra & monthly cost (excludes already-paid Claude Max $100 / OpenRouter $10 credits / existing xAI credits):**
+
+| Service | Role | Cost/mo |
+|---|---|---|
+| Railway | always-on engine API + crons | ~$5–20 |
+| Supabase | Postgres + pgvector | $0 (free) → $25 (Pro) |
+| Vercel | web | $0 (hobby) |
+| **Fly.io worker** | 24/7 sims/ML/scrape (4 GB) | **~$25–35** |
+| Data APIs | FRED·GDELT·Polymarket free; LunarCrush optional | $0 (+~$24 if LunarCrush) |
+| **New recurring total** | | **~$35–65/mo** (within $50 target; $100 ceiling leaves room) |
+
+This table is the **source of truth for infra/cost**; an in-app **cost/infra view** (wiring the empty `costs` + `llm_calls` tables, see Wave 2) renders it live + per-strategy ROI.
+
+## 10. Control surfaces
+- **Primary = Claude Code** (skills as slash commands) — the deep command surface; no in-app ⌘K (deemed unintuitive).
+- **Web = glass cockpit** — watch + approve + the **Launch-live modal** + light `/steer` nudges. A dedicated **Console page** (not a ⌘K overlay) is the in-app home for steer/ask.
+- **Later: an MCP server** so Claude Desktop/Code can drive the live app directly (start runs, read state) without bespoke UI.
 
 ## 11. Orchestration as a reflex (standard for every big request)
 **Decompose → model-tier → one branch/worktree per agent → build → `pnpm verify` → open PR → Opus merge-train → deploy-check → cleanup.** See [/fan-out](../.claude/skills/fan-out/SKILL.md).
@@ -75,7 +89,8 @@ Keep **Railway** (light always-on API + cron). Add a **Fly.io scale-to-zero work
 - W1.1 CI GitHub Action (`pnpm verify` on PRs to main) — *config · local · sonnet · PR*
 - W1.2 Forward-test **30-day lock** (enforce in code) — *engine · cloud · opus · worktree · PR*
 - W1.3 xAI/Grok **Twitter source + influencer scoring** (follow `/add-data-source`) — *engine · cloud · sonnet · worktree · PR*
-- W1.4 **NL command palette + chatbot** (⌘K → existing endpoints + `/steer`) — *web · cloud · sonnet · worktree · PR*
+- W1.4 **Launch-live modal + dynamic fees + venue key-gating** (pick asset/venue, live fees, budget default $100, grey-out venues with no keys; prep crypto+equities) — *web+engine · cloud · sonnet · PR*
+- W1.5 **Cost/ROI + infra view** (wire `costs`+`llm_calls` writers; render the infra cost table + per-strategy ROI) — *web+engine · cloud · sonnet · PR*
 
 **Wave 2 — breadth & invention**
 - W2.1 Event/news **scorer** + **source-trust scoreboard** + news/intel dashboard (plain language) — *web+engine · cloud · sonnet · worktree · PR*
@@ -86,7 +101,7 @@ Keep **Railway** (light always-on API + cron). Add a **Fly.io scale-to-zero work
 **Wave 3 — multi-asset & live**
 - W3.1 **IBKR live execution adapter** (flip data-only→live-capable, stays interlock-gated) — *engine · cloud · opus · worktree · PR*
 - W3.2 Adversarial disconfirmers in the authoring corpus — *engine · cloud · opus · worktree · PR*
-- W3.3 First **live launch**, one strategy, tiny size, after ≥30d forward-test — *operator action*
+- W3.3 First **live launch** via the modal — one strategy, $100, your click (30-day proof advisory, not required) — *operator action*
 
 ## 13. Operator guide (how you use it)
 - **Start any session:** `/start-session` (reads AGENTS+BACKLOG+state, recommends next + parallel splits).
@@ -95,11 +110,26 @@ Keep **Railway** (light always-on API + cron). Add a **Fly.io scale-to-zero work
 - **Author strategies:** `/dump-idea` (loose), `/create-strategy` (spec), `/import-pine` (TradingView), `/scan-signals` (sweep) → `/run-gate`.
 - **Before push:** `/deploy-check` (= `pnpm verify`). **After push:** `/deploy-iterate` (watch Railway/Vercel).
 - **Maintain:** `/groom` + `/tech-debt` (prune), `/align-check` (drift check).
-- **Go live:** flip the toggle in `/live` (2-click arm) after a survivor proves ≥30 forward days net-positive.
+- **Go live:** open a strategy → **Launch-live modal** → pick venue (must have keys), confirm budget ($100 default) → arm. 30-day proof is shown as advice, not a blocker; the 5 interlocks are the hard safety.
 - **Watch:** `/` overview, `/lab`, `/forward-test`, `/mind`, `/live`.
 
 ## 14. Locked decisions (this cycle)
-Priority = honesty + breadth **in parallel** · control = **both** surfaces · scope = **crypto spot + stocks (IBKR, toward live) + read-only alt-data** · ML home = **Railway now + Fly.io worker for burst** · Twitter = **xAI/Grok** · scraping = **cloud burst (not always-on; upgrade later)** · keep buy-not-build unless trivial · edge-integrity first · target = near-autonomous, hedge-fund-grade capital management.
+- **Live:** human launches via a modal (asset/venue, live fees, **budget default $100 editable**, settings); **no time gate** — 30-day proof is advisory, LLM may suggest, human decides; 5 interlocks are the hard safety; **venues grey-out without keys**.
+- **Testing throughput:** start **many strategies at once** (SIM only), iterate continuously; LLMs fetch/propose ideas from Pine, social, NL, search — all funnel to the FDR gate.
+- **Scope:** crypto (Binance) + equities (IBKR) **prepped + key-gated**; read-only alt-data. Don't go live on a venue until its keys are plugged.
+- **Infra budget:** target **~$50/mo**, ceiling **$100** (excl. Claude Max + OpenRouter + xAI). Fly worker **4 GB always-on**.
+- **Twitter = xAI/Grok** (credits already in env.local → move to Railway). **News/intel = buy-not-build / free / open-source** (GDELT free now; paid only if it clearly pays).
+- **Control:** Claude Code primary · web cockpit + Launch modal + Console page · **no ⌘K** · MCP later.
+- Edge-integrity first · near-autonomous · hedge-fund-grade capital management.
 
 ## 15. Open questions
-Tracked in [../IDEAS.md](../IDEAS.md) and the questionnaire in the working session. Key ones: Twitter source spend tier · IBKR account/compliance for live equities · when to provision the Fly worker vs stay manual · how aggressive the live capital ramp.
+Tracked in [../IDEAS.md](../IDEAS.md). Remaining: LunarCrush paid tier yes/no · IBKR account + market-data sub timing · live capital ramp speed after the first $100 track works · whether the Console page also does free-form Q&A or command-routing only.
+
+## 16. Accounts & APIs to set up (owner)
+Already have: Railway · Supabase · Vercel · Claude Max · OpenRouter ($10) · xAI credits (key in `.env.local`).
+- **Now (the only new spend):** create a **Fly.io** account (worker, ~$25–35/mo) — set up when Wave 2.4 lands.
+- **Now (free):** confirm a **FRED** API key (macro feature); move **`XAI_API_KEY`** into **Railway env** (prod can't read `.env.local`).
+- **When going live crypto:** **Binance** API key+secret → Railway env (then the venue un-greys).
+- **When going live equities:** **IBKR** account + market-data subscription.
+- **Optional later:** **LunarCrush** paid (richer social, ~$24/mo) — only if it earns its keep.
+- **Keys policy:** live keys live **server-side in Railway env** (never committed). UI shows only a `configured` boolean. `.env.local` is for local debugging/reads.
