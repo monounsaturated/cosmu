@@ -29,7 +29,7 @@ NO pooled wallet — each survivor proves itself on its **own standalone track**
 The agent's standardized self-knowledge in one surface: **what it knows** (data sources + freshness), **how it thinks** (a TradingAgents-style analyst panel — Technical · Macro · Sentiment · Social&News · Positioning · OSINT, plus ML-survival and Memory pillars — that debates a consensus), and **what it has learned** (memory, the ML model, regime coverage, gate efficiency). Each perspective reads the agent's **existing** point-in-time signals; one with no data **abstains** (never fabricates). **Railguard:** the Mind only *reasons* — it never funds or fires; the deterministic Gate alone disposes. LLMs may narrate, **never** in the scoring/gate/money path. See `cosmu/mind/` + `docs/GLOSSARY.md` (The Mind).
 
 ## Running strategies (cheapest → priciest)
-Add strategies via the **inbox** (`strategies/inbox/*.json|*.md|*.pine`, scanned on deploy) or the Lab's autonomous author. To author a batch safely, copy `scripts/seed_inbox_strategies.py` — it **validates every spec against the real compiler** (static_check + `compile_spec`) before writing, so nothing magic-number'd or inert lands. Then to screen/backtest:
+Add strategies via the **inbox** (`apps/engine/strategies/inbox/*.json|*.md|*.pine`, scanned on deploy) or the Lab's autonomous author. To author a batch safely, copy `scripts/seed_inbox_strategies.py` — it **validates every spec against the real compiler** (static_check + `compile_spec`) before writing, so nothing magic-number'd or inert lands. Then to screen/backtest:
 1. **Local, $0 (default):** `PYTHONPATH=apps/engine python3 -m cosmu.lab.finder --seed-real` — deterministic, offline-capable (cached Binance bars). Fine for a few specs.
 2. **Cloud Claude Code session:** a *full* cohort / walk-forward sweep that would OOM the 16 GB Air. Same command, real compute, **$0 API** (flat Max sub). This is the smart default for anything heavy.
 3. **Railway (deployed):** the 4h cron runs the cohort + gate on real bars **automatically** — you don't trigger it. Railway is the small always-on box, NOT for heavy sweeps.
@@ -123,6 +123,6 @@ apps/engine/cosmu/     Python 3.12, FastAPI, Pydantic, pytest
 apps/web/              Next.js, Tailwind, shadcn
 packages/contracts-ts/ Generated from engine OpenAPI (never hand-typed)
 .claude/skills/        Runnable playbooks (this repo's source of truth for procedures)
-strategies/inbox/      Drop specs here — scanned on deploy
+apps/engine/strategies/inbox/  Drop specs here — scanned on deploy (under apps/engine so the Railway image ships it)
 ```
 Hosting: **Railway** (engine API + cron) · **Vercel** (web) · **Supabase** (Postgres + pgvector).

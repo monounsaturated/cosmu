@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Author a diverse batch of crypto-spot StrategySpecs into strategies/inbox/, validating each against the
+"""Author a diverse batch of crypto-spot StrategySpecs into apps/engine/strategies/inbox/, validating each against the
 REAL compiler (static_check + compile_spec) before writing — so nothing inert or magic-number'd lands. Each
 is a distinct, economically-motivated edge with thresholds in param_space (fit from data, never hardcoded).
 
@@ -16,7 +16,9 @@ from cosmu.evolution.loop import fit_params
 from cosmu.strategy.compiler import compile_spec
 from cosmu.strategy.spec import StrategySpec
 
-INBOX = Path(__file__).resolve().parents[1] / "strategies" / "inbox"
+# The one canonical inbox: it lives UNDER apps/engine so the Railway image (built from apps/engine) ships it
+# and the boot scanner (`cosmu.lab.inbox._INBOX_DIR`) reads the same files. Author here, deploy reads here.
+INBOX = Path(__file__).resolve().parents[1] / "apps" / "engine" / "strategies" / "inbox"
 
 
 def _u(min_instruments: int = 5) -> dict:
