@@ -1,7 +1,7 @@
-import { ArrowRight, Coins, Gauge, MessageSquare, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, Coins, Gauge, LineChart, ListChecks, MessageSquare, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
-import { engineConfigured, getAutonomyStatus, getEvents, getIntelligence, getLeaderboard, getOverview, getRecommendations } from "./data";
-import type { CostSlice, Event, LeaderboardRow } from "@cosmu/contracts-ts";
+import { engineConfigured, getAutonomyStatus, getEvents, getIntelligence, getLeaderboard, getMind, getOverview, getPopulation, getRecommendations } from "./data";
+import type { CostSlice, LeaderboardRow } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
@@ -13,8 +13,9 @@ import { LifecycleStrip } from "@/components/ui/lifecycle-strip";
 import { AutonomyPanel } from "@/components/autonomy/autonomy-panel";
 import { NeedsYouInbox } from "@/components/autonomy/needs-you-inbox";
 import { SystemIntelligence } from "@/components/intelligence/system-intelligence";
+import { RightNow } from "@/components/overview/right-now";
 import { TRACK_VS_AGGREGATE } from "@/lib/shared-content";
-import { formatEventKind, formatPct, formatSigned, formatUsd } from "@/lib/utils";
+import { formatPct, formatSigned, formatUsd } from "@/lib/utils";
 
 const statusVariant: Record<string, "up" | "warn" | "down" | "info"> = {
   forward_test: "up",
@@ -30,14 +31,18 @@ export default async function OverviewPage() {
     { items: recommendations, connected: recConnected },
     { events },
     { status: autonomy, connected: autonomyConnected },
-    { intelligence, connected: intelConnected }
+    { intelligence, connected: intelConnected },
+    { population },
+    { mind }
   ] = await Promise.all([
     getOverview(),
     getLeaderboard(),
     getRecommendations(),
     getEvents(),
     getAutonomyStatus(),
-    getIntelligence()
+    getIntelligence(),
+    getPopulation(),
+    getMind()
   ]);
 
   if (!connected) {
@@ -117,6 +122,16 @@ export default async function OverviewPage() {
         <Stat label="Daily opex" value={overview.costs.length ? formatUsd(costsTotal, 0) : "—"} accent="iris" />
       </section>
 
+      {/* Right now — the command-center band: engine, population, Mind, what needs you, latest events. */}
+      <RightNow
+        connected={connected}
+        autonomy={autonomy}
+        population={population}
+        mind={mind}
+        recommendations={recommendations}
+        events={events}
+      />
+
       {/* How Cosmu works — the four stages, clickable. Clears up Lab / Forward-test / Live at a glance. */}
       <LifecycleStrip />
 
@@ -125,6 +140,7 @@ export default async function OverviewPage() {
         <Card>
           <CardHeader>
             <div className="flex min-w-0 items-center gap-1.5">
+              <LineChart className="size-4 text-iris-soft" />
               <CardTitle>Net across forward-tests</CardTitle>
               <Tooltip content={TRACK_VS_AGGREGATE} />
             </div>
@@ -145,7 +161,9 @@ export default async function OverviewPage() {
       <section className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Needs you</CardTitle>
+            <CardTitle className="flex items-center gap-1.5">
+              <MessageSquare className="size-4 text-iris-soft" /> Needs you
+            </CardTitle>
             <Link
               href="/steer"
               className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft transition-colors hover:underline"
@@ -161,32 +179,12 @@ export default async function OverviewPage() {
         <AutonomyPanel initial={autonomy} connected={autonomyConnected} configured={engineConfigured} />
       </section>
 
-      {/* Recent activity + working Versions */}
-      <section className="grid gap-3 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent activity</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2.5">
-            {events.length === 0 ? (
-              <EmptyState title="No activity yet." hint="The machine's actions appear here as it runs." />
-            ) : (
-              events.slice(0, 8).map((event: Event) => (
-                <div key={event.id} className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-[12.5px] font-medium text-foreground">{formatEventKind(event.kind)}</div>
-                    <div className="text-[11px] text-quiet">{event.actor}</div>
-                  </div>
-                  <span className="size-1.5 shrink-0 rounded-full bg-info/80" />
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
+      {/* Working Versions — the survivors currently proving themselves on their own tracks. */}
+      <section>
         <Card>
           <CardHeader>
             <div className="flex min-w-0 items-center gap-1.5">
+              <ListChecks className="size-4 text-iris-soft" />
               <CardTitle>Working Versions</CardTitle>
               <Tooltip content={TRACK_VS_AGGREGATE} />
             </div>
@@ -197,11 +195,14 @@ export default async function OverviewPage() {
               All Strategies <ArrowRight className="size-3.5" />
             </Link>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent>
             {working.length === 0 ? (
-              <EmptyState title="No surviving Versions yet." hint="Survivors appear here once a Version clears the Gate." />
+              <EmptyState
+                title="No surviving Versions yet."
+                hint="Authored strategies that clear the deterministic Gate land here and start a forward-test track. Author one from the Lab or Claude Code, or wait for the next autonomous cycle."
+              />
             ) : (
-              working.map((row) => (
+              <div className="grid gap-2 sm:grid-cols-2">{working.map((row) => (
                 <Link
                   key={row.version_id}
                   href={`/strategy/${row.version_id}`}
@@ -218,7 +219,7 @@ export default async function OverviewPage() {
                     <Badge variant={statusVariant[row.status] ?? "muted"}>{row.status}</Badge>
                   </div>
                 </Link>
-              ))
+              ))}</div>
             )}
           </CardContent>
         </Card>

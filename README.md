@@ -1,51 +1,63 @@
 # Cosmu
 
-Cosmu v2 is an internal autonomous quant system: a deterministic master runs a population of self-improving, LLM-authored swing strategies, forward-tests each survivor on its own standalone SIM track, and keeps live capital behind a global toggle that is off by default.
+Autonomous quant machine. LLMs propose strategies — a deterministic gate decides what
+gets funded. Live trading is **OFF by default** behind 5 interlocks.
 
-The safety partition is the product: the scorer and the money are deterministic and outside any LLM path. The lab agent can propose strategy structure, code, research, and ML artifacts, but the master owns scoring, per-track funding, risk, audit, and live promotion.
+## What it does
 
-## Current Shape
+- Authors trading strategies autonomously (or from your ideas)
+- Screens them through a deterministic, FDR-controlled gate (deflated Sharpe · CSCV-PBO · holdout · regime folds · cohort Benjamini-Hochberg)
+- Forward-tests survivors on their own standalone SIM tracks — a track must prove ≥30 forward days net of fees before it's live-eligible
+- Ingests free alt-data sources for cross-asset signals, surfaced through the Mind (analyst-panel reasoning)
 
-- `apps/engine`: Python FastAPI engine, deterministic spine, fresh control-plane schema, strategy spec/compiler checks, risk gauntlet, model-routing policy, and audit store.
-- `packages/contracts-ts`: generated TypeScript contract package from the engine OpenAPI.
-- `apps/web`: rebuilt Next.js command center with the four product surfaces: Dashboard, Leaderboard, Strategy Detail, Console.
-- `docs/VISION.md` and `docs/BUILD_PLAN.md`: the product contract and implementation plan.
+## What it doesn't do
 
-The old `apps/api` Node runtime has been retired from the active build path.
+- Trade live without explicit human activation (5 interlocks: toggle on + real keys + gate passed + caps available + no kill-switch)
+- Use LLMs in the funding/execution path (the deterministic gate alone disposes)
+- Pool money across strategies (each survivor has its own standalone track — no shared wallet)
+- Display synthetic data — empty surfaces say so honestly, never fabricate a track record
 
-## Local QA
-
-Use `.env.local` for local settings and secrets. Secrets stay server-side only.
+## Run locally
 
 ```bash
 pnpm install
-pnpm contracts:generate
-PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests
-pnpm typecheck
-pnpm build
+pnpm dev          # web on :3000 (regenerates contracts, then next dev)
+pnpm engine:api   # engine API on :8000 (FastAPI / uvicorn)
 ```
 
-Run the engine API:
+Point the web app at the engine with `.env.local`:
+
+```
+API_BASE_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+```
+
+With no engine configured, every surface renders its honest "not connected" state — no fake numbers.
+
+## Verify before pushing
 
 ```bash
-PYTHONPATH=apps/engine python -m uvicorn cosmu.api.app:app --host 0.0.0.0 --port 8000
+pnpm verify   # naming:check · contracts:generate · engine:test · typecheck · build
 ```
 
-Run the web app:
+`build` runs the real `next build` — the step that catches a Vercel-breaking page before you push.
+On a RAM-tight machine, run the heavy parts (`engine:test`, `next build`) in a cloud session.
 
-```bash
-API_BASE_URL=http://127.0.0.1:8000 \
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000 \
-pnpm --filter @cosmu/web dev --port 3000
-```
+## Deploy
 
-Open `http://localhost:3000`.
+Push to your working branch. **Railway** (engine + 4h cron) and **Vercel** (web) auto-deploy.
+That's the only trigger — never also run `railway up` / `vercel deploy` (double-deploy race).
 
-## Product Surfaces
+## Stack
 
-1. Dashboard: aggregate read-out (Σ of all standalone tracks), net P&L, costs, per-track funding, live gate.
-2. Leaderboard: standardized per-strategy tracks ranked by deterministic evidence.
-3. Strategy Detail: spec, compiled artifact, trades, WFO/holdout results, notes.
-4. Console: chat/voice/image control surface and proactive recommendations.
+- **Engine** — Python 3.12, FastAPI, Pydantic, pytest (`apps/engine/cosmu`)
+- **Web** — Next.js, Tailwind, shadcn/ui (`apps/web`)
+- **Contracts** — `@cosmu/contracts-ts`, generated from the engine OpenAPI (never hand-typed)
+- **Data** — Postgres / Supabase · **LLM** — via OpenRouter (free tier by default; proposals only)
 
-Market bars and feature history belong in a columnar catalog, not row-per-bar Postgres. Postgres is the control-plane and money-truth: strategies, runs, executions, tracks, costs, recommendations, policies, and append-only events.
+## Docs
+
+- `AGENTS.md` — the single canonical entry point for any coding agent
+- `docs/IMPLEMENTATION.md` — what's built, what's next
+- `docs/GLOSSARY.md` — vocabulary (the Mind, the Gate, tracks, lifecycle)
+- `.claude/skills/` — runnable playbooks (the source of truth for common procedures)
