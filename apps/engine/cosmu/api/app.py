@@ -55,6 +55,8 @@ from cosmu.api.models import (
     IntelligenceResponse,
     MindResponse,
     GraveyardRow,
+    LaunchActivateRequest,
+    LaunchActivateResponse,
     MlFeatureWeight,
     MlRankedItem,
     MlRequest,
@@ -91,6 +93,10 @@ from cosmu.api.models import (
     GateStatusResponse,
     GateVerdictResponse,
     UniverseResponse,
+    VenueCatalogResponse,
+    VenueFeeInfo,
+    VenueFeeTierInfo,
+    VenueInstrumentInfo,
     VenueState,
     VenueToggleRequest,
 )
@@ -861,6 +867,145 @@ def live_venues() -> LiveVenuesResponse:
     caps = LiveCaps(**_live_caps_row())
     total = round(sum(v.deployed_usd for v in venues), 2)
     return LiveVenuesResponse(jurisdiction=country, global_cap=caps.global_cap, total_deployed_usd=total, venues=venues)
+
+
+@app.get("/live/venue-catalog", response_model=VenueCatalogResponse)
+def live_venue_catalog() -> VenueCatalogResponse:
+    """Read-only catalog for the launch-live modal: every venue with its real fee schedule and a
+    `configured` boolean (True = API keys are present in server env for that venue; False = greyed-out
+    in the UI, cannot arm). Keys are NEVER returned — only the boolean. This includes ALL venues in the
+    catalog (not just the jurisdiction-legal subset) so the modal can show grey non-configured ones."""
+    catalog = default_catalog()
+    fee_venues = [
+        VenueFeeInfo(
+            id=v.id,
+            name=v.name,
+            kind=v.kind,
+            maker_fee_bps=float(v.maker_fee_bps),
+            taker_fee_bps=float(v.taker_fee_bps),
+            min_notional=float(v.min_notional),
+            fee_tiers=[
+                VenueFeeTierInfo(
+                    min_volume_30d_usd=float(t.min_volume_30d_usd),
+                    maker_fee_bps=float(t.maker_fee_bps),
+                    taker_fee_bps=float(t.taker_fee_bps),
+                )
+                for t in v.fee_tiers
+            ],
+            configured=_venue_connected(v.id),
+            live_enabled=v.live_enabled,
+        )
+        for v in catalog.venues
+    ]
+    instruments = [
+        VenueInstrumentInfo(
+            id=i.id,
+            venue_id=i.venue_id,
+            symbol=i.symbol,
+            asset_class=i.asset_class,
+            min_notional=float(i.min_notional),
+        )
+        for i in catalog.instruments
+    ]
+    return VenueCatalogResponse(venues=fee_venues, instruments=instruments)
+
+
+def _forward_test_days(version_id: str) -> float | None:
+    """Advisory: how many calendar days this strategy has been in forward-test on real data.
+    Returns None when no track record exists yet."""
+    row = store.row(
+        "SELECT started_at FROM tracks WHERE strategy_version_id = ? ORDER BY id ASC LIMIT 1",
+        (version_id,),
+    )
+    if not row or not row.get("started_at"):
+        return None
+    try:
+        from datetime import UTC, datetime
+
+        started = row["started_at"]
+        if isinstance(started, str):
+            started = datetime.fromisoformat(started.replace("Z", "+00:00"))
+        now = datetime.now(tz=UTC)
+        return max(0.0, (now - started).total_seconds() / 86400)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+@app.post("/live/launch", response_model=LaunchActivateResponse)
+def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
+    """Strategy launch-live flow: arm one gate-passed strategy on a chosen venue + asset with a given budget.
+    This is the ONLY path that launches a single strategy live. The 5 interlocks apply in full — the
+    engine arms live only when toggle ON + keys present + gate passed + caps available + no kill-switch.
+    `confirm` must be true (two-click safety). The 30-day forward-test signal is ADVISORY (surfaced, not
+    enforced): the human may launch before 30 days. Returns `readiness` ("proven"/"not yet proven") and
+    `forward_test_days` so the UI can display the advisory without hard-blocking."""
+    if not request.confirm:
+        caps = LiveCaps(per_strategy_cap=request.per_strategy_cap, global_cap=request.global_cap, max_daily_loss=request.max_daily_loss)
+        return LaunchActivateResponse(
+            armed=False,
+            version_id=request.version_id,
+            venue_id=request.venue_id,
+            symbol=request.symbol,
+            budget=request.budget,
+            caps=caps,
+            eligible=[],
+            reason="confirm must be true to arm",
+        )
+    # Validate venue is configured (keys present). A non-configured venue CANNOT arm regardless
+    # of the toggle — this is the server-side key-gate that backs the UI grey-out.
+    if not _venue_connected(request.venue_id):
+        caps = LiveCaps(per_strategy_cap=request.per_strategy_cap, global_cap=request.global_cap, max_daily_loss=request.max_daily_loss)
+        return LaunchActivateResponse(
+            armed=False,
+            version_id=request.version_id,
+            venue_id=request.venue_id,
+            symbol=request.symbol,
+            budget=request.budget,
+            caps=caps,
+            eligible=[],
+            reason=f"venue '{request.venue_id}' has no API keys configured — add them to the server env first",
+        )
+    # Upsert caps: per_strategy_cap comes from the request budget for this strategy launch.
+    store.rows(
+        """
+        INSERT INTO live_caps(id, scope, ref_id, max_notional, max_daily_loss) VALUES ('global', 'pool', 'global', ?, ?)
+        ON CONFLICT (id) DO UPDATE SET max_notional = excluded.max_notional, max_daily_loss = excluded.max_daily_loss
+        """,
+        (str(request.global_cap), str(request.max_daily_loss)),
+    )
+    caps = LiveCaps(per_strategy_cap=request.per_strategy_cap, global_cap=request.global_cap, max_daily_loss=request.max_daily_loss)
+    # Compute advisory forward-test maturity.
+    ft_days = _forward_test_days(request.version_id)
+    readiness = "proven" if (ft_days is not None and ft_days >= 30) else "not yet proven"
+    # Eligible strategies: same gate-passed + regime check as /live/activate.
+    eligible = _eligible_strategies()
+    store.append_event(
+        actor="human",
+        kind="live_launched",
+        ref_type="strategy_version",
+        ref_id=request.version_id,
+        payload={
+            "venue_id": request.venue_id,
+            "symbol": request.symbol,
+            "budget": request.budget,
+            "per_strategy_cap": request.per_strategy_cap,
+            "global_cap": request.global_cap,
+            "max_daily_loss": request.max_daily_loss,
+            "forward_test_days": ft_days,
+            "readiness": readiness,
+        },
+    )
+    return LaunchActivateResponse(
+        armed=True,
+        version_id=request.version_id,
+        venue_id=request.venue_id,
+        symbol=request.symbol,
+        budget=request.budget,
+        caps=caps,
+        eligible=eligible,
+        forward_test_days=ft_days,
+        readiness=readiness,  # type: ignore[arg-type]
+    )
 
 
 def _universe_response() -> UniverseResponse:

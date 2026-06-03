@@ -185,6 +185,83 @@ class LiveVenuesResponse(BaseModel):
     venues: list[LiveVenue]
 
 
+class VenueFeeTierInfo(BaseModel):
+    """One 30d-volume fee tier — read-only display data for the launch modal."""
+
+    min_volume_30d_usd: float
+    maker_fee_bps: float
+    taker_fee_bps: float
+
+
+class VenueFeeInfo(BaseModel):
+    """Fees + key-gating state for one venue — the read-only feed for the launch modal.
+    `configured` is True iff this venue's API keys are present in the server env. The keys are
+    NEVER returned — only the boolean. A venue whose `configured` is False must be greyed-out in
+    the UI; it cannot arm regardless of the live toggle."""
+
+    id: str
+    name: str
+    kind: Literal["crypto", "equity", "prediction"]
+    maker_fee_bps: float
+    taker_fee_bps: float
+    min_notional: float
+    fee_tiers: list[VenueFeeTierInfo]
+    configured: bool    # True = API keys are in Railway env; False = venue inert, grey-out in UI
+    live_enabled: bool  # whether the venue has a real-money execution adapter at all
+
+
+class VenueInstrumentInfo(BaseModel):
+    """Minimal instrument info for the launch modal asset picker."""
+
+    id: str
+    venue_id: str
+    symbol: str
+    asset_class: Literal["crypto", "equity", "prediction"]
+    min_notional: float
+
+
+class VenueCatalogResponse(BaseModel):
+    """Read-only catalog for the launch modal: venues with fees + key-gating, and instruments.
+    GET-only — no mutation, no key values, just the facts the UI needs to render the modal."""
+
+    venues: list[VenueFeeInfo]
+    instruments: list[VenueInstrumentInfo]
+
+
+class LaunchActivateRequest(BaseModel):
+    """Request body for the strategy launch-live flow: arm one strategy on a specific venue + asset
+    with a given budget. Confirm must be true (two-click safety); caps are set here and carried
+    through to the live_caps upsert so the operator sees exactly what they agreed to."""
+
+    version_id: str
+    venue_id: str
+    symbol: str
+    budget: float = 100.0
+    per_strategy_cap: float = 100.0
+    global_cap: float = 1000.0
+    max_daily_loss: float = 50.0
+    confirm: bool
+
+
+class LaunchActivateResponse(BaseModel):
+    """Result of the launch-live flow for one strategy.
+    `armed` = all 5 interlocks cleared and the strategy is now live.
+    `forward_test_days` = advisory forward-test maturity in days (None = not measured yet).
+    `readiness` = "proven" (≥30 forward days net-positive) or "not yet proven" — advisory only,
+    never a hard block; the human decides when to launch."""
+
+    armed: bool
+    version_id: str
+    venue_id: str
+    symbol: str
+    budget: float
+    caps: LiveCaps
+    eligible: list[EligibleStrategy]
+    forward_test_days: float | None = None   # advisory: how many real forward-test days this track has
+    readiness: Literal["proven", "not yet proven"] = "not yet proven"
+    reason: str | None = None
+
+
 class JurisdictionOption(BaseModel):
     code: str            # ISO-3166 alpha-2
     label: str

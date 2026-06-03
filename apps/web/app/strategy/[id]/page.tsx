@@ -2,6 +2,7 @@ import { ArrowLeft, ScrollText } from "lucide-react";
 import Link from "next/link";
 import { engineConfigured, getStrategy } from "../../data";
 import type { Backtest, Execution, Point } from "@cosmu/contracts-ts";
+import { LaunchLiveButton } from "@/components/live/launch-live-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -69,7 +70,13 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
         <Link href="/strategies" className="mb-2 inline-flex items-center gap-1 text-[12.5px] text-muted transition-colors hover:text-foreground">
           <ArrowLeft className="size-3.5" /> All Strategies
         </Link>
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground">{strategy.name}</h1>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">{strategy.name}</h1>
+          {/* Launch live: only offered when the strategy has at least one passed backtest. */}
+          {strategy.backtests.some((bt: Backtest) => bt.passed_gates) && (
+            <LaunchLiveButton versionId={strategy.version_id} strategyName={strategy.name} />
+          )}
+        </div>
         <div className="mt-1.5 flex items-center gap-2 font-mono text-[12px] text-quiet">
           <span>{strategy.version_id}</span>
         </div>
