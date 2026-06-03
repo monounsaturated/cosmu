@@ -58,6 +58,19 @@ def test_live_venues_excludes_jurisdiction_restricted(tmp_path, monkeypatch):
     assert "kraken" in ids       # US-legal crypto venue still shows
 
 
+def test_jurisdiction_pick_persists_and_reshapes_venues(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    j = c.get("/live/jurisdictions").json()
+    assert j["current"] == "FR" and {o["code"] for o in j["options"]} >= {"FR", "US", "AE", "NL", "GB"}
+    # picking US is audited + persisted (event-backed, no schema change) and reshapes the legal venue set
+    assert c.post("/live/jurisdiction", json={"code": "US"}).json()["current"] == "US"
+    venues = c.get("/live/venues").json()
+    assert venues["jurisdiction"] == "US"
+    ids = {v["id"] for v in venues["venues"]}
+    assert "binance" not in ids and "kraken" in ids  # Binance is US-restricted; Kraken is US-legal
+    assert c.post("/live/jurisdiction", json={"code": "ZZ"}).status_code == 400  # unknown code rejected
+
+
 def test_activate_requires_confirm(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     body = c.post("/live/activate", json={"per_strategy_cap": 1000, "global_cap": 5000, "max_daily_loss": 200, "confirm": False}).json()

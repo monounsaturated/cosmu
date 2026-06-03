@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/ui/section";
 import { UniverseSettings } from "@/components/universe/universe-settings";
+import { JurisdictionSetting } from "@/components/universe/jurisdiction-setting";
 
 export default function SettingsPage() {
   return (
@@ -25,6 +26,18 @@ export default function SettingsPage() {
         </CardHeader>
         <CardContent>
           <UniverseSettings />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Jurisdiction</CardTitle>
+            <CardDescription>Where you operate — decides which venues can move real money (e.g. the US excludes Binance). One standardized setting; change it anytime, every change is audited.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <JurisdictionSetting />
         </CardContent>
       </Card>
 

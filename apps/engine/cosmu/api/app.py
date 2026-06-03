@@ -65,6 +65,9 @@ from cosmu.api.models import (
     LivePositionsResponse,
     LiveVenue,
     LiveVenuesResponse,
+    JurisdictionOption,
+    JurisdictionsResponse,
+    SetJurisdictionRequest,
     PineSample,
     PineSamplesResponse,
     PineTranslateRequest,
@@ -97,7 +100,7 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.portfolio import Portfolio
 from cosmu.lab.author import AuthorDraft, draft_from_brief
 from cosmu.spine.engine import EngineFacade
-from cosmu.spine.venue import default_catalog
+from cosmu.spine.venue import SUPPORTED_JURISDICTIONS, default_catalog
 from cosmu.spine.universe import (
     CLASS_LABELS,
     CLASSES_WITH_DATA,
@@ -788,12 +791,48 @@ def _venue_connected(venue_id: str) -> bool:
     return False
 
 
+def _current_jurisdiction() -> str:
+    """The operator's chosen jurisdiction: the latest audited `jurisdiction_set` event, else the
+    LIVE_JURISDICTION env default — validated against the curated list so it's always a known code."""
+    row = store.row("SELECT payload FROM events WHERE kind = 'jurisdiction_set' ORDER BY ts DESC LIMIT 1")
+    if row:
+        try:
+            code = json.loads(row["payload"]).get("code")
+            if code in SUPPORTED_JURISDICTIONS:
+                return code
+        except (TypeError, ValueError, KeyError):
+            pass
+    env = (settings.live_jurisdiction or "FR").upper()
+    return env if env in SUPPORTED_JURISDICTIONS else "FR"
+
+
+@app.get("/live/jurisdictions", response_model=JurisdictionsResponse)
+def live_jurisdictions() -> JurisdictionsResponse:
+    """The curated pick-list of operating jurisdictions + the current one. Each option lists the venues that
+    are live-legal from there, so the UI can show what picking it unlocks."""
+    catalog = default_catalog()
+    options = [
+        JurisdictionOption(code=code, label=label, legal_venue_ids=[v.id for v in catalog.live_legal_venues(code)])
+        for code, label in SUPPORTED_JURISDICTIONS.items()
+    ]
+    return JurisdictionsResponse(current=_current_jurisdiction(), options=options)
+
+
+@app.post("/live/jurisdiction", response_model=JurisdictionsResponse)
+def set_live_jurisdiction(request: SetJurisdictionRequest) -> JurisdictionsResponse:
+    code = request.code.upper()
+    if code not in SUPPORTED_JURISDICTIONS:
+        raise HTTPException(status_code=400, detail=f"unsupported jurisdiction: {request.code}")
+    store.append_event(actor="operator", kind="jurisdiction_set", ref_type="config", ref_id="jurisdiction", payload={"code": code})
+    return live_jurisdictions()
+
+
 @app.get("/live/venues", response_model=LiveVenuesResponse)
 def live_venues() -> LiveVenuesResponse:
     """The honest LIVE venue picture: the venues legal to trade from our jurisdiction, whether each is wired
     (connected) or not, whether it's ticked into the universe, and the real capital deployed at each now."""
     catalog = default_catalog()
-    country = settings.live_jurisdiction
+    country = _current_jurisdiction()
     enabled_ids = {r["id"] for r in venue_rows(store) if r["enabled"]}
     deployed: dict[str, float] = {}
     for p in _portfolio().positions():  # real capital at risk per venue: |qty| * avg_price

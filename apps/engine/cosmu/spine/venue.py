@@ -98,6 +98,24 @@ class VenueCatalog(BaseModel):
         return [v for v in self.venues if v.enabled and v.live_legal_in(country_code)]
 
 
+# Curated operating jurisdictions the UI offers as a pick-list (ISO-3166 alpha-2 → label), ordered for a
+# crypto/tech digital-nomad: low-friction, crypto-legal hubs first, the US (Binance-restricted) last. Live
+# legality per venue stays the catalog's `restricted_jurisdictions` — this is only the standardized choices,
+# so picking a country is ONE setting, not free text. Extend by adding a code here (+ a venue restriction if
+# the venue isn't legal there). FR is the default until the operator picks.
+SUPPORTED_JURISDICTIONS: dict[str, str] = {
+    "FR": "France",
+    "NL": "Netherlands",
+    "GB": "United Kingdom",
+    "DE": "Germany",
+    "PT": "Portugal",
+    "CH": "Switzerland",
+    "AE": "United Arab Emirates",
+    "SG": "Singapore",
+    "US": "United States",
+}
+
+
 def default_catalog() -> VenueCatalog:
     return VenueCatalog(
         venues=[

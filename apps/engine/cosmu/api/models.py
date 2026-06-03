@@ -185,6 +185,21 @@ class LiveVenuesResponse(BaseModel):
     venues: list[LiveVenue]
 
 
+class JurisdictionOption(BaseModel):
+    code: str            # ISO-3166 alpha-2
+    label: str
+    legal_venue_ids: list[str]   # venues live-legal from here (drives the Live "available" set)
+
+
+class JurisdictionsResponse(BaseModel):
+    current: str
+    options: list[JurisdictionOption]
+
+
+class SetJurisdictionRequest(BaseModel):
+    code: str
+
+
 class VenueState(BaseModel):
     id: str
     name: str
