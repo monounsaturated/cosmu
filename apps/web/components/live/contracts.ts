@@ -2,10 +2,12 @@
 // (Pydantic -> OpenAPI -> TS; never hand-typed). Only the request BODIES + LiveMode are local —
 // OpenAPI doesn't emit named request-body types, and the engine owns the verdict either way.
 //
-//   POST /toggle/live   body {enabled, confirm}        -> ToggleLiveResponse (= generated ToggleResponse)
-//   POST /live/activate body {per_strategy_cap, global_cap, max_daily_loss, confirm} -> ActivateResponse
-//   POST /live/defund   body {scope, version_id?}      -> DefundResponse
-//   GET  /live/positions                               -> PositionsResponse (= generated LivePositionsResponse)
+//   POST /toggle/live          body {enabled, confirm}                -> ToggleLiveResponse
+//   POST /live/activate        body {per_strategy_cap, ...confirm}    -> ActivateResponse
+//   POST /live/launch          body {version_id, venue_id, ...}       -> LaunchActivateResponse
+//   POST /live/defund          body {scope, version_id?}              -> DefundResponse
+//   GET  /live/positions                                              -> PositionsResponse
+//   GET  /live/venue-catalog                                          -> VenueCatalogResponse
 //
 // NON-NEGOTIABLE SAFETY: a real order is submitted ONLY when ALL hold — live toggle ON +
 // execution keys present + gate PASSED + caps available + not kill-switched. Otherwise the
@@ -15,14 +17,29 @@ import type {
   ActivateResponse,
   DefundResponse,
   EligibleStrategy,
+  LaunchActivateResponse,
   LiveCaps,
   LivePosition,
   LivePositionsResponse,
   ToggleResponse,
+  VenueCatalogResponse,
+  VenueFeeInfo,
+  VenueFeeTierInfo,
+  VenueInstrumentInfo,
 } from "@cosmu/contracts-ts";
 
 // Generated response/shared types, re-exported under the names the surface uses.
-export type { ActivateResponse, DefundResponse, EligibleStrategy, LivePosition };
+export type {
+  ActivateResponse,
+  DefundResponse,
+  EligibleStrategy,
+  LaunchActivateResponse,
+  LivePosition,
+  VenueCatalogResponse,
+  VenueFeeInfo,
+  VenueFeeTierInfo,
+  VenueInstrumentInfo,
+};
 export type Caps = LiveCaps;
 export type PositionsResponse = LivePositionsResponse;
 export type ToggleLiveResponse = ToggleResponse;
@@ -36,6 +53,17 @@ export interface ToggleLiveBody {
 }
 
 export interface ActivateBody {
+  per_strategy_cap: number;
+  global_cap: number;
+  max_daily_loss: number;
+  confirm: boolean;
+}
+
+export interface LaunchBody {
+  version_id: string;
+  venue_id: string;
+  symbol: string;
+  budget: number;
   per_strategy_cap: number;
   global_cap: number;
   max_daily_loss: number;

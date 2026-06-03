@@ -1904,6 +1904,132 @@
         "title": "JurisdictionsResponse",
         "type": "object"
       },
+      "LaunchActivateRequest": {
+        "description": "Request body for the strategy launch-live flow: arm one strategy on a specific venue + asset\nwith a given budget. Confirm must be true (two-click safety); caps are set here and carried\nthrough to the live_caps upsert so the operator sees exactly what they agreed to.",
+        "properties": {
+          "budget": {
+            "default": 100.0,
+            "title": "Budget",
+            "type": "number"
+          },
+          "confirm": {
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "global_cap": {
+            "default": 1000.0,
+            "title": "Global Cap",
+            "type": "number"
+          },
+          "max_daily_loss": {
+            "default": 50.0,
+            "title": "Max Daily Loss",
+            "type": "number"
+          },
+          "per_strategy_cap": {
+            "default": 100.0,
+            "title": "Per Strategy Cap",
+            "type": "number"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "venue_id": {
+            "title": "Venue Id",
+            "type": "string"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "venue_id",
+          "symbol",
+          "confirm"
+        ],
+        "title": "LaunchActivateRequest",
+        "type": "object"
+      },
+      "LaunchActivateResponse": {
+        "description": "Result of the launch-live flow for one strategy.\n`armed` = all 5 interlocks cleared and the strategy is now live.\n`forward_test_days` = advisory forward-test maturity in days (None = not measured yet).\n`readiness` = \"proven\" (\u226530 forward days net-positive) or \"not yet proven\" \u2014 advisory only,\nnever a hard block; the human decides when to launch.",
+        "properties": {
+          "armed": {
+            "title": "Armed",
+            "type": "boolean"
+          },
+          "budget": {
+            "title": "Budget",
+            "type": "number"
+          },
+          "caps": {
+            "$ref": "#/components/schemas/LiveCaps"
+          },
+          "eligible": {
+            "items": {
+              "$ref": "#/components/schemas/EligibleStrategy"
+            },
+            "title": "Eligible",
+            "type": "array"
+          },
+          "forward_test_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forward Test Days"
+          },
+          "readiness": {
+            "default": "not yet proven",
+            "enum": [
+              "proven",
+              "not yet proven"
+            ],
+            "title": "Readiness",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "venue_id": {
+            "title": "Venue Id",
+            "type": "string"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "armed",
+          "version_id",
+          "venue_id",
+          "symbol",
+          "budget",
+          "caps",
+          "eligible"
+        ],
+        "title": "LaunchActivateResponse",
+        "type": "object"
+      },
       "LeaderboardResponse": {
         "properties": {
           "rows": {
@@ -3515,6 +3641,156 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VenueCatalogResponse": {
+        "description": "Read-only catalog for the launch modal: venues with fees + key-gating, and instruments.\nGET-only \u2014 no mutation, no key values, just the facts the UI needs to render the modal.",
+        "properties": {
+          "instruments": {
+            "items": {
+              "$ref": "#/components/schemas/VenueInstrumentInfo"
+            },
+            "title": "Instruments",
+            "type": "array"
+          },
+          "venues": {
+            "items": {
+              "$ref": "#/components/schemas/VenueFeeInfo"
+            },
+            "title": "Venues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "venues",
+          "instruments"
+        ],
+        "title": "VenueCatalogResponse",
+        "type": "object"
+      },
+      "VenueFeeInfo": {
+        "description": "Fees + key-gating state for one venue \u2014 the read-only feed for the launch modal.\n`configured` is True iff this venue's API keys are present in the server env. The keys are\nNEVER returned \u2014 only the boolean. A venue whose `configured` is False must be greyed-out in\nthe UI; it cannot arm regardless of the live toggle.",
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "fee_tiers": {
+            "items": {
+              "$ref": "#/components/schemas/VenueFeeTierInfo"
+            },
+            "title": "Fee Tiers",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "crypto",
+              "equity",
+              "prediction"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "live_enabled": {
+            "title": "Live Enabled",
+            "type": "boolean"
+          },
+          "maker_fee_bps": {
+            "title": "Maker Fee Bps",
+            "type": "number"
+          },
+          "min_notional": {
+            "title": "Min Notional",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "taker_fee_bps": {
+            "title": "Taker Fee Bps",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "maker_fee_bps",
+          "taker_fee_bps",
+          "min_notional",
+          "fee_tiers",
+          "configured",
+          "live_enabled"
+        ],
+        "title": "VenueFeeInfo",
+        "type": "object"
+      },
+      "VenueFeeTierInfo": {
+        "description": "One 30d-volume fee tier \u2014 read-only display data for the launch modal.",
+        "properties": {
+          "maker_fee_bps": {
+            "title": "Maker Fee Bps",
+            "type": "number"
+          },
+          "min_volume_30d_usd": {
+            "title": "Min Volume 30D Usd",
+            "type": "number"
+          },
+          "taker_fee_bps": {
+            "title": "Taker Fee Bps",
+            "type": "number"
+          }
+        },
+        "required": [
+          "min_volume_30d_usd",
+          "maker_fee_bps",
+          "taker_fee_bps"
+        ],
+        "title": "VenueFeeTierInfo",
+        "type": "object"
+      },
+      "VenueInstrumentInfo": {
+        "description": "Minimal instrument info for the launch modal asset picker.",
+        "properties": {
+          "asset_class": {
+            "enum": [
+              "crypto",
+              "equity",
+              "prediction"
+            ],
+            "title": "Asset Class",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "min_notional": {
+            "title": "Min Notional",
+            "type": "number"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "venue_id": {
+            "title": "Venue Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "venue_id",
+          "symbol",
+          "asset_class",
+          "min_notional"
+        ],
+        "title": "VenueInstrumentInfo",
+        "type": "object"
+      },
       "VenueState": {
         "properties": {
           "effective": {
@@ -4138,6 +4414,45 @@
         "summary": "Live Jurisdictions"
       }
     },
+    "/live/launch": {
+      "post": {
+        "description": "Strategy launch-live flow: arm one gate-passed strategy on a chosen venue + asset with a given budget.\nThis is the ONLY path that launches a single strategy live. The 5 interlocks apply in full \u2014 the\nengine arms live only when toggle ON + keys present + gate passed + caps available + no kill-switch.\n`confirm` must be true (two-click safety). The 30-day forward-test signal is ADVISORY (surfaced, not\nenforced): the human may launch before 30 days. Returns `readiness` (\"proven\"/\"not yet proven\") and\n`forward_test_days` so the UI can display the advisory without hard-blocking.",
+        "operationId": "live_launch_live_launch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaunchActivateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaunchActivateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Live Launch"
+      }
+    },
     "/live/positions": {
       "get": {
         "operationId": "live_positions_live_positions_get",
@@ -4154,6 +4469,25 @@
           }
         },
         "summary": "Live Positions"
+      }
+    },
+    "/live/venue-catalog": {
+      "get": {
+        "description": "Read-only catalog for the launch-live modal: every venue with its real fee schedule and a\n`configured` boolean (True = API keys are present in server env for that venue; False = greyed-out\nin the UI, cannot arm). Keys are NEVER returned \u2014 only the boolean. This includes ALL venues in the\ncatalog (not just the jurisdiction-legal subset) so the modal can show grey non-configured ones.",
+        "operationId": "live_venue_catalog_live_venue_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VenueCatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Live Venue Catalog"
       }
     },
     "/live/venues": {

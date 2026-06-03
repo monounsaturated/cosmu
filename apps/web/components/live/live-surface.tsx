@@ -13,7 +13,7 @@
 // cross-asset-gate.tsx until @cosmu/contracts-ts ships them.
 
 import { useState, useTransition } from "react";
-import { AlertTriangle, Building2, Lock, Power, ShieldCheck, Unlock, X } from "lucide-react";
+import { AlertTriangle, Building2, Lock, Power, Rocket, ShieldCheck, Unlock, X } from "lucide-react";
 import {
   type ActivateResponse,
   type Caps,
@@ -23,6 +23,7 @@ import {
   type LiveVenuesResponse,
   type PositionsResponse
 } from "./contracts";
+import { LaunchLiveModal } from "./launch-live-modal";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,8 @@ export function LiveSurface({
   const [eligible, setEligible] = useState<EligibleStrategy[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Launch-live modal state: which strategy to launch (null = closed).
+  const [launchTarget, setLaunchTarget] = useState<{ versionId: string; name: string } | null>(null);
 
   const armed = state.armed;
   const mode = modeBadge(state.mode);
@@ -334,6 +337,19 @@ export function LiveSurface({
           onChangeCaps={setCaps}
           onConfirm={confirmActivate}
           onClose={() => setModalOpen(false)}
+          onLaunchStrategy={(s) => setLaunchTarget({ versionId: s.version_id, name: s.name })}
+        />
+      ) : null}
+
+      {launchTarget ? (
+        <LaunchLiveModal
+          versionId={launchTarget.versionId}
+          strategyName={launchTarget.name}
+          onClose={() => setLaunchTarget(null)}
+          onArmed={() => {
+            setLaunchTarget(null);
+            void refreshPositions();
+          }}
         />
       ) : null}
     </div>
@@ -424,7 +440,8 @@ function ActivationModal({
   connected,
   onChangeCaps,
   onConfirm,
-  onClose
+  onClose,
+  onLaunchStrategy,
 }: {
   caps: Caps;
   eligible: EligibleStrategy[];
@@ -434,6 +451,7 @@ function ActivationModal({
   onChangeCaps: (c: Caps) => void;
   onConfirm: () => void;
   onClose: () => void;
+  onLaunchStrategy?: (s: EligibleStrategy) => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -468,9 +486,18 @@ function ActivationModal({
             ) : (
               <ul className="mt-1.5 space-y-1.5">
                 {eligible.map((s) => (
-                  <li key={s.version_id} className="flex items-center justify-between rounded-md border border-border/50 bg-surface-2/30 px-3 py-2 text-[12.5px]">
-                    <span className="text-foreground">{s.name}</span>
-                    <Badge variant="muted">{s.version_id}</Badge>
+                  <li key={s.version_id} className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2 text-[12.5px]">
+                    <span className="flex-1 text-foreground">{s.name}</span>
+                    <Badge variant="muted">{s.version_id.slice(0, 8)}</Badge>
+                    {onLaunchStrategy && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { onClose(); onLaunchStrategy(s); }}
+                      >
+                        <Rocket className="size-3" /> Launch
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>

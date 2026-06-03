@@ -399,6 +399,30 @@ export interface JurisdictionsResponse {
   options: JurisdictionOption[];
 }
 
+export interface LaunchActivateRequest {
+  budget?: number;
+  confirm: boolean;
+  global_cap?: number;
+  max_daily_loss?: number;
+  per_strategy_cap?: number;
+  symbol: string;
+  venue_id: string;
+  version_id: string;
+}
+
+export interface LaunchActivateResponse {
+  armed: boolean;
+  budget: number;
+  caps: LiveCaps;
+  eligible: EligibleStrategy[];
+  forward_test_days?: number | null;
+  readiness?: "proven" | "not yet proven";
+  reason?: string | null;
+  symbol: string;
+  venue_id: string;
+  version_id: string;
+}
+
 export interface LeaderboardResponse {
   rows: LeaderboardRow[];
 }
@@ -732,6 +756,37 @@ export interface ValidationError {
   loc: string | number[];
   msg: string;
   type: string;
+}
+
+export interface VenueCatalogResponse {
+  instruments: VenueInstrumentInfo[];
+  venues: VenueFeeInfo[];
+}
+
+export interface VenueFeeInfo {
+  configured: boolean;
+  fee_tiers: VenueFeeTierInfo[];
+  id: string;
+  kind: "crypto" | "equity" | "prediction";
+  live_enabled: boolean;
+  maker_fee_bps: number;
+  min_notional: number;
+  name: string;
+  taker_fee_bps: number;
+}
+
+export interface VenueFeeTierInfo {
+  maker_fee_bps: number;
+  min_volume_30d_usd: number;
+  taker_fee_bps: number;
+}
+
+export interface VenueInstrumentInfo {
+  asset_class: "crypto" | "equity" | "prediction";
+  id: string;
+  min_notional: number;
+  symbol: string;
+  venue_id: string;
 }
 
 export interface VenueState {
