@@ -83,6 +83,8 @@ Skills are **runnable playbooks** — the canonical procedure for each common ta
 | code-review | `.claude/skills/code-review/SKILL.md` |
 | tech-debt | `.claude/skills/tech-debt/SKILL.md` |
 | align-check | `.claude/skills/align-check/SKILL.md` |
+| fan-out | `.claude/skills/fan-out/SKILL.md` |
+| triage-ideas | `.claude/skills/triage-ideas/SKILL.md` |
 
 ## Session protocol (for any coding agent)
 1. **Start**: Read this file → read `BACKLOG.md` → `git status` → report state. (`/start-session` does all of this.)
@@ -93,6 +95,9 @@ Skills are **runnable playbooks** — the canonical procedure for each common ta
 4. **Before pushing**: Always `pnpm verify`. Feature branch + PR. Never push to main.
 5. **After pushing**: Suggest the next backlog item. Remind the human of open PRs.
 6. **Task files**: Use `/split-tasks` to write `.claude/tasks/*.md`. Delete after launch.
+
+### Parallel agents (fan-out)
+**One branch per agent; never two agents in one working tree** (proven branch-stomping). Heavy/many-file agents get their own git worktree. The orchestrator merges PRs into `main` one at a time, re-checking mergeability between each. See `/fan-out` (orchestrate parallel agents + merge train) and `/triage-ideas` (clear the `IDEAS.md` inbox into the backlog).
 
 ## Non-negotiables
 - **Gate + money** = deterministic, out of any LLM path. The LLM only PROPOSES; the FDR gate funds.
@@ -108,6 +113,7 @@ Skills are **runnable playbooks** — the canonical procedure for each common ta
 ## Read order (one doc, not all)
 1. **This file** — invariants, env, skills.
 2. **`docs/IMPLEMENTATION.md`** — what's built, what's next (last 3 "### Built" sections).
+2b. **`IDEAS.md`** — the product/engineering idea inbox (`/triage-ideas` promotes ripe ideas into `BACKLOG.md`).
 3. **The module's `# intent:` header** — every file opens with purpose · inputs · outputs · invariants.
 4. **`rg` for the exact symbol** — don't crawl the repo.
 
