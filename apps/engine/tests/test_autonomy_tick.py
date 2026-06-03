@@ -111,9 +111,18 @@ def test_cycles_run_increments(tmp_path):
 
 def _client(tmp_path, monkeypatch) -> TestClient:
     import cosmu.api.app as app_module
+    import cosmu.master.scheduler as sched_module
 
     store = _store(tmp_path)
     monkeypatch.setattr(app_module, "store", store)
+    _real_run_tick = sched_module.run_tick
+
+    def _offline_run_tick(s, **kw):
+        kw["edge_market"] = True
+        kw.setdefault("ingest", _no_ingest)
+        return _real_run_tick(s, **kw)
+
+    monkeypatch.setattr(sched_module, "run_tick", _offline_run_tick)
     return TestClient(app_module.app)
 
 

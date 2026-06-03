@@ -62,6 +62,7 @@ class VariantResult:
     net_profit: float
     gate_passed: bool
     reasons: list[str]
+    fitted_params: dict[str, float] = field(default_factory=dict)
     version_id: str | None = None
     promoted: bool = False
     holdout_passed: bool = False
@@ -101,15 +102,36 @@ def _grid_values(ps: ParamSpace) -> list[float]:
     return pts
 
 
+def _product_size(axes: list[list[float]]) -> int:
+    n = 1
+    for a in axes:
+        n *= len(a)
+    return n
+
+
+def _combo_at(axes: list[list[float]], idx: int) -> tuple[float, ...]:
+    """Index into the cartesian product without materializing it."""
+    combo: list[float] = []
+    for a in reversed(axes):
+        idx, r = divmod(idx, len(a))
+        combo.append(a[r])
+    return tuple(reversed(combo))
+
+
+def _sample_combos(axes: list[list[float]], max_variants: int) -> list[tuple[float, ...]]:
+    total = _product_size(axes)
+    if total <= max_variants:
+        return list(itertools.product(*axes))
+    stride = total / max_variants
+    return [_combo_at(axes, int(i * stride)) for i in range(max_variants)]
+
+
 def build_grid(spec: StrategySpec, *, max_variants: int = _MAX_VARIANTS) -> list[Variant]:
     """Cartesian product of each param's grid points → many fitted Versions. Deterministically truncated to
     `max_variants` (stride sampling, not a head slice, so the truncated grid still spans the space)."""
     keys = sorted(spec.param_space)
     axes = [_grid_values(spec.param_space[k]) for k in keys]
-    combos = list(itertools.product(*axes))
-    if len(combos) > max_variants:
-        stride = len(combos) / max_variants
-        combos = [combos[int(i * stride)] for i in range(max_variants)]
+    combos = _sample_combos(axes, max_variants)
     variants: list[Variant] = []
     for combo in combos:
         params = {k: v for k, v in zip(keys, combo, strict=True)}
@@ -159,7 +181,7 @@ def refine_around(
                 pts = [round(p, 8) for p in pts]
             axes.append(pts)
 
-        combos = list(itertools.product(*axes))
+        combos = _sample_combos(axes, max_variants)
         for combo in combos:
             params = {k: v for k, v in zip(keys, combo, strict=True)}
             tag = hashlib.sha256(
@@ -242,6 +264,7 @@ class StrategyFinder:
                     net_profit=net_profit,
                     gate_passed=verdict.passed,
                     reasons=verdict.reasons,
+                    fitted_params=variant.params,
                 )
             )
             cohort.append(
@@ -293,6 +316,7 @@ class StrategyFinder:
                             net_profit=net_profit,
                             gate_passed=verdict.passed,
                             reasons=verdict.reasons,
+                            fitted_params=variant.params,
                         )
                     )
                     cohort.append(
@@ -350,8 +374,9 @@ class StrategyFinder:
                 promote = r.promoted and holdout_ok
                 status = "forward_test" if promote else ("screened" if r.gate_passed else "killed")
                 kill_reason = None if r.gate_passed else (",".join(r.reasons) or "screened_out")
-                params = {**self._params_for(spec, r), "config_tag": r.config_tag}
-                compiled = compile_spec(spec, self._params_for(spec, r))
+                fitted = r.fitted_params or fit_params(spec)
+                params = {**fitted, "config_tag": r.config_tag}
+                compiled = compile_spec(spec, fitted)
                 version_id = b.insert(
                     "strategy_versions",
                     {
@@ -420,13 +445,6 @@ class StrategyFinder:
     def _version_exists(self, code_hash: str) -> bool:
         return self.store.row("SELECT id FROM strategy_versions WHERE code_hash = ?", (code_hash,)) is not None
 
-    def _params_for(self, spec: StrategySpec, r: VariantResult) -> dict[str, float]:
-        # Recover the variant's fitted params from the grid (deterministic for the config_tag); cheaper than
-        # carrying them on VariantResult and keeps the result row lean.
-        for variant in build_grid(spec):
-            if variant.config_tag == r.config_tag:
-                return variant.params
-        return fit_params(spec)
 
 
 def _round_trip_cost(metrics: BacktestMetrics, venue) -> float:  # noqa: ANN001
