@@ -6,6 +6,10 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+# Pinned transform version for the xAI/Grok Twitter sentiment source.  Bump this string whenever
+# the scoring prompt or weighting logic changes so a gate-passed survivor remains re-runnable.
+TWITTER_TRANSFORM_VERSION = "xai-twitter-sentiment-v1"
+
 
 class FeatureDefinition(BaseModel):
     name: str
@@ -61,6 +65,35 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     FeatureDefinition(name="social_volume", source="lunarcrush", tier="tier1", asset_classes=["crypto"], asof_semantics="daily social bucket (next-day availability floor)", prior="A surge in social volume can mark crowd attention that precedes (or exhausts) a move — low-confidence until validated OOS.", transform_version="lunarcrush-v1"),
     FeatureDefinition(name="social_sentiment", source="lunarcrush", tier="tier1", asset_classes=["crypto"], asof_semantics="daily social bucket (next-day availability floor)", prior="LunarCrush social sentiment is a crowd-mood proxy; a positive shift may precede continuation before it is priced — low-confidence until validated OOS.", transform_version="lunarcrush-v1"),
     FeatureDefinition(name="galaxy_score", source="lunarcrush", tier="tier1", asset_classes=["crypto"], asof_semantics="daily social bucket (next-day availability floor)", prior="LunarCrush Galaxy Score blends price + social health into one rank; extremes are a low-confidence regime tag — must earn its place via OOS.", transform_version="lunarcrush-v1"),
+    # xAI/Grok Twitter sentiment (key-gated: XAI_API_KEY required; returns [] without it).
+    # The LLM ONLY standardizes/scores tweet text — it is NEVER on the gate/scoring/money path.
+    # Both features are market-wide (the query covers crypto broadly, not a single asset).
+    # tier1 + low-confidence until validated OOS; the gate down-weights until it earns its place.
+    FeatureDefinition(
+        name="twitter_sentiment",
+        source="xai",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="xAI LiveSearch fetch time (availability == observation, no look-ahead)",
+        prior=(
+            "Real-time Twitter/X crypto sentiment scored by Grok on [-1, +1]; "
+            "crowd social signal that may lead price at swing horizon — low-confidence until validated OOS."
+        ),
+        transform_version=TWITTER_TRANSFORM_VERSION,
+    ),
+    FeatureDefinition(
+        name="twitter_influencer_sentiment",
+        source="xai",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="xAI LiveSearch fetch time (availability == observation, no look-ahead)",
+        prior=(
+            "Influencer-weighted Twitter/X sentiment: each tweet's Grok score is weighted by the author's "
+            "historical hit-rate (fraction of past calls followed by correct price direction). "
+            "Accounts with higher empirical accuracy carry more weight. tier1 + low-confidence until validated OOS."
+        ),
+        transform_version=TWITTER_TRANSFORM_VERSION,
+    ),
     FeatureDefinition(name="pm_implied_prob", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Odds are a cross-market probability signal."),
     FeatureDefinition(name="pm_prob_velocity", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Probability repricing speed identifies changing beliefs."),
     FeatureDefinition(name="pm_book_depth", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Depth defines fillable capacity."),
