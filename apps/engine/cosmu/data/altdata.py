@@ -622,6 +622,16 @@ class ExchangeNetflowProvider:
         return sorted(out, key=lambda p: p.ts)
 
 
+class XaiTwitterProvider:
+    """Thin re-export adapter so the ingest pipeline can import XaiTwitterProvider from altdata (the
+    canonical provider namespace), while the implementation lives in data/sources/xai_twitter.py."""
+
+    def __new__(cls, *args, **kwargs):  # noqa: ANN002, ANN003
+        from cosmu.data.sources.xai_twitter import XaiTwitterProvider as _Real
+
+        return _Real(*args, **kwargs)
+
+
 class OsintAirActivityProvider:
     """Adapts the OpenSky ADS-B data source to the AltDataProvider protocol for the ingest loop."""
 
@@ -779,12 +789,14 @@ _STORE_PROVIDER_OF = {
     "social_volume": "lunarcrush",
     "social_sentiment": "lunarcrush",
     "galaxy_score": "lunarcrush",
+    "twitter_sentiment": "xai",
+    "twitter_influencer_sentiment": "xai",
 }
 _STORE_MARKET_WIDE = frozenset({
     "fear_greed", "risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",
     "defi_tvl", "dxy", "yield_curve_2s10s", "credit_spread", "vix_term_slope",
     "osint_air_activity", "pm_implied_prob", "pm_prob_velocity", "pm_book_depth",
-    "reddit_sentiment",
+    "reddit_sentiment", "twitter_sentiment", "twitter_influencer_sentiment",
 })
 
 

@@ -28,6 +28,7 @@ from cosmu.data.altdata import (
     PolymarketOddsProvider,
     RedditSentimentProvider,
 )
+from cosmu.data.sources.xai_twitter import XaiTwitterProvider
 from cosmu.ingest.pipeline import (
     ingest_liquidations,
     ingest_market_wide_numeric,
@@ -68,6 +69,9 @@ class Providers:
     # Social feeds: Reddit is free (no key); LunarCrush is key-gated → empty without LUNARCRUSH_API_KEY.
     reddit: AltDataProvider = field(default_factory=RedditSentimentProvider)
     lunarcrush: AltDataProvider = field(default_factory=lambda: LunarCrushProvider())
+    # xAI/Grok Twitter sentiment: key-gated — returns [] without XAI_API_KEY (honest degradation).
+    # LLM only standardizes text; never touches the gate/scoring/money path.
+    xai_twitter: AltDataProvider = field(default_factory=lambda: XaiTwitterProvider())
     llm: Callable[[str], StandardizedNews] | None = None
     fred_series: str = DEFAULT_FRED_SERIES
     polymarket_token: str = DEFAULT_POLYMARKET_TOKEN
@@ -85,6 +89,8 @@ class Providers:
             polymarket_clob=PolymarketClobProvider(pin_token=pin),
             # LunarCrush only connects when LUNARCRUSH_API_KEY is set; no key → the provider returns [] (honest).
             lunarcrush=LunarCrushProvider(api_key=settings.lunarcrush_api_key or ""),
+            # xAI/Grok Twitter: key-gated — only live when XAI_API_KEY is set in Railway env.
+            xai_twitter=XaiTwitterProvider(api_key=settings.xai_api_key or ""),
             polymarket_token="risk_on",
         )
 
@@ -247,6 +253,19 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     )
     counts["galaxy_score"] = _safe(
         "galaxy_score", lambda: ingest_numeric(store, p.lunarcrush, symbols, "galaxy_score", provider_name="lunarcrush")
+    )
+    # xAI/Grok Twitter sentiment (key-gated: no-op without XAI_API_KEY; market-wide, LLM scores text only).
+    counts["twitter_sentiment"] = _safe(
+        "twitter_sentiment",
+        lambda: ingest_market_wide_numeric(
+            store, p.xai_twitter, source_metric="twitter_sentiment", stored_metric="twitter_sentiment", provider_name="xai"
+        ),
+    )
+    counts["twitter_influencer_sentiment"] = _safe(
+        "twitter_influencer_sentiment",
+        lambda: ingest_market_wide_numeric(
+            store, p.xai_twitter, source_metric="twitter_influencer_sentiment", stored_metric="twitter_influencer_sentiment", provider_name="xai"
+        ),
     )
     return counts
 
