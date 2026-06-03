@@ -163,29 +163,55 @@ def technical_analyst(ctx: MindContext) -> Stance:
 
 
 def sentiment_analyst(ctx: MindContext) -> Stance:
-    """Crowd fear/greed (0–100). Buy fear, fade greed — a swing-horizon mean-reversion prior."""
-    hit = _val(ctx, "fear_greed")
-    if hit is None:
-        return _abstain("Sentiment", "market", "Fear & Greed not ingested yet.")
-    value, asof = hit
-    distance = abs(value - 50.0) / 50.0
-    conviction = _clamp01(0.35 + distance * 0.65)
-    if value <= 45:
-        lean, label = "bullish", "fear"
-    elif value >= 55:
-        lean, label = "bearish", "greed"
+    """Crowd fear/greed (0–100) — buy fear, fade greed (a swing-horizon mean-reversion prior) — with Reddit
+    crowd chatter as a low-confidence cross-check. Fear & Greed drives the lean when present; Reddit-only is a
+    last-resort, low-confidence read. Abstains only when NEITHER feed is ingested."""
+    fg = _val(ctx, "fear_greed")
+    reddit = _val(ctx, "reddit_sentiment")
+    if fg is None and reddit is None:
+        return _abstain("Sentiment", "market", "Fear & Greed / Reddit sentiment not ingested yet.")
+    evidence: list[str] = []
+    asof: str | None = None
+    low_conf = False
+    if fg is not None:
+        value, asof = fg
+        distance = abs(value - 50.0) / 50.0
+        conviction = _clamp01(0.35 + distance * 0.65)
+        if value <= 45:
+            lean, label = "bullish", "fear"
+        elif value >= 55:
+            lean, label = "bearish", "greed"
+        else:
+            lean, label, conviction = "neutral", "balanced", 0.4
+        headline = f"Crowd reads {int(value)}/100 — {label}"
+        evidence.append(f"fear_greed={value:.0f}")
     else:
-        lean, label, conviction = "neutral", "balanced", 0.4
+        # Reddit-only fallback: bullish chatter leans bullish, bearish bearish — explicitly low-confidence.
+        rv, asof = reddit
+        low_conf = True
+        conviction = _clamp01(0.3 + abs(rv) * 0.5)
+        if rv > 0.1:
+            lean = "bullish"
+        elif rv < -0.1:
+            lean = "bearish"
+        else:
+            lean, conviction = "neutral", 0.35
+        headline = f"Reddit crowd {rv:+.2f}"
+    if reddit is not None:
+        rv, ra = reddit
+        evidence.append(f"reddit_sentiment={rv:+.2f}")
+        asof = ra if (asof is None or (ra and ra > asof)) else asof
     return Stance(
         perspective="Sentiment",
         kind="market",
         lean=lean,
         conviction=round(conviction, 3),
         weight=1.0,
-        headline=f"Crowd reads {int(value)}/100 — {label}",
-        rationale="Buy fear, fade greed: sentiment extremes mean-revert at the swing horizon.",
-        evidence=[f"fear_greed={value:.0f}"],
+        headline=headline,
+        rationale="Buy fear, fade greed: sentiment extremes mean-revert at the swing horizon; Reddit crowd chatter is a low-confidence cross-check.",
+        evidence=evidence,
         as_of=asof,
+        low_confidence=low_conf,
     )
 
 
@@ -255,16 +281,37 @@ def macro_analyst(ctx: MindContext) -> Stance:
 
 
 def social_news_analyst(ctx: MindContext) -> Stance:
-    """News-flow sentiment (LLM-standardized to a number at ingest only). A positive shift precedes
-    continuation before it is fully priced. A tier-1 source — counted at half weight until it earns more."""
-    hit = _val(ctx, "news_sentiment")
-    if hit is None:
-        return _abstain("Social & News", "market", "News-flow sentiment not ingested yet.", low_confidence=True)
-    value, asof = hit
-    conviction = round(_clamp01(0.3 + abs(value) * 0.6), 3)
-    if value > 0.1:
+    """News-flow sentiment (LLM-standardized to a number at ingest only) plus LunarCrush social metrics. A
+    positive flow shift precedes continuation before it is fully priced. News drives the directional lean
+    (known [-1,1] scale); social_sentiment is a half-weight cross-check, social_volume is attention (evidence
+    only, not direction). A tier-1 source — half weight, low-confidence — abstains only when NONE are ingested."""
+    news = _val(ctx, "news_sentiment")
+    social_sent = _val(ctx, "social_sentiment")
+    social_vol = _val(ctx, "social_volume")
+    if news is None and social_sent is None and social_vol is None:
+        return _abstain("Social & News", "market", "News-flow / LunarCrush social not ingested yet.", low_confidence=True)
+    evidence: list[str] = []
+    asof: str | None = None
+    score = 0.0
+    if news is not None:
+        v, asof = news
+        score += v
+        evidence.append(f"news_sentiment={v:+.2f}")
+    if social_sent is not None:
+        v, a = social_sent
+        # LunarCrush v4 social_sentiment is a 0..100 bullish share → center to a signed [-1,1] nudge (half weight).
+        signed = max(-1.0, min(1.0, (v - 50.0) / 50.0))
+        score += signed * 0.5
+        evidence.append(f"social_sentiment={v:.0f}")
+        asof = a if (asof is None or (a and a > asof)) else asof
+    if social_vol is not None:
+        v, a = social_vol
+        evidence.append(f"social_volume={v:.0f}")  # attention/intensity, not direction → evidence only
+        asof = a if (asof is None or (a and a > asof)) else asof
+    conviction = round(_clamp01(0.3 + abs(score) * 0.6), 3)
+    if score > 0.1:
         lean = "bullish"
-    elif value < -0.1:
+    elif score < -0.1:
         lean = "bearish"
     else:
         lean, conviction = "neutral", 0.35
@@ -274,9 +321,9 @@ def social_news_analyst(ctx: MindContext) -> Stance:
         lean=lean,
         conviction=conviction,
         weight=0.5,
-        headline=f"News flow {value:+.2f}",
-        rationale="A positive news-flow shift precedes multi-day continuation before it is fully priced.",
-        evidence=[f"news_sentiment={value:+.2f}"],
+        headline=f"Social/news flow {score:+.2f}",
+        rationale="A positive news/social-flow shift precedes multi-day continuation before it is fully priced; LunarCrush social adds a low-confidence cross-check.",
+        evidence=evidence,
         as_of=asof,
         low_confidence=True,
     )

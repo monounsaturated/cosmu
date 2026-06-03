@@ -21,7 +21,9 @@ from cosmu.mind.debate import RAILGUARD, debate
 _PERSPECTIVE_BY_SOURCE: tuple[tuple[str, str], ...] = (
     ("parquet_bars", "Technical"),
     ("alternative.me", "Sentiment"),
+    ("reddit", "Sentiment"),
     ("news", "Social & News"),
+    ("lunarcrush", "Social & News"),
     ("opensky", "OSINT"),
     ("ccxt", "Positioning"),
     ("exchange", "Positioning"),

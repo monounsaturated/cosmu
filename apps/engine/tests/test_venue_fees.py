@@ -44,6 +44,18 @@ def test_equities_are_the_cheapest_live_venue() -> None:
     assert ibkr_taker < binance_taker
 
 
+def test_ibkr_real_fees_and_instrument_catalog() -> None:
+    """IBKR's REAL fee is ~0.5 bps (the correct conversion of $0.005/share on a ~$100 name), and it lists the
+    liquid equity research universe (SPY/QQQ + AAPL/MSFT/TSLA) — priced at IBKR fees, not Binance's."""
+    cat = default_catalog()
+    ibkr = cat.venue("ibkr")
+    assert ibkr.kind == "equity"
+    assert ibkr.maker_fee_bps == Decimal("0.5") and ibkr.taker_fee_bps == Decimal("0.5")
+    symbols = {i.symbol for i in cat.instruments if i.venue_id == "ibkr"}
+    assert {"SPY", "QQQ", "AAPL", "MSFT", "TSLA"} <= symbols
+    assert all(i.asset_class == "equity" for i in cat.instruments if i.venue_id == "ibkr")
+
+
 def test_volume_tiers_lower_fees() -> None:
     binance = default_catalog().venue("binance")
     _, base = binance.effective_fee(0)
