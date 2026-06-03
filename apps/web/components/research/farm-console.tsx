@@ -124,9 +124,10 @@ export function FarmConsole() {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Run an autonomous cohort</CardTitle>
+            <CardTitle>Run a cohort</CardTitle>
             <CardDescription>
-              Generate a wide population, screen every candidate through the out-of-reach scorer, keep the survivors.
+              A cohort is one batch of machine-invented strategies. Each is backtested on real bars and judged by
+              the deterministic Gate — only survivors move on. (Or drive this from Claude Code — see Commands.)
             </CardDescription>
           </div>
           <FlaskConical className="size-4 text-iris-soft" />
@@ -135,7 +136,7 @@ export function FarmConsole() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-1.5">
               <div className="flex items-center justify-between text-[12px] text-muted">
-                <span>Cohort size</span>
+                <span>How many to invent</span>
                 <span className="tabular text-foreground">{cohortSize}</span>
               </div>
               <input
@@ -150,8 +151,8 @@ export function FarmConsole() {
             </label>
             <label className="space-y-1.5">
               <div className="flex items-center justify-between text-[12px] text-muted">
-                <span>Explore budget (wildcards)</span>
-                <span className="tabular text-foreground">{Math.round(explorePct * 100)}%</span>
+                <span>Wild ideas vs. tweaks</span>
+                <span className="tabular text-foreground">{Math.round(explorePct * 100)}% wild</span>
               </div>
               <input
                 type="range"
@@ -170,7 +171,7 @@ export function FarmConsole() {
             </Button>
             <label className="flex items-center gap-2 text-[12.5px] text-muted">
               <input type="checkbox" checked={usePine} onChange={(e) => setUsePine(e.target.checked)} className="accent-[var(--color-iris)]" />
-              include Pine import in cohort
+              also test the Pine script on the right
             </label>
             {offline ? <Badge variant="warn">engine not connected</Badge> : result ? <Badge variant="up">live engine</Badge> : null}
           </div>
@@ -215,7 +216,7 @@ export function FarmConsole() {
                 </div>
                 <div>
                   <div className="mb-1.5 flex items-center justify-between text-[11.5px] text-quiet">
-                    <span>explore wide · gate hard at the money valve</span>
+                    <span>wide search · strict money gate</span>
                     <span className="tabular">{passPct.toFixed(1)}% survive</span>
                   </div>
                   <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-surface-2">

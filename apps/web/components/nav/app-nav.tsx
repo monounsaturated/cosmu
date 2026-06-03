@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Radio,
   SlidersHorizontal,
+  Terminal,
   Wallet,
   X
 } from "lucide-react";
@@ -33,6 +34,7 @@ export const navItems: NavItem[] = [
   { href: "/strategies", label: "Strategies", desc: "Screened pipeline", icon: ListChecks },
   { href: "/paper", label: "Paper", desc: "Forward-test", icon: Wallet },
   { href: "/live", label: "Live", desc: "Real money", icon: Radio, gated: true },
+  { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal },
   { href: "/settings", label: "Settings", desc: "Universe · data", icon: SlidersHorizontal }
 ];
 
