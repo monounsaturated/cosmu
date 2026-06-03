@@ -190,15 +190,54 @@ def sentiment_analyst(ctx: MindContext) -> Stance:
 
 
 def macro_analyst(ctx: MindContext) -> Stance:
-    """Shared macro regime (FRED curve/rates/liquidity) — risk-on vs risk-off across asset classes."""
+    """Shared macro regime (FRED curve/rates/liquidity) — risk-on vs risk-off across asset classes.
+    Reads macro_regime plus supplementary FRED series (DXY, yield curve, credit spread, VIX term slope)."""
     hit = _val(ctx, "macro_regime")
-    if hit is None:
+    dxy = _val(ctx, "dxy")
+    curve = _val(ctx, "yield_curve_2s10s")
+    credit = _val(ctx, "credit_spread")
+    vix_slope = _val(ctx, "vix_term_slope")
+    vix = _val(ctx, "vix_level")
+    ffr = _val(ctx, "fed_funds_rate")
+    if hit is None and dxy is None and curve is None and credit is None:
         return _abstain("Macro", "market", "Macro regime (FRED) not ingested yet.")
-    value, asof = hit
-    conviction = round(_clamp01(0.4 + abs(math.tanh(value)) * 0.5), 3)
-    if value > 0:
+    evidence: list[str] = []
+    score = 0.0
+    asof: str | None = None
+    if hit is not None:
+        value, asof = hit
+        score += math.tanh(value)
+        evidence.append(f"macro_regime={value:+.2f}")
+    if dxy is not None:
+        v, a = dxy
+        evidence.append(f"dxy={v:.2f}")
+        asof = a if (asof is None or (a and a > asof)) else asof
+    if curve is not None:
+        v, a = curve
+        score += math.tanh(v) * 0.3
+        evidence.append(f"yield_curve_2s10s={v:+.2f}")
+        asof = a if (asof is None or (a and a > asof)) else asof
+    if credit is not None:
+        v, a = credit
+        score -= math.tanh(v / 3.0) * 0.2
+        evidence.append(f"credit_spread={v:.2f}")
+        asof = a if (asof is None or (a and a > asof)) else asof
+    if vix_slope is not None:
+        v, a = vix_slope
+        evidence.append(f"vix_term_slope={v:.2f}")
+        asof = a if (asof is None or (a and a > asof)) else asof
+    if vix is not None:
+        v, a = vix
+        evidence.append(f"vix_level={v:.2f}")
+        asof = a if (asof is None or (a and a > asof)) else asof
+    if ffr is not None:
+        v, a = ffr
+        evidence.append(f"fed_funds_rate={v:.2f}")
+        asof = a if (asof is None or (a and a > asof)) else asof
+    conviction = round(_clamp01(0.4 + abs(score) * 0.5), 3)
+    if score > 0.15:
         lean, label = "bullish", "risk-on"
-    elif value < 0:
+    elif score < -0.15:
         lean, label = "bearish", "risk-off"
     else:
         lean, label, conviction = "neutral", "neutral", 0.4
@@ -210,7 +249,7 @@ def macro_analyst(ctx: MindContext) -> Stance:
         weight=1.0,
         headline=f"Macro regime {label}",
         rationale="Curve slope, real rates and liquidity condition risk premia across every asset class.",
-        evidence=[f"macro_regime={value:+.2f}"],
+        evidence=evidence,
         as_of=asof,
     )
 
@@ -244,25 +283,42 @@ def social_news_analyst(ctx: MindContext) -> Stance:
 
 
 def positioning_analyst(ctx: MindContext) -> Stance:
-    """Crowded-leverage read: perp funding (z) as a long filter, plus liquidation cascades that overshoot.
-    Extreme positive funding = crowded longs (cautious); a liquidation spike exhausts sellers (mean-revert)."""
+    """Crowded-leverage read: perp funding (z), open interest, basis, exchange netflow, and liquidation
+    cascades. Extreme positive funding = crowded longs (cautious); a liquidation spike exhausts sellers."""
     funding = _val(ctx, "funding_rate")
     liq = _val(ctx, "liquidation_cascade")
-    if funding is None and liq is None:
-        return _abstain("Positioning", "market", "Funding / liquidation feeds not ingested yet.")
+    oi = _val(ctx, "open_interest")
+    basis = _val(ctx, "perp_spot_basis")
+    netflow = _val(ctx, "exchange_netflow")
+    if funding is None and liq is None and oi is None and basis is None and netflow is None:
+        return _abstain("Positioning", "market", "Positioning feeds not ingested yet.")
     evidence: list[str] = []
-    score = 0.0  # >0 bullish (room to run), <0 bearish (crowded)
+    score = 0.0
     asof: str | None = None
     if funding is not None:
         fz, fa = funding
         evidence.append(f"funding_z={fz:+.2f}")
-        score -= math.tanh(fz)  # high funding (crowded longs) → bearish
+        score -= math.tanh(fz)
         asof = fa
     if liq is not None:
         lz, la = liq
         evidence.append(f"liquidation_z={lz:+.2f}")
-        score += math.tanh(max(0.0, lz)) * 0.5  # a cascade exhausts sellers → mean-revert up
+        score += math.tanh(max(0.0, lz)) * 0.5
         asof = la if (asof is None or (la and la > asof)) else asof
+    if oi is not None:
+        v, a = oi
+        evidence.append(f"open_interest={v:.0f}")
+        asof = a if (asof is None or (a and a > asof)) else asof
+    if basis is not None:
+        v, a = basis
+        evidence.append(f"perp_spot_basis={v:+.4f}")
+        score -= math.tanh(v * 100) * 0.3
+        asof = a if (asof is None or (a and a > asof)) else asof
+    if netflow is not None:
+        v, a = netflow
+        evidence.append(f"exchange_netflow={v:+.3f}")
+        score += math.tanh(v) * 0.2
+        asof = a if (asof is None or (a and a > asof)) else asof
     conviction = round(_clamp01(0.35 + abs(score) * 0.5), 3)
     if score > 0.15:
         lean, label = "bullish", "room to run"
@@ -277,7 +333,7 @@ def positioning_analyst(ctx: MindContext) -> Stance:
         conviction=conviction,
         weight=1.0,
         headline=f"Leverage {label}",
-        rationale="Funding extremes proxy crowded leverage; liquidation cascades overshoot and mean-revert.",
+        rationale="Funding extremes proxy crowded leverage; OI/basis confirm; liquidation cascades overshoot.",
         evidence=evidence,
         as_of=asof,
     )

@@ -10,14 +10,19 @@ from cosmu.config.settings import get_settings
 from cosmu.data.altdata import (
     AltDataProvider,
     AltDataStore,
+    BinanceBasisProvider,
+    BinanceOpenInterestProvider,
     CboePutCallProvider,
     CoinglassLiquidationProvider,
     DefiLlamaTvlProvider,
+    ExchangeNetflowProvider,
     FearGreedProvider,
     FredMacroProvider,
     FundingRateProvider,
     GdeltNewsProvider,
     NewsProvider,
+    OsintAirActivityProvider,
+    PolymarketClobProvider,
     PolymarketGammaProvider,
     PolymarketOddsProvider,
 )
@@ -53,6 +58,11 @@ class Providers:
     liquidations: AltDataProvider = field(default_factory=CoinglassLiquidationProvider)
     putcall: AltDataProvider = field(default_factory=CboePutCallProvider)
     defillama: AltDataProvider = field(default_factory=DefiLlamaTvlProvider)
+    open_interest: AltDataProvider = field(default_factory=BinanceOpenInterestProvider)
+    basis: AltDataProvider = field(default_factory=BinanceBasisProvider)
+    netflow: AltDataProvider = field(default_factory=ExchangeNetflowProvider)
+    osint: AltDataProvider = field(default_factory=OsintAirActivityProvider)
+    polymarket_clob: AltDataProvider = field(default_factory=lambda: PolymarketClobProvider())
     llm: Callable[[str], StandardizedNews] | None = None
     fred_series: str = DEFAULT_FRED_SERIES
     polymarket_token: str = DEFAULT_POLYMARKET_TOKEN
@@ -67,6 +77,7 @@ class Providers:
         return cls(
             fred=FredMacroProvider(api_key=settings.fred_api_key),
             polymarket=PolymarketGammaProvider(pin_token=pin),
+            polymarket_clob=PolymarketClobProvider(pin_token=pin),
             polymarket_token="risk_on",
         )
 
@@ -144,6 +155,67 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     )
     counts["liquidations"] = _safe("liquidations", lambda: ingest_liquidations(store, p.liquidations, symbols))
     counts["putcall_ratio"] = _safe("putcall_ratio", lambda: ingest_putcall(store, p.putcall))
+    # FRED-derived macro features (key from env: FRED_API_KEY)
+    counts["dxy"] = _safe(
+        "dxy",
+        lambda: ingest_market_wide_numeric(
+            store, p.fred, source_metric="DTWEXBGS", stored_metric="dxy", provider_name="fred"
+        ),
+    )
+    counts["yield_curve_2s10s"] = _safe(
+        "yield_curve_2s10s",
+        lambda: ingest_market_wide_numeric(
+            store, p.fred, source_metric="T10Y2Y", stored_metric="yield_curve_2s10s", provider_name="fred"
+        ),
+    )
+    counts["credit_spread"] = _safe(
+        "credit_spread",
+        lambda: ingest_market_wide_numeric(
+            store, p.fred, source_metric="BAMLH0A0HYM2", stored_metric="credit_spread", provider_name="fred"
+        ),
+    )
+    counts["vix_term_slope"] = _safe(
+        "vix_term_slope",
+        lambda: ingest_market_wide_numeric(
+            store, p.fred, source_metric="VIXCLS", stored_metric="vix_term_slope", provider_name="fred"
+        ),
+    )
+    # Exchange-derived crypto features (free Binance fapi, no key)
+    counts["open_interest"] = _safe(
+        "open_interest", lambda: ingest_numeric(store, p.open_interest, symbols, "open_interest", provider_name="binance")
+    )
+    counts["perp_spot_basis"] = _safe(
+        "perp_spot_basis", lambda: ingest_numeric(store, p.basis, symbols, "perp_spot_basis", provider_name="binance")
+    )
+    counts["exchange_netflow"] = _safe(
+        "exchange_netflow", lambda: ingest_numeric(store, p.netflow, symbols, "exchange_netflow", provider_name="binance")
+    )
+    # OSINT (free OpenSky, low-confidence)
+    counts["osint_air_activity"] = _safe(
+        "osint_air_activity",
+        lambda: ingest_market_wide_numeric(
+            store, p.osint, source_metric="osint_air_activity", stored_metric="osint_air_activity", provider_name="opensky"
+        ),
+    )
+    # Polymarket CLOB-derived (key from env: POLYMARKET_TOKEN)
+    counts["pm_implied_prob"] = _safe(
+        "pm_implied_prob",
+        lambda: ingest_market_wide_numeric(
+            store, p.polymarket_clob, source_metric="pm_implied_prob", stored_metric="pm_implied_prob", provider_name="polymarket"
+        ),
+    )
+    counts["pm_prob_velocity"] = _safe(
+        "pm_prob_velocity",
+        lambda: ingest_market_wide_numeric(
+            store, p.polymarket_clob, source_metric="pm_prob_velocity", stored_metric="pm_prob_velocity", provider_name="polymarket"
+        ),
+    )
+    counts["pm_book_depth"] = _safe(
+        "pm_book_depth",
+        lambda: ingest_market_wide_numeric(
+            store, p.polymarket_clob, source_metric="pm_book_depth", stored_metric="pm_book_depth", provider_name="polymarket"
+        ),
+    )
     return counts
 
 

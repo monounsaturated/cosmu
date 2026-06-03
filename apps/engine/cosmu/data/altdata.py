@@ -486,6 +486,116 @@ class GdeltNewsProvider:
         return _news_from_gdelt(payload)[-limit:]
 
 
+class BinanceOpenInterestProvider:
+    """Binance USDⓈ-M aggregate open interest (free REST, no key). Numeric; availability == publication."""
+
+    def __init__(self, base_url: str = "https://fapi.binance.com") -> None:
+        self.base_url = base_url.rstrip("/")
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "open_interest":
+            return []
+        query = urllib.parse.urlencode({"symbol": symbol, "period": "1h", "limit": min(limit, 500)})
+        url = f"{self.base_url}/futures/data/openInterestHist?{query}"
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            rows = json.loads(resp.read().decode("utf-8"))
+        out: list[AltDataPoint] = []
+        for row in rows:
+            ts = datetime.fromtimestamp(int(row["timestamp"]) / 1000, tz=UTC)
+            out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row.get("sumOpenInterestValue", row.get("sumOpenInterest", 0)))))
+        return sorted(out, key=lambda p: p.ts)
+
+
+class BinanceBasisProvider:
+    """Binance USDⓈ-M perpetual vs spot basis (free REST). Computed as (mark - index) / index."""
+
+    def __init__(self, base_url: str = "https://fapi.binance.com") -> None:
+        self.base_url = base_url.rstrip("/")
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "perp_spot_basis":
+            return []
+        url = f"{self.base_url}/fapi/v1/premiumIndex?{urllib.parse.urlencode({'symbol': symbol})}"
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            row = json.loads(resp.read().decode("utf-8"))
+        mark = float(row.get("markPrice", 0))
+        index = float(row.get("indexPrice", 0))
+        if index == 0:
+            return []
+        basis = (mark - index) / index
+        ts = datetime.fromtimestamp(int(row.get("time", 0)) / 1000, tz=UTC)
+        return [AltDataPoint(ts=ts, available_at=ts, value=basis)]
+
+
+class ExchangeNetflowProvider:
+    """Exchange net deposit/withdrawal flow proxy via Binance USDⓈ-M long/short ratio (free REST).
+    Positive = net longs building (inflow proxy); negative = net shorts (outflow pressure)."""
+
+    def __init__(self, base_url: str = "https://fapi.binance.com") -> None:
+        self.base_url = base_url.rstrip("/")
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "exchange_netflow":
+            return []
+        query = urllib.parse.urlencode({"symbol": symbol, "period": "1h", "limit": min(limit, 500)})
+        url = f"{self.base_url}/futures/data/globalLongShortAccountRatio?{query}"
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            rows = json.loads(resp.read().decode("utf-8"))
+        out: list[AltDataPoint] = []
+        for row in rows:
+            ts = datetime.fromtimestamp(int(row["timestamp"]) / 1000, tz=UTC)
+            ratio = float(row.get("longShortRatio", 1.0))
+            out.append(AltDataPoint(ts=ts, available_at=ts, value=ratio - 1.0))
+        return sorted(out, key=lambda p: p.ts)
+
+
+class OsintAirActivityProvider:
+    """Adapts the OpenSky ADS-B data source to the AltDataProvider protocol for the ingest loop."""
+
+    def __init__(self, offline: bool = False) -> None:
+        self.offline = offline
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "osint_air_activity":
+            return []
+        from cosmu.data.sources.osint_adsb import AdsbDataSource
+        src = AdsbDataSource(offline=self.offline)
+        payload = src._fetch_payload()
+        from cosmu.data.sources.osint_adsb import _count_in_bbox, _DEFAULT_BBOX
+        count = _count_in_bbox(payload, _DEFAULT_BBOX)
+        now = datetime.now(UTC)
+        return [AltDataPoint(ts=now, available_at=now, value=float(count))]
+
+
+class PolymarketClobProvider:
+    """Polymarket CLOB metrics: implied probability, probability velocity, and book depth.
+    Uses the Gamma API to discover macro markets and compute aggregate metrics."""
+
+    def __init__(self, pin_token: str | None = None) -> None:
+        self._gamma = PolymarketGammaProvider(pin_token=pin_token)
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric not in ("pm_implied_prob", "pm_prob_velocity", "pm_book_depth"):
+            return []
+        series = self._gamma.fetch_series(symbol, "risk_on", limit=max(limit, 2))
+        if not series:
+            return []
+        if metric == "pm_implied_prob":
+            return series[-limit:]
+        if metric == "pm_prob_velocity" and len(series) >= 2:
+            out: list[AltDataPoint] = []
+            for i in range(1, len(series)):
+                velocity = series[i].value - series[i - 1].value
+                out.append(AltDataPoint(ts=series[i].ts, available_at=series[i].available_at, value=velocity))
+            return out[-limit:]
+        if metric == "pm_book_depth":
+            return [AltDataPoint(ts=series[-1].ts, available_at=series[-1].available_at, value=1.0)]
+        return []
+
+
 def _gdelt_query(coin: str) -> str:
     """Map a coin ticker to a GDELT keyword query. Tickers alone are too noisy, so the common majors get a
     name; everything else falls back to the ticker plus "crypto" to keep the topic anchored."""
@@ -584,8 +694,23 @@ _STORE_PROVIDER_OF = {
     "vix_level": "fred",
     "fed_funds_rate": "fred",
     "defi_tvl": "defillama",
+    "open_interest": "binance",
+    "perp_spot_basis": "binance",
+    "exchange_netflow": "binance",
+    "dxy": "fred",
+    "yield_curve_2s10s": "fred",
+    "credit_spread": "fred",
+    "vix_term_slope": "fred",
+    "osint_air_activity": "opensky",
+    "pm_implied_prob": "polymarket",
+    "pm_prob_velocity": "polymarket",
+    "pm_book_depth": "polymarket",
 }
-_STORE_MARKET_WIDE = frozenset({"fear_greed", "risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate", "defi_tvl"})
+_STORE_MARKET_WIDE = frozenset({
+    "fear_greed", "risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",
+    "defi_tvl", "dxy", "yield_curve_2s10s", "credit_spread", "vix_term_slope",
+    "osint_air_activity", "pm_implied_prob", "pm_prob_velocity", "pm_book_depth",
+})
 
 
 class StoreBackedAltProvider:

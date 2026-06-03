@@ -100,6 +100,24 @@ def test_reflect_degrades_when_table_absent(tmp_path):
     assert len(events) == 1
 
 
+def test_new_data_sources_drive_analysts(tmp_path):
+    store = _store(tmp_path)
+    _seed_metric(store, "open_interest", 5e9)
+    _seed_metric(store, "perp_spot_basis", 0.002)
+    _seed_metric(store, "exchange_netflow", 0.3)
+    _seed_metric(store, "dxy", 104.5, provider="fred")
+    _seed_metric(store, "yield_curve_2s10s", -0.5, provider="fred")
+    _seed_metric(store, "credit_spread", 4.2, provider="fred")
+    mind = build_mind(store)
+    leans = {s["perspective"]: s["lean"] for s in mind["stances"]}
+    assert leans["Positioning"] != "abstain", "OI/basis/netflow should activate Positioning"
+    assert leans["Macro"] != "abstain", "FRED metrics should activate Macro"
+    pos_stance = next(s for s in mind["stances"] if s["perspective"] == "Positioning")
+    assert any("open_interest" in e for e in pos_stance["evidence"])
+    macro_stance = next(s for s in mind["stances"] if s["perspective"] == "Macro")
+    assert any("dxy" in e for e in macro_stance["evidence"])
+
+
 def test_railguard_present_on_every_analyst_stance_shape(tmp_path):
     store = _store(tmp_path)
     ctx = gather_context(store)
