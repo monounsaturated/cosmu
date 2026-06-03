@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     environment: Literal["local", "test", "production"] = Field(default_factory=lambda: _PROFILE_TO_ENVIRONMENT[_profile()])  # type: ignore[arg-type]
     database_url: str = Field(default="sqlite:///./.cosmu/cosmu.sqlite3")
     base_currency: str = "USD"
+    # Operating jurisdiction (ISO-3166 alpha-2). Live-legality is a venue+country fact (e.g. Binance is not
+    # legal for US live), so this PICKS which venues can move real money. Override with LIVE_JURISDICTION.
+    live_jurisdiction: str = "FR"
     sim_bankroll: Decimal = Decimal("100000")
     openrouter_api_key: str | None = Field(default=None, repr=False)
     # LLM author: xAI (Grok) is preferred when XAI_API_KEY is set (already on Railway) — most efficient,

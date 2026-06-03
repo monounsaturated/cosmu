@@ -34,6 +34,30 @@ def test_toggle_requires_confirm_and_stays_off(tmp_path, monkeypatch):
     assert c.post("/toggle/live", json={"enabled": True, "confirm": True}).json()["enabled"] is True
 
 
+def test_live_venues_jurisdiction_and_honest_connection(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)  # FR default jurisdiction, no exchange keys
+    body = c.get("/live/venues").json()
+    assert body["jurisdiction"] == "FR"
+    by_id = {v["id"]: v for v in body["venues"]}
+    assert "binance" in by_id  # Binance is live-legal in FR
+    assert all(v["live_legal"] for v in body["venues"])  # the set is only legal-from-jurisdiction venues
+    assert by_id["binance"]["connected"] is False  # no keys wired → honestly "not connected"
+    assert all(v["deployed_usd"] == 0.0 for v in body["venues"])  # no positions → nothing at risk
+    assert body["total_deployed_usd"] == 0.0
+    assert "secret" not in c.get("/live/venues").text.lower()  # no secret ever leaks
+
+
+def test_live_venues_excludes_jurisdiction_restricted(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    settings = Settings(database_url=f"sqlite:///{tmp_path}/live_us.sqlite3", live_jurisdiction="US", live=LiveSettings())
+    monkeypatch.setattr(app_mod, "settings", settings)
+    monkeypatch.setattr(app_mod, "store", Store(settings))
+    ids = {v["id"] for v in TestClient(app_mod.app).get("/live/venues").json()["venues"]}
+    assert "binance" not in ids  # Binance is NOT live-legal for US → must not appear as available
+    assert "kraken" in ids       # US-legal crypto venue still shows
+
+
 def test_activate_requires_confirm(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
     body = c.post("/live/activate", json={"per_strategy_cap": 1000, "global_cap": 5000, "max_daily_loss": 200, "confirm": False}).json()

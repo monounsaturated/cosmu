@@ -13,13 +13,14 @@
 // cross-asset-gate.tsx until @cosmu/contracts-ts ships them.
 
 import { useState, useTransition } from "react";
-import { AlertTriangle, Lock, Power, ShieldCheck, Unlock, X } from "lucide-react";
+import { AlertTriangle, Building2, Lock, Power, ShieldCheck, Unlock, X } from "lucide-react";
 import {
   type ActivateResponse,
   type Caps,
   type DefundResponse,
   type EligibleStrategy,
   type LiveMode,
+  type LiveVenuesResponse,
   type PositionsResponse
 } from "./contracts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,9 +43,16 @@ function modeBadge(mode: LiveMode) {
   return map[mode];
 }
 
-export function LiveSurface({ initial }: { initial: PositionsResponse & { connected: boolean } }) {
+export function LiveSurface({
+  initial,
+  initialVenues
+}: {
+  initial: PositionsResponse & { connected: boolean };
+  initialVenues: LiveVenuesResponse & { connected: boolean };
+}) {
   const [state, setState] = useState<PositionsResponse>(initial);
   const [connected, setConnected] = useState(initial.connected);
+  const [venues, setVenues] = useState<LiveVenuesResponse>(initialVenues);
   const [modalOpen, setModalOpen] = useState(false);
   const [caps, setCaps] = useState<Caps>(initial.caps ?? DEFAULT_CAPS);
   const [eligible, setEligible] = useState<EligibleStrategy[]>([]);
@@ -58,6 +66,16 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { connec
   const money = moneyMode({ live: armed && state.mode === "live" });
   const dailyLossPct = state.caps.max_daily_loss > 0 ? Math.min(100, (state.daily_loss / state.caps.max_daily_loss) * 100) : 0;
 
+  async function refreshVenues() {
+    if (!ENGINE) return;
+    try {
+      const res = await fetch(`${ENGINE}/live/venues`);
+      if (res.ok) setVenues((await res.json()) as LiveVenuesResponse);
+    } catch {
+      /* leave last-known venues; the connected badge already reflects engine reachability */
+    }
+  }
+
   async function refreshPositions() {
     if (!ENGINE) {
       setConnected(false);
@@ -70,9 +88,30 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { connec
       setState(data);
       setCaps(data.caps);
       setConnected(true);
+      await refreshVenues();
     } catch {
       setConnected(false);
     }
+  }
+
+  // Tick / untick a venue into the trading universe (POST /universe/venue). Optimistic, then reconciled
+  // from /live/venues. This selects WHERE money may go; "not connected" venues simply can't trade until wired.
+  function toggleVenue(id: string, enabled: boolean) {
+    if (!ENGINE) return;
+    setVenues((v) => ({ ...v, venues: v.venues.map((x) => (x.id === id ? { ...x, enabled } : x)) }));
+    startTransition(async () => {
+      try {
+        await fetch(`${ENGINE}/universe/venue`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ venue_id: id, enabled })
+        });
+        await refreshVenues();
+      } catch {
+        setConnected(false);
+        await refreshVenues();
+      }
+    });
   }
 
   // CLICK 1 — open the activation modal. This sends the live toggle request (enabled:true,
@@ -208,6 +247,8 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { connec
         />
       </section>
 
+      <VenuesCard venues={venues} connected={connected} pending={pending} onToggle={toggleVenue} />
+
       <Card>
         <CardHeader>
           <div>
@@ -296,6 +337,82 @@ export function LiveSurface({ initial }: { initial: PositionsResponse & { connec
         />
       ) : null}
     </div>
+  );
+}
+
+// Lean venue overview: the TOTAL live budget up top, then the jurisdiction-legal venues as tick-to-include
+// rows. Each shows its deployed amount when connected, or an honest "not connected" when legal-but-unwired.
+function VenuesCard({
+  venues,
+  connected,
+  pending,
+  onToggle
+}: {
+  venues: LiveVenuesResponse;
+  connected: boolean;
+  pending: boolean;
+  onToggle: (id: string, enabled: boolean) => void;
+}) {
+  const rows = venues.venues;
+  const connectedCount = rows.filter((v) => v.connected).length;
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <CardTitle>Venues</CardTitle>
+          <CardDescription>
+            Where live capital can go. Tick to include a venue; “not connected” means it’s legal here but has no
+            execution keys wired yet{venues.jurisdiction ? ` · jurisdiction ${venues.jurisdiction}` : ""}.
+          </CardDescription>
+        </div>
+        <Badge variant="muted">
+          {formatUsd(venues.total_deployed_usd)} / {formatUsd(venues.global_cap)} deployed
+        </Badge>
+      </CardHeader>
+      <CardContent>
+        {!connected ? (
+          <div className="flex flex-col items-center gap-1.5 py-8 text-center">
+            <Building2 className="size-5 text-quiet" />
+            <div className="text-[13px] text-muted">Engine not connected</div>
+            <div className="max-w-sm text-[11.5px] text-quiet">Available venues + per-venue budget appear here once the engine is reachable — no fabricated rows.</div>
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="py-8 text-center text-[12.5px] text-muted">No live-legal venues for this jurisdiction.</div>
+        ) : (
+          <ul className="divide-y divide-border/40">
+            {rows.map((v) => (
+              <li key={v.id} className="flex items-center gap-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={v.enabled}
+                  disabled={pending}
+                  onChange={(e) => onToggle(v.id, e.target.checked)}
+                  aria-label={`Include ${v.name}`}
+                  className="size-4 shrink-0 accent-iris"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-medium text-foreground">{v.name}</span>
+                    <Badge variant="muted">{v.kind}</Badge>
+                  </div>
+                </div>
+                {v.connected ? (
+                  <div className="text-right">
+                    <div className="tabular text-[13px] font-medium text-foreground">{formatUsd(v.deployed_usd)}</div>
+                    <div className="text-[10.5px] uppercase tracking-wide text-up">connected</div>
+                  </div>
+                ) : (
+                  <Badge variant="warn">not connected</Badge>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {connected && connectedCount === 0 && rows.length > 0 ? (
+          <p className="mt-2 text-[11px] text-quiet">No venue has execution keys wired yet — nothing can trade live until one is connected.</p>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 

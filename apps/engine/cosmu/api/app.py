@@ -63,6 +63,8 @@ from cosmu.api.models import (
     LiveCaps,
     LivePosition,
     LivePositionsResponse,
+    LiveVenue,
+    LiveVenuesResponse,
     PineSample,
     PineSamplesResponse,
     PineTranslateRequest,
@@ -95,6 +97,7 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.portfolio import Portfolio
 from cosmu.lab.author import AuthorDraft, draft_from_brief
 from cosmu.spine.engine import EngineFacade
+from cosmu.spine.venue import default_catalog
 from cosmu.spine.universe import (
     CLASS_LABELS,
     CLASSES_WITH_DATA,
@@ -774,6 +777,42 @@ def live_positions() -> LivePositionsResponse:
         for p in pf.positions()
     ]
     return LivePositionsResponse(armed=armed, mode=_live_mode(), daily_loss=float(daily.daily_loss), caps=caps, positions=positions)
+
+
+# Which venues have LIVE execution credentials wired. Only Binance has an execution adapter + keys today;
+# the others are legal-but-unwired ("not connected") until their adapter ships. Secrets stay server-side —
+# the UI only ever sees the boolean.
+def _venue_connected(venue_id: str) -> bool:
+    if venue_id == "binance":
+        return bool(settings.binance_api_key and settings.binance_api_secret)
+    return False
+
+
+@app.get("/live/venues", response_model=LiveVenuesResponse)
+def live_venues() -> LiveVenuesResponse:
+    """The honest LIVE venue picture: the venues legal to trade from our jurisdiction, whether each is wired
+    (connected) or not, whether it's ticked into the universe, and the real capital deployed at each now."""
+    catalog = default_catalog()
+    country = settings.live_jurisdiction
+    enabled_ids = {r["id"] for r in venue_rows(store) if r["enabled"]}
+    deployed: dict[str, float] = {}
+    for p in _portfolio().positions():  # real capital at risk per venue: |qty| * avg_price
+        deployed[p.venue] = deployed.get(p.venue, 0.0) + abs(_metric(p.qty)) * _metric(p.avg_price)
+    venues = [
+        LiveVenue(
+            id=v.id,
+            name=v.name,
+            kind=v.kind,
+            live_legal=True,  # this set is already filtered to legal-from-our-jurisdiction
+            connected=_venue_connected(v.id),
+            enabled=v.id in enabled_ids,
+            deployed_usd=round(_metric(deployed.get(v.id, 0.0)), 2),
+        )
+        for v in catalog.live_legal_venues(country)
+    ]
+    caps = LiveCaps(**_live_caps_row())
+    total = round(sum(v.deployed_usd for v in venues), 2)
+    return LiveVenuesResponse(jurisdiction=country, global_cap=caps.global_cap, total_deployed_usd=total, venues=venues)
 
 
 def _universe_response() -> UniverseResponse:

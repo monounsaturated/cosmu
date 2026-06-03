@@ -165,6 +165,26 @@ class LivePositionsResponse(BaseModel):
     positions: list[LivePosition]
 
 
+class LiveVenue(BaseModel):
+    """One venue on the LIVE surface: is it legal to trade here from our jurisdiction, are execution keys
+    wired (connected), is it ticked into the universe, and how much real capital is deployed there now."""
+
+    id: str
+    name: str
+    kind: Literal["crypto", "equity", "prediction"]
+    live_legal: bool      # legal/available to move real money from our jurisdiction (catalog fact)
+    connected: bool       # execution credentials wired for this venue (else "not connected")
+    enabled: bool         # ticked into the trading universe
+    deployed_usd: float   # real capital at risk here right now (sum of live positions' notional)
+
+
+class LiveVenuesResponse(BaseModel):
+    jurisdiction: str
+    global_cap: float            # the total live budget across all venues
+    total_deployed_usd: float
+    venues: list[LiveVenue]
+
+
 class VenueState(BaseModel):
     id: str
     name: str

@@ -46,3 +46,22 @@ export interface DefundBody {
   scope: "all" | "strategy";
   version_id?: string;
 }
+
+// GET /live/venues — the honest per-venue live picture. Mirrors the engine's LiveVenue/LiveVenuesResponse
+// (Pydantic). Kept local for now, like the request bodies above + the cross-asset-gate precedent.
+export interface LiveVenue {
+  id: string;
+  name: string;
+  kind: "crypto" | "equity" | "prediction";
+  live_legal: boolean;   // legal to move real money from our jurisdiction
+  connected: boolean;    // execution keys wired (else "not connected")
+  enabled: boolean;      // ticked into the trading universe
+  deployed_usd: number;  // real capital at risk here now
+}
+
+export interface LiveVenuesResponse {
+  jurisdiction: string;
+  global_cap: number;          // total live budget across venues
+  total_deployed_usd: number;
+  venues: LiveVenue[];
+}

@@ -26,7 +26,7 @@ import type {
   SkillsResponse,
   StrategyDetailResponse
 } from "@cosmu/contracts-ts";
-import type { PositionsResponse } from "@/components/live/contracts";
+import type { PositionsResponse, LiveVenuesResponse } from "@/components/live/contracts";
 import { EMPTY_AUTONOMY_STATUS, type AutonomyStatus } from "./autonomy-contracts";
 
 // Skills, memory insights, and costs come from the generated @cosmu/contracts-ts (no hand-typed
@@ -201,6 +201,13 @@ export async function getAutonomyStatus(): Promise<{ status: AutonomyStatus; con
 // offline — never presented as armed or live.
 export async function getLivePositions(): Promise<PositionsResponse & { connected: boolean }> {
   const { data, connected } = await getJson<PositionsResponse>("/live/positions", emptyPositions);
+  return { ...data, connected };
+}
+
+const emptyVenues: LiveVenuesResponse = { jurisdiction: "", global_cap: 0, total_deployed_usd: 0, venues: [] };
+
+export async function getLiveVenues(): Promise<LiveVenuesResponse & { connected: boolean }> {
+  const { data, connected } = await getJson<LiveVenuesResponse>("/live/venues", emptyVenues);
   return { ...data, connected };
 }
 
