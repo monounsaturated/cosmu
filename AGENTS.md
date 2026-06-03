@@ -77,6 +77,22 @@ Skills are **runnable playbooks** — the canonical procedure for each common ta
 | deploy-iterate | `.claude/skills/deploy-iterate/SKILL.md` |
 | debug-strategy | `.claude/skills/debug-strategy/SKILL.md` |
 | import-pine | `.claude/skills/import-pine/SKILL.md` |
+| start-session | `.claude/skills/start-session/SKILL.md` |
+| split-tasks | `.claude/skills/split-tasks/SKILL.md` |
+| dump-idea | `.claude/skills/dump-idea/SKILL.md` |
+| code-review | `.claude/skills/code-review/SKILL.md` |
+| tech-debt | `.claude/skills/tech-debt/SKILL.md` |
+| align-check | `.claude/skills/align-check/SKILL.md` |
+
+## Session protocol (for any coding agent)
+1. **Start**: Read this file → read `BACKLOG.md` → `git status` → report state. (`/start-session` does all of this.)
+2. **Suggest parallel work**: If backlog items are independent, tell the human:
+   "These could run as separate agents: [X in cloud/opus, Y in cloud/sonnet]." (`/split-tasks` writes the prompts.)
+3. **Recommend cloud vs local**: Heavy compute (tests, build, backtest) = cloud.
+   Editing, config, preview = local. Both are 16GB — cloud has no competing processes.
+4. **Before pushing**: Always `pnpm verify`. Feature branch + PR. Never push to main.
+5. **After pushing**: Suggest the next backlog item. Remind the human of open PRs.
+6. **Task files**: Use `/split-tasks` to write `.claude/tasks/*.md`. Delete after launch.
 
 ## Non-negotiables
 - **Gate + money** = deterministic, out of any LLM path. The LLM only PROPOSES; the FDR gate funds.
