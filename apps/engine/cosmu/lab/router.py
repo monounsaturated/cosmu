@@ -7,12 +7,15 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel
 
 from cosmu.config.settings import SpendSettings
 from cosmu.lab.llm import OPENROUTER_URL, XAI_URL, ChatFn, ProposalResult, openrouter_chat, propose_structure
+
+if TYPE_CHECKING:
+    pass
 
 
 class RouteRequest(BaseModel):
@@ -74,11 +77,17 @@ def route_and_propose(
     api_key: str | None = None,
     provider: str | None = None,
     chat: ChatFn | None = None,
+    store: Any = None,
+    strategy_version_id: str | None = None,
 ) -> ProposalResult:
     """Compose the tier router with the REAL model call: decide the tier under the spend cap, map it to a model
     id, then ask that model for a STRUCTURED, schema-validated proposal. The HTTP transport is injectable
     (`chat`) so CI runs offline; with no key the default OpenRouter seam yields None → deterministic fallback.
-    The proposal is STRUCTURE only — the deterministic Gate still disposes."""
+    The proposal is STRUCTURE only — the deterministic Gate still disposes.
+
+    `store` is optional — if provided, every model call is recorded in `llm_calls` (best-effort; never blocks).
+    `strategy_version_id` attributes the call to a specific strategy version when known.
+    """
     decision = route_model(
         RouteRequest(task="author", difficulty=difficulty, confidence=confidence, estimated_cost=estimated_cost),
         spend,
@@ -90,7 +99,44 @@ def route_and_propose(
     url = XAI_URL if provider == "xai" else OPENROUTER_URL
     model_id = models[decision.tier]
     seam = chat if chat is not None else openrouter_chat(api_key, url=url)
+
+    # Wrap the seam with a recording wrapper so every real HTTP call persists a llm_calls row.
+    # Recording is best-effort: a write failure must never crash the proposal path.
+    if store is not None:
+        seam = _recording_seam(seam, store=store, tier=decision.tier, model_id=model_id,
+                               task="author", strategy_version_id=strategy_version_id)
+
     result = propose_structure(brief, model_id=model_id, valid_features=valid_features, chat=seam)
     result.notes.insert(0, f"router tier={decision.tier} model={model_id} provider={provider or 'openrouter'}")
     return result
+
+
+def _recording_seam(
+    inner: ChatFn,
+    *,
+    store: Any,
+    tier: str,
+    model_id: str,
+    task: str,
+    strategy_version_id: str | None,
+) -> ChatFn:
+    """Wrap a ChatFn so each invocation records a row in llm_calls (best-effort, offline-safe)."""
+    from cosmu.costs.writer import LlmCallRecorder
+
+    def _chat(m: str, prompt: str) -> str | None:
+        with LlmCallRecorder(
+            store=store,
+            task=task,
+            tier=tier,
+            model_id=m,
+            strategy_version_id=strategy_version_id,
+        ) as rec:
+            result = inner(m, prompt)
+            # Approximate token counts from character length (no tokenizer dependency).
+            # These are rough but honest — the exact cost on :free models is $0 regardless.
+            rec.tokens_in = len(prompt) // 4
+            rec.tokens_out = len(result) // 4 if result else 0
+        return result
+
+    return _chat
 

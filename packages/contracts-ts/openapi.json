@@ -910,6 +910,16 @@
             "title": "By Category",
             "type": "array"
           },
+          "infra_lines": {
+            "items": {
+              "$ref": "#/components/schemas/InfraLine"
+            },
+            "title": "Infra Lines",
+            "type": "array"
+          },
+          "llm_calls": {
+            "$ref": "#/components/schemas/LlmCallSummary"
+          },
           "opex_vs_alpha": {
             "title": "Opex Vs Alpha",
             "type": "number"
@@ -930,7 +940,9 @@
           "total_usd",
           "by_category",
           "opex_vs_alpha",
-          "per_strategy"
+          "per_strategy",
+          "infra_lines",
+          "llm_calls"
         ],
         "title": "CostsResponse",
         "type": "object"
@@ -1817,6 +1829,45 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "InfraLine": {
+        "description": "One static monthly infra cost line from MASTER_PLAN \u00a79. amount is the midpoint estimate;\namount_min/amount_max are the range. Source is the authoritative static seed \u2014 no billing API.",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "amount_max": {
+            "title": "Amount Max",
+            "type": "number"
+          },
+          "amount_min": {
+            "title": "Amount Min",
+            "type": "number"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vendor",
+          "category",
+          "amount",
+          "amount_min",
+          "amount_max",
+          "note"
+        ],
+        "title": "InfraLine",
+        "type": "object"
+      },
       "IntelligenceResponse": {
         "properties": {
           "data_freshness": {
@@ -2352,6 +2403,33 @@
           "venues"
         ],
         "title": "LiveVenuesResponse",
+        "type": "object"
+      },
+      "LlmCallSummary": {
+        "description": "Aggregated summary of recorded LLM calls. total_cost is $0 on :free OpenRouter models\n(accurate). call_count is the real number of rows recorded since the DB was seeded.",
+        "properties": {
+          "by_task": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Task",
+            "type": "object"
+          },
+          "call_count": {
+            "title": "Call Count",
+            "type": "integer"
+          },
+          "total_cost": {
+            "title": "Total Cost",
+            "type": "number"
+          }
+        },
+        "required": [
+          "call_count",
+          "total_cost",
+          "by_task"
+        ],
+        "title": "LlmCallSummary",
         "type": "object"
       },
       "MemoryDepth": {
@@ -3974,7 +4052,7 @@
     },
     "/costs": {
       "get": {
-        "description": "Cost transparency \u2014 opex vs alpha. Total spend, spend by category, the opex/equity ratio, and per-strategy\nopex vs net edge (so the machine can see which Versions earn their keep). Reads only persisted rows.",
+        "description": "Cost transparency \u2014 opex vs alpha. Total spend, spend by category, the opex/equity ratio,\nper-strategy opex vs net edge, the static infra cost table (MASTER_PLAN \u00a79), and a summary of\nrecorded LLM calls. Seeds the static infra lines on first call (idempotent per calendar month).\nReads only persisted rows \u2014 no external billing API calls.",
         "operationId": "costs_costs_get",
         "responses": {
           "200": {

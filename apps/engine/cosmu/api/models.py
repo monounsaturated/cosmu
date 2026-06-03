@@ -705,11 +705,32 @@ class CostPerStrategy(BaseModel):
     net: float
 
 
+class InfraLine(BaseModel):
+    """One static monthly infra cost line from MASTER_PLAN §9. amount is the midpoint estimate;
+    amount_min/amount_max are the range. Source is the authoritative static seed — no billing API."""
+    vendor: str
+    category: str
+    amount: float
+    amount_min: float
+    amount_max: float
+    note: str
+
+
+class LlmCallSummary(BaseModel):
+    """Aggregated summary of recorded LLM calls. total_cost is $0 on :free OpenRouter models
+    (accurate). call_count is the real number of rows recorded since the DB was seeded."""
+    call_count: int
+    total_cost: float
+    by_task: dict[str, int]  # task -> call count
+
+
 class CostsResponse(BaseModel):
     total_usd: float
     by_category: list[CostByCategory]
     opex_vs_alpha: float
     per_strategy: list[CostPerStrategy]
+    infra_lines: list[InfraLine]
+    llm_calls: LlmCallSummary
 
 
 # ---- alpha-decay: edge half-life + live-vs-funded drift (master/drift; web consumes) ----

@@ -136,9 +136,23 @@ def test_skills_and_memory_insights_api_shapes(tmp_path, monkeypatch):
 def test_costs_api_shape(tmp_path, monkeypatch):
     client, _store = _client(tmp_path, monkeypatch)
     body = client.get("/costs").json()
-    assert set(body.keys()) == {"total_usd", "by_category", "opex_vs_alpha", "per_strategy"}
+    # Core cost fields always present
+    assert {"total_usd", "by_category", "opex_vs_alpha", "per_strategy"}.issubset(body.keys())
+    # Extended cost/ROI fields added in W1.5
+    assert "infra_lines" in body, "infra_lines should be present (static §9 seed)"
+    assert "llm_calls" in body, "llm_calls summary should be present"
     assert isinstance(body["by_category"], list)
     assert isinstance(body["per_strategy"], list)
+    assert isinstance(body["infra_lines"], list)
+    # Static infra seed should have populated lines
+    assert len(body["infra_lines"]) > 0, "infra_lines should be seeded on first GET /costs"
+    first_line = body["infra_lines"][0]
+    assert {"vendor", "category", "amount", "amount_min", "amount_max", "note"}.issubset(first_line.keys())
+    # LLM calls summary shape
+    llm = body["llm_calls"]
+    assert {"call_count", "total_cost", "by_task"}.issubset(llm.keys())
+    assert isinstance(llm["call_count"], int)
+    assert isinstance(llm["total_cost"], float)
 
 
 def _persist_version_no_backtest(store: Store, spec, *, name: str) -> str:  # noqa: ANN001
