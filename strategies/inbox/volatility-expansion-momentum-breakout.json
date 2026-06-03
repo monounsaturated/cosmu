@@ -1,0 +1,126 @@
+{
+  "name": "Volatility-expansion momentum breakout",
+  "rationale": "A short-horizon return surge that coincides with a rising-but-bounded realized vol is an early breakout \u2014 momentum igniting before the move is crowded, while the vol band keeps us out of blow-off tops. Disconfirmer: time-stop + a momentum-fade signal exit close it if the breakout stalls.",
+  "catalyst": "early breakout: momentum surge with expanding (not extreme) vol",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 6
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "bo_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "bo_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "bo_lb"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "bo_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "bo_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 10,
+      "step": 1
+    },
+    "bo_floor": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.15
+    },
+    "bo_exit": {
+      "kind": "float",
+      "lo": -0.04,
+      "hi": 0.01
+    },
+    "vol_floor": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.05
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.2
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.25
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    }
+  }
+}

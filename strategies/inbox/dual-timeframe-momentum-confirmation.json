@@ -1,0 +1,135 @@
+{
+  "name": "Dual-timeframe momentum confirmation",
+  "rationale": "Requiring BOTH a fast and a slow lookback to be positive filters out single-window noise \u2014 momentum that survives two horizons is likelier to be real persistence than a fluke. Calm-vol gate caps capacity-eating turbulence. Disconfirmer: exits when the fast leg flips negative.",
+  "catalyst": "momentum aligned across two horizons",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "fast_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "fast_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "slow_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "slow_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "fast_lb"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "fast_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "fast_lb": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 15,
+      "step": 1
+    },
+    "fast_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "slow_lb": {
+      "kind": "int",
+      "lo": 30,
+      "hi": 90,
+      "step": 1
+    },
+    "slow_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.1
+    },
+    "fast_exit": {
+      "kind": "float",
+      "lo": -0.06,
+      "hi": 0.0
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 18,
+      "step": 1
+    }
+  }
+}

@@ -1,0 +1,123 @@
+{
+  "name": "RSI dip-buy in an uptrend (calm-vol gated)",
+  "rationale": "Buying short-term oversold (low RSI) inside a confirmed medium-term uptrend harvests mean reversion WITHOUT fighting the trend \u2014 the classic 'buy the dip' only when the dip is in an uptrend. Calm realized vol keeps us out of crash regimes where 'oversold' keeps falling. Disconfirmer: exits when RSI normalizes (the dip is bought) or the trend floor breaks.",
+  "catalyst": "short-term oversold pullback within an intact uptrend",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "trend_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "trend_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 20,
+      "hi": 40
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 75
+    },
+    "trend_lb": {
+      "kind": "int",
+      "lo": 30,
+      "hi": 90,
+      "step": 1
+    },
+    "trend_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 15,
+      "step": 1
+    }
+  }
+}

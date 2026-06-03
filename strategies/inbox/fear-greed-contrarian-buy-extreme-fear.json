@@ -1,0 +1,109 @@
+{
+  "name": "Fear & Greed contrarian (buy extreme fear)",
+  "rationale": "At sentiment extremes the crowd is wrong at the swing horizon \u2014 extreme fear marks washed-out positioning that mean-reverts. A medium-term trend floor avoids catching a structural downtrend. NOTE: needs the fear_greed feed ingested to fire; queued until then. Disconfirmer: exits when sentiment swings back to greed.",
+  "catalyst": "extreme crowd fear in a non-broken trend",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 15
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "trend_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "trend_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "fear_floor": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 30
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 80
+    },
+    "trend_lb": {
+      "kind": "int",
+      "lo": 40,
+      "hi": 120,
+      "step": 1
+    },
+    "trend_floor": {
+      "kind": "float",
+      "lo": -0.05,
+      "hi": 0.03
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 20,
+      "step": 1
+    }
+  }
+}

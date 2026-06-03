@@ -1,0 +1,109 @@
+{
+  "name": "ADX trend-follow (strong-trend continuation)",
+  "rationale": "When ADX is high the market is trending, not chopping; entering with positive medium-term return rides the trend that ADX confirms is real. Trend-following is the opposite bet to the reversion specs, so the cohort spans both regimes. Disconfirmer: exits when ADX collapses (trend dies) before the stop.",
+  "catalyst": "confirmed strong trend with positive momentum",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "adx"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "adx_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "adx_floor": {
+      "kind": "float",
+      "lo": 20,
+      "hi": 35
+    },
+    "adx_exit": {
+      "kind": "float",
+      "lo": 12,
+      "hi": 20
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 14,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.08
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 25,
+      "step": 1
+    }
+  }
+}

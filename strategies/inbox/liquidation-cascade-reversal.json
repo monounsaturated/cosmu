@@ -1,0 +1,100 @@
+{
+  "name": "Liquidation-cascade reversal",
+  "rationale": "A spike in total long+short liquidations marks forced deleveraging that overshoots \u2014 the cascade exhausts sellers and price snaps back at the swing horizon. Calm-after-the-storm vol gate avoids buying mid-cascade. NOTE: needs the liquidation_cascade feed ingested to fire; queued until then. Disconfirmer: time-stop closes it if the bounce never comes.",
+  "catalyst": "post-liquidation-cascade exhaustion bounce",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 7
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "liquidation_cascade"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "cascade_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "cascade_floor": {
+      "kind": "float",
+      "lo": 1.5,
+      "hi": 3.5
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 20,
+      "hi": 40
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 50,
+      "hi": 68
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.22
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 9,
+      "step": 1
+    }
+  }
+}

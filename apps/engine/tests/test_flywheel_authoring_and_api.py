@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import math
+
 import cosmu.api.app as app_mod
 from cosmu.config.settings import Settings
 from cosmu.evolution.seeder import seed_meanrev_spec, seed_momentum_spec
@@ -137,3 +139,56 @@ def test_costs_api_shape(tmp_path, monkeypatch):
     assert set(body.keys()) == {"total_usd", "by_category", "opex_vs_alpha", "per_strategy"}
     assert isinstance(body["by_category"], list)
     assert isinstance(body["per_strategy"], list)
+
+
+def _persist_version_no_backtest(store: Store, spec, *, name: str) -> str:  # noqa: ANN001
+    """A Version that has NEVER been backtested — the LEFT JOIN in /leaderboard
+    yields NULL for every metric column. This is the exact shape that crashed
+    the web build (`undefined.toFixed()`) before the engine coerced its output."""
+    params = fit_params(spec)
+    compiled = compile_spec(spec, params)
+    sid = store.insert("strategies", {"name": name, "thesis": spec.rationale, "origin": "seed", "created_at": utcnow()})
+    return store.insert(
+        "strategy_versions",
+        {
+            "strategy_id": sid, "parent_id": None, "spec": spec.model_dump(mode="json"),
+            "generated_code": compiled.code, "code_hash": compiled.code_hash, "params": params,
+            "mutation_operator": None, "mutation_rationale": None, "origin": "seed",
+            "status": "screening", "created_at": utcnow(),
+            "killed_at": None, "kill_reason": None,
+        },
+    )
+
+
+def test_leaderboard_never_emits_null_metrics_without_a_backtest(tmp_path, monkeypatch):
+    # Contract coherence: LeaderboardRow promises non-null `number` for every metric.
+    # A Version with no backtest (LEFT JOIN -> NULLs) must still serialize as real
+    # numbers, NOT null — otherwise the typed web build crashes on `x.toFixed()`.
+    client, store = _client(tmp_path, monkeypatch)
+
+    spec = seed_momentum_spec(); spec.name = "Never-backtested momentum"
+    _persist_version_no_backtest(store, spec, name=spec.name)
+
+    body = client.get("/leaderboard").json()
+    assert body["rows"], "the never-backtested Version should still appear on the board"
+
+    numeric_fields = ("track_return_pct", "deflated_sharpe", "net_pct", "pbo")
+    for row in body["rows"]:
+        for field in numeric_fields:
+            assert row[field] is not None, f"{field} is null — contract promises a number"
+            assert isinstance(row[field], (int, float)), f"{field} is not numeric: {row[field]!r}"
+            assert math.isfinite(row[field]), f"{field} is non-finite: {row[field]!r}"
+
+
+def test_leaderboard_metric_coercion_handles_nan_and_none():
+    # Unit-level guard on the coercion helper itself: NULL, NaN, inf and junk all
+    # collapse to the documented 0.0 sentinel (plain `x or 0` would let NaN through).
+    from cosmu.api.app import _metric
+
+    assert _metric(None) == 0.0
+    assert _metric(float("nan")) == 0.0
+    assert _metric(float("inf")) == 0.0
+    assert _metric("not-a-number") == 0.0
+    assert _metric("0.04") == 0.04  # sqlite stores some metrics as REAL-as-text
+    assert _metric(1.5) == 1.5
+    assert _metric(0.0) == 0.0

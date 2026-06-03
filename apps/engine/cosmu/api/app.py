@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -117,6 +118,25 @@ try:
 except Exception:
     from cosmu.config.settings import Settings as _S
     store = Store(_S(database_url="sqlite:///.cosmu/fallback.sqlite3"))
+
+
+def _metric(value: object, default: float = 0.0) -> float:
+    """Coerce a DB numeric into a real, FINITE float for the typed web contract.
+
+    Several response models (e.g. LeaderboardRow) promise non-null `number` for
+    every metric, but the source rows come from a LEFT JOIN on `backtests`:
+    a Version with no backtest yields NULL, and a degenerate backtest can yield
+    NaN/inf. Both break the contract downstream — NULL becomes `undefined` and
+    crashes `x.toFixed()` in the web build, NaN/inf serialize as invalid JSON.
+    So we collapse anything null/non-numeric/non-finite to a documented 0.0
+    sentinel BEFORE serialization. (Plain `x or 0` is NOT enough: `NaN or 0`
+    is NaN, since NaN is truthy.)
+    """
+    try:
+        out = float(value) if value is not None else default
+    except (TypeError, ValueError):
+        return default
+    return out if math.isfinite(out) else default
 
 
 def _portfolio() -> Portfolio:
@@ -464,10 +484,12 @@ def leaderboard() -> LeaderboardResponse:
             LeaderboardRow(
                 version_id=row["id"],
                 name=row["name"],
-                track_return_pct=float(row["oos_return"] or 0) * 100,
-                deflated_sharpe=float(row["deflated_sharpe"] or 0),
-                net_pct=float(row["oos_return"] or 0) * 100 - 0.18,
-                pbo=float(row["pbo"] or 0),
+                # Every numeric field is coerced via _metric so the API NEVER emits
+                # null/NaN where the LeaderboardRow contract promises `number`.
+                track_return_pct=_metric(row["oos_return"]) * 100,
+                deflated_sharpe=_metric(row["deflated_sharpe"]),
+                net_pct=_metric(row["oos_return"]) * 100 - 0.18,
+                pbo=_metric(row["pbo"]),
                 status=row["status"],
                 lineage="seed:template -> wfo",
             )
