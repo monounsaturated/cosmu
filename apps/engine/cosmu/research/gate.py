@@ -10,12 +10,12 @@ from decimal import Decimal
 
 from cosmu.data.altdata import AltDataProvider, NewsProvider, rolling_zscore
 from cosmu.data.market import Bar
+from cosmu.spine.venue import default_catalog
 from cosmu.ingest.standardize import standardize_news
 from cosmu.knowledge.store import Store
 from cosmu.master.scorer import (
     BacktestMetrics,
     ScoreVerdict,
-    TrialStats,
     cscv_pbo,
     probabilistic_sharpe,
     sample_moments,
@@ -38,7 +38,9 @@ PREREGISTERED_BAR = {
 _LOOKBACKS = (14, 30)
 _Z_THRESHOLDS = (0.5, 1.0, 1.5)
 _HOLD_BARS = (5, 10)
-_FEE = 0.001  # Binance spot taker
+# Fee is derived from the venue catalog (ONE source of fee truth — the same Binance-spot taker the screen
+# charges), not a duplicated magic literal. The edge-existence gate is intentionally Binance-spot-priced.
+_FEE = float(default_catalog().venue("binance").taker_fee_bps) / 10000.0
 _SLIP = 0.0005
 _STOP = 0.08
 _TAKE = 0.16

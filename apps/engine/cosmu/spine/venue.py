@@ -80,6 +80,18 @@ class VenueCatalog(BaseModel):
                 return instrument
         raise KeyError(f"unknown instrument: {symbol}@{venue_id}")
 
+    def venue_for(self, venues: list[str]) -> Venue:
+        """The venue a spec should be PRICED against — the single source of fee truth for the screen, the
+        gate, and forward-test. Returns the first declared universe venue that exists in the catalog, else
+        Binance (the default crypto-spot venue). Threading fees through here is why an IBKR-equity spec is
+        screened at IBKR fees, not Binance's — no hardcoded per-call-site venue."""
+        for vid in venues or []:
+            try:
+                return self.venue(vid)
+            except KeyError:
+                continue
+        return self.venue("binance")
+
     def live_legal_venues(self, country_code: str) -> list[Venue]:
         """Venues where live trading is legal/available from a given jurisdiction — the honest set the
         launch flow may offer for real capital."""

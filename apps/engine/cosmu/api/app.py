@@ -266,6 +266,7 @@ def population() -> PopulationResponse:
     counts = store.rows("SELECT status, origin, COUNT(*) AS n FROM strategy_versions GROUP BY status, origin")
     total = sum(int(r["n"]) for r in counts)
     forward_test = sum(int(r["n"]) for r in counts if r["status"] in ("forward_test", "live"))
+    live = sum(int(r["n"]) for r in counts if r["status"] == "live")
     killed = sum(int(r["n"]) for r in counts if r["status"] == "killed")
     by_origin: dict[str, int] = {}
     by_lane: dict[str, int] = {}
@@ -288,6 +289,7 @@ def population() -> PopulationResponse:
     return PopulationResponse(
         total=total,
         forward_test=forward_test,
+        live=live,
         killed=killed,
         by_origin=by_origin,
         by_lane=by_lane,

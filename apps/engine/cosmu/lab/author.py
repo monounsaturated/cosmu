@@ -60,6 +60,9 @@ class AuthorDraft:
     # What long-term memory told the brain (audit trail): dead structures avoided + winner patterns leaned into.
     memory_avoided: list[str] = field(default_factory=list)
     memory_leaned: list[str] = field(default_factory=list)
+    # What the propose-only research bus contributed (audit trail): prior-art features folded in + their citations.
+    research_features: list[str] = field(default_factory=list)
+    research_citations: list[str] = field(default_factory=list)
 
 
 _TEMPLATE_BUILDERS = {
@@ -89,12 +92,15 @@ def draft_from_brief(
     venues: list[str] | None = None,
     llm_enabled: bool = False,
     store: Store | None = None,
+    prior_art: list[str] | None = None,        # features the propose-only research bus surfaced (rag prior-art)
+    research_citations: list[str] | None = None,
     chat=None,  # noqa: ANN001 — injectable LLM seam (lab.llm.ChatFn); None → real OpenRouter seam from settings
 ) -> AuthorDraft:
     text = brief.lower()
     notes: list[str] = []
     memory_avoided: list[str] = []
     memory_leaned: list[str] = []
+    research_cites = list(research_citations or [])
 
     # 1) pick a base template from intent. Deterministic by default; when an LLM key is set the model PROPOSES
     # the structure (template + named features + horizon) and we use it — but only ever to steer the same
@@ -103,7 +109,10 @@ def draft_from_brief(
     llm_features: list[str] | None = None
     llm_bar: str | None = None
     if llm_enabled:
-        proposal, llm_notes = _llm_propose(brief, store=store, chat=chat)
+        # The LLM CONDITIONS on the gathered research context (prior-art features) — the agentic loop:
+        # tools gather → model proposes informed structure → the deterministic Gate disposes.
+        llm_brief = brief if not prior_art else f"{brief}\n\nResearch context — prior art supports these features: {', '.join(prior_art)}."
+        proposal, llm_notes = _llm_propose(llm_brief, store=store, chat=chat)
         notes.extend(llm_notes)
         if proposal is not None:
             base = proposal.base_template
@@ -138,7 +147,15 @@ def draft_from_brief(
     # 5) feature picks: explicit list (from UI) wins; else the LLM's proposed named features; else detected from
     # the brief. All are validated to the asset class — the LLM cannot pick a feature it isn't allowed to use.
     valid_feats = {f.name for f in features_for(spec.universe.asset_classes)}
-    wanted = features or llm_features or _detect_features(text)
+    base_wanted = features or llm_features or _detect_features(text)
+    # Fold in PRIOR-ART features the research bus surfaced (rag_read) as additional candidates — they still pass
+    # validation + memory below (a prior-art feature memory has killed is still pruned), so research INFORMS but
+    # never overrides the deterministic judgement. Explicit UI/LLM features stay the core; prior-art augments.
+    wanted = base_wanted + [f for f in (prior_art or []) if f not in base_wanted]
+    if prior_art:
+        valid_prior = [f for f in prior_art if f in valid_feats]
+        if valid_prior:
+            notes.append(f"research: prior-art supports feature(s) {valid_prior}")
     chosen = [f for f in wanted if f in valid_feats]
     rejected = [f for f in wanted if f and f not in valid_feats]
     if rejected:
@@ -192,6 +209,8 @@ def draft_from_brief(
         notes=notes,
         memory_avoided=memory_avoided,
         memory_leaned=memory_leaned,
+        research_features=[f for f in (prior_art or []) if f in entry_feats],
+        research_citations=research_cites,
     )
 
 

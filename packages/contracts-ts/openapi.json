@@ -2500,6 +2500,10 @@
             "title": "Killed",
             "type": "integer"
           },
+          "live": {
+            "title": "Live",
+            "type": "integer"
+          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -2508,6 +2512,7 @@
         "required": [
           "total",
           "forward_test",
+          "live",
           "killed",
           "by_origin",
           "by_lane",

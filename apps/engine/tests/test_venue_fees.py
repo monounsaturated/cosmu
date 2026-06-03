@@ -16,6 +16,16 @@ def test_catalog_has_multi_asset_venues() -> None:
     assert {"binance", "kraken", "coinbase", "ibkr", "alpaca", "polymarket"} <= ids
 
 
+def test_venue_for_prices_a_spec_against_its_own_venue() -> None:
+    """The single source of fee truth: a spec is screened at its OWN declared venue's fees, not a hardcoded
+    Binance. An equity spec on IBKR (~0.5 bps) must NOT inherit Binance's 10 bps taker."""
+    cat = default_catalog()
+    assert cat.venue_for(["ibkr"]).id == "ibkr"
+    assert cat.venue_for(["ibkr"]).taker_fee_bps < cat.venue("binance").taker_fee_bps
+    assert cat.venue_for([]).id == "binance"            # empty universe → the default crypto-spot venue
+    assert cat.venue_for(["does-not-exist"]).id == "binance"   # unknown venue degrades to the default
+
+
 def test_us_legal_crypto_is_more_expensive_than_binance() -> None:
     """The real finding: forced off Binance for US live crypto, the taker fee wall gets HIGHER."""
     cat = default_catalog()

@@ -417,7 +417,7 @@ class FarmLoop:
             symbol: provider.fetch_bars(symbol, cand.spec.horizon.bar_size, limit=_bar_limit(cand.spec))
             for symbol in symbols
         }
-        venue = default_catalog().venue("binance")
+        venue = default_catalog().venue_for(cand.spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
         return run_strategy_backtest(
             cand.spec,
             fit_params(cand.spec),

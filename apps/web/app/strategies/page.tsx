@@ -1,7 +1,7 @@
 import { ArrowRight, ChartCandlestick, Inbox, Microscope, ShieldCheck, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { engineConfigured, getLeaderboard } from "../data";
-import type { LeaderboardRow } from "@cosmu/contracts-ts";
+import { engineConfigured, getLeaderboard, getPopulation } from "../data";
+import type { LeaderboardRow, PopulationResponse } from "@cosmu/contracts-ts";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/ui/section";
@@ -13,7 +13,7 @@ import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 // detail. A short "how a strategy is born" note + the Lab → Strategies → Forward-test → Live funnel make the
 // pipeline obvious at a glance.
 export default async function StrategiesPage() {
-  const { leaderboard, connected } = await getLeaderboard();
+  const [{ leaderboard, connected }, { population }] = await Promise.all([getLeaderboard(), getPopulation()]);
   const rows = leaderboard.rows as LeaderboardRow[];
 
   return (
@@ -28,8 +28,8 @@ export default async function StrategiesPage() {
         }
       />
 
-      {/* The funnel — where Strategies sits in the pipeline. */}
-      <FunnelStrip />
+      {/* The funnel — where Strategies sits in the pipeline, with live counts at each stage. */}
+      <FunnelStrip population={connected ? population : null} />
 
       {/* How a strategy is born — plain language, both authoring paths through the one Gate. */}
       <BornNote />
@@ -59,33 +59,58 @@ export default async function StrategiesPage() {
   );
 }
 
-// Lab → Strategies → Forward-test → Live, with Strategies highlighted as "you are here".
-function FunnelStrip() {
-  const steps: { href: string; label: string; here?: boolean }[] = [
-    { href: "/lab", label: "Lab" },
-    { href: "/strategies", label: "Strategies", here: true },
-    { href: "/forward-test", label: "Forward-test" },
-    { href: "/live", label: "Live" }
+// The pipeline as a DATA funnel, not a button row: each stage carries its live count so the strip earns its
+// place (it shows how many Versions survive each step), marks "you are here", and is intentionally NOT
+// clickable — the top nav already navigates. A null population (engine offline) renders dashes, never fakes.
+function FunnelStrip({ population }: { population: PopulationResponse | null }) {
+  const total = population?.total ?? 0;
+  const fwdPlusLive = population?.forward_test ?? 0;
+  const live = population?.live ?? 0;
+  const killed = population?.killed ?? 0;
+  const screenedAlive = Math.max(0, total - fwdPlusLive - killed); // past the screen, alive, pre-forward-test
+  const forwardTest = Math.max(0, fwdPlusLive - live);
+
+  const count = (n: number) => (population ? String(n) : "—");
+  const steps: { label: string; tag: string; value: string; here?: boolean }[] = [
+    { label: "Lab", tag: "discover", value: population ? "live" : "—" },
+    { label: "Strategies", tag: "screened", value: count(screenedAlive), here: true },
+    { label: "Forward-test", tag: "proving", value: count(forwardTest) },
+    { label: "Live", tag: "real money", value: count(live) }
   ];
+  const killPct = population && total ? Math.round(population.kill_rate * 100) : null;
+
   return (
-    <nav aria-label="Pipeline" className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
-      {steps.map((step, i) => (
-        <div key={step.href} className="flex items-center gap-1.5">
-          <Link
-            href={step.href}
-            aria-current={step.here ? "step" : undefined}
-            className={
-              step.here
-                ? "rounded-full border border-iris/50 bg-iris/10 px-3 py-1 font-medium text-foreground"
-                : "rounded-full border border-border/70 bg-surface-2/30 px-3 py-1 text-muted transition-colors hover:border-border hover:text-foreground"
-            }
-          >
-            {step.label}
-          </Link>
-          {i < steps.length - 1 ? <ArrowRight className="size-3.5 text-quiet" /> : null}
-        </div>
-      ))}
-    </nav>
+    <section aria-label="Pipeline">
+      <ol className="flex flex-wrap items-stretch gap-1.5">
+        {steps.map((step, i) => (
+          <li key={step.label} className="flex items-center gap-1.5">
+            <div
+              aria-current={step.here ? "step" : undefined}
+              className={
+                "flex min-w-[88px] flex-col rounded-lg border px-3 py-1.5 " +
+                (step.here ? "border-iris/50 bg-iris/10" : "border-border/60 bg-surface-2/30")
+              }
+            >
+              <span className="flex items-baseline justify-between gap-2">
+                <span className={"text-[12.5px] font-semibold " + (step.here ? "text-foreground" : "text-muted")}>
+                  {step.label}
+                </span>
+                <span className={"tabular text-[13px] font-semibold " + (step.here ? "text-iris-soft" : "text-foreground")}>
+                  {step.value}
+                </span>
+              </span>
+              <span className="text-[10px] uppercase tracking-wide text-quiet">{step.tag}</span>
+            </div>
+            {i < steps.length - 1 ? <ArrowRight className="size-3.5 shrink-0 text-quiet" aria-hidden /> : null}
+          </li>
+        ))}
+      </ol>
+      <p className="mt-1.5 text-[11px] text-quiet">
+        {population
+          ? `${total} Versions authored · ${killed} in the graveyard${killPct !== null ? ` · ${killPct}% kill rate` : ""}`
+          : "Counts appear once the engine is connected."}
+      </p>
+    </section>
   );
 }
 

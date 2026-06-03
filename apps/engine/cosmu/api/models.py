@@ -316,7 +316,8 @@ class GraveyardRow(BaseModel):
 
 class PopulationResponse(BaseModel):
     total: int
-    forward_test: int
+    forward_test: int   # forward-test + live (everything past the gate, funded)
+    live: int           # of which armed on real capital
     killed: int
     by_origin: dict[str, int]
     by_lane: dict[str, int]

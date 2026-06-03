@@ -529,6 +529,7 @@ export interface PopulationResponse {
   graveyard: GraveyardRow[];
   kill_rate: number;
   killed: number;
+  live: number;
   total: number;
 }
 

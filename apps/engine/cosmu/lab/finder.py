@@ -220,7 +220,7 @@ class StrategyFinder:
         spec = spec or seed_orb_fvg_spec()
         market = self._market(spec)
         grid = build_grid(spec, max_variants=max_variants)
-        venue = default_catalog().venue("binance")
+        venue = default_catalog().venue_for(spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
 
         results: list[VariantResult] = []
         cohort: list[CohortCandidate] = []

@@ -102,18 +102,52 @@ def gather_context(bus: ToolBus, *, symbol: str = "BTCUSDT", offline: bool = Tru
     }
 
 
-def author_candidates(n: int, *, llm_enabled: bool = False, store: Store | None = None, chat=None) -> list[tuple[AuthorDraft, CandidateRecord]]:  # noqa: ANN001
+def _prior_art_from_context(context: dict[str, object]) -> tuple[list[str], list[str]]:
+    """Distill the propose-only research bus digest into (prior_art_features, citations) the author can condition
+    on. Features come from rag_read prior-art matches; citations are short source titles for the audit trail.
+    Read-only and deterministic — the offline fixtures yield the same digest in CI."""
+    feats: list[str] = []
+    cites: list[str] = []
+    rag = context.get("rag_read") if isinstance(context.get("rag_read"), dict) else {}
+    for m in (rag or {}).get("matches", []):  # type: ignore[union-attr]
+        f = m.get("feature")
+        if f and f not in feats:
+            feats.append(f)
+        title = m.get("title")
+        if title:
+            cites.append(f"prior-art: {title}")
+    web = context.get("web_search") if isinstance(context.get("web_search"), dict) else {}
+    for r in ((web or {}).get("results", []) or [])[:2]:  # type: ignore[union-attr]
+        title = r.get("title")
+        if title:
+            cites.append(f"web: {title}")
+    return feats, cites
+
+
+def author_candidates(
+    n: int,
+    *,
+    llm_enabled: bool = False,
+    store: Store | None = None,
+    chat=None,  # noqa: ANN001
+    prior_art: list[str] | None = None,
+    research_citations: list[str] | None = None,
+) -> list[tuple[AuthorDraft, CandidateRecord]]:
     """Author N candidate specs via lab/author (LLM-OPTIONAL), compile + static-check each. The author only
     produces STRUCTURE (thresholds stay in param_space); the gate, not this path, decides what survives. When a
     `store` is given the author consults LONG-TERM MEMORY (graveyard RAG + distilled skills) to avoid recently
-    dead structures and lean toward winners — still LLM-OPTIONAL, still proposal-only."""
+    dead structures and lean toward winners. `prior_art` are features the propose-only research bus surfaced —
+    the author folds them in (validated + memory-pruned), closing the gather→author loop. Still proposal-only."""
     out: list[tuple[AuthorDraft, CandidateRecord]] = []
     briefs = [_BRIEFS[i % len(_BRIEFS)] for i in range(max(1, n))]
     for brief, feats in briefs:
         # When the LLM is enabled the model PROPOSES the structure from the plain-language brief (the named-feature
         # hints become a fallback, not a hard pin); offline the deterministic template matcher uses the hints.
         author_feats = None if llm_enabled else feats
-        draft = draft_from_brief(brief, features=author_feats, llm_enabled=llm_enabled, store=store, chat=chat)
+        draft = draft_from_brief(
+            brief, features=author_feats, llm_enabled=llm_enabled, store=store, chat=chat,
+            prior_art=prior_art, research_citations=research_citations,
+        )
         issues = list(draft.issues) or validate_spec(draft.spec)
         compiled_ok = False
         code_hash: str | None = None
@@ -164,9 +198,15 @@ def run_research_pass(
     (authored/gated/survivors/graveyard) without re-running — not CLI-only."""
     bus = tool_bus or research_tool_bus()
     context = gather_context(bus)
+    # CLOSE THE AGENTIC LOOP: distil the gathered tool-bus context into prior-art features the author conditions
+    # on. Gather (read-only tools) → author (informed proposal) → the DETERMINISTIC screen/gate disposes.
+    prior_art, research_citations = _prior_art_from_context(context)
 
-    # Consult long-term memory while authoring (avoid recently-dead structures, lean toward winners + skills).
-    authored = author_candidates(n, llm_enabled=llm_enabled, store=store, chat=chat)
+    # Author with research context + long-term memory (avoid recently-dead structures, lean toward winners + skills).
+    authored = author_candidates(
+        n, llm_enabled=llm_enabled, store=store, chat=chat,
+        prior_art=prior_art, research_citations=research_citations,
+    )
     extra_seeds = [draft.spec for draft, rec in authored if rec.compiled]
 
     if market_data is not None:

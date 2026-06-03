@@ -87,6 +87,7 @@ const emptyBrain: BrainResponse = {
 const emptyPopulation: PopulationResponse = {
   total: 0,
   forward_test: 0,
+  live: 0,
   killed: 0,
   by_origin: {},
   by_lane: {},
