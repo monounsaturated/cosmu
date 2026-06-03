@@ -1,8 +1,8 @@
 "use client";
 
 // module: strategies list, organized by LIFECYCLE. A Version moves through clear stages —
-// Discovering (just authored / screening) → Validating (optimizing on more data) → Paper (funded on
-// the paper Wallet) → Live (real money) — or it dies (Graveyard). We segment the table by stage so
+// Discovering (just authored / screening) → Validating (optimizing on more data) → Forward-test (funded on
+// Forward-test → Live (real money) — or it dies (Graveyard). We segment the table by stage so
 // the operator can tell at a glance what is new vs. learning vs. proven, with a count + one-line
 // plain-language explainer per stage and a stage filter. Within each stage rows rank by Score
 // (deflated Sharpe), highest first — no survivor bias, the same honest ranking everywhere.
@@ -17,7 +17,7 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { cn, formatPct } from "@/lib/utils";
 
 // Disambiguate the two return columns right where they live.
-const SLEEVE_VS_WALLET = (
+const TRACK_VS_AGGREGATE = (
   <div className="space-y-1.5">
     <p>
       <span className="font-semibold text-foreground">Return</span> — this Version&apos;s raw return on its own track.
@@ -30,7 +30,7 @@ const SLEEVE_VS_WALLET = (
 );
 
 // Lifecycle stages, in funnel order. Each engine status maps to exactly one stage.
-type Stage = "discovering" | "validating" | "paper" | "live" | "graveyard";
+type Stage = "discovering" | "validating" | "forward_test" | "live" | "graveyard";
 
 const STAGES: { id: Stage; label: string; explainer: string; badge: "warn" | "iris" | "up" | "info" | "down" }[] = [
   {
@@ -46,7 +46,7 @@ const STAGES: { id: Stage; label: string; explainer: string; badge: "warn" | "ir
     badge: "iris"
   },
   {
-    id: "paper",
+    id: "forward_test",
     label: "Forward-test",
     explainer: "Proving itself on its own track on real prices — no real money, no pooled wallet.",
     badge: "up"
@@ -71,14 +71,14 @@ function stageOf(status: string): Stage {
   const s = status.toLowerCase();
   if (s === "killed" || s === "dead" || s === "graveyard") return "graveyard";
   if (s === "live") return "live";
-  if (s === "paper") return "paper";
+  if (s === "forward_test" || s === "paper") return "forward_test";
   if (s === "validating" || s === "optimizing") return "validating";
   // draft, new, screening, screened, and anything else → the entry stage.
   return "discovering";
 }
 
 const statusVariant: Record<string, "up" | "warn" | "down" | "info"> = {
-  paper: "up",
+  forward_test: "up",
   live: "info",
   screening: "warn",
   killed: "down"
@@ -99,7 +99,7 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
     const buckets: Record<Stage, LeaderboardRow[]> = {
       discovering: [],
       validating: [],
-      paper: [],
+      forward_test: [],
       live: [],
       graveyard: []
     };
@@ -130,7 +130,7 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
             />
           </div>
           <span className="ml-auto inline-flex items-center gap-1 text-[11.5px] text-quiet">
-            Return vs net <Tooltip content={SLEEVE_VS_WALLET} /> · {totalMatching} Versions
+            Return vs net <Tooltip content={TRACK_VS_AGGREGATE} /> · {totalMatching} Versions
           </span>
         </div>
 
@@ -189,8 +189,8 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
                         <TD>
                           <Badge variant={statusVariant[row.status.toLowerCase()] ?? "muted"}>{row.status}</Badge>
                         </TD>
-                        <TD className={`text-right tabular ${row.sleeve_return_pct >= 0 ? "text-up" : "text-down"}`}>
-                          {formatPct(row.sleeve_return_pct)}
+                        <TD className={`text-right tabular ${row.track_return_pct >= 0 ? "text-up" : "text-down"}`}>
+                          {formatPct(row.track_return_pct)}
                         </TD>
                         <TD className={`text-right tabular ${row.net_pct >= 0 ? "text-up" : "text-down"}`}>{formatPct(row.net_pct)}</TD>
                         <TD className="text-right tabular text-foreground">{row.deflated_sharpe.toFixed(2)}</TD>

@@ -13,10 +13,10 @@ import { SpecView } from "@/components/strategy/spec-view";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 import { cn, formatUsd } from "@/lib/utils";
 
-// Derive a paper equity curve from the strategy's trade log: cumulative realized cash flow
+// Derive a sim equity curve from the strategy's trade log: cumulative realized cash flow
 // (sells add, buys subtract, fees always subtract), seeded at 0. Honest — built only from the
 // real trades the engine returned; no fabricated track record.
-function paperCurveFromTrades(trades: Execution[]): Point[] {
+function simCurveFromTrades(trades: Execution[]): Point[] {
   if (trades.length < 2) return [];
   let acc = 0;
   return trades.map((t) => {
@@ -44,7 +44,7 @@ function holdoutRows(holdout: Record<string, unknown>): { label: string; value: 
 export default async function StrategyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { strategy, connected } = await getStrategy(id);
-  const paperCurve = paperCurveFromTrades(strategy.trades);
+  const simCurve = simCurveFromTrades(strategy.trades);
 
   if (!connected || !strategy.version_id) {
     return (
@@ -75,21 +75,21 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      {/* Evidence visuals: paper equity from trades + per-fold OOS returns + untouched holdout. */}
+      {/* Evidence visuals: sim equity from trades + per-fold OOS returns + untouched holdout. */}
       <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5">
-              Paper equity
-              <Tooltip content="Cumulative realized cash flow from this sleeve's paper trades (sells add, buys and fees subtract). Built only from real trades — not a fabricated curve." />
+              Sim equity
+              <Tooltip content="Cumulative realized cash flow from this track's sim trades (sells add, buys and fees subtract). Built only from real trades — not a fabricated curve." />
             </CardTitle>
-            <Badge variant="info">PAPER</Badge>
+            <Badge variant="info">SIM</Badge>
           </CardHeader>
           <CardContent>
-            {paperCurve.length >= 2 ? (
-              <EquityCurve points={paperCurve} mode="paper" height={220} valueLabel="Realized P&L" />
+            {simCurve.length >= 2 ? (
+              <EquityCurve points={simCurve} mode="sim" height={220} valueLabel="Realized P&L" />
             ) : (
-              <ChartEmpty title="Not enough trades yet" hint="A paper equity curve renders once this sleeve has at least two fills." height={220} />
+              <ChartEmpty title="Not enough trades yet" hint="A sim equity curve renders once this track has at least two fills." height={220} />
             )}
           </CardContent>
         </Card>
@@ -215,7 +215,7 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
         </CardHeader>
         <CardContent>
           {strategy.trades.length === 0 ? (
-            <EmptyState title="No trades yet." hint="Fills appear here as this sleeve trades on paper. Nothing is fabricated." />
+            <EmptyState title="No trades yet." hint="Fills appear here as this track trades in sim. Nothing is fabricated." />
           ) : (
             <Table>
               <THead>
@@ -254,7 +254,7 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
         <CardHeader>
           <CardTitle className="flex items-center gap-1.5">
             Compiled code
-            <Tooltip content="The deterministic code this Version's spec compiled to — what actually runs in the backtest and sleeve." />
+            <Tooltip content="The deterministic code this Version's spec compiled to — what actually runs in the backtest and track." />
           </CardTitle>
         </CardHeader>
         <CardContent>

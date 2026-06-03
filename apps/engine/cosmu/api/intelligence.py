@@ -31,7 +31,7 @@ def _funnel(store: Store) -> dict[str, int]:
     """Strategy funnel: how many at each stage."""
     total = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions")
     screened = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions WHERE status != 'killed' OR killed_at IS NOT NULL")
-    paper = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions WHERE status = 'paper'")
+    forward_test = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions WHERE status = 'forward_test'")
     live = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions WHERE status = 'live'")
     killed = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions WHERE status = 'killed'")
     gate_passed = _count(store, "SELECT COUNT(*) AS n FROM backtests WHERE passed_gates = 1")
@@ -39,7 +39,7 @@ def _funnel(store: Store) -> dict[str, int]:
         "authored": total,
         "screened": total,
         "gate_passed": gate_passed,
-        "funded": paper + live,
+        "funded": forward_test + live,
         "live": live,
         "killed": killed,
     }
@@ -77,7 +77,7 @@ def _regime_coverage(store: Store) -> dict[str, Any]:
     rows = _safe_rows(store,
         "SELECT sv.id, b.regime_label FROM strategy_versions sv "
         "JOIN backtests b ON b.strategy_version_id = sv.id "
-        "WHERE sv.status IN ('paper', 'live') AND b.passed_gates = 1"
+        "WHERE sv.status IN ('forward_test', 'live') AND b.passed_gates = 1"
     )
     coverage: dict[str, int] = {}
     for r in rows:

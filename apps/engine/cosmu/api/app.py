@@ -14,7 +14,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from cosmu.api.models import (
     ActivateRequest,
     ActivateResponse,
-    Allocation,
     AutonomyPauseResponse,
     AutonomyStatusResponse,
     AutonomyTickResponse,
@@ -41,7 +40,7 @@ from cosmu.api.models import (
     DefundRequest,
     DefundResponse,
     DriftResponse,
-    DriftSleeve,
+    DriftTrack,
     DropOneClass,
     DropOneSource,
     EligibleStrategy,
@@ -71,7 +70,7 @@ from cosmu.api.models import (
     MemoryInsightsResponse,
     Point,
     PopulationResponse,
-    PortfolioResponse,
+    OverviewResponse,
     Recommendation,
     RecommendationActionResponse,
     RecommendationsResponse,
@@ -92,7 +91,7 @@ from cosmu.adapters.exec.binance import BinanceSpotExecutionAdapter, resolve_mod
 from cosmu.config.settings import get_settings
 from cosmu.evolution.loop import CohortSummary, FarmLoop
 from cosmu.knowledge.store import Store, utcnow
-from cosmu.master.portfolio import PaperPortfolio
+from cosmu.master.portfolio import Portfolio
 from cosmu.lab.author import AuthorDraft, draft_from_brief
 from cosmu.spine.engine import EngineFacade
 from cosmu.spine.universe import (
@@ -120,14 +119,14 @@ except Exception:
     store = Store(_S(database_url="sqlite:///.cosmu/fallback.sqlite3"))
 
 
-def _portfolio() -> PaperPortfolio:
-    return PaperPortfolio(store, bankroll=settings.paper_bankroll, daily_loss_cap=settings.live.daily_loss_cap)
+def _portfolio() -> Portfolio:
+    return Portfolio(store, bankroll=settings.sim_bankroll, daily_loss_cap=settings.live.daily_loss_cap)
 
 
 def _live_mode() -> str:
-    """The mode GET /live/positions reports — the adapter's resolved mode (testnet/live) or paper if disabled."""
+    """The mode GET /live/positions reports — the adapter's resolved mode (testnet/live) or sim if disabled."""
     mode = resolve_mode(settings)
-    return mode if mode in ("testnet", "live") else "paper"
+    return mode if mode in ("testnet", "live") else "sim"
 
 
 def _live_caps_row() -> dict[str, float]:
@@ -156,7 +155,7 @@ async def lifespan(_: FastAPI):
                 facade.run_backtest(seed=11)
             ensure_recommendations()
             _scan_inbox_on_startup()
-            _fund_wallet_on_startup()
+            _fund_tracks_on_startup()
         except Exception:  # noqa: BLE001 — boot tasks are best-effort; never crash the app
             pass
 
@@ -164,18 +163,18 @@ async def lifespan(_: FastAPI):
     yield
 
 
-def _fund_wallet_on_startup() -> None:
-    """Close the loop on boot: if gate-passed survivors exist with sleeves but the paper Wallet holds no
-    positions yet, size them with the capped-Kelly allocator and open paper positions so GET /portfolio reflects
-    a genuinely funded Wallet (no fabricated numbers). Best-effort + offline-safe; never blocks startup."""
+def _fund_tracks_on_startup() -> None:
+    """Close the loop on boot: if gate-passed survivors exist with tracks but no sim positions are open yet, open
+    a standalone forward-test track for each so GET /overview reflects genuinely funded tracks (no fabricated
+    numbers). Best-effort + offline-safe; never blocks startup."""
     try:
-        from cosmu.orchestrator import fund_wallet_from_survivors
+        from cosmu.orchestrator import fund_tracks_from_survivors
 
         if store.row("SELECT id FROM positions WHERE CAST(qty AS REAL) != 0 LIMIT 1"):
             return  # already funded — idempotent, don't double-open
-        if not store.row("SELECT sv.id FROM strategy_versions sv JOIN sleeves sl ON sl.strategy_version_id = sv.id WHERE sv.status IN ('paper','live') LIMIT 1"):
-            return  # no survivors yet — honest empty Wallet
-        fund_wallet_from_survivors(store, bankroll=settings.paper_bankroll)
+        if not store.row("SELECT sv.id FROM strategy_versions sv JOIN tracks tr ON tr.strategy_version_id = sv.id WHERE sv.status IN ('forward_test','live') LIMIT 1"):
+            return  # no survivors yet — honest empty state
+        fund_tracks_from_survivors(store, bankroll=settings.sim_bankroll)
     except Exception:  # noqa: BLE001 — funding is best-effort; a data/network hiccup must not break boot
         pass
 
@@ -266,7 +265,7 @@ def evolution_run(request: CohortRunRequest) -> CohortSummaryResponse:
 def population() -> PopulationResponse:
     counts = store.rows("SELECT status, origin, COUNT(*) AS n FROM strategy_versions GROUP BY status, origin")
     total = sum(int(r["n"]) for r in counts)
-    paper = sum(int(r["n"]) for r in counts if r["status"] in ("paper", "live"))
+    forward_test = sum(int(r["n"]) for r in counts if r["status"] in ("forward_test", "live"))
     killed = sum(int(r["n"]) for r in counts if r["status"] == "killed")
     by_origin: dict[str, int] = {}
     by_lane: dict[str, int] = {}
@@ -288,7 +287,7 @@ def population() -> PopulationResponse:
     )
     return PopulationResponse(
         total=total,
-        paper=paper,
+        forward_test=forward_test,
         killed=killed,
         by_origin=by_origin,
         by_lane=by_lane,
@@ -424,34 +423,20 @@ def lab_ml(request: MlRequest) -> MlResponse:
     )
 
 
-@app.get("/portfolio", response_model=PortfolioResponse)
-def portfolio() -> PortfolioResponse:
-    snapshots = store.rows("SELECT ts, equity, pnl FROM portfolio_snapshots WHERE scope = 'pool' ORDER BY ts ASC LIMIT 120")
+@app.get("/overview", response_model=OverviewResponse)
+def overview() -> OverviewResponse:
+    """The aggregate read-out for the Overview surface — the Σ of all standalone forward-test tracks. A pure
+    read-out: there is NO pooled wallet and no cross-track allocation (each survivor proves on its own track)."""
+    snapshots = store.rows("SELECT ts, equity, pnl FROM portfolio_snapshots WHERE scope = 'aggregate' ORDER BY ts ASC LIMIT 120")
     curve = [Point(ts=row["ts"], value=float(row["equity"])) for row in snapshots]
     pnl_net = float(snapshots[-1]["pnl"]) if snapshots else 0.0
-    # Real allocation: open positions weighted by their notional share of equity (no fabricated numbers).
-    pf = _portfolio()
-    equity = float(pf.equity())
-    positions = pf.positions()
-    notionals = [(p, float(abs(p.qty) * p.avg_price)) for p in positions]
-    total_notional = sum(n for _, n in notionals)
-    allocations = [
-        Allocation(
-            strategy_id=p.strategy_version_id or "pool",
-            name=p.symbol,
-            weight=round(n / total_notional, 6) if total_notional else 0.0,
-            capital=round(n, 2),
-            venue=p.venue,
-        )
-        for p, n in notionals
-    ]
+    equity = float(_portfolio().equity())
     cost_rows = store.rows("SELECT category, SUM(CAST(amount AS REAL)) AS amount FROM costs GROUP BY category")
     costs = [CostSlice(category=r["category"], amount=float(r["amount"] or 0)) for r in cost_rows]
     live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
-    return PortfolioResponse(
+    return OverviewResponse(
         equity_curve=curve,
         pnl_net=pnl_net,
-        allocation=allocations,
         costs=costs,
         live_enabled=bool(live_row and live_row["enabled"]),
         opex_vs_alpha=round(sum(c.amount for c in costs) / equity, 6) if equity else 0.0,
@@ -477,7 +462,7 @@ def leaderboard() -> LeaderboardResponse:
             LeaderboardRow(
                 version_id=row["id"],
                 name=row["name"],
-                sleeve_return_pct=float(row["oos_return"] or 0) * 100,
+                track_return_pct=float(row["oos_return"] or 0) * 100,
                 deflated_sharpe=float(row["deflated_sharpe"] or 0),
                 net_pct=float(row["oos_return"] or 0) * 100 - 0.18,
                 pbo=float(row["pbo"] or 0),
@@ -518,7 +503,7 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
             Backtest(id=bt["id"], kind=bt["kind"], oos_return=float(bt["oos_return"]), deflated_sharpe=float(bt["deflated_sharpe"]), max_dd=float(bt["max_dd"]), win_rate=float(bt["win_rate"]), num_trades=int(bt["num_trades"]), pbo=float(bt["pbo"]), passed_gates=bool(bt["passed_gates"]))
             for bt in backtests
         ],
-        notes_md="Deterministic WFO accepted this version for the standardized sleeve. Live capital remains gated by the global toggle, paper survival, regime fit, and caps.",
+        notes_md="Deterministic WFO accepted this version for the standardized track. Live capital remains gated by the global toggle, sim survival, regime fit, and caps.",
         holdout={"passed": True, "deflated_sharpe": 0.35, "seen_once": True},
     )
 
@@ -597,8 +582,8 @@ def autonomy_resume() -> AutonomyPauseResponse:
 @app.post("/autonomy/tick", response_model=AutonomyTickResponse)
 def autonomy_tick() -> AutonomyTickResponse:
     """Run ONE bounded, idempotent, audited autonomous cycle: ingest → author (LLM proposes if a key is set, else
-    deterministic) → DETERMINISTIC gate + flywheel → fund the PAPER Wallet from survivors → emit recommendations.
-    LIVE STAYS OFF — paper fills only; the tick never arms live. Cron-able (one tick per call, not a daemon)."""
+    deterministic) → DETERMINISTIC gate + flywheel → open standalone forward-test tracks from survivors → emit recommendations.
+    LIVE STAYS OFF — sim fills only; the tick never arms live. Cron-able (one tick per call, not a daemon)."""
     from cosmu.master.scheduler import run_tick
 
     # REAL data only: screen + fund on actual Binance spot bars. Synthetic fixtures are CI/offline only —
@@ -679,7 +664,7 @@ def toggle_live(request: ToggleRequest) -> ToggleResponse:
 
 
 def _eligible_strategies() -> list[EligibleStrategy]:
-    """Strategies eligible to be armed: paper survivors that passed gates AND whose PROVEN regime set includes
+    """Strategies eligible to be armed: forward-test survivors that passed gates AND whose PROVEN regime set includes
     the CURRENT market regime (a strategy may go live only in a regime it proved in). Capability ≠ edge — being
     eligible here does NOT trade live; it still requires the toggle ON + keys + the deterministic gate at
     execute time. The regime gate only BLOCKS — it never promotes."""
@@ -997,16 +982,16 @@ def research_brain() -> BrainResponse:
 
 @app.get("/research/drift", response_model=DriftResponse)
 def research_drift() -> DriftResponse:
-    """Per-funded-sleeve ALPHA-DECAY snapshot (master/drift): edge half-life + how far live has drifted below the
+    """Per-funded-track ALPHA-DECAY snapshot (master/drift): edge half-life + how far live has drifted below the
     edge it was funded on, and whether the anticipatory monitor recommends pulling capital BEFORE P&L turns.
-    Read-only + deterministic — the monitor only recommends; the deterministic allocator + live toggle move money."""
-    from cosmu.master.drift import assess_drift, funded_sleeve_ids, sleeve_return_series
+    Read-only + deterministic — the monitor only recommends; the deterministic lifecycle + live toggle move money."""
+    from cosmu.master.drift import assess_drift, funded_track_ids, track_return_series
 
-    sleeves = []
-    for vid in funded_sleeve_ids(store):
-        v = assess_drift(vid, sleeve_return_series(store, vid))
-        sleeves.append(
-            DriftSleeve(
+    tracks = []
+    for vid in funded_track_ids(store):
+        v = assess_drift(vid, track_return_series(store, vid))
+        tracks.append(
+            DriftTrack(
                 version_id=vid,
                 defund=v.defund,
                 reason=v.reason,
@@ -1020,7 +1005,7 @@ def research_drift() -> DriftResponse:
                 n=v.drift.n,
             )
         )
-    return DriftResponse(sleeves=sleeves)
+    return DriftResponse(tracks=tracks)
 
 
 @app.get("/skills", response_model=SkillsResponse)
@@ -1068,12 +1053,12 @@ def costs() -> CostsResponse:
         """
         SELECT sv.id AS version_id, s.name AS name,
                SUM(CAST(c.amount AS REAL)) AS opex,
-               COALESCE(CAST(sl.equity AS REAL) - CAST(sl.starting_capital AS REAL), 0) AS net
+               COALESCE(CAST(tr.equity AS REAL) - CAST(tr.starting_capital AS REAL), 0) AS net
         FROM costs c
         JOIN strategy_versions sv ON sv.id = c.strategy_version_id
         JOIN strategies s ON s.id = sv.strategy_id
-        LEFT JOIN sleeves sl ON sl.strategy_version_id = sv.id
-        GROUP BY sv.id, s.name, sl.equity, sl.starting_capital
+        LEFT JOIN tracks tr ON tr.strategy_version_id = sv.id
+        GROUP BY sv.id, s.name, tr.equity, tr.starting_capital
         """
     )
     per_strategy = [
@@ -1109,7 +1094,7 @@ def ensure_recommendations() -> None:
         {
             "ts": utcnow(),
             "kind": "paper_promotion_watch",
-            "body": "One seeded strategy cleared the deterministic WFO gates. Keep it in realistic paper until it survives 4+ weeks with positive net edge before live promotion.",
+            "body": "One seeded strategy cleared the deterministic WFO gates. Keep it in realistic sim until it survives 4+ weeks with positive net edge before live promotion.",
             "state": "open",
             "payload": {"requires": ["4w_paper_survival", "regime_match", "caps_available"]},
         },

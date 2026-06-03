@@ -9,16 +9,16 @@ from decimal import Decimal
 from cosmu.config.settings import Settings
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.drift import (
+    aggregate_return_series,
     assess_drift,
     fit_edge_decay,
-    funded_sleeve_ids,
+    funded_track_ids,
     monitor_drift,
-    pool_return_series,
     rolling_edge,
-    sleeve_return_series,
+    track_return_series,
 )
-from cosmu.master.portfolio import PaperPortfolio
-from cosmu.portfolio.rotation import Sleeve, is_decayed, rotate
+from cosmu.master.portfolio import Portfolio
+from cosmu.portfolio.rotation import Track, is_decayed, select_tracks
 
 
 def _store(tmp_path) -> Store:
@@ -91,13 +91,13 @@ def _snap(store: Store, scope: str, ref_id: str, equity: str) -> None:
 def test_store_readers_derive_returns_and_isolate_scopes(tmp_path):
     store = _store(tmp_path)
     for eq in ("100000", "101000", "100500"):
-        _snap(store, "pool", "global", eq)
+        _snap(store, "aggregate", "global", eq)
     for eq in ("1000", "1010", "1020"):
-        _snap(store, "sleeve", "v1", eq)
-    pool = pool_return_series(store)
-    sleeve = sleeve_return_series(store, "v1")
+        _snap(store, "track", "v1", eq)
+    pool = aggregate_return_series(store)
+    sleeve = track_return_series(store, "v1")
     assert len(pool) == 2 and abs(pool[0] - 0.01) < 1e-9       # 100000 → 101000
-    assert len(sleeve) == 2 and abs(sleeve[0] - 0.01) < 1e-9   # sleeve scope isolated from pool
+    assert len(sleeve) == 2 and abs(sleeve[0] - 0.01) < 1e-9   # track scope isolated from aggregate
 
 
 # --- audited monitor ------------------------------------------------------------------------------
@@ -105,67 +105,67 @@ def test_store_readers_derive_returns_and_isolate_scopes(tmp_path):
 
 def test_monitor_drift_audits_and_defunds(tmp_path):
     store = _store(tmp_path)
-    # A decaying sleeve trajectory (value still rising slightly each step but by less — edge dying).
+    # A decaying track trajectory (value still rising slightly each step but by less — edge dying).
     values = [1000.0]
     step = 30.0
     for _ in range(12):
         values.append(values[-1] + step)
         step *= 0.6
     for v in values:
-        _snap(store, "sleeve", "decayer", f"{v:.2f}")
+        _snap(store, "track", "decayer", f"{v:.2f}")
     verdicts = monitor_drift(store, ["decayer"])
     assert len(verdicts) == 1 and verdicts[0].defund
-    # both the per-sleeve assessment and the defund decision are on the audit ledger
+    # both the per-track assessment and the defund decision are on the audit ledger
     assert store.row("SELECT 1 FROM events WHERE kind = 'drift_assessed' AND ref_id = 'decayer'") is not None
-    assert store.row("SELECT 1 FROM events WHERE kind = 'sleeve_defunded' AND ref_id = 'decayer'") is not None
+    assert store.row("SELECT 1 FROM events WHERE kind = 'track_defunded' AND ref_id = 'decayer'") is not None
 
 
-# --- rotation wiring ------------------------------------------------------------------------------
+# --- track lifecycle wiring -----------------------------------------------------------------------
 
 
-def test_rotation_defunds_on_drift_flag_even_with_healthy_dsr():
-    healthy = Sleeve(id="ok", edge=0.05, variance=0.01, rolling_dsr=0.99)
-    flagged = Sleeve(id="drifting", edge=0.05, variance=0.01, rolling_dsr=0.99, drift_defund=True)
+def test_track_defunds_on_drift_flag_even_with_healthy_dsr():
+    healthy = Track(id="ok", rolling_dsr=0.99)
+    flagged = Track(id="drifting", rolling_dsr=0.99, drift_defund=True)
     assert not is_decayed(healthy)
     assert is_decayed(flagged)                            # anticipatory: pulled despite a still-high deflated Sharpe
-    allocs = {a.sleeve_id: a for a in rotate([healthy, flagged])}
-    assert allocs["drifting"].weight == 0.0 and "anticipatory" in allocs["drifting"].reason
-    assert allocs["ok"].weight > 0.0
+    verdict = {v.version_id: v for v in select_tracks([healthy, flagged])}
+    assert not verdict["drifting"].funded and "anticipatory" in verdict["drifting"].reason
+    assert verdict["ok"].funded
 
 
-def test_rotation_defunds_on_short_half_life():
-    short = Sleeve(id="dying", edge=0.05, variance=0.01, rolling_dsr=0.99, edge_half_life=1.5)
+def test_track_defunds_on_short_half_life():
+    short = Track(id="dying", rolling_dsr=0.99, edge_half_life=1.5)
     assert is_decayed(short)
-    assert {a.sleeve_id: a.weight for a in rotate([short])}["dying"] == 0.0
+    assert not {v.version_id: v for v in select_tracks([short])}["dying"].funded
 
 
 # --- portfolio accrual ----------------------------------------------------------------------------
 
 
-def test_mark_to_market_accrues_per_sleeve_series_without_polluting_pool(tmp_path):
+def test_mark_to_market_accrues_per_track_series_without_polluting_aggregate(tmp_path):
     store = _store(tmp_path)
-    pf = PaperPortfolio(store)
+    pf = Portfolio(store)
     pf.apply_fill(instrument_id="binance:BTCUSDT", symbol="BTCUSDT", venue="binance", side=1,
                   qty=Decimal("1"), price=Decimal("100"), fee=Decimal("0"), strategy_version_id="vA")
     pf.mark_to_market({"binance:BTCUSDT": Decimal("100")})
     pf.mark_to_market({"binance:BTCUSDT": Decimal("110")})
-    # the pool reads stay pool-only (sleeve rows don't leak into equity/high-water)
+    # the aggregate reads stay aggregate-only (track rows don't leak into equity/high-water)
     assert pf.equity() > 0
-    sleeve = sleeve_return_series(store, "vA")
-    assert len(sleeve) == 1 and abs(sleeve[0] - 0.10) < 1e-6   # 100 → 110 marked value
-    assert "vA" in funded_sleeve_ids(store)
+    track = track_return_series(store, "vA")
+    assert len(track) == 1 and abs(track[0] - 0.10) < 1e-6   # 100 → 110 marked value
+    assert "vA" in funded_track_ids(store)
 
 
 # --- read-only API surface ------------------------------------------------------------------------
 
 
-def test_research_drift_endpoint_reports_funded_sleeves(tmp_path):
+def test_research_drift_endpoint_reports_funded_tracks(tmp_path):
     from fastapi.testclient import TestClient
 
     import cosmu.api.app as app_module
 
     store = _store(tmp_path)
-    pf = PaperPortfolio(store)
+    pf = Portfolio(store)
     pf.apply_fill(instrument_id="binance:BTCUSDT", symbol="BTCUSDT", venue="binance", side=1,
                   qty=Decimal("1"), price=Decimal("100"), fee=Decimal("0"), strategy_version_id="vEP")
     # a deteriorating trajectory across several marks (still positive, edge dying)
@@ -173,5 +173,5 @@ def test_research_drift_endpoint_reports_funded_sleeves(tmp_path):
         pf.mark_to_market({"binance:BTCUSDT": Decimal(px)})
     app_module.store = store
     body = TestClient(app_module.app).get("/research/drift").json()
-    assert body["sleeves"] and body["sleeves"][0]["version_id"] == "vEP"
-    assert "reason" in body["sleeves"][0] and body["sleeves"][0]["n"] >= 3
+    assert body["tracks"] and body["tracks"][0]["version_id"] == "vEP"
+    assert "reason" in body["tracks"][0] and body["tracks"][0]["n"] >= 3

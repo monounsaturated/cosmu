@@ -9,15 +9,15 @@
 import { Badge } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
 
-export type MoneyMode = "paper" | "live";
+export type MoneyMode = "sim" | "live";
 
 // Derive the mode honestly: armed/live -> LIVE; otherwise SIM.
 export function moneyMode({ live }: { live?: boolean }): MoneyMode {
-  return live ? "live" : "paper";
+  return live ? "live" : "sim";
 }
 
 const META: Record<MoneyMode, { label: string; variant: "up" | "info" }> = {
-  paper: { label: "SIM", variant: "info" },
+  sim: { label: "SIM", variant: "info" },
   live: { label: "LIVE", variant: "up" }
 };
 

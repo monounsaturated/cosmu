@@ -74,16 +74,16 @@ def _store(tmp_path) -> Store:
     return Store(Settings(database_url=f"sqlite:///{tmp_path}/regime.sqlite3", openrouter_api_key=None))
 
 
-def _open_sleeve(store: Store, version_id: str, proven: list[str]) -> None:
+def _open_track(store: Store, version_id: str, proven: list[str]) -> None:
     store.append_event(
-        actor="master", kind="sleeve_opened", ref_type="strategy_version", ref_id=version_id,
+        actor="master", kind="track_opened", ref_type="strategy_version", ref_id=version_id,
         payload={"deflated_sharpe": "0.97", "lane": "seed", "survival_score": 0.9, "survival_trained": False, "proven_regimes": proven},
     )
 
 
 def test_live_eligibility_reads_passport_and_gates(tmp_path):
     store = _store(tmp_path)
-    _open_sleeve(store, "v-bull", ["bull"])
+    _open_track(store, "v-bull", ["bull"])
     assert proven_regimes_for(store, "v-bull") == {"bull"}
 
     up = _bars([0.01] * 80)    # current regime = bull

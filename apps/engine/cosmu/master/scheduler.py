@@ -2,10 +2,10 @@
 # It composes the seams already built: ingest free data (ingest.run.run_once) → author N candidates (LLM if a key
 # is set, else the deterministic template, consulting long-term memory + skills) → run them through the
 # DETERMINISTIC FarmLoop gate/screen + flywheel (memory + curator, inside the loop) → size gate-passed survivors
-# with the capped-Kelly allocator and fund the single pooled PAPER Wallet (orchestrator.fund_wallet_from_survivors)
+# and open a standalone forward-test track per survivor (orchestrator.fund_tracks_from_survivors)
 # → emit human-facing recommendations. inputs: a Store (+ optional injectable ingest/market/llm seams); outputs:
 # a TickReport + persisted audit (events ledger) + recommendations rows. invariants: the scorer/Gate stay OUT of
-# every LLM path and alone decide survival + money; the LLM only PROPOSES; LIVE STAYS OFF (paper fills only) —
+# every LLM path and alone decide survival + money; the LLM only PROPOSES; LIVE STAYS OFF (sim fills only) —
 # nothing here can move real money; CRON-ABLE (one tick per call, never a daemon); BOUNDED + reproducible offline
 # (no keys/network needed); idempotent (a paused tick is a no-op; a fresh tick re-runs cleanly and is audited).
 
@@ -108,7 +108,7 @@ def autonomy_status(store: Store) -> AutonomyStatus:
         )
         last_action = (
             f"authored {summary.authored}, {summary.gated_passed} cleared the gate, "
-            f"funded {summary.funded} paper sleeve(s), {summary.recommendations} recommendation(s)"
+            f"funded {summary.funded} forward-test track(s), {summary.recommendations} recommendation(s)"
         )
     next_action = "paused — resume to run the next tick" if paused else "run one bounded research+fund tick"
     return AutonomyStatus(
@@ -137,8 +137,8 @@ def run_tick(
 ) -> TickReport:
     """ONE bounded, idempotent, audited autonomous cycle. Paused → a no-op (idempotent). Otherwise: ingest free
     data → author N candidates (LLM PROPOSES if a key is set; deterministic template otherwise) → DETERMINISTIC
-    FarmLoop gate/screen + flywheel → fund the PAPER Wallet from gate-passed survivors → emit human-facing
-    recommendations. LIVE STAYS OFF: funding routes paper fills only; the tick never arms live. Reproducible
+    FarmLoop gate/screen + flywheel → open a standalone track per gate-passed survivor → emit human-facing
+    recommendations. LIVE STAYS OFF: funding routes sim fills only; the tick never arms live. Reproducible
     offline for a fixed (n, seed). Every stage is audited to the events ledger."""
     settings = settings or store.settings
     live = _live_enabled(store)
@@ -176,11 +176,11 @@ def run_tick(
     survivors = report.survivors
     survivor_names = [s.name for s in survivors]
 
-    # 4) FUND the single pooled PAPER Wallet from gate-passed survivors (capped-Kelly; paper fills only — live
-    # stays OFF inside fund_wallet_from_survivors). Best-effort + offline-safe; a market hiccup leaves it 0.
+    # 4) OPEN a standalone forward-test track per gate-passed survivor (sim fills only — live
+    # stays OFF inside fund_tracks_from_survivors). Best-effort + offline-safe; a market hiccup leaves it 0.
     funded = 0
     try:
-        from cosmu.orchestrator import fund_wallet_from_survivors
+        from cosmu.orchestrator import fund_tracks_from_survivors
 
         # Fund through the SAME provider the screen used: an explicit one if given, else the deterministic
         # edge-bearing fixture when edge_market is on (so funding resolves prices offline with no network/cache),
@@ -190,10 +190,10 @@ def run_tick(
             from cosmu.lab.research import _EdgeBearingBars
 
             funding_provider = _EdgeBearingBars()
-        funding = fund_wallet_from_survivors(
+        funding = fund_tracks_from_survivors(
             store,
             market_data=funding_provider,
-            bankroll=bankroll if bankroll is not None else settings.paper_bankroll,
+            bankroll=bankroll if bankroll is not None else settings.sim_bankroll,
         )
         funded = funding.funded
     except Exception as exc:  # noqa: BLE001 — funding is best-effort; never aborts an already-gated tick
@@ -245,7 +245,7 @@ def _emit_recommendations(store: Store, *, survivors: list[str], ingested: dict[
     }
     for name in survivors[:3]:
         body = (
-            f"A Version cleared the deterministic gate: '{name}'. Watch it in paper for 4+ weeks with positive "
+            f"A Version cleared the deterministic gate: '{name}'. Watch it in sim for 4+ weeks with positive "
             f"net edge before considering live. Live stays off until you arm it."
         )
         if body in open_bodies:
@@ -254,10 +254,10 @@ def _emit_recommendations(store: Store, *, survivors: list[str], ingested: dict[
             "recommendations",
             {
                 "ts": utcnow(),
-                "kind": "paper_promotion_watch",
+                "kind": "forward_test_promotion_watch",
                 "body": body,
                 "state": "open",
-                "payload": {"version_name": name, "requires": ["4w_paper_survival", "regime_match", "caps_available"]},
+                "payload": {"version_name": name, "requires": ["4w_sim_survival", "regime_match", "caps_available"]},
             },
         )
         ids.append(rec_id)
@@ -293,7 +293,7 @@ def _main(argv: list[str] | None = None) -> int:
     import argparse
     import tempfile
 
-    parser = argparse.ArgumentParser(description="Run ONE bounded autonomous master tick (cron-able, paper-only, never arms live).")
+    parser = argparse.ArgumentParser(description="Run ONE bounded autonomous master tick (cron-able, sim-only, never arms live).")
     parser.add_argument("--n", type=int, default=4, help="candidates to author this tick (default 4)")
     parser.add_argument("--seed", type=int, default=7, help="cohort seed (default 7)")
     parser.add_argument("--offline", action="store_true", help="self-contained demo: temp sqlite + edge-bearing fixture, no network/keys (NOT for prod)")
@@ -308,7 +308,7 @@ def _main(argv: list[str] | None = None) -> int:
         store = Store(Settings())
         report = run_tick(store, n=max(1, args.n), seed=args.seed, edge_market=False)
     s = report.summary
-    print("AUTONOMOUS MASTER TICK — one bounded cycle complete (paper-only, live off)")
+    print("AUTONOMOUS MASTER TICK — one bounded cycle complete (sim-only, live off)")
     print(f"  authored={s.authored} gated_passed={s.gated_passed} funded={s.funded} recommendations={s.recommendations}")
     print(f"  survivors: {', '.join(report.survivors) or '-'}")
     print(f"  live_enabled={report.live_enabled} (the tick never arms live)")

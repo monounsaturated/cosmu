@@ -16,7 +16,7 @@ import { formatPct, formatSigned } from "@/lib/utils";
 // Forward-test (proven, per-strategy) → Live (you launch the winners). No "Paper", no shared Wallet.
 export default async function ForwardTestPage() {
   const { leaderboard, connected } = await getLeaderboard();
-  const rows = (leaderboard.rows as LeaderboardRow[]).filter((r) => r.status.toLowerCase() === "paper");
+  const rows = (leaderboard.rows as LeaderboardRow[]).filter((r) => r.status.toLowerCase() === "forward_test");
 
   if (!connected) {
     return (

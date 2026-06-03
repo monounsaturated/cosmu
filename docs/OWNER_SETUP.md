@@ -56,7 +56,7 @@ python3 -m cosmu.research.gate              # print just PASS / STOP-narrow
 | Polymarket token | cross-asset risk-on feature | gamma-api.polymarket.com | **Free** | P1 (optional) | 🟡 leave blank — bot auto-discovers markets (task 1b) |
 | Claude Code sub (have it) | build/maintain core + hard features | claude.ai | $20–200/mo (already paying) | **P0** | ✅ the dev engine |
 | OpenRouter key | one gateway → many cheap/free LLMs | openrouter.ai | ~$5 credit; **~$1–5/mo** | **P0/P1** | ✅ big leverage, tiny cost |
-| Binance **testnet** keys | ~~paper execution~~ — SKIP (Paper uses real prices) | testnet.binance.vision | Free | — | ❌ not worth it (see §F.5) |
+| Binance **testnet** keys | ~~paper execution~~ — SKIP (SIM uses real prices) | testnet.binance.vision | Free | — | ❌ not worth it (see §F.5) |
 | Railway | always-on engine API + crons | railway.app | **~$5–20/mo** usage | **P1** | ✅ the 24/7 machine |
 | Supabase | Postgres + pgvector (truth + RAG) | supabase.com | Free tier → **Pro $25/mo** | **P1** | ✅ free to start; Pro when always-on |
 | Vercel | web front | vercel.com | Free Hobby → Pro $20/mo | **P1** | ✅ free to start |
@@ -81,7 +81,7 @@ python3 -m cosmu.research.gate              # print just PASS / STOP-narrow
 ## D. Cost reality
 
 - **Run the real gate today:** **$0** (two free keys + your existing Claude Code sub).
-- **24/7 paper operation:** **~$25–65/mo**, hard-capped (Railway + Supabase Pro + Vercel + small LLM).
+- **24/7 SIM operation:** **~$25–65/mo**, hard-capped (Railway + Supabase Pro + Vercel + small LLM).
 - **+ optional data (social / equity / GPU):** +$25–110/mo.
 - Planned envelope: **~$50–150/mo, fully capped.** Live trading stays OFF until you flip it.
 
@@ -110,7 +110,7 @@ Architecture (unchanged, lean): **Railway** = always-on engine API + a bounded 6
 ### F.2 Railway — switch the service to the ENGINE
 1. Open your existing Railway service → **Settings → Source → Root Directory = `apps/engine`**. Save. (This makes `apps/engine/railway.toml` drive it — nixpacks detects Python, `pip install .` installs deps, uvicorn binds `$PORT`.)
 2. **Settings → Deploy** → if a Custom Build/Start command is still pinned from the repo-root `railway.toml`, **clear those overrides** so the `apps/engine` config takes over. Healthcheck path = `/health`.
-3. **Variables** — keep `DATABASE_URL, XAI_API_KEY, OPENROUTER_API_KEY, FRED_API_KEY, API_SECRET_KEY, SCHEDULER_ENABLED, GUARDIAN_ENABLED`. **Remove the Binance keys** (paper runs on real prices with the adapter `disabled` — §F.5). Add **`CORS_EXTRA_ORIGINS=https://<your-vercel-domain>`** (or `CORS_ALLOW_VERCEL_PREVIEWS=true`) so the browser can call the engine cross-origin. Leave `POLYMARKET_TOKEN` unset.
+3. **Variables** — keep `DATABASE_URL, XAI_API_KEY, OPENROUTER_API_KEY, FRED_API_KEY, API_SECRET_KEY, SCHEDULER_ENABLED, GUARDIAN_ENABLED`. **Remove the Binance keys** (SIM runs on real prices with the adapter `disabled` — §F.5). Add **`CORS_EXTRA_ORIGINS=https://<your-vercel-domain>`** (or `CORS_ALLOW_VERCEL_PREVIEWS=true`) so the browser can call the engine cross-origin. Leave `POLYMARKET_TOKEN` unset.
 4. The 6h `research.loop` cron is in `apps/engine/railway.toml`. If your plan needs it in the dashboard, add a Cron service: command `python3 -m cosmu.research.loop --ingest`, schedule `0 */6 * * *`.
 5. Copy the engine's public URL (e.g. `https://cosmu-engine.up.railway.app`) → you'll paste it into Vercel next.
 
@@ -126,11 +126,11 @@ Architecture (unchanged, lean): **Railway** = always-on engine API + a bounded 6
 - **Deploy = `git push`** to the connected branch → Railway + Vercel auto-build. Strategies in `strategies/inbox/` ride the same push.
 
 ### F.5 Binance testnet — skip it (you're right)
-Testnet is **not worth it**: Binance's testnet has thin, unrealistic liquidity/prices that diverge from the real market, so it's a *worse* validation than the built-in **Paper** engine, which marks every position against **real live prices** (shadow trading) and charges real per-venue fees. So:
-- **For validation → use Paper (real prices).** Set **no Binance keys** anywhere; the execution adapter then resolves to `disabled` → deterministic paper-fills on real marks. This is the realistic harness.
+Testnet is **not worth it**: Binance's testnet has thin, unrealistic liquidity/prices that diverge from the real market, so it's a *worse* validation than the built-in **SIM forward-test** engine, which marks every position against **real live prices** (shadow trading) and charges real per-venue fees. So:
+- **For validation → use SIM forward-test (real prices).** Set **no Binance keys** anywhere; the execution adapter then resolves to `disabled` → deterministic sim-fills on real marks. This is the realistic harness.
 - **Testnet's only honest use** is a one-time "does my order API plumbing work" smoke test — optional, skippable.
 - **Going live (later, deliberate):** add real `BINANCE_API_KEY/SECRET` on Railway → in the app, the 2-click Live modal → confirm. Only after a real gate **PASS**. Auto-disarms on the daily-loss cap.
-- *Your local `.env.local` testnet keys are inert while the live toggle is off (paper-fills don't touch the network) — leave or clear them, your call.*
+- *Your local `.env.local` testnet keys are inert while the live toggle is off (sim-fills don't touch the network) — leave or clear them, your call.*
 
 ---
 
@@ -165,8 +165,8 @@ NAMING (owner directive — make it intuitive, normal, conventional EVERYWHERE: 
 GUARDRAILS (non-negotiable):
 - Scorer/Gate + money are DETERMINISTIC and OUT of any LLM path. LLM only PROPOSES.
 - No magic numbers in a strategy spec (params come from a fitted space; monitor/policy constants are fine). Point-in-time, no look-ahead. LLM-optional + offline-testable (mock network).
-- Live OFF by default; nothing autonomous moves real money. Paper-only until the human arms live.
-- NO Binance testnet (less realistic than the Paper engine, which marks on REAL prices). With NO Binance keys the execution adapter resolves to `disabled` → deterministic paper-fills on real marks. Real Binance keys + live toggle only at the deliberate go-live step, after a real gate PASS.
+- Live OFF by default; nothing autonomous moves real money. SIM-only until the human arms live.
+- NO Binance testnet (less realistic than the SIM forward-test engine, which marks on REAL prices). With NO Binance keys the execution adapter resolves to `disabled` → deterministic sim-fills on real marks. Real Binance keys + live toggle only at the deliberate go-live step, after a real gate PASS.
 - Env var names match Railway/Vercel EXACTLY. Engine (Railway): XAI_API_KEY, OPENROUTER_API_KEY, FRED_API_KEY, POLYMARKET_TOKEN, DATABASE_URL, API_SECRET_KEY, SCHEDULER_ENABLED, GUARDIAN_ENABLED, CORS_EXTRA_ORIGINS. Web (Vercel): API_BASE_URL + NEXT_PUBLIC_API_BASE_URL (BOTH = the engine's public URL; server + client). `ENGINE_API_URL`/`NEXT_PUBLIC_ENGINE_API_URL` are UNUSED legacy — don't reintroduce them. .env*.local stays local; never commit secrets.
 - DON'T run full pytest locally (heavy); run targeted tests + verify against Supabase/CI. Stop & report before: schema changes, new vendor/spend, live-execution changes, deploy-config changes, broad renames (incl. the NAMING pass).
 
@@ -193,7 +193,7 @@ NEXT TASKS (highest impact first):
 3) More LLMs + data sources + VENUES + ASSET CLASSES by CONFIG only: extend OpenRouter model ids per tier (keep :free defaults); register new FREE/community/OSS data sources via DataSourceRegistry (+ point-in-time feature store); add markets via the core/interfaces.py DataAdapter/ExecutionAdapter seam so a new venue/asset class is ONE adapter + a catalog entry, not a rewrite. Make it all manageable from the front (the existing universe enable/disable gate). Each source/class must earn its place via OOS. Standardized + ML-ready.
 4) DEPLOY — engine production-readiness. DONE: pyproject build-system (pip-installable), app.py binds 0.0.0.0:$PORT, apps/engine/{Procfile,railway.toml} (uvicorn + /health + 6h cron). Topology: Railway = ENGINE (service Root Directory = apps/engine), Vercel = web (API_BASE_URL + NEXT_PUBLIC_API_BASE_URL → the Railway engine URL; engine sets CORS_EXTRA_ORIGINS for the Vercel domain). REMAINING: VERIFY the Railway build+/health succeed end-to-end (can't be tested locally); optionally delete the now-legacy repo-root railway.toml web build once the engine service is confirmed.
 5) NAMING — intuitive, conventional naming EVERYWHERE (owner directive): audit DB tables/columns, API fields, web labels, and code symbols for invented/weird terms; propose a plain-language mapping to the owner (e.g. avoid niche metaphors; prefer terms a newcomer knows), then apply it as ONE end-to-end pass (DB ↔ generated contracts ↔ web ↔ code, no drift) behind a migration. Update docs/GLOSSARY.md as the single vocabulary source. Ask the owner before executing (broad rename).
-6) Aggregator power + ease-of-use: a true one-stop aggregator (more community/OSS/API sources behind existing seams) AND a clean, easy-to-manage operator front (Overview-led, plain language, progressive disclosure, mobile-first). Write docs/CODING_AGENT.md (coding-agent-driven vs automatic tasks). Add reusable skills to .claude/skills/. Collapse Costs into Paper/Overview.
+6) Aggregator power + ease-of-use: a true one-stop aggregator (more community/OSS/API sources behind existing seams) AND a clean, easy-to-manage operator front (Overview-led, plain language, progressive disclosure, mobile-first). Write docs/CODING_AGENT.md (coding-agent-driven vs automatic tasks). Add reusable skills to .claude/skills/. Collapse Costs into Forward-test/Overview.
 7) Live-polish + drift consumption: surface GET /research/drift in the web once funded history exists; true mark-to-market in /live/positions + adapter.fills() reconciliation; persist toggle state to the orchestrator envelope.
 
 DEFINITION OF DONE per task: targeted tests green + existing suites you touched stay green + web typecheck/contracts build green (if web/contracts touched) + docs/IMPLEMENTATION.md reconciled. Commit to a branch + PR only when the owner asks.

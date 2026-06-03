@@ -2,7 +2,7 @@
 
 // module: ActivityTimeline — a readable "what the machine did" feed from GET /events (Deliverable #2).
 // Each event is actor · kind · ref · time. Events are grouped into a few plain-language families
-// (research, gate, paper, live, system) so the operator can watch the autonomous loop work without
+// (research, gate, sim, live, system) so the operator can watch the autonomous loop work without
 // decoding raw kind strings. Pure presentation over the real ledger — never fabricated; an unknown
 // kind falls back to the "system" family rather than being hidden. Reduced-motion respected (no
 // entry animation; the only motion is a CSS pulse the OS setting already silences via globals.css).
@@ -24,7 +24,7 @@ type Family = {
 const FAMILIES: Record<string, Family> = {
   research: { label: "research", icon: Microscope, tone: "text-iris-soft" },
   gate: { label: "gate", icon: ShieldCheck, tone: "text-info" },
-  paper: { label: "paper", icon: Wallet, tone: "text-up" },
+  sim: { label: "sim", icon: Wallet, tone: "text-up" },
   live: { label: "live", icon: Radio, tone: "text-warn" },
   system: { label: "system", icon: Activity, tone: "text-quiet" }
 };
@@ -33,11 +33,11 @@ const FAMILIES: Record<string, Family> = {
 // unrecognized kind lands in "system" (shown, never dropped).
 function familyForKind(kind: string): keyof typeof FAMILIES {
   const k = kind.toLowerCase();
-  if (k.includes("live") || k.includes("order") || k.includes("execution") || k.includes("armed") || k.includes("defunded")) {
+  if (k.includes("live") || k.includes("order") || k.includes("execution") || k.includes("armed")) {
     return "live";
   }
   if (k.includes("gate") || k.includes("holdout") || k.includes("screen") || k.includes("survivor")) return "gate";
-  if (k.includes("sleeve") || k.includes("wallet") || k.includes("paper")) return "paper";
+  if (k.includes("track") || k.includes("sim") || k.includes("fund") || k.includes("forward") || k.includes("paper") || k.includes("wallet")) return "sim";
   if (
     k.includes("research") ||
     k.includes("cohort") ||
@@ -79,7 +79,7 @@ export function ActivityTimeline({ events, limit = 40 }: { events: Event[]; limi
     return (
       <EmptyState
         title="No activity yet."
-        hint="Every step of the autonomous loop — research passes, gate decisions, sleeve and wallet changes — is recorded here as it happens. Nothing is fabricated."
+        hint="Every step of the autonomous loop — research passes, gate decisions, track funding and defunding — is recorded here as it happens. Nothing is fabricated."
       />
     );
   }

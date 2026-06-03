@@ -64,7 +64,7 @@ def main() -> None:
     lines.extend(
         [
             "export type ApiRoutes = {",
-            "  portfolio: PortfolioResponse;",
+            "  overview: OverviewResponse;",
             "  leaderboard: LeaderboardResponse;",
             "  recommendations: RecommendationsResponse;",
             "  events: EventsResponse;",

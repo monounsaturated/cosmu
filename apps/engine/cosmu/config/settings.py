@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     environment: Literal["local", "test", "production"] = Field(default_factory=lambda: _PROFILE_TO_ENVIRONMENT[_profile()])  # type: ignore[arg-type]
     database_url: str = Field(default="sqlite:///./.cosmu/cosmu.sqlite3")
     base_currency: str = "USD"
-    paper_bankroll: Decimal = Decimal("100000")
+    sim_bankroll: Decimal = Decimal("100000")
     openrouter_api_key: str | None = Field(default=None, repr=False)
     # LLM author: xAI (Grok) is preferred when XAI_API_KEY is set (already on Railway) — most efficient,
     # no new key; OpenRouter is the fallback. Both are OpenAI-compatible (same request shape).

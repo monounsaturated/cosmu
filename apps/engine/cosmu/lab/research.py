@@ -78,7 +78,7 @@ class ResearchReport:
 
 class _EdgeBearingBars:
     """Deterministic offline bars that CARRY a real momentum edge, so at least one authored crypto candidate
-    clears the deterministic gate (exercises the survivor sleeve-open path end-to-end). Reuses the shared
+    clears the deterministic gate (exercises the survivor track-open path end-to-end). Reuses the shared
     edge_bearing_screen_market fixture; the screen/scorer still judge honestly (no injected returns)."""
 
     def __init__(self, *, seed: int = 3) -> None:
@@ -159,7 +159,7 @@ def run_research_pass(
 
     By DEFAULT (edge_market=False, no injected market_data) the screen runs on REAL Binance spot bars — the
     only honest source. `edge_market=True` is CI/offline ONLY: it screens over the edge-bearing fixture so the
-    survivor sleeve-open path is exercised deterministically with no network. Production must never run with
+    survivor track-open path is exercised deterministically with no network. Production must never run with
     edge_market=True. `persist=True` writes a research_pass event so the API can read the run
     (authored/gated/survivors/graveyard) without re-running — not CLI-only."""
     bus = tool_bus or research_tool_bus()
@@ -176,7 +176,7 @@ def run_research_pass(
     else:
         # PRODUCTION default: no provider → FarmLoop._screen fetches REAL Binance spot bars
         # (BinanceSpotOHLCVProvider, cache-backed). Synthetic fixtures are CI/offline only. We never
-        # screen — or fund — paper sleeves on fabricated data; the app must not display synthetic edge.
+        # screen — or fund — SIM tracks on fabricated data; the app must not display synthetic edge.
         provider = None
     loop = FarmLoop(settings=store.settings, store=store, market_data=provider)
     # Cohort = the authored candidates only (no extra mutation/explore waves) so the report maps 1:1 onto
@@ -200,7 +200,7 @@ def run_research_pass(
 def _persist_pass(store: Store, report: ResearchReport) -> None:
     """Persist the research-pass result as an audit event so GET /research/brain can read the latest pass
     (authored/gated/survivors/graveyard) without re-running the cohort. The cohort already wrote the
-    strategy_versions/backtests/sleeves/graveyard rows; this is the one-row pass summary on top of them."""
+    strategy_versions/backtests/tracks/graveyard rows; this is the one-row pass summary on top of them."""
     store.append_event(
         actor="master",
         kind="research_pass",
@@ -265,7 +265,7 @@ def _main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=7, help="cohort seed for reproducibility (default 7)")
     args = parser.parse_args(argv)
 
-    # The CLI demo runs over the edge-bearing fixture so the survivor sleeve-open path is visible offline.
+    # The CLI demo runs over the edge-bearing fixture so the survivor track-open path is visible offline.
     report = run_research_pass(_offline_store(), n=max(1, args.n), seed=args.seed, edge_market=True)
     _print_report(report)
     return 0

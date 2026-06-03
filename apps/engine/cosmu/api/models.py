@@ -12,23 +12,17 @@ class Point(BaseModel):
     value: float
 
 
-class Allocation(BaseModel):
-    strategy_id: str
-    name: str
-    weight: float
-    capital: float
-    venue: str
-
-
 class CostSlice(BaseModel):
     category: str
     amount: float
 
 
-class PortfolioResponse(BaseModel):
+class OverviewResponse(BaseModel):
+    """The aggregate read-out for the Overview surface ("are we making money?"): the Σ of all standalone
+    forward-test tracks. This is a pure read-out — there is NO pooled wallet and no cross-track allocation."""
+
     equity_curve: list[Point]
     pnl_net: float
-    allocation: list[Allocation]
     costs: list[CostSlice]
     live_enabled: bool
     opex_vs_alpha: float
@@ -37,7 +31,7 @@ class PortfolioResponse(BaseModel):
 class LeaderboardRow(BaseModel):
     version_id: str
     name: str
-    sleeve_return_pct: float
+    track_return_pct: float
     deflated_sharpe: float
     net_pct: float
     pbo: float
@@ -165,7 +159,7 @@ class LivePosition(BaseModel):
 
 class LivePositionsResponse(BaseModel):
     armed: bool
-    mode: Literal["testnet", "live", "paper"]
+    mode: Literal["testnet", "live", "sim"]
     daily_loss: float
     caps: LiveCaps
     positions: list[LivePosition]
@@ -322,7 +316,7 @@ class GraveyardRow(BaseModel):
 
 class PopulationResponse(BaseModel):
     total: int
-    paper: int
+    forward_test: int
     killed: int
     by_origin: dict[str, int]
     by_lane: dict[str, int]
@@ -602,8 +596,8 @@ class CostsResponse(BaseModel):
 # ---- alpha-decay: edge half-life + live-vs-funded drift (master/drift; web consumes) ----
 
 
-class DriftSleeve(BaseModel):
-    """One funded sleeve's alpha-decay snapshot. `defund` is the anticipatory verdict (pull capital BEFORE P&L
+class DriftTrack(BaseModel):
+    """One funded track's alpha-decay snapshot. `defund` is the anticipatory verdict (pull capital BEFORE P&L
     turns); `half_life` is the estimated periods for the realized edge to halve (null = not decaying); `z`/`cusum`
     measure how far live has drifted below the edge it was funded on (`reference`)."""
 
@@ -621,7 +615,7 @@ class DriftSleeve(BaseModel):
 
 
 class DriftResponse(BaseModel):
-    sleeves: list[DriftSleeve]
+    tracks: list[DriftTrack]
 
 
 # ---- system intelligence: "is the machine getting smarter?" (api/intelligence.py builds) ----

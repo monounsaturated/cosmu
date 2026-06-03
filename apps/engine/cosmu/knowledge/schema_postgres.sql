@@ -130,23 +130,13 @@ create table if not exists positions (
   updated_at text not null
 );
 
-create table if not exists sleeves (
+create table if not exists tracks (
   id text primary key,
   strategy_version_id text not null unique references strategy_versions(id),
   starting_capital numeric not null default 100000,
   equity numeric not null,
   return_pct numeric not null,
   updated_at text not null
-);
-
-create table if not exists allocations (
-  id text primary key,
-  strategy_version_id text not null references strategy_versions(id),
-  weight numeric not null,
-  capital numeric not null,
-  kelly_fraction numeric not null,
-  correlation_group text not null,
-  cycle_ts text not null
 );
 
 create table if not exists live_toggle (

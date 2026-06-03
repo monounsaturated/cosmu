@@ -41,7 +41,7 @@ export default async function LabPage() {
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Versions tested" value={connected ? population.total : "—"} accent="iris" />
-        <Stat label="On paper" value={connected ? population.paper : "—"} accent="up" />
+        <Stat label="In sim" value={connected ? population.forward_test : "—"} accent="up" />
         <Stat label="In graveyard" value={connected ? population.killed : "—"} accent="down" />
         <Stat label="Kill rate" value={connected && population.total ? formatPct(population.kill_rate * 100, 1) : "—"} accent="warn" />
       </div>

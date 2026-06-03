@@ -1,8 +1,8 @@
 # Cosmu
 
-Cosmu v2 is an internal autonomous quant system: a deterministic master runs a population of self-improving, LLM-authored swing strategies, farms them in realistic paper, and keeps live capital behind a global toggle that is off by default.
+Cosmu v2 is an internal autonomous quant system: a deterministic master runs a population of self-improving, LLM-authored swing strategies, forward-tests each survivor on its own standalone SIM track, and keeps live capital behind a global toggle that is off by default.
 
-The safety partition is the product: the scorer and the money are deterministic and outside any LLM path. The lab agent can propose strategy structure, code, research, and ML artifacts, but the master owns scoring, allocation, risk, audit, and live promotion.
+The safety partition is the product: the scorer and the money are deterministic and outside any LLM path. The lab agent can propose strategy structure, code, research, and ML artifacts, but the master owns scoring, per-track funding, risk, audit, and live promotion.
 
 ## Current Shape
 
@@ -43,9 +43,9 @@ Open `http://localhost:3000`.
 
 ## Product Surfaces
 
-1. Dashboard: pooled wallet, net P&L, costs, allocation, live gate.
-2. Leaderboard: standardized per-strategy sleeves ranked by deterministic evidence.
+1. Dashboard: aggregate read-out (Σ of all standalone tracks), net P&L, costs, per-track funding, live gate.
+2. Leaderboard: standardized per-strategy tracks ranked by deterministic evidence.
 3. Strategy Detail: spec, compiled artifact, trades, WFO/holdout results, notes.
 4. Console: chat/voice/image control surface and proactive recommendations.
 
-Market bars and feature history belong in a columnar catalog, not row-per-bar Postgres. Postgres is the control-plane and money-truth: strategies, runs, executions, sleeves, costs, recommendations, policies, and append-only events.
+Market bars and feature history belong in a columnar catalog, not row-per-bar Postgres. Postgres is the control-plane and money-truth: strategies, runs, executions, tracks, costs, recommendations, policies, and append-only events.

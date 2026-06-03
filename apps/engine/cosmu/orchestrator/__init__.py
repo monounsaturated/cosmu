@@ -16,19 +16,19 @@ from cosmu.orchestrator.agent import (
     gate_stage,
 )
 from cosmu.orchestrator.efficiency import EfficiencyMeter
-from cosmu.orchestrator.loop import WalletFundingReport, fund_wallet_from_survivors, mark_paper_positions
+from cosmu.orchestrator.loop import TrackFundingReport, fund_tracks_from_survivors, mark_tracks
 
 __all__ = [
     "AutonomyEnvelope",
     "CycleContext",
     "EfficiencyMeter",
     "Stage",
+    "TrackFundingReport",
     "TradingAgent",
-    "WalletFundingReport",
     "allocate_stage",
     "execute_stage",
     "execution_plan_stage",
-    "fund_wallet_from_survivors",
+    "fund_tracks_from_survivors",
     "gate_stage",
-    "mark_paper_positions",
+    "mark_tracks",
 ]

@@ -15,12 +15,12 @@ Stack:
 - **Honest loop.** The deployed autonomous tick runs on **REAL Binance bars** (`edge_market=False`). Synthetic edge-bearing fixtures are quarantined to **CI/tests ONLY** — they must NEVER be shown in the app or run in prod. *Do not display synthetic things — hard rule.*
 - **Local-first compute.** Heavy discovery (grid-search, walk-forward, backtest sweeps) runs **locally on the owner's M2 Mac** and emits only winning `StrategySpec`s to Postgres. Backtests are deterministic + offline-capable, so the whole test/verify loop runs locally for $0.
 - **Cloud runs only:** the always-on API for the UI, gate disposition on authored specs, a mark-to-market cron, and (eventually) live execution.
-- **Forward-test clock.** Funded paper sleeves are **held and marked-to-market across bars**. A sleeve must show positive net-of-fee paper P&L over **N ≥ 30 forward days** before it is live-eligible.
-- **Deterministic funding gate.** A deterministic scorer — not any LLM — is the only judge that funds paper sleeves: deflated Sharpe, CSCV-PBO, holdout, regime folds. *Hardening in progress:* route the funding cohort through the global trial ledger + Benjamini-Hochberg FDR + `must_beat_buy_and_hold` (the rigorous `research/gate.py:PREREGISTERED_BAR`), so the rigorous bar — not the lighter cohort scorer — is what authorizes capital.
+- **Forward-test clock.** Funded SIM tracks are **held and marked-to-market across bars**. A track must show positive net-of-fee SIM P&L over **N ≥ 30 forward days** before it is live-eligible. Each survivor proves itself on its **own standalone track** — there is NO pooled wallet.
+- **Deterministic funding gate.** A deterministic scorer — not any LLM — is the only judge that funds SIM tracks: deflated Sharpe, CSCV-PBO, holdout, regime folds. *Hardening in progress:* route the funding cohort through the global trial ledger + Benjamini-Hochberg FDR + `must_beat_buy_and_hold` (the rigorous `research/gate.py:PREREGISTERED_BAR`), so the rigorous bar — not the lighter cohort scorer — is what authorizes capital.
 
 ## Lifecycle
-**Discover (Lab)** → **Paper / forward-test (Incubate)** → **Live (capital ramp).**
-Live is OFF by default behind **5 interlocks**: toggle on + real keys + gate passed + caps available + no kill-switch. All five, or nothing moves.
+**Lab (discover)** → **Strategies (screened)** → **Forward-test (proven, per-strategy, SIM)** → **Live (you launch winners).**
+NO pooled wallet — each survivor proves itself on its **own standalone track**. Live is OFF by default behind **5 interlocks**: toggle on + real keys + gate passed + caps available + no kill-switch. All five, or nothing moves.
 
 ## Dev gate (before every push)
 ```

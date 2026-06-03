@@ -4,7 +4,7 @@
 
 > **`docs/VISION.md` is the contract (the *what* & *why*). This is the *how* — the deep, agent-followable build of V1.** If they disagree, fix one on purpose. This is a reference doc: read `§0` (index), jump to the one section you need. Don't load it whole.
 
-**V1 in one line:** a fully autonomous, self-improving paper money-machine across **crypto + equities + prediction markets**, realistic fills/fees, deterministic gates, chat+voice control — **live OFF by default**, one global toggle from real money — built **buy-heavy** behind a thin hour-zero spine, then eight parallel workstreams.
+**V1 in one line:** a fully autonomous, self-improving forward-test (SIM) money-machine across **crypto + equities + prediction markets**, realistic fills/fees, deterministic gates, chat+voice control — **live OFF by default**, one global toggle from real money — built **buy-heavy** behind a thin hour-zero spine, then eight parallel workstreams.
 
 ---
 
@@ -16,13 +16,13 @@
 | 2 | **Buy-vs-build matrix** | deciding whether to write or wire something |
 | 3 | Repo, toolchain, layout, conventions | writing any code |
 | 4 | The spine (hour-zero) | bootstrapping the project |
-| 5 | Execution modes & engine | anything touching Nautilus / paper / live |
+| 5 | Execution modes & engine | anything touching Nautilus / SIM / live |
 | 6 | Data & ingestion | market data, features, qual sources, RAG |
 | 7 | Strategy spec & compiler | the quantamental representation (differentiator) |
 | 8 | Evolution loop & scorer | seed→screen→validate→score→gate→allocate |
 | 9 | Lab agent & model router | authoring, ML, sandbox, self-improvement |
 | 10 | Deterministic master | scheduler, allocator, risk, live gate, policy, audit |
-| 11 | Venues | per-venue adapters & paper fills |
+| 11 | Venues | per-venue adapters & SIM fills |
 | 12 | ML | agent-written + survival model + regime classifier |
 | 13 | Risk & security model | money safety + secret/sandbox isolation |
 | 14 | API surface | FastAPI → OpenAPI → TS client |
@@ -51,12 +51,12 @@
 
 1. **Buy commodities, build the differentiator.** Default to wiring a managed/OSS piece. The *only* things we hand-build are the **farming loop, the deterministic gates, the scorer, the allocator, and the strategy-spec compiler** — that's the edge and the anti-slop. Everything else is bought/borrowed (§2).
 2. **LLM proposes, deterministic disposes.** No LLM ever fires a live order or defines success. The scorer and the money live in the deterministic master, **out of the agent's reach**.
-3. **One code path, three modes.** backtest = sandbox (paper, live-shadow) = live are the **same Nautilus node contexts** running the **same strategy code** (§5). Never a separate paper system.
+3. **One code path, three modes.** backtest = sandbox (SIM, live-shadow) = live are the **same Nautilus node contexts** running the **same strategy code** (§5). Never a separate SIM system.
 4. **Trusted vs untrusted code split** (security + cost). Compiled `StrategySpec`s run in *our* trusted harness on our infra. The agent's *free-form* ML/feature code runs only in an **E2B/Modal sandbox** with no secrets and no venue network. Only artifacts cross back (§9, §13).
 5. **Structured-first, token-frugal.** Typed Postgres rows are truth; markdown + INDEX are cheap views; RAG retrieves only what's relevant. Read the INDEX, then one record.
 6. **Profit is the only score.** Every module defends itself by moving net-of-cost profit. If it doesn't, it doesn't ship.
 7. **Platform, not script.** Every venue, data feature, strategy template, tool, and model is a **plug-in** — adding one is config + a small module, never a rewrite.
-8. **Explore wide, gate hard.** The anti-overfitting rigor gates **capital**, not **ideas**. Generation is cheap and creative; a fixed **exploration budget** funds high-variance wildcards (not just mutations of winners); **luck is allowed to run on a paper sleeve** and is separated from edge over time by holdout + weeks of paper — never pre-judged. Keep the funnel **wide at the top, strict at the money valve**, and apply **diversity pressure** so the population never collapses to one style. The constraints (no hardcoded numbers, single-variable-by-default) are *enablers* of clean search, not a creativity tax.
+8. **Explore wide, gate hard.** The anti-overfitting rigor gates **capital**, not **ideas**. Generation is cheap and creative; a fixed **exploration budget** funds high-variance wildcards (not just mutations of winners); **luck is allowed to run on a standalone SIM track** and is separated from edge over time by holdout + weeks of forward-test — never pre-judged. Keep the funnel **wide at the top, strict at the money valve**, and apply **diversity pressure** so the population never collapses to one style. The constraints (no hardcoded numbers, single-variable-by-default) are *enablers* of clean search, not a creativity tax.
 
 ---
 
@@ -82,7 +82,7 @@
 | Param-space optimizer | **BORROW (OSS)** | Optuna | Bayesian/TPE + pruning + multi-objective; fits `param_space` (App. B) |
 | Fast dataframe / feature pipeline | **BORROW (OSS)** | Polars | columnar speed over pandas; pairs with the parquet cache |
 | Data-quality / look-ahead guard | **BORROW (OSS)** | Pandera | dataframe contracts; asserts point-in-time, no nulls/peeking |
-| Equity hours / halts | **BORROW (OSS)** | exchange_calendars | honest equity paper fills |
+| Equity hours / halts | **BORROW (OSS)** | exchange_calendars | honest equity SIM fills |
 | Strategy tearsheets | **BORROW (OSS)** | QuantStats | cheap rich analytics for Strategy detail |
 | App errors / alerting | **BUY/OSS** | Sentry | 24/7 reliability; complements Langfuse traces |
 | Property-based tests | **BORROW (OSS)** | Hypothesis | fuzz the compiler/validator/risk gauntlet |
@@ -98,7 +98,7 @@
 | Scheduler / job queue | **BUILD-THIN** | APScheduler + Postgres (`FOR UPDATE SKIP LOCKED`) | durable engine (Prefect/Temporal) is overkill at V1; revisit when reliability demands |
 | **Farming loop + deterministic gates + scorer** | **BUILD** | ours | **THE differentiator; nobody sells it; reward-hack-safe** |
 | **Strategy-spec compiler** | **BUILD** | ours | the quantamental NL→typed→runnable representation |
-| **Allocator** (corr-aware capped-Kelly) | **BUILD** | ours | money logic must be ours and audited |
+| **Per-track funding** (standalone $100k SIM track per survivor — no pooled wallet, no cross-strategy allocation) | **BUILD** | ours | money logic must be ours and audited |
 | **Risk gauntlet** | **BUILD** (port v1 `validator.ts`/`guardian.ts`) | ours | the deterministic spend/guardrail layer |
 
 **Rule of thumb for the coding agent:** if it's plumbing, wire a vendor. If it decides success or moves money, we build it and audit it.
@@ -161,10 +161,10 @@ packages/contracts-ts/             # GENERATED from engine OpenAPI (never hand-t
 | Mode | Nautilus context | Data | Fills | Money |
 |------|------------------|------|-------|-------|
 | Backtest | BacktestNode | historical, point-in-time | OrderMatchingEngine + fill/fee model | none |
-| **Paper (default)** | **Sandbox exec client** | **live-shadow (real-time)** | same OrderMatchingEngine, simulated | none |
+| **SIM / forward-test (default)** | **Sandbox exec client** | **live-shadow (real-time)** | same OrderMatchingEngine, simulated | none |
 | Live | Live exec client | live | venue | real, behind global toggle |
 
-- **Paper is native** (Nautilus sandbox simulates fills against live data with the production matching engine) — we don't hand-build it; we configure fill + fee models per venue.
+- **SIM / forward-test is native** (Nautilus sandbox simulates fills against live data with the production matching engine) — we don't hand-build it; we configure fill + fee models per venue.
 - **VenueCatalog** drives per-venue maker/taker fees, slippage-vs-size/liquidity/ADV, partial fills, latency, funding (perps), borrow (shorts/margin), spread, market hours/halts (equities), min-notional/lot, **prediction-market resolution/settlement** + book-depth caps.
 - **Determinism:** seeded backtests; every fill written to a **fill-log** (event id, order type, price, qty, ts, slippage, commission) for reconciliation (§8).
 
@@ -223,7 +223,7 @@ packages/contracts-ts/             # GENERATED from engine OpenAPI (never hand-t
 ## 8. Evolution loop & scorer
 
 **Loop (`evolution/`), 24/7:**
-`seed/mutate → compile → static-check → **fast vectorized screen (vectorbt)** → IS optimize → **walk-forward OOS validation (Nautilus BacktestNode)** → score → gate → untouched-holdout (once) → allocate paper sleeve → keep / kill / mutate`.
+`seed/mutate → compile → static-check → **fast vectorized screen (vectorbt)** → IS optimize → **walk-forward OOS validation (Nautilus BacktestNode)** → score → gate → untouched-holdout (once) → fund a standalone SIM track → keep / kill / mutate`.
 
 - **Two lanes (explore/exploit, config split ~70/30):** an **exploit lane** mutates/recombines survivors (incremental, attribution-clean); an **explore/wildcard lane** authors novel, high-variance, low-prior specs reaching outside the population (exotic feature combos, cross-market transfer, bold multi-variable leaps) so the machine can get *lucky* and escape local optima. Same scorer for both; **neither is judged at birth.** The explore budget is **guaranteed** — the survival model prioritizes compute but never vetoes an idea, so its own blind spots surface. **Diversity pressure** keeps decorrelated/unusual strategies alive even at slightly lower rank (option value across regimes).
 - **Two-tier backtest (throughput):** vectorbt screens thousands cheaply, kills obvious losers; only survivors pay for full event-driven Nautilus validation with realistic fills. The **survival model (§12)** ranks which survivors to validate first. *(Cheap screening exists precisely so exploration can be wide.)*
@@ -231,7 +231,7 @@ packages/contracts-ts/             # GENERATED from engine OpenAPI (never hand-t
 - **Walk-forward:** thin orchestration over `BacktestNode`/`BacktestRunConfig` (params via config, no code changes) + our fold splitter (rolling IS/OOS) + a final **untouched holdout** seen once.
 - **Scorer (`master/scorer.py` — DETERMINISTIC, OUT OF AGENT REACH):** single ranking scalar = **deflated OOS Sharpe** via **pypbo** (Bailey/López de Prado), corrected for **trial count**; gates: min-trades, max-drawdown, multi-regime, holdout; also computes **Probability of Backtest Overfitting**.
 - **Graveyard:** killed versions recorded *with reasons* — learn from deaths, never survivor-bias our own population.
-- **Capital handoff:** gate-passers get a standardized **$100k sleeve** (eval layer); proven survivors get **pooled-wallet** allocation (§10).
+- **Capital handoff:** gate-passers get their own standalone **$100k SIM track** (no pooled wallet, no cross-strategy allocation); proven survivors are launched LIVE manually with dedicated capital (§10).
 
 **DoD:** the loop autonomously seeds→screens→validates→scores→kills→keeps with no human input; deflated Sharpe + PBO per `strategy_version`; graveyard populated; reconciliation catches an injected screen/engine mismatch.
 
@@ -248,7 +248,7 @@ static_check(code)
 result = evolution.screen_then_validate(code)       # vectorbt → Nautilus, OUR infra
 score  = master.scorer(result)                      # deterministic; agent can't alter
 store(spec, code, result, score)                    # structured + audited
-if passes_gate: holdout(); allocator.seed_sleeve()
+if passes_gate: holdout(); fund_tracks_from_survivors()  # standalone $100k SIM track
 if success:     curator.distill_skill(spec, result) # Hermes skill pattern
 ```
 - **Trusted vs untrusted code (critical):** compiled `StrategySpec`s run on **our infra** (fast, cheap, allowlisted). The agent's *free-form* ML/feature code runs **only in E2B/Modal** (no secrets, no venue network); only artifacts (features, model files, predictions) return. **E2B is not in the per-backtest hot path** → cost + security stay sane.
@@ -268,16 +268,16 @@ Single control plane (`master/`). Small, strongly-typed, fully audited. Owns eve
 |-----------|----------------|
 | `scheduler.py` + `queue.py` | one loop; atomic job claim (`SELECT … FOR UPDATE SKIP LOCKED`); no missed/double runs; every tick audited |
 | `scorer.py` | the fitness authority (§8) — **agent cannot touch** |
-| `allocator.py` | pooled wallet: capped-Kelly, **correlation-aware**, compounding into survivors, defunding losers |
+| `fund_tracks_from_survivors` | per-track funding: each survivor gets its **own standalone $100k SIM track** (no pooled wallet, no cross-strategy allocation), defunding losers |
 | `risk.py` | the validator gauntlet (§13) on **every** order |
-| `live_gate.py` | global toggle (**off by default**); on flip, gate-passers auto-promote under per-strategy + global caps; auto-defund on live<paper divergence |
-| `venue_router.py` | routes the same strategy entity to sandbox(paper) or a live venue adapter — **all venues identical, incl. Polymarket** |
+| `live_gate.py` | global toggle (**off by default**); on flip, a gate-passing track is launched LIVE manually with dedicated capital under per-strategy + global caps; auto-defund on live<SIM divergence |
+| `venue_router.py` | routes the same strategy entity to sandbox(SIM) or a live venue adapter — **all venues identical, incl. Polymarket** |
 | `policy.py` | parses chat/voice → **validated** config deltas (risk/allocation/universe), applied atomically + audited |
 | `audit.py` | append-only `events` ledger — the money-truth |
 
 **The partition that makes autonomy safe:** the scorer and the money live here, deterministic, out of the agent's reach.
 
-**DoD:** scheduler runs unattended; a chat command becomes a validated policy delta; flipping the (test) toggle promotes a paper survivor through the gauntlet in simulation.
+**DoD:** scheduler runs unattended; a chat command becomes a validated policy delta; flipping the (test) toggle promotes a SIM-track survivor through the gauntlet in simulation.
 
 ---
 
@@ -285,15 +285,15 @@ Single control plane (`master/`). Small, strongly-typed, fully audited. Owns eve
 
 | Venue | Adapter | V1 status | Notes |
 |-------|---------|-----------|-------|
-| **Binance spot** (crypto) | Nautilus native | paper now, live under toggle | cleanest V1 execution venue |
-| **ccxt** (crypto breadth) | Nautilus/ccxt | paper | more crypto venues |
-| **IBKR** (equities) | Nautilus native | paper now, live under toggle | exec needs gateway; data via Norgate/Databento |
-| **Polymarket** (prediction) | **Nautilus native** (`py-clob-client-v2`) | paper now, **live under the same global toggle as every venue** | live-only adapter → paper = sandbox sim-fill on live CLOB book; needs Polygon wallet + pUSD/USDC to go live; **operator owns legality** (France geoblock) — no system special-casing |
+| **Binance spot** (crypto) | Nautilus native | SIM now, live under toggle | cleanest V1 execution venue |
+| **ccxt** (crypto breadth) | Nautilus/ccxt | SIM | more crypto venues |
+| **IBKR** (equities) | Nautilus native | SIM now, live under toggle | exec needs gateway; data via Norgate/Databento |
+| **Polymarket** (prediction) | **Nautilus native** (`py-clob-client-v2`) | SIM now, **live under the same global toggle as every venue** | live-only adapter → SIM = sandbox sim-fill on live CLOB book; needs Polygon wallet + pUSD/USDC to go live; **operator owns legality** (France geoblock) — no system special-casing |
 | Kalshi (prediction) | pykalshi / PMXT | optional | US-only; add if jurisdiction allows |
 
 Arbitrage is just a strategy template over simultaneous multi-venue pricing (fee/latency-aware).
 
-**DoD:** the same `StrategySpec` runs in paper across Binance, an equity, and a Polymarket market with correct per-venue fees/fills; Polymarket adapter authenticates and reads the live CLOB book in sandbox mode.
+**DoD:** the same `StrategySpec` runs in SIM across Binance, an equity, and a Polymarket market with correct per-venue fees/fills; Polymarket adapter authenticates and reads the live CLOB book in sandbox mode.
 
 ---
 
@@ -310,7 +310,7 @@ Arbitrage is just a strategy template over simultaneous multi-venue pricing (fee
 
 ## 13. Risk & security model (deterministic, non-negotiable)
 
-**Validator gauntlet** (port + harden v1 `validator.ts`/`guardian.ts`) on **every** order, paper or live:
+**Validator gauntlet** (port + harden v1 `validator.ts`/`guardian.ts`) on **every** order, SIM or live:
 - venue/pair authorization, min-notional/lot/tradability, budget + safety buffer, min cash reserve;
 - **SL/TP required** on entries; max orders/run; market/limit policy; **book-depth/ADV size caps** (capacity);
 - **data-freshness guard:** every feature an order depends on must be **as-of within a per-feature staleness tolerance** of now (and the venue feed must be live); stale/missing/gapped data → **veto the order** (skip, don't guess). Paper→live parity is a silent killer — never trade on data we can't currently trust;
@@ -332,7 +332,7 @@ Arbitrage is just a strategy template over simultaneous multi-venue pricing (fee
 ## 14. API surface (FastAPI → OpenAPI → TS)
 
 Thin, typed routers (the web's only contract):
-- `GET /portfolio` (pooled wallet, equity curve, allocation, costs) · `GET /leaderboard` (sleeves, deflated Sharpe, net %, PBO, status) · `GET /strategies/{id}` (spec, code, trades, OOS/holdout, notes) · `GET /costs` (attribution) ·
+- `GET /overview` (aggregate read-out = Σ of all standalone tracks, equity curve, per-track funding, costs; returns `OverviewResponse`) · `GET /leaderboard` (tracks, deflated Sharpe, net %, PBO, status) · `GET /strategies/{id}` (spec, code, trades, OOS/holdout, notes) · `GET /costs` (attribution) ·
 - `POST /console/command` (chat → validated policy delta) · `POST /console/voice` (STT in/TTS out) · `POST /console/upload` (image → vision-extract + veracity gate → typed `source` + reply/recommendation) · `GET /recommendations` + `POST /recommendations/{id}/approve` ·
 - `POST /toggle/live` (the global toggle; off by default; gated) · `GET /events` (audit stream).
 
@@ -343,9 +343,9 @@ All response models are Pydantic → OpenAPI → `packages/contracts-ts`. **DoD:
 ## 15. Frontend (4 surfaces, beautiful, lean)
 
 Next.js + **shadcn/ui** + **Tremor** + **TanStack Table**, dark/modern, desktop-first/mobile-friendly, **generated TS client** only.
-1. **Dashboard** — pooled wallet equity (paper+live), P&L net of all costs, allocation treemap, **Costs card** (infra/hosting/data/LLM-sandbox, drill-down per-category & per-strategy), opex-vs-profit gauge, **global live toggle (off)**.
-2. **Leaderboard** — every strategy-version on its $100k sleeve, ranked by deflated OOS Sharpe, **net % displayed prominently**, lineage, status, PBO.
-3. **Strategy detail** — backtest+paper equity, trade blotter, the spec + compiled code, agent notes/post-mortem, fee/slippage breakdown, OOS-vs-holdout.
+1. **Dashboard** — aggregate read-out (Σ of all standalone tracks, *not* a pooled wallet) equity (SIM+live), P&L net of all costs, per-track funding, **Costs card** (infra/hosting/data/LLM-sandbox, drill-down per-category & per-strategy), opex-vs-profit gauge, **global live toggle (off)**.
+2. **Leaderboard** — every strategy-version on its standalone $100k track, ranked by deflated OOS Sharpe, **net % displayed prominently**, lineage, status, PBO.
+3. **Strategy detail** — backtest+SIM equity, trade blotter, the spec + compiled code, agent notes/post-mortem, fee/slippage breakdown, OOS-vs-holdout.
 4. **Console** — **chat + voice** (STT in / TTS out) control + recommendation/approval inbox + the live toggle.
 
 **DoD:** all four render live engine data via the generated client; Console sends a validated command and shows a proactive recommendation; voice round-trips.
@@ -368,7 +368,7 @@ Next.js + **shadcn/ui** + **Tremor** + **TanStack Table**, dark/modern, desktop-
 - **Net edge = alpha − attributed opex**, surfaced on Dashboard + Strategy detail.
 - **Auto-throttle:** research/LLM/sandbox spend capped as a **% of trailing realized edge**; not earning → drop to cheap tier; earning → spend more.
 
-**DoD:** Dashboard shows real opex vs paper alpha; a strategy's net nets its opex share; throttle trips past the trailing-edge cap.
+**DoD:** Dashboard shows real opex vs SIM (forward-test) alpha; a strategy's net nets its opex share; throttle trips past the trailing-edge cap.
 
 ---
 
@@ -391,14 +391,14 @@ Migrations run on boot (port the v1 migrate-on-start pattern to Alembic). Secret
 
 - **Phase 0 — Spine (hour-zero, blocking):** §4. Everything waits on it.
 - **Phase 1 — eight parallel tracks** (open once spine is green):
-  A. Data & ingestion (§6) · B. Strategy spec & compiler (§7) · C. Evolution loop & scorer (§8) · D. Lab agent & router (§9) · E. Master (§10) · F. Venues & paper fills (§11) · G. ML (§12) + Risk/security (§13) · H. API (§14) + Frontend (§15) + Obs/evals (§16) + Costs (§17).
+  A. Data & ingestion (§6) · B. Strategy spec & compiler (§7) · C. Evolution loop & scorer (§8) · D. Lab agent & router (§9) · E. Master (§10) · F. Venues & SIM fills (§11) · G. ML (§12) + Risk/security (§13) · H. API (§14) + Frontend (§15) + Obs/evals (§16) + Costs (§17).
 - **Integration checkpoints:**
-  1. B+F → one spec runs in paper on one venue (correct fees/fills, fill-log written).
+  1. B+F → one spec runs in SIM on one venue (correct fees/fills, fill-log written).
   2. +C+E → the loop autonomously seeds/screens/validates/scores/kills.
   3. +D → the agent authors specs into the loop; skills distilled.
   4. +A+G → real Tier-0 features + ML prioritization + regime gating.
   5. +H → you watch and steer it (Dashboard/Leaderboard/Detail/Console), costs visible.
-- **V1 done = the whole machine runs autonomously in paper across crypto + equities + prediction markets, live-off, one toggle from real money, with costs < trailing paper edge.**
+- **V1 done = the whole machine runs autonomously in forward-test (SIM) across crypto + equities + prediction markets, live-off, one toggle from real money, with costs < trailing SIM edge.**
 - **V2 = flip live on live-proven survivors; more venues, FX/options, deeper arbitrage/ingestion/ML; optional Numerai Signals side-revenue.**
 
 ---
@@ -427,14 +427,14 @@ Migrations run on boot (port the v1 migrate-on-start pattern to Alembic). Secret
 
 V1 **works** when, with **zero human authoring**, the machine:
 1. autonomously seeds, screens, validates, scores, and **kills 95%+** on deflated OOS Sharpe + holdout, recording every death;
-2. surfaces a **decorrelated handful** that clear the gates **and survive 4–6 weeks of realistic paper** with positive net-of-cost edge **at fillable size**;
-3. proves them across **crypto + equities + prediction-market** paper with correct fees/fills;
-4. keeps **opex < trailing paper edge** (throttling when not earning);
+2. surfaces a **decorrelated handful** that clear the gates **and survive 4–6 weeks of realistic forward-test (SIM)** on their own standalone tracks with positive net-of-cost edge **at fillable size**;
+3. proves them across **crypto + equities + prediction-market** SIM with correct fees/fills;
+4. keeps **opex < trailing SIM edge** (throttling when not earning);
 5. would, on flipping the toggle, **auto-promote** exactly those survivors under caps — and **auto-defund** any whose live edge decays.
 
 **The flywheel (better/faster/stronger):** more runs → more labeled outcomes → sharper survival model → smarter compute allocation (screen many, full-validate the right few) → faster discovery; success → skills (Curator-pruned) that raise authoring quality; the graveyard stops re-walking dead ends; more data → better features → better strategies → more data. It compounds *research efficiency*, not just capital.
 
-**The honest bar:** winning ≠ guaranteed profit. Winning = a **disciplined research machine that finds and sizes small, real, decaying edges and refuses to fool itself.** The edge most likely to pay at this size: **neglected markets (small-caps, long-tail alts, prediction markets) + slow alt-data + risk-management-as-alpha + a decorrelated ensemble.** Flat paper months are the gates working, not failure.
+**The honest bar:** winning ≠ guaranteed profit. Winning = a **disciplined research machine that finds and sizes small, real, decaying edges and refuses to fool itself.** The edge most likely to pay at this size: **neglected markets (small-caps, long-tail alts, prediction markets) + slow alt-data + risk-management-as-alpha + a decorrelated ensemble.** Flat forward-test (SIM) months are the gates working, not failure.
 
 ---
 
@@ -461,19 +461,18 @@ V1 **works** when, with **zero human authoring**, the machine:
 
 **Strategy population**
 - `strategies`(id, name, thesis, origin `enum[agent|chat|pine|mined]`, created_at)
-- `strategy_versions`(id, strategy_id→strategies, **parent_id**→self `nullable`, spec `jsonb` (App. B), generated_code `text`, code_hash, params `jsonb`, mutation_operator, mutation_rationale, origin `enum`, status `enum[draft|screening|validating|paper|live|killed]`, created_at, killed_at, kill_reason) · idx(status), idx(parent_id)
+- `strategy_versions`(id, strategy_id→strategies, **parent_id**→self `nullable`, spec `jsonb` (App. B), generated_code `text`, code_hash, params `jsonb`, mutation_operator, mutation_rationale, origin `enum`, status `enum[draft|screening|validating|forward_test|live|killed]`, created_at, killed_at, kill_reason) · idx(status), idx(parent_id)
 - `backtests`(id, strategy_version_id→…, kind `enum[screen|wfo|holdout]`, is_start, is_end, oos_start, oos_end, oos_return `numeric`, sharpe, sortino, **deflated_sharpe**, max_dd, win_rate, num_trades `int`, **pbo** `numeric`, **trials_counted** `int`, regime_label, folds_positive `int`, passed_gates `bool`, holdout_passed `bool`, created_at) · idx(strategy_version_id, kind)
 - `graveyard` view = `strategy_versions WHERE status='killed'` (kill_reason required)
 
 **Execution & money (immutable)**
 - `runs`(id, strategy_version_id, mode `enum[backtest|sandbox|live]`, venue_id, seed `bigint`, started_at, ended_at, status)
-- `executions`(id, run_id→runs, strategy_version_id, instrument_id, venue_id, side `enum[buy|sell]`, qty, price, fee, slippage, order_type, is_paper `bool`, ts, **fill_log** `jsonb`) — *immutable* · idx(run_id), idx(ts)
-- `positions`(id, scope `enum[sleeve|pool]`, ref_id, instrument_id, qty, avg_price, unrealized_pnl, opened_at)
-- `portfolio_snapshots`(id, scope `enum[sleeve|pool]`, ref_id, ts, equity, cash, positions_value, pnl, drawdown) · idx(scope, ref_id, ts)
+- `executions`(id, run_id→runs, strategy_version_id, instrument_id, venue_id, side `enum[buy|sell]`, qty, price, fee, slippage, order_type, is_sim `bool`, ts, **fill_log** `jsonb`) — *immutable* · idx(run_id), idx(ts)
+- `positions`(id, scope `enum[track|aggregate]`, ref_id, instrument_id, qty, avg_price, unrealized_pnl, opened_at)
+- `portfolio_snapshots`(id, scope `enum[track|aggregate]`, ref_id, ts, equity, cash, positions_value, pnl, drawdown) · idx(scope, ref_id, ts)
 
-**Capital layers**
-- `sleeves`(id, strategy_version_id→… **unique**, starting_capital default 100000, equity, return_pct, updated_at) — eval layer
-- `allocations`(id, strategy_version_id, weight, capital, kelly_fraction, correlation_group, cycle_ts) — pooled-wallet layer · idx(cycle_ts)
+**Capital (standalone tracks — no pooled wallet, no cross-strategy allocation)**
+- `tracks`(id, strategy_version_id→… **unique**, starting_capital default 100000, equity, return_pct, updated_at) — each survivor's own standalone $100k SIM forward-test; the Overview aggregate read-out is the Σ of all tracks, not an account you trade from
 - `live_toggle`(id **singleton**, enabled `bool` default false, enabled_at, enabled_by)
 - `live_caps`(id, scope `enum[global|venue|strategy]`, ref_id `nullable`, max_notional, max_daily_loss)
 
@@ -568,10 +567,10 @@ class StrategySpec(BaseModel):
 **Ranking scalar (single):** **deflated OOS Sharpe** (Bailey/López de Prado, via `pypbo`) on concatenated OOS, corrected for `trials_counted` (param trials + sibling variants in that search). **Tie-break:** lower PBO → then higher net %. Leaderboard *sorts* by deflated Sharpe, *displays* net % prominently.
 
 **Promotion ladder:**
-1. **→ paper sleeve:** clears all gates.
-2. **→ live** (only when toggle ON): gates **+** survived **≥ 4 weeks** realistic paper with net-positive edge **+** regime classifier says *current* regime ∈ the strategy's proven regimes **+** live caps available.
+1. **→ standalone SIM track:** clears all gates (its own $100k forward-test, no pooled wallet).
+2. **→ live** (only when toggle ON): gates **+** survived **≥ 4 weeks** realistic forward-test (SIM) with net-positive edge **+** regime classifier says *current* regime ∈ the strategy's proven regimes **+** live caps available.
 
-**Kill / defund:** fail any gate ⇒ kill (write `kill_reason`). Live edge < paper edge by `> tolerance` (config) ⇒ **auto-defund**. Trailing paper edge turns negative beyond tolerance ⇒ kill. Every death recorded in the graveyard *with reason* — never survivor-bias our own population.
+**Kill / defund:** fail any gate ⇒ kill (write `kill_reason`). Live edge < SIM-track edge by `> tolerance` (config) ⇒ **auto-defund**. Trailing SIM-track edge turns negative beyond tolerance ⇒ kill. Every death recorded in the graveyard *with reason* — never survivor-bias our own population.
 
 ---
 
@@ -603,8 +602,8 @@ class StrategySpec(BaseModel):
 
 | Method/route | Request | Response (shape) |
 |--------------|---------|------------------|
-| `GET /portfolio` | — | `{ equity_curve: Point[], pnl_net: number, allocation: {strategy_id,weight,capital}[], costs: {category,amount}[], live_enabled: bool }` |
-| `GET /leaderboard` | `?status&limit` | `{ rows: {version_id, name, sleeve_return_pct, deflated_sharpe, net_pct, pbo, status, lineage}[] }` |
+| `GET /overview` | — | `OverviewResponse` = `{ equity_curve: Point[], pnl_net: number, tracks: {strategy_id,capital,return_pct}[], costs: {category,amount}[], live_enabled: bool }` (aggregate read-out = Σ of standalone tracks, not a pooled wallet) |
+| `GET /leaderboard` | `?status&limit` | `{ rows: {version_id, name, track_return_pct, deflated_sharpe, net_pct, pbo, status, lineage}[] }` |
 | `GET /strategies/{id}` | — | `{ spec, generated_code, params, trades: Execution[], backtests: Backtest[], notes_md, holdout: {...} }` |
 | `GET /costs` | `?from&to` | `{ by_category: {...}[], by_strategy: {...}[], opex_vs_alpha: number }` |
 | `POST /console/command` | `{ text }` | `{ parsed_policy, applied: bool, reply_md }` |
@@ -685,13 +684,13 @@ ROI rule made literal: **spend scales with what we earn; throttle to cheap when 
 | Spec/compiler (B) | LLM spec passes `instructor` with **zero literals**, compiles, optimizes IS, runs OOS; a magic-number spec is **rejected** by `static_check` (test) |
 | Evolution/scorer (C) | loop autonomously seeds→screens→validates→scores→kills with no human; deflated Sharpe + PBO per version; injected screen↔engine mismatch is caught by reconciliation |
 | Lab agent (D) | agent authors a valid spec, runs free-form feature code **in E2B** (no secrets/network — asserted), gets a score it can't alter, distills one Curator-graded skill |
-| Master (E) | scheduler runs unattended; a chat command becomes a validated policy delta; test-toggle promotes a paper survivor through the gauntlet |
-| Venues (F) | one `StrategySpec` runs in paper on Binance, an equity, **and** a Polymarket market with correct per-venue fees/fills; PM adapter reads live CLOB book in sandbox |
+| Master (E) | scheduler runs unattended; a chat command becomes a validated policy delta; test-toggle promotes a forward-test survivor through the gauntlet |
+| Venues (F) | one `StrategySpec` runs in SIM on Binance, an equity, **and** a Polymarket market with correct per-venue fees/fills; PM adapter reads live CLOB book in sandbox |
 | ML/Risk (G) | survival model orders the validation queue (calibrated); regime classifier gates live-eligibility; a martingale spec is rejected; kill-switch trips a simulated drawdown; a secret never appears in any sandbox/prompt (test) |
-| API/UI/Obs/Costs (H) | 4 surfaces render live engine data via generated client; Console sends a validated command + shows a recommendation; voice round-trips; a Langfuse trace appears; a failing judge eval blocks CI; Dashboard shows real opex vs paper alpha |
+| API/UI/Obs/Costs (H) | 4 surfaces render live engine data via generated client; Console sends a validated command + shows a recommendation; voice round-trips; a Langfuse trace appears; a failing judge eval blocks CI; Dashboard shows real opex vs SIM alpha |
 | Vision/veracity (A+H) | a dropped tweet screenshot is extracted + each claim labeled against real data; a doctored "+400%" trades screenshot is marked **unverifiable**, its number discarded, its setup kept only as a gated hypothesis; a `contradicted` claim vetoes and never trades (tests) |
 
-**V1 ships when every row is green and the whole machine runs autonomously in paper across crypto + equities + prediction markets, live-off, one toggle from real money, with opex < trailing paper edge.**
+**V1 ships when every row is green and the whole machine runs autonomously in SIM across crypto + equities + prediction markets, live-off, one toggle from real money, with opex < trailing SIM edge.**
 
 ---
 

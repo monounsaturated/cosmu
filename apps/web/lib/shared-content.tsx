@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export const SLEEVE_VS_WALLET: ReactNode = (
+export const TRACK_VS_AGGREGATE: ReactNode = (
   <div className="space-y-1.5">
     <p>
       <span className="font-semibold text-foreground">Per strategy</span> — each survivor proves itself on its own

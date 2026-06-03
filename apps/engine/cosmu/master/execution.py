@@ -1,6 +1,6 @@
-# intent: the SINGLE order path for paper AND live — every intended order runs the master/risk.py gauntlet first
+# intent: the SINGLE order path for sim AND live — every intended order runs the master/risk.py gauntlet first
 # (reject + audit on fail), then if (live toggle ON + adapter active + strategy gate-passed + caps available +
-# not kill-switched) it submits via the ExecutionAdapter, else it paper-fills deterministically; inputs: intended
+# not kill-switched) it submits via the ExecutionAdapter, else it sim-fills deterministically; inputs: intended
 # orders + the live flags + adapter + store + portfolio + risk/venue catalog; outputs: persisted executions,
 # emitted events, updated positions; invariants: NOTHING bypasses the gauntlet, live is off unless ALL conditions
 # hold, fills are idempotent on client_order_id, and a rejected order is audited not silently dropped.
@@ -16,7 +16,7 @@ from cosmu.adapters.exec.binance import to_ccxt_symbol
 from cosmu.config.settings import RiskSettings
 from cosmu.core.interfaces import Order
 from cosmu.knowledge.store import Store, utcnow
-from cosmu.master.portfolio import PaperPortfolio
+from cosmu.master.portfolio import Portfolio
 from cosmu.master.risk import OrderIntent, PortfolioRiskState, validate_order_full
 from cosmu.spine.venue import VenueCatalog
 
@@ -53,7 +53,7 @@ class OrderOutcome:
     symbol: str
     accepted: bool
     routed_live: bool
-    venue: str  # "paper" | "testnet" | "live"
+    venue: str  # "sim" | "testnet" | "live"
     issues: list[str] = field(default_factory=list)
 
 
@@ -75,7 +75,7 @@ def execute_orders(
     kill_switch: bool,
     adapter,  # BinanceSpotExecutionAdapter (or any core.ExecutionAdapter); .active gates real submits
     store: Store,
-    portfolio: PaperPortfolio,
+    portfolio: Portfolio,
     risk: RiskSettings,
     catalog: VenueCatalog,
 ) -> list[OrderOutcome]:
@@ -90,7 +90,7 @@ def execute_orders(
         venue = catalog.venue(intent.venue_id)
         instrument = catalog.instrument(intent.symbol, intent.venue_id)
         coid = intent.coid()
-        existing = portfolio.position(instrument.id, "paper", strategy_version_id=intent.strategy_version_id)
+        existing = portfolio.position(instrument.id, "sim", strategy_version_id=intent.strategy_version_id)
         live_pos = portfolio.position(instrument.id, _live_venue(adapter), strategy_version_id=intent.strategy_version_id)
         held = live_pos or existing
 
@@ -126,12 +126,12 @@ def execute_orders(
                 ref_id=intent.strategy_version_id,
                 payload={"symbol": intent.symbol, "client_order_id": coid, "issues": decision.issues},
             )
-            outcomes.append(OrderOutcome(coid, intent.symbol, accepted=False, routed_live=False, venue="paper", issues=decision.issues))
+            outcomes.append(OrderOutcome(coid, intent.symbol, accepted=False, routed_live=False, venue="sim", issues=decision.issues))
             continue
 
         # Regime eligibility gate: a live-routed order must be in a regime the strategy proved in.
         # If regime data is available (adapter can provide reference bars), check eligibility before
-        # routing live. Failure → paper-fill with an audit event (never silently drops).
+        # routing live. Failure → sim-fill with an audit event (never silently drops).
         regime_blocked = False
         if live_enabled and intent.gate_passed and getattr(adapter, "active", False):
             try:
@@ -157,11 +157,11 @@ def execute_orders(
                                     "client_order_id": coid,
                                 },
                             )
-            except Exception:  # noqa: BLE001 — regime check is advisory; failure falls through to paper
+            except Exception:  # noqa: BLE001 — regime check is advisory; failure falls through to sim
                 pass
 
         route_live = bool(live_enabled and not kill_switch and intent.gate_passed and getattr(adapter, "active", False) and not regime_blocked)
-        venue_label = _live_venue(adapter) if route_live else "paper"
+        venue_label = _live_venue(adapter) if route_live else "sim"
         fee = order_intent.notional * (venue.taker_fee_bps / Decimal("10000"))
 
         if route_live:
@@ -185,7 +185,7 @@ def execute_orders(
             if intent.side > 0 and intent.take_profit is not None and intent.stop_loss is not None:
                 _try_oco_bracket(adapter, intent, coid, store)
 
-        # Record the fill (deterministic for paper; for live we book the intended fill and reconcile via
+        # Record the fill (deterministic for sim; for live we book the intended fill and reconcile via
         # adapter.fills() out-of-band). Idempotent: a duplicate client_order_id is not re-applied.
         if _already_filled(store, coid):
             outcomes.append(OrderOutcome(coid, intent.symbol, accepted=True, routed_live=route_live, venue=venue_label, issues=[]))
@@ -209,10 +209,10 @@ def execute_orders(
 
 def _live_venue(adapter) -> str:
     mode = getattr(adapter, "mode", "disabled")
-    return mode if mode in ("testnet", "live") else "paper"
+    return mode if mode in ("testnet", "live") else "sim"
 
 
-def _open_notional(portfolio: PaperPortfolio, *, strategy_version_id: str | None = None) -> Decimal:
+def _open_notional(portfolio: Portfolio, *, strategy_version_id: str | None = None) -> Decimal:
     total = Decimal("0")
     for p in portfolio.positions():
         if strategy_version_id is not None and p.strategy_version_id != strategy_version_id:
@@ -309,7 +309,7 @@ def _reference_bars(adapter, symbol: str) -> list[float]:
 def reconcile_fills(
     adapter,
     store: Store,
-    portfolio: PaperPortfolio,
+    portfolio: Portfolio,
     *,
     since: datetime | None = None,
 ) -> list[dict[str, str]]:

@@ -35,7 +35,7 @@ const DEFAULT_CAPS: Caps = { per_strategy_cap: 250, global_cap: 1000, max_daily_
 
 function modeBadge(mode: LiveMode) {
   const map: Record<LiveMode, { variant: "up" | "warn" | "info"; label: string }> = {
-    paper: { variant: "info", label: "paper" },
+    sim: { variant: "info", label: "sim" },
     testnet: { variant: "warn", label: "testnet" },
     live: { variant: "up", label: "live" }
   };

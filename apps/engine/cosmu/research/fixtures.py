@@ -71,7 +71,7 @@ def _make_symbol(symbol: str, *, edge: bool, seed: int, n: int) -> tuple[list[Ba
 
 def edge_bearing_screen_market(*, seed: int = 3, n: int = 900) -> dict[str, list[Bar]]:
     """A deterministic, EDGE-BEARING crypto market for the research/evolution SCREEN — designed so a trend/
-    momentum seed clears the out-of-reach gate with midpoint params, exercising the survivor sleeve-open path
+    momentum seed clears the out-of-reach gate with midpoint params, exercising the survivor track-open path
     end-to-end. Construction: long bull regimes punctuated by short pullbacks, with positively autocorrelated
     returns (a real momentum signal a trend strategy can monetize). NO synthetic return is injected into the
     backtest — the bars themselves carry the edge and the deterministic backtest/scorer judge them honestly.

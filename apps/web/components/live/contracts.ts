@@ -28,7 +28,7 @@ export type PositionsResponse = LivePositionsResponse;
 export type ToggleLiveResponse = ToggleResponse;
 
 // Request bodies + the mode union are local (not emitted by OpenAPI).
-export type LiveMode = "testnet" | "live" | "paper";
+export type LiveMode = "testnet" | "live" | "sim";
 
 export interface ToggleLiveBody {
   enabled: boolean;

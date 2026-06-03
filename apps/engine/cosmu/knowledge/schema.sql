@@ -113,8 +113,8 @@ CREATE TABLE IF NOT EXISTS portfolio_snapshots (
   drawdown NUMERIC NOT NULL
 );
 
--- Live/paper open positions per strategy sleeve, marked-to-market by master/portfolio.py. avg_price is the
--- memoryless basis; venue distinguishes paper/testnet/live mechanics. Net-zero rows are kept for audit.
+-- Sim/live open positions per strategy track, marked-to-market by master/portfolio.py. avg_price is the
+-- memoryless basis; venue distinguishes sim/testnet/live mechanics. Net-zero rows are kept for audit.
 CREATE TABLE IF NOT EXISTS positions (
   id TEXT PRIMARY KEY,
   strategy_version_id TEXT,
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS positions (
   updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS sleeves (
+CREATE TABLE IF NOT EXISTS tracks (
   id TEXT PRIMARY KEY,
   strategy_version_id TEXT NOT NULL UNIQUE REFERENCES strategy_versions(id),
   starting_capital NUMERIC NOT NULL DEFAULT 100000,
@@ -137,15 +137,6 @@ CREATE TABLE IF NOT EXISTS sleeves (
   updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS allocations (
-  id TEXT PRIMARY KEY,
-  strategy_version_id TEXT NOT NULL REFERENCES strategy_versions(id),
-  weight NUMERIC NOT NULL,
-  capital NUMERIC NOT NULL,
-  kelly_fraction NUMERIC NOT NULL,
-  correlation_group TEXT NOT NULL,
-  cycle_ts TEXT NOT NULL
-);
 
 CREATE TABLE IF NOT EXISTS live_toggle (
   id TEXT PRIMARY KEY CHECK (id = 'global'),

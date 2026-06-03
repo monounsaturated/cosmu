@@ -8,7 +8,7 @@ from math import comb
 from cosmu.execution.costopt import FeeSchedule, FeeTier, choose_order, fee_for_volume
 from cosmu.master.cv import embargo_size, purged_embargo_splits
 from cosmu.master.fdr import benjamini_hochberg, bh_threshold, dsr_pvalue, survives_fdr
-from cosmu.portfolio.rotation import Sleeve, is_decayed, kelly_fraction, paying_sources, rotate
+from cosmu.portfolio.rotation import Track, is_decayed, paying_sources, select_tracks
 
 
 # --- CPCV --------------------------------------------------------------------------------------
@@ -88,42 +88,38 @@ def test_taker_preferred_when_urgent_and_unlikely_to_fill():
     assert plan.order_type == "market"
 
 
-# --- capital rotation ---------------------------------------------------------------------------
-
-def test_kelly_is_capped_and_nonnegative():
-    assert kelly_fraction(0.1, 0.01, cap=0.25) == 0.25   # raw 10 → capped
-    assert kelly_fraction(-0.1, 0.01) == 0.0             # no edge → 0
-    assert kelly_fraction(0.001, 0.01, cap=0.25) == 0.1  # 0.001/0.01
-
+# --- per-track lifecycle (standalone forward-test, NO pooled wallet) -----------------------------
 
 def test_decay_detection():
-    assert is_decayed(Sleeve("a", edge=0.01, variance=0.01, rolling_dsr=0.5))            # dsr below floor
-    assert is_decayed(Sleeve("b", edge=0.01, variance=0.01, rolling_dsr=0.99, paper_live_divergence=0.9))
-    assert not is_decayed(Sleeve("c", edge=0.01, variance=0.01, rolling_dsr=0.99))
+    assert is_decayed(Track("a", rolling_dsr=0.5))                              # dsr below floor
+    assert is_decayed(Track("b", rolling_dsr=0.99, sim_live_divergence=0.9))    # sim/live divergence
+    assert not is_decayed(Track("c", rolling_dsr=0.99))
 
 
-def test_rotate_defunds_decayed_concentrates_and_caps_weight():
-    sleeves = [
-        Sleeve("win1", edge=0.05, variance=0.01, rolling_dsr=0.99),
-        Sleeve("win2", edge=0.04, variance=0.01, rolling_dsr=0.98),
-        Sleeve("win3", edge=0.03, variance=0.01, rolling_dsr=0.97),
-        Sleeve("marg", edge=0.001, variance=0.01, rolling_dsr=0.96),  # positive but cut by concentration
-        Sleeve("dead", edge=0.05, variance=0.01, rolling_dsr=0.40),   # decayed → defunded
+def test_select_tracks_funds_each_survivor_standalone_and_defunds_decayed():
+    tracks = [
+        Track("win1", rolling_dsr=0.99),
+        Track("win2", rolling_dsr=0.98),
+        Track("win3", rolling_dsr=0.97),
+        Track("dead", rolling_dsr=0.40),   # decayed → defunded
     ]
-    allocs = {a.sleeve_id: a.weight for a in rotate(sleeves, max_positions=3, kelly_cap=0.25)}
-    assert allocs["dead"] == 0.0
-    assert allocs["marg"] == 0.0                       # below concentration cut
-    assert sum(allocs.values()) <= 1.0 + 1e-9
-    assert all(allocs[s] > 0 for s in ("win1", "win2", "win3"))
+    verdict = {v.version_id: v for v in select_tracks(tracks)}
+    # NO pooled competition: every healthy survivor stays funded on its own standalone track.
+    assert all(verdict[s].funded for s in ("win1", "win2", "win3"))
+    assert not verdict["dead"].funded and "defunded" in verdict["dead"].reason
+
+
+def test_select_tracks_optional_concurrent_ceiling():
+    tracks = [Track(f"t{i}", rolling_dsr=0.99) for i in range(5)]
+    funded = [v.version_id for v in select_tracks(tracks, max_tracks=3) if v.funded]
+    assert len(funded) == 3   # operational ceiling on concurrent tracks (cost/throughput, not capital weighting)
 
 
 def test_paying_sources_keeps_only_payers():
-    sleeves = [
-        Sleeve("a", edge=0.05, variance=0.01, rolling_dsr=0.99,
-               source_attribution={"news": 0.02, "funding": -0.01}),
-        Sleeve("b", edge=0.04, variance=0.01, rolling_dsr=0.98,
-               source_attribution={"news": 0.01, "funding": 0.005}),
+    tracks = [
+        Track("a", rolling_dsr=0.99, source_attribution={"news": 0.02, "funding": -0.01}),
+        Track("b", rolling_dsr=0.98, source_attribution={"news": 0.01, "funding": 0.005}),
     ]
-    pay = paying_sources(sleeves)
+    pay = paying_sources(tracks)
     assert "news" in pay and pay["news"] > 0
-    assert "funding" not in pay   # net marginal across sleeves is negative → dead weight, cut it
+    assert "funding" not in pay   # net marginal across tracks is negative → dead weight, cut it

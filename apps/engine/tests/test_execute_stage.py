@@ -12,7 +12,7 @@ from cosmu.execution.costopt import FeeSchedule, OrderPlan
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate
 from cosmu.master.execution import IntendedOrder
-from cosmu.master.portfolio import PaperPortfolio
+from cosmu.master.portfolio import Portfolio
 from cosmu.master.scorer import BacktestMetrics
 from cosmu.orchestrator import (
     AutonomyEnvelope,
@@ -38,7 +38,7 @@ def _metrics(spo: float) -> BacktestMetrics:
 
 def test_execute_stage_paper_fills_live_off(tmp_path):
     store = Store(Settings(database_url=f"sqlite:///{tmp_path}/stage.sqlite3"))
-    pf = PaperPortfolio(store)
+    pf = Portfolio(store)
     adapter = BinanceSpotExecutionAdapter(client=None, mode="disabled")
 
     def order_of(sleeve_id: str, plan: OrderPlan) -> IntendedOrder:
@@ -60,7 +60,7 @@ def test_execute_stage_paper_fills_live_off(tmp_path):
     )
     ctx = agent.run_cycle(AS_OF, [Candidate("strong", _metrics(0.4), net_profit=0.20, source="t", return_variance=0.04)])
     assert ctx.outcomes and all(not o.routed_live for o in ctx.outcomes)
-    assert any(o.accepted and o.venue == "paper" for o in ctx.outcomes)
+    assert any(o.accepted and o.venue == "sim" for o in ctx.outcomes)
     assert any("execute:" in line for line in ctx.log)
     # snapshot written -> portfolio reflects real state
     assert store.row("SELECT id FROM portfolio_snapshots") is not None

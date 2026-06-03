@@ -1,5 +1,5 @@
 // module: the one-glance mental model. Cosmu has exactly four stages and money only moves at the last
-// one. This strip is the canonical answer to "what's the difference between Lab / Research / Paper / Live?"
+// one. This strip is the canonical answer to "what's the difference between Lab / Research / Forward-test / Live?"
 // Each stage is a real link to its route, so the strip doubles as primary navigation + a how-it-works legend.
 
 import Link from "next/link";

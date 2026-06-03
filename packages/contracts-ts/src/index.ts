@@ -14,14 +14,6 @@ export interface ActivateResponse {
   reason?: string | null;
 }
 
-export interface Allocation {
-  capital: number;
-  name: string;
-  strategy_id: string;
-  venue: string;
-  weight: number;
-}
-
 export interface AssetClassState {
   active: boolean;
   enabled: boolean;
@@ -240,10 +232,10 @@ export interface DefundResponse {
 }
 
 export interface DriftResponse {
-  sleeves: DriftSleeve[];
+  tracks: DriftTrack[];
 }
 
-export interface DriftSleeve {
+export interface DriftTrack {
   cusum: number;
   defund: boolean;
   half_life: number | null;
@@ -406,8 +398,8 @@ export interface LeaderboardRow {
   name: string;
   net_pct: number;
   pbo: number;
-  sleeve_return_pct: number;
   status: string;
+  track_return_pct: number;
   version_id: string;
 }
 
@@ -443,7 +435,7 @@ export interface LivePositionsResponse {
   armed: boolean;
   caps: LiveCaps;
   daily_loss: number;
-  mode: "testnet" | "live" | "paper";
+  mode: "testnet" | "live" | "sim";
   positions: LivePosition[];
 }
 
@@ -494,6 +486,14 @@ export interface MlResponse {
   trained: boolean;
 }
 
+export interface OverviewResponse {
+  costs: CostSlice[];
+  equity_curve: Point[];
+  live_enabled: boolean;
+  opex_vs_alpha: number;
+  pnl_net: number;
+}
+
 export interface PineSample {
   name: string;
   source: string;
@@ -525,20 +525,11 @@ export interface Point {
 export interface PopulationResponse {
   by_lane: Record<string, unknown>;
   by_origin: Record<string, unknown>;
+  forward_test: number;
   graveyard: GraveyardRow[];
   kill_rate: number;
   killed: number;
-  paper: number;
   total: number;
-}
-
-export interface PortfolioResponse {
-  allocation: Allocation[];
-  costs: CostSlice[];
-  equity_curve: Point[];
-  live_enabled: boolean;
-  opex_vs_alpha: number;
-  pnl_net: number;
 }
 
 export interface Recommendation {
@@ -640,6 +631,8 @@ export interface UniverseResponse {
 }
 
 export interface ValidationError {
+  ctx?: Record<string, unknown>;
+  input?: string;
   loc: string | number[];
   msg: string;
   type: string;
@@ -660,7 +653,7 @@ export interface VenueToggleRequest {
 }
 
 export type ApiRoutes = {
-  portfolio: PortfolioResponse;
+  overview: OverviewResponse;
   leaderboard: LeaderboardResponse;
   recommendations: RecommendationsResponse;
   events: EventsResponse;

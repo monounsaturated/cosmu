@@ -49,7 +49,7 @@ def _candidates() -> list[Candidate]:
 def _agent(store, **envelope_kw) -> TradingAgent:
     stages = [
         gate_stage(store, GateSettings()),
-        allocate_stage(max_positions=3, kelly_cap=0.25),
+        allocate_stage(),
         execution_plan_stage(FEE, edge_bps_of=lambda _id: 20.0),
     ]
     return TradingAgent(stages, envelope=AutonomyEnvelope(**envelope_kw))
@@ -60,10 +60,10 @@ def test_full_autonomous_cycle(tmp_path):
     ctx = agent.run_cycle(AS_OF, _candidates())
     promoted = {p.candidate_id for p in ctx.promotions if p.promoted}
     assert promoted == {"strong"}                                  # gate authority: only the real edge
-    assert any(a.sleeve_id == "strong" and a.weight > 0 for a in ctx.allocations)
+    assert any(v.version_id == "strong" and v.funded for v in ctx.funded_tracks)
     assert len(ctx.plans) >= 1 and ctx.plans[0][1].order_type in ("maker", "market")
     assert agent.cycles_run == 1
-    assert any("paper-only" in line for line in ctx.log)           # live off → not sent to a venue
+    assert any("sim-only" in line for line in ctx.log)             # live off → not sent to a venue
 
 
 def test_kill_switch_halts_everything(tmp_path):

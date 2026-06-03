@@ -1,7 +1,7 @@
 // module: lightweight, dependency-free tooltip. An "i"-style trigger (or any children) that reveals
 // a small explanation on hover AND keyboard focus. Pure CSS reveal so it works in server components,
 // respects reduced-motion (see globals.css), and never blocks layout. Used to disambiguate the money
-// figures (PAPER / DEMO / LIVE, sleeve-% vs pooled-wallet) without cluttering the surface.
+// figures (SIM / LIVE, per-track % vs aggregate read-out) without cluttering the surface.
 
 import type { ReactNode } from "react";
 import { Info } from "lucide-react";

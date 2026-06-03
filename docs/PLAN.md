@@ -2,8 +2,8 @@
 
 # Cosmu v2 — Master Plan
 
-> Status: **planning, pre-build.** Owner: read the box below. A fresh agent: read this whole file.
-> Last revised 2026-06-01 — gate-first, lean, product-first pass.
+> Status: **built; forward-test/gate validation in progress.** Owner: read the box below. A fresh agent: read this whole file.
+> Last revised 2026-06-03 — gate-first, lean, product-first pass.
 
 ---
 
@@ -35,7 +35,7 @@ The LLM is **not** primarily a "strategy writer." Its job, in order:
 
 1. **Standardize messy social/alt data → quantifiable, ML-ready features** (the universal adapter).
 2. **Detect patterns** across those features + the graveyard memory.
-3. **Launch strategies** into backtest → paper → (gated) live.
+3. **Launch strategies** into Lab → Strategies → Forward-test → (gated) Live.
 
 LLMs are excellent at #1 and #2 (structure from messy text, hypothesis generation) and *dangerous* at math, scoring, and moving money. So the LLM lives **at the edges** and the **deterministic core is immovable**. That mapping *is* the firm:
 
@@ -45,7 +45,7 @@ LLMs are excellent at #1 and #2 (structure from messy text, hypothesis generatio
 | **Quant researcher** | LLM detects patterns, writes typed `StrategySpec`s | proposes; never scores |
 | **Risk & validation (the wall)** | **Deterministic scorer/gates** | LLM *cannot* touch this |
 | **Execution trader** | NautilusTrader, gated | LLM *cannot* fire a live order |
-| **Portfolio manager** | `skfolio` capped-Kelly allocator | deterministic |
+| **Portfolio manager** | deterministic per-track funding — each survivor on its own standalone $100k SIM track (no pooled wallet, no cross-strategy allocation) | deterministic |
 | **CIO** | **You** — chat + the live toggle | the only human in the money loop |
 
 ## 1. Core principle
@@ -88,7 +88,7 @@ Most published *single-market* alt-data edges are decayed or were lookahead arti
 The objection to "multi-asset first" is cost and sprawl — paid vendors and an execution adapter per venue. We dissolve it by splitting the system into two planes that scale independently:
 
 - **Data & signal plane — multi-asset from day one, ~$0.** Every asset class's *features* are ingested point-in-time from **free** sources: crypto (ccxt funding/OI/flows, Fear&Greed), equities (free daily bars + FRED/EDGAR/COT macro), **prediction-market odds** (Polymarket public API). Cross-asset signal transfer is first-class. The **same wall scores every class on the same ruler** — and the foundation already supports this: the scorer has per-class walk-forward windows, and the schema already ships `venues.kind ∈ crypto|equity|prediction` + an `asset_class_gates` table. **No execution venue is needed to prove edge.**
-- **Execution plane — one venue now, more gated to live.** Paper/backtest fills are **simulated for every class** by the engine we already have. *Real* execution adapters (IBKR, Polymarket live wallet) and *paid* survivorship-free vendors (Norgate, Sharadar) are built **only when you flip live on a proven cross-asset survivor** — the expensive, irreversible spend is deferred until an edge pays for it.
+- **Execution plane — one venue now, more gated to live.** SIM/backtest fills are **simulated for every class** by the engine we already have. *Real* execution adapters (IBKR, Polymarket live wallet) and *paid* survivorship-free vendors (Norgate, Sharadar) are built **only when you flip live on a proven cross-asset survivor** — the expensive, irreversible spend is deferred until an edge pays for it.
 
 **The reconciliation:** be ambitious on *inputs and evaluation* (multi-asset, free, now); stay lean on *money and irreversible spend* (one execution venue, paid vendors deferred). Ambition where it's cheap; discipline where it's expensive.
 
@@ -150,14 +150,14 @@ Infrastructure is now justified by a real edge. Add each piece **only as volume/
 
 ### Phase 3 — LLM data factory + autonomous loop *(conditional)*
 - **3.1** Stage A (schema standardization) + Stage B (text→numeric, **pre-filtered before spending tokens**) → versioned, *tested* features (leakage/variance/NaN). Wire **OpenRouter + `instructor` + `LiteLLM`**, hard cost cap (`daily_cap_usd` ~$2–3, cheap-tier default).
-- **3.2** Stage C (pattern detection → typed spec) + Stage D (`backtest_request` → scorer → paper). Tool bus **read/propose-only**.
+- **3.2** Stage C (pattern detection → typed spec) + Stage D (`backtest_request` → scorer → forward-test). Tool bus **read/propose-only**.
 - **3.3** **LightGBM** survival model + regime classifier as *tools* (scorer still judges); **pgvector graveyard RAG**; **Langfuse** tracing + CI eval gates. Failed live scores → new eval cases.
 - **DoD:** end-to-end cohort with zero human authoring, honest survivors, agents cannot escalate to money.
 
 ### Phase 4 — Operator product + small-real live *(the stated goal)*
 Product-first but **lean** — the surface you actually use, nothing gold-plated.
-- **4.1** Minimal operator UI: real equity chart + the **2-click live arm modal** on top of the existing settings/gate. Full **`sidebar-07`** (collapsible icon rail), **tri-state toggles** (parent "—", children keep their tick when parent off — needs a small **`class_gates` schema add → ask-first**), ⌘K palette, per-sleeve charts are **polish — ship after live works.**
-- **4.2** **NautilusTrader** paper→live parity, **Binance spot only**, OFF by default. Arm modal shows a literal "what will trade" table; per-strategy + global + daily-loss caps; **auto-defund** on rolling deflated-Sharpe drop *or* live-vs-paper divergence. Eligibility = **4+ weeks positive paper net edge**.
+- **4.1** Minimal operator UI: real equity chart + the **2-click live arm modal** on top of the existing settings/gate. Full **`sidebar-07`** (collapsible icon rail), **tri-state toggles** (parent "—", children keep their tick when parent off — needs a small **`class_gates` schema add → ask-first**), ⌘K palette, per-track charts are **polish — ship after live works.**
+- **4.2** **NautilusTrader** forward-test→live parity, **Binance spot only**, OFF by default. Arm modal shows a literal "what will trade" table; per-strategy + global + daily-loss caps; **auto-defund** on rolling deflated-Sharpe drop *or* live-vs-SIM divergence. Eligibility = **4+ weeks positive forward-test (SIM) net edge** on the track.
 - **DoD:** $1k–$10k live on top survivors, audited, auto-disarming — the proof.
 
 ## 5. Budget (Tier 1 "prove it": ~$60–130/mo, hard-capped)
@@ -188,7 +188,7 @@ Railway $10–25 · Vercel $0–20 · Supabase $0–25 · Modal $0–20 · ccxt/
 - **Claude Code / Cursor (flat subscription) is a first-class tier.** The rule: **24/7 + cheap + deterministic → cheap/free API; heavy + occasional + judgment → Claude Code on the sub** (batch authoring, deep research, the data-factory passes, migrations, refactors). Don't burn per-token API on big occasional jobs the subscription already covers.
 - **The app is steerable by any coding agent.** It exposes typed seams — `StrategySpec`, `strategies/inbox/`, **skills in `.claude/skills/`**, the engine API + CLIs — so a coding agent *drives* the heavy LLM work directly. Keep a short **`docs/CODING_AGENT.md`** listing which tasks are coding-agent-driven vs automatic. New complex/rare capability → a **skill + doc**, not a new app page.
 - **Data = standardized + pluggable + big-data/ML-ready.** All sources register through the one `DataSourceRegistry` (a new source = config + a small module, never a rewrite) and land in a **columnar, point-in-time feature store** (parquet/Polars off the control plane). **Buy great data when cheap, free otherwise.** Centralizing here is what keeps large data + ML maintainable.
-- **Product simplicity:** few surfaces (~4–6), easy customization (config + tooltips), no section sprawl. The current build drifted to ~8 routes — collapse Costs into Paper/Overview, keep Steer as the one Console.
+- **Product simplicity:** few surfaces (~4–6), easy customization (config + tooltips), no section sprawl. The current build drifted to ~8 routes — collapse Costs into Forward-test/Overview, keep Steer as the one Console.
 
 ## 8. Open items before code
 1. **Phase 1 → 1.6 edge gate** — the whole roadmap past Phase 2 is conditional on it. Phase 0 wall, Phase 1 single-signal gate, Phase 1.5 single-asset aggregation gate, and **Phase 1.6 the cross-asset extension are all built** (see `IMPLEMENTATION.md`), PASS on the fixture. The remaining step is **running the gate on real free multi-asset data** (`python3 -m cosmu.research.loop --ingest`); don't build the factory until cross-asset+alt beats the single-asset price-only baseline on real data.
@@ -227,7 +227,7 @@ Railway $10–25 · Vercel $0–20 · Supabase $0–25 · Modal $0–20 · ccxt/
 |------|------|-----------|----|--------------|----|-----------|--------|
 | **1 — Prove it** | now (free gate) | Railway hobby **or** Hetzner CX22 / Scaleway; Vercel free | Supabase free (PG+pgvector) | none (CPU backtests) | OpenRouter **free** models, cap ~$10 | none | **$5–35** |
 | **2 — Edge found** | after real gate PASS | Hetzner CX32 / Railway pro | Supabase Pro ($25) | Modal pay-per-use ($0–50) | cheap-tier + rare frontier, cap ~$30–80 | LunarCrush ($24–40) + on-chain basic (~$30) | **$60–150** |
-| **3 — Compounding/live** | sustained paper edge | dedicated Hetzner AX (~$50) | Supabase Pro + add-ons | RunPod/Modal GPU bursts ($50–200) | frontier for novel, cap $100–250 | + Tardis/Databento/paid on-chain | **$250–600** |
+| **3 — Compounding/live** | sustained forward-test (SIM) edge | dedicated Hetzner AX (~$50) | Supabase Pro + add-ons | RunPod/Modal GPU bursts ($50–200) | frontier for novel, cap $100–250 | + Tardis/Databento/paid on-chain | **$250–600** |
 
 **Recommended lean stack:** Railway (DX) or Hetzner (cost) always-on · Supabase (Postgres+pgvector) · Modal (bursts) · OpenRouter+LiteLLM (LLM) · Vercel (web). Render is fine but pricier than Hetzner for always-on; RunPod best for cheap GPU bursts.
 
@@ -252,7 +252,7 @@ Do **not** `shadcn add dashboard-01` (clashes with our Tailwind v4 design + ship
 | Capability | Buy / OSS | Cost | vs building | Pick |
 |---|---|---|---|---|
 | Fast backtest screen | **vectorbt** | free | weeks → hours | adopt (Phase 2) |
-| Exec + paper/live parity | **NautilusTrader** | free | months saved | adopt (Phase 3) |
+| Exec + sim/live parity | **NautilusTrader** | free | months saved | adopt (Phase 3) |
 | Stats wall (DSR/PBO/CPCV) | papers, ~150 LOC | free | exact + tiny — the *one* justified build | **built ✓** |
 | Param optimization | **Optuna** | free | adopt (Phase 2) |
 | Tabular ML / survival model | **LightGBM / AutoGluon** | free (CPU) | don't hand-build models | adopt (Phase 3) as a tool |

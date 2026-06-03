@@ -3,7 +3,7 @@
 # variant as a trial (deflation validity), rank by profit_factor AND the Gate, walk-forward/holdout-validate the
 # leaders BEFORE promotion, and persist winners to a CONFIG LIBRARY (strategy_versions tagged origin='finder',
 # config_tag in params). inputs: a seed StrategySpec + its param_space + a market provider + the store; outputs:
-# a FinderReport + persisted Strategy/Version/backtest/sleeve/survivor rows. invariants: the LLM is nowhere in
+# a FinderReport + persisted Strategy/Version/backtest/track/survivor rows. invariants: the LLM is nowhere in
 # this path; the deterministic scorer/gate alone decide survival + money; no top-of-leaderboard picking (every
 # variant counts toward trial deflation and promotion needs WFO/holdout, not just the best in-sample PF); params
 # come from the fitted space (no magic numbers); fully offline (degrades to cached bars); idempotent re-runs.
@@ -339,7 +339,7 @@ class StrategyFinder:
 
     def _persist(self, spec: StrategySpec, results: list[VariantResult], market: dict[str, list[Bar]]) -> None:
         """Write the config library: one strategies row + one strategy_versions row per variant (origin='finder',
-        config_tag carried in params), the screen backtest, and — for promoted+holdout-passing variants — a sleeve
+        config_tag carried in params), the screen backtest, and — for promoted+holdout-passing variants — a track
         + a survivor event. Idempotent: a variant whose code_hash already exists is not re-inserted."""
         with self.store.batch() as b:
             strategy_id = self._ensure_strategy(b, spec)
@@ -348,7 +348,7 @@ class StrategyFinder:
                     continue
                 holdout_ok = r.holdout_passed
                 promote = r.promoted and holdout_ok
-                status = "paper" if promote else ("screened" if r.gate_passed else "killed")
+                status = "forward_test" if promote else ("screened" if r.gate_passed else "killed")
                 kill_reason = None if r.gate_passed else (",".join(r.reasons) or "screened_out")
                 params = {**self._params_for(spec, r), "config_tag": r.config_tag}
                 compiled = compile_spec(spec, self._params_for(spec, r))
@@ -375,7 +375,7 @@ class StrategyFinder:
                 if promote:
                     equity = Decimal("100000") * (Decimal("1") + r.metrics.oos_return)
                     b.insert(
-                        "sleeves",
+                        "tracks",
                         {
                             "strategy_version_id": version_id,
                             "starting_capital": "100000",
@@ -467,7 +467,7 @@ def _offline_store() -> Store:
 
 def seed_real(store: Store | None = None, *, max_variants: int = 64) -> FinderReport:
     """Bootstrap the app with GENUINE backtested strategies: run the Finder on the ORB+FVG seed over REAL Binance
-    spot bars (cached; degrades to cache offline) and PERSIST real Strategy/Version/Sleeve/backtest/survivor rows.
+    spot bars (cached; degrades to cache offline) and PERSIST real Strategy/Version/Track/backtest/survivor rows.
     Idempotent (a variant whose code_hash exists is skipped) and safe offline."""
     store = store or Store(Settings())
     finder = StrategyFinder(settings=store.settings, store=store)

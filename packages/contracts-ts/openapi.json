@@ -65,39 +65,6 @@
         "title": "ActivateResponse",
         "type": "object"
       },
-      "Allocation": {
-        "properties": {
-          "capital": {
-            "title": "Capital",
-            "type": "number"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "strategy_id": {
-            "title": "Strategy Id",
-            "type": "string"
-          },
-          "venue": {
-            "title": "Venue",
-            "type": "string"
-          },
-          "weight": {
-            "title": "Weight",
-            "type": "number"
-          }
-        },
-        "required": [
-          "strategy_id",
-          "name",
-          "weight",
-          "capital",
-          "venue"
-        ],
-        "title": "Allocation",
-        "type": "object"
-      },
       "AssetClassState": {
         "properties": {
           "active": {
@@ -1166,22 +1133,22 @@
       },
       "DriftResponse": {
         "properties": {
-          "sleeves": {
+          "tracks": {
             "items": {
-              "$ref": "#/components/schemas/DriftSleeve"
+              "$ref": "#/components/schemas/DriftTrack"
             },
-            "title": "Sleeves",
+            "title": "Tracks",
             "type": "array"
           }
         },
         "required": [
-          "sleeves"
+          "tracks"
         ],
         "title": "DriftResponse",
         "type": "object"
       },
-      "DriftSleeve": {
-        "description": "One funded sleeve's alpha-decay snapshot. `defund` is the anticipatory verdict (pull capital BEFORE P&L\nturns); `half_life` is the estimated periods for the realized edge to halve (null = not decaying); `z`/`cusum`\nmeasure how far live has drifted below the edge it was funded on (`reference`).",
+      "DriftTrack": {
+        "description": "One funded track's alpha-decay snapshot. `defund` is the anticipatory verdict (pull capital BEFORE P&L\nturns); `half_life` is the estimated periods for the realized edge to halve (null = not decaying); `z`/`cusum`\nmeasure how far live has drifted below the edge it was funded on (`reference`).",
         "properties": {
           "cusum": {
             "title": "Cusum",
@@ -1255,7 +1222,7 @@
           "cusum",
           "n"
         ],
-        "title": "DriftSleeve",
+        "title": "DriftTrack",
         "type": "object"
       },
       "DropOneClass": {
@@ -1928,13 +1895,13 @@
             "title": "Pbo",
             "type": "number"
           },
-          "sleeve_return_pct": {
-            "title": "Sleeve Return Pct",
-            "type": "number"
-          },
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "track_return_pct": {
+            "title": "Track Return Pct",
+            "type": "number"
           },
           "version_id": {
             "title": "Version Id",
@@ -1944,7 +1911,7 @@
         "required": [
           "version_id",
           "name",
-          "sleeve_return_pct",
+          "track_return_pct",
           "deflated_sharpe",
           "net_pct",
           "pbo",
@@ -2101,7 +2068,7 @@
             "enum": [
               "testnet",
               "live",
-              "paper"
+              "sim"
             ],
             "title": "Mode",
             "type": "string"
@@ -2337,6 +2304,46 @@
         "title": "MlResponse",
         "type": "object"
       },
+      "OverviewResponse": {
+        "description": "The aggregate read-out for the Overview surface (\"are we making money?\"): the \u03a3 of all standalone\nforward-test tracks. This is a pure read-out \u2014 there is NO pooled wallet and no cross-track allocation.",
+        "properties": {
+          "costs": {
+            "items": {
+              "$ref": "#/components/schemas/CostSlice"
+            },
+            "title": "Costs",
+            "type": "array"
+          },
+          "equity_curve": {
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "title": "Equity Curve",
+            "type": "array"
+          },
+          "live_enabled": {
+            "title": "Live Enabled",
+            "type": "boolean"
+          },
+          "opex_vs_alpha": {
+            "title": "Opex Vs Alpha",
+            "type": "number"
+          },
+          "pnl_net": {
+            "title": "Pnl Net",
+            "type": "number"
+          }
+        },
+        "required": [
+          "equity_curve",
+          "pnl_net",
+          "costs",
+          "live_enabled",
+          "opex_vs_alpha"
+        ],
+        "title": "OverviewResponse",
+        "type": "object"
+      },
       "PineSample": {
         "properties": {
           "name": {
@@ -2474,6 +2481,10 @@
             "title": "By Origin",
             "type": "object"
           },
+          "forward_test": {
+            "title": "Forward Test",
+            "type": "integer"
+          },
           "graveyard": {
             "items": {
               "$ref": "#/components/schemas/GraveyardRow"
@@ -2489,10 +2500,6 @@
             "title": "Killed",
             "type": "integer"
           },
-          "paper": {
-            "title": "Paper",
-            "type": "integer"
-          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -2500,7 +2507,7 @@
         },
         "required": [
           "total",
-          "paper",
+          "forward_test",
           "killed",
           "by_origin",
           "by_lane",
@@ -2508,53 +2515,6 @@
           "graveyard"
         ],
         "title": "PopulationResponse",
-        "type": "object"
-      },
-      "PortfolioResponse": {
-        "properties": {
-          "allocation": {
-            "items": {
-              "$ref": "#/components/schemas/Allocation"
-            },
-            "title": "Allocation",
-            "type": "array"
-          },
-          "costs": {
-            "items": {
-              "$ref": "#/components/schemas/CostSlice"
-            },
-            "title": "Costs",
-            "type": "array"
-          },
-          "equity_curve": {
-            "items": {
-              "$ref": "#/components/schemas/Point"
-            },
-            "title": "Equity Curve",
-            "type": "array"
-          },
-          "live_enabled": {
-            "title": "Live Enabled",
-            "type": "boolean"
-          },
-          "opex_vs_alpha": {
-            "title": "Opex Vs Alpha",
-            "type": "number"
-          },
-          "pnl_net": {
-            "title": "Pnl Net",
-            "type": "number"
-          }
-        },
-        "required": [
-          "equity_curve",
-          "pnl_net",
-          "allocation",
-          "costs",
-          "live_enabled",
-          "opex_vs_alpha"
-        ],
-        "title": "PortfolioResponse",
         "type": "object"
       },
       "Recommendation": {
@@ -3013,6 +2973,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -3170,7 +3137,7 @@
     },
     "/autonomy/tick": {
       "post": {
-        "description": "Run ONE bounded, idempotent, audited autonomous cycle: ingest \u2192 author (LLM proposes if a key is set, else\ndeterministic) \u2192 DETERMINISTIC gate + flywheel \u2192 fund the PAPER Wallet from survivors \u2192 emit recommendations.\nLIVE STAYS OFF \u2014 paper fills only; the tick never arms live. Cron-able (one tick per call, not a daemon).",
+        "description": "Run ONE bounded, idempotent, audited autonomous cycle: ingest \u2192 author (LLM proposes if a key is set, else\ndeterministic) \u2192 DETERMINISTIC gate + flywheel \u2192 open standalone forward-test tracks from survivors \u2192 emit recommendations.\nLIVE STAYS OFF \u2014 sim fills only; the tick never arms live. Cron-able (one tick per call, not a daemon).",
         "operationId": "autonomy_tick_autonomy_tick_post",
         "responses": {
           "200": {
@@ -3647,6 +3614,25 @@
         "summary": "Memory Insights Route"
       }
     },
+    "/overview": {
+      "get": {
+        "description": "The aggregate read-out for the Overview surface \u2014 the \u03a3 of all standalone forward-test tracks. A pure\nread-out: there is NO pooled wallet and no cross-track allocation (each survivor proves on its own track).",
+        "operationId": "overview_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Overview"
+      }
+    },
     "/population": {
       "get": {
         "operationId": "population_population_get",
@@ -3663,24 +3649,6 @@
           }
         },
         "summary": "Population"
-      }
-    },
-    "/portfolio": {
-      "get": {
-        "operationId": "portfolio_portfolio_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PortfolioResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Portfolio"
       }
     },
     "/recommendations": {
@@ -3820,7 +3788,7 @@
     },
     "/research/drift": {
       "get": {
-        "description": "Per-funded-sleeve ALPHA-DECAY snapshot (master/drift): edge half-life + how far live has drifted below the\nedge it was funded on, and whether the anticipatory monitor recommends pulling capital BEFORE P&L turns.\nRead-only + deterministic \u2014 the monitor only recommends; the deterministic allocator + live toggle move money.",
+        "description": "Per-funded-track ALPHA-DECAY snapshot (master/drift): edge half-life + how far live has drifted below the\nedge it was funded on, and whether the anticipatory monitor recommends pulling capital BEFORE P&L turns.\nRead-only + deterministic \u2014 the monitor only recommends; the deterministic lifecycle + live toggle move money.",
         "operationId": "research_drift_research_drift_get",
         "responses": {
           "200": {

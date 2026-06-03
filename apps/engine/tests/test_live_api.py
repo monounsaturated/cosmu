@@ -1,6 +1,6 @@
 # Live-trading API surface: /toggle/live requires confirm (and live stays OFF without it), /live/activate
 # requires confirm + returns caps/eligible, /live/defund works, /live/positions has the right shape and reports
-# mode "paper" with no keys. Secrets never appear in any response. No network, no lifespan: the module store +
+# mode "sim" with no keys. Secrets never appear in any response. No network, no lifespan: the module store +
 # settings are pointed at a temp sqlite DB with no exchange keys (paper), following the existing API-test pattern.
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ def test_live_positions_shape_and_paper_mode_without_keys(tmp_path, monkeypatch)
     c = _client(tmp_path, monkeypatch)
     body = c.get("/live/positions").json()
     assert set(body) == {"armed", "mode", "daily_loss", "caps", "positions"}
-    assert body["mode"] == "paper"  # no keys -> paper
+    assert body["mode"] == "sim"  # no keys -> sim
     assert body["armed"] is False
     assert set(body["caps"]) == {"per_strategy_cap", "global_cap", "max_daily_loss"}
     assert isinstance(body["positions"], list)
@@ -66,6 +66,6 @@ def test_defund_all_ok(tmp_path, monkeypatch):
 
 def test_no_secrets_in_responses(tmp_path, monkeypatch):
     c = _client(tmp_path, monkeypatch)
-    for path in ("/live/positions", "/portfolio"):
+    for path in ("/live/positions", "/overview"):
         text = c.get(path).text.lower()
         assert "secret" not in text

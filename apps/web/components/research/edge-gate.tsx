@@ -119,7 +119,7 @@ export function EdgeGate() {
 
             <p className="text-[11.5px] leading-relaxed text-quiet">
               {passed
-                ? "A signal cleared the deterministic wall (deflated Sharpe, CSCV overfit, regimes, costs). Proceed to the Lab and paper."
+                ? "A signal cleared the deterministic wall (deflated Sharpe, CSCV overfit, regimes, costs). Proceed to the Lab and forward-test."
                 : "Nothing cleared the wall. That is a real result — the alt-data thesis isn’t worth building further on this data."}
             </p>
           </>

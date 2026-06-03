@@ -281,7 +281,7 @@ def _try_boosted(rows: list[list[float]], labels: list[int]) -> tuple[SurvivalMo
 
 def _labeled_outcomes(store: Store) -> tuple[list[list[float]], list[int]]:
     """Read LABELED outcomes from the store: every screen backtest joined to its strategy_version, labeled
-    1 if it passed the gate (survived → paper/live sleeve) and 0 if it was killed. Ordered oldest-first so the
+    1 if it passed the gate (survived → forward-test/live track) and 0 if it was killed. Ordered oldest-first so the
     chronological train/OOS split is point-in-time. The label is the deterministic gate's verdict — the model
     learns to PREDICT the gate's survival call, never to override it."""
     rows = store.rows(

@@ -1,6 +1,6 @@
 import { ArrowRight, Coins, Gauge, MessageSquare, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
-import { engineConfigured, getAutonomyStatus, getEvents, getIntelligence, getLeaderboard, getPortfolio, getRecommendations } from "./data";
+import { engineConfigured, getAutonomyStatus, getEvents, getIntelligence, getLeaderboard, getOverview, getRecommendations } from "./data";
 import type { CostSlice, Event, LeaderboardRow } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,11 +13,11 @@ import { LifecycleStrip } from "@/components/ui/lifecycle-strip";
 import { AutonomyPanel } from "@/components/autonomy/autonomy-panel";
 import { NeedsYouInbox } from "@/components/autonomy/needs-you-inbox";
 import { SystemIntelligence } from "@/components/intelligence/system-intelligence";
-import { SLEEVE_VS_WALLET } from "@/lib/shared-content";
+import { TRACK_VS_AGGREGATE } from "@/lib/shared-content";
 import { formatEventKind, formatPct, formatSigned, formatUsd } from "@/lib/utils";
 
 const statusVariant: Record<string, "up" | "warn" | "down" | "info"> = {
-  paper: "up",
+  forward_test: "up",
   live: "info",
   screening: "warn",
   killed: "down"
@@ -25,14 +25,14 @@ const statusVariant: Record<string, "up" | "warn" | "down" | "info"> = {
 
 export default async function OverviewPage() {
   const [
-    { portfolio, connected },
+    { overview, connected },
     { leaderboard },
     { items: recommendations, connected: recConnected },
     { events },
     { status: autonomy, connected: autonomyConnected },
     { intelligence, connected: intelConnected }
   ] = await Promise.all([
-    getPortfolio(),
+    getOverview(),
     getLeaderboard(),
     getRecommendations(),
     getEvents(),
@@ -55,13 +55,13 @@ export default async function OverviewPage() {
     );
   }
 
-  const hasTrackRecord = portfolio.equity_curve.length >= 2;
-  const equity = portfolio.equity_curve.at(-1)?.value ?? 0;
-  const start = portfolio.equity_curve[0]?.value ?? 0;
+  const hasTrackRecord = overview.equity_curve.length >= 2;
+  const equity = overview.equity_curve.at(-1)?.value ?? 0;
+  const start = overview.equity_curve[0]?.value ?? 0;
   const returnPct = hasTrackRecord && start ? ((equity - start) / start) * 100 : 0;
-  const costsTotal = portfolio.costs.reduce((sum: number, c: CostSlice) => sum + c.amount, 0);
+  const costsTotal = overview.costs.reduce((sum: number, c: CostSlice) => sum + c.amount, 0);
   const up = returnPct >= 0;
-  const mode = moneyMode({ live: portfolio.live_enabled });
+  const mode = moneyMode({ live: overview.live_enabled });
 
   const working = (leaderboard.rows as LeaderboardRow[])
     .filter((r) => r.status !== "killed")
@@ -86,14 +86,14 @@ export default async function OverviewPage() {
               </div>
               <div className="mt-2 flex items-center gap-2 text-[13px] text-muted">
                 {up ? <TrendingUp className="size-4 text-up" /> : <TrendingDown className="size-4 text-down" />}
-                <span className={up ? "text-up" : "text-down"}>{formatSigned(portfolio.pnl_net)}</span>
+                <span className={up ? "text-up" : "text-down"}>{formatSigned(overview.pnl_net)}</span>
                 <span className="text-quiet">total profit · since inception</span>
               </div>
             </>
           ) : (
             <>
               <div className="mt-1.5 text-[2.75rem] font-semibold leading-none tracking-tight tabular text-quiet sm:text-5xl">—</div>
-              <div className="mt-2 text-[13px] text-quiet">No track record yet. Numbers appear once the engine starts trading on paper.</div>
+              <div className="mt-2 text-[13px] text-quiet">No track record yet. Numbers appear once the engine starts trading in sim.</div>
             </>
           )}
         </div>
@@ -106,18 +106,18 @@ export default async function OverviewPage() {
           value={hasTrackRecord ? formatUsd(equity) : "—"}
           accent="iris"
           icon={<Coins className="size-4" />}
-          hint={<span className="inline-flex items-center gap-1 text-quiet">across forward-tests <Tooltip content={SLEEVE_VS_WALLET} /></span>}
+          hint={<span className="inline-flex items-center gap-1 text-quiet">across forward-tests <Tooltip content={TRACK_VS_AGGREGATE} /></span>}
         />
         <Stat
           label="Total profit"
-          value={hasTrackRecord ? <span className={up ? "text-up" : "text-down"}>{formatSigned(portfolio.pnl_net)}</span> : "—"}
+          value={hasTrackRecord ? <span className={up ? "text-up" : "text-down"}>{formatSigned(overview.pnl_net)}</span> : "—"}
           accent={up ? "up" : "down"}
         />
-        <Stat label="Opex vs alpha" value={portfolio.costs.length ? `${Math.round(portfolio.opex_vs_alpha * 100)}%` : "—"} accent="warn" icon={<Gauge className="size-4" />} />
-        <Stat label="Daily opex" value={portfolio.costs.length ? formatUsd(costsTotal, 0) : "—"} accent="iris" />
+        <Stat label="Opex vs alpha" value={overview.costs.length ? `${Math.round(overview.opex_vs_alpha * 100)}%` : "—"} accent="warn" icon={<Gauge className="size-4" />} />
+        <Stat label="Daily opex" value={overview.costs.length ? formatUsd(costsTotal, 0) : "—"} accent="iris" />
       </section>
 
-      {/* How Cosmu works — the four stages, clickable. Clears up Lab / Paper / Live at a glance. */}
+      {/* How Cosmu works — the four stages, clickable. Clears up Lab / Forward-test / Live at a glance. */}
       <LifecycleStrip />
 
       {/* Equity chart */}
@@ -126,14 +126,14 @@ export default async function OverviewPage() {
           <CardHeader>
             <div className="flex min-w-0 items-center gap-1.5">
               <CardTitle>Net across forward-tests</CardTitle>
-              <Tooltip content={SLEEVE_VS_WALLET} />
+              <Tooltip content={TRACK_VS_AGGREGATE} />
             </div>
             <Link href="/forward-test" className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft transition-colors hover:underline">
               Open Forward-test <ArrowRight className="size-3.5" />
             </Link>
           </CardHeader>
           <CardContent>
-            <EquityCurve points={portfolio.equity_curve} mode={mode} height={260} />
+            <EquityCurve points={overview.equity_curve} mode={mode} height={260} />
           </CardContent>
         </Card>
       </section>
@@ -188,7 +188,7 @@ export default async function OverviewPage() {
           <CardHeader>
             <div className="flex min-w-0 items-center gap-1.5">
               <CardTitle>Working Versions</CardTitle>
-              <Tooltip content={SLEEVE_VS_WALLET} />
+              <Tooltip content={TRACK_VS_AGGREGATE} />
             </div>
             <Link
               href="/strategies"

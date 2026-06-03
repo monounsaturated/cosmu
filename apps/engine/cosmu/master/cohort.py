@@ -25,7 +25,7 @@ class Candidate:
     net_profit: float
     source: str
     label: str | None = None
-    return_variance: float = 1.0   # variance of the strategy's per-period net returns (for capped-Kelly sizing)
+    return_variance: float = 1.0   # variance of the strategy's per-period net returns (per-period net-return variance)
 
 
 @dataclass(frozen=True)

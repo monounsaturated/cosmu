@@ -10,7 +10,7 @@ import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 
 // Strategies answers ONE question: where is every Version in its lifecycle, and which are winning?
 // The searchable, stage-segmented table is the old leaderboard's real home; rows link to per-Version
-// detail. A short "how a strategy is born" note + the Lab → Strategies → Paper → Live funnel make the
+// detail. A short "how a strategy is born" note + the Lab → Strategies → Forward-test → Live funnel make the
 // pipeline obvious at a glance.
 export default async function StrategiesPage() {
   const { leaderboard, connected } = await getLeaderboard();
@@ -44,7 +44,7 @@ export default async function StrategiesPage() {
           <CardContent>
             <EmptyState
               title="No Versions yet — the Lab hasn't produced any."
-              hint="Once the Lab authors a batch (or you drop an idea in the inbox) and Versions earn Sleeves, they show up here grouped by stage."
+              hint="Once the Lab authors a batch (or you drop an idea in the inbox) and Versions reach Forward-test, they show up here grouped by stage."
             />
           </CardContent>
         </Card>
@@ -59,7 +59,7 @@ export default async function StrategiesPage() {
   );
 }
 
-// Lab → Strategies → Paper → Live, with Strategies highlighted as "you are here".
+// Lab → Strategies → Forward-test → Live, with Strategies highlighted as "you are here".
 function FunnelStrip() {
   const steps: { href: string; label: string; here?: boolean }[] = [
     { href: "/lab", label: "Lab" },
@@ -120,7 +120,7 @@ function BornNote() {
             <p className="flex items-center gap-1.5 text-[11.5px] text-quiet">
               <ShieldCheck className="size-3.5 shrink-0 text-up" />
               Both flow through the <span className="font-medium text-foreground">same deterministic Gate</span> — no
-              shortcut to Paper or Live.
+              shortcut to Forward-test or Live.
             </p>
           </div>
         </div>

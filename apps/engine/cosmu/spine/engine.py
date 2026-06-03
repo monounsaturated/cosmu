@@ -193,7 +193,7 @@ class EngineFacade:
         )
         if verdict.passed:
             self.store.insert(
-                "sleeves",
+                "tracks",
                 {
                     "strategy_version_id": version_id,
                     "starting_capital": "100000",

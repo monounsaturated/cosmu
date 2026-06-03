@@ -19,8 +19,8 @@ import type {
   LeaderboardResponse,
   MemoryInsight,
   MemoryInsightsResponse,
+  OverviewResponse,
   PopulationResponse,
-  PortfolioResponse,
   Recommendation,
   Skill,
   SkillsResponse,
@@ -63,10 +63,9 @@ async function getJson<T>(path: string, empty: T): Promise<{ data: T; connected:
 
 // ── Structurally-empty typing fallbacks (no fabricated numbers, no fake rows) ────────────────
 
-const emptyPortfolio: PortfolioResponse = {
+const emptyOverview: OverviewResponse = {
   equity_curve: [],
   pnl_net: 0,
-  allocation: [],
   costs: [],
   live_enabled: false,
   opex_vs_alpha: 0
@@ -87,7 +86,7 @@ const emptyBrain: BrainResponse = {
 
 const emptyPopulation: PopulationResponse = {
   total: 0,
-  paper: 0,
+  forward_test: 0,
   killed: 0,
   by_origin: {},
   by_lane: {},
@@ -120,7 +119,7 @@ const emptyCosts: CostsResponse = {
 
 const emptyPositions: PositionsResponse = {
   armed: false,
-  mode: "paper",
+  mode: "sim",
   daily_loss: 0,
   caps: { per_strategy_cap: 0, global_cap: 0, max_daily_loss: 0 },
   positions: []
@@ -131,9 +130,9 @@ export type { BrainResponse };
 
 // ── Fetchers. Each returns `connected` so the surface can pick honest empty vs not-connected. ─
 
-export async function getPortfolio(): Promise<{ portfolio: PortfolioResponse; connected: boolean }> {
-  const { data, connected } = await getJson("/portfolio", emptyPortfolio);
-  return { portfolio: data, connected };
+export async function getOverview(): Promise<{ overview: OverviewResponse; connected: boolean }> {
+  const { data, connected } = await getJson("/overview", emptyOverview);
+  return { overview: data, connected };
 }
 
 export async function getLeaderboard(): Promise<{ leaderboard: LeaderboardResponse; connected: boolean }> {

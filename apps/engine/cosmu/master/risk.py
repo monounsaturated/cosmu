@@ -89,7 +89,7 @@ def validate_order_full(
     if state.open_notional + order.notional > risk.global_max_notional:
         issues.append("global_cap")
     if state.strategy_open_notional + order.notional > risk.per_strategy_cap:
-        issues.append("per_strategy_cap_pooled")
+        issues.append("per_strategy_cap_exceeded")
     if order.side == "buy" and (state.cash - order.notional) < risk.min_cash_reserve:
         issues.append("min_cash_reserve")
     if state.drawdown_pct >= risk.drawdown_killswitch_pct:

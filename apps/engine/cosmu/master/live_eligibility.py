@@ -1,6 +1,6 @@
 # intent: the deterministic LIVE-ELIGIBILITY regime gate — a strategy may go live ONLY in a market regime it
 # proved itself in. inputs: the store (for a version's proven-regime passport, written by the evolution loop on
-# sleeve_opened) + a reference close series for the CURRENT regime; outputs: a yes/no eligibility with a reason.
+# track_opened) + a reference close series for the CURRENT regime; outputs: a yes/no eligibility with a reason.
 # invariants: this gate only BLOCKS (it never promotes), it is fully deterministic + out of any LLM path, and an
 # unknown/empty proven set fails safe (blocked). It composes ml/regime (current_regime + regime_eligible) — the
 # scorer/gate decide survival; THIS decides only whether a survivor may trade live right now.
@@ -24,11 +24,11 @@ class LiveRegimeVerdict:
 
 
 def proven_regimes_for(store: Store, version_id: str) -> set[str]:
-    """Read a strategy version's proven-regime passport from its most recent sleeve_opened event (written by
-    the evolution loop when the deterministic gate opened the sleeve). Empty if the version never opened a
-    sleeve — which the gate then treats as 'never proven anywhere' (blocked)."""
+    """Read a strategy version's proven-regime passport from its most recent track_opened event (written by
+    the evolution loop when the deterministic gate opened the track). Empty if the version never opened a
+    track — which the gate then treats as 'never proven anywhere' (blocked)."""
     row = store.row(
-        "SELECT payload FROM events WHERE kind = 'sleeve_opened' AND ref_id = ? ORDER BY id DESC LIMIT 1",
+        "SELECT payload FROM events WHERE kind = 'track_opened' AND ref_id = ? ORDER BY id DESC LIMIT 1",
         (version_id,),
     )
     if not row:

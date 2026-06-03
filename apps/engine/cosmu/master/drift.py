@@ -1,9 +1,9 @@
-# intent: ALPHA-DECAY as a first-class primitive — estimate each funded sleeve's EDGE HALF-LIFE and detect
+# intent: ALPHA-DECAY as a first-class primitive — estimate each funded track's EDGE HALF-LIFE and detect
 # live-vs-funded DRIFT early, so capital is pulled BEFORE realized P&L turns negative (the existing rotation
 # defund is reactive: it waits for the deflated-Sharpe snapshot to cross a floor). inputs: a realized per-period
-# net-return series (derived from portfolio_snapshots) + the edge the sleeve was funded on (its own funded
+# net-return series (derived from portfolio_snapshots) + the edge the track was funded on (its own funded
 # baseline, or an explicit per-period backtest edge when one in matching units is supplied). outputs: a
-# deterministic DriftVerdict per funded sleeve (half_life, drift z-score, one-sided CUSUM change-point, defund +
+# deterministic DriftVerdict per funded track (half_life, drift z-score, one-sided CUSUM change-point, defund +
 # plain reason). invariants: fully deterministic + OUT of any LLM path (this is master/, the immovable core),
 # seed-free, offline, anticipatory (fires while realized edge is still positive but trending to zero / materially
 # below what it was funded on), and it only RECOMMENDS defunding — money still moves through the deterministic
@@ -20,7 +20,7 @@ from cosmu.knowledge.store import Store
 
 @dataclass(frozen=True)
 class EdgeDecay:
-    """The intrinsic decay of a sleeve's realized rolling edge — scale-free, anticipatory."""
+    """The intrinsic decay of a track's realized rolling edge — scale-free, anticipatory."""
 
     n: int
     current_edge: float            # fitted rolling edge at the latest point
@@ -31,7 +31,7 @@ class EdgeDecay:
 
 @dataclass(frozen=True)
 class DriftScore:
-    """How far live results have drifted below the edge the sleeve was funded on."""
+    """How far live results have drifted below the edge the track was funded on."""
 
     n: int
     realized_edge: float           # mean realized per-period net return
@@ -96,7 +96,7 @@ def drift_score(
     slack_k: float = 0.5,
     cusum_h: float = 5.0,
 ) -> DriftScore:
-    """Compare realized per-period returns to the edge the sleeve was funded on. `z` is a one-sample shortfall
+    """Compare realized per-period returns to the edge the track was funded on. `z` is a one-sample shortfall
     statistic (negative = live below funded). `cusum` is a one-sided lower CUSUM change-point detector on the
     standardized shortfall — it accumulates only while realized stays > slack_k std below the reference and
     resets on recovery, so it flags a *sustained* downward shift fast, before cumulative P&L necessarily turns."""
@@ -136,8 +136,8 @@ def assess_drift(
     slack_k: float = 0.5,
     cusum_h: float = 5.0,
 ) -> DriftVerdict:
-    """Combine edge-decay + drift into one anticipatory defund verdict. Reference = the edge the sleeve was funded
-    on: an explicit per-period backtest edge if supplied (in matching units), else the sleeve's own funded
+    """Combine edge-decay + drift into one anticipatory defund verdict. Reference = the edge the track was funded
+    on: an explicit per-period backtest edge if supplied (in matching units), else the track's own funded
     baseline (mean of its earliest returns) — the realized embodiment of what the backtest promised at funding.
     Defund if any of: realized edge has gone non-positive · half-life below the floor (dying fast) · live is
     z_floor σ below the reference · the CUSUM change-point fired (persistent underperformance)."""
@@ -178,25 +178,25 @@ def _returns_from_equity(equities: list[float]) -> list[float]:
     return out
 
 
-def pool_return_series(store: Store, *, limit: int = 500) -> list[float]:
+def aggregate_return_series(store: Store, *, limit: int = 500) -> list[float]:
     rows = store.rows(
-        "SELECT equity FROM portfolio_snapshots WHERE scope = 'pool' AND ref_id = 'global' ORDER BY ts ASC LIMIT ?",
+        "SELECT equity FROM portfolio_snapshots WHERE scope = 'aggregate' AND ref_id = 'global' ORDER BY ts ASC LIMIT ?",
         (limit,),
     )
     return _returns_from_equity([float(r["equity"]) for r in rows])
 
 
-def sleeve_return_series(store: Store, version_id: str, *, limit: int = 500) -> list[float]:
+def track_return_series(store: Store, version_id: str, *, limit: int = 500) -> list[float]:
     rows = store.rows(
-        "SELECT equity FROM portfolio_snapshots WHERE scope = 'sleeve' AND ref_id = ? ORDER BY ts ASC LIMIT ?",
+        "SELECT equity FROM portfolio_snapshots WHERE scope = 'track' AND ref_id = ? ORDER BY ts ASC LIMIT ?",
         (version_id, limit),
     )
     return _returns_from_equity([float(r["equity"]) for r in rows])
 
 
-def funded_sleeve_ids(store: Store) -> list[str]:
-    """Strategy versions that currently hold a non-zero paper/live position (the sleeves capital can be pulled
-    from). Read off the positions table so the monitor only judges sleeves that are actually funded."""
+def funded_track_ids(store: Store) -> list[str]:
+    """Strategy versions that currently hold a non-zero sim/live position (the tracks capital can be pulled
+    from). Read off the positions table so the monitor only judges tracks that are actually funded."""
     rows = store.rows(
         "SELECT DISTINCT strategy_version_id AS vid FROM positions "
         "WHERE strategy_version_id IS NOT NULL AND CAST(qty AS REAL) != 0"
@@ -205,13 +205,13 @@ def funded_sleeve_ids(store: Store) -> list[str]:
 
 
 def monitor_drift(store: Store, version_ids: list[str] | None = None, **thresholds) -> list[DriftVerdict]:
-    """Assess every funded sleeve's realized trajectory and AUDIT the result: emit a `drift_assessed` event per
-    sleeve and a `sleeve_defunded` event when the anticipatory verdict says pull capital. Read-only on prices;
+    """Assess every funded track's realized trajectory and AUDIT the result: emit a `drift_assessed` event per
+    track and a `track_defunded` event when the anticipatory verdict says pull capital. Read-only on prices;
     the defund itself is applied by the allocator (rotation) — this only recommends, deterministically."""
-    ids = version_ids if version_ids is not None else funded_sleeve_ids(store)
+    ids = version_ids if version_ids is not None else funded_track_ids(store)
     verdicts: list[DriftVerdict] = []
     for vid in ids:
-        verdict = assess_drift(vid, sleeve_return_series(store, vid), **thresholds)
+        verdict = assess_drift(vid, track_return_series(store, vid), **thresholds)
         verdicts.append(verdict)
         store.append_event(
             actor="master",
@@ -234,7 +234,7 @@ def monitor_drift(store: Store, version_ids: list[str] | None = None, **threshol
         if verdict.defund:
             store.append_event(
                 actor="master",
-                kind="sleeve_defunded",
+                kind="track_defunded",
                 ref_type="strategy_version",
                 ref_id=vid,
                 payload={"reason": verdict.reason, "anticipatory": True},

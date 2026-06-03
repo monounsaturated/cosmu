@@ -1,101 +1,89 @@
-# intent: the compounding engine — rotate capital toward live-edge survivors, defund decayed ones, size with
-# capped fractional-Kelly, concentrate at small AUM; inputs: per-sleeve live evidence + per-source attribution;
-# outputs: allocation weights in [0,1] summing to <= 1 (rest is cash); invariants: decayed sleeves get exactly 0,
-# sizing is memoryless, and capital follows what actually pays net-of-cost (not raw backtest Sharpe).
+# intent: per-track lifecycle decisions for the standalone forward-test model — decide which proven tracks stay
+# funded and which have decayed (→ defund + close), and attribute net edge back to its data sources; inputs:
+# per-track live evidence + per-source attribution; outputs: the set of tracks to keep funded + per-source
+# marginal edge; invariants: NO pooled wallet and NO cross-track competition — each survivor proves itself on its
+# OWN standalone track, so there is no capital-weighting here; a decayed track is defunded, the rest stay funded.
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 
-def kelly_fraction(edge: float, variance: float, *, cap: float = 0.25) -> float:
-    """Fractional Kelly, capped. `edge` = expected net-of-cost return per period, `variance` = its variance.
-    Full Kelly = edge/variance; we cap hard (default quarter-Kelly) because Kelly is brutal under estimation
-    error — the cap is the difference between compounding and blowing up."""
-    if variance <= 0 or edge <= 0:
-        return 0.0
-    return min(edge / variance, cap)
-
-
 @dataclass(frozen=True)
-class Sleeve:
+class Track:
+    """One strategy version's standalone forward-test track. It earns or loses on its OWN simulated capital —
+    never a share of a pool. `rolling_dsr` is the rolling deflated-Sharpe prob (decays as edge dies);
+    `sim_live_divergence` is |sim − live| net edge (large = the backtest was a lie); the drift fields are the
+    anticipatory decay signals from master/drift."""
+
     id: str
-    edge: float                                   # recent net-of-cost return per period (the money signal)
-    variance: float
     rolling_dsr: float                            # rolling deflated-Sharpe prob — decays as edge dies
-    paper_live_divergence: float = 0.0            # |paper - live| net edge; large = the backtest was a lie
+    sim_live_divergence: float = 0.0              # |sim − live| net edge; large = the backtest was a lie
     source_attribution: dict[str, float] = field(default_factory=dict)  # drop-one marginal edge per alt-data source
     drift_defund: bool = False                    # ANTICIPATORY: the drift monitor (master/drift) says pull now
     edge_half_life: float | None = None           # estimated periods for the realized edge to halve (None = not decaying)
 
 
-def is_decayed(sleeve: Sleeve, *, min_dsr: float = 0.90, max_divergence: float = 0.5, min_half_life: float = 4.0) -> bool:
-    """A sleeve is decayed (→ defund) if its rolling deflated-Sharpe has fallen below the floor, live results
-    diverge too far from paper, the anticipatory drift monitor flagged it, OR its estimated edge half-life is
-    below the floor (edge dying fast). The last two pull capital BEFORE realized P&L turns — crypto edges die
-    in weeks; waiting for the reactive deflated-Sharpe snapshot to cross gives back the gains."""
+def is_decayed(track: Track, *, min_dsr: float = 0.90, max_divergence: float = 0.5, min_half_life: float = 4.0) -> bool:
+    """A track is decayed (→ defund + close) if its rolling deflated-Sharpe has fallen below the floor, live
+    results diverge too far from its sim forward-test, the anticipatory drift monitor flagged it, OR its estimated
+    edge half-life is below the floor (edge dying fast). The last two pull capital BEFORE realized P&L turns —
+    crypto edges die in weeks; waiting for the reactive deflated-Sharpe snapshot to cross gives back the gains."""
     return (
-        sleeve.rolling_dsr < min_dsr
-        or sleeve.paper_live_divergence > max_divergence
-        or sleeve.drift_defund
-        or (sleeve.edge_half_life is not None and sleeve.edge_half_life < min_half_life)
+        track.rolling_dsr < min_dsr
+        or track.sim_live_divergence > max_divergence
+        or track.drift_defund
+        or (track.edge_half_life is not None and track.edge_half_life < min_half_life)
     )
 
 
 @dataclass(frozen=True)
-class Allocation:
-    sleeve_id: str
-    weight: float
+class TrackVerdict:
+    version_id: str
+    funded: bool
     reason: str
 
 
-def rotate(
-    sleeves: list[Sleeve],
+def select_tracks(
+    tracks: list[Track],
     *,
-    max_positions: int = 3,
-    kelly_cap: float = 0.25,
+    max_tracks: int | None = None,
     min_dsr: float = 0.90,
     max_divergence: float = 0.5,
     min_half_life: float = 4.0,
-) -> list[Allocation]:
-    """Rotate capital toward live edge: defund decayed sleeves, capped-Kelly-size the rest, concentrate on the
-    top `max_positions` (concentration compounds faster than a sprawl of marginal bets at small AUM), and
-    normalize so weights sum to <= 1 (leftover stays in cash). Deterministic and seed-free."""
-    allocations: list[Allocation] = []
-    live: list[tuple[Sleeve, float]] = []
-    for s in sleeves:
-        if is_decayed(s, min_dsr=min_dsr, max_divergence=max_divergence, min_half_life=min_half_life):
-            anticipatory = s.drift_defund or (s.edge_half_life is not None and s.edge_half_life < min_half_life)
-            why = "anticipatory: drift monitor / short edge half-life" if anticipatory else "edge decayed or live/paper divergence"
-            allocations.append(Allocation(s.id, 0.0, f"defunded: {why}"))
+) -> list[TrackVerdict]:
+    """Decide which tracks stay funded. There is NO pooled wallet and NO cross-track capital competition: every
+    track that has not decayed keeps running on its own standalone capital, and every decayed track is defunded.
+    `max_tracks` is an OPTIONAL operational ceiling on how many tracks run concurrently (cost/throughput — never a
+    capital-allocation weight); None = no ceiling. Deterministic and seed-free."""
+    verdicts: list[TrackVerdict] = []
+    live: list[str] = []
+    for t in tracks:
+        if is_decayed(t, min_dsr=min_dsr, max_divergence=max_divergence, min_half_life=min_half_life):
+            anticipatory = t.drift_defund or (t.edge_half_life is not None and t.edge_half_life < min_half_life)
+            why = "anticipatory: drift monitor / short edge half-life" if anticipatory else "edge decayed or sim/live divergence"
+            verdicts.append(TrackVerdict(t.id, False, f"defunded: {why}"))
             continue
-        k = kelly_fraction(s.edge, s.variance, cap=kelly_cap)
-        if k <= 0:
-            allocations.append(Allocation(s.id, 0.0, "no positive net edge"))
-            continue
-        live.append((s, k))
+        live.append(t.id)
 
-    # concentrate: keep the top-N by Kelly score, defund the marginal tail
-    live.sort(key=lambda pair: pair[1], reverse=True)
-    kept = live[:max_positions]
-    for s, _ in live[max_positions:]:
-        allocations.append(Allocation(s.id, 0.0, "below concentration cut (top-N only)"))
-
-    total = sum(k for _, k in kept)
-    if total > 1.0:  # scale down to fully-invested; otherwise keep raw Kelly and leave the rest in cash
-        kept = [(s, k / total) for s, k in kept]
-    for s, w in kept:
-        allocations.append(Allocation(s.id, round(w, 6), "live edge: capped-Kelly, concentrated"))
-    return allocations
+    kept = live if max_tracks is None else live[:max_tracks]
+    over_ceiling = set(live[max_tracks:]) if max_tracks is not None else set()
+    for vid in live:
+        if vid in over_ceiling:
+            verdicts.append(TrackVerdict(vid, False, "above concurrent-track ceiling (operational cap)"))
+        else:
+            verdicts.append(TrackVerdict(vid, True, "live edge: standalone forward-test track"))
+    _ = kept
+    return verdicts
 
 
-def paying_sources(sleeves: list[Sleeve], *, min_marginal: float = 0.0) -> dict[str, float]:
-    """Aggregate per-source marginal edge across live sleeves (from the drop-one ablation in research/gate.py).
+def paying_sources(tracks: list[Track], *, min_marginal: float = 0.0) -> dict[str, float]:
+    """Aggregate per-source marginal edge across live tracks (from the drop-one ablation in research/gate.py).
     Sources with total marginal edge <= `min_marginal` are dead weight — cut them from ingestion to save cost."""
     totals: dict[str, float] = {}
-    for s in sleeves:
-        if is_decayed(s):
+    for t in tracks:
+        if is_decayed(t):
             continue
-        for src, marginal in s.source_attribution.items():
+        for src, marginal in t.source_attribution.items():
             totals[src] = totals.get(src, 0.0) + marginal
     return {src: round(v, 6) for src, v in totals.items() if v > min_marginal}

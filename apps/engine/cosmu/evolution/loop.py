@@ -1,4 +1,4 @@
-# intent: the autonomous farming loop — generate a wide population (seeds + mutations + wildcards + pine imports), compile + static-check, cheap deterministic screen, score through the out-of-reach scorer, keep gate-passers as paper sleeves and send the rest to the graveyard with reasons; inputs: seed/cohort config + optional pine scripts; outputs: persisted strategy_versions/backtests/sleeves + CohortSummary; invariants: the scorer/gates stay deterministic and out of the agent's reach, every death records a kill_reason, runs are seeded/reproducible.
+# intent: the autonomous farming loop — generate a wide population (seeds + mutations + wildcards + pine imports), compile + static-check, cheap deterministic screen, score through the out-of-reach scorer, keep gate-passers as forward-test tracks and send the rest to the graveyard with reasons; inputs: seed/cohort config + optional pine scripts; outputs: persisted strategy_versions/backtests/tracks + CohortSummary; invariants: the scorer/gates stay deterministic and out of the agent's reach, every death records a kill_reason, runs are seeded/reproducible.
 
 from __future__ import annotations
 
@@ -308,7 +308,7 @@ class FarmLoop:
         metrics = self._screen(cand, compiled.code_hash, seed)
         verdict = score(metrics, self.settings.gates)
         passed = verdict.passed
-        status = "paper" if passed else "killed"
+        status = "forward_test" if passed else "killed"
         kill_reason = None if passed else ",".join(verdict.reasons) or "screened_out"
 
         # Survival model: edge-persistence score (ordering only) + the regimes this screen proved positive in
@@ -362,7 +362,7 @@ class FarmLoop:
         if passed:
             equity = Decimal("100000") * (Decimal("1") + metrics.oos_return)
             b.insert(
-                "sleeves",
+                "tracks",
                 {
                     "strategy_version_id": version_id,
                     "starting_capital": "100000",
@@ -373,7 +373,7 @@ class FarmLoop:
             )
             b.append_event(
                 actor="master",
-                kind="sleeve_opened",
+                kind="track_opened",
                 ref_type="strategy_version",
                 ref_id=version_id,
                 payload={

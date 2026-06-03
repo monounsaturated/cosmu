@@ -13,7 +13,7 @@ from cosmu.master.execution import (
     execute_orders,
     reconcile_fills,
 )
-from cosmu.master.portfolio import PaperPortfolio
+from cosmu.master.portfolio import Portfolio
 from cosmu.spine.venue import default_catalog
 
 
@@ -95,7 +95,7 @@ def test_oco_placed_after_live_buy(tmp_path):
     store = _store(tmp_path)
     mock = MockCcxtWithOCO()
     adapter = BinanceSpotExecutionAdapter(client=mock, mode="live")
-    pf = PaperPortfolio(store)
+    pf = Portfolio(store)
     catalog = default_catalog()
 
     outcomes = execute_orders(
@@ -126,7 +126,7 @@ def test_oco_failure_logged_not_fatal(tmp_path):
     store = _store(tmp_path)
     mock = MockCcxtWithOCO(oco_fails=True)
     adapter = BinanceSpotExecutionAdapter(client=mock, mode="live")
-    pf = PaperPortfolio(store)
+    pf = Portfolio(store)
     catalog = default_catalog()
 
     outcomes = execute_orders(
@@ -153,7 +153,7 @@ def test_oco_not_placed_for_sell(tmp_path):
     store = _store(tmp_path)
     mock = MockCcxtWithOCO()
     adapter = BinanceSpotExecutionAdapter(client=mock, mode="live")
-    pf = PaperPortfolio(store)
+    pf = Portfolio(store)
     catalog = default_catalog()
 
     sell_intent = IntendedOrder(
@@ -189,7 +189,7 @@ def test_oco_not_placed_for_paper(tmp_path):
     store = _store(tmp_path)
     mock = MockCcxtWithOCO()
     adapter = BinanceSpotExecutionAdapter(client=None, mode="disabled")
-    pf = PaperPortfolio(store)
+    pf = Portfolio(store)
     catalog = default_catalog()
 
     outcomes = execute_orders(
@@ -211,7 +211,7 @@ def test_reconcile_fills_logs_slippage(tmp_path):
     store = _store(tmp_path)
     mock = MockCcxtWithOCO()
     adapter = BinanceSpotExecutionAdapter(client=mock, mode="live")
-    pf = PaperPortfolio(store)
+    pf = Portfolio(store)
     catalog = default_catalog()
 
     # First: execute a live order (books fill at intended price 65000)
@@ -256,5 +256,5 @@ def test_reconcile_fills_disabled_adapter(tmp_path):
     """Reconciliation with a disabled adapter returns empty — no network calls."""
     store = _store(tmp_path)
     adapter = BinanceSpotExecutionAdapter(client=None, mode="disabled")
-    pf = PaperPortfolio(store)
+    pf = Portfolio(store)
     assert reconcile_fills(adapter, store, pf) == []
