@@ -43,6 +43,8 @@ Skills are **runnable playbooks** — the canonical procedure for each common ta
 
 | Skill | Path |
 |-------|------|
+| scan-signals | `.claude/skills/scan-signals/SKILL.md` |
+| groom | `.claude/skills/groom/SKILL.md` |
 | create-strategy | `.claude/skills/create-strategy/SKILL.md` |
 | add-data-source | `.claude/skills/add-data-source/SKILL.md` |
 | add-venue | `.claude/skills/add-venue/SKILL.md` |

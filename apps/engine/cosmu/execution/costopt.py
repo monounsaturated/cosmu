@@ -6,6 +6,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from cosmu.spine.venue import Venue
 
 
 @dataclass(frozen=True)
@@ -14,6 +18,13 @@ class FeeSchedule:
 
     maker_bps: float
     taker_bps: float
+
+    @classmethod
+    def from_venue(cls, venue: "Venue", volume_30d_usd: float = 0.0) -> "FeeSchedule":
+        """The single bridge from a catalog Venue (real, volume-tiered fees) to the cost model — so a
+        backtest/forward-test prices the SAME fees the live venue would charge, per the account's volume."""
+        maker, taker = venue.effective_fee(volume_30d_usd)
+        return cls(maker_bps=float(maker), taker_bps=float(taker))
 
 
 @dataclass(frozen=True)
