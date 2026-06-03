@@ -1,5 +1,6 @@
-import { Activity } from "lucide-react";
-import { getBrain, getEvents, getPopulation, engineConfigured } from "../data";
+import { Activity, ArrowRight } from "lucide-react";
+import { getBrain, getEvents, getIntelligence, getPopulation, engineConfigured } from "../data";
+import type { FunnelStats } from "../data";
 import type { GraveyardRow } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,14 +14,15 @@ import { GateFunnel, SurvivalDistribution } from "@/components/charts/brain-char
 import { ActivityTimeline } from "@/components/observability/activity-timeline";
 import { Tooltip } from "@/components/ui/tooltip";
 import { EmptyState, NotConnected, NotConnectedBanner } from "@/components/ui/honest-state";
-import { formatPct } from "@/lib/utils";
+import { cn, formatPct } from "@/lib/utils";
 
 export default async function LabPage() {
   const [
     { population, connected },
     { brain, connected: brainConnected },
-    { events, connected: evtConnected }
-  ] = await Promise.all([getPopulation(), getBrain(), getEvents()]);
+    { events, connected: evtConnected },
+    { intelligence, connected: intelConnected }
+  ] = await Promise.all([getPopulation(), getBrain(), getEvents(), getIntelligence()]);
 
   const anyConnected = connected || brainConnected;
 
@@ -41,6 +43,21 @@ export default async function LabPage() {
         <Stat label="In graveyard" value={connected ? population.killed : "—"} accent="down" />
         <Stat label="Kill rate" value={connected && population.total ? formatPct(population.kill_rate * 100, 1) : "—"} accent="warn" />
       </div>
+
+      {/* Pipeline funnel — full lifecycle from intelligence data */}
+      {intelConnected && intelligence.funnel.authored > 0 && (
+        <section className="space-y-3">
+          <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
+            Pipeline funnel
+            <Tooltip content="The full lifecycle: authored → screened → gate-passed → funded → live, with how many were killed at each stage." />
+          </h3>
+          <Card>
+            <CardContent className="pt-5">
+              <PipelineFunnel funnel={intelligence.funnel} />
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       {/* Research brain: gate funnel + survivors */}
       {brainConnected && (
@@ -161,6 +178,63 @@ export default async function LabPage() {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+const PIPELINE_STAGES: { key: keyof FunnelStats; label: string; tone: string }[] = [
+  { key: "authored", label: "Authored", tone: "text-foreground" },
+  { key: "screened", label: "Screened", tone: "text-iris-soft" },
+  { key: "gate_passed", label: "Gate passed", tone: "text-up" },
+  { key: "funded", label: "Funded", tone: "text-up" },
+  { key: "live", label: "Live", tone: "text-info" },
+];
+
+function PipelineFunnel({ funnel }: { funnel: FunnelStats }) {
+  const max = Math.max(funnel.authored, 1);
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-1.5">
+        {PIPELINE_STAGES.map((stage, i) => {
+          const count = funnel[stage.key];
+          const widthPct = Math.max((count / max) * 100, 4);
+          return (
+            <div key={stage.key} className="flex min-w-0 flex-1 items-center gap-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center justify-between text-[10.5px]">
+                  <span className="font-semibold uppercase tracking-wide text-quiet">{stage.label}</span>
+                  <span className={cn("tabular font-semibold", stage.tone)}>{count}</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all",
+                      stage.key === "live" ? "bg-info" : stage.key === "gate_passed" || stage.key === "funded" ? "bg-up" : "bg-iris/70"
+                    )}
+                    style={{ width: `${widthPct}%` }}
+                  />
+                </div>
+              </div>
+              {i < PIPELINE_STAGES.length - 1 && <ArrowRight className="mt-3 size-3 shrink-0 text-quiet/40" />}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-4 text-[11px]">
+        <span className="flex items-center gap-1.5 text-down">
+          <span className="tabular font-semibold">{funnel.killed}</span> killed
+        </span>
+        {funnel.authored > 0 && (
+          <span className="text-warn">
+            kill rate {formatPct((funnel.killed / funnel.authored) * 100, 1)}
+          </span>
+        )}
+        {funnel.gate_passed > 0 && funnel.authored > 0 && (
+          <span className="text-quiet">
+            gate pass rate {formatPct((funnel.gate_passed / funnel.authored) * 100, 1)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
