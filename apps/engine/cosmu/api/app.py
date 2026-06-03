@@ -53,6 +53,7 @@ from cosmu.api.models import (
     FinderRunRequest,
     FinderVariant,
     IntelligenceResponse,
+    MindResponse,
     GraveyardRow,
     MlFeatureWeight,
     MlRankedItem,
@@ -619,6 +620,14 @@ def autonomy_tick() -> AutonomyTickResponse:
     # REAL data only: screen + fund on actual Binance spot bars. Synthetic fixtures are CI/offline only —
     # the app must never display or fund on fabricated edge.
     report = run_tick(store, n=6, seed=7, edge_market=False)
+    # Persist a point-in-time reflection (the analyst-panel debate) so the agent accrues a memory of HOW IT
+    # THOUGHT each cycle. Defensive: a reasoning record only — it never moves money, and never blocks the tick.
+    try:
+        from cosmu.mind import reflect
+
+        reflect(store, reference_bars=_brain_reference_bars())
+    except Exception:  # noqa: BLE001 — reflection is best-effort; the tick must not depend on it
+        pass
     s = report.summary
     return AutonomyTickResponse(
         authored=s.authored,
@@ -1080,6 +1089,18 @@ def research_brain() -> BrainResponse:
         regime=BrainRegime(label=regime.label, vol_bucket=regime.vol_bucket, trend=regime.trend),
         survival_ranking=ranking,
     )
+
+
+@app.get("/mind", response_model=MindResponse)
+def mind() -> MindResponse:
+    """The Mind — the agent's standardized self-knowledge in one read: what it KNOWS (point-in-time data sources
+    + freshness), how it THINKS (the analyst panel + the debate's consensus), and what it has LEARNED (memory,
+    the ML survival model, regime coverage, gate efficiency). The panel reads REAL ingested signals only — a
+    perspective with no data abstains, never fabricates. RAILGUARD: this reasons; it never funds or fires an
+    order — the deterministic gate alone disposes."""
+    from cosmu.mind import build_mind
+
+    return MindResponse(**build_mind(store, reference_bars=_brain_reference_bars()))
 
 
 @app.get("/research/drift", response_model=DriftResponse)

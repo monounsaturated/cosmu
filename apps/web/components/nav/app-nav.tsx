@@ -10,6 +10,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  Brain,
   LayoutDashboard,
   LineChart,
   ListChecks,
@@ -30,6 +31,7 @@ type NavItem = { href: string; label: string; desc?: string; icon: typeof Layout
 // (discover → screen → forward-test → live) reads straight off the nav. Lab == Research.
 export const navItems: NavItem[] = [
   { href: "/", label: "Overview", desc: "Are we making money?", icon: LayoutDashboard },
+  { href: "/mind", label: "Mind", desc: "Knows · thinks · learned", icon: Brain },
   { href: "/lab", label: "Lab", desc: "Discover · research", icon: Microscope },
   { href: "/strategies", label: "Strategies", desc: "Screened pipeline", icon: ListChecks },
   { href: "/forward-test", label: "Forward-test", desc: "Per-strategy · proving", icon: LineChart },

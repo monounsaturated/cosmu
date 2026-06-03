@@ -25,6 +25,9 @@ Stack:
 **Lab (discover)** → **Strategies (screened)** → **Forward-test (proven, per-strategy, SIM)** → **Live (you launch winners).**
 NO pooled wallet — each survivor proves itself on its **own standalone track**. Live is OFF by default behind **5 interlocks**: toggle on + real keys + gate passed + caps available + no kill-switch. All five, or nothing moves.
 
+## The Mind (`/mind` · `GET /mind`)
+The agent's standardized self-knowledge in one surface: **what it knows** (data sources + freshness), **how it thinks** (a TradingAgents-style analyst panel — Technical · Macro · Sentiment · Social&News · Positioning · OSINT, plus ML-survival and Memory pillars — that debates a consensus), and **what it has learned** (memory, the ML model, regime coverage, gate efficiency). Each perspective reads the agent's **existing** point-in-time signals; one with no data **abstains** (never fabricates). **Railguard:** the Mind only *reasons* — it never funds or fires; the deterministic Gate alone disposes. LLMs may narrate, **never** in the scoring/gate/money path. See `cosmu/mind/` + `docs/GLOSSARY.md` (The Mind).
+
 ## Running strategies (cheapest → priciest)
 Add strategies via the **inbox** (`strategies/inbox/*.json|*.md|*.pine`, scanned on deploy) or the Lab's autonomous author. To author a batch safely, copy `scripts/seed_inbox_strategies.py` — it **validates every spec against the real compiler** (static_check + `compile_spec`) before writing, so nothing magic-number'd or inert lands. Then to screen/backtest:
 1. **Local, $0 (default):** `PYTHONPATH=apps/engine python3 -m cosmu.lab.finder --seed-real` — deterministic, offline-capable (cached Binance bars). Fine for a few specs.

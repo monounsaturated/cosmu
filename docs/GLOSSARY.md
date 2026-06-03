@@ -39,6 +39,19 @@ The single source of truth for product terms. **DB tables, API fields, UI labels
 
 > There is **no "demo"** and **no "paper"** money state in the product. When there is no engine or no data, show an honest **empty / connect** state — never fabricated numbers.
 
+## The Mind (agentic reasoning)
+
+The agent's standardized self-knowledge, surfaced on the **Mind** page (`/mind`) and the `GET /mind` endpoint. A **reasoning surface only** — it never funds or fires. The deterministic **Gate** alone disposes of money.
+
+| Term | One-line definition |
+|------|---------------------|
+| **Mind** | The single surface answering, in one vocabulary, **what the agent knows** (its data sources + freshness), **how it thinks** (the analyst panel), and **what it has learned** (memory, the ML survival model, regime coverage, gate efficiency). |
+| **Analyst panel** | A team of perspectives — **Technical · Macro · Sentiment · Social & News · Positioning · OSINT** (market) plus **ML survival · Memory** (process) — each reading one family of the agent's existing point-in-time signals. ML is *a* pillar, not the whole story. |
+| **Stance** | One perspective's standardized read: a **lean** (bullish · bearish · neutral · **abstain**), a **conviction** (0–1), a headline and the evidence. A perspective with no ingested data **abstains** — it never fabricates a read. |
+| **Consensus** | The weighted directional vote of the **market** analysts. **Conviction** = how strongly the agreeing analysts feel; **Agreement** = how dominant the consensus is over the panel (low agreement = a **contested** read). |
+| **Reflection** | A point-in-time record of the panel's debate (`mind_reflections`, additive table), written each autonomous tick so the agent accrues a memory of *how it thought* over time. |
+| **Railguard** | The hard rule shown wherever the Mind appears: *it reasons; it never funds or fires an order.* An LLM may narrate a reflection, but **never** in any scoring/gate/money path. |
+
 ## Authoring
 
 | Term | One-line definition |

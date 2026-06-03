@@ -1857,6 +1857,53 @@
         "title": "IntelligenceResponse",
         "type": "object"
       },
+      "JurisdictionOption": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "legal_venue_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Legal Venue Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "legal_venue_ids"
+        ],
+        "title": "JurisdictionOption",
+        "type": "object"
+      },
+      "JurisdictionsResponse": {
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/JurisdictionOption"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "current",
+          "options"
+        ],
+        "title": "JurisdictionsResponse",
+        "type": "object"
+      },
       "LeaderboardResponse": {
         "properties": {
           "rows": {
@@ -2091,6 +2138,86 @@
         "title": "LivePositionsResponse",
         "type": "object"
       },
+      "LiveVenue": {
+        "description": "One venue on the LIVE surface: is it legal to trade here from our jurisdiction, are execution keys\nwired (connected), is it ticked into the universe, and how much real capital is deployed there now.",
+        "properties": {
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "deployed_usd": {
+            "title": "Deployed Usd",
+            "type": "number"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "crypto",
+              "equity",
+              "prediction"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "live_legal": {
+            "title": "Live Legal",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "live_legal",
+          "connected",
+          "enabled",
+          "deployed_usd"
+        ],
+        "title": "LiveVenue",
+        "type": "object"
+      },
+      "LiveVenuesResponse": {
+        "properties": {
+          "global_cap": {
+            "title": "Global Cap",
+            "type": "number"
+          },
+          "jurisdiction": {
+            "title": "Jurisdiction",
+            "type": "string"
+          },
+          "total_deployed_usd": {
+            "title": "Total Deployed Usd",
+            "type": "number"
+          },
+          "venues": {
+            "items": {
+              "$ref": "#/components/schemas/LiveVenue"
+            },
+            "title": "Venues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "jurisdiction",
+          "global_cap",
+          "total_deployed_usd",
+          "venues"
+        ],
+        "title": "LiveVenuesResponse",
+        "type": "object"
+      },
       "MemoryDepth": {
         "properties": {
           "dead_ends": {
@@ -2161,6 +2288,362 @@
           "insights"
         ],
         "title": "MemoryInsightsResponse",
+        "type": "object"
+      },
+      "MindLearnings": {
+        "description": "What the agent has LEARNED: long-term memory, the ML survival model's state, regime coverage, and whether\nthe gate pass-rate is improving.",
+        "properties": {
+          "dead_ends": {
+            "title": "Dead Ends",
+            "type": "integer"
+          },
+          "gate_improving": {
+            "title": "Gate Improving",
+            "type": "boolean"
+          },
+          "gate_rate": {
+            "title": "Gate Rate",
+            "type": "number"
+          },
+          "gate_trend": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Gate Trend",
+            "type": "array"
+          },
+          "insights": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryInsight"
+            },
+            "title": "Insights",
+            "type": "array"
+          },
+          "ml_auroc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ml Auroc"
+          },
+          "ml_backend": {
+            "title": "Ml Backend",
+            "type": "string"
+          },
+          "ml_labels": {
+            "title": "Ml Labels",
+            "type": "integer"
+          },
+          "ml_trained": {
+            "title": "Ml Trained",
+            "type": "boolean"
+          },
+          "regime_covered": {
+            "title": "Regime Covered",
+            "type": "integer"
+          },
+          "regime_grid": {
+            "items": {
+              "$ref": "#/components/schemas/RegimeCell"
+            },
+            "title": "Regime Grid",
+            "type": "array"
+          },
+          "regime_total": {
+            "title": "Regime Total",
+            "type": "integer"
+          },
+          "skills": {
+            "title": "Skills",
+            "type": "integer"
+          },
+          "winners": {
+            "title": "Winners",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "insights",
+          "ml_trained",
+          "ml_backend",
+          "ml_labels",
+          "dead_ends",
+          "winners",
+          "skills",
+          "gate_rate",
+          "gate_trend",
+          "gate_improving",
+          "regime_grid",
+          "regime_covered",
+          "regime_total"
+        ],
+        "title": "MindLearnings",
+        "type": "object"
+      },
+      "MindLens": {
+        "description": "The sources for one perspective (e.g. Macro), grouped so 'what it knows' lines up with 'how it thinks'.",
+        "properties": {
+          "ingested": {
+            "title": "Ingested",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MindSourceItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "perspective": {
+            "title": "Perspective",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "perspective",
+          "ingested",
+          "total",
+          "items"
+        ],
+        "title": "MindLens",
+        "type": "object"
+      },
+      "MindResponse": {
+        "description": "The full Mind snapshot. `railguard` restates the hard rule shown wherever the Mind appears: it reasons,\nit never moves money. `consensus`/`conviction`/`agreement` summarize the debate over the MARKET analysts.",
+        "properties": {
+          "agreement": {
+            "title": "Agreement",
+            "type": "number"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "bear_case": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Bear Case",
+            "type": "array"
+          },
+          "bull_case": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Bull Case",
+            "type": "array"
+          },
+          "consensus": {
+            "enum": [
+              "bullish",
+              "bearish",
+              "neutral"
+            ],
+            "title": "Consensus",
+            "type": "string"
+          },
+          "contested": {
+            "title": "Contested",
+            "type": "boolean"
+          },
+          "conviction": {
+            "title": "Conviction",
+            "type": "number"
+          },
+          "knows": {
+            "items": {
+              "$ref": "#/components/schemas/MindLens"
+            },
+            "title": "Knows",
+            "type": "array"
+          },
+          "learnings": {
+            "$ref": "#/components/schemas/MindLearnings"
+          },
+          "narrative": {
+            "title": "Narrative",
+            "type": "string"
+          },
+          "railguard": {
+            "title": "Railguard",
+            "type": "string"
+          },
+          "stances": {
+            "items": {
+              "$ref": "#/components/schemas/MindStance"
+            },
+            "title": "Stances",
+            "type": "array"
+          }
+        },
+        "required": [
+          "railguard",
+          "consensus",
+          "conviction",
+          "agreement",
+          "contested",
+          "narrative",
+          "stances",
+          "bull_case",
+          "bear_case",
+          "knows",
+          "learnings"
+        ],
+        "title": "MindResponse",
+        "type": "object"
+      },
+      "MindSourceItem": {
+        "description": "One data source the agent can read, with whether it is ingested + when. `value` is the latest\npoint-in-time reading (None when not ingested yet).",
+        "properties": {
+          "ingested": {
+            "title": "Ingested",
+            "type": "boolean"
+          },
+          "last_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last At"
+          },
+          "low_confidence": {
+            "default": false,
+            "title": "Low Confidence",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prior": {
+            "title": "Prior",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "tier": {
+            "title": "Tier",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "name",
+          "source",
+          "tier",
+          "prior",
+          "ingested"
+        ],
+        "title": "MindSourceItem",
+        "type": "object"
+      },
+      "MindStance": {
+        "description": "One perspective's read in the analyst panel. `kind` separates MARKET analysts (vote on the consensus)\nfrom PROCESS analysts (ML + memory \u2014 they report the machine's self-knowledge). `lean` is abstain when the\nfeed is not ingested yet (honest, never fabricated).",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "conviction": {
+            "title": "Conviction",
+            "type": "number"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "market",
+              "process"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "lean": {
+            "enum": [
+              "bullish",
+              "bearish",
+              "neutral",
+              "abstain"
+            ],
+            "title": "Lean",
+            "type": "string"
+          },
+          "low_confidence": {
+            "default": false,
+            "title": "Low Confidence",
+            "type": "boolean"
+          },
+          "perspective": {
+            "title": "Perspective",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "perspective",
+          "kind",
+          "lean",
+          "conviction",
+          "weight",
+          "headline",
+          "rationale",
+          "evidence"
+        ],
+        "title": "MindStance",
         "type": "object"
       },
       "MlFeatureWeight": {
@@ -2671,6 +3154,19 @@
           "by_label"
         ],
         "title": "RegimeCoverage",
+        "type": "object"
+      },
+      "SetJurisdictionRequest": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "SetJurisdictionRequest",
         "type": "object"
       },
       "Skill": {
@@ -3582,6 +4078,63 @@
         "summary": "Live Defund"
       }
     },
+    "/live/jurisdiction": {
+      "post": {
+        "operationId": "set_live_jurisdiction_live_jurisdiction_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetJurisdictionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JurisdictionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Live Jurisdiction"
+      }
+    },
+    "/live/jurisdictions": {
+      "get": {
+        "description": "The curated pick-list of operating jurisdictions + the current one. Each option lists the venues that\nare live-legal from there, so the UI can show what picking it unlocks.",
+        "operationId": "live_jurisdictions_live_jurisdictions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JurisdictionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Live Jurisdictions"
+      }
+    },
     "/live/positions": {
       "get": {
         "operationId": "live_positions_live_positions_get",
@@ -3598,6 +4151,25 @@
           }
         },
         "summary": "Live Positions"
+      }
+    },
+    "/live/venues": {
+      "get": {
+        "description": "The honest LIVE venue picture: the venues legal to trade from our jurisdiction, whether each is wired\n(connected) or not, whether it's ticked into the universe, and the real capital deployed at each now.",
+        "operationId": "live_venues_live_venues_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveVenuesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Live Venues"
       }
     },
     "/memory/insights": {
@@ -3617,6 +4189,25 @@
           }
         },
         "summary": "Memory Insights Route"
+      }
+    },
+    "/mind": {
+      "get": {
+        "description": "The Mind \u2014 the agent's standardized self-knowledge in one read: what it KNOWS (point-in-time data sources\n+ freshness), how it THINKS (the analyst panel + the debate's consensus), and what it has LEARNED (memory,\nthe ML survival model, regime coverage, gate efficiency). The panel reads REAL ingested signals only \u2014 a\nperspective with no data abstains, never fabricates. RAILGUARD: this reasons; it never funds or fires an\norder \u2014 the deterministic gate alone disposes.",
+        "operationId": "mind_mind_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MindResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Mind"
       }
     },
     "/overview": {

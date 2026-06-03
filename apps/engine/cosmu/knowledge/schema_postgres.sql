@@ -239,6 +239,18 @@ create table if not exists trials (
   ts text not null, source text not null, label text, sharpe_per_obs numeric not null
 );
 
+-- Mind reflections: point-in-time record of the agent's standardized market read (the analyst-panel debate),
+-- so it accrues a memory of how it thought over time. Append-only. A reasoning record only — never moves money.
+create table if not exists mind_reflections (
+  id bigint generated always as identity primary key,
+  ts text not null,
+  as_of text,
+  consensus text not null,
+  conviction numeric not null,
+  agreement numeric not null,
+  payload text not null
+);
+
 -- Central alt-data store (replaces the JSONL files): append-only, point-in-time.
 -- Reads select the latest row per ts with available_at <= as_of, so vendor revisions never rewrite history.
 create table if not exists alt_data (

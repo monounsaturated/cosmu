@@ -1,5 +1,5 @@
-import { Activity, BookOpen, BrainCircuit } from "lucide-react";
-import { getBrain, getEvents, getInsights, getPopulation, getSkills, engineConfigured } from "../data";
+import { Activity } from "lucide-react";
+import { getBrain, getEvents, getPopulation, engineConfigured } from "../data";
 import type { GraveyardRow } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,8 +11,6 @@ import { CrossAssetGate } from "@/components/research/cross-asset-gate";
 import { ResearchBrain } from "@/components/research/research-brain";
 import { GateFunnel, SurvivalDistribution } from "@/components/charts/brain-charts";
 import { ActivityTimeline } from "@/components/observability/activity-timeline";
-import { SkillsGrid } from "@/components/learning/skills-grid";
-import { MemoryInsights } from "@/components/learning/memory-insights";
 import { Tooltip } from "@/components/ui/tooltip";
 import { EmptyState, NotConnected, NotConnectedBanner } from "@/components/ui/honest-state";
 import { formatPct } from "@/lib/utils";
@@ -21,10 +19,8 @@ export default async function LabPage() {
   const [
     { population, connected },
     { brain, connected: brainConnected },
-    { events, connected: evtConnected },
-    { skills, connected: skillsConnected },
-    { insights, connected: insightsConnected }
-  ] = await Promise.all([getPopulation(), getBrain(), getEvents(), getSkills(), getInsights()]);
+    { events, connected: evtConnected }
+  ] = await Promise.all([getPopulation(), getBrain(), getEvents()]);
 
   const anyConnected = connected || brainConnected;
 
@@ -87,34 +83,7 @@ export default async function LabPage() {
         </div>
       </section>
 
-      {/* What the brain has learned */}
-      {(skillsConnected || insightsConnected) && (
-        <section className="space-y-3">
-          <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-            <BrainCircuit className="size-4 text-iris-soft" /> What the machine has learned
-          </h3>
-          <div className="grid gap-3 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-1.5">
-                  <BookOpen className="size-4 text-iris-soft" /> Distilled skills
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <SkillsGrid skills={skills} />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Dead-ends &amp; winner patterns</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <MemoryInsights insights={insights} />
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-      )}
+      {/* The machine's memory + what it has learned now lives on the Mind page (one consolidated surface). */}
 
       {/* Strategy Finder */}
       <section className="space-y-3">

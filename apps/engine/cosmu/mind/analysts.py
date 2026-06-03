@@ -1,0 +1,368 @@
+# intent: the analyst panel — a TradingAgents-style team of perspectives that each read ONE family of the
+# agent's existing point-in-time signals and emit a standardized Stance (lean · conviction · why). ML is a
+# pillar, not the whole story: alongside it sit technical, macro, sentiment, social/news, positioning and OSINT
+# reads. inputs: a MindContext (regime + latest alt-data values + ML model state + memory counts), gathered
+# ONCE; outputs: one Stance per analyst. invariants: deterministic, offline, point-in-time; a perspective with
+# no ingested data ABSTAINS (never fabricates a read); the analysts only describe — they never move money.
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+from typing import Callable
+
+from cosmu.knowledge.store import Store
+from cosmu.ml.regime import Regime
+from cosmu.ml.survival import SurvivalModel, load_survival_model
+
+# A market Stance leans one of these. "abstain" is the honest answer when the feed isn't ingested yet.
+LEANS = ("bullish", "bearish", "neutral", "abstain")
+
+
+@dataclass(frozen=True)
+class Stance:
+    """One perspective's standardized read. `kind` separates MARKET analysts (which vote on the directional
+    consensus) from PROCESS analysts (ML + memory — they report on the machine's self-knowledge, not price).
+    `weight` is how much a market stance counts in the consensus (low-confidence sources count half); process
+    stances carry weight 0. `conviction` is 0 when the analyst abstains. Nothing here funds or fires."""
+
+    perspective: str
+    kind: str  # "market" | "process"
+    lean: str  # one of LEANS
+    conviction: float  # 0..1
+    weight: float  # consensus weight (0 for process / abstain)
+    headline: str
+    rationale: str
+    evidence: list[str] = field(default_factory=list)
+    as_of: str | None = None
+    low_confidence: bool = False
+
+
+@dataclass(frozen=True)
+class MindContext:
+    """Everything the analysts read, gathered once so the panel runs in a single pass. `values` maps a metric
+    name to its latest point-in-time (value, available_at). `regime` is the current market regime from a REAL
+    reference series (None when no price history is available — the technical analyst then abstains)."""
+
+    regime: Regime | None
+    values: dict[str, tuple[float, str | None]]
+    ml: SurvivalModel
+    memory: dict[str, int]
+    as_of: str | None
+
+
+# --------------------------------------------------------------------------- context gathering
+
+
+def gather_context(store: Store, *, reference_bars=None) -> MindContext:
+    """Read the current point-in-time state once. Defensive throughout: a missing table / empty store yields an
+    abstaining panel, never an error. `reference_bars` is a REAL close series (the API passes live Binance bars);
+    when absent the regime is left None and the technical analyst abstains rather than inventing a regime."""
+    from cosmu.ml.regime import current_regime
+
+    regime = current_regime(reference_bars) if reference_bars else None
+    values = _latest_values(store)
+    try:
+        ml = load_survival_model(store)
+    except Exception:  # noqa: BLE001 — cold store: fall back to an untrained model
+        ml = SurvivalModel(trained=False, backend="heuristic", n_labels=0)
+    memory = _memory_counts(store)
+    as_of = None
+    for _, available_at in values.values():
+        if available_at and (as_of is None or available_at > as_of):
+            as_of = available_at
+    return MindContext(regime=regime, values=values, ml=ml, memory=memory, as_of=as_of)
+
+
+def _latest_values(store: Store) -> dict[str, tuple[float, str | None]]:
+    """Latest available value per metric from the append-only alt_data store (point-in-time: newest
+    available_at wins). Returns {} on any error so a store without the table degrades to an abstaining panel."""
+    try:
+        # Only the latest-available row per metric (ISO-8601 strings sort lexically) — not the whole table.
+        rows = store.rows(
+            "SELECT a.metric AS metric, a.value AS value, a.available_at AS available_at "
+            "FROM alt_data a "
+            "JOIN (SELECT metric, MAX(available_at) AS m FROM alt_data GROUP BY metric) b "
+            "ON a.metric = b.metric AND a.available_at = b.m"
+        )
+    except Exception:  # noqa: BLE001 — table may not exist on a fresh store
+        return {}
+    out: dict[str, tuple[float, str | None]] = {}
+    for r in rows:
+        metric = r["metric"]
+        if metric in out:
+            continue  # a tie on available_at — keep the first deterministically
+        try:
+            out[metric] = (float(r["value"]), r.get("available_at"))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _memory_counts(store: Store) -> dict[str, int]:
+    def count(sql: str) -> int:
+        try:
+            row = store.row(sql)
+            return int(row["n"]) if row else 0
+        except Exception:  # noqa: BLE001
+            return 0
+
+    return {
+        "dead_ends": count("SELECT COUNT(*) AS n FROM research_notes WHERE kind = 'dead_end'"),
+        "winners": count("SELECT COUNT(*) AS n FROM research_notes WHERE kind = 'winner'"),
+        "skills": count("SELECT COUNT(*) AS n FROM skills"),
+    }
+
+
+# --------------------------------------------------------------------------- helpers
+
+
+def _abstain(perspective: str, kind: str, reason: str, *, low_confidence: bool = False) -> Stance:
+    return Stance(
+        perspective=perspective,
+        kind=kind,
+        lean="abstain",
+        conviction=0.0,
+        weight=0.0,
+        headline="No data yet",
+        rationale=reason,
+        evidence=[],
+        low_confidence=low_confidence,
+    )
+
+
+def _val(ctx: MindContext, metric: str) -> tuple[float, str | None] | None:
+    return ctx.values.get(metric)
+
+
+def _clamp01(x: float) -> float:
+    return max(0.0, min(1.0, x))
+
+
+# --------------------------------------------------------------------------- market analysts
+
+
+def technical_analyst(ctx: MindContext) -> Stance:
+    """Reads the current market regime (trend × realized-vol tercile) off a REAL reference series."""
+    r = ctx.regime
+    if r is None:
+        return _abstain("Technical", "market", "No price history available to read a regime.")
+    lean = {"bull": "bullish", "bear": "bearish", "chop": "neutral"}.get(r.trend, "neutral")
+    conviction = {"low": 0.7, "mid": 0.55, "high": 0.4}.get(r.vol_bucket, 0.5)
+    return Stance(
+        perspective="Technical",
+        kind="market",
+        lean=lean,
+        conviction=conviction,
+        weight=1.0,
+        headline=f"{r.trend.capitalize()} trend, {r.vol_bucket} volatility",
+        rationale="Trend sign × realized-volatility tercile on the reference series (point-in-time).",
+        evidence=[f"trend={r.trend}", f"vol={r.vol_bucket}"],
+        as_of=ctx.as_of,
+    )
+
+
+def sentiment_analyst(ctx: MindContext) -> Stance:
+    """Crowd fear/greed (0–100). Buy fear, fade greed — a swing-horizon mean-reversion prior."""
+    hit = _val(ctx, "fear_greed")
+    if hit is None:
+        return _abstain("Sentiment", "market", "Fear & Greed not ingested yet.")
+    value, asof = hit
+    distance = abs(value - 50.0) / 50.0
+    conviction = _clamp01(0.35 + distance * 0.65)
+    if value <= 45:
+        lean, label = "bullish", "fear"
+    elif value >= 55:
+        lean, label = "bearish", "greed"
+    else:
+        lean, label, conviction = "neutral", "balanced", 0.4
+    return Stance(
+        perspective="Sentiment",
+        kind="market",
+        lean=lean,
+        conviction=round(conviction, 3),
+        weight=1.0,
+        headline=f"Crowd reads {int(value)}/100 — {label}",
+        rationale="Buy fear, fade greed: sentiment extremes mean-revert at the swing horizon.",
+        evidence=[f"fear_greed={value:.0f}"],
+        as_of=asof,
+    )
+
+
+def macro_analyst(ctx: MindContext) -> Stance:
+    """Shared macro regime (FRED curve/rates/liquidity) — risk-on vs risk-off across asset classes."""
+    hit = _val(ctx, "macro_regime")
+    if hit is None:
+        return _abstain("Macro", "market", "Macro regime (FRED) not ingested yet.")
+    value, asof = hit
+    conviction = round(_clamp01(0.4 + abs(math.tanh(value)) * 0.5), 3)
+    if value > 0:
+        lean, label = "bullish", "risk-on"
+    elif value < 0:
+        lean, label = "bearish", "risk-off"
+    else:
+        lean, label, conviction = "neutral", "neutral", 0.4
+    return Stance(
+        perspective="Macro",
+        kind="market",
+        lean=lean,
+        conviction=conviction,
+        weight=1.0,
+        headline=f"Macro regime {label}",
+        rationale="Curve slope, real rates and liquidity condition risk premia across every asset class.",
+        evidence=[f"macro_regime={value:+.2f}"],
+        as_of=asof,
+    )
+
+
+def social_news_analyst(ctx: MindContext) -> Stance:
+    """News-flow sentiment (LLM-standardized to a number at ingest only). A positive shift precedes
+    continuation before it is fully priced. A tier-1 source — counted at half weight until it earns more."""
+    hit = _val(ctx, "news_sentiment")
+    if hit is None:
+        return _abstain("Social & News", "market", "News-flow sentiment not ingested yet.", low_confidence=True)
+    value, asof = hit
+    conviction = round(_clamp01(0.3 + abs(value) * 0.6), 3)
+    if value > 0.1:
+        lean = "bullish"
+    elif value < -0.1:
+        lean = "bearish"
+    else:
+        lean, conviction = "neutral", 0.35
+    return Stance(
+        perspective="Social & News",
+        kind="market",
+        lean=lean,
+        conviction=conviction,
+        weight=0.5,
+        headline=f"News flow {value:+.2f}",
+        rationale="A positive news-flow shift precedes multi-day continuation before it is fully priced.",
+        evidence=[f"news_sentiment={value:+.2f}"],
+        as_of=asof,
+        low_confidence=True,
+    )
+
+
+def positioning_analyst(ctx: MindContext) -> Stance:
+    """Crowded-leverage read: perp funding (z) as a long filter, plus liquidation cascades that overshoot.
+    Extreme positive funding = crowded longs (cautious); a liquidation spike exhausts sellers (mean-revert)."""
+    funding = _val(ctx, "funding_rate")
+    liq = _val(ctx, "liquidation_cascade")
+    if funding is None and liq is None:
+        return _abstain("Positioning", "market", "Funding / liquidation feeds not ingested yet.")
+    evidence: list[str] = []
+    score = 0.0  # >0 bullish (room to run), <0 bearish (crowded)
+    asof: str | None = None
+    if funding is not None:
+        fz, fa = funding
+        evidence.append(f"funding_z={fz:+.2f}")
+        score -= math.tanh(fz)  # high funding (crowded longs) → bearish
+        asof = fa
+    if liq is not None:
+        lz, la = liq
+        evidence.append(f"liquidation_z={lz:+.2f}")
+        score += math.tanh(max(0.0, lz)) * 0.5  # a cascade exhausts sellers → mean-revert up
+        asof = la if (asof is None or (la and la > asof)) else asof
+    conviction = round(_clamp01(0.35 + abs(score) * 0.5), 3)
+    if score > 0.15:
+        lean, label = "bullish", "room to run"
+    elif score < -0.15:
+        lean, label = "bearish", "crowded longs"
+    else:
+        lean, label, conviction = "neutral", "balanced", 0.4
+    return Stance(
+        perspective="Positioning",
+        kind="market",
+        lean=lean,
+        conviction=conviction,
+        weight=1.0,
+        headline=f"Leverage {label}",
+        rationale="Funding extremes proxy crowded leverage; liquidation cascades overshoot and mean-revert.",
+        evidence=evidence,
+        as_of=asof,
+    )
+
+
+def osint_analyst(ctx: MindContext) -> Stance:
+    """Best-effort OSINT (aircraft activity as a crude macro risk-appetite proxy). LOW confidence by design —
+    it abstains until ingested and never weighs more than half. The honest 'watching planes' lens."""
+    hit = _val(ctx, "osint_air_activity")
+    if hit is None:
+        return _abstain("OSINT", "market", "OSINT (air activity) not ingested yet.", low_confidence=True)
+    value, asof = hit
+    lean = "bullish" if value > 0 else "bearish" if value < 0 else "neutral"
+    return Stance(
+        perspective="OSINT",
+        kind="market",
+        lean=lean,
+        conviction=0.25,
+        weight=0.5,
+        headline="Crude risk-appetite proxy",
+        rationale="Aircraft activity as a low-confidence economic-activity proxy — must earn its place via OOS.",
+        evidence=[f"air_activity={value:+.2f}"],
+        as_of=asof,
+        low_confidence=True,
+    )
+
+
+# --------------------------------------------------------------------------- process analysts (ML + memory)
+
+
+def ml_analyst(ctx: MindContext) -> Stance:
+    """The ML pillar — the survival model that ORDERS which candidates get validated first (never vetoes).
+    Reports the machine's confidence in its OWN selectivity, not a price call: trained backend + OOS AUROC +
+    how many labeled outcomes it has learned from."""
+    ml = ctx.ml
+    if ml.trained:
+        auroc = ml.auroc if ml.auroc is not None else 0.5
+        conviction = round(_clamp01((auroc - 0.5) * 2.0), 3)
+        headline = f"Trained ({ml.backend}, AUROC {auroc:.2f})"
+        rationale = f"Learned edge-persistence from {ml.n_labels} labeled outcomes; orders validation, never vetoes."
+    else:
+        conviction = round(_clamp01(ml.n_labels / 30.0), 3)
+        headline = f"Calibrating ({ml.n_labels}/30 outcomes)"
+        rationale = "Cold-start heuristic until 30 labeled outcomes exist — a thin model cannot prioritize."
+    return Stance(
+        perspective="ML survival",
+        kind="process",
+        lean="neutral",
+        conviction=conviction,
+        weight=0.0,
+        headline=headline,
+        rationale=rationale,
+        evidence=[f"backend={ml.backend}", f"labels={ml.n_labels}"],
+        as_of=ctx.as_of,
+    )
+
+
+def memory_analyst(ctx: MindContext) -> Stance:
+    """Long-term memory — the graveyard/winner RAG. Reports how much the machine has learned: dead ends to
+    avoid, winning structures to reuse, distilled skills."""
+    m = ctx.memory
+    learned = m["dead_ends"] + m["winners"]
+    conviction = round(_clamp01(learned / 50.0), 3)
+    headline = f"{m['dead_ends']} dead ends · {m['winners']} winners · {m['skills']} skills"
+    return Stance(
+        perspective="Memory",
+        kind="process",
+        lean="neutral",
+        conviction=conviction,
+        weight=0.0,
+        headline=headline,
+        rationale="Avoids re-walking dead structures and leans toward what cleared the gate before.",
+        evidence=[f"dead_ends={m['dead_ends']}", f"winners={m['winners']}", f"skills={m['skills']}"],
+        as_of=ctx.as_of,
+    )
+
+
+# The panel, in display order: market perspectives first, then the process (self-knowledge) pillars.
+ALL_ANALYSTS: tuple[Callable[[MindContext], Stance], ...] = (
+    technical_analyst,
+    macro_analyst,
+    sentiment_analyst,
+    social_news_analyst,
+    positioning_analyst,
+    osint_analyst,
+    ml_analyst,
+    memory_analyst,
+)

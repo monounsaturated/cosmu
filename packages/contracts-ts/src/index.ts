@@ -388,6 +388,17 @@ export interface IntelligenceResponse {
   ticks: TickStats;
 }
 
+export interface JurisdictionOption {
+  code: string;
+  label: string;
+  legal_venue_ids: string[];
+}
+
+export interface JurisdictionsResponse {
+  current: string;
+  options: JurisdictionOption[];
+}
+
 export interface LeaderboardResponse {
   rows: LeaderboardRow[];
 }
@@ -439,6 +450,23 @@ export interface LivePositionsResponse {
   positions: LivePosition[];
 }
 
+export interface LiveVenue {
+  connected: boolean;
+  deployed_usd: number;
+  enabled: boolean;
+  id: string;
+  kind: "crypto" | "equity" | "prediction";
+  live_legal: boolean;
+  name: string;
+}
+
+export interface LiveVenuesResponse {
+  global_cap: number;
+  jurisdiction: string;
+  total_deployed_usd: number;
+  venues: LiveVenue[];
+}
+
 export interface MemoryDepth {
   dead_ends: number;
   skills: number;
@@ -454,6 +482,69 @@ export interface MemoryInsight {
 
 export interface MemoryInsightsResponse {
   insights: MemoryInsight[];
+}
+
+export interface MindLearnings {
+  dead_ends: number;
+  gate_improving: boolean;
+  gate_rate: number;
+  gate_trend: number[];
+  insights: MemoryInsight[];
+  ml_auroc?: number | null;
+  ml_backend: string;
+  ml_labels: number;
+  ml_trained: boolean;
+  regime_covered: number;
+  regime_grid: RegimeCell[];
+  regime_total: number;
+  skills: number;
+  winners: number;
+}
+
+export interface MindLens {
+  ingested: number;
+  items: MindSourceItem[];
+  perspective: string;
+  total: number;
+}
+
+export interface MindResponse {
+  agreement: number;
+  as_of?: string | null;
+  bear_case: string[];
+  bull_case: string[];
+  consensus: "bullish" | "bearish" | "neutral";
+  contested: boolean;
+  conviction: number;
+  knows: MindLens[];
+  learnings: MindLearnings;
+  narrative: string;
+  railguard: string;
+  stances: MindStance[];
+}
+
+export interface MindSourceItem {
+  ingested: boolean;
+  last_at?: string | null;
+  low_confidence?: boolean;
+  name: string;
+  prior: string;
+  source: string;
+  tier: string;
+  value?: number | null;
+}
+
+export interface MindStance {
+  as_of?: string | null;
+  conviction: number;
+  evidence: string[];
+  headline: string;
+  kind: "market" | "process";
+  lean: "bullish" | "bearish" | "neutral" | "abstain";
+  low_confidence?: boolean;
+  perspective: string;
+  rationale: string;
+  weight: number;
 }
 
 export interface MlFeatureWeight {
@@ -564,6 +655,10 @@ export interface RegimeCoverage {
   covered: number;
   grid: RegimeCell[];
   total: number;
+}
+
+export interface SetJurisdictionRequest {
+  code: string;
 }
 
 export interface Skill {

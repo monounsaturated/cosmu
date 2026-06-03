@@ -19,6 +19,7 @@ import type {
   LeaderboardResponse,
   MemoryInsight,
   MemoryInsightsResponse,
+  MindResponse,
   OverviewResponse,
   PopulationResponse,
   Recommendation,
@@ -82,6 +83,36 @@ const emptyBrain: BrainResponse = {
   tools: [],
   regime: { label: "unknown", vol_bucket: "—", trend: "flat" },
   survival_ranking: []
+};
+
+const emptyMind: MindResponse = {
+  as_of: null,
+  railguard: "The Mind reasons; it never funds or fires an order. The deterministic gate alone disposes.",
+  consensus: "neutral",
+  conviction: 0,
+  agreement: 0,
+  contested: false,
+  narrative: "",
+  stances: [],
+  bull_case: [],
+  bear_case: [],
+  knows: [],
+  learnings: {
+    insights: [],
+    ml_trained: false,
+    ml_backend: "heuristic",
+    ml_auroc: null,
+    ml_labels: 0,
+    dead_ends: 0,
+    winners: 0,
+    skills: 0,
+    gate_rate: 0,
+    gate_trend: [],
+    gate_improving: false,
+    regime_grid: [],
+    regime_covered: 0,
+    regime_total: 9
+  }
 };
 
 const emptyPopulation: PopulationResponse = {
@@ -157,6 +188,14 @@ export async function getBrain(): Promise<{ brain: BrainResponse; connected: boo
 export async function getPopulation(): Promise<{ population: PopulationResponse; connected: boolean }> {
   const { data, connected } = await getJson("/population", emptyPopulation);
   return { population: data, connected };
+}
+
+// GET /mind — the agent's standardized self-knowledge: what it KNOWS (sources + freshness), how it THINKS
+// (the analyst panel + the debate's consensus), and what it has LEARNED. A reasoning surface only — the
+// `railguard` field restates that it never moves money. Honest: a perspective with no data ABSTAINS.
+export async function getMind(): Promise<{ mind: MindResponse; connected: boolean }> {
+  const { data, connected } = await getJson("/mind", emptyMind);
+  return { mind: data, connected };
 }
 
 export async function getRecommendations(): Promise<{ items: Recommendation[]; connected: boolean }> {

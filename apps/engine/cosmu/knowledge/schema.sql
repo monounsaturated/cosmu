@@ -274,6 +274,33 @@ CREATE TABLE IF NOT EXISTS trials (
   sharpe_per_obs NUMERIC NOT NULL
 );
 
+-- Central alt-data store (mirrors the Postgres table): append-only, point-in-time. Locally the JSONL
+-- AltDataStore is still used by ingest; this table lets the store-backed point-in-time read (and the Mind's
+-- "what it knows" freshness) work uniformly on SQLite and Postgres.
+CREATE TABLE IF NOT EXISTS alt_data (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  ts TEXT NOT NULL,
+  available_at TEXT NOT NULL,
+  value NUMERIC NOT NULL,
+  ingested_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_alt_data_lookup ON alt_data (provider, symbol, metric, available_at);
+
+-- Mind reflections: a point-in-time record of the agent's standardized market read (the analyst-panel debate),
+-- so it accrues a memory of HOW IT THOUGHT over time. Append-only. A reasoning record only — never moves money.
+CREATE TABLE IF NOT EXISTS mind_reflections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL,
+  as_of TEXT,
+  consensus TEXT NOT NULL,
+  conviction NUMERIC NOT NULL,
+  agreement NUMERIC NOT NULL,
+  payload TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 CREATE INDEX IF NOT EXISTS idx_events_ref ON events(ref_type, ref_id);
 CREATE INDEX IF NOT EXISTS idx_backtests_version_kind ON backtests(strategy_version_id, kind);

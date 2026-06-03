@@ -4,6 +4,40 @@
 
 ## Built
 
+### The Mind — standardized self-knowledge + a railguarded analyst-panel debate (2026-06-03)
+*Owner ask: make the agent's reasoning legible and "smart, not a side project" — a standardized view of what the
+machine knows, how it thinks, and what it has learned (ML as a pillar but not the only one: technical, macro,
+sentiment, social/news, positioning, OSINT), inspired by the multi-agent "TradingAgents" debate. Railguarded:
+LLMs may help narrate, but the **deterministic Gate alone disposes of money** — the Mind never funds or fires.*
+- **`cosmu/mind/` (new module).** `analysts.py` — a TradingAgents-style panel where each perspective reads ONE
+  family of the agent's **existing** point-in-time signals and emits a standardized `Stance` (lean · conviction ·
+  rationale · evidence). **Market** analysts (Technical from the regime classifier · Macro from FRED · Sentiment
+  from Fear&Greed · Social&News from `news_sentiment` · Positioning from funding/liquidations · OSINT from air
+  activity) vote a direction; **process** pillars (ML survival model · graveyard Memory) report the machine's
+  self-knowledge. A perspective with no ingested feed **abstains** — it never fabricates a read. `debate.py`
+  combines them into a deterministic `MindSnapshot` (consensus · conviction · panel agreement · bull/bear case ·
+  contested flag · plain-language narrative). `snapshot.py` `build_mind()` bundles **KNOWS** (sources grouped by
+  perspective + freshness), **THINKS** (the panel + debate), **LEARNED** (memory insights, ML state, regime
+  coverage, gate efficiency). Deterministic, offline, LLM-optional; **zero LLM in any scoring/gate/money path.**
+- **Reflection memory.** `reflect()` persists a point-in-time record of the debate (additive `mind_reflections`
+  table) and an audit event each autonomous tick, so the agent accrues a memory of HOW IT THOUGHT over time.
+  Defensive writer: the event always records; the richer row degrades gracefully on a prod DB that hasn't applied
+  the additive migration yet (`knowledge/migrations/2026-06-03_mind_reflections.sql`, owner-applied out-of-band).
+- **Schema (additive, owner-applied).** `mind_reflections` added to `schema.sql` + `schema_postgres.sql`; the
+  `alt_data` table added to the SQLite schema too so the store-backed point-in-time read (and the Mind's "what it
+  knows" freshness) works uniformly local + prod. Nothing renamed, nothing dropped.
+- **API + contracts.** `GET /mind` → `MindResponse` (panel · debate · knows · learnings); TS contracts
+  regenerated from OpenAPI (never hand-typed). Wired `reflect()` into `POST /autonomy/tick`.
+- **Web — the Mind page (`/mind`, new first-class destination).** Consolidates the previously **scattered**
+  brain/memory/intelligence/skills surfaces into one clean view: **How it thinks** (consensus card + analyst
+  stance cards, with a "Reasons · never funds" railguard badge), **What it knows** (sources by perspective +
+  freshness, honest "not ingested yet"), **What it has learned** (ML model state · regime-coverage grid · gate
+  efficiency · memory insights · distilled skills). New nav entry (Brain icon). The duplicated "what the machine
+  has learned" block was removed from `/lab` (it now lives on the Mind). `typecheck` + `next build` green (18
+  routes incl. `/mind`); naming guard green. `tests/test_mind.py` (7 tests) locks: honest abstention on an empty
+  store, ingested signals driving a consensus, determinism, the contested-read flag, and `reflect()` persisting +
+  degrading gracefully when the table is absent.
+
 ### Fee single-source, funnel data, skills, closed research loop (2026-06-03)
 - **One source of fee truth.** `VenueCatalog.venue_for(spec.universe.venues)` resolves the venue a spec is PRICED against; the Lab screen (`lab/finder.py`, `evolution/loop.py`) and the gate (`research/gate.py`) now derive fees from it instead of hardcoding Binance. An IBKR-equity spec is screened at IBKR fees, not 10 bps — the multi-venue fee model is now actually exercised, not just defined. (`tests/test_venue_fees.py` locks `venue_for`.) *Honest scope:* the engine is long-only spot, so there is no perp-funding cost to deduct — modeling one would fabricate perp mechanics; funding stays a point-in-time signal.
 - **Strategies funnel is now data, not a button row.** The `/strategies` pipeline strip is a non-clickable stepper carrying live per-stage counts (`PopulationResponse.live` added); it shows the funnel kill-rate instead of duplicating the nav.
