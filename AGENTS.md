@@ -13,10 +13,13 @@ Stack:
 
 ## How it actually runs (read this twice)
 - **Honest loop.** The deployed autonomous tick runs on **REAL Binance bars** (`edge_market=False`). Synthetic edge-bearing fixtures are quarantined to **CI/tests ONLY** — they must NEVER be shown in the app or run in prod. *Do not display synthetic things — hard rule.*
-- **Local-first compute.** Heavy discovery (grid-search, walk-forward, backtest sweeps) runs **locally on the owner's M2 Mac** and emits only winning `StrategySpec`s to Postgres. Backtests are deterministic + offline-capable, so the whole test/verify loop runs locally for $0.
+- **Compute — cloud vs local (read before heavy work).** The owner runs an **M2 MacBook Pro, 16 GB RAM** — it OOMs on the full `engine:test` suite and on `next build` under memory pressure (proven). So:
+  - **Local (this Mac):** editing, reading, `rg`, targeted test files, a single skill run, small backtests. Cheap, fast, $0.
+  - **Cloud Claude Code session:** anything heavy — the **full `pnpm verify` / `engine:test`**, **`next build`**, **grid-search / walk-forward / backtest sweeps**, broad multi-file refactors. Don't fight OOM locally; switch to cloud.
+  - **Cost lever:** heavy *LLM* work (mass authoring, research, judgment) belongs to **Claude Code on the flat Max subscription**, NOT per-token API calls — the sub is already paid. The deployed engine's autonomous loop uses cheap/free OpenRouter models. **Any coding agent: if a task will spike RAM or burn many tokens, say so and recommend a cloud session — don't silently grind locally.**
 - **Cloud runs only:** the always-on API for the UI, gate disposition on authored specs, a mark-to-market cron, and (eventually) live execution.
 - **Forward-test clock.** Funded SIM tracks are **held and marked-to-market across bars**. A track must show positive net-of-fee SIM P&L over **N ≥ 30 forward days** before it is live-eligible. Each survivor proves itself on its **own standalone track** — there is NO pooled wallet.
-- **Deterministic funding gate.** A deterministic scorer — not any LLM — is the only judge that funds SIM tracks: deflated Sharpe, CSCV-PBO, holdout, regime folds. *Hardening in progress:* route the funding cohort through the global trial ledger + Benjamini-Hochberg FDR + `must_beat_buy_and_hold` (the rigorous `research/gate.py:PREREGISTERED_BAR`), so the rigorous bar — not the lighter cohort scorer — is what authorizes capital.
+- **Deterministic funding gate.** A deterministic scorer — not any LLM — is the only judge that funds SIM tracks: deflated Sharpe, CSCV-PBO, holdout, regime folds, **and a cohort-level Benjamini-Hochberg FDR**. The FDR control is wired into the deployed `FarmLoop.run_cohort` (`GateSettings.fdr_q`, default 0.10): a candidate that clears `score()` but fails BH-FDR across its cohort is demoted (`passed_gates→0`, status `killed`, Track removed) before the orchestrator can fund it — so authoring more candidates per tick can't manufacture a winner. *Still pending:* `must_beat_buy_and_hold` + routing the cohort through the full `research/gate.py:PREREGISTERED_BAR`.
 
 ## Lifecycle
 **Lab (discover)** → **Strategies (screened)** → **Forward-test (proven, per-strategy, SIM)** → **Live (you launch winners).**
@@ -24,9 +27,12 @@ NO pooled wallet — each survivor proves itself on its **own standalone track**
 
 ## Dev gate (before every push)
 ```
-pnpm verify          # = contracts:generate && engine:test && typecheck
+pnpm verify          # = naming:check && contracts:generate && engine:test && typecheck && build
 ```
-All offline, no keys required. **Run `pnpm verify` before every push.**
+Mostly offline, no keys required. **Run `pnpm verify` before every push.** It now ends with `build` (the real
+`next build`) — that's the step that catches a Vercel-breaking page before you push, e.g. a prerender crash on
+a null field. If RAM is tight (see **Compute** below), `next build` and the full `engine:test` are the heavy
+parts — run them in a cloud session rather than fighting OOM locally.
 
 **Push = deploy.** Railway (engine) and Vercel (web) auto-deploy on push to the working branch. One trigger only: `git push`. Never also run `railway up` / `vercel deploy` (double-deploy race). Tokens in `.env.local` (gitignored) are for **reading logs while debugging**, not for deploying.
 

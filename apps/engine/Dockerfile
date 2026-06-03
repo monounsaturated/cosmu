@@ -9,12 +9,18 @@ FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=6 \
+    PIP_PREFER_BINARY=1
 
 WORKDIR /app
 
 COPY . /app
-RUN pip install .
+# Retry the whole install up to 3x: Railway's builder occasionally drops the PyPI connection mid-download
+# (BrokenPipeError / "Connection broken") — transient infra flakiness, not a dep problem. PIP_RETRIES handles
+# per-request blips; this rides out a connection that dies mid-resolve. Fails (non-zero) only if all 3 fail.
+RUN pip install . || pip install . || pip install .
 
 EXPOSE 8000
 # `python -m` (not the bare uvicorn console script) so /app is on sys.path even if the install layer regresses.
