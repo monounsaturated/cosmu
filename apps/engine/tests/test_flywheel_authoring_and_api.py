@@ -180,6 +180,44 @@ def test_leaderboard_never_emits_null_metrics_without_a_backtest(tmp_path, monke
             assert math.isfinite(row[field]), f"{field} is non-finite: {row[field]!r}"
 
 
+def test_leaderboard_surfaces_advisory_maturity_signal(tmp_path, monkeypatch):
+    # ADVISORY ONLY: the leaderboard exposes forward_age_days + live_ready per track, computed from the track's
+    # FIRST `track_opened` event (its forward-test clock origin). A matured + net-positive track is recommended;
+    # this NEVER gates — it's surfaced for the operator. Mirrors what feeds the web /forward-test page.
+    from datetime import UTC, datetime, timedelta
+
+    client, store = _client(tmp_path, monkeypatch)
+
+    spec = seed_momentum_spec(); spec.name = "Matured momentum"
+    vid = _persist_version(store, spec, passed=True)
+    # The clock origin: a track_opened event 40 days ago (> FORWARD_TEST_MIN_DAYS). oos_return 0.04 -> net_pct > 0.
+    store.append_event(
+        actor="master", kind="track_opened", ref_type="strategy_version", ref_id=vid,
+        payload={"proven_regimes": ["bull"]},
+    )
+    old_ts = (datetime.now(tz=UTC) - timedelta(days=40)).isoformat()
+    with store.batch() as writer:
+        writer.execute("UPDATE events SET ts = ? WHERE kind = 'track_opened' AND ref_id = ?", (old_ts, vid))
+
+    rows = client.get("/leaderboard").json()["rows"]
+    row = next(r for r in rows if r["version_id"] == vid)
+    assert "forward_age_days" in row and "live_ready" in row, "advisory maturity fields must be on the contract"
+    assert row["forward_age_days"] >= 30.0
+    assert row["live_ready"] is True  # matured AND net-positive -> recommended (advisory)
+
+
+def test_leaderboard_live_ready_false_without_a_funded_clock(tmp_path, monkeypatch):
+    # No track_opened event => forward-test clock never started => age 0 => never live_ready, regardless of P&L.
+    # Fail-safe: an unfunded/un-marked track is never recommended.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Unfunded momentum"
+    vid = _persist_version(store, spec, passed=True)
+
+    row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
+    assert row["forward_age_days"] == 0.0
+    assert row["live_ready"] is False
+
+
 def test_leaderboard_metric_coercion_handles_nan_and_none():
     # Unit-level guard on the coercion helper itself: NULL, NaN, inf and junk all
     # collapse to the documented 0.0 sentinel (plain `x or 0` would let NaN through).

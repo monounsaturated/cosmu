@@ -11,6 +11,13 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# ADVISORY forward-test maturity threshold (calendar days). A funded SIM track that has run at least this many
+# days of real-close forward time AND is net-of-fee positive is *recommended* as live-ready (see
+# master/forward_maturity.py). This is SURFACED, NOT ENFORCED — the operator launches via the modal at their
+# discretion and the 5 interlocks remain the only hard gate. Kept a named constant (never an inline magic number)
+# and intentionally OUTSIDE GateSettings so it can never leak into the deterministic scorer/FDR/money path.
+FORWARD_TEST_MIN_DAYS: int = 30
+
 
 class SpendSettings(BaseModel):
     daily_cap_usd: Decimal = Decimal("50")
