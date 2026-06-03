@@ -7,7 +7,7 @@ gets funded. Live trading is **OFF by default** behind 5 interlocks.
 
 - Authors trading strategies autonomously (or from your ideas)
 - Screens them through a deterministic, FDR-controlled gate (deflated Sharpe · CSCV-PBO · holdout · regime folds · cohort Benjamini-Hochberg)
-- Forward-tests survivors on their own standalone SIM tracks — a track must prove ≥30 forward days net of fees before it's live-eligible
+- Forward-tests survivors on their own standalone SIM tracks — ≥30 forward days net of fees is the recommended live-readiness proof (the operator decides when to go live; the 5 interlocks are the hard gate)
 - Ingests free alt-data sources for cross-asset signals, surfaced through the Mind (analyst-panel reasoning)
 
 ## What it doesn't do
