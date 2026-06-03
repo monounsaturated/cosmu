@@ -87,6 +87,9 @@ export default async function ForwardTestPage() {
         <section className="grid gap-3 sm:grid-cols-2">
           {ranked.map((r) => {
             const up = r.net_pct >= 0;
+            // ADVISORY maturity (engine: master/forward_maturity.py) — surfaced, NEVER enforced. live_ready means
+            // the track both matured (>= FORWARD_TEST_MIN_DAYS) and is net-positive; the operator still decides.
+            const ageDays = Math.floor(r.forward_age_days);
             return (
               <Card key={r.version_id}>
                 <CardContent className="space-y-3 py-4">
@@ -95,11 +98,18 @@ export default async function ForwardTestPage() {
                       <div className="truncate text-[13.5px] font-medium text-foreground">{r.name}</div>
                       <div className="truncate text-[11px] text-quiet">{r.lineage}</div>
                     </div>
-                    <Badge variant={up ? "up" : "down"}>{up ? "passing" : "underwater"}</Badge>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <Badge variant={up ? "up" : "down"}>{up ? "passing" : "underwater"}</Badge>
+                      {r.live_ready ? (
+                        <Badge variant="iris"><ShieldCheck className="size-3" /> live-ready · advisory</Badge>
+                      ) : (
+                        <Badge variant="muted">maturing · advisory</Badge>
+                      )}
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <Metric label="Net (fees in)" value={formatSigned(r.net_pct) + "%"} tone={up ? "text-up" : "text-down"} icon={up ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />} />
-                    <Metric label="Score (dSR)" value={r.deflated_sharpe.toFixed(2)} tone="text-foreground" />
+                    <Metric label="Forward age" value={`${ageDays}d`} tone="text-foreground" />
                     <Metric label="Overfit (PBO)" value={formatPct(r.pbo * 100, 0)} tone={r.pbo <= 0.2 ? "text-up" : r.pbo <= 0.5 ? "text-warn" : "text-down"} />
                   </div>
                   <div className="flex items-center gap-2 pt-0.5">

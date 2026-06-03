@@ -405,7 +405,9 @@ export interface LeaderboardResponse {
 
 export interface LeaderboardRow {
   deflated_sharpe: number;
+  forward_age_days: number;
   lineage: string;
+  live_ready: boolean;
   name: string;
   net_pct: number;
   pbo: number;
@@ -727,8 +729,6 @@ export interface UniverseResponse {
 }
 
 export interface ValidationError {
-  ctx?: Record<string, unknown>;
-  input?: string;
   loc: string | number[];
   msg: string;
   type: string;

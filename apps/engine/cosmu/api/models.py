@@ -37,6 +37,12 @@ class LeaderboardRow(BaseModel):
     pbo: float
     status: str
     lineage: str
+    # ADVISORY forward-test maturity signal (master/forward_maturity.py) — SURFACED, NOT ENFORCED. `forward_age_days`
+    # is calendar time the track's forward-test clock has run since its first mark; `live_ready` recommends a track
+    # that has both matured (>= FORWARD_TEST_MIN_DAYS) and is net-of-fee positive. The operator launches via the
+    # modal at their discretion; the 5 interlocks remain the only hard gate. Never consulted by the gate/money path.
+    forward_age_days: float
+    live_ready: bool
 
 
 class LeaderboardResponse(BaseModel):

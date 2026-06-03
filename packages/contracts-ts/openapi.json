@@ -1926,9 +1926,17 @@
             "title": "Deflated Sharpe",
             "type": "number"
           },
+          "forward_age_days": {
+            "title": "Forward Age Days",
+            "type": "number"
+          },
           "lineage": {
             "title": "Lineage",
             "type": "string"
+          },
+          "live_ready": {
+            "title": "Live Ready",
+            "type": "boolean"
           },
           "name": {
             "title": "Name",
@@ -1963,7 +1971,9 @@
           "net_pct",
           "pbo",
           "status",
-          "lineage"
+          "lineage",
+          "forward_age_days",
+          "live_ready"
         ],
         "title": "LeaderboardRow",
         "type": "object"
@@ -3474,13 +3484,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
