@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Brain,
+  DollarSign,
   LayoutDashboard,
   LineChart,
   ListChecks,
@@ -36,6 +37,7 @@ export const navItems: NavItem[] = [
   { href: "/strategies", label: "Strategies", desc: "Screened pipeline", icon: ListChecks },
   { href: "/forward-test", label: "Forward-test", desc: "Per-strategy · proving", icon: LineChart },
   { href: "/live", label: "Live", desc: "Real money", icon: Radio, gated: true },
+  { href: "/costs", label: "Costs", desc: "Infra · ROI · opex", icon: DollarSign },
   { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal },
   { href: "/settings", label: "Settings", desc: "Universe · data", icon: SlidersHorizontal }
 ];

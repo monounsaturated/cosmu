@@ -232,6 +232,7 @@ def _llm_propose(brief: str, *, store: Store | None, chat):  # noqa: ANN001, ANN
             api_key=settings.llm_api_key,        # xAI (Grok) if set, else OpenRouter — centralized in settings
             provider=settings.llm_provider,
             chat=chat,
+            store=store,  # records llm_calls row; best-effort, None-safe
         )
         return result.proposal, result.notes
     except Exception as exc:  # noqa: BLE001 — the LLM seam is advisory; a hiccup falls back to the template path

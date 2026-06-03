@@ -189,6 +189,8 @@ export interface CostSlice {
 
 export interface CostsResponse {
   by_category: CostByCategory[];
+  infra_lines: InfraLine[];
+  llm_calls: LlmCallSummary;
   opex_vs_alpha: number;
   per_strategy: CostPerStrategy[];
   total_usd: number;
@@ -378,6 +380,15 @@ export interface HTTPValidationError {
   detail?: ValidationError[];
 }
 
+export interface InfraLine {
+  amount: number;
+  amount_max: number;
+  amount_min: number;
+  category: string;
+  note: string;
+  vendor: string;
+}
+
 export interface IntelligenceResponse {
   data_freshness: DataSource[];
   funnel: FunnelStats;
@@ -491,6 +502,12 @@ export interface LiveVenuesResponse {
   jurisdiction: string;
   total_deployed_usd: number;
   venues: LiveVenue[];
+}
+
+export interface LlmCallSummary {
+  by_task: Record<string, unknown>;
+  call_count: number;
+  total_cost: number;
 }
 
 export interface MemoryDepth {

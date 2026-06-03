@@ -16,7 +16,9 @@ import type {
   CostPerStrategy,
   CostsResponse,
   Event,
+  InfraLine,
   LeaderboardResponse,
+  LlmCallSummary,
   MemoryInsight,
   MemoryInsightsResponse,
   MindResponse,
@@ -39,7 +41,9 @@ export type {
   MemoryInsightsResponse,
   CostByCategory,
   CostPerStrategy,
-  CostsResponse
+  CostsResponse,
+  InfraLine,
+  LlmCallSummary
 };
 
 const baseUrl = process.env.API_BASE_URL;
@@ -146,7 +150,9 @@ const emptyCosts: CostsResponse = {
   total_usd: 0,
   by_category: [],
   opex_vs_alpha: 0,
-  per_strategy: []
+  per_strategy: [],
+  infra_lines: [],
+  llm_calls: { call_count: 0, total_cost: 0, by_task: {} }
 };
 
 const emptyPositions: PositionsResponse = {
