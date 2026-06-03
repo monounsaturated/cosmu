@@ -119,7 +119,7 @@ export function EquityCurve({
       <ChartEmpty
         icon={<Coins className="size-5" />}
         title="No live data yet"
-        hint="The pooled wallet curve renders once the engine has a real paper portfolio."
+        hint="The net-across-forward-tests curve renders once the engine has real track records."
         height={height}
       />
     );

@@ -16,16 +16,15 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { cn, formatPct } from "@/lib/utils";
 
-// Disambiguate the two money layers right where the columns live.
+// Disambiguate the two return columns right where they live.
 const SLEEVE_VS_WALLET = (
   <div className="space-y-1.5">
     <p>
-      <span className="font-semibold text-foreground">Sleeve</span> — this Version&apos;s raw return on its standardized
-      $100k Sleeve.
+      <span className="font-semibold text-foreground">Return</span> — this Version&apos;s raw return on its own track.
     </p>
     <p>
-      <span className="font-semibold text-foreground">Net</span> — the same Sleeve after fees and costs. The Wallet on
-      Overview aggregates funded Allocations.
+      <span className="font-semibold text-foreground">Net</span> — the same track after fees and costs. Each strategy
+      stands on its own — there is no pooled wallet.
     </p>
   </div>
 );
@@ -48,8 +47,8 @@ const STAGES: { id: Stage; label: string; explainer: string; badge: "warn" | "ir
   },
   {
     id: "paper",
-    label: "Paper",
-    explainer: "Funded on the shared paper Wallet, trading live data with no real money at risk.",
+    label: "Forward-test",
+    explainer: "Proving itself on its own track on real prices — no real money, no pooled wallet.",
     badge: "up"
   },
   {
@@ -131,7 +130,7 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
             />
           </div>
           <span className="ml-auto inline-flex items-center gap-1 text-[11.5px] text-quiet">
-            Sleeve vs net <Tooltip content={SLEEVE_VS_WALLET} /> · {totalMatching} Versions
+            Return vs net <Tooltip content={SLEEVE_VS_WALLET} /> · {totalMatching} Versions
           </span>
         </div>
 
@@ -168,7 +167,7 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
                     <TR>
                       <TH className="sticky-col">Version</TH>
                       <TH>Status</TH>
-                      <TH className="text-right">Sleeve</TH>
+                      <TH className="text-right">Return</TH>
                       <TH className="text-right">Net</TH>
                       <TH className="text-right">
                         <span className="inline-flex items-center gap-1">Score</span>

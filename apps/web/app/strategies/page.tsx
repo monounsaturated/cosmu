@@ -37,7 +37,7 @@ export default async function StrategiesPage() {
       {!connected ? (
         <NotConnected
           configured={engineConfigured}
-          what="Every Version earns a standardized $100k Sleeve, judged in net-of-fee %. The searchable, stage-by-stage table appears here once the engine is connected — no demo rows."
+          what="Every Version is judged in net-of-fee % on its own track — no pooled wallet. The searchable, stage-by-stage table appears here once the engine is connected — no demo rows."
         />
       ) : rows.length === 0 ? (
         <Card>
@@ -64,7 +64,7 @@ function FunnelStrip() {
   const steps: { href: string; label: string; here?: boolean }[] = [
     { href: "/lab", label: "Lab" },
     { href: "/strategies", label: "Strategies", here: true },
-    { href: "/paper", label: "Paper" },
+    { href: "/forward-test", label: "Forward-test" },
     { href: "/live", label: "Live" }
   ];
   return (

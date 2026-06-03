@@ -49,7 +49,7 @@ export default async function OverviewPage() {
         </div>
         <NotConnected
           configured={engineConfigured}
-          what="The Overview shows the Wallet's net return and what needs you. Connect the engine to see live numbers."
+          what="The Overview shows your net return across forward-tests and what needs you. Connect the engine to see live numbers."
         />
       </div>
     );
@@ -102,11 +102,11 @@ export default async function OverviewPage() {
       {/* KPI row */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
-          label="Wallet"
+          label="Net equity"
           value={hasTrackRecord ? formatUsd(equity) : "—"}
           accent="iris"
           icon={<Coins className="size-4" />}
-          hint={<span className="inline-flex items-center gap-1 text-quiet">pooled paper <Tooltip content={SLEEVE_VS_WALLET} /></span>}
+          hint={<span className="inline-flex items-center gap-1 text-quiet">across forward-tests <Tooltip content={SLEEVE_VS_WALLET} /></span>}
         />
         <Stat
           label="Total profit"
@@ -125,11 +125,11 @@ export default async function OverviewPage() {
         <Card>
           <CardHeader>
             <div className="flex min-w-0 items-center gap-1.5">
-              <CardTitle>Wallet equity</CardTitle>
+              <CardTitle>Net across forward-tests</CardTitle>
               <Tooltip content={SLEEVE_VS_WALLET} />
             </div>
-            <Link href="/paper" className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft transition-colors hover:underline">
-              Open Paper <ArrowRight className="size-3.5" />
+            <Link href="/forward-test" className="inline-flex items-center gap-1 text-[12.5px] font-medium text-iris-soft transition-colors hover:underline">
+              Open Forward-test <ArrowRight className="size-3.5" />
             </Link>
           </CardHeader>
           <CardContent>
@@ -209,7 +209,7 @@ export default async function OverviewPage() {
                 >
                   <div className="min-w-0">
                     <div className="truncate text-[12.5px] font-medium text-foreground">{row.name}</div>
-                    <div className="text-[11px] text-quiet">Sleeve · net of fees</div>
+                    <div className="text-[11px] text-quiet">net of fees</div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2.5">
                     <span className={`tabular text-[13px] font-medium ${row.net_pct >= 0 ? "text-up" : "text-down"}`}>

@@ -3,7 +3,7 @@
 // Each stage is a real link to its route, so the strip doubles as primary navigation + a how-it-works legend.
 
 import Link from "next/link";
-import { Microscope, Filter, Wallet, Radio, ArrowRight } from "lucide-react";
+import { Microscope, Filter, LineChart, Radio, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Stage = {
@@ -18,8 +18,8 @@ type Stage = {
 const STAGES: Stage[] = [
   { href: "/lab", label: "Lab", tag: "Discover", blurb: "Research & author candidates. (Lab = Research.)", icon: Microscope },
   { href: "/strategies", label: "Strategies", tag: "Screen", blurb: "The Gate scores them. Only edge that beats fees survives.", icon: Filter },
-  { href: "/paper", label: "Paper", tag: "Forward-test", blurb: "Survivors trade a paper wallet on real prices.", icon: Wallet },
-  { href: "/live", label: "Live", tag: "Real money", blurb: "You promote a proven sleeve. 5 interlocks, off by default.", icon: Radio }
+  { href: "/forward-test", label: "Forward-test", tag: "Prove", blurb: "Each survivor trades its own track on real prices — no pooled wallet.", icon: LineChart },
+  { href: "/live", label: "Live", tag: "Real money", blurb: "You launch a proven strategy as a standalone bot. 5 interlocks, off by default.", icon: Radio }
 ];
 
 export function LifecycleStrip() {

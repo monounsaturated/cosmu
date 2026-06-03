@@ -11,13 +11,13 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   LayoutDashboard,
+  LineChart,
   ListChecks,
   Microscope,
   MoreHorizontal,
   Radio,
   SlidersHorizontal,
   Terminal,
-  Wallet,
   X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -32,7 +32,7 @@ export const navItems: NavItem[] = [
   { href: "/", label: "Overview", desc: "Are we making money?", icon: LayoutDashboard },
   { href: "/lab", label: "Lab", desc: "Discover · research", icon: Microscope },
   { href: "/strategies", label: "Strategies", desc: "Screened pipeline", icon: ListChecks },
-  { href: "/paper", label: "Paper", desc: "Forward-test", icon: Wallet },
+  { href: "/forward-test", label: "Forward-test", desc: "Per-strategy · proving", icon: LineChart },
   { href: "/live", label: "Live", desc: "Real money", icon: Radio, gated: true },
   { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal },
   { href: "/settings", label: "Settings", desc: "Universe · data", icon: SlidersHorizontal }
@@ -40,7 +40,7 @@ export const navItems: NavItem[] = [
 
 // Mobile dock: the four primary monitoring tabs always pinned; everything else lives in the More
 // sheet. Live joins the dock (5th tab) only when armed — see BottomNav.
-const PRIMARY_HREFS = ["/", "/lab", "/strategies", "/paper"];
+const PRIMARY_HREFS = ["/", "/lab", "/strategies", "/forward-test"];
 const primaryItems = navItems.filter((i) => PRIMARY_HREFS.includes(i.href));
 const liveItem = navItems.find((i) => i.href === "/live")!;
 // The More sheet holds the rest (Live, Steer, Costs, Settings) — i.e. anything not a primary tab.
