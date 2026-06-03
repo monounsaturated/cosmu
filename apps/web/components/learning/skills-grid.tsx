@@ -53,7 +53,7 @@ export function SkillsGrid({ skills }: { skills: Skill[] }) {
               <span className="tabular">
                 {skill.success_count} {skill.success_count === 1 ? "win" : "wins"}
               </span>
-              <span>{new Date(skill.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+              <span>{new Date(skill.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
             </div>
           </div>
         );

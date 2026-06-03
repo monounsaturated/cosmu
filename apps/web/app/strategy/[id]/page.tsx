@@ -239,7 +239,7 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
                     <TD className="text-right tabular text-muted">{formatUsd(trade.fee)}</TD>
                     <TD className="text-quiet">{trade.venue ?? "—"}</TD>
                     <TD className="text-quiet">
-                      <time dateTime={trade.ts}>{new Date(trade.ts).toLocaleString()}</time>
+                      <time dateTime={trade.ts}>{new Date(trade.ts).toLocaleString("en-US")}</time>
                     </TD>
                   </TR>
                 ))}

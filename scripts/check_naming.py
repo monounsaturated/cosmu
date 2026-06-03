@@ -41,7 +41,7 @@ BANNED = [
 
 # Only scan source; skip generated dirs, docs, the migration, the glossary, and this guard itself.
 EXTS = {".py", ".ts", ".tsx", ".sql"}
-SKIP_DIRS = {".git", "node_modules", ".next", "__pycache__", "dist", ".venv", "migrations"}
+SKIP_DIRS = {".git", ".claude", "node_modules", ".next", "__pycache__", "dist", ".venv", "migrations"}
 SKIP_FILES = {"check_naming.py"}
 
 pattern = re.compile("|".join(BANNED))

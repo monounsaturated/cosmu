@@ -277,7 +277,7 @@ function DataSources({ sources }: { sources: DataSource[] }) {
             >
               <Zap className="size-3 text-iris-soft" />
               <span className="text-[11px] font-medium text-foreground">{s.source}</span>
-              <span className="tabular text-[10px] text-muted">{s.points.toLocaleString()} pts</span>
+              <span className="tabular text-[10px] text-muted">{s.points.toLocaleString("en-US")} pts</span>
             </div>
           ))}
         </div>

@@ -65,7 +65,7 @@ function relativeTime(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.round(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(then).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return new Date(then).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function actorLabel(actor: string): string {
@@ -124,7 +124,7 @@ export function ActivityTimeline({ events, limit = 40 }: { events: Event[]; limi
                   </>
                 ) : null}
                 <span className="text-border-strong">·</span>
-                <time dateTime={event.ts} title={new Date(event.ts).toLocaleString()}>
+                <time dateTime={event.ts} title={new Date(event.ts).toLocaleString("en-US")} suppressHydrationWarning>
                   {relativeTime(event.ts)}
                 </time>
               </div>

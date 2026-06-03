@@ -157,7 +157,8 @@ def test_disabling_binance_starves_the_cohort(tmp_path):
 
     store = _store(tmp_path)
     _seed_venues(store)
-    set_venue_enabled(store, "binance", False)
+    for vid in ("binance", "kraken", "coinbase"):
+        set_venue_enabled(store, vid, False)
 
     venues, classes = enabled_universe(store)
     assert "binance" not in venues and "crypto" not in classes
@@ -173,8 +174,9 @@ def test_set_venue_enabled_keeps_one_venue_and_audits(tmp_path):
 
     store = _store(tmp_path)
     _seed_venues(store)
-    set_venue_enabled(store, "ibkr", False)
-    set_venue_enabled(store, "polymarket", False)
+    to_disable = ["ibkr", "polymarket", "kraken", "coinbase", "alpaca"]
+    for vid in to_disable:
+        set_venue_enabled(store, vid, False)
 
     try:
         set_venue_enabled(store, "binance", False)
@@ -183,7 +185,7 @@ def test_set_venue_enabled_keeps_one_venue_and_audits(tmp_path):
         pass
 
     events = store.rows("SELECT kind, ref_id FROM events WHERE kind = 'venue_toggle_changed'")
-    assert {e["ref_id"] for e in events} == {"ibkr", "polymarket"}
+    assert {e["ref_id"] for e in events} == set(to_disable)
 
 
 def test_class_gate_greys_venue_but_keeps_its_tick(tmp_path):
