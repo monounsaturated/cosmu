@@ -77,3 +77,55 @@ def test_missing_inbox_dir_is_safe(tmp_path):
     store = _store(tmp_path)
     report = scan_inbox(store, inbox_dir=tmp_path / "nope")
     assert report.scanned == 0 and report.imported == []
+
+
+# A .md may lead with a typed YAML front-matter block (the authored format the README documents). It must be
+# parsed as that EXACT spec — not silently degraded to a heuristic prose draft (which discarded the author's
+# named features + fitted param_space and produced a mangled name).
+_FRONTMATTER_MD = """---
+name: Front-matter reversion
+rationale: buy oversold dips on spot
+universe: {venues: [binance], asset_classes: [crypto], min_instruments: 5}
+horizon: {bar_size: 1d, min_hold_days: 1, max_hold_days: 7}
+entry:
+  - feature: {name: rsi, lookback: {param: rsi_lookback}}
+    op: lt
+    threshold: {param: rsi_floor}
+exit:
+  stop_loss: {param: stop}
+  take_profit: {param: tp}
+param_space:
+  rsi_lookback: {kind: int, lo: 7, hi: 21, step: 1}
+  rsi_floor: {kind: float, lo: 20.0, hi: 40.0}
+  stop: {kind: float, lo: 0.03, hi: 0.12}
+  tp: {kind: float, lo: 0.05, hi: 0.2}
+---
+
+# Front-matter reversion
+Thesis prose that the heuristic drafter would otherwise parse instead of the typed block above.
+"""
+
+
+def test_inbox_md_frontmatter_parses_typed_spec(tmp_path):
+    store = _store(tmp_path)
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "fm.md").write_text(_FRONTMATTER_MD)
+    report = scan_inbox(store, inbox_dir=inbox, market_data=_FixtureBars())
+    assert len(report.imported) == 1
+    rec = report.imported[0]
+    # parsed via the typed front-matter path, with the AUTHORED name preserved verbatim (not a "(chat)" draft)
+    assert rec.kind == "md-spec"
+    assert rec.name == "Front-matter reversion"
+
+
+def test_inbox_skips_readme_docs(tmp_path):
+    store = _store(tmp_path)
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    (inbox / "README.md").write_text("# Strategy Inbox\nDrop strategy files here.")
+    (inbox / "spec.json").write_text(json.dumps(seed_momentum_spec().model_dump(mode="json")))
+    report = scan_inbox(store, inbox_dir=inbox, market_data=_FixtureBars())
+    # README is documentation, never a spec — only the real spec is scanned/imported
+    assert report.scanned == 1
+    assert {f.kind for f in report.imported} == {"json"}

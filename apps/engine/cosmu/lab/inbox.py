@@ -21,9 +21,14 @@ from cosmu.strategy.pine import translate_pine
 from cosmu.strategy.spec import StrategySpec
 from cosmu.strategy.static_check import validate_spec
 
-# The repo-root strategies/inbox directory. Resolved relative to this file so it works from any CWD.
+# The canonical inbox: apps/engine/strategies/inbox (parents[2] == apps/engine). It lives UNDER apps/engine so
+# the Railway image — built from apps/engine — actually ships it and this scanner reads the same files authors
+# write (scripts/seed_inbox_strategies.py targets the same path). Resolved relative to this file (CWD-agnostic).
 _INBOX_DIR = Path(__file__).resolve().parents[2] / "strategies" / "inbox"
 _SUPPORTED = (".md", ".pine", ".json")
+# Filenames that are documentation, never strategy specs — skipped by the scanner even though a .md README
+# parses into a draft spec.
+_DOC_STEMS = frozenset({"readme"})
 
 
 @dataclass
@@ -58,9 +63,39 @@ def _already_imported(store: Store, content_hash: str) -> bool:
     return row is not None
 
 
+def _spec_from_frontmatter(text: str) -> StrategySpec | None:
+    """A `.md` file may lead with a YAML front-matter block (`---` … `---`) that IS a typed StrategySpec — the
+    authored format the inbox README documents. Parse it directly so the authored edge (named features, modules,
+    fitted param_space) is preserved verbatim, instead of being thrown away by the prose-heuristic drafter.
+    `risk` is optional here (RiskRules is fully defaultable) and any extra prose keys (e.g. `strategy:`, `modules:`)
+    are ignored by the model. Returns None when there is no front-matter or it isn't a spec — caller falls back
+    to draft_from_brief for genuine prose briefs."""
+    stripped = text.lstrip()
+    if not stripped.startswith("---"):
+        return None
+    block, sep, _body = stripped[3:].partition("\n---")
+    if not sep:
+        return None
+    try:
+        import yaml
+
+        data = yaml.safe_load(block)
+    except Exception:  # noqa: BLE001 — malformed YAML → not a spec; degrade to the prose-brief path
+        return None
+    # Only treat it as a typed spec when it carries the structural fields; otherwise it's prose-with-metadata.
+    if not isinstance(data, dict) or not ("entry" in data and "param_space" in data):
+        return None
+    data.setdefault("risk", {})  # authored briefs omit risk to use RiskRules defaults
+    try:
+        return StrategySpec.model_validate(data)
+    except Exception:  # noqa: BLE001 — incomplete/invalid front-matter → fall back to the brief drafter
+        return None
+
+
 def _spec_from_file(path: Path, text: str) -> tuple[StrategySpec | None, str, list[str]]:
-    """Translate one inbox file to a typed StrategySpec. Reuses translate_pine (.pine), draft_from_brief (.md),
-    and StrategySpec parsing (.json). Returns (spec | None, kind, issues)."""
+    """Translate one inbox file to a typed StrategySpec. Reuses translate_pine (.pine), StrategySpec parsing
+    (.json), front-matter parsing (.md with a typed `---` block), and draft_from_brief (.md prose). Returns
+    (spec | None, kind, issues)."""
     suffix = path.suffix.lower()
     try:
         if suffix == ".pine":
@@ -70,6 +105,9 @@ def _spec_from_file(path: Path, text: str) -> tuple[StrategySpec | None, str, li
             spec = StrategySpec.model_validate(json.loads(text))
             return spec, "json", validate_spec(spec)
         if suffix == ".md":
+            fm_spec = _spec_from_frontmatter(text)
+            if fm_spec is not None:
+                return fm_spec, "md-spec", validate_spec(fm_spec)
             draft = draft_from_brief(text, llm_enabled=False)
             return draft.spec, "brief", draft.issues or validate_spec(draft.spec)
     except Exception as exc:  # noqa: BLE001 — a malformed file is reported, never crashes the scan
@@ -94,6 +132,10 @@ def scan_inbox(
     new_specs: list[StrategySpec] = []
     for path in sorted(directory.iterdir()):
         if path.suffix.lower() not in _SUPPORTED or not path.is_file():
+            continue
+        # Docs that live alongside specs (README, *TEMPLATE) are not strategies — a .md README happily parses
+        # into a draft spec, so without this guard it would be imported as a bogus Version. Skip them quietly.
+        if path.stem.lower() in _DOC_STEMS or path.stem.upper().endswith("TEMPLATE"):
             continue
         report.scanned += 1
         text = path.read_text(encoding="utf-8", errors="replace")

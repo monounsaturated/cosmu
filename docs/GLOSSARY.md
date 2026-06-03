@@ -59,7 +59,7 @@ The agent's standardized self-knowledge, surfaced on the **Mind** page (`/mind`)
 | **StrategySpec** | The typed hypothesis contract a Version is authored as (`apps/engine/cosmu/strategy/spec.py`): universe, horizon, catalyst, entry/exit *structure* over named features, risk rules, and a `param_space`. **No magic numbers** — thresholds live in `param_space` and are fit from data. |
 | **Feature** | A named, point-in-time data signal from the **feature registry** (`apps/engine/cosmu/config/feature_registry.py`). Specs reference features by name only. |
 | **Composable module** | A reusable, named entry/exit building block (e.g. `multi_tp`, `break_even+runner`, `ma_trend_filter`, `orb`, `fvg_retest`/`fvg_multiple`) that a Version declares instead of re-deriving structure. See the create-strategy skill. |
-| **Inbox** | `strategies/inbox/` — drop a `*.md` / `*.pine` / `*.json` strategy file here; it is scanned on deploy/boot, parsed to a `StrategySpec`, and flows through `static_check → Lab → Finder → Gate`. |
+| **Inbox** | `apps/engine/strategies/inbox/` — drop a `*.md` / `*.pine` / `*.json` strategy file here; it is scanned on deploy/boot, parsed to a `StrategySpec`, and flows through `static_check → Lab → Finder → Gate`. |
 
 ## Canonical identifiers (code ↔ DB ↔ API)
 

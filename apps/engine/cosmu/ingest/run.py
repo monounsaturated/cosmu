@@ -20,11 +20,13 @@ from cosmu.data.altdata import (
     FredMacroProvider,
     FundingRateProvider,
     GdeltNewsProvider,
+    LunarCrushProvider,
     NewsProvider,
     OsintAirActivityProvider,
     PolymarketClobProvider,
     PolymarketGammaProvider,
     PolymarketOddsProvider,
+    RedditSentimentProvider,
 )
 from cosmu.ingest.pipeline import (
     ingest_liquidations,
@@ -63,6 +65,9 @@ class Providers:
     netflow: AltDataProvider = field(default_factory=ExchangeNetflowProvider)
     osint: AltDataProvider = field(default_factory=OsintAirActivityProvider)
     polymarket_clob: AltDataProvider = field(default_factory=lambda: PolymarketClobProvider())
+    # Social feeds: Reddit is free (no key); LunarCrush is key-gated → empty without LUNARCRUSH_API_KEY.
+    reddit: AltDataProvider = field(default_factory=RedditSentimentProvider)
+    lunarcrush: AltDataProvider = field(default_factory=lambda: LunarCrushProvider())
     llm: Callable[[str], StandardizedNews] | None = None
     fred_series: str = DEFAULT_FRED_SERIES
     polymarket_token: str = DEFAULT_POLYMARKET_TOKEN
@@ -78,6 +83,8 @@ class Providers:
             fred=FredMacroProvider(api_key=settings.fred_api_key),
             polymarket=PolymarketGammaProvider(pin_token=pin),
             polymarket_clob=PolymarketClobProvider(pin_token=pin),
+            # LunarCrush only connects when LUNARCRUSH_API_KEY is set; no key → the provider returns [] (honest).
+            lunarcrush=LunarCrushProvider(api_key=settings.lunarcrush_api_key or ""),
             polymarket_token="risk_on",
         )
 
@@ -109,6 +116,14 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     existing ingest_* primitives. Returns per-source append counts. Per-source failure → a 0 count, never
     an abort. The LLM runs ONLY at news standardization (cached); everything else is numeric (no LLM)."""
     store = store if store is not None else _default_store()
+    # Accept a knowledge `Store` (the master tick hands one in): it has no append/read_asof, so wrap it as the
+    # DB-backed central alt-data store — exactly what the API + research loop read from. Without this every
+    # source raised `'Store' object has no attribute 'append'`, got swallowed as a 0 count, and the deployed
+    # tick silently ingested nothing. An AltDataStore/PgAltDataStore (has `.append`) is used as-is.
+    if not hasattr(store, "append"):
+        from cosmu.data.altdata import PgAltDataStore
+
+        store = PgAltDataStore(store)
     symbols = list(symbols) if symbols is not None else list(DEFAULT_SYMBOLS)
     p = providers if providers is not None else Providers.from_settings(get_settings())
 
@@ -215,6 +230,23 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
         lambda: ingest_market_wide_numeric(
             store, p.polymarket_clob, source_metric="pm_book_depth", stored_metric="pm_book_depth", provider_name="polymarket"
         ),
+    )
+    # Social feeds (tier1, low-confidence). Reddit is market-wide (one crowd read under MARKET); LunarCrush is
+    # per-crypto-symbol and key-gated (empty without LUNARCRUSH_API_KEY → counted 0, never an abort).
+    counts["reddit_sentiment"] = _safe(
+        "reddit_sentiment",
+        lambda: ingest_market_wide_numeric(
+            store, p.reddit, source_metric="reddit_sentiment", stored_metric="reddit_sentiment", provider_name="reddit"
+        ),
+    )
+    counts["social_volume"] = _safe(
+        "social_volume", lambda: ingest_numeric(store, p.lunarcrush, symbols, "social_volume", provider_name="lunarcrush")
+    )
+    counts["social_sentiment"] = _safe(
+        "social_sentiment", lambda: ingest_numeric(store, p.lunarcrush, symbols, "social_sentiment", provider_name="lunarcrush")
+    )
+    counts["galaxy_score"] = _safe(
+        "galaxy_score", lambda: ingest_numeric(store, p.lunarcrush, symbols, "galaxy_score", provider_name="lunarcrush")
     )
     return counts
 

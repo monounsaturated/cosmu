@@ -118,6 +118,28 @@ def test_new_data_sources_drive_analysts(tmp_path):
     assert any("dxy" in e for e in macro_stance["evidence"])
 
 
+def test_social_feeds_drive_sentiment_and_social_analysts(tmp_path):
+    store = _store(tmp_path)
+    _seed_metric(store, "reddit_sentiment", 0.6, provider="reddit")  # bullish crowd chatter
+    _seed_metric(store, "social_sentiment", 75.0, provider="lunarcrush")  # 75/100 bullish share
+    _seed_metric(store, "social_volume", 12000.0, provider="lunarcrush")
+    mind = build_mind(store)
+    stances = {s["perspective"]: s for s in mind["stances"]}
+    # Reddit alone (no Fear & Greed) still activates Sentiment as a low-confidence read.
+    assert stances["Sentiment"]["lean"] != "abstain"
+    assert any("reddit_sentiment" in e for e in stances["Sentiment"]["evidence"])
+    assert stances["Sentiment"]["low_confidence"] is True
+    # LunarCrush social activates Social & News and surfaces both metrics as evidence.
+    assert stances["Social & News"]["lean"] != "abstain"
+    ev = stances["Social & News"]["evidence"]
+    assert any("social_sentiment" in e for e in ev) and any("social_volume" in e for e in ev)
+    # "Knows" lines the new feeds up under the right lens.
+    sentiment_lens = next(l for l in mind["knows"] if l["perspective"] == "Sentiment")
+    assert any(i["name"] == "reddit_sentiment" and i["ingested"] for i in sentiment_lens["items"])
+    social_lens = next(l for l in mind["knows"] if l["perspective"] == "Social & News")
+    assert {"social_volume", "social_sentiment"} <= {i["name"] for i in social_lens["items"]}
+
+
 def test_railguard_present_on_every_analyst_stance_shape(tmp_path):
     store = _store(tmp_path)
     ctx = gather_context(store)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import ssl
 import urllib.parse
 import urllib.request
@@ -88,28 +89,97 @@ class AltDataStore:
 
 
 class LunarCrushProvider:
-    """LunarCrush social metrics over HTTP (stdlib, no extra dep). Key is server-side only.
-    Availability time defaults to one bar after observation (you learn a day's social data after it closes)."""
+    """LunarCrush v4 social metrics over HTTP (stdlib, no extra dep). KEY-GATED: the key is server-side only,
+    and with NO key the provider returns [] so the system degrades honestly (it never fabricates a social read).
+    Our semantic metric names map to the LunarCrush v4 coin time-series fields (`_FIELD`). Availability defaults
+    to one bar after observation (a day's social data is known only after the day closes — point-in-time, no
+    look-ahead). Low-confidence/tier1 until it earns its place out-of-sample."""
 
-    def __init__(self, api_key: str, base_url: str = "https://lunarcrush.com/api4/public") -> None:
-        self.api_key = api_key
+    # semantic metric (feature_registry name) -> LunarCrush v4 coin time-series field
+    _FIELD = {"social_volume": "social_volume", "social_sentiment": "sentiment", "galaxy_score": "galaxy_score"}
+
+    def __init__(self, api_key: str = "", base_url: str = "https://lunarcrush.com/api4/public", *, _fetcher: Callable[[str], dict] | None = None) -> None:
+        self.api_key = api_key or ""
         self.base_url = base_url.rstrip("/")
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> dict:
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self.api_key}", "User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
 
     def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if not self.api_key:  # honest degradation — no key, no data (never a fabricated read)
+            return []
+        field = self._FIELD.get(metric)
+        if field is None:
+            return []
         coin = symbol[:-4] if symbol.endswith("USDT") else symbol
         query = urllib.parse.urlencode({"bucket": "day"})
         url = f"{self.base_url}/coins/{coin}/time-series/v2?{query}"
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self.api_key}", "User-Agent": "cosmu-engine/0.1"})
-        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
+        payload = self._fetcher(url)
         out: list[AltDataPoint] = []
         for row in payload.get("data", [])[-limit:]:
-            if metric not in row:
+            if row.get(field) is None:
                 continue
             ts = datetime.fromtimestamp(int(row["time"]), tz=UTC)
             available = datetime.fromtimestamp(int(row["time"]) + 86400, tz=UTC)
-            out.append(AltDataPoint(ts=ts, available_at=available, value=float(row[metric])))
+            out.append(AltDataPoint(ts=ts, available_at=available, value=float(row[field])))
         return out
+
+
+class RedditSentimentProvider:
+    """Reddit crowd sentiment from public `hot.json` listings (no auth, free). Market-wide proxy: scans a few
+    crypto/markets subreddits, scores each post title with a small bull/bear lexicon, and reduces to ONE value
+    in [-1, 1] = (bull - bear) / total. A real-time public feed → available_at == observation time (we know it
+    when we read it; no look-ahead). Offline-testable via an injected `_fetcher`. One dead subreddit is swallowed
+    (never aborts the read); zero scored posts → [] (honest, never a fabricated 0)."""
+
+    SUBREDDITS = ("cryptocurrency", "bitcoin", "wallstreetbets")
+    _BULL = frozenset({
+        "moon", "bull", "bullish", "pump", "buy", "buying", "long", "rally", "breakout", "ath",
+        "surge", "green", "rip", "hodl", "accumulate", "undervalued", "rocket", "up",
+    })
+    _BEAR = frozenset({
+        "bear", "bearish", "dump", "crash", "sell", "selling", "short", "rug", "rekt", "red",
+        "capitulation", "fear", "drop", "overvalued", "scam", "bubble", "down", "puts",
+    })
+
+    def __init__(self, subreddits: tuple[str, ...] | None = None, *, post_limit: int = 50, _fetcher: Callable[[str], dict] | None = None) -> None:
+        self.subreddits = tuple(subreddits) if subreddits else self.SUBREDDITS
+        self.post_limit = post_limit
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> dict:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "reddit_sentiment":
+            return []
+        bull = bear = total = 0
+        for sub in self.subreddits:
+            url = f"https://www.reddit.com/r/{sub}/hot.json?{urllib.parse.urlencode({'limit': self.post_limit})}"
+            try:
+                payload = self._fetcher(url)
+            except Exception:  # noqa: BLE001 — one dead subreddit never aborts the read
+                continue
+            for child in (payload.get("data", {}) or {}).get("children", []) or []:
+                title = ((child.get("data", {}) or {}).get("title") or "")
+                tokens = set(re.findall(r"[a-z']+", title.lower()))
+                if not tokens:
+                    continue
+                total += 1
+                if tokens & self._BULL:
+                    bull += 1
+                elif tokens & self._BEAR:
+                    bear += 1
+        if total == 0:
+            return []
+        score = (bull - bear) / total  # naturally in [-1, 1] since bull, bear <= total
+        now = datetime.now(tz=UTC)
+        return [AltDataPoint(ts=now, available_at=now, value=score)]
 
 
 class FixtureAltDataProvider:
@@ -705,11 +775,16 @@ _STORE_PROVIDER_OF = {
     "pm_implied_prob": "polymarket",
     "pm_prob_velocity": "polymarket",
     "pm_book_depth": "polymarket",
+    "reddit_sentiment": "reddit",
+    "social_volume": "lunarcrush",
+    "social_sentiment": "lunarcrush",
+    "galaxy_score": "lunarcrush",
 }
 _STORE_MARKET_WIDE = frozenset({
     "fear_greed", "risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",
     "defi_tvl", "dxy", "yield_curve_2s10s", "credit_spread", "vix_term_slope",
     "osint_air_activity", "pm_implied_prob", "pm_prob_velocity", "pm_book_depth",
+    "reddit_sentiment",
 })
 
 
