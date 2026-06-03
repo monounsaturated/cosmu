@@ -111,6 +111,7 @@ Skills are **runnable playbooks** — the canonical procedure for each common ta
 - **Never**: LLM fires a live order, agent defines its own fitness, hand-maintain Python↔TS types, commit secrets, martingale/revenge sizing.
 
 ## Read order (one doc, not all)
+0. **`docs/MASTER_PLAN.md`** — the single operating plan: current verified state, real gaps, target, roadmap (waves). Start here for "what now?".
 1. **This file** — invariants, env, skills.
 2. **`docs/IMPLEMENTATION.md`** — what's built, what's next (last 3 "### Built" sections).
 2b. **`IDEAS.md`** — the product/engineering idea inbox (`/triage-ideas` promotes ripe ideas into `BACKLOG.md`).
