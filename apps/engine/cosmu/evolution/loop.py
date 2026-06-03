@@ -13,6 +13,7 @@ from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
 from cosmu.knowledge.store import Store, Writer, utcnow
+from cosmu.master.fdr import benjamini_hochberg, dsr_pvalue
 from cosmu.master.scorer import BacktestMetrics, score
 from cosmu.ml.regime import proven_regimes
 from cosmu.ml.survival import features_from_metrics, load_survival_model
@@ -91,6 +92,19 @@ def _midpoint(ps: ParamSpace) -> float:
         mid = (ps.lo + ps.hi) / 2
         return float(round(mid)) if ps.kind == "int" else round(mid, 6)
     return 0.0
+
+
+def fdr_culled_vids(evaluated: list[Evaluated], q: float) -> set[str]:
+    """Across the WHOLE cohort, apply Benjamini-Hochberg FDR to every candidate's deflated-Sharpe p-value and
+    return the version_ids of candidates that CLEARED score()'s per-candidate gate but FAIL FDR control — i.e.
+    the ones that must be demoted so they never become fundable. The family is ALL evaluated candidates (FDR
+    validity requires every test to count, not just the survivors), but only gate-passers can be culled — a
+    candidate the gate already killed has nothing left to demote. Pure + deterministic; the agent can't touch it."""
+    if not evaluated:
+        return set()
+    pvalues = [dsr_pvalue(e.deflated_sharpe) for e in evaluated]
+    survives = benjamini_hochberg(pvalues, q=q)
+    return {e.version_id for e, ok in zip(evaluated, survives, strict=True) if e.passed and not ok}
 
 
 @dataclass(frozen=True)
@@ -214,6 +228,22 @@ class FarmLoop:
                 specs_by_vid[vid] = cand.spec
                 lanes["explore"] += 1
 
+            # FDR GATE — the multiple-testing correction the funding path depends on. score() judged each
+            # candidate in isolation; this judges the COHORT together. A gate-passer that doesn't survive
+            # Benjamini-Hochberg across the whole family is demoted HERE — passed_gates→0 (so orchestrator's
+            # funding query never funds it), status→killed (reason "fdr"), and its Track removed — so the honest
+            # loop can't be gamed by authoring more candidates per tick. Same transaction as the cohort.
+            culled = fdr_culled_vids(evaluated, float(self.settings.gates.fdr_q))
+            for e in evaluated:
+                if e.version_id not in culled:
+                    continue
+                b.execute("UPDATE backtests SET passed_gates = 0 WHERE strategy_version_id = ? AND kind = 'screen'", (e.version_id,))
+                b.execute("UPDATE strategy_versions SET status = 'killed', kill_reason = 'fdr', killed_at = ? WHERE id = ?", (utcnow(), e.version_id))
+                b.execute("DELETE FROM tracks WHERE strategy_version_id = ?", (e.version_id,))
+                e.passed = False
+                if "fdr" not in e.reasons:
+                    e.reasons.append("fdr")
+
             # ORDER the gate-survivors by the survival model's edge-persistence score (descending) — this is the
             # validation queue: which gate-passers get scarce full-validation compute FIRST. It is a re-sort of
             # the SAME survivors (the gate already decided who passed); the model never adds or removes anyone.
@@ -236,6 +266,7 @@ class FarmLoop:
                     "generated": generated,
                     "passed": len(survivors),
                     "killed": killed,
+                    "fdr_culled": len(culled),
                     "kill_rate": round(killed / generated, 3) if generated else 0.0,
                     "lanes": lanes,
                     "survival_model": {"trained": survival.trained, "backend": survival.backend, "n_labels": survival.n_labels, "auroc": survival.auroc},

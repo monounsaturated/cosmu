@@ -25,6 +25,10 @@ class GateSettings(BaseModel):
     max_pbo: Decimal = Decimal("0.50")
     holdout_min_deflated_sharpe: Decimal = Decimal("0")
     min_deflated_sharpe_prob: Decimal = Decimal("0.95")  # PSR against the trial-inflated benchmark
+    # Benjamini-Hochberg false-discovery-rate level applied ACROSS a cohort of distinct candidates before any
+    # become fundable. Lower q = stricter (fewer false discoveries funded). Generating more ideas per tick no
+    # longer manufactures a "winner": every candidate is one more test the cohort's BH cutoff must absorb.
+    fdr_q: Decimal = Decimal("0.10")
 
 
 class EvolutionSettings(BaseModel):

@@ -20,6 +20,6 @@
     "lint": "pnpm -r lint",
     "naming:check": "python3 scripts/check_naming.py",
     "typecheck": "pnpm --filter @cosmu/contracts-ts typecheck && pnpm --filter @cosmu/web typecheck",
-    "verify": "pnpm naming:check && pnpm contracts:generate && pnpm engine:test && pnpm typecheck"
+    "verify": "pnpm naming:check && pnpm contracts:generate && pnpm engine:test && pnpm typecheck && pnpm build"
   }
 }

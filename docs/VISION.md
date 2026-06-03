@@ -79,7 +79,7 @@ Treat it as a tiny fund. Two ledgers: **opex** (cost to run) and **alpha** (what
 
 | Item | Est. / mo | Notes |
 |------|-----------|-------|
-| Compute (Render worker) | ~$25 + usage | continuous research loop |
+| Compute (Railway worker) | ~$25 + usage | continuous research loop |
 | DB (Supabase Pro, pgvector) | ~$25 | structured store + RAG |
 | Frontend (Vercel) | $0–20 | |
 | LLM router (OpenRouter) | $50–400 | **hard daily cap**; mostly cheap tier |
@@ -266,7 +266,7 @@ Old DB killed; fresh schema on Supabase Postgres + pgvector. Core tables below; 
 | Voice | **Deepgram / ElevenLabs / OpenAI** | buy | cheap STT/TTS |
 | Web/research | **Exa or Tavily**, a news API, YouTube-transcript API, LunarCrush | buy | per-query; cap-able |
 | Embeddings | OpenAI/Voyage API | buy | cheap |
-| Compute (loop+API) | **Render** worker | buy/managed | continuous CPU; predictable beats metered |
+| Compute (loop+API) | **Railway** worker | buy/managed | continuous CPU; predictable beats metered |
 | DB + RAG | **Supabase + pgvector** | managed | a switch, not a build — keep |
 | Market data (bars) | **Norgate** (survivorship-free *daily* US/AU/CA, cheap) + **Databento** (intraday/breadth) for equities · **ccxt** (crypto, free) | buy | **survivorship-free, point-in-time, corp-actions-adjusted**; ~$30–100/mo. Data quality = SIM→live parity |
 | Equity fundamentals | **Sharadar** (Nasdaq Data Link) or **SimFin** | buy | point-in-time, pre-parsed (~$30–50/mo) — keeps "quantamental" honest vs building an EDGAR ETL; also supplies earnings dates |
@@ -282,7 +282,7 @@ Secrets (server-side only, never in prompts): venue keys (Binance, later IBKR), 
 
 ## 13. Codebase conventions (modular, agent-first)
 
-- **New home:** `apps/engine/` (Python). Retire `apps/api` (Node) once parity lands; rebuild `apps/web`. v1 stays untouched until the new path is proven.
+- **New home:** `apps/engine/` (Python). `apps/api` (Node) **retired** — engine parity landed and `apps/web` was rebuilt on the typed contracts. v1 stays untouched as reference.
 - **Two kinds of modularity:** (a) *code* modules for the coding agent — small packages, each with a short NL **intent-spec header** (purpose / inputs / outputs / invariants); (b) *runtime* tool modules for the agent to query/trade/research/learn, each independently callable.
 - **Token-frugal docs (SOTA):** keep `AGENTS.md` *short*; **decision tables** for 2–3 valid approaches; **always / ask-first / never** boundaries; **pair every "don't" with a "do instead."** **Don't auto-generate docs** and **don't restate what a linter/type-checker/CI already enforces** — *the tool is the constraint* (bloated/auto-gen context files measurably lower agent success and raise cost). Intent-specs stay tiny (why + invariants). The big `VISION.md` is the human memo; the per-session agent file is lean. Read the INDEX, then one record/section.
 - **Strong typing & validation:** Pydantic everywhere; LLM outputs always pass `instructor` + the validator before they count.
@@ -314,7 +314,7 @@ Result: fully autonomous, fully SIM (forward-test), realistic — flip a switch 
 
 1. **OpenRouter** account + key (covers Opus 4.8 / GPT-5.5 / Grok / DeepSeek / Hermes-4 in one). Tell me any models to force-include.
 2. **E2B or Modal** account (agent sandbox + ML) — pick one or let me default to E2B for sandbox, Modal for ML bursts.
-3. **Render** account + connect repo (I configure the worker).
+3. **Railway** account + connect repo (I configure the worker).
 4. **Supabase** — confirm I create a fresh project/schema with pgvector.
 5. **Voice + research API keys:** Deepgram/ElevenLabs (voice), Exa or Tavily (web), a news API, YouTube-transcript API, LunarCrush. Tell me which to enable from day one. **Tier-0 quant data is free** (ccxt, SEC EDGAR, FRED, CFTC, prediction-market public APIs) — no keys; premium alt-data (on-chain/options flow) is opt-in later.
 6. **Prediction markets (Polymarket via Nautilus's native adapter; Kalshi optional):** odds feed in as features now; forward-test (SIM) ships V1; **live trades under the same global toggle as every venue.** To go live you provide a **Polygon wallet + pUSD/USDC** (like a Binance key). **Legality/eligibility is your call** — Polymarket is geo-blocked in France (ANJ), Kalshi is US-only; the system doesn't special-case it.

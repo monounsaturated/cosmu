@@ -67,8 +67,8 @@ const STAGES: { id: Stage; label: string; explainer: string; badge: "warn" | "ir
 
 // Map a raw engine status onto a lifecycle stage. Unknown/new statuses default to Discovering so a
 // Version is never silently hidden.
-function stageOf(status: string): Stage {
-  const s = status.toLowerCase();
+function stageOf(status: string | null | undefined): Stage {
+  const s = (status ?? "").toLowerCase();
   if (s === "killed" || s === "dead" || s === "graveyard") return "graveyard";
   if (s === "live") return "live";
   if (s === "forward_test" || s === "paper") return "forward_test";
@@ -187,14 +187,14 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
                           <div className="text-[11px] text-quiet">{row.lineage}</div>
                         </TD>
                         <TD>
-                          <Badge variant={statusVariant[row.status.toLowerCase()] ?? "muted"}>{row.status}</Badge>
+                          <Badge variant={statusVariant[(row.status ?? "").toLowerCase()] ?? "muted"}>{row.status ?? "—"}</Badge>
                         </TD>
                         <TD className={`text-right tabular ${row.track_return_pct >= 0 ? "text-up" : "text-down"}`}>
                           {formatPct(row.track_return_pct)}
                         </TD>
                         <TD className={`text-right tabular ${row.net_pct >= 0 ? "text-up" : "text-down"}`}>{formatPct(row.net_pct)}</TD>
-                        <TD className="text-right tabular text-foreground">{row.deflated_sharpe.toFixed(2)}</TD>
-                        <TD className="text-right tabular text-muted">{row.pbo.toFixed(2)}</TD>
+                        <TD className="text-right tabular text-foreground">{Number.isFinite(row.deflated_sharpe) ? row.deflated_sharpe.toFixed(2) : "—"}</TD>
+                        <TD className="text-right tabular text-muted">{Number.isFinite(row.pbo) ? row.pbo.toFixed(2) : "—"}</TD>
                       </TR>
                     ))}
                   </TBody>
