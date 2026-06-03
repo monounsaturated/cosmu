@@ -23,3 +23,5 @@
 - [ ] Strategy-launcher: 1-button with per-strategy budget
 - [ ] Cross-strategy correlation signals
 - [ ] Options support
+- [ ] Mission-control UI: extend /mind into one visual surface (funnel, freshness, backlog, PRs/agents, ML status, gate efficiency) (web, cloud, sonnet)
+- [ ] Decide ML compute home: VPS worker vs scheduled cloud-session cron for nightly survival-model training (config, -, -)
