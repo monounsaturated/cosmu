@@ -22,18 +22,22 @@ import type {
   MemoryInsight,
   MemoryInsightsResponse,
   MindResponse,
+  NewsEventRow,
+  NewsIntelResponse,
   OverviewResponse,
   PopulationResponse,
   Recommendation,
   Skill,
   SkillsResponse,
+  SourceTrustResponse,
+  SourceTrustRow,
   StrategyDetailResponse
 } from "@cosmu/contracts-ts";
 import type { PositionsResponse, LiveVenuesResponse } from "@/components/live/contracts";
 import { EMPTY_AUTONOMY_STATUS, type AutonomyStatus } from "./autonomy-contracts";
 
-// Skills, memory insights, and costs come from the generated @cosmu/contracts-ts (no hand-typed
-// contract drift). Re-exported here so the surfaces that consume them keep importing from data.ts.
+// Skills, memory insights, costs, and scoreboard types come from the generated @cosmu/contracts-ts
+// (no hand-typed contract drift). Re-exported here so surfaces keep importing from data.ts.
 export type {
   Skill,
   SkillsResponse,
@@ -43,7 +47,11 @@ export type {
   CostPerStrategy,
   CostsResponse,
   InfraLine,
-  LlmCallSummary
+  LlmCallSummary,
+  SourceTrustRow,
+  SourceTrustResponse,
+  NewsEventRow,
+  NewsIntelResponse,
 };
 
 const baseUrl = process.env.API_BASE_URL;
@@ -351,4 +359,25 @@ const emptyIntelligence: IntelligenceResponse = {
 export async function getIntelligence(): Promise<{ intelligence: IntelligenceResponse; connected: boolean }> {
   const { data, connected } = await getJson("/intelligence", emptyIntelligence);
   return { intelligence: data, connected };
+}
+
+// Source-trust scoreboard: one row per registered data source, freshness × gate contribution.
+// Honest: sources with no data show trust_score=0, status="no data". Never fabricated.
+const emptySourceTrust: SourceTrustResponse = { as_of: "", rows: [] };
+
+export async function getSourceTrust(): Promise<{ trust: SourceTrustResponse; connected: boolean }> {
+  const { data, connected } = await getJson("/mind/source-trust", emptySourceTrust);
+  return { trust: data, connected };
+}
+
+// News/intel panel: recent scored news events (typed, dated, point-in-time).
+// Honest empty state when no news has been ingested yet.
+const emptyNewsIntel: NewsIntelResponse = { symbol: "BTCUSDT", events: [] };
+
+export async function getNewsIntel(symbol = "BTCUSDT", limit = 20): Promise<{ intel: NewsIntelResponse; connected: boolean }> {
+  const { data, connected } = await getJson(
+    `/mind/news-intel?symbol=${encodeURIComponent(symbol)}&limit=${limit}`,
+    emptyNewsIntel
+  );
+  return { intel: data, connected };
 }
