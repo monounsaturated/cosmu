@@ -5,7 +5,9 @@
 ## North star
 Autonomous, **honest, LEAN** crypto money-machine. LLM **proposes** strategies; a deterministic **FDR gate disposes** (out of any LLM reach). Profit net of fees. Internal tool — Claude Code is part of the product. Stack: pure-Python engine (Railway) · Next web cockpit (Vercel) · Supabase.
 
-## State (2026-06-04)
+## State (2026-06-04 — post 7-PR merge train)
+- **The autonomous machine is ON.** Merged to main this session (one integration branch, CI-gated, ONE remote verify): **#47** replicate/evolve flywheel wired into the tick · **#48** experiments registry + soft-labels (cold-start ML gradient) · **#57** adversarial gate proof (no-edge→0, known-edge→pass; *no leak found*) · **#58** SIM→live variance-attribution + `/profile-source` data-trust audit · **#59** modular Notion-vibe cockpit (tool-aligned KPIs, TradingView charts, `/command` hints) · **#60** wider perp universe (~30) + multi-timeframe bars + ML-ready point-in-time panels. (#56 LLM-formatter was dropped as a **duplicate** of the wired `ingest/llm_formatter.py` — see BACKLOG debt note.)
+- **Compute strategy is now explicit** — see [COMPUTE.md](COMPUTE.md): CI/verify → GitHub Actions (the remote gate; push=deploy so the gate is **PR CI before merge**); heavy research → **Modal** scale-to-zero later. Do NOT run full `verify` locally — targeted tests + remote CI.
 - **Engine = lean pure-Python** (deps: ccxt/fastapi/pydantic/sqlalchemy only). Deflated-Sharpe, CSCV-PBO, BH-FDR, backtester are **hand-rolled on purpose** (auditable, low-RAM). Real Binance bars · FDR-gated funding · forward-mark clock.
 - **Discovery is now TRUSTWORTHY** — `finder.py` significance leaks FIXED in pure-Python (#51): true trial-count, effective-N correlation haircut, real CSCV-PBO, purged+embargoed WFO, per-symbol min_trades, dedupe-before-FDR + a permutation-null regression test.
 - **Data:** funding deep (**20 symbols × 2yr**). Most alt sources free + wired; multi-asset (stocks via Stooq, etc.) wired. Add a key → that source un-greys.

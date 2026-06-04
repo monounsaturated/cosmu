@@ -25,5 +25,7 @@
 - [2026-06-04] Strategy × asset × timeframe matrix (THE core ML feature): test each strategy across assets + timeframes, tailor/decline it per asset — this is why we need big compute + deep data + ML.
 - [2026-06-04] LLM-quality-scores as standardized features: LLM-generated quality/sentiment scores for specific indexes, stored point-in-time WITH HISTORY → train ML on them; the agent can mint new index-scores. Qualitative→quantitative, standardized — the leverage.
 
+- [2026-06-04] External validation (top-firm AI-in-trading writeups): the reusable kernel is "AI = research-throughput compressor + adversarial reviewer + unstructured→typed signal, NOT the money-decision-maker." Keep REJECTING the Bridgewater "AI as primary decision-maker" model — LLM proposes, the deterministic gate disposes (our locked non-negotiable). GPU/datacenter scale-ups are anti-thesis to lean. The one practical nudge already in the plan: every authored hypothesis should ship with a disconfirmer (gate-side proven by #57; author-side still open).
+
 ## Archived
 <!-- Triaged ideas move here with their disposition: promoted / deferred / dropped. -->
