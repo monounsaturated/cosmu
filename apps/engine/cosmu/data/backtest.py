@@ -120,23 +120,30 @@ def _run_symbol(
     size_multiplier: float,
     alt: dict[str, dict[str, float]] | None = None,
 ) -> SymbolRun:
+    # direction: +1 long (the spot/upside-only default), -1 short (perp/short leg). 0 is reserved (no per-bar
+    # direction signal yet) and is treated as long so existing condition-only specs are unchanged. `d` is the
+    # signed multiplier used to mirror every long inequality into its short counterpart.
+    d = -1 if getattr(spec, "direction", 1) == -1 else 1
     closes = [float(bar.close) for bar in bars]
     highs = [float(bar.high) for bar in bars]
     lows = [float(bar.low) for bar in bars]
     features = _feature_matrix(spec, params, bars, alt)
+    # Point-in-time funding-rate series (perp carry), looked up per bar. None => spot, no funding leg.
+    funding = _funding_series(spec, bars, alt)
     regimes = _regime_labels(closes)
     fee = float(fee_bps) / 10000.0
     base_slip = float(slippage_bps) / 10000.0
     impact = float(impact_bps) / 10000.0
     cash = 100000.0
-    position = 0.0          # current (possibly partially-exited) base-currency position
+    position = 0.0          # current (possibly partially-exited) base-currency position (always >= 0; `d` is the side)
     entry_qty = 0.0         # the qty originally opened (for sizing partial legs)
     entry_price = 0.0
     entry_idx = 0
     stop_price = 0.0        # the live stop level (moves to break-even / trails for the runner)
     tp1_filled = False
     legs_filled: set[int] = set()
-    high_since_entry = 0.0
+    extreme_since_entry = 0.0  # highest high (long) / lowest low (short) since entry, for the runner trail
+    funding_accrued = 0.0      # cumulative funding cash flow on the open leg (long pays +rate, short receives)
     high_water = cash
     equity_points: list[float] = []
     trades: list[Trade] = []
@@ -149,78 +156,133 @@ def _run_symbol(
         max(0.0, float(params[plan.runner_trail.param])) if plan and plan.runner_trail is not None else None
     )
     break_even = bool(plan and plan.break_even_after_tp1)
-    # Precompute the entry-setup gates (MA filter / ORB breakout high / FVG retest) — long/upside-only.
+    # Precompute the entry-setup gates (MA filter / ORB breakout / FVG retest). These remain long/upside-only;
+    # a short spec without setups is unaffected (the gate is all-True when no setup is present).
     setup_ok = _setup_entry_gate(spec, params, highs, lows, closes)
 
     def _book(exit_qty: float, exit_px: float, idx_now: int) -> None:
         nonlocal cash, position
-        cash += exit_qty * exit_px * (1 - fee)
-        pnl_pct = (exit_px * (1 - fee) - entry_price * (1 + fee)) / entry_price
+        # `cash` settles the exit leg: a long SELLS (cash += proceeds net of fee); a short BUYS BACK
+        # (cash -= cost gross of fee). The `d` sign and the (1 - d*fee) factor make this reduce to the EXACT
+        # original spot expression `cash += exit_qty*exit_px*(1-fee)` when d == +1. pnl_pct mirrors it: a long
+        # profits as exit rises, a short as exit falls; entry/exit fees apply symmetrically either way.
+        cash += d * exit_qty * exit_px * (1 - d * fee)
+        pnl_pct = d * (exit_px * (1 - d * fee) - entry_price * (1 + d * fee)) / entry_price
         trades.append(Trade(entry=entry_price, exit=exit_px, pnl_pct=pnl_pct, regime=regimes[entry_idx]))
         position -= exit_qty
+
+    def _accrue_funding(idx_now: int) -> None:
+        """Accrue one bar of funding as cash P&L on the open leg. A LONG perp pays funding when the rate is
+        positive (cost), a SHORT receives it (income) — so the cash flow is `-d * rate * notional`. Spot
+        (funding series None) accrues nothing, so the spot equity curve is byte-identical to before."""
+        nonlocal cash, funding_accrued
+        if funding is None or position <= 0:
+            return
+        rate = funding[idx_now]
+        if rate is None:
+            return
+        flow = -d * float(rate) * position * closes[idx_now]
+        cash += flow
+        funding_accrued += flow
 
     start = max(_warmup_bars(spec, params), 2)
     for idx in range(start, len(bars)):
         bar = bars[idx]
         slip = _slippage(base_slip, impact, _entry_notional(cash, spec, size_multiplier), bar)
         if position > 0:
-            high_since_entry = max(high_since_entry, float(bar.high))
+            _accrue_funding(idx)
+            # Side-aware adverse/favourable extremes: a long's worst case is the bar low and best the high;
+            # for a short they swap. `extreme_since_entry` tracks the favourable extreme for the runner trail.
+            adverse = float(bar.low) if d == 1 else float(bar.high)
+            favourable = float(bar.high) if d == 1 else float(bar.low)
+            extreme_since_entry = (
+                max(extreme_since_entry, favourable) if d == 1 else min(extreme_since_entry, favourable)
+            )
             if runner_trail is not None and tp1_filled:
-                stop_price = max(stop_price, high_since_entry * (1 - runner_trail))  # asymmetric runner trail
-            # 1) stop / runner-trail first (worst-case priority)
-            if float(bar.low) <= stop_price and position > 0:
-                _book(position, stop_price * (1 - slip), idx)
-            # 2) partial take-profit legs (multi_tp) in ascending order
+                # Trail the stop behind the favourable extreme: below it for a long, above it for a short.
+                trail = extreme_since_entry * (1 - d * runner_trail)
+                stop_price = max(stop_price, trail) if d == 1 else min(stop_price, trail)
+            # 1) stop / runner-trail first (worst-case priority): long stops when low <= stop; short when high >= stop.
+            stop_hit = adverse <= stop_price if d == 1 else adverse >= stop_price
+            if stop_hit and position > 0:
+                _book(position, stop_price * (1 - d * slip), idx)
+            # 2) partial take-profit legs (multi_tp) in ascending profit-distance order
             if position > 0 and legs:
                 for li, (at, size_pct) in enumerate(legs):
                     if li in legs_filled:
                         continue
-                    leg_price = entry_price * (1 + at)
-                    if float(bar.high) >= leg_price:
+                    leg_price = entry_price * (1 + d * at)
+                    leg_hit = favourable >= leg_price if d == 1 else favourable <= leg_price
+                    if leg_hit:
                         leg_qty = min(position, entry_qty * size_pct)
                         if leg_qty > 0:
-                            _book(leg_qty, leg_price * (1 - slip), idx)
+                            _book(leg_qty, leg_price * (1 - d * slip), idx)
                             legs_filled.add(li)
                             if not tp1_filled:
                                 tp1_filled = True
                                 if break_even:
-                                    stop_price = max(stop_price, entry_price)  # risk-free runner
+                                    # Risk-free runner: stop to entry (tightest in the favourable direction).
+                                    stop_price = max(stop_price, entry_price) if d == 1 else min(stop_price, entry_price)
             # 3) single take-profit (only when there is no multi_tp plan)
-            if position > 0 and not legs and float(bar.high) >= entry_price * (1 + take_pct):
-                _book(position, entry_price * (1 + take_pct) * (1 - slip), idx)
+            tp_price = entry_price * (1 + d * take_pct)
+            tp_hit = favourable >= tp_price if d == 1 else favourable <= tp_price
+            if position > 0 and not legs and tp_hit:
+                _book(position, tp_price * (1 - d * slip), idx)
             # 4) time-stop / signal exit closes whatever remains
             if position > 0 and (idx - entry_idx >= max_hold_bars or _exit_signal(spec, params, features, idx - 1)):
-                _book(position, float(bar.open) * (1 - slip), idx)
+                _book(position, float(bar.open) * (1 - d * slip), idx)
             if position <= 1e-12:
                 position = 0.0
                 entry_price = 0.0
+                funding_accrued = 0.0
 
         if position == 0 and setup_ok[idx - 1] and _entry_signal(spec, params, features, idx - 1):
             notional = _entry_notional(cash, spec, size_multiplier)
             if notional > 0:
-                fill = float(bar.open) * (1 + slip)
+                # Entry crosses the spread the adverse way: long buys up (1+slip), short sells down (1-slip).
+                fill = float(bar.open) * (1 + d * slip)
+                # Open the leg. For a long this is the EXACT original: qty = notional*(1-fee)/fill and
+                # cash -= notional. For a short, `d` flips it: we sell `notional` worth, taking in proceeds.
                 position = (notional * (1 - fee)) / fill
                 entry_qty = position
-                cash -= notional
+                cash -= d * notional
                 entry_price = fill
                 entry_idx = idx
-                stop_price = entry_price * (1 - stop_pct)
+                # Stop sits the adverse side of entry: below for a long, above for a short.
+                stop_price = entry_price * (1 - d * stop_pct)
                 tp1_filled = False
                 legs_filled = set()
-                high_since_entry = float(bar.high)
+                extreme_since_entry = float(bar.high) if d == 1 else float(bar.low)
+                funding_accrued = 0.0
 
-        equity = cash + position * closes[idx]
+        # Mark-to-market. For a long this is the EXACT original `cash + position*close`. For a short, cash
+        # already holds the sale proceeds (+notional) so the open leg is marked as a liability `-position*close`.
+        equity = cash + d * position * closes[idx]
         high_water = max(high_water, equity)
         equity_points.append(equity)
 
     if position > 0:
         slip = _slippage(base_slip, impact, position * closes[-1], bars[-1])
-        _book(position, closes[-1] * (1 - slip), len(bars) - 1)
+        _book(position, closes[-1] * (1 - d * slip), len(bars) - 1)
         position = 0.0
         equity_points.append(cash)
 
     periods_per_year = 365.0 * _bars_per_day(spec.horizon.bar_size)
     return _symbol_metrics(equity_points, trades, periods_per_year=periods_per_year)
+
+
+def _funding_series(
+    spec: StrategySpec, bars: list[Bar], alt: dict[str, dict[str, float]] | None
+) -> list[float | None] | None:
+    """The per-bar point-in-time funding rate (perp carry), aligned to `bars`. Returns None when the spec has
+    no `funding_feature` (spot — no funding leg, the prior behaviour). Reads the same PIT alt-data join keyed
+    by bar timestamp as every other alt feature, so the funding value travels with the bar through any slice
+    and never leaks the future. A bar with no available funding point reads None (accrues nothing)."""
+    name = getattr(spec, "funding_feature", None)
+    if not name:
+        return None
+    series = (alt or {}).get(name, {})
+    return [series.get(bar.ts.isoformat()) for bar in bars]
 
 
 def _resolved_tp_legs(spec: StrategySpec, params: dict[str, float]) -> list[tuple[float, float]]:

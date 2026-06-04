@@ -30,6 +30,9 @@ def validate_spec(spec: StrategySpec) -> list[str]:
             issues.append(f"unknown_feature:{condition.feature.name}")
         if not isinstance(condition.threshold, ParamRef):
             issues.append("literal_threshold")
+    # A perp funding leg must name a real PIT feature — same registry guard as entry/exit features.
+    if spec.funding_feature is not None and spec.funding_feature not in features:
+        issues.append(f"unknown_feature:{spec.funding_feature}")
     if spec.universe.min_instruments < 5:
         issues.append("universe_too_small")
     if spec.horizon.min_hold_days < 1 or spec.horizon.max_hold_days < spec.horizon.min_hold_days:
