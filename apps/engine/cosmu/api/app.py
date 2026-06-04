@@ -1407,8 +1407,11 @@ def costs() -> CostsResponse:
 
     # Build the static infra table from the seeded costs rows (meta field identifies infra seeds).
     import json as _json_mod
+    # NOTE: the LIKE pattern MUST be a bound parameter — an inline '%' collides with psycopg2's
+    # %-paramstyle (store passes a params tuple), raising IndexError on Postgres (SQLite tolerates it).
     infra_rows = store.rows(
-        "SELECT vendor, category, CAST(amount AS REAL) AS amount, meta FROM costs WHERE meta LIKE '%\"seed\": \"infra\"%'"
+        "SELECT vendor, category, CAST(amount AS REAL) AS amount, meta FROM costs WHERE meta LIKE ?",
+        ('%"seed": "infra"%',),
     )
     seen_vendors: set[str] = set()
     infra_lines: list[InfraLine] = []
