@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 from cosmu.config.settings import get_settings
 from cosmu.data.altdata import (
+    AltDataPoint,
     AltDataProvider,
     AltDataStore,
     BinanceBasisProvider,
@@ -27,6 +28,7 @@ from cosmu.data.altdata import (
     PolymarketGammaProvider,
     PolymarketOddsProvider,
     RedditSentimentProvider,
+    VenueFeesProvider,
 )
 from cosmu.data.sources.xai_twitter import XaiTwitterProvider
 from cosmu.ingest.pipeline import (
@@ -73,6 +75,9 @@ class Providers:
     # xAI/Grok Twitter sentiment: key-gated — returns [] without XAI_API_KEY (honest degradation).
     # LLM only standardizes text; never touches the gate/scoring/money path.
     xai_twitter: AltDataProvider = field(default_factory=lambda: XaiTwitterProvider())
+    # Venue fees: key-gated (ccxt exchange needed for live reads). Default = Binance static-catalog fallback
+    # (offline-safe, no key). A live ccxt client can be injected at deploy time for account-specific rates.
+    venue_fees: AltDataProvider = field(default_factory=lambda: VenueFeesProvider("binance"))
     llm: Callable[[str], StandardizedNews] | None = None
     fred_series: str = DEFAULT_FRED_SERIES
     polymarket_token: str = DEFAULT_POLYMARKET_TOKEN
@@ -273,7 +278,33 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     counts["news_event_score"] = _safe(
         "news_event_score", lambda: ingest_news_event_score(store, p.news, symbols, llm=p.llm)
     )
+    # Venue fees: account-specific maker/taker PIT snapshot. Key-gated: offline/no-key → static-catalog
+    # fallback is used, so the cron never crashes. Stored under provider="venue_fees",
+    # symbol="<venue_id>:<symbol>", metric="venue_fees_maker"|"venue_fees_taker".
+    counts["venue_fees"] = _safe(
+        "venue_fees", lambda: _ingest_venue_fees(store, p.venue_fees, symbols)
+    )
     return counts
+
+
+def _ingest_venue_fees(store, provider: AltDataProvider, symbols: list[str]) -> int:
+    """Snapshot venue fees for every tracked symbol into the alt_data store.
+    Each symbol gets two rows: venue_fees_maker and venue_fees_taker.
+    The store key is ``symbol="<venue_id>:<symbol>"`` so multi-venue can coexist."""
+    from datetime import datetime, UTC
+    from cosmu.data.altdata import AltDataPoint
+
+    # Determine the venue_id from the provider (default "binance").
+    venue_id = getattr(provider, "exchange_id", "binance")
+    total = 0
+    for symbol in symbols:
+        for metric in ("venue_fees_maker", "venue_fees_taker"):
+            pts = provider.fetch_series(symbol, metric, limit=1)
+            if pts:
+                store_symbol = f"{venue_id}:{symbol}"
+                store.append("venue_fees", store_symbol, metric, pts)
+                total += len(pts)
+    return total
 
 
 def _run_passes(passes: int) -> dict[str, int]:
