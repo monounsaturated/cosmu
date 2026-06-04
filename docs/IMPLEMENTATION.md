@@ -4,6 +4,24 @@
 
 ## Built
 
+### Trust workflows — SIM→live variance attribution + a data-trust source audit (2026-06-04)
+*Two review-only "trust" surfaces, both deterministic + offline + out of the gate/money path. They EXPLAIN and
+RECOMMEND; the deterministic lifecycle + live toggle alone dispose of capital, and a human still wires a feature.*
+- **`cosmu/research/attribution.py` (new) + `/variance-attribution` skill.** Decomposes a funded track's
+  `(live − sim)` per-period divergence into named, signed buckets — **fees · slippage · funding · signal-decay ·
+  regime** — plus a first-class **residual** (components reconstruct the divergence exactly; the unexplained part
+  is named, never hidden). Cost legs read the `is_paper` line of the `executions` ledger (sim vs live fills, signal
+  and fill never collapsed); `signal_decay` reuses `master/drift`'s edge-decay fit; `regime` is a Brinson
+  allocation effect on the regime mix. Turns "the backtest was a lie" into "…BECAUSE costs / a dead edge / a regime
+  draw". `python3 -m cosmu.research.attribution <version_id>`; offline tests in `tests/test_attribution.py`.
+- **`cosmu/ingest/profile_source.py` (new) + `/profile-source` skill.** Auto-profiles a NEW alt-source's
+  point-in-time history into **GO / REVIEW / NO-GO** before it can become a feature. Composes `ingest/coverage.py`
+  for coverage · gaps · staleness · look-ahead, then adds the two checks coverage can't make about an untrusted
+  feed: **PIT-lag honesty** (a feed that claims it's known sooner than its declared release lag is a latent
+  look-ahead leak → hard NO-GO) and **revision safety**. Wired as step 6 of `add-data-source`. `python3 -m
+  cosmu.ingest.profile_source <provider> <symbol> <metric> --declared-lag-hours N`; tests in
+  `tests/test_profile_source.py`.
+
 ### The Mind — standardized self-knowledge + a railguarded analyst-panel debate (2026-06-03)
 *Owner ask: make the agent's reasoning legible and "smart, not a side project" — a standardized view of what the
 machine knows, how it thinks, and what it has learned (ML as a pillar but not the only one: technical, macro,

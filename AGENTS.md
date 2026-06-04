@@ -72,8 +72,10 @@ Skills are **runnable playbooks** — the canonical procedure for each common ta
 | create-strategy | `.claude/skills/create-strategy/SKILL.md` |
 | evolve-strategy | `.claude/skills/evolve-strategy/SKILL.md` |
 | add-data-source | `.claude/skills/add-data-source/SKILL.md` |
+| profile-source | `.claude/skills/profile-source/SKILL.md` |
 | add-venue | `.claude/skills/add-venue/SKILL.md` |
 | run-gate | `.claude/skills/run-gate/SKILL.md` |
+| variance-attribution | `.claude/skills/variance-attribution/SKILL.md` |
 | deploy-check | `.claude/skills/deploy-check/SKILL.md` |
 | deploy-iterate | `.claude/skills/deploy-iterate/SKILL.md` |
 | debug-strategy | `.claude/skills/debug-strategy/SKILL.md` |
