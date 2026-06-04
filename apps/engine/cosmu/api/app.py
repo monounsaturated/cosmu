@@ -1384,7 +1384,10 @@ def costs() -> CostsResponse:
     cost_rows = store.rows("SELECT category, SUM(CAST(amount AS REAL)) AS amount FROM costs GROUP BY category")
     by_category = [CostByCategory(category=r["category"], amount=float(r["amount"] or 0)) for r in cost_rows]
     total = round(sum(c.amount for c in by_category), 6)
-    equity = float(_portfolio().equity())
+    try:
+        equity = float(_portfolio().equity())
+    except Exception:  # noqa: BLE001 — equity is best-effort; the cost page must render without it
+        equity = 0.0
     per_rows = store.rows(
         """
         SELECT sv.id AS version_id, s.name AS name,
