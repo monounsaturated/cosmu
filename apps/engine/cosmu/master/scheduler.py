@@ -1,9 +1,10 @@
 # intent: the AUTONOMOUS MASTER TICK — one bounded, idempotent, audited self-driving cycle the human oversees.
 # It composes the seams already built: ingest free data (ingest.run.run_once) → author N candidates (LLM if a key
 # is set, else the deterministic template, consulting long-term memory + skills) → run them through the
-# DETERMINISTIC FarmLoop gate/screen + flywheel (memory + curator, inside the loop) → size gate-passed survivors
-# and open a standalone forward-test track per survivor (orchestrator.fund_tracks_from_survivors)
-# → emit human-facing recommendations. inputs: a Store (+ optional injectable ingest/market/llm seams); outputs:
+# DETERMINISTIC FarmLoop gate/screen + flywheel (memory + curator, inside the loop) → REPLICATE the gate-passed
+# survivors (evolution.run_evolution_cohort: isolate each winning signal, graft/recombine it, route the cohort
+# back through the SAME gate + FDR) → size gate-passed survivors and open a standalone forward-test track per
+# survivor (orchestrator.fund_tracks_from_survivors) → emit human-facing recommendations. inputs: a Store (+ optional injectable ingest/market/llm seams); outputs:
 # a TickReport + persisted audit (events ledger) + recommendations rows. invariants: the scorer/Gate stay OUT of
 # every LLM path and alone decide survival + money; the LLM only PROPOSES; LIVE STAYS OFF (sim fills only) —
 # nothing here can move real money; CRON-ABLE (one tick per call, never a daemon); BOUNDED + reproducible offline
@@ -24,6 +25,12 @@ _TICK_COMPLETED = "autonomy_tick_completed"
 _PAUSED = "autonomy_paused"
 _RESUMED = "autonomy_resumed"
 
+# REPLICATE step bounds: how many of a tick's gate-passed survivors get their winning logic replicated, and the
+# per-survivor cohort cap. Bounded so the flywheel COMPOUNDS proven edges without ballooning compute — and volume
+# still can't manufacture a winner because each cohort runs the SAME Benjamini-Hochberg FDR brake.
+_EVOLVE_MAX_PARENTS = 3
+_EVOLVE_MAX_SPECS = 12
+
 
 @dataclass
 class TickSummary:
@@ -42,6 +49,7 @@ class TickReport:
     survivors: list[str] = field(default_factory=list)
     recommendation_ids: list[str] = field(default_factory=list)
     live_enabled: bool = False  # ALWAYS reported; the tick itself never arms live
+    evolved: int = 0  # gate-passed survivors PRODUCED by replicating this tick's winners (the flywheel's output)
     skipped: bool = False
     skip_reason: str | None = None
 
@@ -123,6 +131,84 @@ def autonomy_status(store: Store) -> AutonomyStatus:
     )
 
 
+def _screen_provider(
+    market_data: MarketDataProvider | None, edge_market: bool
+) -> MarketDataProvider | None:
+    """The ONE market source a tick screens + replicates + funds against — so the flywheel and the funding pass
+    price against the same bars the gate did. Explicit provider wins; else the edge-bearing fixture for CI/offline
+    (edge_market=True); else None → the real cache-backed Binance provider (production). Single source of truth so
+    the four stages never silently diverge onto different data."""
+    if market_data is not None:
+        return market_data
+    if edge_market:
+        from cosmu.lab.research import _EdgeBearingBars
+
+        return _EdgeBearingBars()
+    return None
+
+
+def _load_survivor_specs(store: Store, survivors: list) -> list:  # noqa: ANN001 — Evaluated → StrategySpec
+    """Reconstruct the full StrategySpec for each gate-passed survivor (an Evaluated carries only version_id +
+    name; the spec lives on its persisted strategy_versions row). Order is preserved (validation-queue order), and
+    a missing/malformed historical spec is skipped — the flywheel never aborts the tick over one bad row."""
+    import json
+
+    from cosmu.strategy.spec import StrategySpec
+
+    out: list = []
+    for ev in survivors:
+        row = store.row("SELECT spec FROM strategy_versions WHERE id = ?", (ev.version_id,))
+        if not row:
+            continue
+        spec_json = row["spec"]
+        if isinstance(spec_json, str):
+            try:
+                spec_json = json.loads(spec_json)
+            except json.JSONDecodeError:
+                continue
+        try:
+            out.append(StrategySpec.model_validate(spec_json))
+        except Exception:  # noqa: BLE001 — a malformed historical spec must not break the flywheel
+            continue
+    return out
+
+
+def _run_evolution(
+    store: Store,
+    *,
+    survivors: list,  # noqa: ANN001 — list[Evaluated] from the research pass
+    seed: int,
+    provider: MarketDataProvider | None,
+) -> int:
+    """REPLICATE the proven edge. For each of this tick's top gate-passed survivors: isolate its winning signal,
+    GRAFT it onto other assets + RECOMBINE it with the other survivors, and route the resulting COHORT through the
+    SAME deterministic FarmLoop gate (screen → score → Benjamini-Hochberg FDR). The gate alone judges edge; this
+    only compounds what already passed, and FDR across each cohort is the brake on volume. Returns the number of
+    NEW gate-passed survivors the flywheel produced (their tracks are opened by FarmLoop → funded in step 4).
+    Deterministic for a fixed (survivors, seed): same winners + seed → same replicated cohort."""
+    specs = _load_survivor_specs(store, survivors)
+    if not specs:
+        return 0
+
+    from cosmu.evolution.evolve import run_evolution_cohort
+    from cosmu.evolution.loop import FarmLoop
+
+    loop = FarmLoop(settings=store.settings, store=store, market_data=provider)
+    parents = specs[:_EVOLVE_MAX_PARENTS]
+    evolved = 0
+    for parent in parents:
+        summary = run_evolution_cohort(loop, parent, siblings=specs, seed=seed, max_specs=_EVOLVE_MAX_SPECS)
+        evolved += summary.passed
+    store.append_event(
+        actor="master",
+        kind="autonomy_evolution",
+        ref_type="autonomy",
+        ref_id="global",
+        payload={"parents": len(parents), "evolved_survivors": evolved, "seed": seed},
+    )
+    return evolved
+
+
 def run_tick(
     store: Store,
     *,
@@ -176,23 +262,31 @@ def run_tick(
     survivors = report.survivors
     survivor_names = [s.name for s in survivors]
 
+    # The one market source the screen used — reused for replication AND funding so all stages price the SAME bars.
+    provider = _screen_provider(market_data, edge_market)
+
+    # 3b) REPLICATE — the self-reinforcing flywheel. Take this tick's gate-passed survivors, isolate each winning
+    # signal, graft/recombine it into a fresh COHORT, and route that cohort through the SAME deterministic gate
+    # (screen → score → FDR). Compounds proven edges WITHOUT letting volume manufacture a winner. Best-effort: a
+    # data hiccup here must never abort an already-gated tick. New survivors it produces open tracks → funded below.
+    evolved = 0
+    try:
+        evolved = _run_evolution(store, survivors=survivors, seed=seed, provider=provider)
+    except Exception as exc:  # noqa: BLE001 — replication is best-effort; never aborts an already-gated tick
+        store.append_event(actor="master", kind="autonomy_evolution_failed", ref_type="autonomy", payload={"error": type(exc).__name__})
+
     # 4) OPEN a standalone forward-test track per gate-passed survivor (sim fills only — live
     # stays OFF inside fund_tracks_from_survivors). Best-effort + offline-safe; a market hiccup leaves it 0.
     funded = 0
     try:
         from cosmu.orchestrator import fund_tracks_from_survivors
 
-        # Fund through the SAME provider the screen used: an explicit one if given, else the deterministic
-        # edge-bearing fixture when edge_market is on (so funding resolves prices offline with no network/cache),
-        # else the real Binance provider (cache-backed, offline-safe — a missing mark just skips that symbol).
-        funding_provider = market_data
-        if funding_provider is None and edge_market:
-            from cosmu.lab.research import _EdgeBearingBars
-
-            funding_provider = _EdgeBearingBars()
+        # Fund through the SAME provider the screen + replication used (an explicit one if given, else the
+        # edge-bearing fixture when edge_market is on so funding resolves prices offline with no network/cache,
+        # else the real Binance provider — cache-backed, offline-safe; a missing mark just skips that symbol).
         funding = fund_tracks_from_survivors(
             store,
-            market_data=funding_provider,
+            market_data=provider,
             bankroll=bankroll if bankroll is not None else settings.sim_bankroll,
         )
         funded = funding.funded
@@ -222,6 +316,7 @@ def run_tick(
             },
             "ingested": ingested,
             "survivors": survivor_names,
+            "evolved": evolved,  # gate-passed survivors the replication flywheel produced from this tick's winners
             "live_enabled": live,  # audited every tick: the tick never moves real money
             "llm": "on" if (settings.llm_api_key or chat is not None) else "off",
         },
@@ -232,6 +327,7 @@ def run_tick(
         survivors=survivor_names,
         recommendation_ids=rec_ids,
         live_enabled=live,
+        evolved=evolved,
     )
 
 
@@ -309,7 +405,7 @@ def _main(argv: list[str] | None = None) -> int:
         report = run_tick(store, n=max(1, args.n), seed=args.seed, edge_market=False)
     s = report.summary
     print("AUTONOMOUS MASTER TICK — one bounded cycle complete (sim-only, live off)")
-    print(f"  authored={s.authored} gated_passed={s.gated_passed} funded={s.funded} recommendations={s.recommendations}")
+    print(f"  authored={s.authored} gated_passed={s.gated_passed} evolved={report.evolved} funded={s.funded} recommendations={s.recommendations}")
     print(f"  survivors: {', '.join(report.survivors) or '-'}")
     print(f"  live_enabled={report.live_enabled} (the tick never arms live)")
     return 0
