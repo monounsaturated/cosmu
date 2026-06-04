@@ -32,6 +32,7 @@ from cosmu.data.altdata import (
 )
 from cosmu.data.sources.xai_twitter import XaiTwitterProvider
 from cosmu.ingest.pipeline import (
+    MemoizingProvider,
     ingest_liquidations,
     ingest_market_wide_numeric,
     ingest_news_event_score,
@@ -139,6 +140,11 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     symbols = list(symbols) if symbols is not None else list(DEFAULT_SYMBOLS)
     p = providers if providers is not None else Providers.from_settings(get_settings())
 
+    # Run-level cache: the single FRED provider feeds several semantic features off the SAME series
+    # (VIXCLS → vix_level + vix_term_slope, T10Y2Y → macro_regime + yield_curve_2s10s). Memoize it so each
+    # (symbol, series, limit) is fetched ONCE per pass — no redundant external calls within the run.
+    fred = MemoizingProvider(p.fred)
+
     counts: dict[str, int] = {}
     counts["funding_rate"] = _safe(
         "funding_rate", lambda: ingest_numeric(store, p.funding, symbols, "funding_rate", provider_name="binance")
@@ -153,19 +159,19 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     counts["macro_regime"] = _safe(
         "macro_regime",
         lambda: ingest_market_wide_numeric(
-            store, p.fred, source_metric=p.fred_series, stored_metric="macro_regime", provider_name="fred"
+            store, fred, source_metric=p.fred_series, stored_metric="macro_regime", provider_name="fred"
         ),
     )
     counts["vix_level"] = _safe(
         "vix_level",
         lambda: ingest_market_wide_numeric(
-            store, p.fred, source_metric="VIXCLS", stored_metric="vix_level", provider_name="fred"
+            store, fred, source_metric="VIXCLS", stored_metric="vix_level", provider_name="fred"
         ),
     )
     counts["fed_funds_rate"] = _safe(
         "fed_funds_rate",
         lambda: ingest_market_wide_numeric(
-            store, p.fred, source_metric="DFF", stored_metric="fed_funds_rate", provider_name="fred"
+            store, fred, source_metric="DFF", stored_metric="fed_funds_rate", provider_name="fred"
         ),
     )
     counts["defi_tvl"] = _safe(
@@ -186,25 +192,25 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     counts["dxy"] = _safe(
         "dxy",
         lambda: ingest_market_wide_numeric(
-            store, p.fred, source_metric="DTWEXBGS", stored_metric="dxy", provider_name="fred"
+            store, fred, source_metric="DTWEXBGS", stored_metric="dxy", provider_name="fred"
         ),
     )
     counts["yield_curve_2s10s"] = _safe(
         "yield_curve_2s10s",
         lambda: ingest_market_wide_numeric(
-            store, p.fred, source_metric="T10Y2Y", stored_metric="yield_curve_2s10s", provider_name="fred"
+            store, fred, source_metric="T10Y2Y", stored_metric="yield_curve_2s10s", provider_name="fred"
         ),
     )
     counts["credit_spread"] = _safe(
         "credit_spread",
         lambda: ingest_market_wide_numeric(
-            store, p.fred, source_metric="BAMLH0A0HYM2", stored_metric="credit_spread", provider_name="fred"
+            store, fred, source_metric="BAMLH0A0HYM2", stored_metric="credit_spread", provider_name="fred"
         ),
     )
     counts["vix_term_slope"] = _safe(
         "vix_term_slope",
         lambda: ingest_market_wide_numeric(
-            store, p.fred, source_metric="VIXCLS", stored_metric="vix_term_slope", provider_name="fred"
+            store, fred, source_metric="VIXCLS", stored_metric="vix_term_slope", provider_name="fred"
         ),
     )
     # Exchange-derived crypto features (free Binance fapi, no key)

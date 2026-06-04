@@ -150,8 +150,12 @@ class RedditSentimentProvider:
         self.post_limit = post_limit
         self._fetcher = _fetcher or self._fetch
 
+    # Reddit throttles/blocks bare bot UAs (429/empty); its API rules want a descriptive
+    # `platform:appid:version (by /u/...)` agent — without this the live read silently yielded nothing.
+    _UA = "python:cosmu-engine:0.1 (by /u/cosmu-bot)"
+
     def _fetch(self, url: str) -> dict:
-        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        req = urllib.request.Request(url, headers={"User-Agent": self._UA})
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
@@ -291,6 +295,86 @@ class CachedFundingRateProvider:
             out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["fundingRate"])))
         out.sort(key=lambda p: p.ts)
         return out[-limit:] if limit and len(out) > limit else out
+
+
+class BinanceFundingHistoryProvider:
+    """Paginated Binance USDⓈ-M funding-rate HISTORY (free `fapi/v1/fundingRate`, no key). The single-page
+    `FundingRateProvider` tops out at the endpoint's 1000-row cap (~111 days at 8h funding); this walks
+    `startTime` forward one page at a time until it reaches `now` (or `end_ms`), so ONE call yields ≥1 year
+    of history per symbol. `available_at == ts == fundingTime` — the exchange publishes the realized rate at
+    the funding instant, which IS the point-in-time stamp (no look-ahead). The walk de-dups by fundingTime so
+    an overlapping page boundary never double-counts. Offline-testable: inject `_fetcher(url) -> list` to
+    replay canned pages; tests never touch the network (live runs sleep `sleep_s` between pages to stay polite)."""
+
+    def __init__(
+        self,
+        base_url: str = "https://fapi.binance.com",
+        *,
+        page_limit: int = 1000,
+        sleep_s: float = 0.25,
+        max_pages: int = 5000,
+        _fetcher: Callable[[str], list] | None = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.page_limit = max(1, min(page_limit, 1000))  # Binance hard-caps the page at 1000 rows
+        self.sleep_s = sleep_s
+        self.max_pages = max_pages
+        self._live = _fetcher is None  # only the live path sleeps between pages
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> list:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=25, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def fetch_history(self, symbol: str, *, start_ms: int, end_ms: int | None = None) -> list[AltDataPoint]:
+        """Walk pages forward from `start_ms` to `end_ms` (default = now). Returns ascending, de-duped
+        AltDataPoints. A short (<page_limit) page means the history is exhausted → stop."""
+        import time
+
+        end = int(end_ms) if end_ms is not None else int(time.time() * 1000)
+        cursor = int(start_ms)
+        seen: set[int] = set()
+        out: list[AltDataPoint] = []
+        for _ in range(self.max_pages):
+            if cursor > end:
+                break
+            params = {"symbol": symbol, "startTime": cursor, "endTime": end, "limit": self.page_limit}
+            url = f"{self.base_url}/fapi/v1/fundingRate?{urllib.parse.urlencode(params)}"
+            rows = self._fetcher(url)
+            if not rows:
+                break
+            last_ft = cursor
+            for row in rows:
+                ft = int(row["fundingTime"])
+                last_ft = max(last_ft, ft)
+                if ft in seen:
+                    continue
+                seen.add(ft)
+                ts = datetime.fromtimestamp(ft / 1000, tz=UTC)
+                out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["fundingRate"])))
+            if len(rows) < self.page_limit:
+                break  # last partial page → no more history
+            nxt = last_ft + 1
+            if nxt <= cursor:
+                break  # no forward progress (defensive against a stuck cursor)
+            cursor = nxt
+            if self._live and self.sleep_s:
+                time.sleep(self.sleep_s)
+        out.sort(key=lambda p: p.ts)
+        return out
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        """AltDataProvider seam: the trailing `limit` funding points (covers ~limit/3 days at 8h funding).
+        Backfills should call `fetch_history` with an explicit `start_ms` for a full ≥1yr span instead."""
+        if metric != "funding_rate":
+            return []
+        import time
+
+        days = max(1, int(limit / 3) + 2)  # 3 funding events/day → enough lookback to fill `limit` rows
+        start_ms = int((time.time() - days * 86400) * 1000)
+        pts = self.fetch_history(symbol, start_ms=start_ms)
+        return pts[-limit:] if limit and len(pts) > limit else pts
 
 
 class FearGreedProvider:
@@ -518,10 +602,16 @@ class CoinglassLiquidationProvider:
     bucket before it publishes it, so a bucket observed at time T is available at the NEXT bucket boundary
     (here +1 day for the daily interval) — a conservative point-in-time floor, never look-ahead."""
 
-    def __init__(self, base_url: str = "https://open-api.coinglass.com", interval: str = "1d", bucket_seconds: int = 86400) -> None:
+    def __init__(self, base_url: str = "https://open-api.coinglass.com", interval: str = "1d", bucket_seconds: int = 86400, *, _fetcher: Callable[[str], dict] | None = None) -> None:
         self.base_url = base_url.rstrip("/")
         self.interval = interval
         self.bucket_seconds = bucket_seconds
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> dict:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
 
     def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
         if metric != "liquidations":
@@ -529,9 +619,7 @@ class CoinglassLiquidationProvider:
         coin = symbol[:-4] if symbol.endswith("USDT") else symbol
         query = urllib.parse.urlencode({"symbol": coin, "interval": self.interval})
         url = f"{self.base_url}/public/v2/liquidation_history?{query}"
-        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
-        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
+        payload = self._fetcher(url)
         return _points_from_coinglass(payload, self.bucket_seconds)[-limit:]
 
 
@@ -540,23 +628,27 @@ class CboePutCallProvider:
     ignored (one series for the whole tape). The ratio for a session is finalized AFTER the close, so each
     point is stamped available the NEXT day — a conservative point-in-time floor, never look-ahead."""
 
-    def __init__(self, url: str = "https://cdn.cboe.com/api/global/us_indices/daily_prices/total_pc.csv", release_lag_days: int = 1) -> None:
+    def __init__(self, url: str = "https://cdn.cboe.com/api/global/us_indices/daily_prices/total_pc.csv", release_lag_days: int = 1, *, _fetcher: Callable[[str], str] | None = None) -> None:
         self.url = url
         self.release_lag_days = release_lag_days
+        self._fetcher = _fetcher or self._fetch
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
-        if metric != "putcall_ratio":
-            return []
+    def _fetch(self, url: str) -> str:
         # CBOE's CDN 403s a bare bot UA — present a browser-like UA + Accept so the free CSV is served.
         req = urllib.request.Request(
-            self.url,
+            url,
             headers={
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
                 "Accept": "text/csv,*/*",
             },
         )
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
-            text = resp.read().decode("utf-8")
+            return resp.read().decode("utf-8")
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "putcall_ratio":
+            return []
+        text = self._fetcher(self.url)
         return _points_from_cboe_putcall(text, self.release_lag_days)[-limit:]
 
 
@@ -583,19 +675,24 @@ class GdeltNewsProvider:
 
 
 class BinanceOpenInterestProvider:
-    """Binance USDⓈ-M aggregate open interest (free REST, no key). Numeric; availability == publication."""
+    """Binance USDⓈ-M aggregate open interest (free REST, no key). Numeric; availability == publication.
+    Offline-testable via an injected `_fetcher(url) -> list` (canned payload; no live network in tests)."""
 
-    def __init__(self, base_url: str = "https://fapi.binance.com") -> None:
+    def __init__(self, base_url: str = "https://fapi.binance.com", *, _fetcher: Callable[[str], list] | None = None) -> None:
         self.base_url = base_url.rstrip("/")
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> list:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
 
     def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
         if metric != "open_interest":
             return []
         query = urllib.parse.urlencode({"symbol": symbol, "period": "1h", "limit": min(limit, 500)})
         url = f"{self.base_url}/futures/data/openInterestHist?{query}"
-        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
-        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
-            rows = json.loads(resp.read().decode("utf-8"))
+        rows = self._fetcher(url)
         out: list[AltDataPoint] = []
         for row in rows:
             ts = datetime.fromtimestamp(int(row["timestamp"]) / 1000, tz=UTC)
@@ -604,18 +701,23 @@ class BinanceOpenInterestProvider:
 
 
 class BinanceBasisProvider:
-    """Binance USDⓈ-M perpetual vs spot basis (free REST). Computed as (mark - index) / index."""
+    """Binance USDⓈ-M perpetual vs spot basis (free REST). Computed as (mark - index) / index.
+    Offline-testable via an injected `_fetcher(url) -> dict` (canned payload; no live network in tests)."""
 
-    def __init__(self, base_url: str = "https://fapi.binance.com") -> None:
+    def __init__(self, base_url: str = "https://fapi.binance.com", *, _fetcher: Callable[[str], dict] | None = None) -> None:
         self.base_url = base_url.rstrip("/")
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> dict:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
 
     def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
         if metric != "perp_spot_basis":
             return []
         url = f"{self.base_url}/fapi/v1/premiumIndex?{urllib.parse.urlencode({'symbol': symbol})}"
-        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
-        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
-            row = json.loads(resp.read().decode("utf-8"))
+        row = self._fetcher(url)
         mark = float(row.get("markPrice", 0))
         index = float(row.get("indexPrice", 0))
         if index == 0:
@@ -627,19 +729,24 @@ class BinanceBasisProvider:
 
 class ExchangeNetflowProvider:
     """Exchange net deposit/withdrawal flow proxy via Binance USDⓈ-M long/short ratio (free REST).
-    Positive = net longs building (inflow proxy); negative = net shorts (outflow pressure)."""
+    Positive = net longs building (inflow proxy); negative = net shorts (outflow pressure).
+    Offline-testable via an injected `_fetcher(url) -> list` (canned payload; no live network in tests)."""
 
-    def __init__(self, base_url: str = "https://fapi.binance.com") -> None:
+    def __init__(self, base_url: str = "https://fapi.binance.com", *, _fetcher: Callable[[str], list] | None = None) -> None:
         self.base_url = base_url.rstrip("/")
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> list:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
 
     def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
         if metric != "exchange_netflow":
             return []
         query = urllib.parse.urlencode({"symbol": symbol, "period": "1h", "limit": min(limit, 500)})
         url = f"{self.base_url}/futures/data/globalLongShortAccountRatio?{query}"
-        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
-        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
-            rows = json.loads(resp.read().decode("utf-8"))
+        rows = self._fetcher(url)
         out: list[AltDataPoint] = []
         for row in rows:
             ts = datetime.fromtimestamp(int(row["timestamp"]) / 1000, tz=UTC)
