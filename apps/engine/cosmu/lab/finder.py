@@ -23,6 +23,7 @@ from cosmu.data.backtest import run_strategy_backtest_detailed
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
+from cosmu.experiments import KIND_FINDER, ExperimentRecord, data_version, log_experiments
 from cosmu.knowledge.store import Store, Writer, utcnow
 from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_cohort
@@ -338,6 +339,13 @@ class StrategyFinder:
         if persist:
             self._persist(spec, results, market)
 
+        # Experiment-tracking hook (thin, best-effort): log EVERY screened variant to the registry with its
+        # exact fitted config + run seed + data_version + metrics — so the run is comparable to past runs and
+        # exactly regenerable — and carry `net_profit` as the continuous forward-P&L SOFT-LABEL that gives the
+        # ML ranker a gradient before any variant passes the gate. Never blocks discovery (log_experiments
+        # swallows its own failures). data_version is computed from the bars the run actually consumed.
+        self._log_experiments(spec, results, market)
+
         gate_passers = [r for r in results if r.gate_passed]
         leaderboard = sorted(gate_passers, key=lambda r: (r.profit_factor, r.deflated_sharpe), reverse=True)
         survivors = [r for r in results if r.promoted and r.holdout_passed]
@@ -525,6 +533,29 @@ class StrategyFinder:
 
     def _version_exists(self, code_hash: str) -> bool:
         return self.store.row("SELECT id FROM strategy_versions WHERE code_hash = ?", (code_hash,)) is not None
+
+    def _log_experiments(self, spec: StrategySpec, results: list[VariantResult], market: dict[str, list[Bar]]) -> None:
+        """The experiment-tracking hook: one registry row per screened variant. config = the fitted params
+        (the regeneration knobs), metrics = the full scoreable BacktestMetrics, soft_label = net forward-P&L
+        (the continuous gradient for the ranker). Deterministic run seed from settings so a re-run reproduces."""
+        dv = data_version(market)
+        seed = int(self.settings.evolution.default_seed)
+        records = [
+            ExperimentRecord(
+                kind=KIND_FINDER,
+                source="finder",
+                label=r.config_tag,
+                config={**r.fitted_params, "config_tag": r.config_tag},
+                metrics=r.metrics.model_dump(mode="json"),
+                seed=seed,
+                data_version=dv,
+                code_hash=r.code_hash,
+                soft_label=r.net_profit,
+                gate_passed=r.gate_passed,
+            )
+            for r in results
+        ]
+        log_experiments(self.store, records)
 
 
 

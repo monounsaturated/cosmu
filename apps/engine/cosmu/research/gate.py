@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from cosmu.data.altdata import AltDataProvider, NewsProvider, read_pit_fee, rolling_zscore
 from cosmu.data.market import Bar
+from cosmu.experiments import ExperimentRecord, data_version, log_experiments
 from cosmu.spine.venue import default_catalog
 from cosmu.ingest.standardize import standardize_news
 from cosmu.knowledge.store import Store
@@ -134,6 +135,16 @@ def evaluate_gate(
         reasons.append("buy_and_hold")
 
     passed = not reasons
+    # Experiment-tracking hook: every variant logged with its forward-P&L soft-label (gradient for the ranker).
+    _log_gate_experiments(
+        store, kind="edge_gate", source="edge_gate", market=market,
+        items=[
+            (r.params.name,
+             {"lookback": r.params.lookback, "z_threshold": r.params.z_threshold, "hold_bars": r.params.hold_bars},
+             r.metrics, r.val_return, None)
+            for r in results
+        ],
+    )
     return GateVerdict(
         decision="PASS" if passed else "STOP",
         passed=passed,
@@ -154,6 +165,26 @@ def _gate_gates(store: Store):  # noqa: ANN202 - returns GateSettings
     from cosmu.config.settings import get_settings
 
     return get_settings().gates
+
+
+def _log_gate_experiments(store: Store, *, kind: str, source: str, market: dict, items: list) -> None:
+    """Thin, best-effort experiment-tracking hook for the gate engines. `items` is a list of
+    (label, config, metrics, forward_pnl, gate_passed|None): each variant/arm becomes one registry row carrying
+    its exact config + the run seed + the input data_version (comparable + regenerable) and its continuous
+    forward-P&L SOFT-LABEL (the ML ranker's gradient before any gate-pass exists). Never raises into the gate."""
+    from cosmu.config.settings import get_settings
+
+    dv = data_version(market)
+    seed = int(get_settings().evolution.default_seed)
+    records = [
+        ExperimentRecord(
+            kind=kind, source=source, label=label, config=config,
+            metrics=metrics.model_dump(mode="json"), seed=seed, data_version=dv,
+            soft_label=forward_pnl, gate_passed=passed,
+        )
+        for label, config, metrics, forward_pnl, passed in items
+    ]
+    log_experiments(store, records)
 
 
 def _aligned_market(market: dict[str, list[Bar]], altdata: AltDataProvider, metric: str) -> dict[str, tuple[list[Bar], list[float | None]]]:
@@ -582,6 +613,15 @@ def evaluate_ablation(
         reasons.append("max_drawdown")
 
     passed = not reasons
+    # Experiment-tracking hook: each ablation arm logged with its forward-P&L soft-label.
+    _log_gate_experiments(
+        store, kind="ablation", source="ablation", market=market,
+        items=[
+            (arm.name, {"arm": arm.name, "lookback": lookback}, arm.metrics, arm.val_return,
+             passed if arm is alt else None)
+            for arm in (price, alt, *drops.values())
+        ],
+    )
     return AblationVerdict(
         decision="PASS" if passed else "STOP",
         passed=passed,
@@ -832,6 +872,16 @@ def evaluate_cross_asset_ablation(
         reasons.append("max_drawdown")
 
     passed = not reasons
+    # Experiment-tracking hook: each counted cross-asset arm logged with its forward-P&L soft-label. `market`
+    # here is the flattened single-/cross-asset universe the arms actually traded.
+    _log_gate_experiments(
+        store, kind="cross_asset", source="cross_asset", market=market,
+        items=[
+            (arm.name, {"arm": arm.name, "lookback": lookback}, arm.metrics, arm.val_return,
+             passed if arm is xasset else None)
+            for arm in (price, single, xasset)
+        ],
+    )
     return CrossAssetVerdict(
         decision="PASS" if passed else "STOP-narrow",
         passed=passed,
