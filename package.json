@@ -18,6 +18,8 @@
     "start:api": "PYTHONPATH=apps/engine python3 -m cosmu.api.app",
     "start:web": "pnpm --filter @cosmu/web start",
     "lint": "pnpm -r lint",
+    "prepare": "node scripts/setup-hooks.mjs",
+    "setup:hooks": "node scripts/setup-hooks.mjs",
     "naming:check": "python3 scripts/check_naming.py",
     "typecheck": "pnpm --filter @cosmu/contracts-ts typecheck && pnpm --filter @cosmu/web typecheck",
     "verify": "pnpm naming:check && pnpm contracts:generate && pnpm engine:test && pnpm typecheck && pnpm build"

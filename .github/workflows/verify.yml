@@ -4,9 +4,12 @@ on:
   pull_request:
     branches:
       - main
+  # Backstop: push == deploy and branch protection isn't available on the current
+  # plan, so verify runs on EVERY branch's pushes, not just main. The local
+  # pre-push hook (.githooks/pre-push) is the first gate; this is the safety net.
   push:
     branches:
-      - main
+      - "**" # any branch (matches names with slashes, unlike "*")
 
 jobs:
   verify:
@@ -25,7 +28,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: .nvmrc
           cache: pnpm
 
       - name: Setup Python
@@ -45,7 +48,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install engine (Python)
-        run: pip install -e apps/engine
+        run: pip install -e "apps/engine[dev]"
 
       - name: Run verify
         run: pnpm verify
