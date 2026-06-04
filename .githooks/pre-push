@@ -1,0 +1,35 @@
+#!/usr/bin/env sh
+#
+# pre-push — last line of defense before a broken commit ships.
+#
+# In this repo push == deploy: Railway (engine) and Vercel (web) auto-deploy the
+# pushed working branch, and branch protection isn't available on the current
+# plan, so CI-on-main can't stop a bad commit from reaching prod. This hook runs
+# the full `pnpm verify` gate locally and blocks the push if it fails.
+# CI-on-all-branches (.github/workflows/verify.yml) is the backstop for pushes
+# that skip the hook (e.g. --no-verify, or a clone that never enabled it).
+#
+# Enable:      git config core.hooksPath .githooks   (auto-run by `pnpm install`)
+# Bypass once: git push --no-verify
+#
+set -u
+
+echo "[pre-push] push == deploy — running 'pnpm verify' before allowing push..."
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "[pre-push] ERROR: pnpm not found on PATH; cannot run the verify gate." >&2
+  echo "[pre-push]        install pnpm, or bypass intentionally with: git push --no-verify" >&2
+  exit 1
+fi
+
+pnpm verify
+status=$?
+
+if [ "$status" -ne 0 ]; then
+  echo "[pre-push] BLOCKED: 'pnpm verify' failed (exit $status). Fix the tree, then push." >&2
+  echo "[pre-push]          to bypass intentionally: git push --no-verify" >&2
+  exit "$status"
+fi
+
+echo "[pre-push] verify passed — allowing push."
+exit 0
