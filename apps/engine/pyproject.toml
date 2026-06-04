@@ -33,6 +33,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
   "evals: evaluation gates for agentic behavior",
+  "allow_network: opt-out of the session-wide socket guard (for tests that genuinely need a live connection)",
 ]
 
 [tool.ruff]
