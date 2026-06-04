@@ -38,4 +38,16 @@ Autonomous, **honest, LEAN** crypto money-machine. LLM **proposes** strategies; 
 - Required already set. Free recommended: **FRED** ✅. Optional/paid (LunarCrush…): only when a category proves edge. Live (Binance/Kraken keys): only when going live.
 
 ## The goal (autonomous machine)
-A system that **reads → scrapes → ingests → proposes (LLM, from vibes/weak signals) → verifies on the honest gate (no hallucination) → forward-tests → trades live on your click**, leaning hard on current APIs/LLMs/ML. Vibe → verified → live.
+A system that **reads → scrapes → ingests → proposes (LLM, from vibes/weak signals) → verifies on the honest gate (no hallucination) → forward-tests → trades live on your click**, leaning hard on current APIs/LLMs/ML. Vibe → verified → live. The leverage: **LLM-formatted, standardized, point-in-time scores/indexes stored with history → train ML on them**.
+
+## Next wave (cloud agents; one master orchestrator merges)
+1. **Turn ON the autonomous machine** — rebase + merge **#47 (evolve flywheel)** + **#48 (experiment tracking)** onto the now-honest finder → the machine searches thousands of hypotheses, gate as the brake.
+2. **UI rethink** — modular, **Notion-vibe**, data-rich, less clutter; pick-what-to-display; deep-detail on demand; kill the "$ dollars" KPIs for tool-aligned metrics; logic+buttons+hover-modals not walls of text.
+3. **Data depth + pipelines** — wider perp universe (carry was INSUFFICIENT-DATA on 5 symbols), more sources, **multiple timeframes**, no duplicates, ML-ready standardized storage.
+4. **Inspiration skills** (in IDEAS): `/profile-source` data-trust audit (before) · backtest integrity audit (after) · **SIM→live variance attribution** · Polymarket-only LLM research-desk · adaptive scraper.
+5. **Strategy × asset × timeframe matrix** — the core ML feature (tailor each strategy per asset/timeframe).
+
+## Decisions to carry (don't re-litigate)
+- **QuantConnect: NO rewrite** (the honest hand-rolled gate is the moat). **But DO offload COMMODITY layers to external services** to maintain less + keep the codebase readable: **OpenBB** (data), **TradingView** (charts/Pine), a **broker SDK** (live exec). Lean core stays ours. *(This is "buy>build, modular, easy-to-read" applied correctly.)*
+- **Compute/where things run:** BUILD on **local M2** (now fast — hermetic tests dropped verify 28→12 min) for 1–2 agents; use **cloud Claude chats** only for **3+ truly-parallel** agents (separate VMs → no M2 contention). **AUTONOMOUS RUNNING** (data fetch, the tick, ML) = **Railway crons**, NOT Claude agents. Speed cheat codes: targeted tests during work, `--no-verify` push, ONE verify at merge, big audits at the end.
+- **Idea intake:** drop one-liners in `IDEAS.md` → `/triage-ideas` promotes into `BACKLOG.md` → `/fan-out` → PRs. Never break the current plan; prioritize, don't pile.
