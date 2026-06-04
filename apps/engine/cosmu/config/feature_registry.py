@@ -134,6 +134,17 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         ),
         transform_version="news-event-score-v1",
     ),
+    # --- cross-asset daily price levels (free, no key) via Stooq/Yahoo: one asset class's price IS another's
+    # macro feature. Each is market-wide, point-in-time (a daily close is known the next day — see
+    # multiasset-daily-v1), and tier0 like the other liquid macro reads (dxy/vix). They condition the shared
+    # risk regime across crypto + equity, so each spans both classes. ---
+    FeatureDefinition(name="gold_xau", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="Gold is the canonical risk-off / real-rate hedge; its level and trend tag the macro risk regime that conditions crypto + equity premia.", transform_version="multiasset-daily-v1"),
+    FeatureDefinition(name="silver_xag", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="Silver blends a precious-metal hedge with industrial demand; the gold/silver behaviour is a cyclical risk-appetite read.", transform_version="multiasset-daily-v1"),
+    FeatureDefinition(name="wti_crude", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="Crude oil is a growth + inflation impulse; sharp moves precede shifts in risk premia across every class.", transform_version="multiasset-daily-v1"),
+    FeatureDefinition(name="spx_index", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="The S&P 500 is the global risk-on benchmark; crypto's beta to broad equities means SPX trend is a shared regime tag.", transform_version="multiasset-daily-v1"),
+    FeatureDefinition(name="ndx_index", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="The Nasdaq-100 carries the high-beta tech/liquidity factor crypto co-moves with most strongly — a faster risk-appetite read than SPX.", transform_version="multiasset-daily-v1"),
+    FeatureDefinition(name="eurusd", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="EUR/USD is the dominant dollar-strength gauge; a weaker dollar loosens global financial conditions, a tailwind for risk assets.", transform_version="multiasset-daily-v1"),
+    FeatureDefinition(name="usdjpy", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="USD/JPY tracks the yen carry trade and global liquidity; a sharp JPY rally often coincides with cross-asset risk-off deleveraging.", transform_version="multiasset-daily-v1"),
     FeatureDefinition(name="pm_implied_prob", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Odds are a cross-market probability signal."),
     FeatureDefinition(name="pm_prob_velocity", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Probability repricing speed identifies changing beliefs."),
     FeatureDefinition(name="pm_book_depth", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Depth defines fillable capacity."),

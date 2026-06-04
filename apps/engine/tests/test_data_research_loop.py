@@ -50,9 +50,12 @@ def _fixture_providers() -> Providers:
     fred = FixtureAltDataProvider({("MARKET", "T10Y2Y"): _series("macro_regime", base=0.5)})
     polymarket = FixtureAltDataProvider({("MARKET", "risk-on"): _series("risk_on", base=0.6)})
     news = FixtureNewsProvider({s: _news() for s in _CRYPTO})
+    # Cross-asset daily levels keyed by their SEMANTIC names under MARKET (StooqDailyProvider maps them).
+    multiasset = FixtureAltDataProvider({("MARKET", m): _series(m, base=100.0) for m in ("gold_xau", "spx_index", "eurusd")})
     return Providers(
         funding=funding, feargreed=feargreed, news=news, fred=fred, polymarket=polymarket,
-        liquidations=liquidations, putcall=putcall, fred_series="T10Y2Y", polymarket_token="risk-on",
+        liquidations=liquidations, putcall=putcall, multiasset=multiasset,
+        fred_series="T10Y2Y", polymarket_token="risk-on",
     )
 
 

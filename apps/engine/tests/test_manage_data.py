@@ -42,7 +42,7 @@ def _all_fixture_providers(**overrides) -> Providers:
         funding=_empty(), feargreed=_empty(), news=FixtureNewsProvider({}), fred=_empty(),
         polymarket=_empty(), liquidations=_empty(), putcall=_empty(), defillama=_empty(),
         open_interest=_empty(), basis=_empty(), netflow=_empty(), osint=_empty(), polymarket_clob=_empty(),
-        reddit=_empty(), lunarcrush=_empty(), xai_twitter=_empty(), venue_fees=_empty(),
+        reddit=_empty(), lunarcrush=_empty(), xai_twitter=_empty(), venue_fees=_empty(), multiasset=_empty(),
     )
     base.update(overrides)
     return Providers(**base)

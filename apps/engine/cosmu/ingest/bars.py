@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from decimal import Decimal
 from pathlib import Path
 
 from cosmu.data.market import Bar, _bar_from_ccxt, _bar_from_json, _ccxt_symbol
@@ -17,6 +18,7 @@ from cosmu.data.market import Bar, _bar_from_ccxt, _bar_from_json, _ccxt_symbol
 __all__ = [
     "Bar",
     "CcxtBarBackfiller",
+    "StooqBarBackfiller",
     "TIMEFRAME_MS",
     "bar_cache_path",
     "read_cached_bars",
@@ -52,8 +54,14 @@ class CcxtBarBackfiller:
     `[ms, open, high, low, close, volume]` rows; tests never touch the network (live runs sleep `sleep_s`
     between pages to stay polite)."""
 
-    # our exchange symbol (BTCUSDT) → the venue's ccxt unified symbol.
-    _VENUE_SYMBOL = {"binance": _ccxt_symbol, "kraken": _kraken_ccxt_symbol}
+    # our exchange symbol (BTCUSDT) → the venue's ccxt unified symbol. Bybit + OKX use the same BASE/USDT
+    # unified shape as Binance, so the crypto-deep venues come for free (more spot price history per asset).
+    _VENUE_SYMBOL = {
+        "binance": _ccxt_symbol,
+        "kraken": _kraken_ccxt_symbol,
+        "bybit": _ccxt_symbol,
+        "okx": _ccxt_symbol,
+    }
 
     def __init__(
         self,
@@ -115,6 +123,52 @@ class CcxtBarBackfiller:
             cursor = nxt
             if self._live and self.sleep_s:
                 time.sleep(self.sleep_s)
+        out.sort(key=lambda b: b.ts)
+        return out
+
+
+def _stooq_bar_symbol(symbol: str) -> str:
+    """Our symbol → the Stooq native ticker. An already-native ticker (`spy.us`, `^spx`, `eurusd`) passes
+    through; a known FX/metal pair lower-cases; everything else is assumed a US equity (`SPY` → `spy.us`)."""
+    if "." in symbol or symbol.startswith("^"):
+        return symbol.lower()
+    if symbol.upper() in {"EURUSD", "USDJPY", "GBPUSD", "XAUUSD", "XAGUSD"}:
+        return symbol.lower()
+    return f"{symbol.lower()}.us"
+
+
+class StooqBarBackfiller:
+    """FREE, keyless DAILY OHLCV history for non-crypto assets (stocks / FX / metals / indexes) via Stooq's
+    public CSV — the bar analogue of `CcxtBarBackfiller` for the venues ccxt does not cover. Same
+    `fetch_history(symbol, timeframe, *, start_ms, end_ms)` seam so the managed backfill path treats it like any
+    other bar venue. Stooq serves DAILY bars only, so a non-`1d` timeframe → [] (honest). Each bar is stamped
+    at its own close (point-in-time; the walk is just a window filter, so a re-run is byte-identical). No ccxt,
+    no key. Offline-testable: inject `_fetcher(url) -> str` (canned CSV; no live network in tests)."""
+
+    def __init__(self, *, _fetcher: Callable[[str], str] | None = None) -> None:
+        from cosmu.data.sources.multiasset import StooqDailyProvider
+
+        # Reuse the Stooq CSV transport + parser (one fetcher, no duplication).
+        self._provider = StooqDailyProvider(_fetcher=_fetcher) if _fetcher is not None else StooqDailyProvider()
+
+    def fetch_history(self, symbol: str, timeframe: str, *, start_ms: int, end_ms: int | None = None) -> list[Bar]:
+        from cosmu.data.sources.multiasset import parse_stooq_csv, stooq_daily_url
+
+        if timeframe != "1d":
+            return []  # Stooq daily CSV serves 1d bars only
+        import time
+
+        end = int(end_ms) if end_ms is not None else int(time.time() * 1000)
+        text = self._provider._fetcher(stooq_daily_url(_stooq_bar_symbol(symbol)))
+        out: list[Bar] = []
+        for r in parse_stooq_csv(text):
+            ts_ms = int(r["ts"].timestamp() * 1000)  # type: ignore[union-attr]
+            if ts_ms < start_ms or ts_ms > end:
+                continue
+            out.append(Bar(
+                ts=r["ts"], open=Decimal(str(r["open"])), high=Decimal(str(r["high"])),
+                low=Decimal(str(r["low"])), close=Decimal(str(r["close"])), volume=Decimal(str(r["volume"])),
+            ))
         out.sort(key=lambda b: b.ts)
         return out
 
