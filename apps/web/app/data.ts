@@ -29,6 +29,9 @@ import type {
   OverviewResponse,
   PopulationResponse,
   Recommendation,
+  ScoreCategory,
+  ScoreSourceRow,
+  ScoresResponse,
   Skill,
   SkillsResponse,
   SourceTrustResponse,
@@ -56,6 +59,9 @@ export type {
   NewsIntelResponse,
   InboxQueueItem,
   InboxQueueResponse,
+  ScoreSourceRow,
+  ScoreCategory,
+  ScoresResponse,
 };
 
 const baseUrl = process.env.API_BASE_URL;
@@ -382,6 +388,23 @@ const emptySourceTrust: SourceTrustResponse = { as_of: "", rows: [] };
 export async function getSourceTrust(): Promise<{ trust: SourceTrustResponse; connected: boolean }> {
   const { data, connected } = await getJson("/mind/source-trust", emptySourceTrust);
   return { trust: data, connected };
+}
+
+// GET /scores — the scores cockpit: per-source + composite INDEX scores grouped by category (crypto ·
+// social · macro · OSINT · metals/forex), each with freshness and a plain-language review. Honest: a
+// category/source with no data shows index=null, connected=false; a key-gated source with no key on the
+// engine shows disabled=true so the UI greys it out. Never fabricated.
+const emptyScores: ScoresResponse = {
+  as_of: "",
+  composite_index: null,
+  composite_status: "offline",
+  composite_review: "",
+  categories: []
+};
+
+export async function getScores(): Promise<{ scores: ScoresResponse; connected: boolean }> {
+  const { data, connected } = await getJson("/scores", emptyScores);
+  return { scores: data, connected };
 }
 
 // News/intel panel: recent scored news events (typed, dated, point-in-time).

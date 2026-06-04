@@ -3563,6 +3563,229 @@
         "title": "RegimeCoverage",
         "type": "object"
       },
+      "ScoreCategory": {
+        "description": "A cockpit category (crypto \u00b7 social \u00b7 macro \u00b7 OSINT \u00b7 metals/forex) with a composite INDEX over the\nsources that actually have data. `index_score` is null when nothing is live (honest offline).",
+        "properties": {
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "freshness_label": {
+            "title": "Freshness Label",
+            "type": "string"
+          },
+          "index_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Score"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "live_sources": {
+            "title": "Live Sources",
+            "type": "integer"
+          },
+          "review": {
+            "title": "Review",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreSourceRow"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_sources": {
+            "title": "Total Sources",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "status",
+          "freshness_label",
+          "connected",
+          "live_sources",
+          "total_sources",
+          "review",
+          "sources"
+        ],
+        "title": "ScoreCategory",
+        "type": "object"
+      },
+      "ScoreSourceRow": {
+        "description": "One source inside a cockpit category.\n\n`connected` is True iff data has been ingested (status != \"no data\"). `key_required` marks a source\nthat needs a provider key to return data; `key_present` is whether that key is set on the engine env;\n`disabled` = key_required AND NOT key_present (the UI greys it out). `review` is a plain-language read.",
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "connected": {
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "disabled": {
+            "title": "Disabled",
+            "type": "boolean"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "freshness_label": {
+            "title": "Freshness Label",
+            "type": "string"
+          },
+          "hours_since": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours Since"
+          },
+          "key_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Name"
+          },
+          "key_present": {
+            "title": "Key Present",
+            "type": "boolean"
+          },
+          "key_required": {
+            "title": "Key Required",
+            "type": "boolean"
+          },
+          "last_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last At"
+          },
+          "review": {
+            "title": "Review",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "fresh",
+              "recent",
+              "aging",
+              "stale",
+              "no data"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tier": {
+            "title": "Tier",
+            "type": "string"
+          },
+          "trust_score": {
+            "title": "Trust Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "source",
+          "category",
+          "features",
+          "freshness_label",
+          "status",
+          "trust_score",
+          "tier",
+          "connected",
+          "key_required",
+          "key_present",
+          "disabled",
+          "review"
+        ],
+        "title": "ScoreSourceRow",
+        "type": "object"
+      },
+      "ScoresResponse": {
+        "description": "The scores cockpit: per-source + per-category + one composite INDEX, each with freshness and a\nplain-language review. `composite_index` is null when no category is live \u2014 never fabricated.",
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreCategory"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "composite_index": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Composite Index"
+          },
+          "composite_review": {
+            "title": "Composite Review",
+            "type": "string"
+          },
+          "composite_status": {
+            "title": "Composite Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "as_of",
+          "composite_status",
+          "composite_review",
+          "categories"
+        ],
+        "title": "ScoresResponse",
+        "type": "object"
+      },
       "SetJurisdictionRequest": {
         "properties": {
           "code": {
@@ -3984,13 +4207,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -5277,6 +5493,25 @@
           }
         },
         "summary": "Run Gate"
+      }
+    },
+    "/scores": {
+      "get": {
+        "description": "The SCORES COCKPIT \u2014 per-source + composite INDEX scores grouped by category (crypto \u00b7 social \u00b7\nmacro \u00b7 OSINT \u00b7 metals/forex), each with freshness and a plain-language \"what this means\" review.\n\nComposite index = freshness \u00d7 realized gate contribution, averaged over the sources that actually have\ndata. HONEST: a category/source with no ingested data reports connected=False and index=null \u2014 never a\nfabricated score. A key-gated source whose key is not set on the engine shows disabled=True so the UI\ngreys it out. Reviews are deterministic plain-language reads; no LLM on the gate/scoring/money path.",
+        "operationId": "scores_scores_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoresResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Scores"
       }
     },
     "/skills": {
