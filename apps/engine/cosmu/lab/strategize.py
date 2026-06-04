@@ -34,7 +34,7 @@ Intent = Literal["url", "pine", "scan", "evolve", "batch", "vibe"]
 
 # Each intent maps to the EXISTING skill that owns that path — strategize only routes; the skill does the work.
 SKILL_FOR: dict[str, str] = {
-    "url": "pine-from-url",
+    "url": "import-pine",
     "pine": "import-pine",
     "scan": "scan-signals",
     "evolve": "evolve-strategy",
@@ -285,7 +285,7 @@ def strategize(
         )
 
     elif intent == "url":
-        route.reason = "URL → drive pine-from-url (scrape the page, then translate); needs a live fetch"
+        route.reason = "URL → paste the source into import-pine (TradingView renders Pine client-side; auto-scrape unsupported)"
     elif intent == "scan":
         route.reason = "discovery → drive scan-signals (cross-asset sweep → Gate); propose-only"
     elif intent == "evolve":

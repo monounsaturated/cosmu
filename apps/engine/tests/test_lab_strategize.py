@@ -136,7 +136,7 @@ def test_pine_paste_authors_typed_spec(tmp_path):
 @pytest.mark.parametrize(
     ("text", "intent", "skill"),
     [
-        ("https://example.com/script", "url", "pine-from-url"),
+        ("https://example.com/script", "url", "import-pine"),
         ("find me something on macro", "scan", "scan-signals"),
         ("evolve the winner onto equities", "evolve", "evolve-strategy"),
     ],
