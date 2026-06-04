@@ -265,6 +265,27 @@ create table if not exists alt_data (
 );
 create index if not exists idx_alt_data_lookup on alt_data (provider, symbol, metric, available_at);
 
+-- Experiments registry: every finder/gate run logs config + seed + data_version + metrics so results are
+-- comparable across runs and exactly regenerable; soft_label carries the continuous forward-P&L so the ML
+-- ranker has a gradient before any gate-pass (binary survival label) exists. Append-only, LLM-free record.
+create table if not exists experiments (
+  id text primary key,
+  ts text not null,
+  kind text not null,
+  source text not null,
+  label text,
+  seed integer not null,
+  data_version text not null,
+  code_hash text,
+  config text not null,
+  metrics text not null,
+  soft_label numeric,
+  gate_passed integer,
+  created_at text not null
+);
+create index if not exists idx_experiments_kind_ts on experiments(kind, ts);
+create index if not exists idx_experiments_data_version on experiments(data_version);
+
 create index if not exists idx_events_ts on events(ts);
 create index if not exists idx_events_ref on events(ref_type, ref_id);
 create index if not exists idx_backtests_version_kind on backtests(strategy_version_id, kind);

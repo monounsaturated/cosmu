@@ -218,8 +218,19 @@ def load_survival_model(store: Store, *, min_train_labels: int = MIN_TRAIN_LABEL
     LightGBM if importable, else pure-Python logistic), OOS-checks on a held-out split, and takes over ordering."""
     rows, labels = _labeled_outcomes(store)
     n = len(rows)
+    backend_label = "logistic"
     if n < min_train_labels or len(set(labels)) < 2:
-        return SurvivalModel(trained=False, backend="heuristic", n_labels=n)
+        # Cold-start: no gate-pass exists yet, so the binary survival label is single-class (or too thin) and a
+        # classifier cannot learn. Fall back to the experiments registry's continuous forward-P&L SOFT-LABELS
+        # (label = "made money out-of-sample") so the ranker still gets a REAL gradient instead of the blind
+        # heuristic. Ordering only — the deterministic gate stays the sole survival authority, never reached here.
+        from cosmu.experiments.soft_labels import soft_label_training_set
+
+        soft_rows, soft_labels = soft_label_training_set(store)
+        if len(soft_rows) >= min_train_labels and len(set(soft_labels)) >= 2:
+            rows, labels, n, backend_label = soft_rows, soft_labels, len(soft_rows), "logistic_soft"
+        else:
+            return SurvivalModel(trained=False, backend="heuristic", n_labels=n)
 
     # Deterministic chronological split: train on the older 75%, OOS-check on the most recent 25% (point-in-time
     # — we never validate the model on outcomes that predate its training set).
@@ -227,13 +238,14 @@ def load_survival_model(store: Store, *, min_train_labels: int = MIN_TRAIN_LABEL
     train_rows, train_y = rows[:split], labels[:split]
     test_rows, test_y = rows[split:], labels[split:]
 
+    soft = backend_label == "logistic_soft"  # were forward-P&L soft-labels the training signal (cold-start)?
     booster = _try_boosted(train_rows, train_y)
     if booster is not None:
         model, backend = booster
         scores = [model._score_booster(r) for r in (test_rows or train_rows)]
         auroc = _auroc(scores, test_y or train_y)
         model.trained = True
-        model.backend = backend
+        model.backend = backend + "_soft" if soft else backend
         model.n_labels = n
         model.auroc = round(auroc, 4)
         return model
@@ -242,7 +254,7 @@ def load_survival_model(store: Store, *, min_train_labels: int = MIN_TRAIN_LABEL
     std_train = [_apply(r, means, stds) for r in train_rows]
     w, b = _train_logistic(std_train, train_y)
     model = SurvivalModel(
-        trained=True, backend="logistic", n_labels=n, _means=means, _stds=stds, _weights=w, _bias=b
+        trained=True, backend=backend_label, n_labels=n, _means=means, _stds=stds, _weights=w, _bias=b
     )
     check_rows = test_rows or train_rows
     check_y = test_y or train_y

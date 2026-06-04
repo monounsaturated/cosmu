@@ -301,6 +301,29 @@ CREATE TABLE IF NOT EXISTS mind_reflections (
   payload TEXT NOT NULL
 );
 
+-- Experiments registry: every finder/gate run logs its exact config + seed + data_version + metrics so any
+-- result is COMPARABLE across runs and EXACTLY REGENERABLE (same config+seed+data_version ⇒ same numbers).
+-- soft_label carries the continuous forward-P&L so the ML ranker has a GRADIENT before any gate-pass (the
+-- binary survival label) exists. Append-only; a record of what the DETERMINISTIC engine ran — out of any LLM
+-- path. Parallel to `trials` (which is the deflation counter); this is the reproducibility/soft-label ledger.
+CREATE TABLE IF NOT EXISTS experiments (
+  id TEXT PRIMARY KEY,
+  ts TEXT NOT NULL,
+  kind TEXT NOT NULL,          -- 'finder' | 'finder_refine' | 'edge_gate' | 'ablation' | 'cross_asset'
+  source TEXT NOT NULL,        -- the engine that ran it (mirrors trials.source)
+  label TEXT,                  -- candidate/signal label (config_tag, signal name, arm)
+  seed INTEGER NOT NULL,       -- the run seed → exact regeneration
+  data_version TEXT NOT NULL,  -- deterministic fingerprint of the input bars → comparable + regenerable
+  code_hash TEXT,              -- compiled-code hash where one exists (finder variants)
+  config TEXT NOT NULL,        -- JSON: the exact knobs (fitted params / pre-registered bar) to regenerate
+  metrics TEXT NOT NULL,       -- JSON: the run's scoreable metrics (BacktestMetrics dump or verdict)
+  soft_label NUMERIC,          -- continuous forward-P&L (gradient before any gate-pass exists)
+  gate_passed INTEGER,         -- 0/1 (nullable): the deterministic verdict, when known
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_experiments_kind_ts ON experiments(kind, ts);
+CREATE INDEX IF NOT EXISTS idx_experiments_data_version ON experiments(data_version);
+
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 CREATE INDEX IF NOT EXISTS idx_events_ref ON events(ref_type, ref_id);
 CREATE INDEX IF NOT EXISTS idx_backtests_version_kind ON backtests(strategy_version_id, kind);
