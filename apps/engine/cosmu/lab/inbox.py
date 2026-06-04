@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -53,6 +54,82 @@ class InboxReport:
 
 def _content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+# Operator-dropped "vibe" ideas land as brief files prefixed so they're easy to spot among authored specs.
+_QUEUE_PREFIX = "idea-"
+
+
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug[:48] or "idea"
+
+
+@dataclass
+class QueuedIdea:
+    filename: str
+    name: str
+    path: str
+    content_hash: str
+
+
+@dataclass
+class QueuedIdeaRow:
+    filename: str
+    name: str
+    ts: str
+    status: str  # "queued" (awaiting the next scan) | "imported" (scanned into the Lab)
+
+
+def queue_idea(store: Store, text: str, *, name: str | None = None, inbox_dir: Path | None = None) -> QueuedIdea:
+    """Persist an operator's natural-language strategy 'vibe' as a `.md` brief in strategies/inbox/ so the next
+    boot scan / autonomy tick translates it into a typed StrategySpec and routes it through the DETERMINISTIC Gate.
+    Writes the file AND records an audited `inbox_queued` event (with the content-hash the scanner later matches on).
+    This never authors a spec or moves money — it only queues prose; the Gate alone disposes."""
+    body = (text or "").strip()
+    if not body:
+        raise ValueError("idea text is empty")
+    directory = inbox_dir or _INBOX_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    title = (name or body.splitlines()[0]).strip()[:80] or "Untitled idea"
+    # Hash the EXACT bytes we write to disk so the recorded content_hash equals the hash the scanner computes when
+    # it reads the file back — that equality is how list_queued knows a queued idea has since been imported.
+    contents = body + "\n"
+    chash = _content_hash(contents)
+    # Content-addressed filename: the same vibe re-dropped overwrites its own file (idempotent), and the scanner's
+    # content-hash idempotency means it is imported exactly once.
+    filename = f"{_QUEUE_PREFIX}{_slugify(title)}-{chash[:8]}.md"
+    path = directory / filename
+    path.write_text(contents, encoding="utf-8")
+    store.append_event(
+        actor="human",
+        kind="inbox_queued",
+        ref_type="strategy_spec",
+        payload={"path": str(path), "filename": filename, "name": title, "content_hash": chash, "chars": len(body)},
+    )
+    return QueuedIdea(filename=filename, name=title, path=str(path), content_hash=chash)
+
+
+def list_queued(store: Store, *, limit: int = 20) -> list[QueuedIdeaRow]:
+    """The operator-queued ideas, newest first. Each stays `queued` until a scan imports its content-hash, then
+    flips to `imported`. Read straight off the audited event ledger — honest, never fabricated."""
+    rows = store.rows(
+        "SELECT ts, payload FROM events WHERE kind = 'inbox_queued' ORDER BY id DESC LIMIT ?",
+        (limit,),
+    )
+    out: list[QueuedIdeaRow] = []
+    for r in rows:
+        payload = r["payload"]
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except (ValueError, TypeError):
+                payload = {}
+        payload = payload or {}
+        chash = payload.get("content_hash", "")
+        status = "imported" if chash and _already_imported(store, chash) else "queued"
+        out.append(QueuedIdeaRow(filename=payload.get("filename", ""), name=payload.get("name", ""), ts=r["ts"], status=status))
+    return out
 
 
 def _already_imported(store: Store, content_hash: str) -> bool:

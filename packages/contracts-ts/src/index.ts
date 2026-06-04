@@ -380,6 +380,31 @@ export interface HTTPValidationError {
   detail?: ValidationError[];
 }
 
+export interface InboxIdeaRequest {
+  name?: string | null;
+  text: string;
+}
+
+export interface InboxIdeaResponse {
+  filename: string;
+  name: string;
+  note: string;
+  ok: boolean;
+  queued: number;
+}
+
+export interface InboxQueueItem {
+  filename: string;
+  name: string;
+  status: "queued" | "imported";
+  ts: string;
+}
+
+export interface InboxQueueResponse {
+  inbox_dir: string;
+  items: InboxQueueItem[];
+}
+
 export interface InfraLine {
   amount: number;
   amount_max: number;
@@ -803,6 +828,8 @@ export interface UniverseResponse {
 }
 
 export interface ValidationError {
+  ctx?: Record<string, unknown>;
+  input?: string;
   loc: string | number[];
   msg: string;
   type: string;

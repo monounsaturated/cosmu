@@ -1,7 +1,7 @@
 import { ArrowRight, Coins, Gauge, LineChart, ListChecks, MessageSquare, TrendingDown, TrendingUp } from "lucide-react";
 import Link from "next/link";
-import { engineConfigured, getAutonomyStatus, getEvents, getIntelligence, getLeaderboard, getMind, getOverview, getPopulation, getRecommendations } from "./data";
-import type { CostSlice, LeaderboardRow } from "@cosmu/contracts-ts";
+import { engineConfigured, getAutonomyStatus, getEvents, getInboxQueue, getIntelligence, getLeaderboard, getMind, getOverview, getPopulation, getRecommendations } from "./data";
+import type { CostSlice, LeaderboardRow, Recommendation } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
@@ -14,6 +14,9 @@ import { AutonomyPanel } from "@/components/autonomy/autonomy-panel";
 import { NeedsYouInbox } from "@/components/autonomy/needs-you-inbox";
 import { SystemIntelligence } from "@/components/intelligence/system-intelligence";
 import { RightNow } from "@/components/overview/right-now";
+import { WhatNext } from "@/components/overview/what-next";
+import { IdeaInbox } from "@/components/overview/idea-inbox";
+import { DataFreshness } from "@/components/overview/data-freshness";
 import { TRACK_VS_AGGREGATE } from "@/lib/shared-content";
 import { formatPct, formatSigned, formatUsd } from "@/lib/utils";
 
@@ -33,7 +36,8 @@ export default async function OverviewPage() {
     { status: autonomy, connected: autonomyConnected },
     { intelligence, connected: intelConnected },
     { population },
-    { mind }
+    { mind },
+    { items: queuedIdeas, connected: inboxConnected }
   ] = await Promise.all([
     getOverview(),
     getLeaderboard(),
@@ -42,7 +46,8 @@ export default async function OverviewPage() {
     getAutonomyStatus(),
     getIntelligence(),
     getPopulation(),
-    getMind()
+    getMind(),
+    getInboxQueue()
   ]);
 
   if (!connected) {
@@ -122,6 +127,17 @@ export default async function OverviewPage() {
         <Stat label="Daily opex" value={overview.costs.length ? formatUsd(costsTotal, 0) : "—"} accent="iris" />
       </section>
 
+      {/* What to do next — 1–3 concrete suggestions derived purely from real engine state. */}
+      <WhatNext
+        population={population}
+        leaderboard={leaderboard.rows as LeaderboardRow[]}
+        recommendations={recommendations as Recommendation[]}
+        autonomy={autonomy}
+        dataFreshness={intelligence.data_freshness}
+        hasTrackRecord={hasTrackRecord}
+        returnPct={returnPct}
+      />
+
       {/* Right now — the command-center band: engine, population, Mind, what needs you, latest events. */}
       <RightNow
         connected={connected}
@@ -131,6 +147,12 @@ export default async function OverviewPage() {
         recommendations={recommendations}
         events={events}
       />
+
+      {/* Idea inbox (drop a strategy vibe → gated spec) + data freshness (is the system fed?). */}
+      <section className="grid gap-3 lg:grid-cols-2">
+        <IdeaInbox initial={queuedIdeas} connected={inboxConnected} configured={engineConfigured} />
+        <DataFreshness sources={intelligence.data_freshness} connected={intelConnected} />
+      </section>
 
       {/* How Cosmu works — the four stages, clickable. Clears up Lab / Forward-test / Live at a glance. */}
       <LifecycleStrip />
