@@ -18,8 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MoneyState, moneyMode } from "@/components/ui/money-state";
-
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "never";
@@ -65,9 +64,9 @@ export function AutonomyPanel({
   const money = moneyMode({ live: status.live_enabled });
 
   async function refresh() {
-    if (!ENGINE) return;
+    if (!ENGINE_CONFIGURED) return;
     try {
-      const res = await fetch(`${ENGINE}/autonomy/status`);
+      const res = await engineFetch("/autonomy/status");
       if (!res.ok) throw new Error("engine unavailable");
       setStatus((await res.json()) as AutonomyStatus);
       setConnected(true);
@@ -82,14 +81,14 @@ export function AutonomyPanel({
     const prev = status;
     setStatus({ ...status, paused });
     startToggle(async () => {
-      if (!ENGINE) {
+      if (!ENGINE_CONFIGURED) {
         setStatus(prev);
         setConnected(false);
         setNote("Engine not connected — set API_BASE_URL to pause or resume the machine.");
         return;
       }
       try {
-        const res = await fetch(`${ENGINE}/autonomy/${paused ? "pause" : "resume"}`, { method: "POST" });
+        const res = await engineFetch(`/autonomy/${paused ? "pause" : "resume"}`, { method: "POST" });
         if (!res.ok) throw new Error("engine unavailable");
         const data = (await res.json()) as PauseResumeResult;
         setStatus((s) => ({ ...s, paused: data.paused }));
@@ -107,13 +106,13 @@ export function AutonomyPanel({
     setNote(null);
     setTick(null);
     startTick(async () => {
-      if (!ENGINE) {
+      if (!ENGINE_CONFIGURED) {
         setConnected(false);
         setNote("Engine not connected — set API_BASE_URL to run a cycle.");
         return;
       }
       try {
-        const res = await fetch(`${ENGINE}/autonomy/tick`, { method: "POST" });
+        const res = await engineFetch("/autonomy/tick", { method: "POST" });
         if (!res.ok) throw new Error("engine unavailable");
         setTick((await res.json()) as AutonomyTickResult);
         setConnected(true);

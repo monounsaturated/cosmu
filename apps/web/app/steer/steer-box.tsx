@@ -12,8 +12,7 @@ import { BrainCircuit, Send, ShieldCheck } from "lucide-react";
 import type { CommandResponse } from "@cosmu/contracts-ts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 
 type Reply = { md: string; applied: boolean; needsApproval: boolean } | { md: string; offline: true };
 
@@ -28,12 +27,12 @@ export function SteerBox() {
   function steer() {
     setReply(null);
     startSteer(async () => {
-      if (!ENGINE) {
+      if (!ENGINE_CONFIGURED) {
         setReply({ md: "Engine not connected — set API_BASE_URL to send steer commands.", offline: true });
         return;
       }
       try {
-        const res = await fetch(`${ENGINE}/console/command`, {
+        const res = await engineFetch("/console/command", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ text })
@@ -51,12 +50,12 @@ export function SteerBox() {
   function askMl() {
     setMlReply(null);
     startAsk(async () => {
-      if (!ENGINE) {
+      if (!ENGINE_CONFIGURED) {
         setMlReply("Engine not connected — set API_BASE_URL to ask the survival model.");
         return;
       }
       try {
-        const res = await fetch(`${ENGINE}/lab/ml`, {
+        const res = await engineFetch("/lab/ml", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ text: mlText })

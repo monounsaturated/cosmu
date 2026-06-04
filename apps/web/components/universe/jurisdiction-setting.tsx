@@ -7,8 +7,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { Check, Globe, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 
 interface JurisdictionOption {
   code: string;
@@ -26,11 +25,11 @@ export function JurisdictionSetting() {
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (!ENGINE) {
+    if (!ENGINE_CONFIGURED) {
       setConnected(false);
       return;
     }
-    fetch(`${ENGINE}/live/jurisdictions`)
+    engineFetch("/live/jurisdictions")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d: JurisdictionsResponse) => {
         setData(d);
@@ -40,11 +39,11 @@ export function JurisdictionSetting() {
   }, []);
 
   function pick(code: string) {
-    if (!ENGINE || code === data?.current) return;
+    if (!ENGINE_CONFIGURED || code === data?.current) return;
     setData((d) => (d ? { ...d, current: code } : d)); // optimistic
     startTransition(async () => {
       try {
-        const res = await fetch(`${ENGINE}/live/jurisdiction`, {
+        const res = await engineFetch("/live/jurisdiction", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ code })

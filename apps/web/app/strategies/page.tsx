@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/ui/section";
 import { StrategiesTable } from "@/components/research/strategies-table";
+import { StrategyStages } from "@/components/nav/strategy-stages";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 
 // Strategies answers ONE question: where is every Version in its lifecycle, and which are winning?
@@ -27,6 +28,9 @@ export default async function StrategiesPage() {
           </Badge>
         }
       />
+
+      {/* Lifecycle stage-filters (Discover → Screened → Forward-test → Live) — these moved off the top nav. */}
+      <StrategyStages />
 
       {/* How a strategy is born — plain language, both authoring paths through the one Gate. */}
       <BornNote />

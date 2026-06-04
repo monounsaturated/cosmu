@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
 import { SectionHeader } from "@/components/ui/section";
+import { StrategyStages } from "@/components/nav/strategy-stages";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 import { formatPct, formatSigned } from "@/lib/utils";
 
@@ -22,6 +23,7 @@ export default async function ForwardTestPage() {
     return (
       <div className="mx-auto max-w-[1100px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:px-7">
         <SectionHeader eyebrow="forward-test" title="Which survivors are proving themselves?" />
+        <StrategyStages />
         <NotConnected
           configured={engineConfigured}
           what="Forward-test shows each survivor's own live-data track — net-of-fee P&L, per strategy, no real money and no pooled wallet. All real, never fabricated."
@@ -42,6 +44,8 @@ export default async function ForwardTestPage() {
         title="Which survivors are proving themselves?"
         aside={<Badge variant="iris"><LineChart className="size-3" /> per strategy · real prices · no real money</Badge>}
       />
+
+      <StrategyStages />
 
       {/* The model, in one line — kills the old pooled-wallet mental model. */}
       <Card>

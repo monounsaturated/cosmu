@@ -11,24 +11,47 @@ import { CosmuMark, CosmuWordmark } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
 import { BottomNav, SideNavLinks } from "@/components/nav/app-nav";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn } from "@/lib/utils";
 
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+type EngineStatus = { state: string; live: boolean; connected: boolean; checked: boolean };
 
-type EngineStatus = { state: string; live: boolean; connected: boolean };
-
+// Connectivity is resolved from the REAL liveness endpoint (/health): if /health answers OK the header
+// reads "Connected" (Sim/Live), otherwise "Offline". The autonomy status only ENRICHES the label
+// (running, live armed) and never gates connectivity — so the header can never get stuck on "Connecting…".
 function useEngineStatus(): EngineStatus {
-  const [status, setStatus] = useState<EngineStatus>({ state: "", live: false, connected: false });
+  const [status, setStatus] = useState<EngineStatus>({ state: "", live: false, connected: false, checked: false });
   useEffect(() => {
-    if (!ENGINE) return;
+    if (!ENGINE_CONFIGURED) {
+      // No engine wired at all — that's a settled, honest "Offline", not a pending connect.
+      setStatus((s) => ({ ...s, checked: true }));
+      return;
+    }
     let alive = true;
     async function probe() {
       try {
-        const res = await fetch(`${ENGINE}/autonomy/status`);
-        if (!res.ok) return;
-        const data = await res.json() as { state?: string; live_enabled?: boolean };
-        if (alive) setStatus({ state: data.state ?? "idle", live: Boolean(data.live_enabled), connected: true });
-      } catch { /* stay disconnected */ }
+        const health = await engineFetch("/health");
+        if (!health.ok) {
+          if (alive) setStatus((s) => ({ ...s, connected: false, checked: true }));
+          return;
+        }
+        // Connected. Best-effort enrich with live/running state; failure here never flips connected.
+        let live = false;
+        let state = "idle";
+        try {
+          const res = await engineFetch("/autonomy/status");
+          if (res.ok) {
+            const data = (await res.json()) as { running?: boolean; live_enabled?: boolean };
+            live = Boolean(data.live_enabled);
+            state = data.running ? "running" : "idle";
+          }
+        } catch {
+          /* keep connected; just no enrichment */
+        }
+        if (alive) setStatus({ state, live, connected: true, checked: true });
+      } catch {
+        if (alive) setStatus((s) => ({ ...s, connected: false, checked: true }));
+      }
     }
     probe();
     const id = setInterval(probe, 15_000);
@@ -62,8 +85,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const statusLabel = engine.connected
-    ? engine.live ? "Live armed" : engine.state === "running" ? "Running · Sim" : "Sim"
-    : "Connecting…";
+    ? engine.live ? "Live armed" : engine.state === "running" ? "Running · Sim" : "Connected · Sim"
+    : engine.checked ? "Offline" : "Connecting…";
   const statusColor = engine.live ? "text-info" : engine.connected ? "text-up" : "text-quiet";
 
   return (
@@ -116,7 +139,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
             <Activity className={cn("size-4", statusColor)} />
             <span className={cn("hidden sm:inline", statusColor)}>{statusLabel}</span>
-            <span className={cn("sm:hidden", statusColor)}>{engine.connected ? (engine.live ? "Live" : "Sim") : "…"}</span>
+            <span className={cn("sm:hidden", statusColor)}>{engine.connected ? (engine.live ? "Live" : "Sim") : engine.checked ? "Off" : "…"}</span>
           </div>
           <div className="flex items-center gap-2">
             {engine.live ? (

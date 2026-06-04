@@ -32,6 +32,8 @@ import type {
   ScoreCategory,
   ScoreSourceRow,
   ScoresResponse,
+  SettingsKeyRow,
+  SettingsKeysResponse,
   Skill,
   SkillsResponse,
   SourceTrustResponse,
@@ -62,9 +64,14 @@ export type {
   ScoreSourceRow,
   ScoreCategory,
   ScoresResponse,
+  SettingsKeyRow,
+  SettingsKeysResponse,
 };
 
 const baseUrl = process.env.API_BASE_URL;
+// Shared secret for the engine's control-plane gate. Server-side only — this module is never bundled
+// into the browser, so the secret stays on the server. Sent as X-API-Key on every engine call.
+const apiSecret = process.env.API_SECRET_KEY;
 
 // Whether an API_BASE_URL is configured at all. Surfaces use this to tell the operator EXACTLY
 // what to set when the engine isn't connected (rather than implying a transient outage).
@@ -76,7 +83,10 @@ export const engineConfigured = Boolean(baseUrl);
 async function getJson<T>(path: string, empty: T): Promise<{ data: T; connected: boolean }> {
   if (!baseUrl) return { data: empty, connected: false };
   try {
-    const response = await fetch(`${baseUrl}${path}`, { next: { revalidate: 5 } });
+    const response = await fetch(`${baseUrl}${path}`, {
+      next: { revalidate: 5 },
+      headers: apiSecret ? { "x-api-key": apiSecret } : undefined
+    });
     if (!response.ok) return { data: empty, connected: false };
     return { data: (await response.json()) as T, connected: true };
   } catch {
@@ -417,4 +427,14 @@ export async function getNewsIntel(symbol = "BTCUSDT", limit = 20): Promise<{ in
     emptyNewsIntel
   );
   return { intel: data, connected };
+}
+
+// GET /settings/keys — the read-only key inventory for Settings → Keys: which provider keys are
+// configured on the engine and what each unlocks. SECURITY: the engine returns a boolean `configured`
+// per key, NEVER the value. Honest empty/offline when the engine is unreachable.
+const emptySettingsKeys: SettingsKeysResponse = { rows: [] };
+
+export async function getSettingsKeys(): Promise<{ keys: SettingsKeyRow[]; connected: boolean }> {
+  const { data, connected } = await getJson<SettingsKeysResponse>("/settings/keys", emptySettingsKeys);
+  return { keys: data.rows, connected };
 }

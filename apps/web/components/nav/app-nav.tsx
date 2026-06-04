@@ -1,9 +1,10 @@
 "use client";
 
-// module: app navigation. Desktop = persistent icon-rail sidebar (full list). Mobile = a native-
-// feeling bottom tab bar with at most 5 targets: the primary monitoring tabs plus a "More" sheet
-// that holds the rest. Links are real routes only (no #anchors), with active-state highlighting via
-// the current path. Live is surfaced in the dock (vs. tucked in More) only when it is actually armed.
+// module: app navigation. The top nav answers FOUR questions only — Overview · Strategies · Scores ·
+// Mind. The strategy lifecycle (Lab → Forward-test → Live) is NOT a set of top-level tabs; those are
+// stage-filters rendered inside Strategies (see components/nav/strategy-stages.tsx) and still reachable
+// by deep link. Costs/Settings/Commands live under "More". Desktop = persistent icon-rail sidebar;
+// mobile = a native-feeling bottom tab bar (4 tabs + a More sheet). Links are real routes only.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -25,107 +26,94 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// One route per user question. `gated` items are kept deliberately dimmed (live trading is in
-// scope but off by default — the screen stays lean and the gate must pass before anything arms).
 type NavItem = { href: string; label: string; desc?: string; icon: typeof LayoutDashboard; gated?: boolean };
 
-// `desc` = the stage's role in the lifecycle, shown under the label in the sidebar so the mental model
-// (discover → screen → forward-test → live) reads straight off the nav. Lab == Research.
+// The four top-level tabs — one per question the operator monitors.
 export const navItems: NavItem[] = [
   { href: "/", label: "Overview", desc: "Are we making money?", icon: LayoutDashboard },
-  { href: "/mind", label: "Mind", desc: "Knows · thinks · learned", icon: Brain },
+  { href: "/strategies", label: "Strategies", desc: "Discover → prove → live", icon: ListChecks },
   { href: "/scores", label: "Scores", desc: "Source & index signals", icon: Gauge },
-  { href: "/lab", label: "Lab", desc: "Discover · research", icon: Microscope },
-  { href: "/strategies", label: "Strategies", desc: "Screened pipeline", icon: ListChecks },
-  { href: "/forward-test", label: "Forward-test", desc: "Per-strategy · proving", icon: LineChart },
-  { href: "/live", label: "Live", desc: "Real money", icon: Radio, gated: true },
-  { href: "/costs", label: "Costs", desc: "Infra · ROI · opex", icon: DollarSign },
-  { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal },
-  { href: "/settings", label: "Settings", desc: "Universe · data", icon: SlidersHorizontal }
+  { href: "/mind", label: "Mind", desc: "Knows · thinks · learned", icon: Brain }
 ];
 
-// Mobile dock: the four primary monitoring tabs always pinned; everything else lives in the More
-// sheet. Live joins the dock (5th tab) only when armed — see BottomNav.
-const PRIMARY_HREFS = ["/", "/lab", "/strategies", "/forward-test"];
-const primaryItems = navItems.filter((i) => PRIMARY_HREFS.includes(i.href));
-const liveItem = navItems.find((i) => i.href === "/live")!;
-// The More sheet holds the rest (Live, Steer, Costs, Settings) — i.e. anything not a primary tab.
-const moreItems = navItems.filter((i) => !PRIMARY_HREFS.includes(i.href));
+// Secondary routes, tucked under "More" (desktop sidebar footer + mobile sheet).
+export const moreItems: NavItem[] = [
+  { href: "/costs", label: "Costs", desc: "Infra · ROI · opex", icon: DollarSign },
+  { href: "/settings", label: "Settings", desc: "Keys · universe · data", icon: SlidersHorizontal },
+  { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal }
+];
 
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+// Stage routes — the strategy lifecycle. Surfaced as a filter strip INSIDE Strategies (and via deep
+// links), never as top-level tabs. Exported for components/nav/strategy-stages.tsx. `/strategies` itself
+// is the "screened" stage and lives in navItems, so it isn't repeated here.
+export const stageItems: NavItem[] = [
+  { href: "/lab", label: "Lab", desc: "Discover · research", icon: Microscope },
+  { href: "/forward-test", label: "Forward-test", desc: "Per-strategy · proving", icon: LineChart },
+  { href: "/live", label: "Live", desc: "Real money", icon: Radio, gated: true }
+];
+
+// While the operator is on any lifecycle stage, the Strategies top tab stays lit (the stages live under it).
+const STAGE_HREFS = stageItems.map((i) => i.href);
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
-  // Strategy detail pages are browsed from Strategies, so keep Strategies highlighted there.
-  if (href === "/strategies") return pathname.startsWith("/strategies") || pathname.startsWith("/strategy");
+  if (href === "/strategies") {
+    return (
+      pathname.startsWith("/strategies") ||
+      pathname.startsWith("/strategy") ||
+      STAGE_HREFS.some((h) => pathname === h || pathname.startsWith(`${h}/`))
+    );
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function SideNavLinks({ onNavigate, collapsed = false }: { onNavigate?: () => void; collapsed?: boolean }) {
+function NavLink({ item, onNavigate, collapsed }: { item: NavItem; onNavigate?: () => void; collapsed: boolean }) {
   const pathname = usePathname();
+  const active = isActive(pathname, item.href);
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      title={collapsed ? item.label : undefined}
+      className={cn(
+        "group flex items-center gap-3 rounded-md border text-[13px] transition-colors",
+        collapsed ? "justify-center px-0 py-2.5" : "px-3 py-2",
+        active
+          ? "border-border bg-surface-2/70 text-foreground"
+          : "border-transparent text-muted hover:border-border hover:bg-surface-2/60 hover:text-foreground",
+        item.gated && !active && "text-quiet opacity-70 hover:opacity-100"
+      )}
+    >
+      <item.icon className={cn("size-[17px] shrink-0 transition-colors", active ? "text-iris-soft" : "text-quiet group-hover:text-iris-soft")} />
+      {!collapsed && (
+        <span className="flex min-w-0 flex-col leading-tight">
+          <span>{item.label}</span>
+          {item.desc && <span className="text-[10.5px] text-quiet">{item.desc}</span>}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+export function SideNavLinks({ onNavigate, collapsed = false }: { onNavigate?: () => void; collapsed?: boolean }) {
   return (
     <nav className="flex flex-col gap-1" aria-label="Main navigation">
-      {navItems.map((item) => {
-        const active = isActive(pathname, item.href);
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={onNavigate}
-            aria-current={active ? "page" : undefined}
-            title={collapsed ? item.label : undefined}
-            className={cn(
-              "group flex items-center gap-3 rounded-md border text-[13px] transition-colors",
-              collapsed ? "justify-center px-0 py-2.5" : "px-3 py-2",
-              active
-                ? "border-border bg-surface-2/70 text-foreground"
-                : "border-transparent text-muted hover:border-border hover:bg-surface-2/60 hover:text-foreground",
-              item.gated && !active && "text-quiet opacity-70 hover:opacity-100"
-            )}
-          >
-            <item.icon className={cn("size-[17px] shrink-0 transition-colors", active ? "text-iris-soft" : "text-quiet group-hover:text-iris-soft")} />
-            {!collapsed && (
-              <span className="flex min-w-0 flex-col leading-tight">
-                <span>{item.label}</span>
-                {item.desc && <span className="text-[10.5px] text-quiet">{item.desc}</span>}
-              </span>
-            )}
-          </Link>
-        );
-      })}
+      {navItems.map((item) => (
+        <NavLink key={item.href} item={item} onNavigate={onNavigate} collapsed={collapsed} />
+      ))}
+
+      <div className={cn("mt-3 mb-1", collapsed ? "mx-auto h-px w-6 bg-border/70" : "px-3")}>
+        {!collapsed && <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-quiet">More</span>}
+      </div>
+      {moreItems.map((item) => (
+        <NavLink key={item.href} item={item} onNavigate={onNavigate} collapsed={collapsed} />
+      ))}
     </nav>
   );
 }
 
-// Honest live-armed probe. Defaults to NOT armed and only flips true on a confirmed engine
-// response — never fabricates an armed state. When the engine is unreachable, Live stays in the
-// More sheet (not the dock), matching the rest of the app's honest not-connected behaviour.
-function useLiveArmed(): boolean {
-  const [armed, setArmed] = useState(false);
-  useEffect(() => {
-    if (!ENGINE) return;
-    let alive = true;
-    async function probe() {
-      try {
-        const res = await fetch(`${ENGINE}/autonomy/status`);
-        if (!res.ok) return;
-        const data = (await res.json()) as { live_enabled?: boolean };
-        if (alive) setArmed(Boolean(data.live_enabled));
-      } catch {
-        /* honest: stay not-armed */
-      }
-    }
-    probe();
-    const id = setInterval(probe, 15000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
-  return armed;
-}
-
-// A single dock tab — large (>=44px high overall row, ~56px) tap target, clear active state.
+// A single dock tab — large (~56px) tap target, clear active state.
 function DockTab({
   item,
   active,
@@ -151,8 +139,7 @@ function DockTab({
   );
   const className = cn(
     "flex min-h-[56px] items-center justify-center px-0.5 transition-colors",
-    !active && "hover:text-foreground",
-    item.gated && !active && "opacity-80"
+    !active && "hover:text-foreground"
   );
   if (item.href) {
     return (
@@ -168,13 +155,9 @@ function DockTab({
   );
 }
 
-// Mobile primary navigation: a fixed bottom tab bar. Default = five targets (four primary tabs +
-// More). When Live is armed it earns its own dock tab so the operator can watch real-money trading
-// one tap away; the bar then shows six cells (primary x4 + Live + More) and Live drops out of the
-// More sheet. Off by default → Live stays in More, keeping the dock at a lean five.
+// Mobile primary navigation: a fixed bottom tab bar — the four top tabs + a More sheet (5 cells).
 export function BottomNav() {
   const pathname = usePathname();
-  const armed = useLiveArmed();
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // Close the sheet whenever the route changes (a tap inside it navigated).
@@ -192,53 +175,32 @@ export function BottomNav() {
     };
   }, [sheetOpen]);
 
-  // The 5th dock cell is Live only when armed; the More trigger is always the final cell.
-  const fifth = armed ? liveItem : null;
-
   return (
     <>
       <nav
         aria-label="Primary"
-        className={cn(
-          "glass fixed inset-x-0 bottom-0 z-30 grid border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden",
-          fifth ? "grid-cols-6" : "grid-cols-5"
-        )}
+        className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
       >
-        {primaryItems.map((item) => (
+        {navItems.map((item) => (
           <DockTab key={item.href} item={item} active={isActive(pathname, item.href)} />
         ))}
-        {fifth ? <DockTab item={fifth} active={isActive(pathname, fifth.href)} /> : null}
         <DockTab
           item={{ label: "More", icon: MoreHorizontal }}
-          active={sheetOpen || moreItems.some((i) => i.href !== "/live" && isActive(pathname, i.href)) || (!armed && isActive(pathname, "/live"))}
+          active={sheetOpen || moreItems.some((i) => isActive(pathname, i.href))}
           onClick={() => setSheetOpen(true)}
         />
       </nav>
 
-      <MoreSheet open={sheetOpen} onClose={() => setSheetOpen(false)} pathname={pathname} armed={armed} />
+      <MoreSheet open={sheetOpen} onClose={() => setSheetOpen(false)} pathname={pathname} />
     </>
   );
 }
 
-// Bottom sheet holding the secondary routes. Smooth slide-up, scrim, safe-area aware, reduced-motion
-// respected (the transition collapses to an opacity fade when the user prefers reduced motion).
-function MoreSheet({
-  open,
-  onClose,
-  pathname,
-  armed
-}: {
-  open: boolean;
-  onClose: () => void;
-  pathname: string;
-  armed: boolean;
-}) {
+// Bottom sheet holding the secondary routes. Smooth slide-up, scrim, safe-area aware, reduced-motion aware.
+function MoreSheet({ open, onClose, pathname }: { open: boolean; onClose: () => void; pathname: string }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
-
-  // When Live is already in the dock (armed) it doesn't need a second entry in the sheet.
-  const sheetItems = armed ? moreItems.filter((i) => i.href !== "/live") : moreItems;
 
   return createPortal(
     <div className={cn("fixed inset-0 z-40 lg:hidden", open ? "pointer-events-auto" : "pointer-events-none")} aria-hidden={!open}>
@@ -278,7 +240,7 @@ function MoreSheet({
           </button>
         </div>
         <div className="grid grid-cols-2 gap-2 px-4 pb-5 pt-1">
-          {sheetItems.map((item) => {
+          {moreItems.map((item) => {
             const active = isActive(pathname, item.href);
             const Icon = item.icon;
             return (
@@ -289,8 +251,7 @@ function MoreSheet({
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex min-h-[56px] items-center gap-3 rounded-xl border px-4 transition-colors",
-                  active ? "border-border bg-surface-2/70 text-foreground" : "border-border/60 bg-surface-2/30 text-muted hover:bg-surface-2/55 hover:text-foreground",
-                  item.gated && !active && "text-quiet"
+                  active ? "border-border bg-surface-2/70 text-foreground" : "border-border/60 bg-surface-2/30 text-muted hover:bg-surface-2/55 hover:text-foreground"
                 )}
               >
                 <Icon className={cn("size-[19px] shrink-0", active ? "text-iris-soft" : "text-quiet")} />

@@ -3799,6 +3799,76 @@
         "title": "SetJurisdictionRequest",
         "type": "object"
       },
+      "SettingsKeyRow": {
+        "description": "One configurable secret/key, surfaced to the operator so they can see what's plugged vs missing.\n\nSECURITY: `configured` is a boolean only \u2014 the VALUE is NEVER read, returned, or logged. `requirement`\nis one of \"required\" (the app needs it to do its core job), \"optional\" (unlocks a paid/extra path), or\n\"live-only\" (only needed to move real money). `cost` is \"free\" or \"paid\". `where` tells the operator\nwhich env var to set on the engine.",
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "cost": {
+            "enum": [
+              "free",
+              "paid"
+            ],
+            "title": "Cost",
+            "type": "string"
+          },
+          "env_var": {
+            "title": "Env Var",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "requirement": {
+            "enum": [
+              "required",
+              "optional",
+              "live-only"
+            ],
+            "title": "Requirement",
+            "type": "string"
+          },
+          "unlocks": {
+            "title": "Unlocks",
+            "type": "string"
+          },
+          "where": {
+            "title": "Where",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "env_var",
+          "configured",
+          "unlocks",
+          "requirement",
+          "cost",
+          "where"
+        ],
+        "title": "SettingsKeyRow",
+        "type": "object"
+      },
+      "SettingsKeysResponse": {
+        "description": "Read-only key inventory for the Settings \u2192 Keys page. Values are never exposed \u2014 only whether each\nkey is configured on the engine and what it unlocks. Safe to render in the browser.",
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsKeyRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "SettingsKeysResponse",
+        "type": "object"
+      },
       "Skill": {
         "description": "A reusable, parameterized SKILL recipe the Curator distilled from a gate-passing Version. `grade` is the\ndownstream OOS pass-rate of Versions derived from it (the deterministic Gate's verdicts \u2014 never the Curator's).",
         "properties": {
@@ -4207,6 +4277,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -5512,6 +5589,25 @@
           }
         },
         "summary": "Scores"
+      }
+    },
+    "/settings/keys": {
+      "get": {
+        "description": "Read-only key inventory for the Settings \u2192 Keys page: which provider keys are configured on the\nengine and what each unlocks. SECURITY: values are NEVER returned \u2014 only a boolean `configured` per\nkey. Safe to render in the browser. The canonical key table lives in docs/KEYS.md.",
+        "operationId": "settings_keys_settings_keys_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsKeysResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Settings Keys"
       }
     },
     "/skills": {

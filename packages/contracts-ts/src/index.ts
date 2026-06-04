@@ -783,6 +783,20 @@ export interface SetJurisdictionRequest {
   code: string;
 }
 
+export interface SettingsKeyRow {
+  configured: boolean;
+  cost: "free" | "paid";
+  env_var: string;
+  key: string;
+  requirement: "required" | "optional" | "live-only";
+  unlocks: string;
+  where: string;
+}
+
+export interface SettingsKeysResponse {
+  rows: SettingsKeyRow[];
+}
+
 export interface Skill {
   created_at: string;
   grade: number;
@@ -867,6 +881,8 @@ export interface UniverseResponse {
 }
 
 export interface ValidationError {
+  ctx?: Record<string, unknown>;
+  input?: string;
   loc: string | number[];
   msg: string;
   type: string;

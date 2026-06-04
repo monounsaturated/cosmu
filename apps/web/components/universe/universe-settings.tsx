@@ -8,9 +8,8 @@ import { useEffect, useState, useTransition } from "react";
 import { Check, Info, TriangleAlert } from "lucide-react";
 import type { AssetClassState, UniverseResponse, VenueState } from "@cosmu/contracts-ts";
 import { Badge } from "@/components/ui/badge";
+import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn } from "@/lib/utils";
-
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 const OFFLINE: UniverseResponse = {
   venues: [
@@ -46,11 +45,11 @@ export function UniverseSettings() {
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
-    if (!ENGINE) {
+    if (!ENGINE_CONFIGURED) {
       setOffline(true);
       return;
     }
-    fetch(`${ENGINE}/universe`)
+    engineFetch("/universe")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("offline"))))
       .then((d: UniverseResponse) => setData(d))
       .catch(() => setOffline(true));
@@ -58,13 +57,13 @@ export function UniverseSettings() {
 
   function post(path: string, body: object, optimistic: (prev: UniverseResponse) => UniverseResponse) {
     setError(null);
-    if (!ENGINE) {
+    if (!ENGINE_CONFIGURED) {
       setData((prev) => recompute(optimistic(prev)));
       return;
     }
     startTransition(async () => {
       try {
-        const res = await fetch(`${ENGINE}${path}`, {
+        const res = await engineFetch(path, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body)
