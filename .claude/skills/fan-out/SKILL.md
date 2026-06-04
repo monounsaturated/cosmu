@@ -16,6 +16,19 @@ The **orchestrator** playbook. The lead chat decomposes a big request into indep
 6. **Confirm the deploy after each merge.** Run `/deploy-iterate` to verify the deploy is healthy (push = deploy) before merging the next PR. A red deploy halts the train until it's green.
 7. **Clean up.** `gh pr merge --delete-branch` on every merged PR. **Never merge a branch that's far behind `main`** (a zombie that would silently revert newer work) — rebase it or **close** the PR and re-cut the stream from fresh `main`.
 
+## Dispatch modes (how the streams actually run)
+Pick per situation; both end in the orchestrator merge-train.
+- **Mode A — orchestrator drives (default, least owner effort).** The lead chat spawns each stream as a **background agent in its own worktree** (`isolation: worktree`, `run_in_background: true`), then merges all PRs itself. Best for "go fast, I'll handle it." Proven: many PRs/session, zero stomping.
+- **Mode B — owner launches separate cloud chats.** The lead chat hands the owner one copy-paste prompt per stream; the owner opens **one fresh cloud Claude Code chat per prompt** (separate chats = separate checkouts → **no worktree needed**). Each chat PRs; the owner relays PR numbers back; the lead chat merge-trains. Best for owner visibility.
+
+**Dependency rounds (the speed unlock).** Streams that share core files are NOT parallel — they form a chain. Maximize parallelism by running **independent tracks concurrently** and **chaining only what truly depends**: e.g. `Round 1 = foundation (solo) + unrelated tracks (UI, MCP) in parallel → Round 2 = the burst that needed the foundation → Round 3 = the run`. Never put two streams that edit the same core file in the same round. Run `/groom` **alone between rounds**, never concurrently (it touches everything).
+
+**Per-stream prompt template (Mode B, copy-paste):**
+```
+Read AGENTS.md + docs/MASTER_PLAN.md [+ the relevant plan/skill]. <one-paragraph goal + exact in-scope files>. Constraints: <non-negotiables that apply>. Branch feat/<stream> off origin/main. `pnpm install && pnpm verify` MUST pass. Push, open PR "<title>", DO NOT merge. Report the PR URL + <what to report>.
+```
+Tag every stream: **cloud/local · opus/sonnet/haiku · worktree?**.
+
 ## Verify
 - Every stream has its own `feat/<stream>` branch; no two agents share a working tree.
 - Each PR passed `pnpm verify` before opening; none pushed to `main`.
