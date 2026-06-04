@@ -1,0 +1,61 @@
+{
+  "name": "Cross-sectional neutral momentum — long leg (top-rank leaders)",
+  "rationale": "Pure cross-sectional momentum: buy the relative strength leaders — assets whose N-day return ranks in the top percentile of the screened universe at bar close. Paired with the short-laggard leg (xsec-neutral-momentum-short-leg.json) the two legs form a market-neutral book: market beta cancels and the residual is the cross-sectional momentum premium (Jegadeesh–Titman 1993; documented survival at ~30d with ~125bps headroom on liquid crypto). The xsec_momentum_rank feature [0, 1] is a cross-sectional percentile rank of ret_Nd computed at bar close from the same universe — point-in-time, no survivorship look-ahead. Entry: rank above a fitted top-rank floor AND NOT in a crowded-funding regime (funding ceiling guards against the documented funding-spike-before-crash pattern). Vol ceiling keeps us out of crash/whipsaw regimes where momentum bleeds. Exit: rank drops below a fitted exit floor (leadership lost) OR the stop/TP fires. No magic numbers.",
+  "catalyst": "Cross-sectional momentum leadership: relative-strength leaders outperform laggards at weekly-monthly horizon.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 10
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": { "name": "xsec_momentum_rank", "lookback": { "param": "mom_lookback" } },
+      "op": "gt",
+      "threshold": { "param": "rank_floor" }
+    },
+    {
+      "feature": { "name": "funding_rate" },
+      "op": "lt",
+      "threshold": { "param": "funding_ceiling" }
+    },
+    {
+      "feature": { "name": "vol_realized" },
+      "op": "lt",
+      "threshold": { "param": "vol_ceiling" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "xsec_momentum_rank", "lookback": { "param": "mom_lookback" } },
+        "op": "lt",
+        "threshold": { "param": "rank_exit_floor" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lookback":   { "kind": "int",   "lo": 20,    "hi": 40,   "step": 1 },
+    "rank_floor":     { "kind": "float", "lo": 0.70,  "hi": 0.90 },
+    "rank_exit_floor":{ "kind": "float", "lo": 0.40,  "hi": 0.65 },
+    "funding_ceiling":{ "kind": "float", "lo": 0.001, "hi": 0.01 },
+    "vol_ceiling":    { "kind": "float", "lo": 0.02,  "hi": 0.12 },
+    "stop":           { "kind": "float", "lo": 0.05,  "hi": 0.15 },
+    "tp":             { "kind": "float", "lo": 0.08,  "hi": 0.30 },
+    "time_stop":      { "kind": "int",   "lo": 5,     "hi": 14,   "step": 1 }
+  },
+  "direction": 1
+}

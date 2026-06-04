@@ -54,6 +54,28 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     FeatureDefinition(name="insider_buy_ratio", source="sec_edgar", tier="tier0", asset_classes=["equity"], asof_semantics="Form 4 publication time", prior="Insider buying can signal undervaluation."),
     FeatureDefinition(name="short_interest_ratio", source="fundamentals_vendor", tier="tier0", asset_classes=["equity"], asof_semantics="vendor availability time", prior="High short interest can fuel squeezes."),
     FeatureDefinition(name="ret_Nd", source="parquet_bars", tier="tier0", asset_classes=["crypto", "equity", "prediction"], asof_semantics="bar close time", prior="Medium-term return captures momentum/reversal."),
+    # Cross-sectional rank of N-day return across the universe at bar-close time: 0 = worst, 1 = best.
+    # Computed from parquet_bars (same source as ret_Nd) at the bar close so it is point-in-time: rank is
+    # derived only from instruments present at that bar (no survivorship look-ahead).  A high rank (near 1)
+    # identifies the cross-sectional momentum leaders; a low rank (near 0) identifies the laggards.  The
+    # lookback window mirrors ret_Nd (a fitted ParamRef in each strategy) so the rank is consistent with the
+    # raw return it is derived from.  transform_version pins the ranking method (percentile, not ordinal) so a
+    # gate-passed survivor is re-runnable byte-for-byte.
+    FeatureDefinition(
+        name="xsec_momentum_rank",
+        source="parquet_bars",
+        tier="tier0",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="bar close time (cross-sectional rank computed over instruments present at bar close — point-in-time, no survivorship look-ahead)",
+        prior=(
+            "Cross-sectional percentile rank [0, 1] of N-day return across the screened universe at each bar close. "
+            "High rank (→ 1) = relative momentum leader; low rank (→ 0) = relative momentum laggard. "
+            "Ranking longs by top-rank and shorts by bottom-rank constructs a market-neutral book whose beta to the "
+            "market cancels — the residual is pure cross-sectional momentum premium (documented in AQR / Jegadeesh–Titman). "
+            "Must earn its place via OOS."
+        ),
+        transform_version="xsec-momentum-rank-v1",
+    ),
     FeatureDefinition(name="atr", source="parquet_bars", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="bar close time", prior="ATR normalizes risk and stop distance."),
     FeatureDefinition(name="rsi", source="parquet_bars", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="bar close time", prior="RSI captures overextension."),
     FeatureDefinition(name="adx", source="parquet_bars", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="bar close time", prior="ADX separates trend from chop."),

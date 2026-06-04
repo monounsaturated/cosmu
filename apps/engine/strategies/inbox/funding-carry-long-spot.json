@@ -1,0 +1,62 @@
+{
+  "name": "Funding carry — long spot leg (positive funding)",
+  "rationale": "When perpetual funding is positive, longs pay shorts: the market is positioned net-long and paying a carry premium to shorts. A long spot position held alongside a short perp captures the basis without directional risk (the perp leg is the mirror — see funding-carry-short-perp.json). Standalone, this leg is a funded long: it earns the spot upside and is entered ONLY when funding is above a fitted floor so the carry premium offsets friction. The funding_feature field wires the point-in-time funding rate as P&L accrual on the open position (BIS WP 1087 — documented risk premium, beneath institutional-capacity notice). Entry: funding above a fitted positive floor AND price in an uptrend (trend filter keeps us out of funding-spike-before-crash regime). Exit: funding flips negative (signal_exit) or the stop/TP fires. No magic numbers — every threshold is in param_space.",
+  "catalyst": "Positive perpetual funding = longs paying a carry premium to shorts; long spot captures upside + accrues the premium.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 30
+  },
+  "entry": [
+    {
+      "feature": { "name": "funding_rate" },
+      "op": "gt",
+      "threshold": { "param": "funding_floor" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lookback" } },
+      "op": "gt",
+      "threshold": { "param": "trend_floor" }
+    },
+    {
+      "feature": { "name": "vol_realized" },
+      "op": "lt",
+      "threshold": { "param": "vol_ceiling" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "funding_rate" },
+        "op": "lt",
+        "threshold": { "param": "funding_exit_floor" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_floor":      { "kind": "float", "lo": 0.0001, "hi": 0.005 },
+    "funding_exit_floor": { "kind": "float", "lo": -0.001, "hi": 0.001 },
+    "trend_lookback":     { "kind": "int",   "lo": 10,     "hi": 30,   "step": 1 },
+    "trend_floor":        { "kind": "float", "lo": -0.05,  "hi": 0.05 },
+    "vol_ceiling":        { "kind": "float", "lo": 0.02,   "hi": 0.12 },
+    "stop":               { "kind": "float", "lo": 0.04,   "hi": 0.15 },
+    "tp":                 { "kind": "float", "lo": 0.04,   "hi": 0.30 },
+    "time_stop":          { "kind": "int",   "lo": 5,      "hi": 21,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": "funding_rate"
+}
