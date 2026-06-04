@@ -267,6 +267,32 @@ class FundingRateProvider:
         return out
 
 
+class CachedFundingRateProvider:
+    """Offline funding-rate provider backed by an on-disk cache of REAL Binance USDⓈ-M funding history
+    (mirrors the bar-cache pattern). The cache is a per-symbol JSON of `[{fundingTime: ms, fundingRate: str}]`
+    rows fetched ONCE from the live REST endpoint (see scripts/cache_funding.py) so the carry/neutral Gate can
+    run deterministically with no network. `available_at == ts == fundingTime` (the exchange publishes the
+    realized rate at the funding instant — that IS the point-in-time stamp; no look-ahead). A missing cache file
+    yields an empty series (the funding feature then reads None — an honest 'no data', never a fabricated rate)."""
+
+    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/binance_funding") -> None:
+        self.cache_dir = Path(cache_dir)
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "funding_rate":
+            return []
+        path = self.cache_dir / f"{symbol}.json"
+        if not path.exists():
+            return []
+        rows = json.loads(path.read_text())
+        out: list[AltDataPoint] = []
+        for row in rows:
+            ts = datetime.fromtimestamp(int(row["fundingTime"]) / 1000, tz=UTC)
+            out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["fundingRate"])))
+        out.sort(key=lambda p: p.ts)
+        return out[-limit:] if limit and len(out) > limit else out
+
+
 class FearGreedProvider:
     """Crypto Fear & Greed index (alternative.me, free, daily). Market-wide; symbol ignored."""
 
