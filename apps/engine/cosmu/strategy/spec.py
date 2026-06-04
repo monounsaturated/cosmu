@@ -125,4 +125,15 @@ class StrategySpec(BaseModel):
     risk: RiskRules
     param_space: dict[str, ParamSpace]
     setup: EntrySetup | None = None
+    # Trade side: +1 = long (the spot/upside-only default — existing specs are unchanged), -1 = short (the
+    # perp/short leg; entry conditions fire a short, stop is ABOVE entry, take-profit BELOW), 0 = the signal
+    # decides per bar (reserved; treated as long until per-bar direction signals land). Entry CONDITIONS are
+    # unchanged — `direction` only flips which way the resulting position is taken, so the long-only assumption
+    # baked into the backtest is lifted without rewriting any condition logic.
+    direction: Literal[-1, 0, 1] = 1
+    # Funding rate (perp carry) accrues to the open position as P&L each bar when set. The value names the
+    # alt-data feature carrying the point-in-time periodic funding rate (e.g. "funding_rate"); None => no
+    # funding leg (spot — exactly the prior behaviour). A long pays funding when the rate is positive; a short
+    # receives it. No magic numbers: the rate comes from the PIT alt-data join, not a constant.
+    funding_feature: str | None = None
 
