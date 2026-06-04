@@ -415,6 +415,7 @@ export interface LaunchActivateRequest {
   confirm: boolean;
   global_cap?: number;
   max_daily_loss?: number;
+  override_forward_test?: boolean;
   per_strategy_cap?: number;
   symbol: string;
   venue_id: string;
@@ -427,6 +428,7 @@ export interface LaunchActivateResponse {
   caps: LiveCaps;
   eligible: EligibleStrategy[];
   forward_test_days?: number | null;
+  overridden?: boolean;
   readiness?: "proven" | "not yet proven";
   reason?: string | null;
   symbol: string;
@@ -801,6 +803,8 @@ export interface UniverseResponse {
 }
 
 export interface ValidationError {
+  ctx?: Record<string, unknown>;
+  input?: string;
   loc: string | number[];
   msg: string;
   type: string;

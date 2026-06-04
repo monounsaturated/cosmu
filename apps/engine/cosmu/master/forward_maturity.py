@@ -1,9 +1,11 @@
-# intent: the ADVISORY forward-test maturity signal per SIM track — has a funded track lived long enough on real
-# closes, AND is it net-of-fee positive, to be a *recommended* live-readiness candidate. inputs: a track's
-# forward-test clock origin (its first track_opened mark) + the latest net-of-fee return; outputs: forward_age_days,
-# net_return_pct, and a computed live_ready flag. invariants: ADVISORY ONLY — this NEVER blocks, funds, or fires
-# (the 5 interlocks are the hard gate); fully deterministic + LLM-free (pure arithmetic on a clock + a return);
-# the maturity threshold is the named FORWARD_TEST_MIN_DAYS constant, never an inline magic number.
+# intent: the forward-test maturity signal per SIM track — has a funded track lived long enough on real closes,
+# AND is it net-of-fee positive, to be live-ready. inputs: a track's forward-test clock origin (its first
+# track_opened mark) + the latest net-of-fee return; outputs: forward_age_days, net_return_pct, and a computed
+# live_ready flag. This is the SINGLE deterministic definition of "matured + net-positive": the leaderboard /
+# forward-test surface reads it advisorily, AND master/live_eligibility now consults the SAME flag as a HARD
+# precondition for live-eligibility (a strategy may be armed only once it is forward-proven). invariants: fully
+# deterministic + LLM-free (pure arithmetic on a clock + a return); never PROMOTES (it only ever withholds
+# live_ready); the maturity threshold is the named FORWARD_TEST_MIN_DAYS constant, never an inline magic number.
 
 from __future__ import annotations
 
@@ -15,9 +17,10 @@ from cosmu.config.settings import FORWARD_TEST_MIN_DAYS
 
 @dataclass(frozen=True)
 class ForwardMaturity:
-    """The advisory live-readiness read-out for one standalone forward-test track. `live_ready` is a SURFACED
-    recommendation only — the operator launches via the modal at their discretion and the 5 interlocks remain the
-    hard gate. It is never consulted by the scorer/FDR gate/execution path."""
+    """The live-readiness read-out for one standalone forward-test track. `live_ready` = the track both matured
+    (>= FORWARD_TEST_MIN_DAYS) AND is net-of-fee positive. It is SURFACED advisorily on the leaderboard/forward-test
+    page AND consulted as a HARD precondition by master/live_eligibility before a strategy may be armed. It is never
+    consulted by the scorer/FDR gate (survival) — only by the live-arming path."""
 
     forward_age_days: float
     net_return_pct: float
@@ -58,8 +61,9 @@ def maturity(
     now: datetime | None = None,
     min_days: int = FORWARD_TEST_MIN_DAYS,
 ) -> ForwardMaturity:
-    """Compute the advisory maturity signal for one track. `live_ready` is True ONLY when the track has both run
-    at least `min_days` of real-close forward time AND is net-of-fee positive — a recommendation, never a gate."""
+    """Compute the forward-test maturity signal for one track. `live_ready` is True ONLY when the track has both
+    run at least `min_days` of real-close forward time AND is net-of-fee positive. The leaderboard reads this
+    advisorily; master/live_eligibility consults the SAME flag as a hard live-arming precondition."""
     age = forward_age_days(funded_at, now=now)
     ready = age >= min_days and net_return_pct > 0.0
     return ForwardMaturity(

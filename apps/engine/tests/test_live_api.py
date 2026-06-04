@@ -5,9 +5,12 @@
 
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime, timedelta
+
 import cosmu.api.app as app_mod
-from cosmu.config.settings import LiveSettings, Settings
-from cosmu.knowledge.store import Store
+from cosmu.config.settings import FORWARD_TEST_MIN_DAYS, LiveSettings, Settings
+from cosmu.knowledge.store import Store, utcnow
 
 
 def _client(tmp_path, monkeypatch):
@@ -106,3 +109,122 @@ def test_no_secrets_in_responses(tmp_path, monkeypatch):
     for path in ("/live/positions", "/overview"):
         text = c.get(path).text.lower()
         assert "secret" not in text
+
+
+# ── Hard forward-test live-eligibility gate (P1) ────────────────────────────────────────────────
+# /live/activate now excludes too-young survivors from `eligible`; /live/launch enforces the gate and is the
+# ONLY path that writes status='live'. Offline the engine reads regime 'chop', so seeds prove 'chop' to isolate
+# the FORWARD-TEST precondition (the regime gate is exercised in test_ml_regime / test_live_eligibility_gate).
+
+
+def _client_with_keys(tmp_path, monkeypatch):
+    """A client whose Binance venue IS configured (keys present) so /live/launch reaches the eligibility gate
+    rather than stopping at the venue key-gate. Returns the store handle for seeding + status assertions."""
+    from fastapi.testclient import TestClient
+
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path}/live_gate.sqlite3",
+        binance_api_key="k", binance_api_secret="s",
+        binance_testnet_api_key=None, binance_testnet_api_secret=None,
+        live=LiveSettings(),
+    )
+    store = Store(settings)
+    monkeypatch.setattr(app_mod, "settings", settings)
+    monkeypatch.setattr(app_mod, "store", store)
+    return TestClient(app_mod.app), store
+
+
+def _seed_survivor(store: Store, vid: str, *, age_days: float, net_pct: float, proven=("chop",)) -> None:
+    """A gate-passed forward-test survivor WITH a track: strategies + strategy_versions(forward_test) +
+    backtests(passed_gates=1) + a tracks row (net-of-fee return) + a track_opened event whose ts is the
+    forward-test clock origin (backdated `age_days`) carrying the proven-regime passport."""
+    now = datetime.now(tz=UTC)
+    sid = store.insert("strategies", {"name": f"s-{vid}", "thesis": "t", "origin": "seed", "created_at": utcnow()})
+    store.insert(
+        "strategy_versions",
+        {
+            "id": vid, "strategy_id": sid, "parent_id": None, "spec": "{}", "generated_code": "x",
+            "code_hash": "h", "params": "{}", "mutation_operator": None, "mutation_rationale": None,
+            "origin": "seed", "status": "forward_test", "created_at": utcnow(), "killed_at": None, "kill_reason": None,
+        },
+    )
+    store.insert(
+        "backtests",
+        {
+            "strategy_version_id": vid, "kind": "screen", "oos_return": "0.04", "sharpe": "1", "sortino": "1",
+            "deflated_sharpe": "0.6", "max_dd": "0.1", "win_rate": "0.5", "num_trades": 40, "pbo": "0.2",
+            "trials_counted": 1, "regime_label": "mixed", "folds_positive": 4,
+            "passed_gates": 1, "holdout_passed": 1, "created_at": utcnow(),
+        },
+    )
+    store.insert(
+        "tracks",
+        {
+            "strategy_version_id": vid, "starting_capital": "100000",
+            "equity": str(100000 * (1 + net_pct / 100)), "return_pct": str(net_pct), "updated_at": utcnow(),
+        },
+    )
+    ts = (now - timedelta(days=age_days)).isoformat()
+    with store.batch() as w:
+        w.execute(
+            "INSERT INTO events(ts, actor, kind, ref_type, ref_id, payload) VALUES (?, 'master', 'track_opened', 'strategy_version', ?, ?)",
+            (ts, vid, json.dumps({"proven_regimes": list(proven)})),
+        )
+
+
+def _launch_body(vid: str, **over) -> dict:
+    body = {
+        "version_id": vid, "venue_id": "binance", "symbol": "BTCUSDT", "budget": 100,
+        "per_strategy_cap": 100, "global_cap": 1000, "max_daily_loss": 50, "confirm": True,
+    }
+    body.update(over)
+    return body
+
+
+def test_activate_eligible_excludes_too_young_includes_matured(tmp_path, monkeypatch):
+    c, store = _client_with_keys(tmp_path, monkeypatch)
+    _seed_survivor(store, "v-young", age_days=1, net_pct=4.0)                      # 0-day clock
+    _seed_survivor(store, "v-ok", age_days=FORWARD_TEST_MIN_DAYS + 5, net_pct=4.0)  # matured + net-positive
+
+    body = c.post("/live/activate", json={"per_strategy_cap": 1000, "global_cap": 5000, "max_daily_loss": 200, "confirm": True}).json()
+    assert body["armed"] is True
+    ids = {e["version_id"] for e in body["eligible"]}
+    assert "v-ok" in ids        # matured net-positive in-regime survivor IS armable
+    assert "v-young" not in ids  # a too-young strategy is NOT eligible (the new hard precondition)
+
+
+def test_launch_arms_and_writes_status_live_for_matured(tmp_path, monkeypatch):
+    c, store = _client_with_keys(tmp_path, monkeypatch)
+    _seed_survivor(store, "v-ok", age_days=FORWARD_TEST_MIN_DAYS + 5, net_pct=4.0)
+
+    body = c.post("/live/launch", json=_launch_body("v-ok")).json()
+    assert body["armed"] is True
+    assert body["readiness"] == "proven"
+    assert body["overridden"] is False
+    # Launch is the ONLY path that writes status='live'.
+    assert store.row("SELECT status FROM strategy_versions WHERE id = ?", ("v-ok",))["status"] == "live"
+
+
+def test_launch_refuses_unproven_without_override(tmp_path, monkeypatch):
+    c, store = _client_with_keys(tmp_path, monkeypatch)
+    _seed_survivor(store, "v-young", age_days=1, net_pct=4.0)
+
+    body = c.post("/live/launch", json=_launch_body("v-young")).json()
+    assert body["armed"] is False
+    assert body["readiness"] == "not yet proven"
+    assert "forward-test not proven" in body["reason"]
+    # Refused -> status must NOT have advanced to live.
+    assert store.row("SELECT status FROM strategy_versions WHERE id = ?", ("v-young",))["status"] == "forward_test"
+
+
+def test_launch_override_arms_unproven_and_logs_warning(tmp_path, monkeypatch):
+    c, store = _client_with_keys(tmp_path, monkeypatch)
+    _seed_survivor(store, "v-young", age_days=1, net_pct=4.0)
+
+    body = c.post("/live/launch", json=_launch_body("v-young", override_forward_test=True)).json()
+    assert body["armed"] is True          # override waives the forward-test precondition
+    assert body["overridden"] is True
+    assert store.row("SELECT status FROM strategy_versions WHERE id = ?", ("v-young",))["status"] == "live"
+    # The explicit, logged warning the owner-pending escape hatch must leave behind.
+    warn = store.row("SELECT payload FROM events WHERE kind = 'live_override_launch' AND ref_id = ?", ("v-young",))
+    assert warn is not None
