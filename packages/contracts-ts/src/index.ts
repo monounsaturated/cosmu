@@ -740,6 +740,45 @@ export interface RegimeCoverage {
   total: number;
 }
 
+export interface ScoreCategory {
+  connected: boolean;
+  freshness_label: string;
+  index_score?: number | null;
+  key: string;
+  label: string;
+  live_sources: number;
+  review: string;
+  sources: ScoreSourceRow[];
+  status: string;
+  total_sources: number;
+}
+
+export interface ScoreSourceRow {
+  category: string;
+  connected: boolean;
+  disabled: boolean;
+  features: string[];
+  freshness_label: string;
+  hours_since?: number | null;
+  key_name?: string | null;
+  key_present: boolean;
+  key_required: boolean;
+  last_at?: string | null;
+  review: string;
+  source: string;
+  status: "fresh" | "recent" | "aging" | "stale" | "no data";
+  tier: string;
+  trust_score: number;
+}
+
+export interface ScoresResponse {
+  as_of: string;
+  categories: ScoreCategory[];
+  composite_index?: number | null;
+  composite_review: string;
+  composite_status: string;
+}
+
 export interface SetJurisdictionRequest {
   code: string;
 }
@@ -828,8 +867,6 @@ export interface UniverseResponse {
 }
 
 export interface ValidationError {
-  ctx?: Record<string, unknown>;
-  input?: string;
   loc: string | number[];
   msg: string;
   type: string;

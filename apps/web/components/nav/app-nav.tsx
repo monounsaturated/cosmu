@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 import {
   Brain,
   DollarSign,
+  Gauge,
   LayoutDashboard,
   LineChart,
   ListChecks,
@@ -33,6 +34,7 @@ type NavItem = { href: string; label: string; desc?: string; icon: typeof Layout
 export const navItems: NavItem[] = [
   { href: "/", label: "Overview", desc: "Are we making money?", icon: LayoutDashboard },
   { href: "/mind", label: "Mind", desc: "Knows · thinks · learned", icon: Brain },
+  { href: "/scores", label: "Scores", desc: "Source & index signals", icon: Gauge },
   { href: "/lab", label: "Lab", desc: "Discover · research", icon: Microscope },
   { href: "/strategies", label: "Strategies", desc: "Screened pipeline", icon: ListChecks },
   { href: "/forward-test", label: "Forward-test", desc: "Per-strategy · proving", icon: LineChart },
