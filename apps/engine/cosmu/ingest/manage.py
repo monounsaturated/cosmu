@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from cosmu.ingest import catalog
-from cosmu.ingest.bars import CcxtBarBackfiller, bar_cache_path, write_bars_cache
+from cosmu.ingest.bars import CcxtBarBackfiller, StooqBarBackfiller, bar_cache_path, write_bars_cache
 from cosmu.ingest.coverage import (
     CoverageReport,
     build_alt_coverage,
@@ -34,6 +34,12 @@ DEFAULT_MARKET_DATA_DIR = ".cosmu/market_data"
 
 def _now() -> datetime:
     return datetime.now(tz=UTC)
+
+
+def _default_bar_backfiller(venue: str):  # noqa: ANN202 — CcxtBarBackfiller | StooqBarBackfiller
+    """Pick the bar backfiller for a venue: `stooq` → the free non-crypto daily CSV (stocks/FX/metals/index);
+    every other venue (binance/kraken/bybit/okx) → ccxt OHLCV. Keeps `backfill bars:<venue>` venue-agnostic."""
+    return StooqBarBackfiller() if venue == "stooq" else CcxtBarBackfiller(venue)
 
 
 @dataclass
@@ -66,14 +72,14 @@ class DataManager:
         providers: Any = None,  # Providers; default = real free providers from settings
         market_data_dir: Path | str = DEFAULT_MARKET_DATA_DIR,
         clock: Callable[[], datetime] = _now,
-        bar_backfiller_factory: Callable[[str], CcxtBarBackfiller] | None = None,
+        bar_backfiller_factory: Callable[[str], Any] | None = None,
         funding_history: Any = None,  # a provider exposing fetch_history; default = live Binance history
     ) -> None:
         self._store = store
         self._providers = providers
         self.market_data_dir = Path(market_data_dir)
         self._clock = clock
-        self._bar_backfiller_factory = bar_backfiller_factory or (lambda venue: CcxtBarBackfiller(venue))
+        self._bar_backfiller_factory = bar_backfiller_factory or _default_bar_backfiller
         self._funding_history = funding_history
 
     # ---- lazy defaults (kept out of __init__ so tests never trigger a DB / settings read) ----

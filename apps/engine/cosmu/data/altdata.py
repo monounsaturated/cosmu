@@ -927,12 +927,21 @@ _STORE_PROVIDER_OF = {
     "galaxy_score": "lunarcrush",
     "twitter_sentiment": "xai",
     "twitter_influencer_sentiment": "xai",
+    # Cross-asset daily price levels (free, no key) via Stooq/Yahoo — metals, commodities, equity indexes, FX.
+    "gold_xau": "stooq",
+    "silver_xag": "stooq",
+    "wti_crude": "stooq",
+    "spx_index": "stooq",
+    "ndx_index": "stooq",
+    "eurusd": "stooq",
+    "usdjpy": "stooq",
 }
 _STORE_MARKET_WIDE = frozenset({
     "fear_greed", "risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",
     "defi_tvl", "dxy", "yield_curve_2s10s", "credit_spread", "vix_term_slope",
     "osint_air_activity", "pm_implied_prob", "pm_prob_velocity", "pm_book_depth",
     "reddit_sentiment", "twitter_sentiment", "twitter_influencer_sentiment",
+    "gold_xau", "silver_xag", "wti_crude", "spx_index", "ndx_index", "eurusd", "usdjpy",
 })
 
 

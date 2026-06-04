@@ -30,7 +30,9 @@ from cosmu.data.altdata import (
     RedditSentimentProvider,
     VenueFeesProvider,
 )
+from cosmu.data.sources.multiasset import MULTIASSET_METRICS, StooqDailyProvider
 from cosmu.data.sources.xai_twitter import XaiTwitterProvider
+from cosmu.ingest.llm_formatter import build_event_formatter_from_settings
 from cosmu.ingest.pipeline import (
     MemoizingProvider,
     ingest_liquidations,
@@ -40,7 +42,7 @@ from cosmu.ingest.pipeline import (
     ingest_numeric,
     ingest_putcall,
 )
-from cosmu.ingest.standardize import StandardizedNews
+from cosmu.ingest.standardize import NewsEventScore, StandardizedNews
 
 logger = logging.getLogger("cosmu.ingest.run")
 
@@ -79,7 +81,12 @@ class Providers:
     # Venue fees: key-gated (ccxt exchange needed for live reads). Default = Binance static-catalog fallback
     # (offline-safe, no key). A live ccxt client can be injected at deploy time for account-specific rates.
     venue_fees: AltDataProvider = field(default_factory=lambda: VenueFeesProvider("binance"))
+    # Cross-asset daily price levels (free, no key): Stooq is primary; YahooDailyProvider is a drop-in alt.
+    multiasset: AltDataProvider = field(default_factory=StooqDailyProvider)
     llm: Callable[[str], StandardizedNews] | None = None
+    # Typed event/news scorer LLM (the cheap-OpenRouter formatter). Key-gated → None without a key, so the
+    # event scorer uses the deterministic lexicon. The LLM only standardizes text at ingest, never the money path.
+    event_llm: Callable[[str], NewsEventScore] | None = None
     fred_series: str = DEFAULT_FRED_SERIES
     polymarket_token: str = DEFAULT_POLYMARKET_TOKEN
 
@@ -98,6 +105,8 @@ class Providers:
             lunarcrush=LunarCrushProvider(api_key=settings.lunarcrush_api_key or ""),
             # xAI/Grok Twitter: key-gated — only live when XAI_API_KEY is set in Railway env.
             xai_twitter=XaiTwitterProvider(api_key=settings.xai_api_key or ""),
+            # Typed event/news scorer via the cheap-OpenRouter formatter — key-gated (None without OPENROUTER_API_KEY).
+            event_llm=build_event_formatter_from_settings(settings),
             polymarket_token="risk_on",
         )
 
@@ -282,8 +291,17 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     # Event/news scorer: typed, dated, point-in-time signal (sign × magnitude). The LLM standardizes text
     # ONLY at ingest (cached); the offline lexicon is used when no LLM key is set.
     counts["news_event_score"] = _safe(
-        "news_event_score", lambda: ingest_news_event_score(store, p.news, symbols, llm=p.llm)
+        "news_event_score", lambda: ingest_news_event_score(store, p.news, symbols, llm=p.event_llm)
     )
+    # Cross-asset daily price levels (free, no key): metals / commodities / equity indexes / FX. Each is
+    # market-wide (ingested once under the MARKET key under its SEMANTIC name). Numeric → no LLM.
+    for _metric in MULTIASSET_METRICS:
+        counts[_metric] = _safe(
+            _metric,
+            lambda m=_metric: ingest_market_wide_numeric(
+                store, p.multiasset, source_metric=m, stored_metric=m, provider_name="stooq"
+            ),
+        )
     # Venue fees: account-specific maker/taker PIT snapshot. Key-gated: offline/no-key → static-catalog
     # fallback is used, so the cron never crashes. Stored under provider="venue_fees",
     # symbol="<venue_id>:<symbol>", metric="venue_fees_maker"|"venue_fees_taker".

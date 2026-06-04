@@ -89,8 +89,22 @@ def _fetch_fred(store: Any, symbols: list[str], providers: Any) -> int:
 
 def _fetch_news(store: Any, symbols: list[str], providers: Any) -> int:
     n = ingest_news_sentiment(store, providers.news, symbols, llm=getattr(providers, "llm", None))
-    n += ingest_news_event_score(store, providers.news, symbols, llm=getattr(providers, "llm", None))
+    # The event scorer uses the cheap-OpenRouter formatter (key-gated → None = deterministic lexicon).
+    n += ingest_news_event_score(store, providers.news, symbols, llm=getattr(providers, "event_llm", None))
     return n
+
+
+def _fetch_multiasset(store: Any, symbols: list[str], providers: Any) -> int:
+    """All cross-asset daily price levels (metals / commodities / equity indexes / FX) in one pass, each
+    market-wide under its SEMANTIC name (free, no key). Composes ingest_market_wide_numeric — no re-impl."""
+    from cosmu.data.sources.multiasset import MULTIASSET_METRICS
+
+    total = 0
+    for metric in MULTIASSET_METRICS:
+        total += ingest_market_wide_numeric(
+            store, providers.multiasset, source_metric=metric, stored_metric=metric, provider_name="stooq",
+        )
+    return total
 
 
 def _fetch_polymarket_clob(store: Any, symbols: list[str], providers: Any) -> int:
@@ -154,6 +168,12 @@ def managed_sources() -> dict[str, SourceSpec]:
         SourceSpec("lunarcrush", "alt", ("social_volume", "social_sentiment", "galaxy_score"), _fetch_lunarcrush, note="Key-gated: empty without LUNARCRUSH_API_KEY."),
         SourceSpec("xai", "alt", ("twitter_sentiment", "twitter_influencer_sentiment"), _fetch_xai, market_wide=True, per_symbol=False, note="Key-gated: empty without XAI_API_KEY."),
         SourceSpec("venue_fees", "alt", ("venue_fees_maker", "venue_fees_taker"), _fetch_venue_fees, note="Per venue:symbol maker/taker snapshot."),
+        SourceSpec(
+            "multiasset", "alt",
+            ("gold_xau", "silver_xag", "wti_crude", "spx_index", "ndx_index", "eurusd", "usdjpy"),
+            _fetch_multiasset, market_wide=True, per_symbol=False,
+            note="Free cross-asset daily price levels via Stooq/Yahoo (metals/commodities/equity-index/FX).",
+        ),
     ]
     return {s.name: s for s in specs}
 
