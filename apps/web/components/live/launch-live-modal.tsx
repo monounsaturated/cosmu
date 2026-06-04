@@ -2,9 +2,10 @@
 
 // module: LaunchLiveModal — strategy-specific launch flow. Triggered from the /live page (per-strategy
 // row) or /strategy/[id] detail page. Fetches fees live from GET /live/venue-catalog, lets the operator
-// pick venue + asset, set a budget ($100 default, editable), and review the advisory 30-day readiness
+// pick venue + asset, set a budget ($100 default, editable), and review the forward-test readiness
 // signal. Arming calls POST /live/launch (the existing interlock path). The 5 interlocks remain the
-// hard safety; the 30-day proof is ADVISORY — surfaced as "proven / not yet proven", never a blocker.
+// hard execution safety; forward-test maturity (>= FORWARD_TEST_MIN_DAYS net-positive) is now a HARD
+// precondition for arming — a "not yet proven" strategy is refused unless explicitly override-launched.
 //
 // Venue key-gating: venues whose `configured` flag is false are greyed-out and unselectable. The
 // `configured` flag comes from the engine (server-side key check) — keys are NEVER sent to the browser.
@@ -373,7 +374,7 @@ function LaunchOutcome({ result, strategyName }: { result: LaunchActivateRespons
         </div>
       )}
 
-      {/* Advisory readiness signal — surfaced, never a hard gate */}
+      {/* Forward-test readiness — a HARD precondition for arming (refused unless override-launched) */}
       <div className={cn(
         "flex items-start gap-2 rounded-md border px-3 py-2 text-[11.5px]",
         proven
@@ -382,13 +383,13 @@ function LaunchOutcome({ result, strategyName }: { result: LaunchActivateRespons
       )}>
         <Info className="mt-0.5 size-3.5 shrink-0" />
         <div>
-          <span className="font-medium">Forward-test readiness (advisory): </span>
+          <span className="font-medium">Forward-test readiness: </span>
           {proven
             ? `proven — ${result.forward_test_days?.toFixed(0) ?? "30"}+ days net-positive in simulation`
             : result.forward_test_days != null
-              ? `not yet proven — ${result.forward_test_days.toFixed(0)} days so far (30 days is the recommended threshold)`
-              : "no forward-test track yet — readiness signal not available"}
-          <span className="ml-1 text-quiet opacity-80">· advisory only; the 5 interlocks are the hard gate</span>
+              ? `not yet proven — ${result.forward_test_days.toFixed(0)} days so far (needs net-positive past the forward-test threshold)`
+              : "no forward-test track yet — not eligible to arm"}
+          <span className="ml-1 text-quiet opacity-80">· required to arm; the 5 interlocks remain the hard execution gate</span>
         </div>
       </div>
     </div>

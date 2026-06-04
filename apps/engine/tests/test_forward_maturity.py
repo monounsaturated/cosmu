@@ -1,6 +1,7 @@
-# The ADVISORY forward-test maturity signal (master/forward_maturity.py): forward_age_days from the track's first
-# mark, net_return_pct, and a live_ready recommendation = (age >= FORWARD_TEST_MIN_DAYS AND net > 0). It is
-# SURFACED, NOT ENFORCED — these tests pin the arithmetic + the fail-safe behavior, NOT a hard gate. Deterministic,
+# The forward-test maturity signal (master/forward_maturity.py): forward_age_days from the track's first mark,
+# net_return_pct, and live_ready = (age >= FORWARD_TEST_MIN_DAYS AND net > 0). The leaderboard reads it advisorily;
+# master/live_eligibility now consults the SAME flag as a HARD live-arming precondition (see
+# test_live_eligibility_gate.py). These tests pin only the pure arithmetic + the fail-safe behavior. Deterministic,
 # LLM-free.
 
 from __future__ import annotations
