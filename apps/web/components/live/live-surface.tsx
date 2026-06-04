@@ -29,9 +29,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Stat } from "@/components/ui/stat";
 import { MoneyState, moneyMode } from "@/components/ui/money-state";
+import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn, formatSigned, formatUsd } from "@/lib/utils";
-
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 const DEFAULT_CAPS: Caps = { per_strategy_cap: 250, global_cap: 1000, max_daily_loss: 100 };
 
@@ -70,9 +69,9 @@ export function LiveSurface({
   const dailyLossPct = state.caps.max_daily_loss > 0 ? Math.min(100, (state.daily_loss / state.caps.max_daily_loss) * 100) : 0;
 
   async function refreshVenues() {
-    if (!ENGINE) return;
+    if (!ENGINE_CONFIGURED) return;
     try {
-      const res = await fetch(`${ENGINE}/live/venues`);
+      const res = await engineFetch("/live/venues");
       if (res.ok) setVenues((await res.json()) as LiveVenuesResponse);
     } catch {
       /* leave last-known venues; the connected badge already reflects engine reachability */
@@ -80,12 +79,12 @@ export function LiveSurface({
   }
 
   async function refreshPositions() {
-    if (!ENGINE) {
+    if (!ENGINE_CONFIGURED) {
       setConnected(false);
       return;
     }
     try {
-      const res = await fetch(`${ENGINE}/live/positions`);
+      const res = await engineFetch("/live/positions");
       if (!res.ok) throw new Error("engine unavailable");
       const data = (await res.json()) as PositionsResponse;
       setState(data);
@@ -100,11 +99,11 @@ export function LiveSurface({
   // Tick / untick a venue into the trading universe (POST /universe/venue). Optimistic, then reconciled
   // from /live/venues. This selects WHERE money may go; "not connected" venues simply can't trade until wired.
   function toggleVenue(id: string, enabled: boolean) {
-    if (!ENGINE) return;
+    if (!ENGINE_CONFIGURED) return;
     setVenues((v) => ({ ...v, venues: v.venues.map((x) => (x.id === id ? { ...x, enabled } : x)) }));
     startTransition(async () => {
       try {
-        await fetch(`${ENGINE}/universe/venue`, {
+        await engineFetch("/universe/venue", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ venue_id: id, enabled })
@@ -122,13 +121,13 @@ export function LiveSurface({
   function openGoLive() {
     setNote(null);
     startTransition(async () => {
-      if (!ENGINE) {
+      if (!ENGINE_CONFIGURED) {
         setConnected(false);
         setNote("Engine not connected — set API_BASE_URL. Arming requires a connected engine with the Gate passed.");
         return;
       }
       try {
-        const res = await fetch(`${ENGINE}/toggle/live`, {
+        const res = await engineFetch("/toggle/live", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ enabled: true, confirm: false })
@@ -148,12 +147,12 @@ export function LiveSurface({
   // CLICK 2 — confirm arming. Sends confirm:true with the caps the operator reviewed.
   function confirmActivate() {
     startTransition(async () => {
-      if (!ENGINE) {
+      if (!ENGINE_CONFIGURED) {
         setNote("Engine not connected — cannot arm.");
         return;
       }
       try {
-        const res = await fetch(`${ENGINE}/live/activate`, {
+        const res = await engineFetch("/live/activate", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ ...caps, confirm: true })
@@ -178,12 +177,12 @@ export function LiveSurface({
 
   function defund(scope: "all" | "strategy", versionId?: string) {
     startTransition(async () => {
-      if (!ENGINE) {
+      if (!ENGINE_CONFIGURED) {
         setNote("Engine not connected — defund unavailable.");
         return;
       }
       try {
-        const res = await fetch(`${ENGINE}/live/defund`, {
+        const res = await engineFetch("/live/defund", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(scope === "strategy" ? { scope, version_id: versionId } : { scope })

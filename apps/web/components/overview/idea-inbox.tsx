@@ -13,9 +13,8 @@ import type { InboxIdeaResponse, InboxQueueItem, InboxQueueResponse } from "@cos
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { timeAgo } from "@/lib/utils";
-
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 export function IdeaInbox({
   initial,
@@ -37,13 +36,13 @@ export function IdeaInbox({
     setError(null);
     const body = text.trim();
     if (!body) return;
-    if (!ENGINE) {
+    if (!ENGINE_CONFIGURED) {
       setError("Engine not connected — set API_BASE_URL to queue ideas.");
       return;
     }
     startTransition(async () => {
       try {
-        const res = await fetch(`${ENGINE}/lab/inbox`, {
+        const res = await engineFetch("/lab/inbox", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ text: body })
@@ -53,7 +52,7 @@ export function IdeaInbox({
         setNote(data.note);
         setText("");
         // Re-read the queue so the new idea shows with its real, audited status (never an optimistic fake).
-        const listRes = await fetch(`${ENGINE}/lab/inbox`);
+        const listRes = await engineFetch("/lab/inbox");
         if (listRes.ok) {
           const list = (await listRes.json()) as InboxQueueResponse;
           setItems(list.items);

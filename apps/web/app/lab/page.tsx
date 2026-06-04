@@ -13,6 +13,7 @@ import { ResearchBrain } from "@/components/research/research-brain";
 import { GateFunnel, SurvivalDistribution } from "@/components/charts/brain-charts";
 import { ActivityTimeline } from "@/components/observability/activity-timeline";
 import { Tooltip } from "@/components/ui/tooltip";
+import { StrategyStages } from "@/components/nav/strategy-stages";
 import { EmptyState, NotConnected, NotConnectedBanner } from "@/components/ui/honest-state";
 import { cn, formatPct } from "@/lib/utils";
 
@@ -33,6 +34,8 @@ export default async function LabPage() {
         title="What is the machine discovering?"
         aside={<Badge variant="muted">LLM proposes · Gate disposes</Badge>}
       />
+
+      <StrategyStages />
 
       {!anyConnected ? <NotConnectedBanner configured={engineConfigured} /> : null}
 

@@ -5,14 +5,13 @@
 // pre-registered bar, and an honest data-source badge. Conceptually upstream of the Lab.
 
 import { useEffect, useState, useTransition } from "react";
-import { Check, FlaskConical, Play, X } from "lucide-react";
+import { Check, Database, FlaskConical, Play, X } from "lucide-react";
 import type { GateStatusResponse, GateVerdictResponse } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn } from "@/lib/utils";
-
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 function pct(x: number) {
   return `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
@@ -32,15 +31,15 @@ function checklist(v: GateVerdictResponse) {
 
 export function EdgeGate() {
   const [verdict, setVerdict] = useState<GateVerdictResponse | null>(null);
-  const [offline, setOffline] = useState(!ENGINE);
+  const [offline, setOffline] = useState(!ENGINE_CONFIGURED);
   const [running, startRun] = useTransition();
 
   useEffect(() => {
-    if (!ENGINE) {
+    if (!ENGINE_CONFIGURED) {
       setOffline(true);
       return;
     }
-    fetch(`${ENGINE}/research/gate`)
+    engineFetch("/research/gate")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("offline"))))
       .then((s: GateStatusResponse) => {
         setVerdict(s.verdict);
@@ -51,13 +50,13 @@ export function EdgeGate() {
 
   function run() {
     setOffline(false);
-    if (!ENGINE) {
+    if (!ENGINE_CONFIGURED) {
       setOffline(true);
       return;
     }
     startRun(async () => {
       try {
-        const res = await fetch(`${ENGINE}/research/gate`, { method: "POST" });
+        const res = await engineFetch("/research/gate", { method: "POST" });
         if (!res.ok) throw new Error("offline");
         setVerdict((await res.json()) as GateVerdictResponse);
         setOffline(false);
@@ -67,7 +66,11 @@ export function EdgeGate() {
     });
   }
 
-  const passed = verdict?.passed;
+  // HONESTY INVARIANT: a verdict computed on anything other than LIVE data is NOT a verdict we will
+  // display. We never render a synthetic PASS/STOP or its checklist — only an explicit "needs real data"
+  // state. The numbers would be meaningless and showing them would violate "never display synthetic data".
+  const isLiveVerdict = verdict?.data_source === "live";
+  const passed = isLiveVerdict ? verdict?.passed : undefined;
 
   return (
     <Card>
@@ -89,6 +92,21 @@ export function EdgeGate() {
               ? "Engine not connected — run the edge gate once the engine is up. No demo verdict is shown."
               : "No run yet. Press “Run edge gate” to get a stop-or-go verdict."}
           </p>
+        ) : !isLiveVerdict ? (
+          // The engine only has synthetic inputs wired so far. We refuse to show a pass/fail on fake
+          // data — that would be a fabricated track record. Show an honest "needs real data" state instead.
+          <div className="space-y-3 rounded-md border border-warn/30 bg-warn/5 p-4">
+            <div className="flex items-center gap-2">
+              <Database className="size-4 text-warn" />
+              <span className="text-[13px] font-medium text-foreground">Needs real data</span>
+            </div>
+            <p className="text-[12.5px] leading-relaxed text-muted">
+              The edge gate ran on a synthetic fixture, so there is <span className="font-medium text-foreground">no honest verdict to show</span>.
+              We never display a pass/fail on fabricated data. Wire a real source (e.g. <span className="font-medium text-foreground">LUNARCRUSH_API_KEY</span> and
+              market bars) on the engine, then re-run for a genuine stop-or-go result.
+            </p>
+            <p className="text-[11.5px] text-quiet">See Settings → Keys for what unlocks a real verdict.</p>
+          </div>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3">
@@ -98,9 +116,7 @@ export function EdgeGate() {
               <span className="text-[12px] text-quiet">
                 best signal <span className="text-muted">{verdict.best_signal}</span> · {verdict.attempts} attempts
               </span>
-              <Badge variant={verdict.data_source === "live" ? "info" : "warn"}>
-                {verdict.data_source === "live" ? "live data" : "synthetic data — wire LunarCrush for a real verdict"}
-              </Badge>
+              <Badge variant="info">live data</Badge>
             </div>
 
             <ul className="grid gap-1.5 sm:grid-cols-2">

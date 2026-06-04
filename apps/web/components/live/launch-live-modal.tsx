@@ -20,9 +20,8 @@ import type {
 } from "./contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn } from "@/lib/utils";
-
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 const DEFAULT_GLOBAL_CAP = 1000;
 const DEFAULT_MAX_DAILY_LOSS = 50;
@@ -51,11 +50,11 @@ export function LaunchLiveModal({ versionId, strategyName, onClose, onArmed }: P
 
   // Fetch the venue catalog (fees + configured flags) on mount.
   useEffect(() => {
-    if (!ENGINE) {
+    if (!ENGINE_CONFIGURED) {
       setCatalogConnected(false);
       return;
     }
-    fetch(`${ENGINE}/live/venue-catalog`)
+    engineFetch("/live/venue-catalog")
       .then((r) => (r.ok ? r.json() : null))
       .then((data: VenueCatalogResponse | null) => {
         if (!data) {
@@ -92,7 +91,7 @@ export function LaunchLiveModal({ versionId, strategyName, onClose, onArmed }: P
   }
 
   function handleConfirm() {
-    if (!ENGINE) {
+    if (!ENGINE_CONFIGURED) {
       setNote("Engine not connected — cannot launch.");
       return;
     }
@@ -107,7 +106,7 @@ export function LaunchLiveModal({ versionId, strategyName, onClose, onArmed }: P
     setNote(null);
     startTransition(async () => {
       try {
-        const res = await fetch(`${ENGINE}/live/launch`, {
+        const res = await engineFetch("/live/launch", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({

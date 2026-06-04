@@ -8,16 +8,15 @@
 //   POST /research/cross-asset-gate  (body: {})  -> CrossAssetVerdict (snake_case)
 
 import { useState, useTransition } from "react";
-import { Check, Layers, Play, X } from "lucide-react";
+import { Check, Database, Layers, Play, X } from "lucide-react";
 import type { CrossAssetVerdict, DropOneClass, DropOneSource } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn } from "@/lib/utils";
 
 export type { CrossAssetVerdict, DropOneClass, DropOneSource };
-
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 function pct(x: number) {
   return `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
@@ -35,18 +34,18 @@ function arm(label: string, value: number, tone: "iris" | "up" | "muted") {
 
 export function CrossAssetGate({ compact = false }: { compact?: boolean }) {
   const [verdict, setVerdict] = useState<CrossAssetVerdict | null>(null);
-  const [offline, setOffline] = useState(!ENGINE);
+  const [offline, setOffline] = useState(!ENGINE_CONFIGURED);
   const [running, startRun] = useTransition();
 
   function run() {
     setOffline(false);
     startRun(async () => {
-      if (!ENGINE) {
+      if (!ENGINE_CONFIGURED) {
         setOffline(true);
         return;
       }
       try {
-        const res = await fetch(`${ENGINE}/research/cross-asset-gate`, {
+        const res = await engineFetch("/research/cross-asset-gate", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({})
@@ -60,7 +59,10 @@ export function CrossAssetGate({ compact = false }: { compact?: boolean }) {
     });
   }
 
-  const passed = verdict?.decision === "PASS";
+  // Same honesty invariant as the edge gate: a verdict on synthetic inputs is never shown as a
+  // pass/fail — only an honest "needs real data" state. Never render a synthetic PASS anywhere.
+  const isLiveVerdict = verdict?.data_source === "live";
+  const passed = isLiveVerdict && verdict?.decision === "PASS";
 
   return (
     <Card>
@@ -84,6 +86,20 @@ export function CrossAssetGate({ compact = false }: { compact?: boolean }) {
               ? "Engine not connected — run the cross-asset gate once the engine is up. No demo verdict is shown."
               : "No run yet. Press “Run cross-asset gate” for a four-arm verdict."}
           </p>
+        ) : !isLiveVerdict ? (
+          // Synthetic fallback inputs — no honest verdict to show. Never render a pass/fail on fake data.
+          <div className="space-y-3 rounded-md border border-warn/30 bg-warn/5 p-4">
+            <div className="flex items-center gap-2">
+              <Database className="size-4 text-warn" />
+              <span className="text-[13px] font-medium text-foreground">Needs real data</span>
+            </div>
+            <p className="text-[12.5px] leading-relaxed text-muted">
+              The cross-asset gate ran on a synthetic fixture, so there is <span className="font-medium text-foreground">no honest verdict to show</span>.
+              Ingest the real cross-asset series (e.g. <span className="font-medium text-foreground">FRED_API_KEY</span> macro +
+              <span className="font-medium text-foreground"> POLYMARKET_TOKEN</span> risk-on), then re-run.
+            </p>
+            <p className="text-[11.5px] text-quiet">See Settings → Keys for what unlocks a real verdict.</p>
+          </div>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3">
@@ -93,9 +109,7 @@ export function CrossAssetGate({ compact = false }: { compact?: boolean }) {
               <span className="text-[12px] text-quiet">
                 cross-asset dSR <span className="text-muted">{verdict.xasset_dsr.toFixed(2)}</span> · {verdict.attempts} attempts
               </span>
-              <Badge variant={verdict.data_source === "live" ? "info" : "warn"}>
-                {verdict.data_source === "live" ? "live data" : "synthetic data"}
-              </Badge>
+              <Badge variant="info">live data</Badge>
               {offline ? <Badge variant="warn">offline</Badge> : null}
             </div>
 

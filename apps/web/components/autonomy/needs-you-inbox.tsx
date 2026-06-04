@@ -16,8 +16,7 @@ import type { ApproveResult, DismissResult } from "@/app/autonomy-contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/honest-state";
-
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 
 type Resolved = { id: string; label: string; tone: "up" | "muted" };
 
@@ -42,13 +41,13 @@ export function NeedsYouInbox({
     // Optimistic: drop the row immediately.
     setItems((list) => list.filter((r) => r.id !== rec.id));
     startTransition(async () => {
-      if (!ENGINE) {
+      if (!ENGINE_CONFIGURED) {
         setItems(prev);
         setNote("Engine not connected — set API_BASE_URL to approve or dismiss.");
         return;
       }
       try {
-        const res = await fetch(`${ENGINE}/recommendations/${rec.id}/${kind}`, { method: "POST" });
+        const res = await engineFetch(`/recommendations/${rec.id}/${kind}`, { method: "POST" });
         if (!res.ok) throw new Error("engine unavailable");
         if (kind === "approve") {
           const data = (await res.json()) as ApproveResult;

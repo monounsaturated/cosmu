@@ -7,9 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { formatPct } from "@/lib/utils";
-
-const ENGINE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 const laneStyle: Record<string, "iris" | "up" | "warn" | "info"> = {
   seed: "info",
@@ -69,12 +68,12 @@ export function FarmConsole() {
   function runCohort() {
     setOffline(false);
     startRun(async () => {
-      if (!ENGINE) {
+      if (!ENGINE_CONFIGURED) {
         setOffline(true);
         return;
       }
       try {
-        const res = await fetch(`${ENGINE}/evolution/run`, {
+        const res = await engineFetch("/evolution/run", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -95,12 +94,12 @@ export function FarmConsole() {
   function translatePine() {
     setOffline(false);
     startTranslate(async () => {
-      if (!ENGINE) {
+      if (!ENGINE_CONFIGURED) {
         setOffline(true);
         return;
       }
       try {
-        const res = await fetch(`${ENGINE}/strategy/pine`, {
+        const res = await engineFetch("/strategy/pine", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ source: pine })
