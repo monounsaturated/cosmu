@@ -13,6 +13,41 @@ from cosmu.data.market import Bar
 _SYMBOLS = ("BTCUSDT", "ETHUSDT", "ALTUSDT")
 
 
+# --- Adversarial controls (label-permutation nulls) ------------------------------------------
+# Prove the gate measures a real signal→return relationship and not an artefact (look-ahead,
+# the feature's own autocorrelation, or undeflated multiple-testing). Take EDGE-BEARING inputs and
+# permute each feature's VALUES across time while keeping every (ts, available_at) stamp — and the
+# entire return path — fixed. The marginal distribution of every feature is preserved exactly; only
+# its temporal alignment to returns is destroyed. Under this null a non-leaky gate MUST STOP. Any
+# PASS on shuffled data is spurious and marks a leak to fix (never a test to weaken).
+
+
+def shuffle_alt_provider(provider: FixtureAltDataProvider, *, seed: int = 0) -> FixtureAltDataProvider:
+    """Return a fresh provider with each (symbol, metric) series' VALUES permuted across time. Stamps
+    (ts/available_at) are untouched, so point-in-time alignment still works — the value landing on each
+    bar is now a random draw from the same distribution, uncorrelated with that bar's return. The input
+    provider is not mutated."""
+    out: dict[tuple[str, str], list[AltDataPoint]] = {}
+    for key, points in provider.series.items():
+        rng = random.Random(f"shuffle-alt-{seed}-{key[0]}-{key[1]}")  # per-series → independent permutations
+        values = [p.value for p in points]
+        rng.shuffle(values)
+        out[key] = [AltDataPoint(ts=p.ts, available_at=p.available_at, value=v) for p, v in zip(points, values)]
+    return FixtureAltDataProvider(out)
+
+
+def shuffle_news_provider(provider: FixtureNewsProvider, *, seed: int = 0) -> FixtureNewsProvider:
+    """Companion to [shuffle_alt_provider] for headlines: permute each symbol's headlines across its
+    timestamps, breaking any news→return relationship while preserving the headline-content distribution."""
+    out: dict[str, list[NewsItem]] = {}
+    for symbol, items in provider.news.items():
+        rng = random.Random(f"shuffle-news-{seed}-{symbol}")
+        heads = [it.headline for it in items]
+        rng.shuffle(heads)
+        out[symbol] = [NewsItem(ts=it.ts, available_at=it.available_at, headline=h) for it, h in zip(items, heads)]
+    return FixtureNewsProvider(out)
+
+
 def _regime_drift(idx: int, n: int) -> float:
     third = n // 3
     if idx < third:
