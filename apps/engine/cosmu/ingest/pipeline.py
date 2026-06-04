@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
-from cosmu.data.altdata import AltDataProvider, AltDataStore, NewsProvider
+from cosmu.data.altdata import AltDataPoint, AltDataProvider, AltDataStore, NewsProvider
 from cosmu.ingest.standardize import (
     NewsEventScore,
     StandardizedNews,
@@ -18,6 +19,81 @@ from cosmu.ingest.standardize import (
 @dataclass(frozen=True)
 class IngestSummary:
     counts: dict[str, int]
+
+
+class MemoizingProvider:
+    """Wraps an AltDataProvider so each (symbol, metric, limit) is fetched AT MOST ONCE per run — the
+    run-level cache that kills redundant external calls. The clearest win: a single FRED provider feeds
+    several semantic features off the SAME series (VIXCLS → vix_level + vix_term_slope, T10Y2Y →
+    macro_regime + yield_curve_2s10s); without memoization that is two live calls per shared series. The
+    cache lives for the wrapper's lifetime (one ingest pass), so a fresh run always re-pulls fresh data."""
+
+    def __init__(self, inner: AltDataProvider) -> None:
+        self._inner = inner
+        self._cache: dict[tuple[str, str, int], list[AltDataPoint]] = {}
+        self.calls = 0  # number of times the INNER provider was actually hit (cache misses)
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        key = (symbol, metric, limit)
+        if key not in self._cache:
+            self.calls += 1
+            self._cache[key] = self._inner.fetch_series(symbol, metric, limit=limit)
+        return self._cache[key]
+
+
+def append_dedup(alt_store: AltDataStore, provider_name: str, symbol: str, metric: str, points: list[AltDataPoint]) -> int:
+    """Append only points whose `ts` is not already stored for (provider, symbol, metric) — the idempotent
+    backfill primitive. The store is append-only, so a naive re-run would double-write every funding instant;
+    this reads the existing ts set ONCE and writes only genuinely-new points. Dedup key is
+    (provider, symbol, metric, ts). Returns the count of NEW points written (0 on a no-op re-run)."""
+    if not points:
+        return 0
+    existing = {p.ts for p in alt_store.read_all(provider_name, symbol, metric)}
+    fresh = [p for p in points if p.ts not in existing]
+    if fresh:
+        alt_store.append(provider_name, symbol, metric, fresh)
+    return len(fresh)
+
+
+@dataclass(frozen=True)
+class BackfillResult:
+    """Per-symbol outcome of a funding backfill: how many NEW points landed and the span covered."""
+
+    symbol: str
+    written: int                 # NEW points appended this run (0 on an idempotent re-run)
+    total: int                   # total points the provider returned for the window
+    start: datetime | None       # earliest funding ts in the returned span
+    end: datetime | None         # latest funding ts in the returned span
+
+    @property
+    def span_days(self) -> float:
+        if self.start is None or self.end is None:
+            return 0.0
+        return (self.end - self.start).total_seconds() / 86400.0
+
+
+def backfill_funding(
+    alt_store: AltDataStore,
+    provider: AltDataProvider,  # must expose `fetch_history(symbol, *, start_ms, end_ms=None)`
+    symbols: list[str],
+    *,
+    start_ms: int,
+    end_ms: int | None = None,
+    provider_name: str = "binance",
+    metric: str = "funding_rate",
+) -> dict[str, BackfillResult]:
+    """Backfill historical funding per symbol via a PAGINATED provider, append-only + dedup. Each symbol is
+    fetched ONCE (the provider paginates internally — no redundant external calls), then written through
+    `append_dedup` so a re-run writes 0 (idempotent on (provider, symbol, metric, ts)). Returns a per-symbol
+    BackfillResult carrying the new-points count and the covered span."""
+    results: dict[str, BackfillResult] = {}
+    for symbol in symbols:
+        points = provider.fetch_history(symbol, start_ms=start_ms, end_ms=end_ms)
+        written = append_dedup(alt_store, provider_name, symbol, metric, points)
+        start = points[0].ts if points else None
+        end = points[-1].ts if points else None
+        results[symbol] = BackfillResult(symbol=symbol, written=written, total=len(points), start=start, end=end)
+    return results
 
 
 def ingest_numeric(alt_store: AltDataStore, provider: AltDataProvider, symbols: list[str], metric: str, *, provider_name: str, limit: int = 1000) -> int:
