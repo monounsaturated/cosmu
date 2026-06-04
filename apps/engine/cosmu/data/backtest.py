@@ -536,7 +536,10 @@ def align_asof(points: list[AltDataPoint], bars: list[Bar]) -> dict[str, float]:
 
 
 # Features computed directly from the bar series; everything else is alt-data joined point-in-time.
-_PRICE_FEATURES = {"ret_Nd", "rsi", "bb_z", "vol_realized", "atr", "adx"}
+# Public (the single source of truth): the evolution loop derives the leading-signal / alt-data universe
+# it must join as `feature_registry.feature_names() - PRICE_FEATURES`, so the two stay in lockstep with no
+# duplicated key list. Anything NOT in here is read from the point-in-time alt join (None when absent).
+PRICE_FEATURES = frozenset({"ret_Nd", "rsi", "bb_z", "vol_realized", "atr", "adx"})
 
 
 def _feature_matrix(
