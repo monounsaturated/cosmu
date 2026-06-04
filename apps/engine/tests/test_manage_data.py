@@ -78,6 +78,7 @@ def _manager(tmp_path, **kw) -> DataManager:
     return DataManager(
         store=AltDataStore(tmp_path / "alt"),
         market_data_dir=tmp_path / "market_data",
+        panel_dir=tmp_path / "panels",
         clock=lambda: _NOW,
         **kw,
     )
@@ -126,11 +127,11 @@ def test_backfill_bars_multi_venue(tmp_path):
         providers=_all_fixture_providers(),
         bar_backfiller_factory=lambda venue: CcxtBarBackfiller(venue, page_limit=300, _fetcher=_bar_fetcher(rows)),
     )
-    result = mgr.backfill("bars", days=800, symbols=["BTCUSDT"], timeframe="1d")
+    result = mgr.backfill("bars", days=800, symbols=["BTCUSDT"], timeframes=("1d",))
     assert result["kind"] == "bars"
     # Both default venues (binance + kraken) populated.
     for venue in ("binance", "kraken"):
-        r = result["results"][(venue, "BTCUSDT")]
+        r = result["results"][(venue, "BTCUSDT", "1d")]
         assert r.written == 500
         cached = read_cached_bars(bar_cache_path(tmp_path / "market_data" / venue, "BTCUSDT", "1d"))
         assert len(cached) == 500
@@ -143,8 +144,8 @@ def test_backfill_single_venue_selector(tmp_path):
         providers=_all_fixture_providers(),
         bar_backfiller_factory=lambda venue: CcxtBarBackfiller(venue, page_limit=300, _fetcher=_bar_fetcher(rows)),
     )
-    result = mgr.backfill("bars:kraken", days=400, symbols=["BTCUSDT"], timeframe="1d")
-    assert set(result["results"].keys()) == {("kraken", "BTCUSDT")}
+    result = mgr.backfill("bars:kraken", days=400, symbols=["BTCUSDT"], timeframes=("1d",))
+    assert set(result["results"].keys()) == {("kraken", "BTCUSDT", "1d")}
 
 
 def test_verify_reports_have_and_missing(tmp_path):
@@ -167,3 +168,48 @@ def test_verify_no_bars_flag(tmp_path):
     mgr = _manager(tmp_path, providers=_all_fixture_providers())
     report = mgr.verify(["BTCUSDT"], include_bars=False)
     assert all(s.kind == "alt" for s in report.series)
+
+
+def test_verify_covers_multiple_timeframes(tmp_path):
+    mgr = _manager(tmp_path, providers=_all_fixture_providers())
+    report = mgr.verify(["BTCUSDT"], timeframes=("1d", "4h", "1h"), include_bars=True)
+    bar_tfs = {s.metric for s in report.series if s.kind == "bars"}
+    # Every requested timeframe is reported per venue (binance + kraken), all missing (nothing backfilled).
+    assert bar_tfs == {"bars:1d", "bars:4h", "bars:1h"}
+    assert all(s.status == "missing" for s in report.series if s.kind == "bars")
+
+
+def test_backfill_bars_multi_timeframe(tmp_path):
+    rows = _bar_rows(120)
+    mgr = _manager(
+        tmp_path,
+        providers=_all_fixture_providers(),
+        bar_backfiller_factory=lambda venue: CcxtBarBackfiller(venue, page_limit=300, _fetcher=_bar_fetcher(rows)),
+    )
+    result = mgr.backfill("bars:binance", days=400, symbols=["BTCUSDT"], timeframes=("1d", "4h"))
+    assert set(result["results"].keys()) == {("binance", "BTCUSDT", "1d"), ("binance", "BTCUSDT", "4h")}
+    for tf in ("1d", "4h"):
+        cached = read_cached_bars(bar_cache_path(tmp_path / "market_data" / "binance", "BTCUSDT", tf))
+        assert len(cached) == 120
+
+
+def test_build_panels_and_verify_panel_coverage(tmp_path):
+    # Backfill bars + ingest funding, then build the ML panels and verify their coverage.
+    rows = _bar_rows(60)
+    mgr = _manager(
+        tmp_path,
+        providers=_all_fixture_providers(funding=_funding_fixture()),
+        bar_backfiller_factory=lambda venue: CcxtBarBackfiller(venue, page_limit=300, _fetcher=_bar_fetcher(rows)),
+    )
+    mgr.backfill("bars:binance", days=400, symbols=["BTCUSDT"], timeframes=("1d",))
+    mgr.fetch("funding", ["BTCUSDT"])
+    written = mgr.build_panels(["BTCUSDT"], timeframes=("1d",), alt_features=("funding_rate",))
+    assert written[("BTCUSDT", "1d")] == 60
+    # Idempotent: a second build writes 0 new rows.
+    assert mgr.build_panels(["BTCUSDT"], timeframes=("1d",), alt_features=("funding_rate",))[("BTCUSDT", "1d")] == 0
+    # A symbol with no cached bars → an honest 0 (no fabricated panel).
+    assert mgr.build_panels(["NOPEUSDT"], timeframes=("1d",))[("NOPEUSDT", "1d")] == 0
+    # verify --panels surfaces the built panel as a non-missing series.
+    report = mgr.verify(["BTCUSDT"], timeframes=("1d",), include_bars=False, include_panels=True)
+    panels = [s for s in report.series if s.kind == "panel"]
+    assert panels and panels[0].rows == 60 and panels[0].status != "missing"

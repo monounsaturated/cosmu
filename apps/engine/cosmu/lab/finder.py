@@ -20,6 +20,7 @@ from decimal import Decimal
 
 from cosmu.config.settings import Settings
 from cosmu.data.backtest import run_strategy_backtest_detailed
+from cosmu.data.universe import CORE_PERP_UNIVERSE
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
@@ -45,7 +46,10 @@ _MAX_VARIANTS = 256
 _REFINE_POINTS = 5
 _REFINE_TOP_N = 5
 _REFINE_RADIUS = 0.15
-_REAL_SYMBOLS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")
+# The finder's live screen = the canonical core perp slice (one source of truth in cosmu.data.universe — no
+# duplicated literal). The DATA layer + carry harness now span the full ~30-symbol PERP_UNIVERSE; the finder's
+# online screen stays on the core slice until the wide universe's bars are cached for every horizon.
+_REAL_SYMBOLS = CORE_PERP_UNIVERSE
 # Two validation return streams with Pearson correlation >= this are treated as the SAME hypothesis: one is the
 # cluster representative, the rest are near-duplicates. Dedupe to representatives BEFORE BH-FDR so a dense
 # correlated grid can't game the false-discovery cutoff (cohort.py's "distinct candidates" contract).

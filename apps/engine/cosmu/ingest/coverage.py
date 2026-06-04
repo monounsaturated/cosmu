@@ -261,3 +261,29 @@ def build_bar_coverage(
             )
         )
     return out
+
+
+def build_panel_coverage(
+    panel_dir: Path | str,
+    specs: list[tuple[str, str]],  # (symbol, timeframe)
+    *,
+    now: datetime,
+    stale_after_seconds: int = DEFAULT_STALE_AFTER_SECONDS,
+) -> list[SeriesCoverage]:
+    """Score each expected (symbol, timeframe) ML panel from its on-disk store. A panel's rows carry a `ts` and
+    `available_at` (== bar close), so the SAME PIT/freshness/gap machinery applies: an absent panel → `missing`,
+    and the look-ahead check still holds (available_at >= ts). Reuses `series_coverage` — the panel is just a
+    grid of standardized rows, judged like any other series."""
+    from cosmu.ingest.ml_panel import read_ml_panel
+
+    out: list[SeriesCoverage] = []
+    for symbol, timeframe in specs:
+        panel = read_ml_panel(panel_dir, symbol, timeframe)
+        rows = panel.rows if panel else []
+        out.append(
+            series_coverage(
+                rows, provider="ml_panel", symbol=symbol, metric=f"panel:{timeframe}",
+                now=now, kind="panel", stale_after_seconds=stale_after_seconds,
+            )
+        )
+    return out
