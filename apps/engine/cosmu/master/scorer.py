@@ -48,6 +48,11 @@ class TrialStats(BaseModel):
 
     count: int = 1
     sr_variance: float | None = None  # cross-sectional variance of per-obs trial Sharpes; analytic if None
+    # Average pairwise correlation (rho_bar) of the trial population's return streams. A correlated grid of
+    # near-duplicate variants is NOT `count` independent tests, so the multiple-testing penalty is applied to
+    # the EFFECTIVE count N/(1+(N-1)*rho_bar), not the raw count (see `effective_trials`). None = unknown ⇒
+    # no haircut ⇒ the pre-registered gate (which never supplies one) is byte-identical to before.
+    sr_correlation: float | None = None
 
 
 class ScoreVerdict(BaseModel):
@@ -68,14 +73,34 @@ def probabilistic_sharpe(sr_hat: float, n_obs: int, skew: float, kurtosis: float
     return _NORMAL.cdf(z)
 
 
-def expected_max_sharpe(sr_variance: float, n_trials: int) -> float:
-    """SR0: expected maximum of n_trials i.i.d. per-obs Sharpes drawn from N(0, sr_variance)."""
-    if n_trials < 2 or sr_variance <= 0:
+def expected_max_sharpe(sr_variance: float, n_trials: float) -> float:
+    """SR0: expected maximum of n_trials i.i.d. per-obs Sharpes drawn from N(0, sr_variance).
+
+    `n_trials` may be FRACTIONAL — the effective independent-trial count after a correlation haircut
+    (`effective_trials`). Floored at 0 so a sub-2 effective count can never produce a NEGATIVE benchmark
+    (which would perversely make the Deflated Sharpe EASIER to clear). For integer n_trials >= 2 this is
+    byte-identical to the prior implementation, so the pre-registered gate is unchanged.
+    """
+    if n_trials <= 1.0 or sr_variance <= 0:
         return 0.0
     sigma = math.sqrt(sr_variance)
     a = _NORMAL.inv_cdf(1.0 - 1.0 / n_trials)
     b = _NORMAL.inv_cdf(1.0 - 1.0 / (n_trials * math.e))
-    return sigma * ((1.0 - _EULER_GAMMA) * a + _EULER_GAMMA * b)
+    return max(0.0, sigma * ((1.0 - _EULER_GAMMA) * a + _EULER_GAMMA * b))
+
+
+def effective_trials(n_trials: float, sr_correlation: float | None) -> float:
+    """Effective number of INDEPENDENT trials given the average pairwise correlation `rho_bar` of the trial
+    population: N_eff = N / (1 + (N - 1) * rho_bar). At rho_bar = 0 (independent) this is N; as rho_bar → 1
+    (a grid of near-duplicates) it collapses toward 1/rho_bar — so densifying a CORRELATED grid stops
+    inflating the trial count, and SR0 no longer collapses (the leak). `None` ⇒ no measured correlation ⇒
+    a no-op returning N, so the honest reference gate is untouched."""
+    if sr_correlation is None:
+        return n_trials
+    rho = min(1.0, max(0.0, sr_correlation))
+    if n_trials <= 1.0 or rho <= 0.0:
+        return n_trials
+    return n_trials / (1.0 + (n_trials - 1.0) * rho)
 
 
 def _trial_sr_variance(trials: TrialStats, sr_hat: float, n_obs: int) -> float:
@@ -89,10 +114,13 @@ def _trial_sr_variance(trials: TrialStats, sr_hat: float, n_obs: int) -> float:
 
 
 def deflated_sharpe_prob(metrics: BacktestMetrics, trials: TrialStats) -> float:
-    """DSR = PSR evaluated against the trial-count-inflated benchmark SR0."""
+    """DSR = PSR evaluated against the trial-count-inflated benchmark SR0, where the trial count is the
+    EFFECTIVE number of independent trials (a correlation haircut on the raw count — see `effective_trials`)."""
     sr_hat = float(metrics.sharpe_per_obs)
     sr_variance = _trial_sr_variance(trials, sr_hat, metrics.n_obs)
-    sr0 = expected_max_sharpe(sr_variance, max(trials.count, metrics.trials_counted, 1))
+    n_trials = max(trials.count, metrics.trials_counted, 1)
+    n_eff = effective_trials(float(n_trials), trials.sr_correlation)
+    sr0 = expected_max_sharpe(sr_variance, n_eff)
     return probabilistic_sharpe(sr_hat, metrics.n_obs, float(metrics.skew), float(metrics.kurtosis), sr0)
 
 

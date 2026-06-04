@@ -27,3 +27,5 @@ TradingAgents-main/
 # Claude local files (settings etc.) — but TRACK the skills, which are the repo's source of truth for procedures
 .claude/*
 !.claude/skills/
+
+.venv/

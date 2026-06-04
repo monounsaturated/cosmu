@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import hashlib
 import itertools
+import math
+import statistics
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 
 from cosmu.config.settings import Settings
-from cosmu.data.backtest import run_strategy_backtest
+from cosmu.data.backtest import run_strategy_backtest_detailed
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
@@ -25,7 +27,8 @@ from cosmu.knowledge.store import Store, Writer, utcnow
 from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_cohort
 from cosmu.master.holdout import HoldoutLedger
-from cosmu.master.scorer import BacktestMetrics, score
+from cosmu.master.scorer import BacktestMetrics, TrialStats, cscv_pbo, score
+from cosmu.master.trials import register_trial
 from cosmu.spine.universe import enabled_universe
 from cosmu.spine.venue import default_catalog
 from cosmu.strategy.compiler import compile_spec
@@ -42,6 +45,13 @@ _REFINE_POINTS = 5
 _REFINE_TOP_N = 5
 _REFINE_RADIUS = 0.15
 _REAL_SYMBOLS = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")
+# Two validation return streams with Pearson correlation >= this are treated as the SAME hypothesis: one is the
+# cluster representative, the rest are near-duplicates. Dedupe to representatives BEFORE BH-FDR so a dense
+# correlated grid can't game the false-discovery cutoff (cohort.py's "distinct candidates" contract).
+_CLUSTER_CORRELATION = 0.95
+# Per-symbol validation trade floor. The pooled gate (min_trades=30) can be met with ~6 trades on each of 5
+# correlated symbols; require independent evidence on EACH traded symbol instead of accepting a pooled count.
+_MIN_TRADES_PER_SYMBOL = 5
 
 
 @dataclass(frozen=True)
@@ -234,11 +244,15 @@ class StrategyFinder:
         persist: bool = True,
         two_pass: bool = True,
     ) -> FinderReport:
-        """Run the full Finder pass for one seed spec. Steps: build the grid → screen every variant on REAL bars
-        → register each as a trial → rank by profit_factor within gate-passers → TWO-PASS REFINEMENT (finer grid
-        around top survivors) → promote via the deterministic cohort gate (significance + BH-FDR) →
-        WFO/holdout-validate the promoted leaders ONCE before they enter the config library. Deterministic and
-        LLM-free."""
+        """Run the full Finder pass for one seed spec — now as statistically honest as research/gate.py.
+
+        Steps: build the grid → screen every variant on REAL bars → register EVERY variant as a trial so the
+        global ledger reflects the TRUE count (not len(param_space)) → score every variant against that true,
+        correlation-haircut trial count AND the cohort's REAL CSCV-PBO (not the per-variant proxy) → pick refine
+        seeds from those HONEST gate-passers → TWO-PASS REFINEMENT → cluster the correlated grid into DISTINCT
+        representatives and run BH-FDR over THOSE (cohort.py's "distinct candidates" contract) → one-shot
+        holdout-validate before the config library. Deterministic, LLM-free, and a dense correlated grid can no
+        longer manufacture significance."""
         spec = spec or seed_orb_fvg_spec()
         market = self._market(spec)
         grid = build_grid(spec, max_variants=max_variants)
@@ -246,41 +260,33 @@ class StrategyFinder:
 
         results: list[VariantResult] = []
         cohort: list[CohortCandidate] = []
-        for variant in grid:
-            try:
-                compiled = compile_spec(spec, variant.params)
-            except ValueError:
-                continue  # an invalid grid point (e.g. degenerate range) is skipped, never persisted
-            metrics = run_strategy_backtest(spec, variant.params, market, fee_bps=venue.taker_fee_bps)
-            verdict = score(metrics, self.settings.gates)
-            net_profit = float(metrics.oos_return) - _round_trip_cost(metrics, venue)
-            results.append(
-                VariantResult(
-                    config_tag=variant.config_tag,
-                    code_hash=compiled.code_hash,
-                    metrics=metrics,
-                    deflated_sharpe=float(verdict.ranking_scalar),
-                    profit_factor=float(metrics.profit_factor),
-                    net_profit=net_profit,
-                    gate_passed=verdict.passed,
-                    reasons=verdict.reasons,
-                    fitted_params=variant.params,
-                )
-            )
-            cohort.append(
-                CohortCandidate(
-                    id=variant.config_tag,
-                    metrics=metrics,
-                    net_profit=net_profit,
-                    source="finder",
-                    label=f"{spec.name}:{variant.config_tag}",
-                    return_variance=max(1e-6, float(metrics.max_drawdown) ** 2 + 1e-3),
-                )
-            )
+        returns_by_tag: dict[str, list[float]] = {}
+        trades_by_tag: dict[str, int] = {}
 
-        # TWO-PASS REFINEMENT: take the top coarse-pass gate-passers and run a finer grid around their
-        # parameter neighborhoods. The gate still protects — refinement only finds better configurations
-        # within the already-validated structural region, never overfits.
+        def _screen_into(variant: Variant, source: str, label: str) -> None:
+            screened = self._screen(spec, variant, market, venue, source=source, label=label)
+            if screened is None:
+                return  # an invalid grid point (e.g. degenerate range) is skipped, never persisted
+            r, cand, val_returns, min_symbol_trades = screened
+            results.append(r)
+            cohort.append(cand)
+            returns_by_tag[r.config_tag] = val_returns
+            trades_by_tag[r.config_tag] = min_symbol_trades
+            # Problem 1 — register EVERY screened variant as a trial so the global ledger (and thus every
+            # deflation in this run) reflects the TRUE running count, not the ~len(param_space) proxy.
+            register_trial(self.store, float(cand.metrics.sharpe_per_obs), source=cand.source, label=cand.label or cand.id)
+
+        # ---- coarse pass ----
+        for variant in grid:
+            _screen_into(variant, "finder", f"{spec.name}:{variant.config_tag}")
+        # Honest coarse scoring drives the refine-seed selection below: the TRUE running trial count with the
+        # SAME dedupe-based effective-N as the final pass (so a correlated-but-real edge survives to refinement
+        # instead of being over-deflated against the raw coarse count).
+        coarse_reps = _cluster_representatives(results, returns_by_tag, threshold=_CLUSTER_CORRELATION)
+        self._rescore(results, returns_by_tag, trades_by_tag,
+                      self._finder_trial_stats(coarse_reps, {r.config_tag: r for r in results}))
+
+        # TWO-PASS REFINEMENT around the HONEST coarse gate-passers (not the leaky ones).
         if two_pass:
             coarse_passers = sorted(
                 [r for r in results if r.gate_passed],
@@ -288,58 +294,44 @@ class StrategyFinder:
                 reverse=True,
             )[:_REFINE_TOP_N]
             if coarse_passers:
-                survivor_variants = []
-                for r in coarse_passers:
-                    for v in grid:
-                        if v.config_tag == r.config_tag:
-                            survivor_variants.append(v)
-                            break
-                fine_grid = refine_around(spec, survivor_variants)
+                by_tag = {v.config_tag: v for v in grid}
+                survivor_variants = [by_tag[r.config_tag] for r in coarse_passers if r.config_tag in by_tag]
                 existing_tags = {r.config_tag for r in results}
-                for variant in fine_grid:
+                for variant in refine_around(spec, survivor_variants):
                     if variant.config_tag in existing_tags:
                         continue
-                    try:
-                        compiled = compile_spec(spec, variant.params)
-                    except ValueError:
-                        continue
-                    metrics = run_strategy_backtest(spec, variant.params, market, fee_bps=venue.taker_fee_bps)
-                    verdict = score(metrics, self.settings.gates)
-                    net_profit = float(metrics.oos_return) - _round_trip_cost(metrics, venue)
-                    results.append(
-                        VariantResult(
-                            config_tag=variant.config_tag,
-                            code_hash=compiled.code_hash,
-                            metrics=metrics,
-                            deflated_sharpe=float(verdict.ranking_scalar),
-                            profit_factor=float(metrics.profit_factor),
-                            net_profit=net_profit,
-                            gate_passed=verdict.passed,
-                            reasons=verdict.reasons,
-                            fitted_params=variant.params,
-                        )
-                    )
-                    cohort.append(
-                        CohortCandidate(
-                            id=variant.config_tag,
-                            metrics=metrics,
-                            net_profit=net_profit,
-                            source="finder_refine",
-                            label=f"{spec.name}:refine:{variant.config_tag}",
-                            return_variance=max(1e-6, float(metrics.max_drawdown) ** 2 + 1e-3),
-                        )
-                    )
+                    _screen_into(variant, "finder_refine", f"{spec.name}:refine:{variant.config_tag}")
 
-        # The cohort gate registers EVERY variant as a trial (deflation validity) and promotes only those that
-        # clear significance AND survive BH-FDR — never a raw top-of-leaderboard pick.
-        promotions = {p.candidate_id: p for p in promote_cohort(self.store, cohort, self.settings.gates, fdr_q=fdr_q)}
+        # ---- dedupe the correlated grid → DISTINCT representatives; compute the run-wide honest context ----
+        reps = _cluster_representatives(results, returns_by_tag, threshold=_CLUSTER_CORRELATION)
+        results_by_tag = {r.config_tag: r for r in results}
+        finder_stats = self._finder_trial_stats(reps, results_by_tag)         # true count, effective-N = clusters (Problems 1, 2)
+        cohort_pbo = _cohort_pbo(reps, returns_by_tag)                         # REAL CSCV-PBO across the grid (Problem 3)
+
+        # FINAL scoring of every variant against the honest context — drives the displayed leaderboard.
+        self._rescore(results, returns_by_tag, trades_by_tag, finder_stats, cohort_pbo=cohort_pbo)
+
+        # BH-FDR over the DISTINCT representatives only (Problem 6); the ledger already holds every variant so
+        # deflation still sees the true count (register=False), and the haircut context is injected (trials=).
+        rep_set = set(reps)
+        rep_cohort = [
+            _with_pbo(c, cohort_pbo)
+            for c in cohort
+            if c.id in rep_set and trades_by_tag.get(c.id, 0) >= _MIN_TRADES_PER_SYMBOL
+        ]
+        promotions = {
+            p.candidate_id: p
+            for p in promote_cohort(
+                self.store, rep_cohort, self.settings.gates, fdr_q=fdr_q, register=False, trials=finder_stats
+            )
+        }
         for r in results:
             p = promotions.get(r.config_tag)
-            r.promoted = bool(p and p.promoted)
+            r.promoted = bool(p and p.promoted)  # only a cluster representative can be promoted
 
-        # WFO / one-shot holdout BEFORE promotion: a promoted variant must ALSO clear the untouched holdout
-        # (data/backtest reserves the last fifth; holdout_deflated_sharpe > the configured floor) so the finder
-        # can never promote on in-sample PF alone — every winner survives out-of-sample too.
+        # WFO / one-shot holdout BEFORE promotion: a promoted variant must ALSO clear the untouched, PURGED +
+        # EMBARGOED holdout (holdout_deflated_sharpe > the configured floor) so the finder never promotes on
+        # in-sample evidence alone.
         floor = float(self.settings.gates.holdout_min_deflated_sharpe)
         for r in results:
             r.holdout_passed = float(r.metrics.holdout_deflated_sharpe) > floor
@@ -358,6 +350,95 @@ class StrategyFinder:
             leaderboard=leaderboard[:24],
             survivors=survivors,
         )
+
+    # ------------------------------------------------------------------ screening + honest scoring
+
+    def _screen(
+        self,
+        spec: StrategySpec,
+        variant: Variant,
+        market: dict[str, list[Bar]],
+        venue,  # noqa: ANN001 — venue catalog row
+        *,
+        source: str,
+        label: str,
+    ) -> tuple[VariantResult, CohortCandidate, list[float], int] | None:
+        """Compile + backtest one variant on REAL bars. Returns (result, cohort-candidate, validation return
+        stream, min per-symbol trade count) — or None for an invalid grid point. Gate flags are filled later by
+        `_rescore`, once the run-wide honest trial context is known."""
+        try:
+            compiled = compile_spec(spec, variant.params)
+        except ValueError:
+            return None
+        detailed = run_strategy_backtest_detailed(spec, variant.params, market, fee_bps=venue.taker_fee_bps)
+        metrics = detailed.metrics
+        net_profit = float(metrics.oos_return) - _round_trip_cost(metrics, venue)
+        result = VariantResult(
+            config_tag=variant.config_tag,
+            code_hash=compiled.code_hash,
+            metrics=metrics,
+            deflated_sharpe=0.0,
+            profit_factor=float(metrics.profit_factor),
+            net_profit=net_profit,
+            gate_passed=False,
+            reasons=[],
+            fitted_params=variant.params,
+        )
+        candidate = CohortCandidate(
+            id=variant.config_tag,
+            metrics=metrics,
+            net_profit=net_profit,
+            source=source,
+            label=label,
+            return_variance=max(1e-6, float(metrics.max_drawdown) ** 2 + 1e-3),
+        )
+        return result, candidate, list(detailed.val_returns), detailed.min_symbol_trades
+
+    def _rescore(
+        self,
+        results: list[VariantResult],
+        returns_by_tag: dict[str, list[float]],
+        trades_by_tag: dict[str, int],
+        finder_stats: TrialStats,
+        *,
+        cohort_pbo: float | None = None,
+    ) -> None:
+        """Score every variant against the honest trial context `finder_stats` and, when provided, the REAL
+        cohort CSCV-PBO + a PER-SYMBOL trade floor. Mutates each result's gate flag, deflated Sharpe, and reasons
+        in place."""
+        for r in results:
+            metrics = r.metrics
+            if cohort_pbo is not None:
+                metrics = metrics.model_copy(update={"pbo": Decimal(str(round(cohort_pbo, 6)))})
+                r.metrics = metrics  # persist the real CSCV-PBO into the recorded backtest
+            verdict = score(metrics, self.settings.gates, trials=finder_stats)
+            reasons = list(verdict.reasons)
+            per_symbol_ok = trades_by_tag.get(r.config_tag, 0) >= _MIN_TRADES_PER_SYMBOL
+            if not per_symbol_ok:
+                reasons.append("min_trades_per_symbol")
+            r.deflated_sharpe = float(verdict.ranking_scalar)
+            r.reasons = reasons
+            r.gate_passed = verdict.passed and per_symbol_ok
+
+    def _finder_trial_stats(self, reps: list[str], results_by_tag: dict[str, VariantResult]) -> TrialStats:
+        """The honest multiple-testing context for this run.
+
+        The EFFECTIVE number of independent trials is the number of DISTINCT correlation clusters K — Problem 6's
+        dedupe *is* the effective-N. This is the faithful realization of "thread the true trial count, haircut for
+        correlation": K is the real count of decorrelated hypotheses tested (>> len(param_space)~7), and a dense
+        CORRELATED grid collapses to few clusters so densifying it cannot keep inflating the count (closing the
+        'easier as the grid densifies' leak). It is computed per-run from the data alone, so re-running the finder
+        on the same bars is deterministic (it does NOT ratchet up with the accumulating global ledger).
+
+        The closed-form average-correlation haircut `N/(1+(N-1)*rho_bar)` (`scorer.effective_trials`) is the wrong
+        model for a CLUSTERED grid — most pairs ~0, a few ~1 → a low mean that over-discounts toward 1 — so K, the
+        decorrelated-cluster count, is used directly as the effective count. The cross-sectional Sharpe variance
+        is taken over the DISTINCT representatives, which (unlike the variance over the whole grid) does NOT
+        collapse as near-duplicates pile up."""
+        k = max(1, len(reps))
+        rep_sharpes = [float(results_by_tag[t].metrics.sharpe_per_obs) for t in reps if t in results_by_tag]
+        sr_variance = statistics.pvariance(rep_sharpes) if len(rep_sharpes) > 1 else None
+        return TrialStats(count=k, sr_variance=sr_variance, sr_correlation=None)
 
     # ------------------------------------------------------------------ persistence (config library)
 
@@ -445,6 +526,60 @@ class StrategyFinder:
     def _version_exists(self, code_hash: str) -> bool:
         return self.store.row("SELECT id FROM strategy_versions WHERE code_hash = ?", (code_hash,)) is not None
 
+
+
+# --------------------------------------------------------------------------- correlation / clustering / CSCV
+
+
+def _corr(a: list[float], b: list[float]) -> float | None:
+    """Pearson correlation of two return streams aligned on their common tail. None when undefined."""
+    n = min(len(a), len(b))
+    if n < 2:
+        return None
+    aa, bb = a[-n:], b[-n:]
+    ma, mb = statistics.fmean(aa), statistics.fmean(bb)
+    va = sum((x - ma) ** 2 for x in aa)
+    vb = sum((y - mb) ** 2 for y in bb)
+    if va <= 0 or vb <= 0:
+        return None
+    cov = sum((aa[k] - ma) * (bb[k] - mb) for k in range(n))
+    return cov / math.sqrt(va * vb)
+
+
+def _cluster_representatives(
+    results: list[VariantResult], returns_by_tag: dict[str, list[float]], *, threshold: float
+) -> list[str]:
+    """Greedy correlation clustering: walk variants best-first (profit_factor, then per-obs Sharpe) and fold each
+    into the first existing representative it correlates with at >= `threshold`; otherwise it starts a new
+    cluster as its own representative. Returns the representative config_tags — one DISTINCT hypothesis per
+    cluster — so BH-FDR is never fed a grid of near-duplicates. Variants with no usable return stream are
+    excluded (they cannot clear the trade gate anyway)."""
+    ordered = sorted(
+        (r for r in results if len(returns_by_tag.get(r.config_tag, [])) >= 2),
+        key=lambda r: (r.profit_factor, float(r.metrics.sharpe_per_obs)),
+        reverse=True,
+    )
+    reps: list[str] = []
+    for r in ordered:
+        stream = returns_by_tag[r.config_tag]
+        if any((_corr(stream, returns_by_tag[rep]) or 0.0) >= threshold for rep in reps):
+            continue
+        reps.append(r.config_tag)
+    return reps
+
+
+def _cohort_pbo(reps: list[str], returns_by_tag: dict[str, list[float]]) -> float:
+    """Real CSCV-PBO across the DISTINCT representatives' return streams (a legitimate, diverse config
+    population). < 2 representatives → 1.0 (maximally overfit: CSCV cannot certify a single config), matching
+    the gate's convention."""
+    streams = [returns_by_tag[t] for t in reps if len(returns_by_tag.get(t, [])) >= 2]
+    return cscv_pbo(streams) if len(streams) >= 2 else 1.0
+
+
+def _with_pbo(candidate: CohortCandidate, pbo: float) -> CohortCandidate:
+    """A copy of the candidate whose metrics carry the cohort's real CSCV-PBO, so promote_cohort's pbo gate uses
+    the real overfit estimate, not the per-variant proxy."""
+    return replace(candidate, metrics=candidate.metrics.model_copy(update={"pbo": Decimal(str(round(pbo, 6)))}))
 
 
 def _round_trip_cost(metrics: BacktestMetrics, venue) -> float:  # noqa: ANN001

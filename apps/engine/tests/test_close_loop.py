@@ -4,6 +4,10 @@
 
 from __future__ import annotations
 
+import datetime as dt
+import random
+from decimal import Decimal
+
 from fastapi.testclient import TestClient
 
 from cosmu.config.settings import Settings
@@ -12,15 +16,40 @@ from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.knowledge.store import Store
 from cosmu.lab.finder import StrategyFinder
 from cosmu.orchestrator.loop import fund_tracks_from_survivors
-from cosmu.research.fixtures import edge_bearing_screen_market
+
+
+def _significant_edge_market(n: int = 300, seed: int = 5) -> dict[str, list[Bar]]:
+    """A deterministic market bearing a GENUINELY SIGNIFICANT edge — a strong, tight-noise trend whose
+    per-observation Sharpe survives the finder's HONEST multiple-testing deflation, so the close-the-loop path
+    has a real survivor to fund. (The modest `edge_bearing_screen_market` fixture deliberately does NOT clear
+    honest deflation — see test_finder_honesty — so it can no longer stand in for a fundable winner here.)"""
+    rng = random.Random(seed)
+    base = dt.datetime(2022, 1, 1, tzinfo=dt.UTC)
+    factor = [rng.gauss(0, 0.004) for _ in range(n)]  # one shared path → correlated, realistic symbols
+    out: dict[str, list[Bar]] = {}
+    for k, (sym, p0) in enumerate(
+        {"BTCUSDT": 30000.0, "ETHUSDT": 2000.0, "BNBUSDT": 300.0, "SOLUSDT": 25.0, "XRPUSDT": 0.5}.items()
+    ):
+        bars = []
+        p = p0
+        for i in range(n):
+            drift = 0.008 if i % 100 < 78 else -0.001  # strong bull with regular pullbacks (regime breadth)
+            r = drift + 0.95 * factor[i] + rng.gauss(0, 0.0006 * (1 + k * 0.1))
+            o = p
+            p = max(1e-6, p * (1 + r))
+            hi = max(o, p) * (1 + abs(rng.gauss(0, 0.001)))
+            lo = min(o, p) * (1 - abs(rng.gauss(0, 0.001)))
+            bars.append(Bar(ts=base + dt.timedelta(days=i), open=Decimal(str(o)), high=Decimal(str(hi)),
+                            low=Decimal(str(lo)), close=Decimal(str(p)), volume=Decimal("5000000")))
+        out[sym] = bars
+    return out
 
 
 class _FixtureBars:
-    # Small, fast offline market: 2 catalog symbols x ~280 edge-bearing bars (enough for the screen's 80-bar
-    # floor + holdout split) so finder grids stay quick in CI.
+    # Significant-edge offline market (5 catalog symbols) — a fundable winner survives the finder's honest
+    # deflation, exercising the survivor → standalone-track → real-position path end-to-end.
     def __init__(self) -> None:
-        full = edge_bearing_screen_market(n=280)
-        self._by = {sym: full[sym][-280:] for sym in ("BTCUSDT", "ETHUSDT")}
+        self._by = _significant_edge_market()
         self._default = self._by["BTCUSDT"]
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
