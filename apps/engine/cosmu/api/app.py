@@ -251,27 +251,8 @@ app.add_middleware(
 )
 
 
-# Shared-secret gate for the control-plane. This is a single-user private API; when API_SECRET_KEY is set
-# on the engine, every request must present it via the `X-API-Key` header (the Next.js server proxy injects
-# it server-side, so the secret never reaches the browser). Liveness (/health) and the CORS preflight
-# (OPTIONS) are always open so platform healthchecks and browsers keep working. When API_SECRET_KEY is
-# UNSET, auth is disabled — local dev and tests run without a key, exactly as before.
-_AUTH_OPEN_PATHS = frozenset({"/health", "/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect"})
-
-
-@app.middleware("http")
-async def require_api_secret(request, call_next):  # noqa: ANN001, ANN201 — Starlette middleware signature
-    from fastapi.responses import JSONResponse
-
-    secret = settings.api_secret_key
-    if (
-        secret
-        and request.method != "OPTIONS"
-        and request.url.path not in _AUTH_OPEN_PATHS
-        and request.headers.get("x-api-key") != secret
-    ):
-        return JSONResponse({"detail": "invalid or missing API key"}, status_code=401)
-    return await call_next(request)
+# NOTE: no API auth — this is a single-user INTERNAL tool. The Next.js proxy still routes browser→engine
+# server-side (good for CORS + hiding the engine URL), but the engine enforces no shared secret.
 
 
 @app.get("/health")
