@@ -1,0 +1,61 @@
+{
+  "name": "Cross-sectional neutral momentum — short leg (bottom-rank laggards)",
+  "rationale": "Mirror of the long-leaders leg (xsec-neutral-momentum-long-leg.json). Short the relative weakness laggards — assets whose N-day return ranks in the bottom percentile of the screened universe at bar close. Paired with the long-leaders leg the two form a market-neutral book: market beta cancels and the residual is the cross-sectional momentum premium on both sides (Jegadeesh–Titman 1993). Shorting laggards via the perp short prevents them from being crowded out by spot-only constraints. Entry: rank BELOW a fitted bottom-rank ceiling (laggard) AND NOT in an excessively negative funding regime (extremely negative funding means longs already bailed — fade overcrowded shorts). Vol ceiling same as the long leg for symmetry. Exit: rank recovers above a fitted recovery floor (laggard reverting, signal dead) OR stop/TP fires. No magic numbers.",
+  "catalyst": "Cross-sectional momentum: bottom-ranked laggards continue to underperform at weekly-monthly horizon — short the losers.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 10
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": { "name": "xsec_momentum_rank", "lookback": { "param": "mom_lookback" } },
+      "op": "lt",
+      "threshold": { "param": "rank_ceiling" }
+    },
+    {
+      "feature": { "name": "funding_rate" },
+      "op": "gt",
+      "threshold": { "param": "funding_floor" }
+    },
+    {
+      "feature": { "name": "vol_realized" },
+      "op": "lt",
+      "threshold": { "param": "vol_ceiling" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "xsec_momentum_rank", "lookback": { "param": "mom_lookback" } },
+        "op": "gt",
+        "threshold": { "param": "rank_recovery_floor" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lookback":        { "kind": "int",   "lo": 20,    "hi": 40,   "step": 1 },
+    "rank_ceiling":        { "kind": "float", "lo": 0.10,  "hi": 0.30 },
+    "rank_recovery_floor": { "kind": "float", "lo": 0.35,  "hi": 0.55 },
+    "funding_floor":       { "kind": "float", "lo": -0.005,"hi": 0.0  },
+    "vol_ceiling":         { "kind": "float", "lo": 0.02,  "hi": 0.12 },
+    "stop":                { "kind": "float", "lo": 0.05,  "hi": 0.15 },
+    "tp":                  { "kind": "float", "lo": 0.06,  "hi": 0.25 },
+    "time_stop":           { "kind": "int",   "lo": 5,     "hi": 14,   "step": 1 }
+  },
+  "direction": -1
+}
