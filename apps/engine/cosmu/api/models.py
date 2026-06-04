@@ -237,7 +237,10 @@ class VenueCatalogResponse(BaseModel):
 class LaunchActivateRequest(BaseModel):
     """Request body for the strategy launch-live flow: arm one strategy on a specific venue + asset
     with a given budget. Confirm must be true (two-click safety); caps are set here and carried
-    through to the live_caps upsert so the operator sees exactly what they agreed to."""
+    through to the live_caps upsert so the operator sees exactly what they agreed to.
+    `override_forward_test` (default OFF) is the explicit human escape hatch: arm a strategy that has NOT
+    yet cleared the >= FORWARD_TEST_MIN_DAYS net-positive forward-test precondition, recorded with a loud
+    `live_override_launch` warning event. It never waives the regime gate or the 5 execution interlocks."""
 
     version_id: str
     venue_id: str
@@ -247,14 +250,17 @@ class LaunchActivateRequest(BaseModel):
     global_cap: float = 1000.0
     max_daily_loss: float = 50.0
     confirm: bool
+    override_forward_test: bool = False
 
 
 class LaunchActivateResponse(BaseModel):
     """Result of the launch-live flow for one strategy.
-    `armed` = all 5 interlocks cleared and the strategy is now live.
-    `forward_test_days` = advisory forward-test maturity in days (None = not measured yet).
-    `readiness` = "proven" (≥30 forward days net-positive) or "not yet proven" — advisory only,
-    never a hard block; the human decides when to launch."""
+    `armed` = eligibility + the 5 interlocks cleared and the strategy is now live (status='live' written here).
+    `forward_test_days` = forward-test maturity in days (None = no track yet).
+    `readiness` = "proven" (>= FORWARD_TEST_MIN_DAYS forward days net-positive) or "not yet proven". This is now
+    a HARD precondition for arming, not merely advisory: a "not yet proven" strategy is refused (armed=False)
+    unless the human sets `override_forward_test`.
+    `overridden` = True when the human waived the forward-test precondition to arm an unproven strategy."""
 
     armed: bool
     version_id: str
@@ -263,8 +269,9 @@ class LaunchActivateResponse(BaseModel):
     budget: float
     caps: LiveCaps
     eligible: list[EligibleStrategy]
-    forward_test_days: float | None = None   # advisory: how many real forward-test days this track has
+    forward_test_days: float | None = None   # how many real forward-test days this track has (None = no track)
     readiness: Literal["proven", "not yet proven"] = "not yet proven"
+    overridden: bool = False                 # True when arming waived the forward-test precondition (logged)
     reason: str | None = None
 
 

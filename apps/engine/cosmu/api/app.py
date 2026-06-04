@@ -730,11 +730,12 @@ def toggle_live(request: ToggleRequest) -> ToggleResponse:
 
 
 def _eligible_strategies() -> list[EligibleStrategy]:
-    """Strategies eligible to be armed: forward-test survivors that passed gates AND whose PROVEN regime set includes
-    the CURRENT market regime (a strategy may go live only in a regime it proved in). Capability ≠ edge — being
-    eligible here does NOT trade live; it still requires the toggle ON + keys + the deterministic gate at
-    execute time. The regime gate only BLOCKS — it never promotes."""
-    from cosmu.master.live_eligibility import live_regime_verdict
+    """Strategies eligible to be armed: forward-test survivors that (a) passed the gates, (b) have >=
+    FORWARD_TEST_MIN_DAYS of net-positive FORWARD evidence, AND (c) whose PROVEN regime set includes the CURRENT
+    market regime. All three are HARD preconditions — a 0-day-old, underwater, or out-of-regime strategy is NOT
+    eligible. Capability ≠ edge: eligibility only gates WHAT CAN be armed; a human still makes the final launch
+    click, and even then an order is real only with the toggle ON + keys + caps + no kill-switch. Never promotes."""
+    from cosmu.master.live_eligibility import live_eligibility_verdict
 
     rows = store.rows(
         """
@@ -752,8 +753,8 @@ def _eligible_strategies() -> list[EligibleStrategy]:
         if r["id"] in seen:
             continue
         seen.add(r["id"])
-        if not live_regime_verdict(store, r["id"], reference).eligible:
-            continue  # blocked: current regime is not one this strategy proved in
+        if not live_eligibility_verdict(store, r["id"], reference).eligible:
+            continue  # blocked: not forward-proven (>= FORWARD_TEST_MIN_DAYS net-positive) or out-of-regime
         out.append(EligibleStrategy(version_id=r["id"], name=r["name"]))
     return out
 
@@ -931,62 +932,49 @@ def live_venue_catalog() -> VenueCatalogResponse:
     return VenueCatalogResponse(venues=fee_venues, instruments=instruments)
 
 
-def _forward_test_days(version_id: str) -> float | None:
-    """Advisory: how many calendar days this strategy has been in forward-test on real data.
-    Returns None when no track record exists yet."""
-    row = store.row(
-        "SELECT started_at FROM tracks WHERE strategy_version_id = ? ORDER BY id ASC LIMIT 1",
-        (version_id,),
-    )
-    if not row or not row.get("started_at"):
-        return None
-    try:
-        from datetime import UTC, datetime
-
-        started = row["started_at"]
-        if isinstance(started, str):
-            started = datetime.fromisoformat(started.replace("Z", "+00:00"))
-        now = datetime.now(tz=UTC)
-        return max(0.0, (now - started).total_seconds() / 86400)
-    except Exception:  # noqa: BLE001
-        return None
-
-
 @app.post("/live/launch", response_model=LaunchActivateResponse)
 def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
     """Strategy launch-live flow: arm one gate-passed strategy on a chosen venue + asset with a given budget.
-    This is the ONLY path that launches a single strategy live. The 5 interlocks apply in full — the
-    engine arms live only when toggle ON + keys present + gate passed + caps available + no kill-switch.
-    `confirm` must be true (two-click safety). The 30-day forward-test signal is ADVISORY (surfaced, not
-    enforced): the human may launch before 30 days. Returns `readiness` ("proven"/"not yet proven") and
-    `forward_test_days` so the UI can display the advisory without hard-blocking."""
+    This is the ONLY path that launches a single strategy live — and the ONLY path that writes status='live'
+    (on a confirmed, eligible launch). Forward-test maturity is now a HARD precondition: the strategy must have
+    >= FORWARD_TEST_MIN_DAYS of net-positive forward evidence AND be in a proven regime to arm. `override_forward_test`
+    (default OFF) lets a human arm an UNPROVEN strategy anyway, recorded with a loud `live_override_launch` warning;
+    it never waives the regime gate. The 5 execution interlocks still apply in full at execute time (toggle ON +
+    keys present + gate passed + caps available + no kill-switch). `confirm` must be true (two-click safety)."""
+    caps = LiveCaps(per_strategy_cap=request.per_strategy_cap, global_cap=request.global_cap, max_daily_loss=request.max_daily_loss)
     if not request.confirm:
-        caps = LiveCaps(per_strategy_cap=request.per_strategy_cap, global_cap=request.global_cap, max_daily_loss=request.max_daily_loss)
         return LaunchActivateResponse(
-            armed=False,
-            version_id=request.version_id,
-            venue_id=request.venue_id,
-            symbol=request.symbol,
-            budget=request.budget,
-            caps=caps,
-            eligible=[],
-            reason="confirm must be true to arm",
+            armed=False, version_id=request.version_id, venue_id=request.venue_id, symbol=request.symbol,
+            budget=request.budget, caps=caps, eligible=[], reason="confirm must be true to arm",
         )
     # Validate venue is configured (keys present). A non-configured venue CANNOT arm regardless
     # of the toggle — this is the server-side key-gate that backs the UI grey-out.
     if not _venue_connected(request.venue_id):
-        caps = LiveCaps(per_strategy_cap=request.per_strategy_cap, global_cap=request.global_cap, max_daily_loss=request.max_daily_loss)
         return LaunchActivateResponse(
-            armed=False,
-            version_id=request.version_id,
-            venue_id=request.venue_id,
-            symbol=request.symbol,
-            budget=request.budget,
-            caps=caps,
-            eligible=[],
+            armed=False, version_id=request.version_id, venue_id=request.venue_id, symbol=request.symbol,
+            budget=request.budget, caps=caps, eligible=[],
             reason=f"venue '{request.venue_id}' has no API keys configured — add them to the server env first",
         )
-    # Upsert caps: per_strategy_cap comes from the request budget for this strategy launch.
+
+    # HARD live-eligibility gate: forward-test maturity (>= FORWARD_TEST_MIN_DAYS net-positive) AND regime.
+    # `override_forward_test` waives ONLY the forward-test precondition (logged below), never the regime gate.
+    from cosmu.master.live_eligibility import forward_clock_origin, live_eligibility_verdict
+
+    reference = _brain_reference_bars()
+    verdict = live_eligibility_verdict(store, request.version_id, reference, override=request.override_forward_test)
+    ft_days = verdict.forward_age_days if forward_clock_origin(store, request.version_id) else None
+    readiness = "proven" if verdict.forward_ready else "not yet proven"
+
+    if not verdict.eligible:
+        # Not forward-proven (and no override), underwater, or out-of-regime — refuse to arm. No status write.
+        return LaunchActivateResponse(
+            armed=False, version_id=request.version_id, venue_id=request.venue_id, symbol=request.symbol,
+            budget=request.budget, caps=caps, eligible=[], forward_test_days=ft_days,
+            readiness=readiness, overridden=False, reason=verdict.reason,  # type: ignore[arg-type]
+        )
+
+    # Eligible (or human-overridden): upsert caps, then mark the strategy live. This UPDATE is the ONLY place
+    # status='live' is written — a strategy becomes live only on a confirmed, eligible launch click.
     store.rows(
         """
         INSERT INTO live_caps(id, scope, ref_id, max_notional, max_daily_loss) VALUES ('global', 'pool', 'global', ?, ?)
@@ -994,38 +982,31 @@ def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
         """,
         (str(request.global_cap), str(request.max_daily_loss)),
     )
-    caps = LiveCaps(per_strategy_cap=request.per_strategy_cap, global_cap=request.global_cap, max_daily_loss=request.max_daily_loss)
-    # Compute advisory forward-test maturity.
-    ft_days = _forward_test_days(request.version_id)
-    readiness = "proven" if (ft_days is not None and ft_days >= 30) else "not yet proven"
-    # Eligible strategies: same gate-passed + regime check as /live/activate.
+    store.rows("UPDATE strategy_versions SET status = 'live' WHERE id = ?", (request.version_id,))
+    if verdict.overridden:
+        # The explicit, logged warning for arming an unproven strategy (owner-pending escape hatch, default OFF).
+        store.append_event(
+            actor="human", kind="live_override_launch", ref_type="strategy_version", ref_id=request.version_id,
+            payload={
+                "reason": verdict.reason, "forward_age_days": verdict.forward_age_days,
+                "net_return_pct": verdict.net_return_pct, "min_days": verdict.min_days,
+                "venue_id": request.venue_id, "symbol": request.symbol,
+            },
+        )
     eligible = _eligible_strategies()
     store.append_event(
-        actor="human",
-        kind="live_launched",
-        ref_type="strategy_version",
-        ref_id=request.version_id,
+        actor="human", kind="live_launched", ref_type="strategy_version", ref_id=request.version_id,
         payload={
-            "venue_id": request.venue_id,
-            "symbol": request.symbol,
-            "budget": request.budget,
-            "per_strategy_cap": request.per_strategy_cap,
-            "global_cap": request.global_cap,
-            "max_daily_loss": request.max_daily_loss,
-            "forward_test_days": ft_days,
-            "readiness": readiness,
+            "venue_id": request.venue_id, "symbol": request.symbol, "budget": request.budget,
+            "per_strategy_cap": request.per_strategy_cap, "global_cap": request.global_cap,
+            "max_daily_loss": request.max_daily_loss, "forward_test_days": ft_days,
+            "readiness": readiness, "overridden": verdict.overridden,
         },
     )
     return LaunchActivateResponse(
-        armed=True,
-        version_id=request.version_id,
-        venue_id=request.venue_id,
-        symbol=request.symbol,
-        budget=request.budget,
-        caps=caps,
-        eligible=eligible,
-        forward_test_days=ft_days,
-        readiness=readiness,  # type: ignore[arg-type]
+        armed=True, version_id=request.version_id, venue_id=request.venue_id, symbol=request.symbol,
+        budget=request.budget, caps=caps, eligible=eligible, forward_test_days=ft_days,
+        readiness=readiness, overridden=verdict.overridden,  # type: ignore[arg-type]
     )
 
 

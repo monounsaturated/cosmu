@@ -1956,7 +1956,7 @@
         "type": "object"
       },
       "LaunchActivateRequest": {
-        "description": "Request body for the strategy launch-live flow: arm one strategy on a specific venue + asset\nwith a given budget. Confirm must be true (two-click safety); caps are set here and carried\nthrough to the live_caps upsert so the operator sees exactly what they agreed to.",
+        "description": "Request body for the strategy launch-live flow: arm one strategy on a specific venue + asset\nwith a given budget. Confirm must be true (two-click safety); caps are set here and carried\nthrough to the live_caps upsert so the operator sees exactly what they agreed to.\n`override_forward_test` (default OFF) is the explicit human escape hatch: arm a strategy that has NOT\nyet cleared the >= FORWARD_TEST_MIN_DAYS net-positive forward-test precondition, recorded with a loud\n`live_override_launch` warning event. It never waives the regime gate or the 5 execution interlocks.",
         "properties": {
           "budget": {
             "default": 100.0,
@@ -1976,6 +1976,11 @@
             "default": 50.0,
             "title": "Max Daily Loss",
             "type": "number"
+          },
+          "override_forward_test": {
+            "default": false,
+            "title": "Override Forward Test",
+            "type": "boolean"
           },
           "per_strategy_cap": {
             "default": 100.0,
@@ -2005,7 +2010,7 @@
         "type": "object"
       },
       "LaunchActivateResponse": {
-        "description": "Result of the launch-live flow for one strategy.\n`armed` = all 5 interlocks cleared and the strategy is now live.\n`forward_test_days` = advisory forward-test maturity in days (None = not measured yet).\n`readiness` = \"proven\" (\u226530 forward days net-positive) or \"not yet proven\" \u2014 advisory only,\nnever a hard block; the human decides when to launch.",
+        "description": "Result of the launch-live flow for one strategy.\n`armed` = eligibility + the 5 interlocks cleared and the strategy is now live (status='live' written here).\n`forward_test_days` = forward-test maturity in days (None = no track yet).\n`readiness` = \"proven\" (>= FORWARD_TEST_MIN_DAYS forward days net-positive) or \"not yet proven\". This is now\na HARD precondition for arming, not merely advisory: a \"not yet proven\" strategy is refused (armed=False)\nunless the human sets `override_forward_test`.\n`overridden` = True when the human waived the forward-test precondition to arm an unproven strategy.",
         "properties": {
           "armed": {
             "title": "Armed",
@@ -2035,6 +2040,11 @@
               }
             ],
             "title": "Forward Test Days"
+          },
+          "overridden": {
+            "default": false,
+            "title": "Overridden",
+            "type": "boolean"
           },
           "readiness": {
             "default": "not yet proven",
@@ -4670,7 +4680,7 @@
     },
     "/live/launch": {
       "post": {
-        "description": "Strategy launch-live flow: arm one gate-passed strategy on a chosen venue + asset with a given budget.\nThis is the ONLY path that launches a single strategy live. The 5 interlocks apply in full \u2014 the\nengine arms live only when toggle ON + keys present + gate passed + caps available + no kill-switch.\n`confirm` must be true (two-click safety). The 30-day forward-test signal is ADVISORY (surfaced, not\nenforced): the human may launch before 30 days. Returns `readiness` (\"proven\"/\"not yet proven\") and\n`forward_test_days` so the UI can display the advisory without hard-blocking.",
+        "description": "Strategy launch-live flow: arm one gate-passed strategy on a chosen venue + asset with a given budget.\nThis is the ONLY path that launches a single strategy live \u2014 and the ONLY path that writes status='live'\n(on a confirmed, eligible launch). Forward-test maturity is now a HARD precondition: the strategy must have\n>= FORWARD_TEST_MIN_DAYS of net-positive forward evidence AND be in a proven regime to arm. `override_forward_test`\n(default OFF) lets a human arm an UNPROVEN strategy anyway, recorded with a loud `live_override_launch` warning;\nit never waives the regime gate. The 5 execution interlocks still apply in full at execute time (toggle ON +\nkeys present + gate passed + caps available + no kill-switch). `confirm` must be true (two-click safety).",
         "operationId": "live_launch_live_launch_post",
         "requestBody": {
           "content": {
