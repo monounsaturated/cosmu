@@ -19,17 +19,20 @@ from pathlib import Path
 from typing import Any
 
 from cosmu.ingest import catalog
-from cosmu.ingest.bars import CcxtBarBackfiller, StooqBarBackfiller, bar_cache_path, write_bars_cache
+from cosmu.ingest.bars import CcxtBarBackfiller, StooqBarBackfiller, bar_cache_path, read_cached_bars, write_bars_cache
 from cosmu.ingest.coverage import (
     CoverageReport,
     build_alt_coverage,
     build_bar_coverage,
+    build_panel_coverage,
 )
+from cosmu.ingest.ml_panel import DEFAULT_ALT_FEATURES, build_ml_panel, write_ml_panel
 from cosmu.ingest.pipeline import BackfillResult, backfill_funding
 
 logger = logging.getLogger("cosmu.ingest.manage")
 
 DEFAULT_MARKET_DATA_DIR = ".cosmu/market_data"
+DEFAULT_PANEL_DIR = ".cosmu/ml_panels"
 
 
 def _now() -> datetime:
@@ -71,6 +74,7 @@ class DataManager:
         store: Any = None,  # AltDataStore | PgAltDataStore; default = the same backend the API uses
         providers: Any = None,  # Providers; default = real free providers from settings
         market_data_dir: Path | str = DEFAULT_MARKET_DATA_DIR,
+        panel_dir: Path | str = DEFAULT_PANEL_DIR,
         clock: Callable[[], datetime] = _now,
         bar_backfiller_factory: Callable[[str], Any] | None = None,
         funding_history: Any = None,  # a provider exposing fetch_history; default = live Binance history
@@ -78,6 +82,7 @@ class DataManager:
         self._store = store
         self._providers = providers
         self.market_data_dir = Path(market_data_dir)
+        self.panel_dir = Path(panel_dir)
         self._clock = clock
         self._bar_backfiller_factory = bar_backfiller_factory or _default_bar_backfiller
         self._funding_history = funding_history
@@ -122,10 +127,11 @@ class DataManager:
 
         return run_once(self._get_store(), symbols=symbols, providers=self._providers)
 
-    def backfill(self, source: str, *, days: int, symbols: list[str], timeframe: str = catalog.DEFAULT_BAR_TIMEFRAME) -> dict[str, Any]:
+    def backfill(self, source: str, *, days: int, symbols: list[str], timeframes: tuple[str, ...] = (catalog.DEFAULT_BAR_TIMEFRAME,)) -> dict[str, Any]:
         """Walk deep history for one source. `funding` → the paginated Binance funding history; `bars` (or
-        `bars:<venue>`) → paginated multi-venue OHLCV via ccxt. Any other alt source has no paginated history
-        endpoint, so backfill falls back to a single incremental fetch (the honest deepest pull available)."""
+        `bars:<venue>`) → paginated multi-venue OHLCV via ccxt across EVERY requested timeframe. Any other alt
+        source has no paginated history endpoint, so backfill falls back to a single incremental fetch (the
+        honest deepest pull available)."""
         start_ms = int((self._clock().timestamp() - days * 86400) * 1000)
         if source == "funding":
             provider = self._funding_history
@@ -137,25 +143,53 @@ class DataManager:
             return {"kind": "funding", "results": results}
         if source == "bars" or source.startswith("bars:"):
             venues = (source.split(":", 1)[1],) if ":" in source else catalog.DEFAULT_BAR_VENUES
-            return {"kind": "bars", "results": self.backfill_bars(venues=venues, symbols=symbols, timeframe=timeframe, start_ms=start_ms)}
+            return {"kind": "bars", "results": self.backfill_bars(venues=venues, symbols=symbols, timeframes=timeframes, start_ms=start_ms)}
         # No paginated endpoint → the deepest honest pull is one incremental fetch.
         logger.info("source %s has no paginated history; backfill falls back to one incremental fetch", source)
         return {"kind": "incremental", "written": self.fetch(source, symbols)}
 
-    def backfill_bars(self, *, venues: tuple[str, ...], symbols: list[str], timeframe: str, start_ms: int) -> dict[tuple[str, str], BarBackfillResult]:
-        """Paginated OHLCV history per (venue, symbol), merged into the bar cache append-only + deduped on ts
-        (a re-run writes 0). Each (venue, symbol) is fetched ONCE — the backfiller paginates internally."""
-        out: dict[tuple[str, str], BarBackfillResult] = {}
+    def backfill_bars(self, *, venues: tuple[str, ...], symbols: list[str], timeframes: tuple[str, ...], start_ms: int) -> dict[tuple[str, str, str], BarBackfillResult]:
+        """Paginated OHLCV history per (venue, symbol, timeframe), merged into the bar cache append-only +
+        deduped on ts (a re-run writes 0). Each (venue, symbol, timeframe) is fetched ONCE — the backfiller
+        paginates internally. The result is keyed by the full (venue, symbol, timeframe) triple so multiple
+        resolutions never collide."""
+        out: dict[tuple[str, str, str], BarBackfillResult] = {}
         for venue in venues:
             backfiller = self._bar_backfiller_factory(venue)
             for symbol in symbols:
-                bars = backfiller.fetch_history(symbol, timeframe, start_ms=start_ms)
-                path = bar_cache_path(self.market_data_dir / venue, symbol, timeframe)
-                written = write_bars_cache(path, bars)
-                out[(venue, symbol)] = BarBackfillResult(
-                    venue=venue, symbol=symbol, timeframe=timeframe, written=written, total=len(bars),
-                    start=bars[0].ts if bars else None, end=bars[-1].ts if bars else None,
-                )
+                for timeframe in timeframes:
+                    bars = backfiller.fetch_history(symbol, timeframe, start_ms=start_ms)
+                    path = bar_cache_path(self.market_data_dir / venue, symbol, timeframe)
+                    written = write_bars_cache(path, bars)
+                    out[(venue, symbol, timeframe)] = BarBackfillResult(
+                        venue=venue, symbol=symbol, timeframe=timeframe, written=written, total=len(bars),
+                        start=bars[0].ts if bars else None, end=bars[-1].ts if bars else None,
+                    )
+        return out
+
+    def build_panels(
+        self,
+        symbols: list[str],
+        *,
+        timeframes: tuple[str, ...] = catalog.DEFAULT_BAR_TIMEFRAMES,
+        alt_features: tuple[str, ...] = DEFAULT_ALT_FEATURES,
+        venue: str = "binance",
+    ) -> dict[tuple[str, str], int]:
+        """Build + persist the ML-ready standardized point-in-time panels from the bar cache + alt store. For
+        each (symbol, timeframe) it reads the cached bars (a missing/empty cache is skipped — honest, never a
+        fabricated panel), joins the alt features POINT-IN-TIME, z-scores every column with an expanding window
+        (no look-ahead), and append-merges the rows deduped on ts (a re-run writes 0). Returns {(symbol,
+        timeframe): new_rows_written}."""
+        store = self._get_store()
+        out: dict[tuple[str, str], int] = {}
+        for symbol in symbols:
+            for timeframe in timeframes:
+                bars = read_cached_bars(bar_cache_path(self.market_data_dir / venue, symbol, timeframe))
+                if not bars:
+                    out[(symbol, timeframe)] = 0  # no bars → no panel (honest gap; verify flags it missing)
+                    continue
+                panel = build_ml_panel(store, bars, symbol=symbol, timeframe=timeframe, alt_features=alt_features)
+                out[(symbol, timeframe)] = write_ml_panel(self.panel_dir, panel)
         return out
 
     def verify(
@@ -163,16 +197,21 @@ class DataManager:
         symbols: list[str],
         *,
         venues: tuple[str, ...] = catalog.DEFAULT_BAR_VENUES,
-        timeframe: str = catalog.DEFAULT_BAR_TIMEFRAME,
+        timeframes: tuple[str, ...] = catalog.DEFAULT_BAR_TIMEFRAMES,
         include_bars: bool = True,
+        include_panels: bool = False,
         venue: str = "binance",
     ) -> CoverageReport:
         """The data-quality report: every expected alt series (from the canonical store map) + every expected
-        bar series (from the cache), each scored for rows / span / freshness / gaps / look-ahead. Read-only."""
+        bar series (across all timeframes) + (optionally) every ML panel, each scored for rows / span /
+        freshness / gaps / look-ahead. Read-only."""
         now = self._clock()
         series = build_alt_coverage(self._get_store(), catalog.expected_alt_specs(symbols, venue=venue), now=now)
         if include_bars:
-            series += build_bar_coverage(self.market_data_dir, catalog.expected_bar_specs(symbols, venues=venues, timeframe=timeframe), now=now)
+            series += build_bar_coverage(self.market_data_dir, catalog.expected_bar_specs(symbols, venues=venues, timeframes=timeframes), now=now)
+        if include_panels:
+            specs = [(sym, tf) for sym in symbols for tf in timeframes]
+            series += build_panel_coverage(self.panel_dir, specs, now=now)
         return CoverageReport(generated_at=now, series=series)
 
 
@@ -187,20 +226,35 @@ def _report_funding(results: dict[str, BackfillResult]) -> None:
         print(f"  {sym:<12}{r.written:>8}{r.total:>8}{r.span_days:>8.0f}  {span}")
 
 
-def _report_bars(results: dict[tuple[str, str], BarBackfillResult]) -> None:
-    print("BAR BACKFILL — multi-venue OHLCV history via ccxt (free, no key)")
-    print(f"  {'venue':<10}{'symbol':<12}{'new':>8}{'total':>8}{'days':>8}  span")
-    for (venue, sym), r in results.items():
+def _report_bars(results: dict[tuple[str, str, str], BarBackfillResult]) -> None:
+    print("BAR BACKFILL — multi-venue, multi-timeframe OHLCV history via ccxt (free, no key)")
+    print(f"  {'venue':<10}{'symbol':<12}{'tf':<5}{'new':>8}{'total':>8}{'days':>8}  span")
+    for (venue, sym, tf), r in results.items():
         span = f"{r.start.date()} → {r.end.date()}" if r.start and r.end else "(no data)"
-        print(f"  {venue:<10}{sym:<12}{r.written:>8}{r.total:>8}{r.span_days:>8.0f}  {span}")
+        print(f"  {venue:<10}{sym:<12}{tf:<5}{r.written:>8}{r.total:>8}{r.span_days:>8.0f}  {span}")
 
 
 def _symbols(arg: str) -> list[str]:
-    from cosmu.ingest.run import DEFAULT_SYMBOLS
+    """The widened liquid perp universe by default (carry-verdict next action: 5 → ~30 symbols), or the
+    operator's explicit comma list. Deduped/normalized so a hand-typed list can never double-fetch a symbol."""
+    from cosmu.data.universe import dedupe_symbols, perp_universe
 
     if not arg:
-        return list(DEFAULT_SYMBOLS)
-    return [s.strip().upper() for s in arg.split(",") if s.strip()]
+        return perp_universe()
+    return list(dedupe_symbols(arg.split(",")))
+
+
+def _timeframes(arg: str) -> tuple[str, ...]:
+    """Parse a comma-separated `--timeframe` into the managed-timeframe tuple. Empty → the default managed set
+    (1d/4h/1h); a single value (`--timeframe 1d`) → just that one. Deduped, order-preserving."""
+    if not arg:
+        return catalog.DEFAULT_BAR_TIMEFRAMES
+    seen: dict[str, None] = {}
+    for tf in arg.split(","):
+        t = tf.strip()
+        if t:
+            seen.setdefault(t, None)
+    return tuple(seen) or catalog.DEFAULT_BAR_TIMEFRAMES
 
 
 def _main(argv: list[str] | None = None) -> int:
@@ -210,23 +264,32 @@ def _main(argv: list[str] | None = None) -> int:
 
     p_list = sub.add_parser("list", help="list the managed sources")  # noqa: F841
 
+    _SYM_HELP = "comma-separated symbols (default = the ~30-symbol liquid perp universe)"
+    _TF_HELP = "comma-separated timeframes (default 1d,4h,1h); a single value pulls just that resolution"
+
     p_fetch = sub.add_parser("fetch", help="incremental fetch of ONE source")
     p_fetch.add_argument("source", help=f"source name ({', '.join(catalog.source_names())})")
-    p_fetch.add_argument("--symbols", default="", help="comma-separated symbols (default BTCUSDT,ETHUSDT)")
+    p_fetch.add_argument("--symbols", default="", help=_SYM_HELP)
 
     p_back = sub.add_parser("backfill", help="deep history for a source (funding | bars[:venue])")
     p_back.add_argument("source", help="funding | bars | bars:binance | bars:kraken | <alt source>")
     p_back.add_argument("--days", type=int, default=400, help="lookback window in days (default 400 → ≥1yr)")
-    p_back.add_argument("--symbols", default="", help="comma-separated symbols (default BTCUSDT,ETHUSDT)")
-    p_back.add_argument("--timeframe", default=catalog.DEFAULT_BAR_TIMEFRAME, help="bar timeframe (default 1d)")
+    p_back.add_argument("--symbols", default="", help=_SYM_HELP)
+    p_back.add_argument("--timeframe", default="", help=_TF_HELP)
 
     p_verify = sub.add_parser("verify", help="data-quality coverage report")
-    p_verify.add_argument("--symbols", default="", help="comma-separated symbols (default BTCUSDT,ETHUSDT)")
+    p_verify.add_argument("--symbols", default="", help=_SYM_HELP)
+    p_verify.add_argument("--timeframe", default="", help=_TF_HELP)
     p_verify.add_argument("--no-bars", action="store_true", help="skip the bar-cache coverage")
+    p_verify.add_argument("--panels", action="store_true", help="also report ML-panel coverage")
     p_verify.add_argument("--json", action="store_true", help="emit the report as JSON")
 
     p_update = sub.add_parser("update", help="incremental pass over ALL sources (the cron tick)")
-    p_update.add_argument("--symbols", default="", help="comma-separated symbols (default BTCUSDT,ETHUSDT)")
+    p_update.add_argument("--symbols", default="", help=_SYM_HELP)
+
+    p_panels = sub.add_parser("panels", help="build the ML-ready standardized point-in-time panels")
+    p_panels.add_argument("--symbols", default="", help=_SYM_HELP)
+    p_panels.add_argument("--timeframe", default="", help=_TF_HELP)
 
     args = parser.parse_args(argv)
 
@@ -244,7 +307,7 @@ def _main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "backfill":
-        result = mgr.backfill(args.source, days=args.days, symbols=symbols, timeframe=args.timeframe)
+        result = mgr.backfill(args.source, days=args.days, symbols=symbols, timeframes=_timeframes(args.timeframe))
         if result["kind"] == "funding":
             _report_funding(result["results"])
         elif result["kind"] == "bars":
@@ -254,7 +317,7 @@ def _main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "verify":
-        report = mgr.verify(symbols, include_bars=not args.no_bars)
+        report = mgr.verify(symbols, timeframes=_timeframes(args.timeframe), include_bars=not args.no_bars, include_panels=args.panels)
         if args.json:
             print(json.dumps(report.to_dict(), indent=2))
         else:
@@ -267,6 +330,14 @@ def _main(argv: list[str] | None = None) -> int:
         for source, n in counts.items():
             print(f"  {source:<18}{n:>6} points")
         print(f"  {'TOTAL':<18}{sum(counts.values()):>6} points")
+        return 0
+
+    if args.cmd == "panels":
+        written = mgr.build_panels(symbols, timeframes=_timeframes(args.timeframe))
+        print("ML PANELS — standardized point-in-time feature matrices built")
+        for (sym, tf), n in written.items():
+            print(f"  {sym:<12}{tf:<5}{n:>8} new rows")
+        print(f"  {'TOTAL':<17}{sum(written.values()):>8} new rows")
         return 0
 
     return 1

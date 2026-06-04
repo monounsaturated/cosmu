@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from cosmu.data.altdata import AltDataProvider, CachedFundingRateProvider
+from cosmu.data.universe import PERP_UNIVERSE
 from cosmu.data.backtest import _regime_labels, align_asof, run_strategy_backtest
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.knowledge.store import Store
@@ -25,8 +26,11 @@ from cosmu.master.trials import record_trial, trial_stats
 from cosmu.spine.venue import default_catalog
 from cosmu.strategy.spec import StrategySpec
 
-# The real universe the carry/xsec specs screen (matches lab.finder._REAL_SYMBOLS — same cached bars).
-_UNIVERSE = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")
+# The real universe the carry/xsec specs screen — the canonical WIDE liquid-perp universe (matches
+# lab.finder._REAL_SYMBOLS, one source of truth in cosmu.data.universe). Widened from 5 → ~30 symbols: the
+# carry verdict's next action, since a 5-asset cross-sectional rank is too thin (deeper history alone can't fix
+# rare per-symbol carry entries — more symbols can).
+_UNIVERSE = PERP_UNIVERSE
 # The pre-registered interpretation floors (the GATE thresholds themselves are untouched — see scorer/gate).
 COST_RATIO_FLOOR = 0.40   # net edge must be >= 40% of gross (else a thin sliver — fragile)
 CORR_TO_BTC_BAND = 0.30   # neutral arm: |corr| <= this (a directional book would trend to 1)

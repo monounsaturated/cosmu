@@ -7,10 +7,13 @@ description: Manage the data layer as a capability — fetch, backfill, verify (
 
 Data is a **managed capability**, not a pile of one-off scripts: one CLI (`scripts/manage_data.py`, engine `cosmu.ingest.manage`) does **fetch / backfill / verify / update** over BOTH the multi-venue bar cache AND the append-only point-in-time alt-data store. Everything is idempotent (dedup on `(provider,symbol,metric,ts)` for alt, on `ts` for bars — a re-run writes 0), point-in-time (`available_at` = when we'd actually have known it; no look-ahead), free where possible (key-gated sources degrade to `[]`), and offline-testable (inject providers; no network in CI).
 
+The managed **symbol universe** is the canonical liquid-perp set in `cosmu/data/universe.py` (`PERP_UNIVERSE`, ~30 deduped Binance USDⓈ-M symbols — widened from the old 5-asset set per the carry verdict's next action). Every verb defaults to it; pass `--symbols` to narrow. The managed **timeframes** are `1d,4h,1h` (the daily spine + intraday reads); `verify` reports every `(venue, symbol, timeframe)` and `backfill bars` walks them all unless you pass a single `--timeframe`.
+
 ## When to use
 - "Pull / refresh the data" → `update` (one incremental pass over all sources) or `fetch <source>` (one source).
-- "Get more history" → `backfill <source> --days N` (paginated deep history).
+- "Get more history" → `backfill <source> --days N` (paginated deep history; bars across all timeframes).
 - "What data do we actually have? what's stale/missing?" → `verify` (the coverage report).
+- "Give me ML-ready features" → `panels` (the standardized point-in-time feature matrices).
 
 ## Commands (run from repo root; `PYTHONPATH=apps/engine` is auto-added by the script)
 
@@ -22,14 +25,18 @@ python3 scripts/manage_data.py verify --symbols BTCUSDT,ETHUSDT --no-bars
 python3 scripts/manage_data.py update                            # ONE incremental pass over ALL sources (cron tick)
 python3 scripts/manage_data.py fetch funding                     # one source, incremental
 python3 scripts/manage_data.py backfill funding --days 730       # ≥1yr paginated funding history
-python3 scripts/manage_data.py backfill bars --days 730 --timeframe 1d        # Binance + Kraken OHLCV via ccxt
+python3 scripts/manage_data.py backfill bars --days 730                        # Binance + Kraken, ALL timeframes (1d/4h/1h)
+python3 scripts/manage_data.py backfill bars --days 730 --timeframe 1d,4h      # only these resolutions
 python3 scripts/manage_data.py backfill bars:kraken --symbols BTCUSDT          # one venue
+python3 scripts/manage_data.py panels                                          # build ML-ready standardized PIT panels
+python3 scripts/manage_data.py verify --panels                                 # coverage incl. the ML panels
 ```
 
 - **fetch `<source>`** — pull ONE source incrementally (`list` shows names: funding, fear_greed, news, macro, defi, risk_on, liquidations, putcall, open_interest, basis, netflow, osint, polymarket_clob, reddit, lunarcrush, xai, venue_fees).
 - **backfill `<source>` `--days N`** — deep history. `funding` walks the paginated Binance funding endpoint; `bars`/`bars:<venue>` walks paginated multi-venue OHLCV via ccxt (Binance + Kraken). Other alt sources have no history endpoint → backfill falls back to one incremental fetch (logged).
-- **verify** — the data-quality report: per `source/symbol/metric` it reports **row count, span, freshness, gap detection, and a look-ahead integrity check** (`available_at >= ts`), then buckets every series into **ok / stale / gappy / missing / look-ahead**. This is the "what we have / what's stale / what's missing" view.
+- **verify** — the data-quality report: per `source/symbol/metric` it reports **row count, span, freshness, gap detection, and a look-ahead integrity check** (`available_at >= ts`), then buckets every series into **ok / stale / gappy / missing / look-ahead**. Bars are reported across **every managed timeframe**; `--panels` also reports the ML panels. This is the "what we have / what's stale / what's missing" view.
 - **update** — one incremental pass over every source (delegates to `cosmu.ingest.run.run_once`, the single full-sweep implementation — no duplication).
+- **panels** — build the **ML-ready standardized point-in-time** feature matrices: per `(symbol, timeframe)` it joins the bar cache + the alt store POINT-IN-TIME (each alt feature as-of the bar close), then **z-scores every column with an EXPANDING window** (the stat at row `t` uses only rows `0..t` → no look-ahead), clips outliers, and append-merges deduped on `ts` (a re-run writes 0). Pinned by `ML_PANEL_TRANSFORM_VERSION` so a trained model stays reproducible. A missing/empty bar cache → no panel (honest, never a fabricated row).
 
 ## Coverage report shape
 Each series → `{provider, symbol, metric, kind, rows, first_ts, last_ts, span_days, freshness_seconds, cadence_seconds, gaps, missing_buckets, max_gap_seconds, lookahead_violations, status}`. `status` precedence: **missing > look-ahead > stale > gappy > ok**. Stale floors at 3 days but also trips at 3× the series' own cadence (a fast funding series is judged faster than a daily macro series). `--json` emits `{generated_at, summary, series[]}` for tooling.
@@ -39,6 +46,8 @@ Each series → `{provider, symbol, metric, kind, rows, first_ts, last_ts, span_
 - `cosmu/ingest/coverage.py` — the pure, offline VERIFY engine (clock injected; read-only).
 - `cosmu/ingest/manage.py` — `DataManager` + the CLI; composes `run_once` (update), `backfill_funding` + `CcxtBarBackfiller` (backfill), and the coverage engine (verify).
 - `cosmu/ingest/bars.py` — `CcxtBarBackfiller` (paginated multi-venue history) + `write_bars_cache` (dedup merge); composes `cosmu/data/market.py` (the live bar providers + `Bar`).
+- `cosmu/ingest/ml_panel.py` — the standardized point-in-time panel: `build_ml_panel` (PIT join + expanding z-score, no look-ahead) + `write_ml_panel`/`read_ml_panel` (append-only, dedup on `ts`). Composes the canonical store routing (`_STORE_PROVIDER_OF`) — it never re-implements the join.
+- `cosmu/data/universe.py` — the SINGLE source of truth for the perp universe (`PERP_UNIVERSE`, `CORE_PERP_UNIVERSE`, `dedupe_symbols`); the carry harness + finder both reference it (no duplicated literal).
 
 To ADD a source, use the **add-data-source** skill (provider + feature_registry + run_once + `_STORE_PROVIDER_OF`); it then shows up automatically in `verify` and is fetchable by name once added to the catalog.
 
@@ -60,5 +69,5 @@ This keeps the messy, non-deterministic scraping OUT of the deterministic engine
 
 ## Verify (the skill's own check)
 ```bash
-cd apps/engine && python3 -m pytest tests/test_manage_data.py tests/test_coverage.py tests/test_bar_backfill.py tests/test_catalog.py tests/test_scrape_stub.py -q
+cd apps/engine && python3 -m pytest tests/test_manage_data.py tests/test_coverage.py tests/test_bar_backfill.py tests/test_catalog.py tests/test_scrape_stub.py tests/test_ml_panel.py tests/test_universe.py -q
 ```

@@ -25,6 +25,10 @@ from cosmu.ingest.pipeline import (
 # manages); daily bars are the backtest's spine timeframe.
 DEFAULT_BAR_VENUES = ("binance", "kraken")
 DEFAULT_BAR_TIMEFRAME = "1d"
+# The managed timeframes — multiple resolutions so a strategy can be screened at its native bar size (the daily
+# spine + an intraday 4h/1h read). `verify` reports every (venue, symbol, timeframe) and `backfill bars` walks
+# them all when no single `--timeframe` is given. Ordered coarse→fine (1d is the spine).
+DEFAULT_BAR_TIMEFRAMES = ("1d", "4h", "1h")
 
 # FRED native series id → the SEMANTIC metric it is stored under (mirrors run_once exactly). macro_regime's
 # native id is operator-configurable (Providers.fred_series); the rest are fixed.
@@ -203,10 +207,12 @@ def expected_bar_specs(
     symbols: list[str],
     *,
     venues: tuple[str, ...] = DEFAULT_BAR_VENUES,
-    timeframe: str = DEFAULT_BAR_TIMEFRAME,
+    timeframes: tuple[str, ...] = DEFAULT_BAR_TIMEFRAMES,
 ) -> list[tuple[str, str, str]]:
-    """Every (venue, symbol, timeframe) bar series the report should find in the on-disk cache."""
-    return [(venue, sym, timeframe) for venue in venues for sym in symbols]
+    """Every (venue, symbol, timeframe) bar series the report should find in the on-disk cache — now across
+    MULTIPLE timeframes (the daily spine + intraday reads), so `verify` names a missing 4h/1h cache the same
+    way it names a missing source."""
+    return [(venue, sym, tf) for venue in venues for sym in symbols for tf in timeframes]
 
 
 def catalog_metric_set() -> set[str]:

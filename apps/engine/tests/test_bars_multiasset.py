@@ -80,9 +80,9 @@ def test_manage_backfill_bars_stooq_into_cache(tmp_path):
         clock=lambda: _T0 + timedelta(days=30),
         bar_backfiller_factory=lambda venue: StooqBarBackfiller(_fetcher=lambda url: _STOOQ_CSV),
     )
-    result = mgr.backfill("bars:stooq", days=400, symbols=["SPY"], timeframe="1d")
+    result = mgr.backfill("bars:stooq", days=400, symbols=["SPY"], timeframes=("1d",))
     assert result["kind"] == "bars"
-    r = result["results"][("stooq", "SPY")]
+    r = result["results"][("stooq", "SPY", "1d")]
     assert r.written == 3
     cached = read_cached_bars(bar_cache_path(tmp_path / "market_data" / "stooq", "SPY", "1d"))
     assert len(cached) == 3
