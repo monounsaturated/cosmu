@@ -48,6 +48,58 @@ def shuffle_news_provider(provider: FixtureNewsProvider, *, seed: int = 0) -> Fi
     return FixtureNewsProvider(out)
 
 
+_NULL_SYMBOLS = {"BTCUSDT": 30000.0, "ETHUSDT": 2000.0, "BNBUSDT": 300.0, "SOLUSDT": 25.0, "XRPUSDT": 0.5}
+
+
+def permutation_null_market(
+    *, correlated: bool = False, n: int = 400, seed: int = 13
+) -> dict[str, list[Bar]]:
+    """A label-permutation null for the price/TA FINDER (the companion to [shuffle_alt_provider] for the
+    alt-data wall). Each symbol's bar-to-bar RETURNS are drawn, then PERMUTED in time before the price path
+    is rebuilt: the marginal return distribution (drift, vol, fat tails) is preserved exactly, but every
+    temporal structure a TA strategy could monetize — momentum, mean-reversion, breakout follow-through — is
+    destroyed. There is NO signal→return relationship, so an honest finder MUST promote 0 survivors no matter
+    how dense the grid; any survivor is a multiple-testing / look-ahead leak to fix (never a test to weaken).
+
+    `correlated=True` drives every symbol from ONE shared shuffled factor (≈92% common beta), so the whole
+    grid is highly cross-correlated — the adversarial regime where a naive trial count would inflate and the
+    cluster / effective-N machinery has to do the work. `correlated=False` shuffles each symbol independently.
+    Deterministic for a fixed (correlated, n, seed); pure-Python."""
+    base = datetime(2023, 1, 1, tzinfo=UTC)
+    shared: list[float] | None = None
+    if correlated:
+        fr = random.Random(f"perm-null-factor-{seed}")
+        shared = [fr.gauss(0.0004, 0.012) for _ in range(n)]
+        fr.shuffle(shared)  # shuffle the shared factor → no temporal signal survives
+    out: dict[str, list[Bar]] = {}
+    for sym, p0 in _NULL_SYMBOLS.items():
+        rng = random.Random(f"perm-null-{seed}-{sym}")  # str seed is process-stable
+        if shared is not None:
+            rets = [0.92 * shared[i] + rng.gauss(0, 0.003) for i in range(n)]
+        else:
+            rets = [rng.gauss(0.0003, 0.012) for _ in range(n)]
+            rng.shuffle(rets)  # permute this symbol's own labels
+        bars: list[Bar] = []
+        p = p0
+        for r in rets:
+            o = p
+            p = max(1e-6, p * (1 + r))
+            hi = max(o, p) * (1 + abs(rng.gauss(0, 0.002)))
+            lo = min(o, p) * (1 - abs(rng.gauss(0, 0.002)))
+            bars.append(
+                Bar(
+                    ts=base + timedelta(hours=len(bars)),
+                    open=Decimal(str(o)),
+                    high=Decimal(str(hi)),
+                    low=Decimal(str(lo)),
+                    close=Decimal(str(p)),
+                    volume=Decimal("1000"),
+                )
+            )
+        out[sym] = bars
+    return out
+
+
 def _regime_drift(idx: int, n: int) -> float:
     third = n // 3
     if idx < third:
