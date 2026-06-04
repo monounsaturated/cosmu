@@ -1829,6 +1829,116 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "InboxIdeaRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "InboxIdeaRequest",
+        "type": "object"
+      },
+      "InboxIdeaResponse": {
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "filename",
+          "name",
+          "queued",
+          "note"
+        ],
+        "title": "InboxIdeaResponse",
+        "type": "object"
+      },
+      "InboxQueueItem": {
+        "properties": {
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "imported"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "name",
+          "ts",
+          "status"
+        ],
+        "title": "InboxQueueItem",
+        "type": "object"
+      },
+      "InboxQueueResponse": {
+        "properties": {
+          "inbox_dir": {
+            "title": "Inbox Dir",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InboxQueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "inbox_dir"
+        ],
+        "title": "InboxQueueResponse",
+        "type": "object"
+      },
       "InfraLine": {
         "description": "One static monthly infra cost line from MASTER_PLAN \u00a79. amount is the midpoint estimate;\namount_min/amount_max are the range. Source is the authoritative static seed \u2014 no billing API.",
         "properties": {
@@ -3874,6 +3984,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -4486,6 +4603,62 @@
           }
         },
         "summary": "Lab Finder"
+      }
+    },
+    "/lab/inbox": {
+      "get": {
+        "description": "The operator's queued strategy ideas, newest first \u2014 each `queued` until a scan imports it, then `imported`.\nRead off the audited event ledger; honest empty when nothing has been dropped yet.",
+        "operationId": "lab_inbox_list_lab_inbox_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxQueueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Lab Inbox List"
+      },
+      "post": {
+        "description": "Drop a natural-language strategy 'vibe' into the inbox: write it as a brief in strategies/inbox/ and record\nan audited inbox_queued event. The next boot scan / autonomy tick translates it into a typed StrategySpec and\nroutes it through the DETERMINISTIC Gate. This endpoint never authors or funds \u2014 it only queues prose.",
+        "operationId": "lab_inbox_queue_lab_inbox_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxIdeaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxIdeaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lab Inbox Queue"
       }
     },
     "/lab/ml": {

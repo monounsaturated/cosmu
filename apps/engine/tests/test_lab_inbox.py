@@ -10,7 +10,7 @@ from cosmu.config.settings import Settings
 from cosmu.data.market import Bar
 from cosmu.evolution.seeder import seed_momentum_spec
 from cosmu.knowledge.store import Store
-from cosmu.lab.inbox import scan_inbox
+from cosmu.lab.inbox import list_queued, queue_idea, scan_inbox
 from cosmu.research.fixtures import edge_bearing_screen_market
 from cosmu.strategy.pine_samples import PINE_SAMPLES
 
@@ -117,6 +117,40 @@ def test_inbox_md_frontmatter_parses_typed_spec(tmp_path):
     # parsed via the typed front-matter path, with the AUTHORED name preserved verbatim (not a "(chat)" draft)
     assert rec.kind == "md-spec"
     assert rec.name == "Front-matter reversion"
+
+
+def test_queue_idea_writes_brief_and_records_event(tmp_path):
+    store = _store(tmp_path)
+    inbox = tmp_path / "inbox"
+    idea = queue_idea(store, "Buy oversold dips on BTC when funding flips negative.", inbox_dir=inbox)
+    # a brief file is written into the inbox
+    path = Path(idea.path)
+    assert path.exists() and path.suffix == ".md"
+    assert path.parent == inbox
+    assert "oversold dips" in path.read_text()
+    # the queue is auditable off the event ledger and starts as "queued"
+    rows = list_queued(store)
+    assert len(rows) == 1 and rows[0].status == "queued" and rows[0].name
+
+
+def test_queue_idea_rejects_empty(tmp_path):
+    store = _store(tmp_path)
+    try:
+        queue_idea(store, "   ", inbox_dir=tmp_path / "inbox")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("empty idea must raise")
+
+
+def test_queued_idea_flips_to_imported_after_scan(tmp_path):
+    store = _store(tmp_path)
+    inbox = tmp_path / "inbox"
+    queue_idea(store, "Trend-confirmed momentum on crypto with ADX confirmation, swing horizon.", inbox_dir=inbox)
+    assert list_queued(store)[0].status == "queued"
+    scan_inbox(store, inbox_dir=inbox, market_data=_FixtureBars())
+    # once the scanner imports the queued brief's content-hash, the queue row reflects it honestly
+    assert list_queued(store)[0].status == "imported"
 
 
 def test_inbox_skips_readme_docs(tmp_path):

@@ -54,6 +54,10 @@ from cosmu.api.models import (
     FinderResponse,
     FinderRunRequest,
     FinderVariant,
+    InboxIdeaRequest,
+    InboxIdeaResponse,
+    InboxQueueItem,
+    InboxQueueResponse,
     IntelligenceResponse,
     MindResponse,
     NewsEventRow,
@@ -415,6 +419,40 @@ def _finder_variant(r) -> FinderVariant:  # noqa: ANN001 — VariantResult
         gate_passed=r.gate_passed,
         promoted=r.promoted,
         holdout_passed=r.holdout_passed,
+    )
+
+
+@app.post("/lab/inbox", response_model=InboxIdeaResponse)
+def lab_inbox_queue(request: InboxIdeaRequest) -> InboxIdeaResponse:
+    """Drop a natural-language strategy 'vibe' into the inbox: write it as a brief in strategies/inbox/ and record
+    an audited inbox_queued event. The next boot scan / autonomy tick translates it into a typed StrategySpec and
+    routes it through the DETERMINISTIC Gate. This endpoint never authors or funds — it only queues prose."""
+    from cosmu.lab.inbox import list_queued, queue_idea
+
+    try:
+        idea = queue_idea(store, request.text, name=request.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    pending = sum(1 for i in list_queued(store) if i.status == "queued")
+    return InboxIdeaResponse(
+        ok=True,
+        filename=idea.filename,
+        name=idea.name,
+        queued=pending,
+        note="Queued. The next autonomous tick (or engine boot) translates it into a typed, gated spec — the deterministic Gate alone decides survival.",
+    )
+
+
+@app.get("/lab/inbox", response_model=InboxQueueResponse)
+def lab_inbox_list() -> InboxQueueResponse:
+    """The operator's queued strategy ideas, newest first — each `queued` until a scan imports it, then `imported`.
+    Read off the audited event ledger; honest empty when nothing has been dropped yet."""
+    from cosmu.lab.inbox import _INBOX_DIR, list_queued
+
+    items = list_queued(store)
+    return InboxQueueResponse(
+        items=[InboxQueueItem(filename=i.filename, name=i.name, ts=i.ts, status=i.status) for i in items],
+        inbox_dir=str(_INBOX_DIR),
     )
 
 
