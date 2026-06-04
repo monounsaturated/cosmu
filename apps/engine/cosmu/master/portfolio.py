@@ -122,14 +122,24 @@ class Portfolio:
 
     # --- marks / snapshots -------------------------------------------------------------------------
 
-    def mark_to_market(self, marks: dict[str, Decimal]) -> dict[str, Decimal]:
+    def mark_to_market(
+        self, marks: dict[str, Decimal], *, funding_by_track: dict[str, Decimal] | None = None
+    ) -> dict[str, Decimal]:
         """Recompute equity from cash + Σ(qty·mark), write a portfolio_snapshot, and return the derived metrics.
-        Cash is bankroll minus net deployed cost basis + realized P&L — no fabricated numbers."""
+        Cash is bankroll minus net deployed cost basis + realized P&L — no fabricated numbers.
+
+        `funding_by_track` is the cumulative funding P&L per strategy_version_id for two-leg neutral tracks (the
+        carry the short-perp leg has booked — see master/neutral.py). It is ADDED to equity and to that track's
+        marked-value series. Absent/empty (every spot caller) it is a no-op, so the single-leg spot mark path is
+        byte-identical to before. Σ(qty·mark) already nets the short perp leg correctly via its negative signed
+        qty — funding is the only carry term the price marks don't already capture."""
+        funding_by_track = funding_by_track or {}
         positions = self.positions()
         realized = sum((p.realized_pnl for p in positions), Decimal("0"))
         deployed = sum((p.avg_price * p.qty for p in positions), Decimal("0"))
         positions_value = sum((marks.get(p.instrument_id, p.avg_price) * p.qty for p in positions), Decimal("0"))
-        cash = self.bankroll + realized - deployed
+        funding = sum(funding_by_track.values(), Decimal("0"))
+        cash = self.bankroll + realized - deployed + funding
         equity = cash + positions_value
         high_water = self._high_water(equity)
         drawdown = Decimal("0") if high_water == 0 else (high_water - equity) / high_water
@@ -157,6 +167,12 @@ class Portfolio:
                 continue
             value = marks.get(p.instrument_id, p.avg_price) * p.qty + p.realized_pnl
             by_track[p.strategy_version_id] = by_track.get(p.strategy_version_id, Decimal("0")) + value
+        # Add each neutral track's accrued funding carry to its marked-value series. For a two-leg neutral track
+        # the Σ(qty·mark) above already nets the long-spot + short-perp price moves (the direction cancels); the
+        # funding carry is the edge the price marks can't show, so it must ride the per-track trajectory too.
+        for vid, fund in funding_by_track.items():
+            if vid in by_track:
+                by_track[vid] += fund
         for vid, value in by_track.items():
             self.store.insert(
                 "portfolio_snapshots",

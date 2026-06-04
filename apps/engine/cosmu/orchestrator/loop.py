@@ -16,6 +16,7 @@ from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.knowledge.store import Store
 from cosmu.master.drift import monitor_drift
 from cosmu.master.execution import IntendedOrder, execute_orders
+from cosmu.master.neutral import accrue_funding, neutral_tracks
 from cosmu.master.portfolio import Portfolio
 from cosmu.portfolio.rotation import Track, select_tracks
 from cosmu.spine.venue import VenueCatalog, default_catalog
@@ -199,15 +200,59 @@ def mark_tracks(
         price = _last_price(provider, p.symbol, cat)
         if price > 0:
             marks[p.instrument_id] = price
-    snapshot = portfolio.mark_to_market(marks)
+    # TWO-LEG NEUTRAL tracks (DERIVATIVES_PLAN P0.3): pair a held long-spot leg with its short-perp leg, accrue one
+    # funding period on the short perp against its latest mark, and carry the running funding into the mark. A
+    # single-leg spot track has no short leg → it is not a neutral pair → it falls straight through to the
+    # unchanged spot mark path below. Offline-safe: no funding data for a perp leg accrues nothing this tick.
+    funding_by_track = _accrue_neutral_funding(store, positions, marks)
+    snapshot = portfolio.mark_to_market(marks, funding_by_track=funding_by_track)
     store.append_event(
         actor="master",
         kind="tracks_marked",
         ref_type="portfolio",
         ref_id="aggregate",
-        payload={"positions": len(positions), "marked": len(marks), "equity": float(snapshot["equity"]), "pnl": float(snapshot["pnl"])},
+        payload={
+            "positions": len(positions),
+            "marked": len(marks),
+            "neutral_tracks": len(funding_by_track),
+            "equity": float(snapshot["equity"]),
+            "pnl": float(snapshot["pnl"]),
+        },
     )
     return snapshot
+
+
+def _accrue_neutral_funding(
+    store: Store, positions: list, marks: dict[str, Decimal]
+) -> dict[str, Decimal]:
+    """For each two-leg neutral track, accrue one funding period on the short-perp leg (point-in-time rate from
+    the `alt_data` store) and return {strategy_version_id: cumulative funding}. Empty when there are no neutral
+    pairs — so the spot-only path adds nothing. Funding accrues only when a fresh perp mark exists this tick (the
+    venue charges funding on live notional); a missing rate or mark accrues nothing (offline-safe, deterministic
+    for a fixed store + marks)."""
+    tracks = neutral_tracks(store, positions)
+    out: dict[str, Decimal] = {}
+    for track in tracks:
+        perp_mark = marks.get(track.perp.instrument_id)
+        rate = _funding_rate_asof(store, track.perp.symbol)
+        if perp_mark is not None and perp_mark > 0 and rate is not None:
+            total = accrue_funding(store, track, funding_rate=rate, perp_mark=perp_mark)
+        else:
+            total = track.funding_accrued  # no fresh rate/mark → carry the prior cumulative forward unchanged
+        out[track.strategy_version_id] = total
+    return out
+
+
+def _funding_rate_asof(store: Store, symbol: str) -> Decimal | None:
+    """The latest point-in-time funding rate for a perp symbol from the central alt_data store (the same series
+    the ingest pass fills: provider 'binance', metric 'funding_rate'). None when no rate is on file — accrue
+    nothing this tick (offline-safe)."""
+    row = store.row(
+        "SELECT value FROM alt_data WHERE provider = 'binance' AND symbol = ? AND metric = 'funding_rate' "
+        "ORDER BY available_at DESC, id DESC LIMIT 1",
+        (symbol,),
+    )
+    return Decimal(str(row["value"])) if row else None
 
 
 def _main(argv: list[str] | None = None) -> int:
