@@ -13,6 +13,7 @@ Add a real, point-in-time data source behind the alt-data seam. Everything stays
 3. **Ingest** in `cosmu/ingest/run.py`: add the field to `Providers`, add a `_safe()`-wrapped call in `run_once()`. Market-wide metrics use `ingest_market_wide_numeric` under the `"MARKET"` key.
 4. **Store routing** in `cosmu/data/altdata.py`: add metric → provider in `_STORE_PROVIDER_OF`; if market-wide, add to `_STORE_MARKET_WIDE`.
 5. **Test** in `tests/test_<source>.py`: canned fixture (no network), assert the point-in-time lag, assert wrong-metric → `[]`, assert ingest works.
+6. **Audit before you trust it** — run **profile-source** on the freshly-ingested feed (`python3 -m cosmu.ingest.profile_source <provider> <symbol> <metric> --declared-lag-hours N`). It must be **GO** (or a consciously-accepted **REVIEW**) before the feed is allowed to shape the gate; a **NO-GO** (look-ahead leak or a dishonest PIT lag) means fix the `available_at` stamping first.
 
 ## Keys / cost
 - Free sources: no key. Paid (LunarCrush/Tavily-style): read the key server-side from settings; with no key the provider returns `[]` and the system degrades honestly. Never commit secrets.
