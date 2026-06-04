@@ -505,20 +505,23 @@ def _apply_verdict(arms, data_source, window, regimes_covered, funding_points, n
     bnh = by.get("buy_and_hold")
     carry_short = by.get("carry_short_perp")
 
-    # data-depth honesty: the carry arm needs >= MIN_TRADES; with only ~333 days of 8h funding the carry arm may
-    # be too thin. If neither neutral arm clears MIN_TRADES, this is INSUFFICIENT-DATA, not a FAIL.
+    # data-depth honesty: the carry arm needs >= MIN_TRADES; the carry entries are intrinsically RARE (a
+    # positive-funding + trend filter fires on few bars), so even on a deep funding cache the arm can be too
+    # thin. Report the ACTUAL funding span (max points / 3 events-per-day) instead of asserting a fixed window,
+    # so the note stays honest as the cache deepens. If neither neutral arm clears MIN_TRADES => INSUFFICIENT-DATA.
+    fund_days = round(max(funding_points.values(), default=0) / 3) if funding_points else 0
     deepest_trades = max((a.num_trades for a in (carry, xsec, carry_short) if a), default=0)
     if deepest_trades < MIN_TRADES:
         notes.append(
-            f"deepest neutral/carry arm produced {deepest_trades} trades (< {MIN_TRADES}); "
-            f"funding history is ~333 days (1000 x 8h periods) — too shallow for a significant carry sample"
+            f"deepest neutral/carry arm produced {deepest_trades} trades (< {MIN_TRADES}) on ~{fund_days} days of "
+            f"8h funding — the positive-funding entry fires on too few bars for a significant carry sample"
         )
         return AblationReport(
             verdict="INSUFFICIENT-DATA",
-            headline=f"carry/neutral arms too thin ({deepest_trades} < {MIN_TRADES} trades) on ~333d funding",
+            headline=f"carry/neutral arms too thin ({deepest_trades} < {MIN_TRADES} trades) on ~{fund_days}d funding",
             data_source=data_source, window=window, regimes_covered=regimes_covered,
             funding_points=funding_points, arms=arms,
-            notes=notes + ["next action: historical-funding backfill (deeper than the 1000-row REST cap) then re-run P0.6"],
+            notes=notes + ["next action: widen the universe (more symbols) — deeper history alone won't help; carry entries are rare per-symbol"],
         )
 
     # honest carry-specific depth caveat: the carry arms (perp/long/neutral pair) live ONLY in the funding
@@ -526,9 +529,10 @@ def _apply_verdict(arms, data_source, window, regimes_covered, funding_points, n
     carry_trades = max((a.num_trades for a in (carry, carry_short) if a), default=0)
     if carry_trades < MIN_TRADES:
         notes.append(
-            f"CARRY caveat: the carry-specific arms trade only {carry_trades} times (< {MIN_TRADES}) on the single "
-            f"~333d funding window — the carry thesis alone is INSUFFICIENT-DATA (needs historical-funding backfill); "
-            f"the FAIL below is driven by the deeper xsec-neutral arm clearing the trade-count bar but not the edge bar"
+            f"CARRY caveat: the carry-specific arms trade only {carry_trades} times (< {MIN_TRADES}) on ~{fund_days} days "
+            f"of funding — the carry thesis alone is INSUFFICIENT-DATA (the realized Binance premium is tiny and the "
+            f"positive-funding entry is rare per-symbol); the FAIL below is driven by the deeper xsec-neutral arm "
+            f"clearing the trade-count bar but not the edge bar"
         )
 
     # otherwise, evaluate the PASS rule on the best neutral arm

@@ -1,0 +1,63 @@
+{
+  "name": "Vol-regime gate — trade momentum only in a calm volatility regime",
+  "rationale": "Volatility is regime-clustered (GARCH): returns behave very differently in calm vs stressed vol. This family is a long-only momentum entry whose participation is GATED by the realized-volatility regime — it sizes IN when vol is benign and SKIPS entirely when vol is elevated. The gate is the documented low-vol-anomaly / vol-managed-momentum result (Barroso–Santa-Clara, Moreira–Muir): momentum's crashes happen in high-vol panics, so conditioning on a calm regime keeps the favorable-skew part of the premium and drops the left tail. Entry fires ONLY when (a) realized vol is INSIDE a fitted regime band (op=between → |vol| <= a fitted ceiling: a calm-to-moderate regime, never the panic regime), AND (b) trailing return is above a fitted momentum floor (a genuine up-trend to ride, not chop), AND (c) RSI is below a fitted overbought ceiling so we are not buying a blow-off top inside the calm regime. Exit when the vol regime breaks (realized vol exits the band — a regime flip, signal_exit) or the stop/TP/time-stop fires. The vol band IS the size/skip switch the task asks for; no magic numbers — every threshold (including the regime band edges) lives in param_space and is fit by the Finder grid.",
+  "catalyst": "Calm volatility regime: momentum's premium is favorable-skew in low vol and crash-prone in high vol — gate participation by the realized-vol regime.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 21
+  },
+  "entry": [
+    {
+      "feature": { "name": "vol_realized", "lookback": { "param": "vol_lookback" } },
+      "op": "between",
+      "threshold": { "param": "vol_regime_ceiling" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lookback" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    },
+    {
+      "feature": { "name": "rsi", "lookback": { "param": "rsi_lookback" } },
+      "op": "lt",
+      "threshold": { "param": "rsi_ceiling" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "vol_realized", "lookback": { "param": "vol_lookback" } },
+        "op": "gt",
+        "threshold": { "param": "vol_regime_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_lookback":       { "kind": "int",   "lo": 10,   "hi": 30,  "step": 1 },
+    "vol_regime_ceiling": { "kind": "float", "lo": 0.06, "hi": 0.14 },
+    "vol_regime_exit":    { "kind": "float", "lo": 0.13, "hi": 0.25 },
+    "mom_lookback":       { "kind": "int",   "lo": 10,   "hi": 40,  "step": 1 },
+    "mom_floor":          { "kind": "float", "lo": 0.0,  "hi": 0.10 },
+    "rsi_lookback":       { "kind": "int",   "lo": 10,   "hi": 21,  "step": 1 },
+    "rsi_ceiling":        { "kind": "float", "lo": 60.0, "hi": 80.0 },
+    "stop":               { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":                 { "kind": "float", "lo": 0.06, "hi": 0.30 },
+    "time_stop":          { "kind": "int",   "lo": 5,    "hi": 21,  "step": 1 }
+  },
+  "direction": 1
+}

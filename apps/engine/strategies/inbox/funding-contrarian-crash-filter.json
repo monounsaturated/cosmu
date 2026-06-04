@@ -1,0 +1,62 @@
+{
+  "name": "Funding-contrarian crash filter — fade crowded-long funding extremes",
+  "rationale": "Perpetual funding is a crowding gauge: an EXTREME positive rate means longs are paying a steep premium to shorts — the book is lopsided, leverage is stacked on the long side, and the marginal buyer is exhausted. That is the precondition for a long-squeeze / liquidation cascade: a small down-move forces leveraged longs to sell, which feeds on itself. This family is the contrarian fade of that crowded-long extreme — a SHORT (direction -1) entered ONLY when (a) funding is above a fitted EXTREME floor (crowded, not merely positive — distinct from funding-carry, which harvests mild positive carry on the long side), (b) price has run up over the trend window (a stretched top, not a fresh breakout), and (c) realized vol is below a fitted ceiling so we are fading euphoria, not knife-catching an already-crashing tape. Exit when funding normalizes back below a fitted reset floor (the crowd has de-levered — the edge is gone) or the stop/TP fires. This is the documented funding-spike-before-crash pattern (crowded-leverage mean-reversion); it is the inverse of the carry trade and complements it. No magic numbers — every threshold lives in param_space and is fit by the Finder grid.",
+  "catalyst": "Extreme positive perpetual funding = crowded-long leverage paying a steep premium; the squeeze/cascade that unwinds it is faded with a short.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": { "name": "funding_rate" },
+      "op": "gt",
+      "threshold": { "param": "funding_extreme_floor" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "runup_lookback" } },
+      "op": "gt",
+      "threshold": { "param": "runup_floor" }
+    },
+    {
+      "feature": { "name": "vol_realized" },
+      "op": "lt",
+      "threshold": { "param": "vol_ceiling" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "funding_rate" },
+        "op": "lt",
+        "threshold": { "param": "funding_reset_floor" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_extreme_floor": { "kind": "float", "lo": 0.0001, "hi": 0.0005 },
+    "funding_reset_floor":   { "kind": "float", "lo": -0.0002, "hi": 0.0001 },
+    "runup_lookback":        { "kind": "int",   "lo": 5,      "hi": 21,   "step": 1 },
+    "runup_floor":           { "kind": "float", "lo": 0.02,   "hi": 0.20 },
+    "vol_ceiling":           { "kind": "float", "lo": 0.03,   "hi": 0.14 },
+    "stop":                  { "kind": "float", "lo": 0.04,   "hi": 0.15 },
+    "tp":                    { "kind": "float", "lo": 0.05,   "hi": 0.25 },
+    "time_stop":             { "kind": "int",   "lo": 3,      "hi": 14,   "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}
