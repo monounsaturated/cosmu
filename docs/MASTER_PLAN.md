@@ -1,6 +1,8 @@
 # Cosmu — Master Plan
 
 > **The single operating plan.** What Cosmu *is now* (verified against code), the real gaps, the target, and the ordered roadmap with copy-paste agent prompts. Integrates rather than duplicates: the strategic contract is [VISION.md](VISION.md), deep specs are [BUILD_PLAN.md](BUILD_PLAN.md), current built-state is [IMPLEMENTATION.md](IMPLEMENTATION.md), invariants/skills are [../AGENTS.md](../AGENTS.md). Operator/deploy detail that used to live in HOW_TO_USE & DEPLOYMENT is folded in here (those docs retired); first-time setup stays in [OWNER_SETUP.md](OWNER_SETUP.md).
+>
+> **⭐ The lucrative track is [DERIVATIVES_PLAN.md](DERIVATIVES_PLAN.md)** — re-points the engine from spot-long-only (beta, uncompoundable) to **market-neutral perp-carry + long/short** (the funding-carry edge, ~3× faster forward-test). Phase 0 (prove carry/neutral in SIM on real data, kill-or-keep) is the current priority and the empirical answer to "is there an edge?". Read it before building strategy/venue/cost work.
 
 ## Index (jump to the answer)
 1. What's real today (verified) · 2. The real remaining gaps · 3. North star & non-negotiables · 4. Target architecture · 5. Data & signals · 6. ML discipline (and why no RL yet) · 7. Strategy-invention loop · 8. Live + SIM together · 9. Infra · 10. Control surfaces · 11. Orchestration as a reflex · 12. Roadmap (waves) · 13. Operator guide · 14. Locked decisions · 15. Open questions.
