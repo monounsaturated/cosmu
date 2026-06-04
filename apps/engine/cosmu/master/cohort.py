@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from cosmu.config.settings import GateSettings
 from cosmu.knowledge.store import Store
 from cosmu.master.fdr import benjamini_hochberg, dsr_pvalue
-from cosmu.master.scorer import BacktestMetrics, score
+from cosmu.master.scorer import BacktestMetrics, TrialStats, score
 from cosmu.master.trials import register_trial, trial_stats
 
 
@@ -45,18 +45,27 @@ def promote_cohort(
     gates: GateSettings,
     *,
     fdr_q: float = 0.10,
+    register: bool = True,
+    trials: TrialStats | None = None,
 ) -> list[Promotion]:
-    """Judge a cohort of distinct candidates together. Steps: (1) register every candidate as a trial — the
+    """Judge a cohort of DISTINCT candidates together. Steps: (1) register every candidate as a trial — the
     deflation/FDR math is invalid if any bypasses this; (2) score each on stats vs the trial-inflated benchmark;
     (3) apply Benjamini-Hochberg FDR across the cohort's p-values; (4) promote iff it passes the stats gate AND
-    survives FDR; (5) rank promoted by net-of-cost profit. Deterministic and out of any agent's reach."""
+    survives FDR; (5) rank promoted by net-of-cost profit. Deterministic and out of any agent's reach.
+
+    `register=False` + `trials=...` lets a caller that has ALREADY registered the full (possibly larger,
+    correlated) trial population own the ledger itself — e.g. the finder registers EVERY grid variant as a
+    trial (so deflation sees the true count) but then dedupes the correlated grid down to DISTINCT cluster
+    representatives before handing them here, honoring this gate's "distinct candidates, not correlated
+    param-variants" contract. Defaults reproduce the prior behaviour exactly (the deployed FarmLoop path)."""
     if not candidates:
         return []
 
     # 1. register all trials FIRST, so significance deflates against the full cohort + history.
-    for c in candidates:
-        register_trial(store, float(c.metrics.sharpe_per_obs), source=c.source, label=c.label or c.id)
-    trials = trial_stats(store)
+    if register:
+        for c in candidates:
+            register_trial(store, float(c.metrics.sharpe_per_obs), source=c.source, label=c.label or c.id)
+    trials = trials if trials is not None else trial_stats(store)
 
     # 2. per-candidate statistical verdict (Deflated Sharpe / PBO / folds / drawdown / holdout).
     verdicts = [score(c.metrics, gates, trials=trials) for c in candidates]

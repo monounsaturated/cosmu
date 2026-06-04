@@ -7,9 +7,9 @@ import statistics
 from dataclasses import dataclass
 from decimal import Decimal
 
+from cosmu.data.altdata import AltDataPoint
 from cosmu.data.market import Bar
 from cosmu.master.scorer import BacktestMetrics, probabilistic_sharpe, sample_moments
-from cosmu.data.altdata import AltDataPoint
 from cosmu.strategy.spec import Condition, ParamRef, StrategySpec
 
 _REGIMES = ("bull", "bear", "chop")
@@ -36,6 +36,25 @@ class SymbolRun:
     periods_per_year: float
 
 
+@dataclass(frozen=True)
+class BacktestResult:
+    """The full backtest output. `metrics` is the scoreable summary (as before); the extra fields expose what
+    a multiple-testing cohort needs WITHOUT widening BacktestMetrics: the validation per-bar return stream (for
+    real CSCV-PBO + cross-variant correlation clustering), the holdout stream, and the PER-SYMBOL validation
+    trade counts (so a finder can require evidence on EACH symbol, not ~6 trades pooled across 5 correlated
+    ones)."""
+
+    metrics: BacktestMetrics
+    val_returns: list[float]
+    holdout_returns: list[float]
+    symbol_trades: dict[str, int]
+
+    @property
+    def min_symbol_trades(self) -> int:
+        counts = list(self.symbol_trades.values())
+        return min(counts) if counts else 0
+
+
 def run_strategy_backtest(
     spec: StrategySpec,
     params: dict[str, float],
@@ -47,7 +66,32 @@ def run_strategy_backtest(
     size_multiplier: float = 1.0,
     alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
 ) -> BacktestMetrics:
-    """Backtest a strategy over real bars, reserving the last fifth as holdout.
+    """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout. Thin
+    wrapper over `run_strategy_backtest_detailed` for callers that only need the scoreable metrics."""
+    return run_strategy_backtest_detailed(
+        spec,
+        params,
+        market,
+        fee_bps=fee_bps,
+        slippage_bps=slippage_bps,
+        impact_bps=impact_bps,
+        size_multiplier=size_multiplier,
+        alt_by_symbol=alt_by_symbol,
+    ).metrics
+
+
+def run_strategy_backtest_detailed(
+    spec: StrategySpec,
+    params: dict[str, float],
+    market: dict[str, list[Bar]],
+    *,
+    fee_bps: Decimal,
+    slippage_bps: Decimal = Decimal("5"),
+    impact_bps: Decimal = Decimal("50"),
+    size_multiplier: float = 1.0,
+    alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
+) -> BacktestResult:
+    """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout.
 
     `slippage_bps` is the fixed half-spread; `impact_bps` scales market impact with participation
     (order notional / bar quote-volume), so larger size erodes the edge — the capacity dimension.
@@ -56,25 +100,32 @@ def run_strategy_backtest(
     (funding_rate, etc.) so leading-signal strategies are actually evaluable, not just price/TA ones. The
     values are keyed by bar timestamp, so the validation/holdout slice carries the right value automatically.
     None → price/TA only (alt features read None), i.e. exactly the prior behaviour.
+
+    Holdout integrity: the holdout is the bars AT/AFTER `split`; its indicator warm-up is drawn from its OWN
+    leading band (>= split), never from the training window. The previous `bars[split - warmup:]` slice fed
+    `warmup` TRAINING bars into the holdout — a look-ahead/contamination leak. The leading warm-up band is now
+    an EMBARGO traded by neither side, so no position straddles the train/holdout boundary.
     """
 
     if not market:
-        return _empty_metrics(spec)
+        return BacktestResult(_empty_metrics(spec), [], [], {})
 
     validation_runs: list[SymbolRun] = []
     holdout_runs: list[SymbolRun] = []
+    symbol_trades: dict[str, int] = {}
     for symbol, bars in market.items():
         if len(bars) < 80:
             continue
         alt = (alt_by_symbol or {}).get(symbol)
-        split = max(40, int(len(bars) * 0.8))
-        validation_runs.append(_run_symbol(spec, params, bars[:split], fee_bps, slippage_bps, impact_bps, size_multiplier, alt))
-        holdout_runs.append(
-            _run_symbol(spec, params, bars[split - _warmup_bars(spec, params) :], fee_bps, slippage_bps, impact_bps, size_multiplier, alt)
-        )
+        val_bars, holdout_bars = _purged_embargoed_split(spec, params, bars)
+        v_run = _run_symbol(spec, params, val_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt)
+        validation_runs.append(v_run)
+        symbol_trades[symbol] = len(v_run.trades)
+        if holdout_bars:
+            holdout_runs.append(_run_symbol(spec, params, holdout_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt))
 
     if not validation_runs:
-        return _empty_metrics(spec)
+        return BacktestResult(_empty_metrics(spec), [], [], {})
 
     val = _combine(validation_runs)
     holdout = _combine(holdout_runs) if holdout_runs else _empty_symbol_run()
@@ -87,10 +138,15 @@ def run_strategy_backtest(
 
     # Per-observation moments for the Probabilistic / Deflated Sharpe (annualized SR stays for display).
     sr_obs, skew, kurt, n_obs = sample_moments(val.bar_returns)
+    # Concatenating correlated symbols pools their bars into one long series — but 5 correlated crypto symbols
+    # are NOT 5x the INDEPENDENT observations. Deflate the PSR/DSR sample size by the cross-symbol correlation
+    # so significance can't be manufactured by adding more of the same beta.
+    rho_sym = _avg_cross_correlation([r.bar_returns for r in validation_runs])
+    n_obs_eff = _effective_obs(n_obs, len(validation_runs), rho_sym)
     h_sr, h_skew, h_kurt, h_n = sample_moments(holdout.bar_returns)
     holdout_dsr = probabilistic_sharpe(h_sr, h_n, h_skew, h_kurt, 0.0) - 0.5  # > 0 ⇔ holdout Sharpe significantly positive
 
-    return BacktestMetrics(
+    metrics = BacktestMetrics(
         oos_return=Decimal(str(round(val.total_return, 8))),
         sharpe=Decimal(str(round(val.sharpe, 6))),
         sortino=Decimal(str(round(val.sortino, 6))),
@@ -100,7 +156,7 @@ def run_strategy_backtest(
         sharpe_per_obs=Decimal(str(round(sr_obs, 8))),
         skew=Decimal(str(round(skew, 6))),
         kurtosis=Decimal(str(round(kurt, 6))),
-        n_obs=n_obs,
+        n_obs=n_obs_eff,
         pbo=pbo,
         trials_counted=trials,
         folds_positive_pct=Decimal(str(round(folds_pct, 6))),
@@ -108,6 +164,70 @@ def run_strategy_backtest(
         regime_returns={k: round(v, 8) for k, v in val.regime_pnl.items()},
         profit_factor=Decimal(str(round(profit_factor, 6))),
     )
+    return BacktestResult(
+        metrics=metrics,
+        val_returns=list(val.bar_returns),
+        holdout_returns=list(holdout.bar_returns),
+        symbol_trades=symbol_trades,
+    )
+
+
+def _purged_embargoed_split(
+    spec: StrategySpec, params: dict[str, float], bars: list[Bar]
+) -> tuple[list[Bar], list[Bar]]:
+    """Split bars into (validation, holdout) with a PURGE + EMBARGO between them.
+
+    Validation = bars[:split] (the first ~80%, unchanged). Holdout = bars[split:] — the holdout's own leading
+    `warmup` band seeds its indicators, so warm-up never reaches into the training window (the old
+    `bars[split - warmup:]` leaked train bars forward). That leading band is also the EMBARGO: it is traded by
+    NEITHER validation (force-closed by `split`) nor holdout (which only opens after its warm-up), so no
+    position straddles the boundary and the holdout's first trade is >= `warmup` bars past the last training
+    bar. Returns an empty holdout when there aren't enough post-split bars to trade after the embargo."""
+    split = max(40, int(len(bars) * 0.8))
+    warmup = _warmup_bars(spec, params)
+    holdout_bars = bars[split:]
+    # Need at least the warm-up band plus a couple of tradeable bars for a usable, non-degenerate holdout.
+    if len(holdout_bars) < warmup + 2:
+        return bars[:split], []
+    return bars[:split], holdout_bars
+
+
+def _pearson(a: list[float], b: list[float]) -> float | None:
+    n = min(len(a), len(b))
+    if n < 2:
+        return None
+    aa, bb = a[-n:], b[-n:]
+    ma, mb = statistics.fmean(aa), statistics.fmean(bb)
+    va = sum((x - ma) ** 2 for x in aa)
+    vb = sum((y - mb) ** 2 for y in bb)
+    if va <= 0 or vb <= 0:
+        return None
+    cov = sum((aa[k] - ma) * (bb[k] - mb) for k in range(n))
+    return cov / math.sqrt(va * vb)
+
+
+def _avg_cross_correlation(series: list[list[float]]) -> float:
+    """Average pairwise Pearson correlation across symbol return streams (aligned on their common tail). 0 when
+    fewer than two usable streams. The diversification haircut on the pooled observation count uses this."""
+    usable = [s for s in series if len(s) >= 2]
+    if len(usable) < 2:
+        return 0.0
+    corrs: list[float] = []
+    for i in range(len(usable)):
+        for j in range(i + 1, len(usable)):
+            c = _pearson(usable[i], usable[j])
+            if c is not None:
+                corrs.append(c)
+    return statistics.fmean(corrs) if corrs else 0.0
+
+
+def _effective_obs(n_obs: int, n_symbols: int, rho_sym: float) -> int:
+    """Deflate a pooled observation count for cross-symbol correlation: n_eff = n_obs / (1 + (S-1)*rho_sym).
+    One symbol (or non-positive correlation) → unchanged, so single-asset backtests are byte-identical."""
+    if n_symbols <= 1 or rho_sym <= 0.0 or n_obs <= 2:
+        return n_obs
+    rho = min(1.0, rho_sym)
+    return max(2, int(round(n_obs / (1.0 + (n_symbols - 1) * rho))))
 
 
 def _run_symbol(
@@ -646,13 +766,18 @@ def _sortino(returns: list[float], periods_per_year: float) -> float:
     return statistics.fmean(returns) / dd * math.sqrt(periods_per_year)
 
 
-def _fold_returns(equity: list[float], folds: int = 4) -> list[float]:
-    if len(equity) < folds * 2:
+def _fold_returns(equity: list[float], folds: int = 4, embargo: int = 1) -> list[float]:
+    """Per-fold OOS returns over a PURGED + EMBARGOED walk-forward partition of the equity curve: it is cut into
+    `folds` contiguous blocks and the leading `embargo` points of each block are dropped, so a position open
+    across a fold boundary cannot leak its outcome into the adjacent fold."""
+    if len(equity) < folds * (embargo + 2):
         return []
     size = len(equity) // folds
     out: list[float] = []
     for idx in range(folds):
-        chunk = equity[idx * size : (idx + 1) * size if idx < folds - 1 else len(equity)]
+        start = idx * size + embargo
+        end = (idx + 1) * size if idx < folds - 1 else len(equity)
+        chunk = equity[start:end]
         if len(chunk) > 1 and chunk[0]:
             out.append(chunk[-1] / chunk[0] - 1.0)
     return out
