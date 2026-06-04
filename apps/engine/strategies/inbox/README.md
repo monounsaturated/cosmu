@@ -26,3 +26,12 @@ YAML front-matter carries the typed spec; the body is human-readable thesis note
 - `oversold-mean-reversion.md` — washed-out mean reversion.
 
 Each declares its thesis + named features + composable modules + a `param_space` with no magic numbers.
+
+## High-prior families (carry / cross-sectional / regime)
+
+Four authored families that exercise the `direction` (long spot / short perp) and `funding_feature` (PIT carry accrual) fields and the cross-sectional rank feature. They are run through the deterministic Gate on REAL deep funding (`cosmu/research/carry_ablation.py`) — see that harness for the per-arm money/cost/correlation report.
+
+- `funding-carry-long-spot.json` + `funding-carry-short-perp.json` — long-spot / short-perp carry pair; harvest positive-funding carry, unwind on funding flip (delta-neutral when paired).
+- `xsec-neutral-momentum-long-leg.json` + `xsec-neutral-momentum-short-leg.json` — cross-sectional momentum via `xsec_momentum_rank`: long top-rank leaders, short bottom-rank laggards (market-neutral).
+- `funding-contrarian-crash-filter.json` — fade crowded-long funding extremes (short the squeeze; thresholds calibrated to the realized low-funding regime).
+- `vol-regime-gated-momentum.json` — trade momentum only inside a fitted calm-volatility regime (`vol_realized` band), skip the high-vol panic regime.
