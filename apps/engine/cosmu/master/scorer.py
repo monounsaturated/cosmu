@@ -36,6 +36,11 @@ class BacktestMetrics(BaseModel):
     # profit_factor = gross wins / gross losses across trades. DISPLAYED secondary metric ONLY — the ranking
     # metric stays the deflated Sharpe. It never enters score()'s pass/fail or ranking_scalar.
     profit_factor: Decimal = Decimal("0")
+    # cost_ratio = net_edge / gross_edge in [0, 1]: the fraction of gross alpha surviving after fees +
+    # slippage.  1.0 = costs are zero (hypothetical); 0.0 = all edge is eaten.  Healthy edges keep this
+    # well above 0.5; edges within a slippage-doubling of breakeven (cost_ratio ≈ 0) are fragile.
+    # DISPLAYED and used for routing/fragility flagging — never enters the gate's pass/fail thresholds.
+    cost_ratio: Decimal = Decimal("0")
 
 
 class TrialStats(BaseModel):

@@ -6,7 +6,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from cosmu.spine.venue import Venue
@@ -25,6 +26,36 @@ class FeeSchedule:
         backtest/forward-test prices the SAME fees the live venue would charge, per the account's volume."""
         maker, taker = venue.effective_fee(volume_30d_usd)
         return cls(maker_bps=float(maker), taker_bps=float(taker))
+
+    @classmethod
+    def from_pit(
+        cls,
+        venue: "Venue",
+        symbol: str,
+        as_of: datetime,
+        store: Any,  # AltDataStore | PgAltDataStore — the PIT store
+        volume_30d_usd: float = 0.0,
+    ) -> "FeeSchedule":
+        """Point-in-time fee schedule: read the snapshot from the alt_data store that was in effect
+        at `as_of`, falling back to the volume-tiered catalog if no snapshot is available.
+
+        This is the seam that eliminates fee look-ahead in backtests and forward-tests: every order
+        prices costs against the fee the account WOULD HAVE PAID at that timestamp, not the current rate.
+        """
+        from cosmu.data.altdata import read_pit_fee
+
+        maker_bps = read_pit_fee(store, venue.id, symbol, "venue_fees_maker", as_of)
+        taker_bps = read_pit_fee(store, venue.id, symbol, "venue_fees_taker", as_of)
+
+        if maker_bps is not None and taker_bps is not None:
+            return cls(maker_bps=float(maker_bps), taker_bps=float(taker_bps))
+
+        # Fallback: volume-tiered catalog (the pre-P0.4 behaviour — still better than a raw magic number)
+        maker_cat, taker_cat = venue.effective_fee(volume_30d_usd)
+        return cls(
+            maker_bps=float(maker_bps if maker_bps is not None else maker_cat),
+            taker_bps=float(taker_bps if taker_bps is not None else taker_cat),
+        )
 
 
 @dataclass(frozen=True)

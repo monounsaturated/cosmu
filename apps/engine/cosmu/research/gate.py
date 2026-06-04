@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
-from cosmu.data.altdata import AltDataProvider, NewsProvider, rolling_zscore
+from cosmu.data.altdata import AltDataProvider, NewsProvider, read_pit_fee, rolling_zscore
 from cosmu.data.market import Bar
 from cosmu.spine.venue import default_catalog
 from cosmu.ingest.standardize import standardize_news
@@ -38,12 +38,19 @@ PREREGISTERED_BAR = {
 _LOOKBACKS = (14, 30)
 _Z_THRESHOLDS = (0.5, 1.0, 1.5)
 _HOLD_BARS = (5, 10)
-# Fee is derived from the venue catalog (ONE source of fee truth — the same Binance-spot taker the screen
-# charges), not a duplicated magic literal. The edge-existence gate is intentionally Binance-spot-priced.
-_FEE = float(default_catalog().venue("binance").taker_fee_bps) / 10000.0
+# Static catalog fallback fee (bps → fraction) used when no PIT fee snapshot is available.
+# A per-bar PIT read (read_pit_fee) is preferred; this is only the offline/pre-first-ingest default.
+_FEE_FALLBACK_BPS: float = float(default_catalog().venue("binance").taker_fee_bps)
 _SLIP = 0.0005
 _STOP = 0.08
 _TAKE = 0.16
+
+
+def _pit_fee(store: Store, venue_id: str, symbol: str, as_of: "datetime") -> float:
+    """PIT taker fee fraction for a gate simulation bar.  Falls back to the static catalog
+    so the gate never crashes without a fee snapshot."""
+    bps = read_pit_fee(store, venue_id, symbol, "venue_fees_taker", as_of, fallback_bps=_FEE_FALLBACK_BPS)
+    return (bps if bps is not None else _FEE_FALLBACK_BPS) / 10000.0
 
 
 @dataclass(frozen=True)
@@ -98,13 +105,13 @@ def evaluate_gate(
 
     results: list[VariantResult] = []
     for params in variants:
-        metrics, val_return, val_returns = _run_variant(aligned, params)
+        metrics, val_return, val_returns = _run_variant(aligned, params, store=store)
         record_trial(store, float(metrics.sharpe_per_obs), source="edge_gate", label=params.name)
         verdict = score(metrics, _gate_gates(store), trials=trial_stats(store))
         results.append(VariantResult(params, metrics, verdict, val_return, val_returns))
 
     pbo = cscv_pbo([r.val_returns for r in results if r.val_returns]) if results else 1.0
-    buy_hold = _buy_and_hold(market)
+    buy_hold = _buy_and_hold(market, store=store)
     best = max(results, key=lambda r: r.verdict.deflated_sharpe_prob) if results else None
 
     if best is None:
@@ -171,7 +178,12 @@ def _align(bars: list[Bar], points: list[tuple[datetime, float]]) -> list[float 
     return out
 
 
-def _run_variant(aligned: dict[str, tuple[list[Bar], list[float | None]]], params: SignalParams) -> tuple[BacktestMetrics, float, list[float]]:
+def _run_variant(
+    aligned: dict[str, tuple[list[Bar], list[float | None]]],
+    params: SignalParams,
+    *,
+    store: Store | None = None,
+) -> tuple[BacktestMetrics, float, list[float]]:
     val_returns: list[float] = []
     val_total: list[float] = []
     regime_pnl: dict[str, float] = {}
@@ -181,24 +193,28 @@ def _run_variant(aligned: dict[str, tuple[list[Bar], list[float | None]]], param
     fold_returns: list[float] = []
     h_returns: list[float] = []
 
-    for bars, alt in aligned.values():
+    total_net_pnl = 0.0
+    total_gross_pnl = 0.0
+    for symbol, (bars, alt) in aligned.items():
         if len(bars) < 80:
             continue
         split = max(40, int(len(bars) * 0.8))
         z = rolling_zscore(alt, params.lookback)
         signal = [v is not None and v > params.z_threshold for v in z]
-        v_eq, v_trades = _simulate(bars[:split], signal[:split], params)
-        h_eq, _ = _simulate(bars[split:], signal[split:], params)
+        v_eq, v_trades = _simulate(bars[:split], signal[:split], params, store=store, symbol=symbol)
+        h_eq, _ = _simulate(bars[split:], signal[split:], params, store=store, symbol=symbol)
         val_returns.extend(_bar_returns(v_eq))
         h_returns.extend(_bar_returns(h_eq))
         if v_eq:
             val_total.append(v_eq[-1] / 100000.0 - 1.0)
             max_dd = max(max_dd, _max_dd(v_eq))
             fold_returns.extend(_folds(v_eq))
-        for pnl, regime in v_trades:
-            regime_pnl[regime] = regime_pnl.get(regime, 0.0) + pnl
+        for net_pnl, regime, gross_pnl in v_trades:
+            regime_pnl[regime] = regime_pnl.get(regime, 0.0) + net_pnl
             trades_all += 1
-            wins += 1 if pnl > 0 else 0
+            wins += 1 if net_pnl > 0 else 0
+            total_net_pnl += net_pnl
+            total_gross_pnl += gross_pnl
 
     sr, skew, kurt, n = sample_moments(val_returns)
     from cosmu.master.scorer import probabilistic_sharpe
@@ -206,6 +222,8 @@ def _run_variant(aligned: dict[str, tuple[list[Bar], list[float | None]]], param
     h_sr, h_skew, h_kurt, h_n = sample_moments(h_returns)
     holdout_dsr = probabilistic_sharpe(h_sr, h_n, h_skew, h_kurt, 0.0) - 0.5
     folds_pos = sum(1 for x in fold_returns if x > 0)
+    # cost_ratio = net_edge / gross_edge (fraction of alpha that survives fees + slippage).
+    cost_ratio = (total_net_pnl / total_gross_pnl) if total_gross_pnl != 0.0 else Decimal("0")
     metrics = BacktestMetrics(
         oos_return=Decimal(str(round(statistics.fmean(val_total) if val_total else 0.0, 8))),
         sharpe=Decimal(str(round(sr * math.sqrt(365), 6))),
@@ -222,12 +240,31 @@ def _run_variant(aligned: dict[str, tuple[list[Bar], list[float | None]]], param
         folds_positive_pct=Decimal(str(round(folds_pos / len(fold_returns) if fold_returns else 0.0, 6))),
         holdout_deflated_sharpe=Decimal(str(round(holdout_dsr, 6))),
         regime_returns={k: round(v, 8) for k, v in regime_pnl.items()},
+        cost_ratio=Decimal(str(round(float(cost_ratio), 6))),
     )
     val_return = statistics.fmean(val_total) if val_total else 0.0
     return metrics, val_return, val_returns
 
 
-def _simulate(bars: list[Bar], signal: list[bool], params: SignalParams) -> tuple[list[float], list[tuple[float, str]]]:
+def _simulate(
+    bars: list[Bar],
+    signal: list[bool],
+    params: SignalParams,
+    *,
+    store: Store | None = None,
+    venue_id: str = "binance",
+    symbol: str = "BTCUSDT",
+) -> tuple[list[float], list[tuple[float, str, float]]]:
+    """Simulate a signal on a bar sequence with PIT fees.
+
+    When `store` is provided, each bar reads the fee that was in effect at that
+    bar's timestamp (no look-ahead).  Without a store, falls back to the static
+    catalog taker fee — matches the pre-P0.4 behaviour so existing tests are
+    unaffected.
+
+    Returns (equity_curve, trades).  Each trade is (net_pnl, regime, gross_pnl) where
+    gross_pnl is the price-only return (slippage only, no fees) — used to compute cost_ratio.
+    """
     from cosmu.data.backtest import _regime_labels
 
     closes = [float(b.close) for b in bars]
@@ -235,11 +272,13 @@ def _simulate(bars: list[Bar], signal: list[bool], params: SignalParams) -> tupl
     cash = 100000.0
     pos = 0.0
     entry = 0.0
+    entry_fee = 0.0  # taker fee fraction at entry bar
     entry_idx = 0
     equity: list[float] = []
-    trades: list[tuple[float, str]] = []
+    trades: list[tuple[float, str, float]] = []
     for i in range(1, len(bars)):
         b = bars[i]
+        fee = _pit_fee(store, venue_id, symbol, b.ts) if store is not None else _FEE_FALLBACK_BPS / 10000.0
         if pos > 0:
             stop_p = entry * (1 - _STOP)
             take_p = entry * (1 + _TAKE)
@@ -251,24 +290,30 @@ def _simulate(bars: list[Bar], signal: list[bool], params: SignalParams) -> tupl
             elif i - entry_idx >= params.hold_bars:
                 xp = float(b.open) * (1 - _SLIP)
             if xp is not None:
-                cash += pos * xp * (1 - _FEE)
-                pnl = (xp * (1 - _FEE) - entry * (1 + _FEE)) / entry
-                trades.append((pnl, regimes[entry_idx]))
+                cash += pos * xp * (1 - fee)
+                net_pnl = (xp * (1 - fee) - entry * (1 + entry_fee)) / entry
+                # gross pnl = price move only (entry slippage applied, no fees)
+                gross_pnl = (xp - entry) / entry
+                trades.append((net_pnl, regimes[entry_idx], gross_pnl))
                 pos = 0.0
                 entry = 0.0
+                entry_fee = 0.0
         if pos == 0 and i - 1 < len(signal) and signal[i - 1]:
             notional = cash * 0.2
             fill = float(b.open) * (1 + _SLIP)
-            pos = notional * (1 - _FEE) / fill
+            pos = notional * (1 - fee) / fill
             cash -= notional
             entry = fill
+            entry_fee = fee
             entry_idx = i
         equity.append(cash + pos * closes[i])
     if pos > 0:
+        fee = _pit_fee(store, venue_id, symbol, bars[-1].ts) if store is not None else _FEE_FALLBACK_BPS / 10000.0
         xp = closes[-1] * (1 - _SLIP)
-        cash += pos * xp * (1 - _FEE)
-        pnl = (xp * (1 - _FEE) - entry * (1 + _FEE)) / entry
-        trades.append((pnl, regimes[entry_idx]))
+        cash += pos * xp * (1 - fee)
+        net_pnl = (xp * (1 - fee) - entry * (1 + entry_fee)) / entry
+        gross_pnl = (xp - entry) / entry
+        trades.append((net_pnl, regimes[entry_idx], gross_pnl))
         equity.append(cash)
     return equity, trades
 
@@ -299,7 +344,7 @@ def _folds(equity: list[float], folds: int = 4) -> list[float]:
     return out
 
 
-def _buy_and_hold(market: dict[str, list[Bar]]) -> float:
+def _buy_and_hold(market: dict[str, list[Bar]], *, store: Store | None = None, venue_id: str = "binance") -> float:
     refs = [s for s in ("BTCUSDT", "ETHUSDT") if s in market] or list(market)
     rets = []
     for symbol in refs:
@@ -310,7 +355,9 @@ def _buy_and_hold(market: dict[str, list[Bar]]) -> float:
         window = bars[:split]
         first, last = float(window[0].close), float(window[-1].close)
         if first:
-            rets.append(last / first - 1.0 - 2 * _FEE)
+            entry_fee = _pit_fee(store, venue_id, symbol, window[0].ts) if store is not None else _FEE_FALLBACK_BPS / 10000.0
+            exit_fee = _pit_fee(store, venue_id, symbol, window[-1].ts) if store is not None else _FEE_FALLBACK_BPS / 10000.0
+            rets.append(last / first - 1.0 - entry_fee - exit_fee)
     return statistics.fmean(rets) if rets else 0.0
 
 
@@ -436,27 +483,32 @@ def _arm_metrics(signal_market, store, label):  # noqa: ANN001
     max_dd = 0.0
     fold_returns: list[float] = []
     h_returns: list[float] = []
-    for bars, signal in signal_market.values():
+    total_net_pnl = 0.0
+    total_gross_pnl = 0.0
+    for symbol, (bars, signal) in signal_market.items():
         if len(bars) < 80:
             continue
         split = max(40, int(len(bars) * 0.8))
-        v_eq, v_tr = _simulate(bars[:split], signal[:split], _ARM)
-        h_eq, _ = _simulate(bars[split:], signal[split:], _ARM)
+        v_eq, v_tr = _simulate(bars[:split], signal[:split], _ARM, store=store, symbol=symbol)
+        h_eq, _ = _simulate(bars[split:], signal[split:], _ARM, store=store, symbol=symbol)
         val_returns.extend(_bar_returns(v_eq))
         h_returns.extend(_bar_returns(h_eq))
         if v_eq:
             val_total.append(v_eq[-1] / 100000.0 - 1.0)
             max_dd = max(max_dd, _max_dd(v_eq))
             fold_returns.extend(_folds(v_eq))
-        for pnl, regime in v_tr:
-            regime_pnl[regime] = regime_pnl.get(regime, 0.0) + pnl
+        for net_pnl, regime, gross_pnl in v_tr:
+            regime_pnl[regime] = regime_pnl.get(regime, 0.0) + net_pnl
             trades += 1
-            wins += 1 if pnl > 0 else 0
+            wins += 1 if net_pnl > 0 else 0
+            total_net_pnl += net_pnl
+            total_gross_pnl += gross_pnl
 
     sr, skew, kurt, n = sample_moments(val_returns)
     h_sr, h_skew, h_kurt, h_n = sample_moments(h_returns)
     holdout = probabilistic_sharpe(h_sr, h_n, h_skew, h_kurt, 0.0) - 0.5
     folds_pos = sum(1 for x in fold_returns if x > 0)
+    cost_ratio = (total_net_pnl / total_gross_pnl) if total_gross_pnl != 0.0 else 0.0
     metrics = BacktestMetrics(
         oos_return=Decimal(str(round(statistics.fmean(val_total) if val_total else 0.0, 8))),
         sharpe=Decimal(str(round(sr * math.sqrt(365), 6))),
@@ -473,6 +525,7 @@ def _arm_metrics(signal_market, store, label):  # noqa: ANN001
         folds_positive_pct=Decimal(str(round(folds_pos / len(fold_returns) if fold_returns else 0.0, 6))),
         holdout_deflated_sharpe=Decimal(str(round(holdout, 6))),
         regime_returns={k: round(v, 8) for k, v in regime_pnl.items()},
+        cost_ratio=Decimal(str(round(cost_ratio, 6))),
     )
     record_trial(store, float(metrics.sharpe_per_obs), source="ablation", label=label)
     verdict = score(metrics, _gate_gates(store), trials=trial_stats(store))
@@ -493,7 +546,7 @@ def evaluate_ablation(
     alt = _arm_metrics(_build_signal(feats, _PREDICATES["alt_full"]), store, "alt_full")
     drops = {src: _arm_metrics(_build_signal(feats, _PREDICATES[src]), store, f"alt_drop_{src}") for src in ("news", "funding", "fear_greed")}
 
-    buy_hold = _buy_and_hold(market)
+    buy_hold = _buy_and_hold(market, store=store)
     # Overfit guard via CSCV over a diverse alt-arm grid (lookback × momentum threshold) — a
     # legitimate config population. Nested ablation arms are correlated and would inflate PBO.
     variant_returns: list[list[float]] = []
@@ -672,16 +725,16 @@ def _xa_features(market, class_of, alt_provider, news_provider, lookback):  # no
     return feats
 
 
-def _xa_sharpe(signal_market) -> tuple[float, float]:  # noqa: ANN001
+def _xa_sharpe(signal_market, store=None) -> tuple[float, float]:  # noqa: ANN001
     """Annualized Sharpe + validation return for a signal — the cheap diagnostic used for drop-one
     attribution. It does NOT record a trial or call the scorer (it isn't a competing hypothesis)."""
     val_returns: list[float] = []
     val_total: list[float] = []
-    for bars, signal in signal_market.values():
+    for symbol, (bars, signal) in signal_market.items():
         if len(bars) < 80:
             continue
         split = max(40, int(len(bars) * 0.8))
-        v_eq, _ = _simulate(bars[:split], signal[:split], _ARM)
+        v_eq, _ = _simulate(bars[:split], signal[:split], _ARM, store=store, symbol=symbol)
         val_returns.extend(_bar_returns(v_eq))
         if v_eq:
             val_total.append(v_eq[-1] / 100000.0 - 1.0)
@@ -689,17 +742,19 @@ def _xa_sharpe(signal_market) -> tuple[float, float]:  # noqa: ANN001
     return sr * math.sqrt(365), (statistics.fmean(val_total) if val_total else 0.0)
 
 
-def _xa_buy_and_hold(market: dict[str, list[Bar]]) -> float:
+def _xa_buy_and_hold(market: dict[str, list[Bar]], *, store: Store | None = None, venue_id: str = "binance") -> float:
     """Equal-weight buy-and-hold across the FULL cross-asset universe (not just BTC/ETH) — the honest
     multi-asset baseline arm (4)."""
     rets = []
-    for bars in market.values():
+    for symbol, bars in market.items():
         if len(bars) < 80:
             continue
         split = max(40, int(len(bars) * 0.8))
         first, last = float(bars[0].close), float(bars[split - 1].close)
         if first:
-            rets.append(last / first - 1.0 - 2 * _FEE)
+            entry_fee = _pit_fee(store, venue_id, symbol, bars[0].ts) if store is not None else _FEE_FALLBACK_BPS / 10000.0
+            exit_fee = _pit_fee(store, venue_id, symbol, bars[split - 1].ts) if store is not None else _FEE_FALLBACK_BPS / 10000.0
+            rets.append(last / first - 1.0 - entry_fee - exit_fee)
     return statistics.fmean(rets) if rets else 0.0
 
 
@@ -743,18 +798,18 @@ def evaluate_cross_asset_ablation(
     # --- per-source drop-one (diagnostic — NOT a counted trial; attribution on the arm-(3) hypothesis) ---
     drop_one_source: list[DropOne] = []
     for src in ("news", "funding", "fear_greed", "risk_on", "macro_regime"):
-        without = _xa_sharpe(_build_signal(feats, _xa_full(0.5, drop=src)))[0]
+        without = _xa_sharpe(_build_signal(feats, _xa_full(0.5, drop=src)), store)[0]
         drop_one_source.append(DropOne(src, round(without, 4), round(xasset_sharpe - without, 4)))
     drop_one_source.sort(key=lambda d: d.delta, reverse=True)
     # --- per-asset-class drop-one (diagnostic): drop a whole class from the traded universe ---
     drop_one_class: list[ClassDrop] = []
     for klass in market_by_class:
         sub = {s: bf for s, bf in feats.items() if bf[1]["_class"] != klass}
-        without = _xa_sharpe(_build_signal(sub, _xa_full(0.5)))[0] if sub else 0.0
+        without = _xa_sharpe(_build_signal(sub, _xa_full(0.5)), store)[0] if sub else 0.0
         drop_one_class.append(ClassDrop(klass, round(without, 4), round(xasset_sharpe - without, 4)))
     drop_one_class.sort(key=lambda d: d.delta, reverse=True)
 
-    buy_hold = _xa_buy_and_hold(market)
+    buy_hold = _xa_buy_and_hold(market, store=store)
     xasset_dsr = float(xasset.verdict.deflated_sharpe_prob)
     regimes_positive = sum(1 for v in xasset.metrics.regime_returns.values() if v > 0)
 

@@ -162,7 +162,7 @@ def execute_orders(
 
         route_live = bool(live_enabled and not kill_switch and intent.gate_passed and getattr(adapter, "active", False) and not regime_blocked)
         venue_label = _live_venue(adapter) if route_live else "sim"
-        fee = order_intent.notional * (venue.taker_fee_bps / Decimal("10000"))
+        fee = _pit_fee_for_order(store, venue, intent.symbol, intent.qty, intent.price)
 
         if route_live:
             order = Order(
@@ -205,6 +205,24 @@ def execute_orders(
         outcomes.append(OrderOutcome(coid, intent.symbol, accepted=True, routed_live=route_live, venue=venue_label, issues=[]))
 
     return outcomes
+
+
+def _pit_fee_for_order(store: Store, venue, symbol: str, qty: Decimal, price: Decimal) -> Decimal:
+    """Compute the taker fee for an order using the PIT fee schedule from the alt_data store.
+
+    Falls back to the static catalog taker fee when no PIT snapshot exists (offline / pre-first-ingest).
+    This is the single chokepoint that eliminates hardcoded fees in the order path.
+    """
+    from cosmu.data.altdata import read_pit_fee
+
+    now = datetime.now(tz=UTC)
+    taker_bps = read_pit_fee(store, venue.id, symbol, "venue_fees_taker", now)
+    if taker_bps is not None:
+        fee_fraction = Decimal(str(taker_bps)) / Decimal("10000")
+    else:
+        fee_fraction = venue.taker_fee_bps / Decimal("10000")
+    notional = qty * price
+    return notional * fee_fraction
 
 
 def _live_venue(adapter) -> str:
@@ -312,9 +330,16 @@ def reconcile_fills(
     portfolio: Portfolio,
     *,
     since: datetime | None = None,
+    fee_drift_alert_bps: float = 2.0,
 ) -> list[dict[str, str]]:
     """Fetch actual fills from the venue, compare with intended executions, update records, and log slippage.
-    Called out-of-band after live orders (e.g. during the master tick's mark-to-market phase)."""
+
+    Extended in P0.4: also reconciles PREDICTED fee (from the PIT snapshot used at order time) vs the REALIZED
+    fee (from the actual fill).  Drift > `fee_drift_alert_bps` is logged as a ``fee_model_drift`` event — the
+    Slack-alert seam.  This feeds realized fees into per-strategy ROI and `cost_ratio` accounting.
+
+    Called out-of-band after live orders (e.g. during the master tick's mark-to-market phase).
+    """
     if not getattr(adapter, "active", False):
         return []
     lookback = since or (datetime.now(tz=UTC) - timedelta(hours=24))
@@ -326,7 +351,7 @@ def reconcile_fills(
         if not coid:
             continue
         exec_row = store.row(
-            "SELECT id, price, qty, strategy_version_id, instrument_id, venue_id FROM executions WHERE fill_log LIKE ? LIMIT 1",
+            "SELECT id, price, qty, fee, strategy_version_id, instrument_id, venue_id FROM executions WHERE fill_log LIKE ? LIMIT 1",
             (f'%"client_order_id": "{coid}"%',),
         )
         if exec_row is None:
@@ -336,18 +361,30 @@ def reconcile_fills(
         slippage = actual_price - intended_price
         slippage_bps = (slippage / intended_price * Decimal("10000")) if intended_price else Decimal("0")
 
-        store.rows(
-            "UPDATE executions SET price = ?, fee = ? WHERE id = ?",
-            (str(actual_price), str(fill.fee), exec_row["id"]),
+        # --- fee drift reconciliation (P0.4) ---
+        predicted_fee = Decimal(str(exec_row["fee"])) if exec_row.get("fee") else Decimal("0")
+        actual_fee = fill.fee
+        # bps drift: (actual_fee - predicted_fee) / notional × 10000
+        notional = actual_price * Decimal(str(exec_row["qty"])) if exec_row.get("qty") else actual_price
+        fee_drift_bps = (
+            (actual_fee - predicted_fee) / notional * Decimal("10000")
+            if notional != Decimal("0") else Decimal("0")
         )
 
-        event_payload = {
+        store.rows(
+            "UPDATE executions SET price = ?, fee = ? WHERE id = ?",
+            (str(actual_price), str(actual_fee), exec_row["id"]),
+        )
+
+        event_payload: dict[str, str] = {
             "client_order_id": coid,
             "intended_price": str(intended_price),
             "actual_price": str(actual_price),
             "slippage": str(slippage),
             "slippage_bps": str(slippage_bps.quantize(Decimal("0.01"))),
-            "actual_fee": str(fill.fee),
+            "actual_fee": str(actual_fee),
+            "predicted_fee": str(predicted_fee),
+            "fee_drift_bps": str(fee_drift_bps.quantize(Decimal("0.01"))),
         }
         store.append_event(
             actor="master",
@@ -356,6 +393,25 @@ def reconcile_fills(
             ref_id=str(exec_row["id"]),
             payload=event_payload,
         )
+
+        # Slack-alert seam: log a dedicated event when fee model drift exceeds the threshold.
+        # The Slack webhook consumer (P1.3) reads ``fee_model_drift`` events and fires the alert.
+        if abs(float(fee_drift_bps)) > fee_drift_alert_bps:
+            store.append_event(
+                actor="master",
+                kind="fee_model_drift",
+                ref_type="execution",
+                ref_id=str(exec_row["id"]),
+                payload={
+                    "client_order_id": coid,
+                    "fee_drift_bps": str(fee_drift_bps.quantize(Decimal("0.01"))),
+                    "predicted_fee": str(predicted_fee),
+                    "actual_fee": str(actual_fee),
+                    "threshold_bps": str(fee_drift_alert_bps),
+                    "strategy_version_id": str(exec_row.get("strategy_version_id") or ""),
+                },
+            )
+
         events.append(event_payload)
 
     return events
