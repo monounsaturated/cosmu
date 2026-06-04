@@ -53,7 +53,7 @@ Every source = timestamped point-in-time feature + a **trust score** (realized c
 Keep ML **classical and explainable** (survival model + meta-labeling + regime). **No RL / deep nets yet** — they overfit financial series and are unverifiable; SOTA-for-its-own-sake is a trap. The edge is clean point-in-time data + ruthless cost accounting + FDR discipline + a few real signals. Revisit deep methods only with a proven, profitable classical baseline to beat.
 
 ## 7. Strategy-invention loop (self-reinforcing core)
-`scan-signals` / `pine-from-url` / `evolve-strategy` → **COHORT GATE (FDR)** → forward-test proof (≥30d net-positive, **advisory**) → **human launch via modal** → LIVE (5 interlocks, tiny size). Volume of candidates can't manufacture a winner — FDR is the brake. `evolve-strategy` = isolate a gate-passed signal's logic, graft onto other assets, mix survivors → new cohort → re-Gate.
+`scan-signals` / `import-pine` / `evolve-strategy` → **COHORT GATE (FDR)** → forward-test proof (≥30d net-positive, **advisory**) → **human launch via modal** → LIVE (5 interlocks, tiny size). Volume of candidates can't manufacture a winner — FDR is the brake. `evolve-strategy` = isolate a gate-passed signal's logic, graft onto other assets, mix survivors → new cohort → re-Gate.
 
 ## 8. Live + SIM together (human launches; LLM only suggests)
 SIM always runs (everything proves itself on its own $100k track). **Going live is a deliberate human action — no time gate.** Clicking a strategy → **Launch-live modal**: pick asset + venue, see **fees fetched live & shown** (per-venue, refreshed daily), set **budget (default $100, editable)** + risk settings, confirm. The **5 interlocks remain the hard safety**; the **30-day forward-test is now ADVISORY** — surfaced as an LLM/UI recommendation ("eligible / not yet proven"), the human may launch anyway. **Venue key-gating:** a venue is greyed-out / cannot arm unless its API keys are present in the engine env (Railway server-side; the UI reads a `configured: bool` flag, never the keys). Prep both crypto (Binance) and equities (IBKR) this way; each stays inert until its keys are plugged.
@@ -97,7 +97,7 @@ This table is the **source of truth for infra/cost**; an in-app **cost/infra vie
 **Wave 2 — breadth & invention**
 - W2.1 Event/news **scorer** + **source-trust scoreboard** + news/intel dashboard (plain language) — *web+engine · cloud · sonnet · worktree · PR*
 - W2.2 **`/evolve-strategy`** skill + engine hook (isolate→graft→cohort) — *engine · cloud · opus · worktree · PR*
-- W2.3 **`/pine-from-url`** skill (scrape URL→spec→inbox→Gate; Haiku scrape, Sonnet compile) — *config+engine · cloud · sonnet · worktree · PR*
+- W2.3 ~~`/pine-from-url`~~ **REMOVED** — TradingView renders Pine client-side so URL scraping doesn't work; copy-paste via `/import-pine` (+ the `pine_indicators/` indicator-port for feature mining) supersedes it.
 - W2.4 **Lab Compute Worker** (`POST /lab/experiment` + Fly.io worker) — *engine+infra · cloud · opus · worktree · PR*
 
 **Wave 3 — multi-asset & live**
