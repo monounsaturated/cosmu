@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { EquityCurve } from "@/components/charts/equity-curve";
+import { TvChart } from "@/components/charts/tv-chart";
 import { FoldBars } from "@/components/charts/fold-bars";
 import { ChartEmpty } from "@/components/charts/chart-kit";
 import { SpecView } from "@/components/strategy/spec-view";
@@ -94,7 +94,7 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
           </CardHeader>
           <CardContent>
             {simCurve.length >= 2 ? (
-              <EquityCurve points={simCurve} mode="sim" height={220} valueLabel="Realized P&L" />
+              <TvChart points={simCurve} mode="sim" height={220} valueKind="usd" />
             ) : (
               <ChartEmpty title="Not enough trades yet" hint="A sim equity curve renders once this track has at least two fills." height={220} />
             )}
