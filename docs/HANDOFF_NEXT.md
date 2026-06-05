@@ -92,9 +92,39 @@ building in the wrong place — skip it.**
 > not duplicated, no fabricated numbers.
 
 ## 5. THE EDGE WORK (after re-aim — the real mission)
-- **E-1 (highest EV) — Numerai path** · opus · `feat/numerai-signals` — turn the PIT signal pipeline into a
-  Numerai Signals + Crypto submission (no capital, no execution). Map features → per-ticker signal, schedule
-  submission, track diagnostics. Monetizes sub-cost signal we already find. Read VISION.md:309. Prove the pipe small.
+
+**E-1 (highest EV) — Numerai Crypto OUTPUT (ADDITIVE — do NOT touch the trading machine, gate, or money path)** · opus · `feat/numerai-output`
+> Bolt a NEW, optional submission module onto the EXISTING signal pipeline — a pure output. The COSMU
+> machine/gate/autonomy are unchanged; this only READS the signals it already computes and submits them.
+>
+> BUILD `cosmu/numerai/submit.py` (new module) using the **`numerapi`** library (add to apps/engine
+> pyproject — buy-over-build, do NOT hand-roll the API client):
+> 1. **Settings-gated/optional** (mirror the LunarCrush pattern): read `NUMERAI_PUBLIC_ID`,
+>    `NUMERAI_SECRET_KEY`, `NUMERAI_MODEL_ID`, `NUMERAI_SUBMIT_ENABLED` from settings.py; **no-op if unset**.
+>    Add them to settings.py + .env.example (they're already in .env.local, commented).
+> 2. **Flow (Numerai Crypto = tournament 12):** authenticate → download the live universe (numerapi) →
+>    for each universe symbol produce a `signal` in **[0,1]** from COSMU's existing PIT signal (grep the
+>    research/feature pipeline for the per-asset composite / the social-leadlag + momentum + funding rank);
+>    **rank/normalize to [0,1].** ⚠️ **Universe gap:** Numerai needs **≥100 (ideally 200–300) symbols**;
+>    COSMU covers ~30. For symbols we have a real view on → our ranked signal; for the rest → **0.5
+>    (neutral, honest "no view")** so the submission is valid. (Expand real coverage later.) Save a parquet
+>    with `symbol`,`signal` columns; submit **UNSTAKED** via numerapi `upload_predictions(model_id,
+>    tournament=12)`. No staking code (staking is manual/on-chain; wait for the July-2026 USDC option).
+> 3. **PIT/honesty:** the signal MUST be point-in-time (no look-ahead) — reuse the existing PIT machinery,
+>    never recompute with future data. No fabricated values; 0.5 = explicit no-view.
+> 4. **Schedule:** a DAILY submission (Numerai Crypto rounds are daily) — add a Railway cron OR a Modal
+>    scheduled function, gated by `NUMERAI_SUBMIT_ENABLED` (default OFF). Separate from the trading tick.
+> 5. **Surface:** a Settings/Keys row (configured: yes/no) + a small "Numerai" panel showing last submission
+>    + Numerai's reported diagnostics (corr/score) when available — honest empty when unset/offline.
+> 6. **Tests:** mock numerapi (NO network) — assert submission is parquet with symbol+signal, all in [0,1],
+>    ≥100 unique symbols, neutral-fill for uncovered, no-op when keys unset.
+> Self-merge if clean. CAUTION in the PR body: this is an OUTPUT that monetizes signal; it does NOT change
+> what the machine trades or how the gate decides.
+>
+> HUMAN after merge: get keys at numer.ai → Account → Custom API Keys; create a Numerai Crypto model; set
+> the 4 env vars + `NUMERAI_SUBMIT_ENABLED=1`. Run UNSTAKED for weeks (free, zero risk), watch diagnostics;
+> only stake NMR (small, or USDC after July 2026) once it consistently scores.
+
 - **E-2 — prediction markets** · opus · backfill Polymarket → wire CLOB → LLM-synth probability on resolving events.
 - **E-3 — cross-sectional market-neutral perp gate** · opus · the one untested crypto lever; if FAIL, close crypto-directional.
 
@@ -120,7 +150,20 @@ building in the wrong place — skip it.**
 - One branch = disjoint files; agents self-merge clean PRs; you stay out of the loop.
 
 ## 8. DISPATCH ORDER (lean)
+0. **(optional, anytime) CLEANUP agent** — branch graveyard (see §9). Local clutter only; doesn't block anything.
 1. **RA-1** (hygiene re-apply — cost-safety) → merge → **flip the Railway cron** = machine self-runs.
 2. **RA-2 + DS-1 + C-1** in parallel (disjoint: web / tooling / costs) → self-merge.
-3. **RA-3** after RA-2. Then **E-1 (Numerai)** — the highest-EV move.
-> Stale PRs #106/#108/#111 stay open only as `gh pr diff` reference for the re-applies; close after.
+3. **RA-3** after RA-2. Then **E-1 (Numerai Crypto OUTPUT)** — the highest-EV move (additive; vision intact).
+> #106/#108/#111 are CLOSED (superseded by the #109 refactor); their diffs stay viewable via `gh pr diff <n>`
+> for the RA re-applies. 0 open PRs as of this handoff (main @ 35d0f3a+).
+
+## 9. CLEANUP AGENT (branch graveyard — optional, the user asked)
+```
+Cloud or local agent, repo /Users/device/cosmu. READ-ONLY audit then SAFE delete. For every local branch
+except `main` and the current worktree's branch: classify SAFE (work is on origin/main — an ancestor, OR
+every changed file is byte-identical to main, OR it's the head of a MERGED PR via `gh pr list --state
+merged`) vs KEEP (genuinely unmerged unique content). Delete ONLY SAFE ones (`git worktree remove` then
+`git branch -D`); never --force a dirty worktree; never delete unique work. `git worktree prune`. Report
+counts + the KEEP list with why. Goal: lean branch list, zero code lost. (~51 branches today; most are
+squash-merged → SAFE.)
+```
