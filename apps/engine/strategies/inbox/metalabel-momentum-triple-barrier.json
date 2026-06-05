@@ -1,0 +1,47 @@
+{
+  "name": "Triple-barrier meta-labeled momentum (spot)",
+  "rationale": "Meta-labeling (Lopez de Prado): keep the PRIMARY signal deliberately permissive — bare time-series momentum (ret over a fitted lookback above a low floor) decides only the SIDE (long spot) — and hand the act/skip decision to a SECONDARY regularized-logistic classifier. The secondary is trained, expanding-window and point-in-time, on which of the three barriers (stop-loss / take-profit / time) each past momentum entry hit first, netted of cost (win=1 else 0), reading momentum strength, RSI, realized vol and perp funding at entry. It only SIZES/SKIPS, never flips direction. HONEST PRIOR: meta-labeling can only amplify an edge the primary already has; spot momentum after ~20bps round-trip has shown none in prior gates, so the expected outcome is a powered FAIL that closes the spot-only book — this spec exists to run that test cleanly, not because a pass is expected.",
+  "catalyst": "secondary model green-lights a momentum entry in a regime where the signal has historically paid",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 7
+  },
+  "entry": [
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lookback" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" }
+  },
+  "meta_label": {
+    "features": [
+      { "name": "ret_Nd" },
+      { "name": "rsi", "lookback": 14 },
+      { "name": "vol_realized", "lookback": 14 },
+      { "name": "funding_rate" }
+    ],
+    "prob_threshold": { "param": "meta_thr" },
+    "sizing": "skip"
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lookback": { "kind": "int",   "lo": 10,   "hi": 30,  "step": 1 },
+    "mom_floor":    { "kind": "float", "lo": 0.0,  "hi": 0.05 },
+    "stop":         { "kind": "float", "lo": 0.05, "hi": 0.15 },
+    "tp":           { "kind": "float", "lo": 0.08, "hi": 0.30 },
+    "time_stop":    { "kind": "int",   "lo": 3,    "hi": 7,   "step": 1 },
+    "meta_thr":     { "kind": "float", "lo": 0.45, "hi": 0.65 }
+  }
+}

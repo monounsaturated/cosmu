@@ -19,9 +19,10 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal
 
 from cosmu.config.settings import Settings
+from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
 from cosmu.data.backtest import run_strategy_backtest_detailed
-from cosmu.data.universe import CORE_PERP_UNIVERSE
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, MarketDataProvider
+from cosmu.data.universe import CORE_PERP_UNIVERSE
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.experiments import KIND_FINDER, ExperimentRecord, data_version, log_experiments
@@ -262,6 +263,10 @@ class StrategyFinder:
         market = self._market(spec)
         grid = build_grid(spec, max_variants=max_variants)
         venue = default_catalog().venue_for(spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
+        # Point-in-time alt-data join (funding_rate, fear_greed, …), built ONCE per spec since it depends only on
+        # the spec's features + the market, not the swept params. Without this the sweep would screen every
+        # funding/meta-label spec price-only (funding reads None) — the same join the cohort screen uses.
+        alt = build_alt_by_symbol(resolve_alt_store(self.settings, self.store), spec, market)
 
         results: list[VariantResult] = []
         cohort: list[CohortCandidate] = []
@@ -269,7 +274,7 @@ class StrategyFinder:
         trades_by_tag: dict[str, int] = {}
 
         def _screen_into(variant: Variant, source: str, label: str) -> None:
-            screened = self._screen(spec, variant, market, venue, source=source, label=label)
+            screened = self._screen(spec, variant, market, venue, alt, source=source, label=label)
             if screened is None:
                 return  # an invalid grid point (e.g. degenerate range) is skipped, never persisted
             r, cand, val_returns, min_symbol_trades = screened
@@ -371,18 +376,22 @@ class StrategyFinder:
         variant: Variant,
         market: dict[str, list[Bar]],
         venue,  # noqa: ANN001 — venue catalog row
+        alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None,
         *,
         source: str,
         label: str,
     ) -> tuple[VariantResult, CohortCandidate, list[float], int] | None:
-        """Compile + backtest one variant on REAL bars. Returns (result, cohort-candidate, validation return
-        stream, min per-symbol trade count) — or None for an invalid grid point. Gate flags are filled later by
-        `_rescore`, once the run-wide honest trial context is known."""
+        """Compile + backtest one variant on REAL bars (with the point-in-time alt-data join so funding/meta-label
+        specs are evaluated honestly). Returns (result, cohort-candidate, validation return stream, min per-symbol
+        trade count) — or None for an invalid grid point. Gate flags are filled later by `_rescore`, once the
+        run-wide honest trial context is known."""
         try:
             compiled = compile_spec(spec, variant.params)
         except ValueError:
             return None
-        detailed = run_strategy_backtest_detailed(spec, variant.params, market, fee_bps=venue.taker_fee_bps)
+        detailed = run_strategy_backtest_detailed(
+            spec, variant.params, market, fee_bps=venue.taker_fee_bps, alt_by_symbol=alt_by_symbol
+        )
         metrics = detailed.metrics
         net_profit = float(metrics.oos_return) - _round_trip_cost(metrics, venue)
         result = VariantResult(

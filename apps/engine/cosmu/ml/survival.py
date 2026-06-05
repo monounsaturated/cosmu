@@ -18,6 +18,13 @@ from dataclasses import dataclass
 from cosmu.knowledge.store import Store
 from cosmu.master.scorer import BacktestMetrics
 
+# The standardize / apply / train_logistic primitives are shared with the triple-barrier meta-label gate (one
+# implementation in cosmu.ml.logistic, two callers). Aliased to the prior private names so the rest of this
+# module is unchanged and behaviour is byte-identical (the shared trainer defaults to the same l2=1e-3 ridge).
+from cosmu.ml.logistic import apply_standardization as _apply
+from cosmu.ml.logistic import standardize as _standardize
+from cosmu.ml.logistic import train_logistic as _train_logistic
+
 # How many labeled outcomes must exist before the model trains + takes over ordering. Below this we order by a
 # cheap deterministic heuristic so a thin/biased early model never gets to prioritize compute.
 MIN_TRAIN_LABELS = 30
@@ -101,47 +108,7 @@ def _heuristic_score(f: SurvivalFeatures) -> float:
     return 1.0 / (1.0 + math.exp(-z))
 
 
-# --------------------------------------------------------------------------- standardization + logistic
-
-
-def _standardize(rows: list[list[float]]) -> tuple[list[float], list[float]]:
-    """Per-feature mean and (non-zero) std so the pure-Python logistic trains stably. Deterministic."""
-    n = len(rows)
-    dim = len(rows[0])
-    means = [sum(r[j] for r in rows) / n for j in range(dim)]
-    stds: list[float] = []
-    for j in range(dim):
-        var = sum((r[j] - means[j]) ** 2 for r in rows) / n
-        stds.append(math.sqrt(var) or 1.0)
-    return means, stds
-
-
-def _apply(vec: list[float], means: list[float], stds: list[float]) -> list[float]:
-    return [(vec[j] - means[j]) / stds[j] for j in range(len(vec))]
-
-
-def _train_logistic(rows: list[list[float]], labels: list[int], *, epochs: int = 400, lr: float = 0.1):
-    """Pure-Python deterministic logistic regression (batch gradient descent, L2). Returns (weights, bias).
-    Deterministic: fixed init (zeros), fixed iteration order, no randomness — same inputs => same model."""
-    dim = len(rows[0])
-    w = [0.0] * dim
-    b = 0.0
-    n = len(rows)
-    lam = 1e-3
-    for _ in range(epochs):
-        gw = [0.0] * dim
-        gb = 0.0
-        for x, y in zip(rows, labels, strict=True):
-            z = b + sum(w[j] * x[j] for j in range(dim))
-            p = 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, z))))
-            err = p - y
-            for j in range(dim):
-                gw[j] += err * x[j]
-            gb += err
-        for j in range(dim):
-            w[j] -= lr * (gw[j] / n + lam * w[j])
-        b -= lr * (gb / n)
-    return w, b
+# --------------------------------------------------------------------------- AUROC
 
 
 def _auroc(scores: list[float], labels: list[int]) -> float:
