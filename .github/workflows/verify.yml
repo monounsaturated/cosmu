@@ -16,9 +16,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Cheap change-detection job (~5 s). All heavy jobs depend on its outputs.
+  # Docs-only / .md-only / .claude/**-only pushes skip all three heavy jobs.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      engine: ${{ steps.filter.outputs.engine }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            engine:
+              - 'apps/engine/**'
+              - 'pyproject.toml'
+              - '**/pyproject.toml'
+              - 'poetry.lock'
+              - 'requirements*.txt'
+              - 'scripts/check_naming.py'
+            web:
+              - 'apps/web/**'
+              - 'packages/**'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - '**/package.json'
+              - 'scripts/generate_contracts.py'
+
   engine_test:
     name: engine_test
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.engine == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,6 +82,8 @@ jobs:
   typecheck:
     name: typecheck
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,6 +112,8 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
