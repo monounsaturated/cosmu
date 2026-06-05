@@ -6,8 +6,8 @@
 // Source scoreboard + news/intel panel are shown on this page. Trust = freshness × gate contribution.
 // Honest: a source with no data shows "no data" — never fabricated.
 
-import { BookOpen, Brain, Database, GraduationCap, Newspaper, ShieldCheck, Star } from "lucide-react";
-import { getMind, getSkills, getSourceTrust, getNewsIntel, engineConfigured } from "../data";
+import { BookOpen, Brain, Database, Gauge, GraduationCap, ShieldCheck, Star } from "lucide-react";
+import { getMind, getScores, getSkills, getSourceTrust, getNewsIntel, engineConfigured } from "../data";
 import { SectionHeader } from "@/components/ui/section";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,12 +17,14 @@ import { MindKnows } from "@/components/mind/mind-knows";
 import { MindLearnings } from "@/components/mind/mind-learnings";
 import { MemoryInsights } from "@/components/learning/memory-insights";
 import { SkillsGrid } from "@/components/learning/skills-grid";
+import { ScoresCockpit } from "@/components/scores/scores-cockpit";
 import { SourceTrustScoreboard } from "@/components/mind/source-trust-scoreboard";
 import { NewsIntelPanel } from "@/components/mind/news-intel-panel";
 
 export default async function MindPage() {
-  const [{ mind, connected }, { skills }, { trust }, { intel }] = await Promise.all([
+  const [{ mind, connected }, { scores }, { skills }, { trust }, { intel }] = await Promise.all([
     getMind(),
+    getScores(),
     getSkills(),
     getSourceTrust(),
     getNewsIntel("BTCUSDT", 20),
@@ -56,6 +58,18 @@ export default async function MindPage() {
           <Database className="size-4 text-iris-soft" /> What it knows
         </h3>
         <MindKnows knows={mind.knows} />
+      </section>
+
+      {/* SCORES — first-class index scores + per-source "what this means" reviews, by category. */}
+      <section className="space-y-3">
+        <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
+          <Gauge className="size-4 text-iris-soft" /> Scores
+        </h3>
+        <p className="text-[11.5px] text-muted">
+          Composite + per-category INDEX scores (e.g. regulatory risk, risk-on/off), each with a plain-language review and
+          freshness. A key-gated source with no key is greyed — never fabricated.
+        </p>
+        <ScoresCockpit scores={scores} />
       </section>
 
       {/* SOURCE SCOREBOARD + NEWS/INTEL — freshness × gate contribution per source; recent news events */}
