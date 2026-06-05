@@ -351,6 +351,63 @@
         "title": "AutonomyStatusResponse",
         "type": "object"
       },
+      "AutonomyTickAcceptedResponse": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "AutonomyTickAcceptedResponse",
+        "type": "object"
+      },
+      "AutonomyTickJobResponse": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutonomyTickResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "AutonomyTickJobResponse",
+        "type": "object"
+      },
       "AutonomyTickResponse": {
         "properties": {
           "authored": {
@@ -934,6 +991,13 @@
           "total_usd": {
             "title": "Total Usd",
             "type": "number"
+          },
+          "vendor_actuals": {
+            "items": {
+              "$ref": "#/components/schemas/VendorActual"
+            },
+            "title": "Vendor Actuals",
+            "type": "array"
           }
         },
         "required": [
@@ -942,7 +1006,8 @@
           "opex_vs_alpha",
           "per_strategy",
           "infra_lines",
-          "llm_calls"
+          "llm_calls",
+          "vendor_actuals"
         ],
         "title": "CostsResponse",
         "type": "object"
@@ -4277,13 +4342,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -4313,6 +4371,40 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VendorActual": {
+        "description": "Live-fetched vendor spend for the current month vs its configured monthly budget cap.\namount=0 for free/constant vendors; budget=0 means uncapped (no alert threshold set).",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "budget": {
+            "title": "Budget",
+            "type": "number"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vendor",
+          "category",
+          "amount",
+          "budget",
+          "period"
+        ],
+        "title": "VendorActual",
         "type": "object"
       },
       "VenueCatalogResponse": {
@@ -4591,14 +4683,14 @@
     },
     "/autonomy/tick": {
       "post": {
-        "description": "Run ONE bounded, idempotent, audited autonomous cycle: ingest \u2192 author (LLM proposes if a key is set, else\ndeterministic) \u2192 DETERMINISTIC gate + flywheel \u2192 open standalone forward-test tracks from survivors \u2192 emit recommendations.\nLIVE STAYS OFF \u2014 sim fills only; the tick never arms live. Cron-able (one tick per call, not a daemon).",
+        "description": "Enqueue ONE bounded, idempotent, audited autonomous cycle and return 202 immediately.\nThe cycle (ingest \u2192 author \u2192 DETERMINISTIC gate + flywheel \u2192 fund \u2192 recommend) runs in the\nbackground so Railway's gateway never times out.  Poll GET /autonomy/tick/{job_id} for the result.\nLIVE STAYS OFF \u2014 sim fills only; the tick never arms live.",
         "operationId": "autonomy_tick_autonomy_tick_post",
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AutonomyTickResponse"
+                  "$ref": "#/components/schemas/AutonomyTickAcceptedResponse"
                 }
               }
             },
@@ -4606,6 +4698,46 @@
           }
         },
         "summary": "Autonomy Tick"
+      }
+    },
+    "/autonomy/tick/{job_id}": {
+      "get": {
+        "description": "Poll the result of an async tick dispatch.  Returns status: running | done | error.",
+        "operationId": "autonomy_tick_job_autonomy_tick__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyTickJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Autonomy Tick Job"
       }
     },
     "/console/command": {
