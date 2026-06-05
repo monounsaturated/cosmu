@@ -6,11 +6,22 @@ import math
 import statistics
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # Type-only: the runtime import is deferred inside `_build_meta_gate` to break the cosmu.ml ↔ backtest cycle
+    # (see the note on the deferred import below). These names are used solely in annotations (strings under
+    # `from __future__ import annotations`), so importing them here costs nothing at runtime.
+    from cosmu.ml.metalabel import MetaEvent, MetaGate
 
 from cosmu.data.altdata import AltDataPoint
 from cosmu.data.market import Bar
 from cosmu.master.scorer import BacktestMetrics, probabilistic_sharpe, sample_moments
-from cosmu.strategy.spec import Condition, ParamRef, StrategySpec
+from cosmu.strategy.spec import Condition, FeatureRef, MetaLabel, ParamRef, StrategySpec
+
+# cosmu.ml.metalabel (MetaGate / MetaEvent / triple_barrier_outcome) is imported LAZILY inside `_build_meta_gate`:
+# cosmu.ml.__init__ eagerly pulls cosmu.ml.regime, which imports `_regime_labels` from THIS module, so a top-level
+# import would be circular. By gate-build time `backtest` is fully initialized, so the deferred import is safe.
 
 _REGIMES = ("bull", "bear", "chop")
 
@@ -306,6 +317,17 @@ def _run_symbol(
         funding_accrued += flow
 
     start = max(_warmup_bars(spec, params), 2)
+    # Triple-barrier meta-label gate. None (no meta_label) => meta_gate is None and every line below collapses to
+    # the prior primary-book behaviour (take=True, multiplier=1.0), so a spot/long spec is byte-identical.
+    meta = getattr(spec, "meta_label", None)
+    meta_refs = _meta_feature_refs(spec)
+    meta_gate = _build_meta_gate(
+        meta, meta_refs, spec, params, features, setup_ok, highs, lows, closes,
+        d=d, start=start, stop_pct=stop_pct, take_pct=take_pct, max_hold_bars=max_hold_bars,
+        roundtrip_cost=2.0 * fee + 2.0 * base_slip,
+    )
+    meta_threshold = max(0.0, min(1.0, float(params[meta.prob_threshold.param]))) if meta is not None else 0.0
+    meta_proportional = bool(meta is not None and meta.sizing == "proportional")
     for idx in range(start, len(bars)):
         bar = bars[idx]
         slip = _slippage(base_slip, impact, _entry_notional(cash, spec, size_multiplier), bar)
@@ -357,8 +379,15 @@ def _run_symbol(
                 funding_accrued = 0.0
 
         if position == 0 and setup_ok[idx - 1] and _entry_signal(spec, params, features, idx - 1):
-            notional = _entry_notional(cash, spec, size_multiplier)
-            if notional > 0:
+            # Secondary meta-label gate: SIZE/SKIP only (direction is untouched). meta_gate is None for the
+            # primary book, so take stays True and the multiplier stays 1.0 — the notional is unchanged.
+            take, meta_mult = True, 1.0
+            if meta_gate is not None:
+                take, meta_mult = meta_gate.decide(
+                    idx, _meta_featvec(meta_refs, features, idx - 1), meta_threshold, meta_proportional
+                )
+            notional = _entry_notional(cash, spec, size_multiplier) * meta_mult if take else 0.0
+            if take and notional > 0:
                 # Entry crosses the spread the adverse way: long buys up (1+slip), short sells down (1-slip).
                 fill = float(bar.open) * (1 + d * slip)
                 # Open the leg. For a long this is the EXACT original: qty = notional*(1-fee)/fill and
@@ -403,6 +432,75 @@ def _funding_series(
         return None
     series = (alt or {}).get(name, {})
     return [series.get(bar.ts.isoformat()) for bar in bars]
+
+
+def _meta_feature_refs(spec: StrategySpec) -> list[FeatureRef]:
+    """The secondary meta-label model's feature refs (empty when the spec has no meta_label)."""
+    meta = getattr(spec, "meta_label", None)
+    return list(meta.features) if meta is not None else []
+
+
+def _meta_featvec(
+    refs: list[FeatureRef], features: dict[str, list[float | None]], idx: int
+) -> list[float] | None:
+    """The secondary model's point-in-time feature vector at bar `idx`, in the meta_label feature order. Returns
+    None if ANY feature is unavailable at that bar (the gate then stays out of the way — it cannot honestly score
+    a partial row, and a None never silently becomes a 0)."""
+    vec: list[float] = []
+    for ref in refs:
+        series = features.get(ref.name, [])
+        if idx < 0 or idx >= len(series):
+            return None
+        value = series[idx]
+        if value is None:
+            return None
+        vec.append(float(value))
+    return vec
+
+
+def _build_meta_gate(
+    meta: MetaLabel | None,
+    meta_refs: list[FeatureRef],
+    spec: StrategySpec,
+    params: dict[str, float],
+    features: dict[str, list[float | None]],
+    setup_ok: list[bool],
+    highs: list[float],
+    lows: list[float],
+    closes: list[float],
+    *,
+    d: int,
+    start: int,
+    stop_pct: float,
+    take_pct: float,
+    max_hold_bars: int,
+    roundtrip_cost: float,
+) -> MetaGate | None:
+    """Pre-scan this symbol's primary-signal events and label each by its triple-barrier outcome, returning the
+    MetaGate the entry loop consults. None when the spec has no meta_label (no gate at all).
+
+    Events are collected on EVERY bar the primary signal fires (independent of position) so the secondary model
+    learns the signal's true hit-rate, not just the subset that happened to be flat. The event's feature row is
+    read at the signal bar (j-1) — the SAME point the live decision reads — and a bar whose row is incomplete is
+    skipped (it cannot be labeled honestly). The barrier is the spec's own stop/take/time, so the meta-label
+    measures exactly the trade the primary book would have taken."""
+    if meta is None:
+        return None
+    from cosmu.ml.metalabel import MetaEvent, MetaGate, triple_barrier_outcome
+
+    events: list[MetaEvent] = []
+    for j in range(start, len(closes)):
+        if not (setup_ok[j - 1] and _entry_signal(spec, params, features, j - 1)):
+            continue
+        featvec = _meta_featvec(meta_refs, features, j - 1)
+        if featvec is None:
+            continue
+        label, resolve_idx = triple_barrier_outcome(
+            j, highs, lows, closes,
+            stop_pct=stop_pct, take_pct=take_pct, max_hold_bars=max_hold_bars, d=d, roundtrip_cost=roundtrip_cost,
+        )
+        events.append(MetaEvent(signal_idx=j, resolve_idx=resolve_idx, features=featvec, label=label))
+    return MetaGate(events=events)
 
 
 def _resolved_tp_legs(spec: StrategySpec, params: dict[str, float]) -> list[tuple[float, float]]:
@@ -548,7 +646,10 @@ def _feature_matrix(
     bars: list[Bar],
     alt: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, list[float | None]]:
+    # Compute/join every feature the entry, signal-exits AND the secondary meta-label model read. The meta
+    # features (e.g. funding_rate, rsi, vol) must be materialized too so the gate can score on them point-in-time.
     wanted = {condition.feature.name for condition in [*spec.entry, *spec.exit.signal_exits]}
+    wanted |= {ref.name for ref in _meta_feature_refs(spec)}
     closes = [float(bar.close) for bar in bars]
     highs = [float(bar.high) for bar in bars]
     lows = [float(bar.low) for bar in bars]
@@ -614,10 +715,13 @@ def _param_value(ref: ParamRef, params: dict[str, float]) -> float:
 
 
 def _lookback_for(name: str, spec: StrategySpec, params: dict[str, float]) -> int:
-    for condition in [*spec.entry, *spec.exit.signal_exits]:
-        if condition.feature.name != name:
+    # Entry/exit condition refs first, then the secondary meta-label refs, so a meta feature carries its OWN
+    # fitted lookback (a meta-only feature like rsi/vol resolves its window, not the bare 14 default).
+    refs = [condition.feature for condition in [*spec.entry, *spec.exit.signal_exits]] + _meta_feature_refs(spec)
+    for ref in refs:
+        if ref.name != name:
             continue
-        lookback = condition.feature.lookback
+        lookback = ref.lookback
         if isinstance(lookback, ParamRef):
             return max(2, int(round(params[lookback.param])))
         if isinstance(lookback, int):
@@ -626,7 +730,8 @@ def _lookback_for(name: str, spec: StrategySpec, params: dict[str, float]) -> in
 
 
 def _warmup_bars(spec: StrategySpec, params: dict[str, float]) -> int:
-    lookbacks = [_lookback_for(condition.feature.name, spec, params) for condition in [*spec.entry, *spec.exit.signal_exits]]
+    feature_refs = [condition.feature for condition in [*spec.entry, *spec.exit.signal_exits]] + _meta_feature_refs(spec)
+    lookbacks = [_lookback_for(ref.name, spec, params) for ref in feature_refs]
     setup = spec.setup
     if setup is not None:
         if setup.ma_trend_filter is not None:
@@ -804,14 +909,21 @@ def _realized_vol(values: list[float], lookback: int) -> list[float | None]:
 
 
 def _rsi(values: list[float], lookback: int) -> list[float | None]:
+    """Wilder's RSI: seed the average gain/loss with the mean of the first `lookback` deltas, then smooth each
+    with a 1/lookback running average (the SMMA/RMA recursion that ta.rsi and every charting package use). The
+    prior flat window mean over-reacted at the extremes and matched no imported signal (Pine, TradingView)."""
     out: list[float | None] = [None] * len(values)
-    for idx in range(lookback, len(values)):
-        diffs = [values[j] - values[j - 1] for j in range(idx - lookback + 1, idx + 1)]
-        gains = [max(diff, 0.0) for diff in diffs]
-        losses = [abs(min(diff, 0.0)) for diff in diffs]
-        avg_gain = statistics.fmean(gains)
-        avg_loss = statistics.fmean(losses)
-        out[idx] = 100.0 if avg_loss == 0 else 100.0 - (100.0 / (1.0 + avg_gain / avg_loss))
+    if len(values) <= lookback:
+        return out
+    gains = [max(values[i] - values[i - 1], 0.0) for i in range(1, len(values))]
+    losses = [max(values[i - 1] - values[i], 0.0) for i in range(1, len(values))]
+    avg_gain = statistics.fmean(gains[:lookback])
+    avg_loss = statistics.fmean(losses[:lookback])
+    out[lookback] = 100.0 if avg_loss == 0 else 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
+    for idx in range(lookback + 1, len(values)):
+        avg_gain = (avg_gain * (lookback - 1) + gains[idx - 1]) / lookback
+        avg_loss = (avg_loss * (lookback - 1) + losses[idx - 1]) / lookback
+        out[idx] = 100.0 if avg_loss == 0 else 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
     return out
 
 
@@ -836,26 +948,51 @@ def _atr(highs: list[float], lows: list[float], closes: list[float], lookback: i
 
 
 def _adx(highs: list[float], lows: list[float], closes: list[float], lookback: int) -> list[float | None]:
-    out: list[float | None] = [None] * len(closes)
-    plus_dm = [0.0]
-    minus_dm = [0.0]
-    tr = [0.0]
-    for idx in range(1, len(closes)):
+    """Wilder's ADX: +DM/-DM/TR are smoothed with a 1/lookback running average, the directional indices build
+    DX, and ADX is the running average of DX (the textbook / ta.adx construction). The prior flat rolling-sum
+    ran hot in trends and matched no standard ADX, so imported trend filters mis-fired on it."""
+    n = len(closes)
+    out: list[float | None] = [None] * n
+    if n <= lookback * 2:
+        return out
+    plus_dm = [0.0] * n
+    minus_dm = [0.0] * n
+    tr = [0.0] * n
+    for idx in range(1, n):
         up = highs[idx] - highs[idx - 1]
         down = lows[idx - 1] - lows[idx]
-        plus_dm.append(up if up > down and up > 0 else 0.0)
-        minus_dm.append(down if down > up and down > 0 else 0.0)
-        tr.append(max(highs[idx] - lows[idx], abs(highs[idx] - closes[idx - 1]), abs(lows[idx] - closes[idx - 1])))
-    dx: list[float | None] = [None] * len(closes)
-    for idx in range(lookback, len(closes)):
-        tr_sum = sum(tr[idx - lookback + 1 : idx + 1])
-        if tr_sum == 0:
+        plus_dm[idx] = up if up > down and up > 0 else 0.0
+        minus_dm[idx] = down if down > up and down > 0 else 0.0
+        tr[idx] = max(
+            highs[idx] - lows[idx], abs(highs[idx] - closes[idx - 1]), abs(lows[idx] - closes[idx - 1])
+        )
+    # Wilder-smoothed running sums seeded on the first `lookback` bars (indices 1..lookback), then RMA-updated.
+    atr = sum(tr[1 : lookback + 1])
+    sum_plus = sum(plus_dm[1 : lookback + 1])
+    sum_minus = sum(minus_dm[1 : lookback + 1])
+    dx: list[float | None] = [None] * n
+    for idx in range(lookback, n):
+        if idx > lookback:
+            atr = atr - atr / lookback + tr[idx]
+            sum_plus = sum_plus - sum_plus / lookback + plus_dm[idx]
+            sum_minus = sum_minus - sum_minus / lookback + minus_dm[idx]
+        if atr <= 0:
             continue
-        plus_di = 100 * sum(plus_dm[idx - lookback + 1 : idx + 1]) / tr_sum
-        minus_di = 100 * sum(minus_dm[idx - lookback + 1 : idx + 1]) / tr_sum
+        plus_di = 100.0 * sum_plus / atr
+        minus_di = 100.0 * sum_minus / atr
         denom = plus_di + minus_di
-        dx[idx] = 0.0 if denom == 0 else 100 * abs(plus_di - minus_di) / denom
-    for idx in range(lookback * 2, len(closes)):
-        window = [value for value in dx[idx - lookback + 1 : idx + 1] if value is not None]
-        out[idx] = statistics.fmean(window) if window else None
+        dx[idx] = 0.0 if denom == 0 else 100.0 * abs(plus_di - minus_di) / denom
+    # ADX seeds on the mean of the first `lookback` DX values, then smooths with the same 1/lookback RMA.
+    seed = [dx[i] for i in range(lookback, lookback * 2) if dx[i] is not None]
+    if not seed:
+        return out
+    adx = statistics.fmean(seed)
+    out[lookback * 2 - 1] = adx
+    for idx in range(lookback * 2, n):
+        value = dx[idx]
+        if value is None:
+            out[idx] = adx
+            continue
+        adx = (adx * (lookback - 1) + value) / lookback
+        out[idx] = adx
     return out

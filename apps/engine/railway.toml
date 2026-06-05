@@ -21,8 +21,10 @@ restartPolicyMaxRetries = 3
 schedule = "0 */6 * * *"
 command = "python3 -m cosmu.research.loop --ingest"
 
-# Full autonomous cycle on REAL Binance data: ingest -> author -> gate/screen -> fund paper survivors ->
+# Full autonomous cycle on REAL Binance data: ingest -> author -> gate/screen -> fund SIM survivors ->
 # recommendations. Writes to the production DB (no --offline) and never runs the synthetic fixture.
+# TOGGLE: set AUTONOMY_CRON_ENABLED=1 on the Railway service to enable; any other value (or absent) = skip.
+# Default OFF — flip the var instantly without a redeploy. LIVE STAYS OFF regardless (sim fills only).
 [[cron]]
 schedule = "0 */4 * * *"
 command = "python3 -m cosmu.master.scheduler"

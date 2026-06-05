@@ -43,6 +43,17 @@ class LeaderboardRow(BaseModel):
     # modal at their discretion; the 5 interlocks remain the only hard gate. Never consulted by the gate/money path.
     forward_age_days: float
     live_ready: bool
+    # Faceted taxonomy (cosmu/strategy/taxonomy.py), all DERIVED from the spec — never hand-tagged. The
+    # Strategies surface filters on these real fields. `signal_family` is the primary filter (from the
+    # named features the spec references); the rest are orthogonal facets.
+    signal_family: str
+    signal_family_label: str
+    features: list[str]
+    asset_class: str
+    venue: str
+    timeframe: str
+    origin: str
+    edge_type: str
 
 
 class LeaderboardResponse(BaseModel):
@@ -719,6 +730,18 @@ class AutonomyTickResponse(BaseModel):
     recommendations: int
 
 
+class AutonomyTickAcceptedResponse(BaseModel):
+    job_id: str
+    status: str  # always "running" on 202
+
+
+class AutonomyTickJobResponse(BaseModel):
+    job_id: str
+    status: str  # "running" | "done" | "error"
+    result: AutonomyTickResponse | None = None
+    error: str | None = None
+
+
 class RecommendationActionResponse(BaseModel):
     ok: bool
     applied: bool = False
@@ -759,6 +782,16 @@ class LlmCallSummary(BaseModel):
     by_task: dict[str, int]  # task -> call count
 
 
+class VendorActual(BaseModel):
+    """Live-fetched vendor spend for the current month vs its configured monthly budget cap.
+    amount=0 for free/constant vendors; budget=0 means uncapped (no alert threshold set)."""
+    vendor: str
+    category: str
+    amount: float
+    budget: float   # 0 = uncapped
+    period: str     # YYYY-MM
+
+
 class CostsResponse(BaseModel):
     total_usd: float
     by_category: list[CostByCategory]
@@ -766,6 +799,7 @@ class CostsResponse(BaseModel):
     per_strategy: list[CostPerStrategy]
     infra_lines: list[InfraLine]
     llm_calls: LlmCallSummary
+    vendor_actuals: list[VendorActual]
 
 
 # ---- alpha-decay: edge half-life + live-vs-funded drift (master/drift; web consumes) ----
@@ -888,13 +922,19 @@ class MindStance(BaseModel):
     perspective: str
     kind: Literal["market", "process"]
     lean: Literal["bullish", "bearish", "neutral", "abstain"]
-    conviction: float
+    conviction: float  # this IS the verdict's confidence (0..1)
     weight: float
     headline: str
     rationale: str
     evidence: list[str]
     as_of: str | None = None
     low_confidence: bool = False
+    # The typed verdict's audit fields: `score` is the signed directional strength (-1..1); `source` is the
+    # verdict's provenance ("heuristic" = deterministic, "llm" = a rubric-scored model verdict, "abstain" = no
+    # data); `rubric` names the rubric a market pillar was scored under. The LLM only scores — the gate disposes.
+    score: float = 0.0
+    source: Literal["heuristic", "llm", "abstain"] = "heuristic"
+    rubric: str | None = None
 
 
 class MindSourceItem(BaseModel):
@@ -940,6 +980,29 @@ class MindLearnings(BaseModel):
     regime_total: int
 
 
+class MindAuditContribution(BaseModel):
+    """One voting pillar's contribution to the consensus tally — exposed so the aggregation is replayable.
+    `contribution` = `weight` × `conviction` (the LLM scores each pillar; this combination is pure math)."""
+
+    perspective: str
+    lean: str
+    weight: float
+    conviction: float
+    source: str
+    contribution: float
+
+
+class MindConsensusAudit(BaseModel):
+    """The deterministic, auditable aggregation laid bare: the rule, the per-lean tally, and the per-pillar
+    contributions that sum to it. No LLM and no money on this path — the committee's vote is just math."""
+
+    method: str
+    tally: dict[str, float]
+    total: float
+    consensus: str
+    contributions: list[MindAuditContribution]
+
+
 class MindResponse(BaseModel):
     """The full Mind snapshot. `railguard` restates the hard rule shown wherever the Mind appears: it reasons,
     it never moves money. `consensus`/`conviction`/`agreement` summarize the debate over the MARKET analysts."""
@@ -954,6 +1017,7 @@ class MindResponse(BaseModel):
     stances: list[MindStance]
     bull_case: list[str]
     bear_case: list[str]
+    consensus_audit: MindConsensusAudit | None = None
     knows: list[MindLens]
     learnings: MindLearnings
 
@@ -1105,4 +1169,25 @@ class NewsIntelResponse(BaseModel):
 
     symbol: str
     events: list[NewsEventRow]
+
+
+# ---- Verdict ledger: parsed phase0-*-verdict.md research history. ----
+
+
+class VerdictRow(BaseModel):
+    """One parsed phase0 verdict file — the research history made scannable."""
+
+    slug: str
+    thesis: str
+    id: str
+    date: str
+    status: Literal["PASS", "FAIL", "INSUFFICIENT-DATA", "DATA-BLOCKED"]
+    deflated_sharpe: float | None = None
+    trades: int | None = None
+    cost_ratio: float | None = None
+    reason: str
+
+
+class VerdictsResponse(BaseModel):
+    rows: list[VerdictRow]
 

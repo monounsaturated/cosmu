@@ -1,0 +1,47 @@
+{
+  "name": "Funding-gated momentum (long-only spot, crowding filter)",
+  "rationale": "Medium-term momentum persists, but chasing it when perp funding is already extreme buys into a crowded, over-levered long that is prone to unwind. Use funding as a long FILTER (spot, long-only): take momentum entries only while funding sits BELOW a fitted ceiling (uncrowded), and require a moving-average trend to align. This is funding-as-crowding-signal (NOT a carry to harvest — funding_feature is null, no carry accrual); the ceiling is fit from realized funding so it actually excludes crowded bars. Realized Binance funding clamps at the +1e-4 cap (p90=1e-4, p99=2.9e-4); the fitted ceiling [-2e-5, 1.0e-4] straddles the median up to the cap so the filter genuinely bites instead of sitting above realized max (the degeneracy the carry verdict flagged). No magic numbers.",
+  "catalyst": "momentum continuation under non-crowded funding",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lookback" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "funding_rate" }, "op": "lt", "threshold": { "param": "funding_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "ma_lookback" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lookback" } }, "op": "lt", "threshold": { "param": "mom_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lookback":    { "kind": "int",   "lo": 10,      "hi": 40,   "step": 1 },
+    "mom_floor":       { "kind": "float", "lo": 0.01,    "hi": 0.12 },
+    "mom_exit":        { "kind": "float", "lo": -0.05,   "hi": 0.01 },
+    "funding_ceiling": { "kind": "float", "lo": -0.00002, "hi": 0.0001 },
+    "ma_lookback":     { "kind": "int",   "lo": 20,      "hi": 100,  "step": 1 },
+    "trend_floor":     { "kind": "float", "lo": 0.0,     "hi": 0.05 },
+    "stop":            { "kind": "float", "lo": 0.03,    "hi": 0.14 },
+    "tp":              { "kind": "float", "lo": 0.08,    "hi": 0.30 },
+    "time_stop":       { "kind": "int",   "lo": 3,       "hi": 21,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

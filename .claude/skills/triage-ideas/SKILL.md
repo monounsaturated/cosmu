@@ -8,7 +8,7 @@ description: Process the product/engineering idea inbox — promote ripe ideas i
 Turn the raw idea inbox into a groomed backlog. Each idea gets a disposition; ripe ones land in `BACKLOG.md` with tags; everything triaged moves to the archive so the inbox never clutters. (Engineering/product ideas only — trading strategies go through `/dump-idea` into `apps/engine/strategies/inbox/`.)
 
 ## Steps
-1. **Read `IDEAS.md`** — the un-triaged ideas under `## Inbox`.
+1. **Read `IDEAS.md`** — BOTH the free-form `## 🗑️ DUMP ZONE` (raw, unformatted operator dumps) AND the structured `## Inbox`. Treat every line in the dump zone as a real idea: clean it up, classify it (feature/infra → triage here; trading idea → hand to `/strategize`; junk/duplicate → drop), then **clear the dump zone** (leave the markers + empty space).
 2. **Decide a disposition per idea:** **promote** (ripe — clear value, actionable now-ish), **defer** (good but not yet — note why), or **drop** (out of scope / superseded).
 3. **Promote into `BACKLOG.md`** under **Now / Next / Later** by urgency, tagged `(engine|web|config) + (cloud|local) + (opus|sonnet|haiku)`. Use `-` for a tag that doesn't apply (e.g. a pure decision item).
 4. **Re-order the backlog strategically** — pull the highest-leverage / unblocking items up; let polish drift down. Keep it honest about what actually moves profit.

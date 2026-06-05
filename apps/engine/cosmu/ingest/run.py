@@ -16,13 +16,17 @@ from cosmu.data.altdata import (
     CboePutCallProvider,
     CoinglassLiquidationProvider,
     DefiLlamaTvlProvider,
+    DeribitDvolProvider,
     ExchangeNetflowProvider,
     FearGreedProvider,
     FredMacroProvider,
     FundingRateProvider,
     GdeltNewsProvider,
+    GdeltToneProvider,
+    KrakenFuturesFundingRateProvider,
     LunarCrushProvider,
     NewsProvider,
+    OkxFundingRateProvider,
     OsintAirActivityProvider,
     PolymarketClobProvider,
     PolymarketGammaProvider,
@@ -30,7 +34,7 @@ from cosmu.data.altdata import (
     RedditSentimentProvider,
     VenueFeesProvider,
 )
-from cosmu.data.sources.multiasset import MULTIASSET_METRICS, StooqDailyProvider
+from cosmu.data.sources.multiasset import MULTIASSET_METRICS, YahooDailyProvider
 from cosmu.data.sources.xai_twitter import XaiTwitterProvider
 from cosmu.ingest.llm_formatter import build_event_formatter_from_settings
 from cosmu.ingest.pipeline import (
@@ -43,6 +47,12 @@ from cosmu.ingest.pipeline import (
     ingest_putcall,
 )
 from cosmu.ingest.standardize import NewsEventScore, StandardizedNews
+from cosmu.lab.indexes import (
+    INDEX_RUBRICS,
+    LlmIndexProvider,
+    NewsEvidenceProvider,
+    build_index_provider_from_settings,
+)
 
 logger = logging.getLogger("cosmu.ingest.run")
 
@@ -53,6 +63,23 @@ DEFAULT_SYMBOLS = ("BTCUSDT", "ETHUSDT")
 DEFAULT_FRED_SERIES = "T10Y2Y"  # 10y-2y curve slope: one macro read conditions risk across classes
 DEFAULT_POLYMARKET_TOKEN = "risk-on"  # a market token id; real runs override via --polymarket-token
 
+# 20-asset OKX USDT-M perpetual-swap universe for the funding-dispersion strategy.
+# Symbols match the OKX public API `instId` format (<BASE>-USDT-SWAP).
+OKX_PERP_UNIVERSE = (
+    "BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP", "XRP-USDT-SWAP",
+    "LINK-USDT-SWAP", "AVAX-USDT-SWAP", "ADA-USDT-SWAP", "DOT-USDT-SWAP",
+    "POL-USDT-SWAP", "ATOM-USDT-SWAP", "LTC-USDT-SWAP", "BCH-USDT-SWAP",
+    "DOGE-USDT-SWAP", "NEAR-USDT-SWAP", "UNI-USDT-SWAP", "FIL-USDT-SWAP",
+    "INJ-USDT-SWAP", "OP-USDT-SWAP", "ARB-USDT-SWAP", "TON-USDT-SWAP",
+)
+
+# Kraken Futures linear perpetuals available for data ingest (PF_ = linear USDT-settled).
+# Smaller universe than OKX; funding settled hourly via premium index.
+KRAKEN_FUTURES_UNIVERSE = (
+    "PF_XBTUSD", "PF_ETHUSD", "PF_SOLUSD", "PF_XRPUSD", "PF_LINKUSD",
+    "PF_AVAXUSD", "PF_ADAUSD", "PF_DOTUSD", "PF_DOGEUSD", "PF_LTCUSD",
+)
+
 
 @dataclass
 class Providers:
@@ -60,6 +87,10 @@ class Providers:
     so a pass runs fully offline. News standardization uses the offline lexicon unless an `llm` is given."""
 
     funding: AltDataProvider = field(default_factory=FundingRateProvider)
+    # OKX perp funding rate for the 20-asset dispersion universe (public endpoint, no key).
+    okx_funding: AltDataProvider = field(default_factory=OkxFundingRateProvider)
+    # Kraken Futures funding rate (public endpoint, no key). FR-legal perp venue (MiCA EU).
+    kraken_futures_funding: AltDataProvider = field(default_factory=KrakenFuturesFundingRateProvider)
     feargreed: AltDataProvider = field(default_factory=FearGreedProvider)
     news: NewsProvider = field(default_factory=GdeltNewsProvider)
     fred: AltDataProvider = field(default_factory=FredMacroProvider)
@@ -78,11 +109,23 @@ class Providers:
     # xAI/Grok Twitter sentiment: key-gated — returns [] without XAI_API_KEY (honest degradation).
     # LLM only standardizes text; never touches the gate/scoring/money path.
     xai_twitter: AltDataProvider = field(default_factory=lambda: XaiTwitterProvider())
+    # LLM qualitative→quantitative index scores (reg_risk_crypto / risk_on_off). Key-gated: no LLM key → the
+    # provider ingests nothing (honest). The LLM only proposes the rubric-anchored number; the Gate disposes.
+    llm_index: AltDataProvider = field(
+        default_factory=lambda: LlmIndexProvider(evidence=NewsEvidenceProvider(GdeltNewsProvider()))
+    )
     # Venue fees: key-gated (ccxt exchange needed for live reads). Default = Binance static-catalog fallback
     # (offline-safe, no key). A live ccxt client can be injected at deploy time for account-specific rates.
     venue_fees: AltDataProvider = field(default_factory=lambda: VenueFeesProvider("binance"))
-    # Cross-asset daily price levels (free, no key): Stooq is primary; YahooDailyProvider is a drop-in alt.
-    multiasset: AltDataProvider = field(default_factory=StooqDailyProvider)
+    # Cross-asset daily price levels (free, no key). Stooq's free CSV endpoint now demands a captcha-gated
+    # apikey (returns "Get your apikey" instead of data), so it degrades to [] — the documented drop-in
+    # YahooDailyProvider is now the active free source. 5y range gives the gate real depth + an OOS holdout.
+    # The PIT contract is identical (daily close, next-day availability floor); rows are still stored under
+    # the stable "stooq" cross-asset bucket key (an opaque store routing id, not a vendor claim).
+    multiasset: AltDataProvider = field(default_factory=lambda: YahooDailyProvider(range_="5y"))
+    # EU-accessible, keyless: GDELT geopolitical news tone (market-wide) + Deribit DVOL (per-symbol BTC/ETH).
+    gdelt_tone: AltDataProvider = field(default_factory=GdeltToneProvider)
+    dvol: AltDataProvider = field(default_factory=DeribitDvolProvider)
     llm: Callable[[str], StandardizedNews] | None = None
     # Typed event/news scorer LLM (the cheap-OpenRouter formatter). Key-gated → None without a key, so the
     # event scorer uses the deterministic lexicon. The LLM only standardizes text at ingest, never the money path.
@@ -107,6 +150,8 @@ class Providers:
             xai_twitter=XaiTwitterProvider(api_key=settings.xai_api_key or ""),
             # Typed event/news scorer via the cheap-OpenRouter formatter — key-gated (None without OPENROUTER_API_KEY).
             event_llm=build_event_formatter_from_settings(settings),
+            # LLM index scorer — xAI preferred, OpenRouter fallback; no key → ingests nothing (honest).
+            llm_index=build_index_provider_from_settings(settings),
             polymarket_token="risk_on",
         )
 
@@ -158,6 +203,16 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     counts["funding_rate"] = _safe(
         "funding_rate", lambda: ingest_numeric(store, p.funding, symbols, "funding_rate", provider_name="binance")
     )
+    counts["okx_funding_rate"] = _safe(
+        "okx_funding_rate",
+        lambda: ingest_numeric(store, p.okx_funding, list(OKX_PERP_UNIVERSE), "funding_rate", provider_name="okx_perp"),
+    )
+    counts["kraken_futures_funding_rate"] = _safe(
+        "kraken_futures_funding_rate",
+        lambda: ingest_numeric(
+            store, p.kraken_futures_funding, list(KRAKEN_FUTURES_UNIVERSE), "funding_rate", provider_name="kraken_futures"
+        ),
+    )
     # Fear & Greed and the cross-asset transfer series are market-wide → ingest once under the MARKET key.
     counts["fear_greed"] = _safe(
         "fear_greed", lambda: ingest_numeric(store, p.feargreed, ["MARKET"], "fear_greed", provider_name="alternative.me")
@@ -189,13 +244,13 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
             store, p.defillama, source_metric="defi_tvl", stored_metric="defi_tvl", provider_name="defillama"
         ),
     )
-    counts["risk_on"] = _safe(
-        "risk_on",
+    counts["pm_risk_on"] = _safe(
+        "pm_risk_on",
         lambda: ingest_market_wide_numeric(
-            store, p.polymarket, source_metric=p.polymarket_token, stored_metric="risk_on", provider_name="polymarket"
+            store, p.polymarket, source_metric=p.polymarket_token, stored_metric="pm_risk_on", provider_name="polymarket"
         ),
     )
-    counts["liquidations"] = _safe("liquidations", lambda: ingest_liquidations(store, p.liquidations, symbols))
+    counts["liquidation_cascade"] = _safe("liquidation_cascade", lambda: ingest_liquidations(store, p.liquidations, symbols))
     counts["putcall_ratio"] = _safe("putcall_ratio", lambda: ingest_putcall(store, p.putcall))
     # FRED-derived macro features (key from env: FRED_API_KEY)
     counts["dxy"] = _safe(
@@ -293,6 +348,26 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     counts["news_event_score"] = _safe(
         "news_event_score", lambda: ingest_news_event_score(store, p.news, symbols, llm=p.event_llm)
     )
+    # EU-accessible, keyless: GDELT geopolitical news tone (market-wide) + Deribit DVOL (per-symbol BTC/ETH).
+    counts["gdelt_tone"] = _safe(
+        "gdelt_tone",
+        lambda: ingest_market_wide_numeric(
+            store, p.gdelt_tone, source_metric="gdelt_tone", stored_metric="gdelt_tone", provider_name="gdelt"
+        ),
+    )
+    counts["dvol"] = _safe(
+        "dvol", lambda: ingest_numeric(store, p.dvol, symbols, "dvol", provider_name="deribit")
+    )
+    # LLM qualitative→quantitative index scores: each is market-wide, ingested once under the MARKET key under
+    # its own SEMANTIC name. Key-gated (no LLM key → the provider returns [] → counted 0, never an abort). The
+    # LLM only proposes the rubric-anchored number at ingest; the deterministic Gate alone disposes.
+    for _index in INDEX_RUBRICS:
+        counts[_index] = _safe(
+            _index,
+            lambda m=_index: ingest_market_wide_numeric(
+                store, p.llm_index, source_metric=m, stored_metric=m, provider_name="llm_index"
+            ),
+        )
     # Cross-asset daily price levels (free, no key): metals / commodities / equity indexes / FX. Each is
     # market-wide (ingested once under the MARKET key under its SEMANTIC name). Numeric → no LLM.
     for _metric in MULTIASSET_METRICS:

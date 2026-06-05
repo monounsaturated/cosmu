@@ -7,6 +7,18 @@
 > Drop a one-liner under **Inbox** in this format: `- [YYYY-MM-DD] <idea> — <why it matters>`.
 > `/triage-ideas` promotes ripe ideas into the backlog (with tags), then moves them down to **Archived**. Keep the Inbox lean — only un-triaged ideas live here.
 
+## 🗑️ DUMP ZONE — your ONE inbox: write ANYTHING here (ideas · trades · features · gripes)
+> No rules, no format. Half-baked, one word, a link, "scrape X and score it", a screenshot note, a trade hunch — dump it.
+> **This is the only file you have to touch.** On the next `/triage-ideas`, Claude runs the whole loop for you:
+> **read → sort → route** (product/infra → `BACKLOG.md` as a defined **user story**; trade → `/strategize` → typed spec → the **Gate**; junk → dropped) **→ prioritize → `/fan-out` builds it (Claude Code) → CI tests it.** Then it clears this zone.
+> You dump; the machine defines, builds, and tests. Review the result in `BACKLOG.md` / the app.
+
+<!-- ↓↓↓ DUMP BELOW THIS LINE ↓↓↓ -->
+
+- [2026-06-05] CrowdIntel (https://crowdintel.xyz) — NO-GO. Their wallet-positioning scores are RETROACTIVELY recomputed as Polymarket markets resolve; using them in a backtest is look-ahead bias — the Gate would pass on phantom edge. Raw on-chain trades are PIT-honest but the scored signal (the only thing they sell) is not. Revisit only if they expose a frozen as-of-event score snapshot.
+
+<!-- ↑↑↑ DUMP ABOVE THIS LINE ↑↑↑ -->
+
 ## Inbox (append below)
 - [2026-06-03] Mission-control UI: extend `/mind` into one visual surface (pipeline funnel, data freshness, backlog state, open PRs/agents, ML model status, gate efficiency) — one glance answers "is the machine healthy and earning?"
 - [2026-06-03] Decide ML compute home: VPS worker vs scheduled cloud-session cron for nightly survival-model training — picks where the heavy ML loop runs without OOMing the Air or burning API tokens.
@@ -26,6 +38,8 @@
 - [2026-06-04] LLM-quality-scores as standardized features: LLM-generated quality/sentiment scores for specific indexes, stored point-in-time WITH HISTORY → train ML on them; the agent can mint new index-scores. Qualitative→quantitative, standardized — the leverage.
 
 - [2026-06-04] External validation (top-firm AI-in-trading writeups): the reusable kernel is "AI = research-throughput compressor + adversarial reviewer + unstructured→typed signal, NOT the money-decision-maker." Keep REJECTING the Bridgewater "AI as primary decision-maker" model — LLM proposes, the deterministic gate disposes (our locked non-negotiable). GPU/datacenter scale-ups are anti-thesis to lean. The one practical nudge already in the plan: every authored hypothesis should ship with a disconfirmer (gate-side proven by #57; author-side still open).
+
+- [2026-06-05] Polymarket smart-money flow as a PIT alt-data feature (news/scoring, NOT copy-trading): index the on-chain Polymarket ledger (top-decile-profitable + insider-flagged wallet net-flow per market) → `/profile-source` audit → feature registry → Gate. Treat like a sentiment/news score: confirm/veto in liquid markets, may *originate* in prediction markets (§7). Passive copy-trading is rejected — latency means you always fill after the whale; any "insider z-score" runs through OUR deflated-Sharpe/PBO gate, not theirs. Powers the reserved "LLM research-desk for Polymarket ONLY" idea above. (Inspired by CrowdIntel's Postgres-MCP-over-ledger writeup.)
 
 ## Archived
 <!-- Triaged ideas move here with their disposition: promoted / deferred / dropped. -->

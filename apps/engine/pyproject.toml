@@ -25,7 +25,13 @@ dependencies = [
 dev = [
   "httpx>=0.27", # required by fastapi.testclient, which engine:test imports — without it pytest collection errors
   "pytest>=8.3",
+  "pytest-xdist>=3.5", # parallel test execution via -n auto (workers = CPU count)
   "ruff>=0.7",
+]
+# The Modal client — ONLY needed where you invoke `modal run` (laptop / cloud session), never inside the
+# Railway image (`pip install .` skips extras). Install with: pip install -e ".[remote]"  (or: pip install modal)
+remote = [
+  "modal>=0.64",
 ]
 
 [tool.pytest.ini_options]

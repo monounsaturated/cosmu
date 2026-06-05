@@ -351,6 +351,63 @@
         "title": "AutonomyStatusResponse",
         "type": "object"
       },
+      "AutonomyTickAcceptedResponse": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "AutonomyTickAcceptedResponse",
+        "type": "object"
+      },
+      "AutonomyTickJobResponse": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutonomyTickResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "AutonomyTickJobResponse",
+        "type": "object"
+      },
       "AutonomyTickResponse": {
         "properties": {
           "authored": {
@@ -934,6 +991,13 @@
           "total_usd": {
             "title": "Total Usd",
             "type": "number"
+          },
+          "vendor_actuals": {
+            "items": {
+              "$ref": "#/components/schemas/VendorActual"
+            },
+            "title": "Vendor Actuals",
+            "type": "array"
           }
         },
         "required": [
@@ -942,7 +1006,8 @@
           "opex_vs_alpha",
           "per_strategy",
           "infra_lines",
-          "llm_calls"
+          "llm_calls",
+          "vendor_actuals"
         ],
         "title": "CostsResponse",
         "type": "object"
@@ -2219,9 +2284,24 @@
       },
       "LeaderboardRow": {
         "properties": {
+          "asset_class": {
+            "title": "Asset Class",
+            "type": "string"
+          },
           "deflated_sharpe": {
             "title": "Deflated Sharpe",
             "type": "number"
+          },
+          "edge_type": {
+            "title": "Edge Type",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
           },
           "forward_age_days": {
             "title": "Forward Age Days",
@@ -2243,17 +2323,37 @@
             "title": "Net Pct",
             "type": "number"
           },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
           "pbo": {
             "title": "Pbo",
             "type": "number"
+          },
+          "signal_family": {
+            "title": "Signal Family",
+            "type": "string"
+          },
+          "signal_family_label": {
+            "title": "Signal Family Label",
+            "type": "string"
           },
           "status": {
             "title": "Status",
             "type": "string"
           },
+          "timeframe": {
+            "title": "Timeframe",
+            "type": "string"
+          },
           "track_return_pct": {
             "title": "Track Return Pct",
             "type": "number"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
           },
           "version_id": {
             "title": "Version Id",
@@ -2270,7 +2370,15 @@
           "status",
           "lineage",
           "forward_age_days",
-          "live_ready"
+          "live_ready",
+          "signal_family",
+          "signal_family_label",
+          "features",
+          "asset_class",
+          "venue",
+          "timeframe",
+          "origin",
+          "edge_type"
         ],
         "title": "LeaderboardRow",
         "type": "object"
@@ -2624,6 +2732,85 @@
         "title": "MemoryInsightsResponse",
         "type": "object"
       },
+      "MindAuditContribution": {
+        "description": "One voting pillar's contribution to the consensus tally \u2014 exposed so the aggregation is replayable.\n`contribution` = `weight` \u00d7 `conviction` (the LLM scores each pillar; this combination is pure math).",
+        "properties": {
+          "contribution": {
+            "title": "Contribution",
+            "type": "number"
+          },
+          "conviction": {
+            "title": "Conviction",
+            "type": "number"
+          },
+          "lean": {
+            "title": "Lean",
+            "type": "string"
+          },
+          "perspective": {
+            "title": "Perspective",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "perspective",
+          "lean",
+          "weight",
+          "conviction",
+          "source",
+          "contribution"
+        ],
+        "title": "MindAuditContribution",
+        "type": "object"
+      },
+      "MindConsensusAudit": {
+        "description": "The deterministic, auditable aggregation laid bare: the rule, the per-lean tally, and the per-pillar\ncontributions that sum to it. No LLM and no money on this path \u2014 the committee's vote is just math.",
+        "properties": {
+          "consensus": {
+            "title": "Consensus",
+            "type": "string"
+          },
+          "contributions": {
+            "items": {
+              "$ref": "#/components/schemas/MindAuditContribution"
+            },
+            "title": "Contributions",
+            "type": "array"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "tally": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Tally",
+            "type": "object"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          }
+        },
+        "required": [
+          "method",
+          "tally",
+          "total",
+          "consensus",
+          "contributions"
+        ],
+        "title": "MindConsensusAudit",
+        "type": "object"
+      },
       "MindLearnings": {
         "description": "What the agent has LEARNED: long-term memory, the ML survival model's state, regime coverage, and whether\nthe gate pass-rate is improving.",
         "properties": {
@@ -2790,6 +2977,16 @@
             ],
             "title": "Consensus",
             "type": "string"
+          },
+          "consensus_audit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MindConsensusAudit"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "contested": {
             "title": "Contested",
@@ -2960,6 +3157,32 @@
           },
           "rationale": {
             "title": "Rationale",
+            "type": "string"
+          },
+          "rubric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rubric"
+          },
+          "score": {
+            "default": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "source": {
+            "default": "heuristic",
+            "enum": [
+              "heuristic",
+              "llm",
+              "abstain"
+            ],
+            "title": "Source",
             "type": "string"
           },
           "weight": {
@@ -4277,13 +4500,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -4313,6 +4529,40 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VendorActual": {
+        "description": "Live-fetched vendor spend for the current month vs its configured monthly budget cap.\namount=0 for free/constant vendors; budget=0 means uncapped (no alert threshold set).",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "budget": {
+            "title": "Budget",
+            "type": "number"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vendor",
+          "category",
+          "amount",
+          "budget",
+          "period"
+        ],
+        "title": "VendorActual",
         "type": "object"
       },
       "VenueCatalogResponse": {
@@ -4525,6 +4775,100 @@
         ],
         "title": "VenueToggleRequest",
         "type": "object"
+      },
+      "VerdictRow": {
+        "description": "One parsed phase0 verdict file \u2014 the research history made scannable.",
+        "properties": {
+          "cost_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Ratio"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "deflated_sharpe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deflated Sharpe"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "INSUFFICIENT-DATA",
+              "DATA-BLOCKED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thesis": {
+            "title": "Thesis",
+            "type": "string"
+          },
+          "trades": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trades"
+          }
+        },
+        "required": [
+          "slug",
+          "thesis",
+          "id",
+          "date",
+          "status",
+          "reason"
+        ],
+        "title": "VerdictRow",
+        "type": "object"
+      },
+      "VerdictsResponse": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/VerdictRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "VerdictsResponse",
+        "type": "object"
       }
     }
   },
@@ -4591,14 +4935,14 @@
     },
     "/autonomy/tick": {
       "post": {
-        "description": "Run ONE bounded, idempotent, audited autonomous cycle: ingest \u2192 author (LLM proposes if a key is set, else\ndeterministic) \u2192 DETERMINISTIC gate + flywheel \u2192 open standalone forward-test tracks from survivors \u2192 emit recommendations.\nLIVE STAYS OFF \u2014 sim fills only; the tick never arms live. Cron-able (one tick per call, not a daemon).",
+        "description": "Enqueue ONE bounded, idempotent, audited autonomous cycle and return 202 immediately.\nThe cycle (ingest \u2192 author \u2192 DETERMINISTIC gate + flywheel \u2192 fund \u2192 recommend) runs in the\nbackground so Railway's gateway never times out.  Poll GET /autonomy/tick/{job_id} for the result.\nLIVE STAYS OFF \u2014 sim fills only; the tick never arms live.",
         "operationId": "autonomy_tick_autonomy_tick_post",
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AutonomyTickResponse"
+                  "$ref": "#/components/schemas/AutonomyTickAcceptedResponse"
                 }
               }
             },
@@ -4606,6 +4950,46 @@
           }
         },
         "summary": "Autonomy Tick"
+      }
+    },
+    "/autonomy/tick/{job_id}": {
+      "get": {
+        "description": "Poll the result of an async tick dispatch.  Returns status: running | done | error.",
+        "operationId": "autonomy_tick_job_autonomy_tick__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyTickJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Autonomy Tick Job"
       }
     },
     "/console/command": {
@@ -5886,6 +6270,25 @@
           }
         },
         "summary": "Universe Toggle Venue"
+      }
+    },
+    "/verdicts": {
+      "get": {
+        "description": "Parse docs/reports/phase0-*-verdict.md and return structured per-thesis verdicts.",
+        "operationId": "verdicts_list_verdicts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerdictsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verdicts List"
       }
     }
   }

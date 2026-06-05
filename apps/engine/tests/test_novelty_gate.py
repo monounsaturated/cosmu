@@ -154,6 +154,18 @@ def test_novelty_gate_passes_diverse_from_live(tmp_path):
     assert ok
 
 
+def test_novelty_gate_rejects_near_duplicate_in_diverse_live(tmp_path):
+    # A candidate that duplicates ONE live spec must be rejected even when the live population also holds
+    # very different strategies. The prior (inverted) logic accepted it (it was far from the disjoint
+    # member), letting near-duplicates accumulate. The fix rejects if too similar to ANY live spec.
+    store = _store(tmp_path)
+    candidate = _spec(["rsi", "adx"])
+    live = [_spec(["rsi", "adx"]), _spec(["bb_z", "vol_realized"])]  # one twin, one disjoint
+    ok, reason = novelty_gate(candidate, store, live_specs=live)
+    assert not ok
+    assert "monoculture" in reason
+
+
 def test_novelty_gate_no_live_specs_skips_monoculture(tmp_path):
     store = _store(tmp_path)
     candidate = _spec(["rsi", "adx"])

@@ -1,0 +1,62 @@
+{
+  "name": "Cross-asset social rotation — buy the most-talked-about momentum leaders",
+  "rationale": "Investor attention is a scarce and rotating resource across crypto assets: at any moment the crowd focuses its social activity on a small subset of coins, directing capital inflows disproportionately toward those assets before the attention rotates to the next name. Combining cross-sectional price momentum rank (xsec_momentum_rank) with a social_volume floor selects assets that are simultaneously (a) leading their peer group on a price-return basis and (b) commanding disproportionate crowd mindshare — the double filter removes quiet grinders that rank well on price momentum with no social fuel, and removes talked-about assets in freefall where the crowd is discussing a crash rather than a rally. Academically this exploits two partially orthogonal edges: the Jegadeesh-Titman cross-sectional momentum premium (assets that lead peers continue to outperform over the next 1-4 weeks) and the Barber-Odean attention-driven buying bias (individual investors buy attention-grabbing assets, amplifying the move). The social_volume cross_down exit and rank_exit enforce rotation discipline: when either the crowd's attention or the price leadership is lost, we exit and wait for the next rotation cycle. Disconfirmer: if social_volume collapses (asset falls off the most-talked-about list) we exit regardless of price rank — the attention rotation has moved on and the capital inflow engine is gone. NOTE: DATA-BLOCKED — social_volume requires LUNARCRUSH_API_KEY and xsec_momentum_rank requires a multi-asset bar history. tier1 + low-confidence until validated OOS.",
+  "catalyst": "asset ranks in top cross-sectional momentum percentile AND carries high social_volume (crowd mindshare)",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": { "name": "xsec_momentum_rank", "lookback": { "param": "rank_lb" } },
+      "op": "gt",
+      "threshold": { "param": "rank_floor" }
+    },
+    {
+      "feature": { "name": "social_volume" },
+      "op": "gt",
+      "threshold": { "param": "sv_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "social_volume" },
+        "op": "cross_down",
+        "threshold": { "param": "sv_exit" }
+      },
+      {
+        "feature": { "name": "xsec_momentum_rank", "lookback": { "param": "rank_lb" } },
+        "op": "lt",
+        "threshold": { "param": "rank_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.40
+  },
+  "param_space": {
+    "rank_lb":    { "kind": "int",   "lo": 5,      "hi": 20,   "step": 1 },
+    "rank_floor": { "kind": "float", "lo": 0.65,   "hi": 0.90 },
+    "rank_exit":  { "kind": "float", "lo": 0.40,   "hi": 0.65 },
+    "sv_floor":   { "kind": "float", "lo": 8000.0, "hi": 30000.0 },
+    "sv_exit":    { "kind": "float", "lo": 3000.0, "hi": 12000.0 },
+    "stop":       { "kind": "float", "lo": 0.04,   "hi": 0.14 },
+    "tp":         { "kind": "float", "lo": 0.08,   "hi": 0.24 },
+    "time_stop":  { "kind": "int",   "lo": 2,      "hi": 10,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

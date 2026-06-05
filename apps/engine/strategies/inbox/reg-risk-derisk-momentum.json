@@ -1,0 +1,109 @@
+{
+  "name": "Regulatory-risk de-risk momentum (long when crackdown pressure is low)",
+  "rationale": "Rides medium-term momentum but ONLY while the LLM reg_risk_crypto index says regulatory-crackdown pressure is low; a spike in crackdown pressure (bans, enforcement, shutdowns) precedes broad de-risking, so the spec stands aside. The reg_risk_crypto index is a tier1 LLM feature: it must earn its place through the deterministic Gate (OOS / deflated Sharpe / PBO), never the money path. NOTE: needs the reg_risk_crypto index ingested with history to fire; queued until then. Disconfirmer: exits when crackdown pressure spikes above the exit ceiling.",
+  "catalyst": "positive momentum in a low regulatory-risk regime",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "reg_risk_crypto"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "risk_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "reg_risk_crypto"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "risk_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "risk_ceiling": {
+      "kind": "float",
+      "lo": 0.3,
+      "hi": 0.6
+    },
+    "risk_exit": {
+      "kind": "float",
+      "lo": 0.6,
+      "hi": 0.9
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 40,
+      "hi": 120,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": -0.02,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 20,
+      "step": 1
+    }
+  }
+}

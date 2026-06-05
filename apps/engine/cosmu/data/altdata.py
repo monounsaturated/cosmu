@@ -9,7 +9,7 @@ import ssl
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Protocol
@@ -377,6 +377,183 @@ class BinanceFundingHistoryProvider:
         return pts[-limit:] if limit and len(pts) > limit else pts
 
 
+class OkxFundingRateProvider:
+    """OKX perpetual-swap funding rate history (public REST, no key required).
+
+    Fetches /api/v5/public/funding-rate-history for a given -SWAP symbol and
+    returns ascending AltDataPoints.  `available_at == ts == fundingTime` (the
+    exchange publishes the realized rate at the funding instant — that IS the
+    point-in-time stamp; no look-ahead).  A missing symbol or network error
+    yields [] (honest 'no data', never a fabricated rate).
+
+    Funding interval: OKX settles every 8 h (00:00, 08:00, 16:00 UTC) on most
+    perpetuals, matching Binance.  Walk `after` cursor backward page-by-page to
+    collect full history; the public endpoint returns up to 100 rows per page.
+
+    Offline-testable: inject `_fetcher(url) -> list[dict]` to replay canned
+    responses — tests never touch the network.
+    """
+
+    _BASE = "https://www.okx.com"
+    _PAGE = 100  # OKX hard-caps funding-rate-history at 100 rows per page
+
+    def __init__(
+        self,
+        base_url: str = _BASE,
+        *,
+        sleep_s: float = 0.2,
+        max_pages: int = 5000,
+        _fetcher: "Callable[[str], list] | None" = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.sleep_s = sleep_s
+        self.max_pages = max_pages
+        self._live = _fetcher is None
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> list:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        try:
+            with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            return payload.get("data", [])
+        except Exception:  # noqa: BLE001 — network errors degrade to empty, never crash
+            return []
+
+    def fetch_history(self, symbol: str, *, start_ms: int, end_ms: int | None = None) -> list[AltDataPoint]:
+        """Paginate OKX funding-rate history for `symbol` from `start_ms` to now (or `end_ms`).
+
+        OKX paginates via `after` (exclusive upper cursor on fundingTime ms) so each
+        page walks BACKWARD.  We collect all pages then filter by start_ms and deduplicate.
+        """
+        import time as _time
+
+        end = int(end_ms) if end_ms is not None else int(_time.time() * 1000)
+        seen: set[int] = set()
+        out: list[AltDataPoint] = []
+        after: int | None = None  # None = start from the latest page
+        for _ in range(self.max_pages):
+            params: dict = {"instId": symbol, "limit": self._PAGE}
+            if after is not None:
+                params["after"] = after
+            url = f"{self.base_url}/api/v5/public/funding-rate-history?{urllib.parse.urlencode(params)}"
+            rows = self._fetcher(url)
+            if not rows:
+                break
+            for row in rows:
+                ft = int(row["fundingTime"])
+                if ft in seen:
+                    continue
+                seen.add(ft)
+                if ft < start_ms:
+                    continue
+                ts = datetime.fromtimestamp(ft / 1000, tz=UTC)
+                out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["realizedRate"])))
+            # The oldest fundingTime on this page becomes the next `after` cursor
+            oldest_ft = min(int(r["fundingTime"]) for r in rows)
+            if oldest_ft <= start_ms:
+                break  # no more history before our window
+            after = oldest_ft
+            if len(rows) < self._PAGE:
+                break  # short page → history exhausted
+            if self._live and self.sleep_s:
+                _time.sleep(self.sleep_s)
+        out.sort(key=lambda p: p.ts)
+        return out
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        """AltDataProvider seam: trailing `limit` funding points (~limit/3 days at 8 h funding)."""
+        if metric != "funding_rate":
+            return []
+        import time as _time
+
+        days = max(1, int(limit / 3) + 2)
+        start_ms = int((_time.time() - days * 86400) * 1000)
+        try:
+            pts = self.fetch_history(symbol, start_ms=start_ms)
+        except Exception:  # noqa: BLE001 — injected fetchers may raise; degrade to empty
+            return []
+        return pts[-limit:] if limit and len(pts) > limit else pts
+
+
+class KrakenFuturesFundingRateProvider:
+    """Kraken Futures historical funding rates (public REST, no key required).
+
+    Fetches /api/v3/historicalfundingrates for PF_-prefixed linear perpetuals.
+    `available_at == ts` (Kraken publishes the realized premium at its effective
+    time — no look-ahead).  Kraken Futures settles funding on an hourly basis via
+    a premium index; rates are expressed per-interval (convert to 8h-equivalent
+    in the dispersion strategy if comparing cross-venue).
+
+    Offline-testable via the injected `_fetcher(url) -> list[dict]` callable.
+    Falls back to [] on any network / parse error.
+    """
+
+    _BASE = "https://futures.kraken.com"
+
+    def __init__(
+        self,
+        base_url: str = _BASE,
+        *,
+        sleep_s: float = 0.2,
+        _fetcher: "Callable[[str], list] | None" = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.sleep_s = sleep_s
+        self._live = _fetcher is None
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> list:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        try:
+            with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            return payload.get("rates", [])
+        except Exception:  # noqa: BLE001
+            return []
+
+    def fetch_history(self, symbol: str, *, start_ms: int, end_ms: int | None = None) -> list[AltDataPoint]:
+        """Fetch all funding rate entries for `symbol` from `start_ms` to now (or `end_ms`).
+
+        Kraken returns the full history in one request (no pagination cursor needed
+        for most symbols).  Filter to [start_ms, end_ms] and deduplicate.
+        """
+        import time as _time
+
+        end = int(end_ms) if end_ms is not None else int(_time.time() * 1000)
+        url = f"{self.base_url}/api/v3/historicalfundingrates?symbol={urllib.parse.quote(symbol)}"
+        try:
+            rows = self._fetcher(url)
+        except Exception:  # noqa: BLE001
+            return []
+        seen: set[int] = set()
+        out: list[AltDataPoint] = []
+        for row in rows:
+            # Kraken returns effectiveTime as a millisecond Unix epoch integer
+            ft = int(row["timestamp"])
+            if ft in seen or ft < start_ms or ft > end:
+                continue
+            seen.add(ft)
+            ts = datetime.fromtimestamp(ft / 1000, tz=UTC)
+            out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["fundingRate"])))
+        out.sort(key=lambda p: p.ts)
+        return out
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        """AltDataProvider seam: trailing `limit` funding points."""
+        if metric != "funding_rate":
+            return []
+        import time as _time
+
+        days = max(1, int(limit / 24) + 2)  # ~24 events/day at 1h settlement
+        start_ms = int((_time.time() - days * 86400) * 1000)
+        try:
+            pts = self.fetch_history(symbol, start_ms=start_ms)
+        except Exception:  # noqa: BLE001
+            return []
+        return pts[-limit:] if limit and len(pts) > limit else pts
+
+
 class FearGreedProvider:
     """Crypto Fear & Greed index (alternative.me, free, daily). Market-wide; symbol ignored."""
 
@@ -411,8 +588,6 @@ class FredMacroProvider:
         self.release_lag_days = release_lag_days
 
     def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
-        from datetime import timedelta
-
         params = {"series_id": metric, "file_type": "json", "sort_order": "desc", "limit": min(limit, 100000)}
         if self.api_key:
             params["api_key"] = self.api_key
@@ -591,7 +766,6 @@ class DefiLlamaTvlProvider:
             ts = datetime.fromtimestamp(int(row.get("date", 0)), tz=UTC)
             tvl = float(row.get("tvl", 0))
             if tvl > 0:
-                from datetime import timedelta
                 out.append(AltDataPoint(ts=ts, available_at=ts + timedelta(days=1), value=tvl))
         return sorted(out, key=lambda p: p.ts)
 
@@ -784,29 +958,115 @@ class OsintAirActivityProvider:
 
 
 class PolymarketClobProvider:
-    """Polymarket CLOB metrics: implied probability, probability velocity, and book depth.
-    Uses the Gamma API to discover macro markets and compute aggregate metrics."""
+    """Thin adapter over PolymarketClobSource (data/sources/polymarket.py), which fetches full daily
+    history via the CLOB prices-history endpoint. Three metrics: pm_implied_prob, pm_prob_velocity,
+    pm_book_depth — each a daily time series going back to market inception (180-400+ rows typical)."""
 
     def __init__(self, pin_token: str | None = None) -> None:
-        self._gamma = PolymarketGammaProvider(pin_token=pin_token)
+        from cosmu.data.sources.polymarket import PolymarketClobSource
+        self._src = PolymarketClobSource(pin_token=pin_token)
 
     def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
-        if metric not in ("pm_implied_prob", "pm_prob_velocity", "pm_book_depth"):
+        return self._src.fetch_series(symbol, metric, limit=limit)
+
+
+class GdeltToneProvider:
+    """GDELT v2 geopolitical/news tone as a daily numeric series (keyless, free, EU-accessible). Queries
+    risk/geopolitical keywords via GDELT's TimelineTone API → one average-tone value per day in the range
+    [-100, +100] (negative = negative sentiment, positive = positive). Market-wide: the query covers global
+    risk themes, not a single asset. `available_at = ts + 1 day` — a day's indexed articles are closed by
+    end-of-day; the conservative next-day floor means we never read the future. Offline-testable via an
+    injected `_fetcher(url) -> dict`. One dead fetch → [] (never aborts the run)."""
+
+    DEFAULT_QUERY = "crisis war sanctions recession inflation geopolitical risk conflict tariff"
+
+    def __init__(
+        self,
+        base_url: str = "https://api.gdeltproject.org/api/v2/doc/doc",
+        query: str | None = None,
+        timespan: str = "30d",
+        *,
+        _fetcher: Callable[[str], dict] | None = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.query = query or self.DEFAULT_QUERY
+        self.timespan = timespan
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> dict:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "gdelt_tone":
             return []
-        series = self._gamma.fetch_series(symbol, "risk_on", limit=max(limit, 2))
-        if not series:
+        params = {
+            "query": self.query,
+            "mode": "TimelineTone",
+            "format": "json",
+            "timespan": self.timespan,
+            "sort": "DateAsc",
+        }
+        url = f"{self.base_url}?{urllib.parse.urlencode(params)}"
+        try:
+            payload = self._fetcher(url)
+        except Exception:  # noqa: BLE001
             return []
-        if metric == "pm_implied_prob":
-            return series[-limit:]
-        if metric == "pm_prob_velocity" and len(series) >= 2:
-            out: list[AltDataPoint] = []
-            for i in range(1, len(series)):
-                velocity = series[i].value - series[i - 1].value
-                out.append(AltDataPoint(ts=series[i].ts, available_at=series[i].available_at, value=velocity))
-            return out[-limit:]
-        if metric == "pm_book_depth":
-            return [AltDataPoint(ts=series[-1].ts, available_at=series[-1].available_at, value=1.0)]
-        return []
+        return _points_from_gdelt_tone(payload, limit)
+
+
+class DeribitDvolProvider:
+    """Deribit BTC/ETH implied volatility index (DVOL) — free public REST, no key, EU-native (Netherlands).
+    DVOL is Deribit's 30-day forward implied vol for BTC or ETH options — the crypto equivalent of VIX.
+    Per-symbol (BTCUSDT → BTC, ETHUSDT → ETH); unknown symbols → []. `available_at = ts + 1 day`:
+    each daily bar starts at midnight UTC and is finalized at end-of-day; the conservative next-day floor
+    means we never claim to know today's close before it happens. Offline-testable via an injected
+    `_fetcher(url) -> dict`. One dead fetch → [] (never aborts the run)."""
+
+    _CURRENCY = {"BTC": "BTC", "ETH": "ETH"}
+
+    def __init__(
+        self,
+        base_url: str = "https://www.deribit.com/api/v2",
+        resolution: int = 86400,
+        days_back: int = 60,
+        *,
+        _fetcher: Callable[[str], dict] | None = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.resolution = resolution
+        self.days_back = days_back
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> dict:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "dvol":
+            return []
+        coin = symbol[:-4] if symbol.endswith("USDT") else symbol
+        currency = self._CURRENCY.get(coin.upper())
+        if currency is None:
+            return []
+        import time as _time
+
+        end_ms = int(_time.time() * 1000)
+        start_ms = end_ms - self.days_back * 86400 * 1000
+        params = {
+            "currency": currency,
+            "start_timestamp": start_ms,
+            "end_timestamp": end_ms,
+            "resolution": str(self.resolution),
+        }
+        url = f"{self.base_url}/public/get_volatility_index_data?{urllib.parse.urlencode(params)}"
+        try:
+            payload = self._fetcher(url)
+        except Exception:  # noqa: BLE001
+            return []
+        return _points_from_deribit_dvol(payload, limit)
 
 
 def _gdelt_query(coin: str) -> str:
@@ -839,8 +1099,6 @@ def _points_from_coinglass(payload: dict, bucket_seconds: int) -> list[AltDataPo
 def _points_from_cboe_putcall(csv_text: str, release_lag_days: int) -> list[AltDataPoint]:
     """CBOE total put/call CSV: a few preamble lines then `DATE,PUT/CALL RATIO` (or `Date,...`). Each
     session's ratio is finalized after the close → available `release_lag_days` later (next-day floor)."""
-    from datetime import timedelta
-
     out: list[AltDataPoint] = []
     for line in csv_text.splitlines():
         cols = [c.strip() for c in line.split(",")]
@@ -894,6 +1152,47 @@ def _parse_gdelt_date(raw: str) -> datetime | None:
     return None
 
 
+def _points_from_gdelt_tone(payload: dict, limit: int) -> list[AltDataPoint]:
+    """GDELT TimelineTone JSON: {"timeline": [{"data": [{"date": "YYYYMMDDHHMMSS", "value": float}]}]}.
+    `available_at = ts + 1 day` — a day's indexed articles are closed by end-of-day; the next-day
+    conservative floor means we never read the future. Deduplicates by ts (latest wins)."""
+    seen: dict[datetime, AltDataPoint] = {}
+    for series in payload.get("timeline", []) or []:
+        for row in (series.get("data", []) or []):
+            date_raw = row.get("date")
+            value_raw = row.get("value")
+            if not date_raw or value_raw is None:
+                continue
+            ts = _parse_gdelt_date(date_raw)
+            if ts is None:
+                continue
+            seen[ts] = AltDataPoint(ts=ts, available_at=ts + timedelta(days=1), value=float(value_raw))
+    out = sorted(seen.values(), key=lambda p: p.ts)
+    return out[-limit:] if limit and len(out) > limit else out
+
+
+def _points_from_deribit_dvol(payload: dict, limit: int) -> list[AltDataPoint]:
+    """Deribit get_volatility_index_data: {"result": {"data": [[ts_ms, open, high, low, close], ...]}}.
+    We use the `close` (daily DVOL value at bar-end). `available_at = ts + 1 day` — a daily bar opens at
+    midnight UTC and is finalized at end-of-day; the next-day floor means we never claim today's close
+    before it happens. Rows with zero or negative close are dropped (Deribit occasionally emits nulls)."""
+    rows = (payload.get("result") or {}).get("data") or []
+    out: list[AltDataPoint] = []
+    for row in rows:
+        if not isinstance(row, (list, tuple)) or len(row) < 5:
+            continue
+        ts_ms, close = row[0], row[4]
+        if close is None:
+            continue
+        close_f = float(close)
+        if close_f <= 0:
+            continue
+        ts = datetime.fromtimestamp(int(ts_ms) / 1000, tz=UTC)
+        out.append(AltDataPoint(ts=ts, available_at=ts + timedelta(days=1), value=close_f))
+    out.sort(key=lambda p: p.ts)
+    return out[-limit:] if limit and len(out) > limit else out
+
+
 # Default routing: the gate asks for a SEMANTIC metric name; the store keyed it under the ingesting
 # provider. Market-wide metrics live under the "MARKET" symbol (one series for the whole tape).
 _STORE_PROVIDER_OF = {
@@ -903,9 +1202,9 @@ _STORE_PROVIDER_OF = {
     "fear_greed": "alternative.me",
     "news_sentiment": "news",
     "news_event_score": "news",  # typed event/news scorer: sign × magnitude, stored per-symbol
-    "risk_on": "polymarket",
+    "pm_risk_on": "polymarket",
     "macro_regime": "fred",
-    "liquidations": "coinglass",
+    "liquidation_cascade": "coinglass",
     "putcall_ratio": "cboe",
     "vix_level": "fred",
     "fed_funds_rate": "fred",
@@ -927,6 +1226,12 @@ _STORE_PROVIDER_OF = {
     "galaxy_score": "lunarcrush",
     "twitter_sentiment": "xai",
     "twitter_influencer_sentiment": "xai",
+    # Geopolitical news tone (GDELT, keyless, market-wide) and crypto options IV (Deribit, keyless, per-symbol).
+    "gdelt_tone": "gdelt",
+    "dvol": "deribit",
+    # LLM qualitative→quantitative index scores (market-wide; the LLM standardizes text only, never the money path).
+    "reg_risk_crypto": "llm_index",
+    "risk_on_off": "llm_index",
     # Cross-asset daily price levels (free, no key) via Stooq/Yahoo — metals, commodities, equity indexes, FX.
     "gold_xau": "stooq",
     "silver_xag": "stooq",
@@ -937,12 +1242,20 @@ _STORE_PROVIDER_OF = {
     "usdjpy": "stooq",
 }
 _STORE_MARKET_WIDE = frozenset({
-    "fear_greed", "risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",
+    "fear_greed", "pm_risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",
     "defi_tvl", "dxy", "yield_curve_2s10s", "credit_spread", "vix_term_slope",
     "osint_air_activity", "pm_implied_prob", "pm_prob_velocity", "pm_book_depth",
     "reddit_sentiment", "twitter_sentiment", "twitter_influencer_sentiment",
+    "gdelt_tone", "reg_risk_crypto", "risk_on_off",
     "gold_xau", "silver_xag", "wti_crude", "spx_index", "ndx_index", "eurusd", "usdjpy",
 })
+# Registry name → stored metric name, for features renamed after their first ingest.
+# StoreBackedAltProvider tries the registry name first; if the store returns nothing it falls back here
+# so data written under the old name is still accessible until re-ingested under the canonical name.
+_STORE_METRIC_ALIAS: dict[str, str] = {
+    "pm_risk_on": "risk_on",
+    "liquidation_cascade": "liquidations",
+}
 
 
 class StoreBackedAltProvider:
@@ -961,7 +1274,12 @@ class StoreBackedAltProvider:
         if provider is None:
             return []
         key = "MARKET" if metric in self._market_wide else symbol
-        return self._store.read_all(provider, key, metric)[-limit:]
+        points = self._store.read_all(provider, key, metric)
+        if not points:
+            alias = _STORE_METRIC_ALIAS.get(metric)
+            if alias:
+                points = self._store.read_all(provider, key, alias)
+        return points[-limit:]
 
 
 class FixtureNewsProvider:

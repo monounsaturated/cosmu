@@ -177,6 +177,41 @@ def default_catalog() -> VenueCatalog:
                 min_notional=Decimal("1"), lot_size=Decimal("1"),
                 live_enabled=False, restricted_jurisdictions=[],
             ),
+            # Crypto — OKX: MiCA-compliant EU entity (OKX Europe Ltd, Malta). Spot + perp data source;
+            # cheaper than Binance at high volume (spot: 8/10 bps retail, 2/3 bps at >$400M).
+            # NOT live yet — execution wired only once live interlock + 5 gates pass.
+            # Legality: available EU/FR via OKX Europe; restricted for US persons (no FinCEN/CFTC reg).
+            Venue(
+                id="okx", name="OKX", kind="crypto", adapter="nautilus.okx",
+                maker_fee_bps=Decimal("8"), taker_fee_bps=Decimal("10"),
+                min_notional=Decimal("1"), lot_size=Decimal("0.00001"),
+                live_enabled=False, restricted_jurisdictions=["US"],
+                fee_tiers=[
+                    VenueFeeTier(min_volume_30d_usd=Decimal("0"),         maker_fee_bps=Decimal("8"),   taker_fee_bps=Decimal("10")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("1000000"),   maker_fee_bps=Decimal("7"),   taker_fee_bps=Decimal("9")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("5000000"),   maker_fee_bps=Decimal("6"),   taker_fee_bps=Decimal("8")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("20000000"),  maker_fee_bps=Decimal("5"),   taker_fee_bps=Decimal("7")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("100000000"), maker_fee_bps=Decimal("3"),   taker_fee_bps=Decimal("5")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("400000000"), maker_fee_bps=Decimal("2"),   taker_fee_bps=Decimal("3")),
+                ],
+            ),
+            # Derivatives — Kraken Futures: linear perpetuals (PF_ prefix) via Crypto Facilities Ltd
+            # (FCA UK) + Payward Europe Ltd (MiCA EU). Retail-perp fees are cheap: 2/5 bps at base,
+            # maker rebate at >$100M. NOT live — execution wired only after live interlock + 5 gates.
+            # Legality: available EU/FR (MiCA entity); US retail restricted (no CFTC retail perp license).
+            Venue(
+                id="kraken_futures", name="Kraken Futures", kind="crypto", adapter="nautilus.kraken_futures",
+                maker_fee_bps=Decimal("2"), taker_fee_bps=Decimal("5"),
+                min_notional=Decimal("1"), lot_size=Decimal("1"),
+                live_enabled=False, restricted_jurisdictions=["US"],
+                fee_tiers=[
+                    VenueFeeTier(min_volume_30d_usd=Decimal("0"),         maker_fee_bps=Decimal("2"),    taker_fee_bps=Decimal("5")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("1000000"),   maker_fee_bps=Decimal("1.5"),  taker_fee_bps=Decimal("4")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("10000000"),  maker_fee_bps=Decimal("1"),    taker_fee_bps=Decimal("3")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("50000000"),  maker_fee_bps=Decimal("0"),    taker_fee_bps=Decimal("2.5")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("100000000"), maker_fee_bps=Decimal("-1"),   taker_fee_bps=Decimal("2")),
+                ],
+            ),
             # Prediction — Polymarket: research / cross-asset signal source (no live wiring).
             Venue(
                 id="polymarket", name="Polymarket", kind="prediction", adapter="nautilus.polymarket",
@@ -196,6 +231,44 @@ def default_catalog() -> VenueCatalog:
             Instrument(id="msft-ibkr", venue_id="ibkr", symbol="MSFT", asset_class="equity", tick_size=Decimal("0.01"), lot_size=Decimal("1"), min_notional=Decimal("1")),
             Instrument(id="tsla-ibkr", venue_id="ibkr", symbol="TSLA", asset_class="equity", tick_size=Decimal("0.01"), lot_size=Decimal("1"), min_notional=Decimal("1")),
             Instrument(id="spy-alpaca", venue_id="alpaca", symbol="SPY", asset_class="equity", tick_size=Decimal("0.01"), lot_size=Decimal("1"), min_notional=Decimal("1")),
+            # OKX spot
+            Instrument(id="btc-usdt-okx",      venue_id="okx", symbol="BTC-USDT",      asset_class="crypto", tick_size=Decimal("0.1"),  lot_size=Decimal("0.00001"), min_notional=Decimal("1")),
+            Instrument(id="eth-usdt-okx",      venue_id="okx", symbol="ETH-USDT",      asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.0001"),  min_notional=Decimal("1")),
+            # OKX perpetual swaps — 20-asset universe for the funding-dispersion strategy.
+            # tick_size/lot_size sourced from OKX public instrument API; min_notional=1 USDT for all.
+            Instrument(id="btc-usdt-swap-okx",   venue_id="okx", symbol="BTC-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.1"),      lot_size=Decimal("0.001"),    min_notional=Decimal("1")),
+            Instrument(id="eth-usdt-swap-okx",   venue_id="okx", symbol="ETH-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.01"),     lot_size=Decimal("0.01"),     min_notional=Decimal("1")),
+            Instrument(id="sol-usdt-swap-okx",   venue_id="okx", symbol="SOL-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.01"),     lot_size=Decimal("0.1"),      min_notional=Decimal("1")),
+            Instrument(id="xrp-usdt-swap-okx",   venue_id="okx", symbol="XRP-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.0001"),   lot_size=Decimal("10"),       min_notional=Decimal("1")),
+            Instrument(id="link-usdt-swap-okx",  venue_id="okx", symbol="LINK-USDT-SWAP",  asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("0.1"),      min_notional=Decimal("1")),
+            Instrument(id="avax-usdt-swap-okx",  venue_id="okx", symbol="AVAX-USDT-SWAP",  asset_class="crypto", tick_size=Decimal("0.01"),     lot_size=Decimal("0.1"),      min_notional=Decimal("1")),
+            Instrument(id="ada-usdt-swap-okx",   venue_id="okx", symbol="ADA-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.0001"),   lot_size=Decimal("10"),       min_notional=Decimal("1")),
+            Instrument(id="dot-usdt-swap-okx",   venue_id="okx", symbol="DOT-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("1"),        min_notional=Decimal("1")),
+            Instrument(id="pol-usdt-swap-okx",   venue_id="okx", symbol="POL-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.0001"),   lot_size=Decimal("10"),       min_notional=Decimal("1")),
+            Instrument(id="atom-usdt-swap-okx",  venue_id="okx", symbol="ATOM-USDT-SWAP",  asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("0.1"),      min_notional=Decimal("1")),
+            Instrument(id="ltc-usdt-swap-okx",   venue_id="okx", symbol="LTC-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.01"),     lot_size=Decimal("0.01"),     min_notional=Decimal("1")),
+            Instrument(id="bch-usdt-swap-okx",   venue_id="okx", symbol="BCH-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.1"),      lot_size=Decimal("0.01"),     min_notional=Decimal("1")),
+            Instrument(id="doge-usdt-swap-okx",  venue_id="okx", symbol="DOGE-USDT-SWAP",  asset_class="crypto", tick_size=Decimal("0.00001"),  lot_size=Decimal("100"),      min_notional=Decimal("1")),
+            Instrument(id="near-usdt-swap-okx",  venue_id="okx", symbol="NEAR-USDT-SWAP",  asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("1"),        min_notional=Decimal("1")),
+            Instrument(id="uni-usdt-swap-okx",   venue_id="okx", symbol="UNI-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("0.1"),      min_notional=Decimal("1")),
+            Instrument(id="fil-usdt-swap-okx",   venue_id="okx", symbol="FIL-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("1"),        min_notional=Decimal("1")),
+            Instrument(id="inj-usdt-swap-okx",   venue_id="okx", symbol="INJ-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("0.1"),      min_notional=Decimal("1")),
+            Instrument(id="op-usdt-swap-okx",    venue_id="okx", symbol="OP-USDT-SWAP",    asset_class="crypto", tick_size=Decimal("0.0001"),   lot_size=Decimal("1"),        min_notional=Decimal("1")),
+            Instrument(id="arb-usdt-swap-okx",   venue_id="okx", symbol="ARB-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.0001"),   lot_size=Decimal("1"),        min_notional=Decimal("1")),
+            Instrument(id="ton-usdt-swap-okx",   venue_id="okx", symbol="TON-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("1"),        min_notional=Decimal("1")),
+            # Kraken Futures linear perpetuals (PF_ = linear; PI_ = inverse, not wired yet).
+            # Fees: 2/5 bps retail (cheapest perp venue we have), maker rebate at >$100M.
+            # FR-legal via Payward Europe Ltd (MiCA EU entity). live_enabled=False until live interlock.
+            Instrument(id="xbt-usd-kf",   venue_id="kraken_futures", symbol="PF_XBTUSD",  asset_class="crypto", tick_size=Decimal("0.5"),   lot_size=Decimal("1"),  min_notional=Decimal("1")),
+            Instrument(id="eth-usd-kf",   venue_id="kraken_futures", symbol="PF_ETHUSD",  asset_class="crypto", tick_size=Decimal("0.05"),  lot_size=Decimal("1"),  min_notional=Decimal("1")),
+            Instrument(id="sol-usd-kf",   venue_id="kraken_futures", symbol="PF_SOLUSD",  asset_class="crypto", tick_size=Decimal("0.01"),  lot_size=Decimal("1"),  min_notional=Decimal("1")),
+            Instrument(id="xrp-usd-kf",   venue_id="kraken_futures", symbol="PF_XRPUSD",  asset_class="crypto", tick_size=Decimal("0.0001"),lot_size=Decimal("1"),  min_notional=Decimal("1")),
+            Instrument(id="link-usd-kf",  venue_id="kraken_futures", symbol="PF_LINKUSD", asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("1"),  min_notional=Decimal("1")),
+            Instrument(id="avax-usd-kf",  venue_id="kraken_futures", symbol="PF_AVAXUSD", asset_class="crypto", tick_size=Decimal("0.01"),  lot_size=Decimal("1"),  min_notional=Decimal("1")),
+            Instrument(id="ada-usd-kf",   venue_id="kraken_futures", symbol="PF_ADAUSD",  asset_class="crypto", tick_size=Decimal("0.0001"),lot_size=Decimal("1"),  min_notional=Decimal("1")),
+            Instrument(id="dot-usd-kf",   venue_id="kraken_futures", symbol="PF_DOTUSD",  asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("1"),  min_notional=Decimal("1")),
+            Instrument(id="doge-usd-kf",  venue_id="kraken_futures", symbol="PF_DOGEUSD", asset_class="crypto", tick_size=Decimal("0.00001"),lot_size=Decimal("1"), min_notional=Decimal("1")),
+            Instrument(id="ltc-usd-kf",   venue_id="kraken_futures", symbol="PF_LTCUSD",  asset_class="crypto", tick_size=Decimal("0.01"),  lot_size=Decimal("1"),  min_notional=Decimal("1")),
             Instrument(id="pm-fed-cut", venue_id="polymarket", symbol="PM-FED-CUT-2026", asset_class="prediction", tick_size=Decimal("0.01"), lot_size=Decimal("1"), min_notional=Decimal("1")),
         ],
     )

@@ -220,6 +220,7 @@ def run_tick(
     ingest=None,  # noqa: ANN001 — injectable ingest callable (store -> counts); None → free-data run_once
     edge_market: bool = False,
     bankroll: Decimal | None = None,
+    _notifier=None,  # noqa: ANN001 — injectable SlackNotifier; None → built from settings (offline-safe)
 ) -> TickReport:
     """ONE bounded, idempotent, audited autonomous cycle. Paused → a no-op (idempotent). Otherwise: ingest free
     data → author N candidates (LLM PROPOSES if a key is set; deterministic template otherwise) → DETERMINISTIC
@@ -232,6 +233,10 @@ def run_tick(
     if is_paused(store):
         return TickReport(summary=TickSummary(), live_enabled=live, skipped=True, skip_reason="paused")
 
+    from cosmu.notify.slack import SlackNotifier, notify_gate_verdict, notify_tick_error
+
+    notifier: SlackNotifier = _notifier if _notifier is not None else SlackNotifier.from_settings(settings)
+
     store.append_event(actor="master", kind=_TICK_STARTED, ref_type="autonomy", ref_id="global", payload={"n": n, "seed": seed})
 
     # 1) INGEST free data (append-only, point-in-time, zero keys; per-source failure → 0 count, never aborts).
@@ -242,6 +247,7 @@ def run_tick(
     except Exception as exc:  # noqa: BLE001 — ingest is best-effort; a dead source must never abort the tick
         ingested = {"error": 0}
         store.append_event(actor="master", kind="autonomy_ingest_failed", ref_type="autonomy", payload={"error": type(exc).__name__})
+        notify_tick_error(notifier, kind="autonomy_ingest_failed", error=type(exc).__name__)
 
     # 2-3) AUTHOR → DETERMINISTIC GATE + FLYWHEEL. run_research_pass authors via lab/author (LLM-optional,
     # consulting memory + skills), then runs the FarmLoop screen/gate (scorer out of any LLM's reach) which
@@ -274,6 +280,7 @@ def run_tick(
         evolved = _run_evolution(store, survivors=survivors, seed=seed, provider=provider)
     except Exception as exc:  # noqa: BLE001 — replication is best-effort; never aborts an already-gated tick
         store.append_event(actor="master", kind="autonomy_evolution_failed", ref_type="autonomy", payload={"error": type(exc).__name__})
+        notify_tick_error(notifier, kind="autonomy_evolution_failed", error=type(exc).__name__)
 
     # 4) OPEN a standalone forward-test track per gate-passed survivor (sim fills only — live
     # stays OFF inside fund_tracks_from_survivors). Best-effort + offline-safe; a market hiccup leaves it 0.
@@ -292,9 +299,13 @@ def run_tick(
         funded = funding.funded
     except Exception as exc:  # noqa: BLE001 — funding is best-effort; never aborts an already-gated tick
         store.append_event(actor="master", kind="autonomy_funding_failed", ref_type="autonomy", payload={"error": type(exc).__name__})
+        notify_tick_error(notifier, kind="autonomy_funding_failed", error=type(exc).__name__)
 
     # 5) EMIT human-facing recommendations (watch the survivor 4 weeks; flag a source that stopped paying).
     rec_ids = _emit_recommendations(store, survivors=survivor_names, ingested=ingested)
+
+    # 6) SLACK — gate verdict: fire once per tick when at least one survivor cleared the gate.
+    notify_gate_verdict(notifier, survivors=survivor_names, authored=authored, evolved=evolved)
 
     summary = TickSummary(
         authored=authored,
@@ -385,9 +396,21 @@ def _main(argv: list[str] | None = None) -> int:
     This is what `python3 -m cosmu.master.scheduler` runs every 4h on Railway, so it MUST connect to the
     production DB (Settings() reads DATABASE_URL etc. from the env) and screen on real bars — never a
     throwaway temp DB or synthetic fixture. Use --offline for a self-contained demo (temp sqlite, edge-bearing
-    fixture, no network/keys) when running locally without a DB."""
+    fixture, no network/keys) when running locally without a DB.
+
+    SCHEDULE TOGGLE: the Railway cron fires this unconditionally, but the tick only runs when
+    AUTONOMY_CRON_ENABLED=1. Any other value (or absence) → the process exits 0 immediately so the cron
+    entry can stay in railway.toml without spending compute. Flip the Railway var to enable/disable instantly
+    without a deploy. Default: OFF (safe — no surprise live-like behaviour on first deploy).
+    LIVE STAYS OFF regardless: run_tick() never arms live; this guard is purely a cost/cadence knob."""
     import argparse
+    import os
     import tempfile
+
+    enabled = os.environ.get("AUTONOMY_CRON_ENABLED", "0").strip().lower()
+    if enabled not in ("1", "true", "yes"):
+        print("AUTONOMY_CRON_ENABLED != 1 — scheduled tick skipped (set AUTONOMY_CRON_ENABLED=1 on Railway to enable)")
+        return 0
 
     parser = argparse.ArgumentParser(description="Run ONE bounded autonomous master tick (cron-able, sim-only, never arms live).")
     parser.add_argument("--n", type=int, default=4, help="candidates to author this tick (default 4)")

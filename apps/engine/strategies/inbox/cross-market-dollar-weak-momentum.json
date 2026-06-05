@@ -1,0 +1,54 @@
+{
+  "name": "Cross-market transfer: dollar-weakness-gated crypto momentum",
+  "rationale": "The dollar is the canonical cross-market transfer channel into crypto: a weak dollar loosens global financial conditions and is a tailwind for risk assets, so crypto momentum should pay better when EUR/USD is high (dollar weak) than when the dollar is bid. This rides medium-term crypto momentum ONLY while the dollar is on the weak side of a fitted level, and stands aside when the dollar strengthens (a risk-off cross-asset deleveraging tell). EUR/USD is a tier0 point-in-time daily close (next-day availability floor, NO look-ahead). Disconfirmer: the position is closed when EUR/USD crosses back down through the exit level (dollar re-strengthening). The signal must earn its place through the deterministic Gate (deflated Sharpe / PBO / holdout / FDR) — a cross-market regime that does not survive cost + multiple-testing is a STOP, not a win.",
+  "catalyst": "positive crypto momentum while the dollar is weak (risk-on cross-market regime)",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    },
+    {
+      "feature": { "name": "eurusd" },
+      "op": "gt",
+      "threshold": { "param": "usd_weak_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "eurusd" },
+        "op": "cross_down",
+        "threshold": { "param": "usd_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lb": { "kind": "int", "lo": 20, "hi": 90, "step": 1 },
+    "mom_floor": { "kind": "float", "lo": -0.02, "hi": 0.06 },
+    "usd_weak_floor": { "kind": "float", "lo": 1.03, "hi": 1.12 },
+    "usd_exit": { "kind": "float", "lo": 1.0, "hi": 1.08 },
+    "stop": { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp": { "kind": "float", "lo": 0.1, "hi": 0.35 },
+    "time_stop": { "kind": "int", "lo": 6, "hi": 20, "step": 1 }
+  }
+}

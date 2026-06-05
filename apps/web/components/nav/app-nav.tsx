@@ -1,23 +1,17 @@
 "use client";
 
-// module: app navigation. The top nav answers FOUR questions only — Overview · Strategies · Scores ·
-// Mind. The strategy lifecycle (Lab → Forward-test → Live) is NOT a set of top-level tabs; those are
-// stage-filters rendered inside Strategies (see components/nav/strategy-stages.tsx) and still reachable
-// by deep link. Costs/Settings/Commands live under "More". Desktop = persistent icon-rail sidebar;
-// mobile = a native-feeling bottom tab bar (4 tabs + a More sheet). Links are real routes only.
+// module: app navigation. FOUR persistent surfaces — Overview · Strategies · Costs · Console — each
+// serving one decision. Desktop = persistent icon-rail sidebar; mobile = a bottom tab bar (4 tabs + a
+// More sheet).
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  Brain,
   DollarSign,
-  Gauge,
   LayoutDashboard,
-  LineChart,
   ListChecks,
-  Microscope,
   MoreHorizontal,
   Radio,
   SlidersHorizontal,
@@ -28,41 +22,25 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; desc?: string; icon: typeof LayoutDashboard; gated?: boolean };
 
-// The four top-level tabs — one per question the operator monitors.
+// The four persistent surfaces — one per decision the operator makes.
 export const navItems: NavItem[] = [
-  { href: "/", label: "Overview", desc: "Are we making money?", icon: LayoutDashboard },
-  { href: "/strategies", label: "Strategies", desc: "Discover → prove → live", icon: ListChecks },
-  { href: "/scores", label: "Scores", desc: "Source & index signals", icon: Gauge },
-  { href: "/mind", label: "Mind", desc: "Knows · thinks · learned", icon: Brain }
+  { href: "/", label: "Overview", desc: "Status · verdicts · ideas", icon: LayoutDashboard },
+  { href: "/strategies", label: "Strategies", desc: "Which deserve capital?", icon: ListChecks },
+  { href: "/costs", label: "Costs", desc: "What is it costing?", icon: DollarSign },
+  { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal }
 ];
 
-// Secondary routes, tucked under "More" (desktop sidebar footer + mobile sheet).
+// Secondary deep-link utilities, tucked under "More" (desktop sidebar footer + mobile sheet).
 export const moreItems: NavItem[] = [
-  { href: "/costs", label: "Costs", desc: "Infra · ROI · opex", icon: DollarSign },
+  { href: "/live", label: "Live", desc: "Positions · caps", icon: Radio, gated: true },
   { href: "/settings", label: "Settings", desc: "Keys · universe · data", icon: SlidersHorizontal },
   { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal }
 ];
 
-// Stage routes — the strategy lifecycle. Surfaced as a filter strip INSIDE Strategies (and via deep
-// links), never as top-level tabs. Exported for components/nav/strategy-stages.tsx. `/strategies` itself
-// is the "screened" stage and lives in navItems, so it isn't repeated here.
-export const stageItems: NavItem[] = [
-  { href: "/lab", label: "Lab", desc: "Discover · research", icon: Microscope },
-  { href: "/forward-test", label: "Forward-test", desc: "Per-strategy · proving", icon: LineChart },
-  { href: "/live", label: "Live", desc: "Real money", icon: Radio, gated: true }
-];
-
-// While the operator is on any lifecycle stage, the Strategies top tab stays lit (the stages live under it).
-const STAGE_HREFS = stageItems.map((i) => i.href);
-
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
   if (href === "/strategies") {
-    return (
-      pathname.startsWith("/strategies") ||
-      pathname.startsWith("/strategy") ||
-      STAGE_HREFS.some((h) => pathname === h || pathname.startsWith(`${h}/`))
-    );
+    return pathname.startsWith("/strategies") || pathname.startsWith("/strategy");
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }

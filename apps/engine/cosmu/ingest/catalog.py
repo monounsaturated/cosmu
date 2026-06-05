@@ -15,6 +15,7 @@ from typing import Any
 from cosmu.data.altdata import _STORE_MARKET_WIDE, _STORE_PROVIDER_OF
 from cosmu.ingest.pipeline import (
     MemoizingProvider,
+    ingest_liquidations,
     ingest_market_wide_numeric,
     ingest_news_event_score,
     ingest_news_sentiment,
@@ -136,9 +137,32 @@ def _fetch_xai(store: Any, symbols: list[str], providers: Any) -> int:
     return total
 
 
+def _fetch_gdelt_tone(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_market_wide_numeric(
+        store, providers.gdelt_tone, source_metric="gdelt_tone", stored_metric="gdelt_tone", provider_name="gdelt",
+    )
+
+
+def _fetch_dvol(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_numeric(store, providers.dvol, symbols, "dvol", provider_name="deribit")
+
+
+def _fetch_llm_index(store: Any, symbols: list[str], providers: Any) -> int:
+    """LLM qualitative→quantitative index scores — each market-wide under its semantic name. Key-gated (no LLM
+    key → provider returns [] → 0, never an abort). The LLM only proposes the rubric-anchored number at ingest."""
+    from cosmu.lab.indexes import INDEX_RUBRICS
+
+    total = 0
+    for metric in INDEX_RUBRICS:
+        total += ingest_market_wide_numeric(
+            store, providers.llm_index, source_metric=metric, stored_metric=metric, provider_name="llm_index",
+        )
+    return total
+
+
 def _fetch_risk_on(store: Any, symbols: list[str], providers: Any) -> int:
     return ingest_market_wide_numeric(
-        store, providers.polymarket, source_metric=providers.polymarket_token, stored_metric="risk_on", provider_name="polymarket",
+        store, providers.polymarket, source_metric=providers.polymarket_token, stored_metric="pm_risk_on", provider_name="polymarket",
     )
 
 
@@ -160,8 +184,8 @@ def managed_sources() -> dict[str, SourceSpec]:
         SourceSpec("news", "alt", ("news_sentiment", "news_event_score"), _fetch_news, note="GDELT headlines → standardized sentiment + typed event score (LLM only at ingest)."),
         SourceSpec("macro", "alt", ("macro_regime", "vix_level", "fed_funds_rate", "dxy", "yield_curve_2s10s", "credit_spread", "vix_term_slope"), _fetch_fred, market_wide=True, per_symbol=False, note="FRED macro bundle (memoized shared series)."),
         SourceSpec("defi", "alt", ("defi_tvl",), _fetch_market_wide("defi_tvl", "defi_tvl", "defillama", "defillama"), market_wide=True, per_symbol=False),
-        SourceSpec("risk_on", "alt", ("risk_on",), _fetch_risk_on, market_wide=True, per_symbol=False),
-        SourceSpec("liquidations", "alt", ("liquidations",), _fetch_numeric("liquidations", "liquidations", "coinglass")),
+        SourceSpec("pm_risk_on", "alt", ("pm_risk_on",), _fetch_risk_on, market_wide=True, per_symbol=False),
+        SourceSpec("liquidation_cascade", "alt", ("liquidation_cascade",), lambda store, symbols, providers: ingest_liquidations(store, providers.liquidations, symbols)),
         SourceSpec("putcall", "alt", ("putcall_ratio",), _fetch_market_wide("putcall_ratio", "putcall_ratio", "putcall", "cboe"), market_wide=True, per_symbol=False),
         SourceSpec("open_interest", "alt", ("open_interest",), _fetch_numeric("open_interest", "open_interest", "binance")),
         SourceSpec("basis", "alt", ("perp_spot_basis",), _fetch_numeric("perp_spot_basis", "basis", "binance")),
@@ -178,8 +202,18 @@ def managed_sources() -> dict[str, SourceSpec]:
             _fetch_multiasset, market_wide=True, per_symbol=False,
             note="Free cross-asset daily price levels via Stooq/Yahoo (metals/commodities/equity-index/FX).",
         ),
+        SourceSpec("gdelt_tone", "alt", ("gdelt_tone",), _fetch_gdelt_tone, market_wide=True, per_symbol=False, note="GDELT geopolitical news tone (keyless, EU-accessible, market-wide daily)."),
+        SourceSpec("dvol", "alt", ("dvol",), _fetch_dvol, note="Deribit DVOL implied vol (keyless, EU-native, BTC/ETH only)."),
+        SourceSpec("llm_index", "alt", tuple(_index_metrics()), _fetch_llm_index, market_wide=True, per_symbol=False, note="LLM qualitative→quantitative index scores (key-gated; market-wide)."),
     ]
     return {s.name: s for s in specs}
+
+
+def _index_metrics() -> tuple[str, ...]:
+    """The LLM index metric names, derived from the rubric registry (DRY — never a second hand-listing)."""
+    from cosmu.lab.indexes import INDEX_RUBRICS
+
+    return tuple(INDEX_RUBRICS)
 
 
 def source_names() -> list[str]:

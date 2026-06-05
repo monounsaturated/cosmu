@@ -1,0 +1,54 @@
+{
+  "name": "Polymarket positioning risk-flip (prediction-market odds lead crypto risk)",
+  "rationale": "Prediction-market odds on macro/risk events reprice the risk regime before it shows in any single asset's own price. When the cross-market risk-on probability (pm_implied_prob / pm_risk_on, the CLOB midpoint) is rising and above a fitted floor, ride crypto momentum; when the odds flip down (risk-off repricing) stand aside. Disconfirmer: exit when pm_implied_prob crosses back down through the exit level. NOTE: DATA-BLOCKED — the Polymarket CLOB exposes only LIVE order-book snapshots, not a positioning history endpoint; the PIT store currently holds only 4-5 snapshot rows (span < 1 day), so this spec CANNOT be gated yet. It is queued: it begins to fire once a continuous CLOB snapshot backfill (ingest tick) has accumulated real positioning history. The deterministic Gate (deflated Sharpe / PBO / holdout / FDR) judges it then — never the money path until it passes.",
+  "catalyst": "rising cross-market risk-on odds while crypto momentum is positive",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 15
+  },
+  "entry": [
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    },
+    {
+      "feature": { "name": "pm_implied_prob" },
+      "op": "gt",
+      "threshold": { "param": "risk_on_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "pm_implied_prob" },
+        "op": "cross_down",
+        "threshold": { "param": "risk_off_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lb": { "kind": "int", "lo": 14, "hi": 60, "step": 1 },
+    "mom_floor": { "kind": "float", "lo": -0.02, "hi": 0.05 },
+    "risk_on_floor": { "kind": "float", "lo": 0.45, "hi": 0.7 },
+    "risk_off_exit": { "kind": "float", "lo": 0.3, "hi": 0.55 },
+    "stop": { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp": { "kind": "float", "lo": 0.1, "hi": 0.3 },
+    "time_stop": { "kind": "int", "lo": 5, "hi": 15, "step": 1 }
+  }
+}

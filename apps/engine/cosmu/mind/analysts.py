@@ -1,19 +1,24 @@
 # intent: the analyst panel — a TradingAgents-style team of perspectives that each read ONE family of the
-# agent's existing point-in-time signals and emit a standardized Stance (lean · conviction · why). ML is a
-# pillar, not the whole story: alongside it sit technical, macro, sentiment, social/news, positioning and OSINT
-# reads. inputs: a MindContext (regime + latest alt-data values + ML model state + memory counts), gathered
-# ONCE; outputs: one Stance per analyst. invariants: deterministic, offline, point-in-time; a perspective with
-# no ingested data ABSTAINS (never fabricates a read); the analysts only describe — they never move money.
+# agent's existing point-in-time signals and emit a standardized Stance (lean · conviction · score · why). ML is
+# a pillar, not the whole story: alongside it sit technical, macro, sentiment, social/news, positioning and OSINT
+# reads. `run_panel()` turns the panel into TYPED VERDICTS: the deterministic heuristic always runs, and when an
+# optional LLM `judge` seam is supplied each pillar WITH data is rubric-scored by the model (the model sets
+# lean/confidence/rationale; the deterministic debate still combines them; the gate alone disposes). inputs: a
+# MindContext (regime + latest alt-data values + ML model state + memory counts), gathered ONCE; outputs: one
+# Stance per analyst. invariants: deterministic + offline by default (judge=None), point-in-time; a perspective
+# with no ingested data ABSTAINS and is NEVER handed to the model (never fabricates); analysts never move money.
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable
 
 from cosmu.knowledge.store import Store
 from cosmu.ml.regime import Regime
 from cosmu.ml.survival import SurvivalModel, load_survival_model
+from cosmu.mind.judge import JudgeFn
+from cosmu.mind.rubric import RUBRICS
 
 # A market Stance leans one of these. "abstain" is the honest answer when the feed isn't ingested yet.
 LEANS = ("bullish", "bearish", "neutral", "abstain")
@@ -29,13 +34,20 @@ class Stance:
     perspective: str
     kind: str  # "market" | "process"
     lean: str  # one of LEANS
-    conviction: float  # 0..1
+    conviction: float  # 0..1 — this IS the verdict's confidence
     weight: float  # consensus weight (0 for process / abstain)
     headline: str
     rationale: str
     evidence: list[str] = field(default_factory=list)
     as_of: str | None = None
     low_confidence: bool = False
+    # --- the typed verdict, filled by run_panel() ---
+    # `score` is the signed directional strength (-1 bearish … +1 bullish; 0 for neutral/abstain/process).
+    # `source` is the verdict's provenance for audit: "heuristic" (deterministic), "llm" (a judged Verdict),
+    # or "abstain" (no data). `rubric` names the rubric a market pillar was scored under (None for process).
+    score: float = 0.0
+    source: str = "heuristic"  # "heuristic" | "llm" | "abstain"
+    rubric: str | None = None
 
 
 @dataclass(frozen=True)
@@ -128,6 +140,8 @@ def _abstain(perspective: str, kind: str, reason: str, *, low_confidence: bool =
         rationale=reason,
         evidence=[],
         low_confidence=low_confidence,
+        score=0.0,
+        source="abstain",
     )
 
 
@@ -469,3 +483,55 @@ ALL_ANALYSTS: tuple[Callable[[MindContext], Stance], ...] = (
     ml_analyst,
     memory_analyst,
 )
+
+
+# --------------------------------------------------------------------------- the panel → typed verdicts
+
+
+def _signed(lean: str, conviction: float) -> float:
+    """Signed directional strength for a heuristic read: + for bullish, - for bearish, 0 otherwise."""
+    if lean == "bullish":
+        return round(conviction, 3)
+    if lean == "bearish":
+        return round(-conviction, 3)
+    return 0.0
+
+
+def run_panel(ctx: MindContext, *, judge: JudgeFn | None = None) -> list[Stance]:
+    """Run every analyst into a TYPED VERDICT. Each market pillar first produces its deterministic read (the
+    point-in-time facts + a heuristic lean/conviction). When a `judge` seam is supplied AND the pillar has data,
+    the LLM RE-SCORES that evidence under the pillar's rubric into a structured Verdict — the model sets the
+    lean/confidence/rationale, the deterministic math (debate) still combines them, and the gate alone disposes.
+    A pillar with no data ABSTAINS and is never handed to the model (no fabrication); the process pillars (ML,
+    memory) are self-knowledge and are never judged. `judge=None` (the default) keeps the panel fully
+    deterministic and offline. Every returned stance carries its verdict provenance for audit."""
+    out: list[Stance] = []
+    for analyst in ALL_ANALYSTS:
+        stance = analyst(ctx)
+        rubric = RUBRICS.get(stance.perspective)
+        judgeable = judge is not None and rubric is not None and stance.kind == "market" and stance.lean != "abstain"
+        if judgeable:
+            verdict = judge(rubric, stance.evidence, stance.lean)  # type: ignore[misc]
+            if verdict is not None:
+                out.append(
+                    replace(
+                        stance,
+                        lean=verdict.lean,
+                        conviction=round(verdict.confidence, 3),
+                        rationale=verdict.rationale,
+                        score=round(verdict.score, 3),
+                        source="llm",
+                        rubric=rubric.pillar,
+                    )
+                )
+                continue
+        # Heuristic / abstain / process: finalize the signed score + the rubric label without an LLM.
+        out.append(
+            replace(
+                stance,
+                score=_signed(stance.lean, stance.conviction) if stance.kind == "market" else 0.0,
+                source=stance.source if stance.lean == "abstain" else "heuristic",
+                rubric=rubric.pillar if rubric is not None else stance.rubric,
+            )
+        )
+    return out

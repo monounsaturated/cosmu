@@ -157,8 +157,10 @@ def test_disabling_binance_starves_the_cohort(tmp_path):
 
     store = _store(tmp_path)
     _seed_venues(store)
-    for vid in ("binance", "kraken", "coinbase"):
-        set_venue_enabled(store, vid, False)
+    # Disable EVERY crypto venue so the crypto class is fully starved (future-proof as venues are added).
+    for v in default_catalog().venues:
+        if v.kind == "crypto":
+            set_venue_enabled(store, v.id, False)
 
     venues, classes = enabled_universe(store)
     assert "binance" not in venues and "crypto" not in classes
@@ -174,7 +176,8 @@ def test_set_venue_enabled_keeps_one_venue_and_audits(tmp_path):
 
     store = _store(tmp_path)
     _seed_venues(store)
-    to_disable = ["ibkr", "polymarket", "kraken", "coinbase", "alpaca"]
+    # Disable EVERY venue except binance, so binance is genuinely the last one (future-proof as venues are added).
+    to_disable = [v.id for v in default_catalog().venues if v.id != "binance"]
     for vid in to_disable:
         set_venue_enabled(store, vid, False)
 

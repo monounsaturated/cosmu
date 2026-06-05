@@ -7,7 +7,6 @@ import ast
 from cosmu.config.feature_registry import feature_names
 from cosmu.strategy.spec import ParamRef, StrategySpec
 
-
 SAFE_IMPORTS = {"math", "statistics", "decimal", "typing"}
 BLOCKED_NAMES = {"eval", "exec", "open", "__import__", "compile", "globals", "locals"}
 
@@ -33,6 +32,12 @@ def validate_spec(spec: StrategySpec) -> list[str]:
     # A perp funding leg must name a real PIT feature — same registry guard as entry/exit features.
     if spec.funding_feature is not None and spec.funding_feature not in features:
         issues.append(f"unknown_feature:{spec.funding_feature}")
+    # Every meta-label feature must be a real registry feature (same guard); the secondary model can only read
+    # features the backtest actually computes/joins. The prob_threshold ParamRef is checked via the refs loop.
+    if spec.meta_label is not None:
+        for ref in spec.meta_label.features:
+            if ref.name not in features:
+                issues.append(f"unknown_feature:{ref.name}")
     if spec.universe.min_instruments < 5:
         issues.append("universe_too_small")
     if spec.horizon.min_hold_days < 1 or spec.horizon.max_hold_days < spec.horizon.min_hold_days:
@@ -58,6 +63,9 @@ def _composable_param_refs(spec: StrategySpec) -> list[str]:
             refs.extend([setup.orb.range_bars.param, setup.orb.buffer.param])
         if setup.fvg is not None:
             refs.extend([setup.fvg.max_retests.param, setup.fvg.gap_min.param])
+    if spec.meta_label is not None:
+        # The size/skip probability cut is a fitted param — enforce it resolves in param_space (no magic number).
+        refs.append(spec.meta_label.prob_threshold.param)
     return refs
 
 

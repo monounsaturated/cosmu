@@ -66,6 +66,24 @@ class RiskSettings(BaseModel):
     sandbox_seconds_cap: int = 30
 
 
+class VendorBudget(BaseModel):
+    monthly_cap: Decimal = Decimal("0")  # 0 = uncapped; operator sets via BUDGET__<VENDOR>__MONTHLY_CAP
+
+
+class BudgetConfig(BaseModel):
+    """Monthly spend caps per vendor + global. 0 = uncapped. Set via env:
+      BUDGET__GLOBAL_MONTHLY_CAP=300
+      BUDGET__OPENROUTER__MONTHLY_CAP=50
+      BUDGET__RAILWAY__MONTHLY_CAP=30
+    Alert tiers: 50% info / 80% warn / 100% throttle-suggest → Slack + recommendation row."""
+    global_monthly_cap: Decimal = Decimal("0")
+    openrouter: VendorBudget = Field(default_factory=VendorBudget)
+    xai: VendorBudget = Field(default_factory=VendorBudget)
+    railway: VendorBudget = Field(default_factory=VendorBudget)
+    modal: VendorBudget = Field(default_factory=VendorBudget)
+    claude: VendorBudget = Field(default_factory=VendorBudget)
+
+
 # Repo root holds the shared .env files (engine runs from apps/engine, so also check CWD). In a deployed
 # container the package sits shallow (e.g. /app/cosmu/config/settings.py), so guard the index — production
 # reads process env only and never loads a file, so a best-effort root is fine.
@@ -123,6 +141,10 @@ class Settings(BaseSettings):
     # and the deterministic risk guardian. Default on; flip to false to freeze the machine.
     scheduler_enabled: bool = True
     guardian_enabled: bool = True
+    # The Mind's LLM-as-judge committee is OPT-IN: off (default) → the analyst panel is fully deterministic and
+    # offline ($0, fast). On + an LLM key → each pillar WITH data is rubric-scored by the model, while the
+    # consensus stays deterministic math and the gate alone disposes. Flip with MIND_JUDGE_ENABLED.
+    mind_judge_enabled: bool = False
     # Free cross-asset transfer sources: FRED needs a (free) key; Polymarket needs a real market token id
     # (not a secret). Wired into the ingest providers so setting them is all it takes to go live.
     fred_api_key: str | None = Field(default=None, repr=False)
@@ -132,11 +154,14 @@ class Settings(BaseSettings):
     binance_testnet_api_key: str | None = Field(default=None, repr=False)
     binance_testnet_api_secret: str | None = Field(default=None, repr=False)
     api_secret_key: str | None = Field(default=None, repr=False)
+    railway_api_token: str | None = Field(default=None, repr=False)
+    slack_webhook_url: str | None = Field(default=None, repr=False)
     spend: SpendSettings = Field(default_factory=SpendSettings)
     gates: GateSettings = Field(default_factory=GateSettings)
     live: LiveSettings = Field(default_factory=LiveSettings)
     risk: RiskSettings = Field(default_factory=RiskSettings)
     evolution: EvolutionSettings = Field(default_factory=EvolutionSettings)
+    budget: BudgetConfig = Field(default_factory=BudgetConfig)
 
     @property
     def llm_provider(self) -> str | None:

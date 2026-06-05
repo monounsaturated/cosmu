@@ -10,6 +10,12 @@ from pydantic import BaseModel
 # the scoring prompt or weighting logic changes so a gate-passed survivor remains re-runnable.
 TWITTER_TRANSFORM_VERSION = "xai-twitter-sentiment-v1"
 
+# Pinned transform version for the social-authority features ("PageRank for credibility"). Bump when the
+# claim-extraction prompt, the deterministic resolver/scoring, or the authority fusion changes, so a gate-passed
+# survivor that depends on author authority stays re-runnable. Kept here (not imported from cosmu.mind) to avoid
+# an import cycle; cosmu.mind.authority.AUTHORITY_VERSION carries the same string.
+AUTHORITY_TRANSFORM_VERSION = "social-authority-v1"
+
 
 class FeatureDefinition(BaseModel):
     name: str
@@ -87,6 +93,15 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     FeatureDefinition(name="social_volume", source="lunarcrush", tier="tier1", asset_classes=["crypto"], asof_semantics="daily social bucket (next-day availability floor)", prior="A surge in social volume can mark crowd attention that precedes (or exhausts) a move — low-confidence until validated OOS.", transform_version="lunarcrush-v1"),
     FeatureDefinition(name="social_sentiment", source="lunarcrush", tier="tier1", asset_classes=["crypto"], asof_semantics="daily social bucket (next-day availability floor)", prior="LunarCrush social sentiment is a crowd-mood proxy; a positive shift may precede continuation before it is priced — low-confidence until validated OOS.", transform_version="lunarcrush-v1"),
     FeatureDefinition(name="galaxy_score", source="lunarcrush", tier="tier1", asset_classes=["crypto"], asof_semantics="daily social bucket (next-day availability floor)", prior="LunarCrush Galaxy Score blends price + social health into one rank; extremes are a low-confidence regime tag — must earn its place via OOS.", transform_version="lunarcrush-v1"),
+    # --- NORMALIZED LunarCrush derivations (cosmu/research/social_norm.py): scale-stable, within-asset, PIT.
+    # The raw levels above drift ~160x over 2020-26, so a fitted level threshold is always-true (the phase0
+    # social-signal §4 trap). These decompose attention into CHANGE (leads +) vs ALTITUDE (leads -), which the
+    # lead-lag probe shows carry OPPOSITE-signed information. tier1, low-confidence until validated OOS. ---
+    FeatureDefinition(name="social_volume_accel", source="lunarcrush", tier="tier1", asset_classes=["crypto"], asof_semantics="daily social bucket (next-day availability floor); ln(v_t/v_{t-1}), available_at of the later point", prior="A FRESH jump in social attention (day-over-day log-change of social_volume) leads price up at k=1-3d (attention momentum) — distinct from, and opposite to, the elevated LEVEL.", transform_version="social-norm-v1"),
+    FeatureDefinition(name="social_attention_z", source="lunarcrush", tier="tier1", asset_classes=["crypto"], asof_semantics="daily social bucket (next-day availability floor); trailing 30d within-asset z of social_volume", prior="SUSTAINED elevated social_volume (within-asset z of the level) leads price DOWN, worse with horizon — the crowd is already piled in. Used as a 'too crowded' altitude guard, not a long trigger.", transform_version="social-norm-v1"),
+    FeatureDefinition(name="social_excess_attention_z", source="lunarcrush", tier="tier1", asset_classes=["crypto"], asof_semantics="daily social bucket (next-day availability floor); trailing 30d within-asset z of ln(social_volume)-ln(dollar_volume)", prior="Crowd loudness RELATIVE to money traded (social/dollar-volume) leads price UP at the ~1-week horizon (k=7 decile spread +1.8%, t=+5.77) — robust longer-horizon continuation the absolute-volume specs missed.", transform_version="social-norm-v1"),
+    FeatureDefinition(name="galaxy_score_z", source="lunarcrush", tier="tier1", asset_classes=["crypto"], asof_semantics="daily social bucket (next-day availability floor); trailing 30d within-asset z of galaxy_score", prior="Within-asset z of galaxy_score crowd-health; a low-confidence regime tag (the top-decile drawdown asymmetry seen on a short sample did NOT robustly replicate on the full sample — registered for completeness, no spec rests on it).", transform_version="social-norm-v1"),
+    FeatureDefinition(name="btc_social_accel", source="lunarcrush", tier="tier1", asset_classes=["crypto"], asof_semantics="BTC daily social bucket (next-day availability floor); BTC social_volume log-change broadcast to all symbols", prior="A BTC social-attention spike leads the mean-ALT return at k=1d (cross-asset attention contagion) — BTC's crowd, read on the alts.", transform_version="social-norm-v1"),
     # xAI/Grok Twitter sentiment (key-gated: XAI_API_KEY required; returns [] without it).
     # The LLM ONLY standardizes/scores tweet text — it is NEVER on the gate/scoring/money path.
     # Both features are market-wide (the query covers crypto broadly, not a single asset).
@@ -134,6 +149,38 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         ),
         transform_version="news-event-score-v1",
     ),
+    # --- LLM qualitative→quantitative INDEX scores (VISION §6): an LLM-as-judge standardizes narrative into a
+    # rubric-anchored numeric score, stored POINT-IN-TIME WITH HISTORY so the gate can train on it. The LLM ONLY
+    # proposes the number against an explicit rubric; the deterministic Gate alone disposes — NEVER the money path.
+    # Both are market-wide + tier1 (low-confidence until validated OOS; the gate down-weights until it earns its
+    # place). transform_version pins the rubric+prompt so a gate-passed survivor is re-runnable byte-for-byte. ---
+    FeatureDefinition(
+        name="reg_risk_crypto",
+        source="llm_index",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="LLM index minted at evidence-availability time (availability == observation, no look-ahead)",
+        prior=(
+            "An LLM-as-judge standardizes qualitative regulatory news into a [0, 1] crackdown-pressure score "
+            "against an explicit rubric (0 = supportive/clear, 1 = severe crackdown). A spike marks rising "
+            "regulatory risk that may precede de-risking. The LLM proposes; the deterministic Gate disposes — "
+            "low-confidence until validated OOS."
+        ),
+        transform_version="llm-index-v1",
+    ),
+    FeatureDefinition(
+        name="risk_on_off",
+        source="llm_index",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="LLM index minted at evidence-availability time (availability == observation, no look-ahead)",
+        prior=(
+            "An LLM-as-judge standardizes macro/geopolitical narrative into a [-1, +1] risk-appetite score "
+            "against an explicit rubric (+1 risk-on, -1 risk-off) — a shared cross-asset regime tag. The LLM "
+            "proposes; the deterministic Gate disposes — low-confidence until validated OOS."
+        ),
+        transform_version="llm-index-v1",
+    ),
     # --- cross-asset daily price levels (free, no key) via Stooq/Yahoo: one asset class's price IS another's
     # macro feature. Each is market-wide, point-in-time (a daily close is known the next day — see
     # multiasset-daily-v1), and tier0 like the other liquid macro reads (dxy/vix). They condition the shared
@@ -145,9 +192,63 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     FeatureDefinition(name="ndx_index", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="The Nasdaq-100 carries the high-beta tech/liquidity factor crypto co-moves with most strongly — a faster risk-appetite read than SPX.", transform_version="multiasset-daily-v1"),
     FeatureDefinition(name="eurusd", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="EUR/USD is the dominant dollar-strength gauge; a weaker dollar loosens global financial conditions, a tailwind for risk assets.", transform_version="multiasset-daily-v1"),
     FeatureDefinition(name="usdjpy", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="USD/JPY tracks the yen carry trade and global liquidity; a sharp JPY rally often coincides with cross-asset risk-off deleveraging.", transform_version="multiasset-daily-v1"),
+    # --- SOCIAL AUTHORITY ("PageRank for credibility", Phase 3): score voices by whether their PREDICTIVE claims
+    # came true (deterministic Brier-skill vs base rate), whether they were FIRST (primacy), and whether they LED
+    # an event vs ECHOED it — weighted by a citation-graph PageRank ANCHORED to that track record. Both features
+    # are POINT-IN-TIME with history (availability == observation; a real-time credibility judgement is knowable
+    # only when made — no look-ahead). Derived from the Phase-0 voice timeline, not a managed network pull, so they
+    # live outside the managed-ingest catalog. tier1 + low-confidence: influence ≠ authority and a loud-but-wrong
+    # account scores ~0, but the feature still must EARN its place out-of-sample through the gate. ---
+    FeatureDefinition(
+        name="authority_weighted_claim_signal",
+        source="social_authority",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="snapshot minted at observation time (availability == observation, no look-ahead); PIT history accrues per pass",
+        prior=(
+            "A credibility-weighted directional consensus [-1, +1] of recent claims on an asset: each voice's vote "
+            "(up/down/flat × conviction) is weighted by its citation-graph PageRank ANCHORED to a deterministic "
+            "track record (Brier-skill vs base rate), discounted for echoing vs leading. A positive shift flags "
+            "credible voices turning bullish before it is priced. Influence ≠ authority — a loud, wrong account "
+            "barely registers. tier1 — must earn its place via OOS."
+        ),
+        transform_version=AUTHORITY_TRANSFORM_VERSION,
+    ),
+    FeatureDefinition(
+        name="author_authority",
+        source="social_authority",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="snapshot minted at observation time (availability == observation, no look-ahead); PIT history accrues per pass",
+        prior=(
+            "Per-voice credibility weight (personalized PageRank over the who-cites-whom graph, teleport ∝ the "
+            "deterministic Brier-skill track record). The diagnostic per-handle series feeding the weighted claim "
+            "signal: a quiet calibrated voice scores high, a loud wrong one scores ~0. tier1 — must earn OOS."
+        ),
+        transform_version=AUTHORITY_TRANSFORM_VERSION,
+    ),
     FeatureDefinition(name="pm_implied_prob", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Odds are a cross-market probability signal."),
     FeatureDefinition(name="pm_prob_velocity", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Probability repricing speed identifies changing beliefs."),
     FeatureDefinition(name="pm_book_depth", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Depth defines fillable capacity."),
+    # --- EU-accessible, keyless alt-data (tier1 until validated OOS): GDELT geopolitical tone + Deribit DVOL ---
+    FeatureDefinition(
+        name="gdelt_tone",
+        source="gdelt",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="daily geopolitical news tone (next-day availability floor — a day's indexed articles are closed by end-of-day; no look-ahead)",
+        prior="Aggregate geopolitical/macro news tone from GDELT (keyless, global); negative tone spikes mark risk-off events that can precede drawdowns; sustained positive tone may tag risk-on regimes. tier1 — must earn its place OOS.",
+        transform_version="gdelt-tone-v1",
+    ),
+    FeatureDefinition(
+        name="dvol",
+        source="deribit",
+        tier="tier0",
+        asset_classes=["crypto"],
+        asof_semantics="daily close (next-day availability floor — DVOL bar opens at midnight UTC and is finalized at day-end; no look-ahead)",
+        prior="Deribit DVOL is the crypto-native options implied volatility index (30-day annualized), the VIX equivalent for BTC/ETH options; elevated DVOL marks stress or opportunity and conditions position sizing and regime filters.",
+        transform_version="dvol-v1",
+    ),
 )
 
 

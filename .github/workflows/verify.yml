@@ -1,21 +1,89 @@
 name: verify
 
 on:
-  pull_request:
-    branches:
-      - main
-  # Backstop: push == deploy and branch protection isn't available on the current
-  # plan, so verify runs on EVERY branch's pushes, not just main. The local
-  # pre-push hook (.githooks/pre-push) is the first gate; this is the safety net.
+  # push == deploy and branch protection isn't available on the current plan, so
+  # verify runs on EVERY branch's pushes (covers main and all feature branches).
+  # The local pre-push hook (.githooks/pre-push) is the first gate; this is the
+  # safety net. pull_request trigger removed — it was a duplicate that fired a
+  # second run for every PR push, doubling Actions spend with no extra coverage.
   push:
     branches:
       - "**" # any branch (matches names with slashes, unlike "*")
 
-jobs:
-  verify:
-    name: verify
-    runs-on: ubuntu-latest
+# Cancel any in-flight run on the same branch when a newer push lands.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
+  # Cheap change-detection job (~5 s). All heavy jobs depend on its outputs.
+  # Docs-only / .md-only / .claude/**-only pushes skip all three heavy jobs.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      engine: ${{ steps.filter.outputs.engine }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            engine:
+              - 'apps/engine/**'
+              - 'pyproject.toml'
+              - '**/pyproject.toml'
+              - 'poetry.lock'
+              - 'requirements*.txt'
+              - 'scripts/check_naming.py'
+            web:
+              - 'apps/web/**'
+              - 'packages/**'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - '**/package.json'
+              - 'scripts/generate_contracts.py'
+
+  engine_test:
+    name: engine_test
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.engine == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('apps/engine/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install engine
+        run: pip install -e "apps/engine[dev]"
+
+      - name: Naming check
+        run: python3 scripts/check_naming.py
+
+      - name: Engine tests
+        run: PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests -n auto
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,24 +99,48 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
 
-      - name: Cache pip
+      - name: Generate contracts
+        # app import fails without pip; script falls back to committed openapi.json
+        run: python3 scripts/generate_contracts.py
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Cache Next.js
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('apps/engine/pyproject.toml') }}
+          path: apps/web/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**') }}
           restore-keys: |
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
 
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install engine (Python)
-        run: pip install -e "apps/engine[dev]"
-
-      - name: Run verify
-        run: pnpm verify
+      - name: Build
+        # build script runs contracts:generate internally; python3 available on ubuntu-latest
+        # without pip the script falls back to committed openapi.json
+        run: pnpm build

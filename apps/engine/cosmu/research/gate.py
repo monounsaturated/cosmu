@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from cosmu.data.altdata import AltDataProvider, NewsProvider, read_pit_fee, rolling_zscore
 from cosmu.data.market import Bar
+from cosmu.data.sources.multiasset import MULTIASSET_METRICS
 from cosmu.experiments import ExperimentRecord, data_version, log_experiments
 from cosmu.spine.venue import default_catalog
 from cosmu.ingest.standardize import standardize_news
@@ -713,6 +714,23 @@ def _xp_macro(f, i):  # noqa: ANN001
     return v is None or v > 0.0  # FRED macro regime (cross-asset transfer)
 
 
+def _xp_xmarket(f, i, drop=None):  # noqa: ANN001
+    """Cross-market transfer backdrop: the equal-weight, sign-neutral mean of the multiasset price-level
+    z-scores at bar i (metals/commodities/equity indexes/FX, read market-wide). It's STATIONARY by
+    construction — each input is a causal rolling z-score, never a raw level, so no absolute threshold can
+    overfit the sample (the PR #87 cross-market failure). Trades when the composite is non-negative
+    (cross-market risk backdrop not deteriorating); pass-through when no data lands on the bar. `drop`
+    excludes ONE metric from the composite so the per-source drop-one report can attribute each market's
+    marginal contribution without removing the whole transfer term."""
+    xm = f.get("xmarket")
+    if not xm:
+        return True
+    zs = [s[i] for m, s in xm.items() if m != drop and i < len(s) and s[i] is not None]
+    if not zs:
+        return True
+    return (sum(zs) / len(zs)) >= 0.0
+
+
 def _xa_single_alt(thr):  # noqa: ANN001
     return lambda f, i: _xp_price(f, i, thr) and _xp_news(f, i) and _xp_fund(f, i) and _xp_fg(f, i)
 
@@ -732,6 +750,9 @@ def _xa_full(thr, *, drop=None):  # noqa: ANN001
             ok = ok and _xp_riskon(f, i)
         if drop != "macro_regime":
             ok = ok and _xp_macro(f, i)
+        # Cross-market transfer term is always present; a multiasset `drop` only thins the composite
+        # (a no-op for the non-multiasset source drops, whose keys never match a metric name).
+        ok = ok and _xp_xmarket(f, i, drop=drop)
         return ok
     return pred
 
@@ -742,6 +763,9 @@ def _xa_features(market, class_of, alt_provider, news_provider, lookback):  # no
     big = 10**9
     risk_on_pts = alt_provider.fetch_series("MARKET", "risk_on", limit=big)
     macro_pts = alt_provider.fetch_series("MARKET", "macro_regime", limit=big)
+    # Cross-market transfer sources: free, market-wide daily price LEVELS (metals/commodities/equity
+    # indexes/FX) read once here, then turned STATIONARY per symbol via the causal rolling z-score below.
+    xmarket_pts = {m: alt_provider.fetch_series("MARKET", m, limit=big) for m in MULTIASSET_METRICS}
     feats: dict = {}
     for symbol, bars in market.items():
         klass = class_of[symbol]
@@ -761,6 +785,12 @@ def _xa_features(market, class_of, alt_provider, news_provider, lookback):  # no
             f["fg"] = _align(bars, [(p.available_at, p.value) for p in alt_provider.fetch_series(symbol, "fear_greed", limit=len(bars) + 10)])
         f["risk_on"] = _align(bars, [(p.available_at, p.value) for p in risk_on_pts])
         f["macro"] = _align(bars, [(p.available_at, p.value) for p in macro_pts])
+        # Each multiasset level series → a causal rolling z-score aligned to THIS symbol's bars (stationary,
+        # no look-ahead). Absent series align to all-None → the z-score is all-None → pass-through.
+        f["xmarket"] = {
+            m: rolling_zscore(_align(bars, [(p.available_at, p.value) for p in pts]), lookback)
+            for m, pts in xmarket_pts.items()
+        }
         feats[symbol] = (bars, f)
     return feats
 
@@ -837,7 +867,9 @@ def evaluate_cross_asset_ablation(
     xasset_sharpe = float(xasset.metrics.sharpe)
     # --- per-source drop-one (diagnostic — NOT a counted trial; attribution on the arm-(3) hypothesis) ---
     drop_one_source: list[DropOne] = []
-    for src in ("news", "funding", "fear_greed", "risk_on", "macro_regime"):
+    # The single-asset alt sources + the two original transfer features + each stationary cross-market
+    # source (a multiasset drop thins the composite, attributing that one market's marginal contribution).
+    for src in ("news", "funding", "fear_greed", "risk_on", "macro_regime", *MULTIASSET_METRICS):
         without = _xa_sharpe(_build_signal(feats, _xa_full(0.5, drop=src)), store)[0]
         drop_one_source.append(DropOne(src, round(without, 4), round(xasset_sharpe - without, 4)))
     drop_one_source.sort(key=lambda d: d.delta, reverse=True)

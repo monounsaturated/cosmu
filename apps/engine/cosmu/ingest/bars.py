@@ -9,11 +9,13 @@
 from __future__ import annotations
 
 import json
+import urllib.parse
+import urllib.request
 from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
 
-from cosmu.data.market import Bar, _bar_from_ccxt, _bar_from_json, _ccxt_symbol
+from cosmu.data.market import Bar, _bar_from_ccxt, _bar_from_json, _ccxt_symbol, _ssl_context
 
 __all__ = [
     "Bar",
@@ -30,6 +32,12 @@ TIMEFRAME_MS: dict[str, int] = {
     "1m": 60_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000,
     "1h": 3_600_000, "4h": 14_400_000, "1d": 86_400_000, "1w": 604_800_000,
 }
+
+
+def _klines_to_ohlcv(rows: list[list]) -> list[list]:
+    """Binance REST kline rows → ccxt OHLCV shape `[ms, open, high, low, close, volume]` (floats), so a REST
+    page is treated identically to a ccxt page by the paginated walk + `_bar_from_ccxt`. Pure (no network)."""
+    return [[int(r[0]), float(r[1]), float(r[2]), float(r[3]), float(r[4]), float(r[5])] for r in rows]
 
 
 def _kraken_ccxt_symbol(symbol: str) -> str:
@@ -80,13 +88,39 @@ class CcxtBarBackfiller:
         self._fetcher = _fetcher or self._fetch
 
     def _fetch(self, symbol: str, timeframe: str, since: int, limit: int) -> list[list]:
+        """ccxt first; if ccxt is absent or returns nothing, fall back to the keyless Binance REST klines
+        path (stdlib urllib) so `backfill bars` works WITHOUT ccxt installed — the same self-healing the
+        runtime `BinanceSpotOHLCVProvider` already has. Non-Binance venues stay ccxt-only (Binance is the
+        primary deep-history venue; its public REST needs no key, mirroring the funding backfill path)."""
+        rows = self._fetch_ccxt(symbol, timeframe, since, limit)
+        if rows or self.exchange_id != "binance":
+            return rows
+        return self._fetch_rest_binance(symbol, timeframe, since, limit)
+
+    def _fetch_ccxt(self, symbol: str, timeframe: str, since: int, limit: int) -> list[list]:
         try:
             import ccxt  # type: ignore[import-not-found]
         except ImportError:
-            return []  # no ccxt → honest empty (never a fabricated bar)
+            return []  # no ccxt → fall through to the REST path (never a fabricated bar)
         exchange = getattr(ccxt, self.exchange_id)({"enableRateLimit": True})
         market_symbol = self._VENUE_SYMBOL.get(self.exchange_id, _ccxt_symbol)(symbol)
         return exchange.fetch_ohlcv(market_symbol, timeframe=timeframe, since=since, limit=limit)
+
+    def _fetch_rest_binance(self, symbol: str, timeframe: str, since: int, limit: int) -> list[list]:
+        """Keyless Binance public klines via stdlib urllib — the bar analogue of the funding REST path.
+        Returns ccxt-shaped OHLCV rows `[ms, open, high, low, close, volume]` ascending from `since`; any
+        transport/parse failure → [] (honest empty, never a fabricated bar)."""
+        query = urllib.parse.urlencode(
+            {"symbol": symbol, "interval": timeframe, "startTime": int(since), "limit": min(max(limit, 1), 1000)}
+        )
+        url = f"https://api.binance.com/api/v3/klines?{query}"
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        try:
+            with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+                rows = json.loads(resp.read().decode("utf-8"))
+        except Exception:  # noqa: BLE001 — any network/parse failure degrades to empty, never fabricates a bar
+            return []
+        return _klines_to_ohlcv(rows)
 
     def fetch_history(self, symbol: str, timeframe: str, *, start_ms: int, end_ms: int | None = None) -> list[Bar]:
         """Walk pages forward from `start_ms` to `end_ms` (default = now). Returns ascending, de-duped Bars.

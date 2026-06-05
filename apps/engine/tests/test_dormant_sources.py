@@ -125,14 +125,14 @@ def test_run_once_lands_dormant_sources(tmp_path):
     assert counts["open_interest"] == 1
     assert counts["perp_spot_basis"] == 1
     assert counts["exchange_netflow"] == 1
-    assert counts["liquidations"] == 1
+    assert counts["liquidation_cascade"] == 1
     # the rows are actually in the point-in-time store under their canonical provider keys
     far = datetime(2099, 1, 1, tzinfo=UTC)
     assert store.read_asof("reddit", "MARKET", "reddit_sentiment", far)
     assert store.read_asof("binance", "BTCUSDT", "open_interest", far)
     assert store.read_asof("binance", "BTCUSDT", "perp_spot_basis", far)
     assert store.read_asof("binance", "BTCUSDT", "exchange_netflow", far)
-    assert store.read_asof("coinglass", "BTCUSDT", "liquidations", far)
+    assert store.read_asof("coinglass", "BTCUSDT", "liquidation_cascade", far)
 
 
 def test_run_once_memoizes_shared_fred_series(tmp_path):

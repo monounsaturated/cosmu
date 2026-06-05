@@ -1,35 +1,55 @@
 #!/usr/bin/env sh
 #
-# pre-push — last line of defense before a broken commit ships.
+# pre-push — fast local gate (seconds, not minutes).
 #
-# In this repo push == deploy: Railway (engine) and Vercel (web) auto-deploy the
-# pushed working branch, and branch protection isn't available on the current
-# plan, so CI-on-main can't stop a bad commit from reaching prod. This hook runs
-# the full `pnpm verify` gate locally and blocks the push if it fails.
-# CI-on-all-branches (.github/workflows/verify.yml) is the backstop for pushes
-# that skip the hook (e.g. --no-verify, or a clone that never enabled it).
+# Runs ONLY the two cheap checks that catch the most common local mistakes:
+#   1. Naming convention check  (scripts/check_naming.py)
+#   2. Contracts drift check    (regenerate contracts, fail if git diff shows drift)
+#
+# Heavy verification (typecheck, next build, full pytest) runs in GitHub Actions
+# CI automatically on every push — see .github/workflows/verify.yml.
+# CI is the authoritative gate; this hook is a fast local smoke test.
 #
 # Enable:      git config core.hooksPath .githooks   (auto-run by `pnpm install`)
 # Bypass once: git push --no-verify
 #
 set -u
 
-echo "[pre-push] push == deploy — running 'pnpm verify' before allowing push..."
+echo "[pre-push] running fast local checks (naming + contracts drift)..."
+echo "[pre-push] heavy verify (typecheck / build / pytest) → CI runs those automatically."
 
-if ! command -v pnpm >/dev/null 2>&1; then
-  echo "[pre-push] ERROR: pnpm not found on PATH; cannot run the verify gate." >&2
-  echo "[pre-push]        install pnpm, or bypass intentionally with: git push --no-verify" >&2
+# ── 1. Naming check ───────────────────────────────────────────────────────────
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "[pre-push] ERROR: python3 not found on PATH." >&2
+  echo "[pre-push]        install Python 3, or bypass intentionally with: git push --no-verify" >&2
   exit 1
 fi
 
-pnpm verify
-status=$?
-
-if [ "$status" -ne 0 ]; then
-  echo "[pre-push] BLOCKED: 'pnpm verify' failed (exit $status). Fix the tree, then push." >&2
+echo "[pre-push] 1/2 naming check..."
+if ! python3 scripts/check_naming.py; then
+  echo "[pre-push] BLOCKED: naming check failed. Fix naming, then push." >&2
   echo "[pre-push]          to bypass intentionally: git push --no-verify" >&2
-  exit "$status"
+  exit 1
 fi
 
-echo "[pre-push] verify passed — allowing push."
+# ── 2. Contracts drift check ──────────────────────────────────────────────────
+# Regenerate contracts in-place (the script falls back to committed openapi.json
+# if Python deps aren't installed, so this always runs fast with no pip needed).
+# Then check whether the working tree changed — if it did, the committed contracts
+# are stale and we block the push.
+echo "[pre-push] 2/2 contracts drift check..."
+if ! python3 scripts/generate_contracts.py 2>/dev/null; then
+  echo "[pre-push] WARNING: generate_contracts.py exited non-zero; skipping drift check." >&2
+else
+  if ! git diff --quiet packages/contracts-ts/; then
+    echo "[pre-push] BLOCKED: contracts/generated types are out of date." >&2
+    echo "[pre-push]          run 'pnpm contracts:generate' and commit the result, then push." >&2
+    echo "[pre-push]          to bypass intentionally: git push --no-verify" >&2
+    # Restore the files so the working tree isn't left dirty
+    git checkout -- packages/contracts-ts/ 2>/dev/null || true
+    exit 1
+  fi
+fi
+
+echo "[pre-push] fast checks passed — allowing push. CI will run the full gate."
 exit 0

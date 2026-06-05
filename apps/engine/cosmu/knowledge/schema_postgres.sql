@@ -74,6 +74,13 @@ create table if not exists backtests (
   folds_positive integer not null,
   passed_gates integer not null,
   holdout_passed integer not null,
+  -- Survival-model feature row (ml/survival.py), persisted off the screen. Nullable: pre-migration rows stay
+  -- valid (the reader coalesces NULL -> neutral) and non-screen backtest kinds may leave them unset.
+  sharpe_per_obs numeric,
+  skew numeric,
+  kurtosis numeric,
+  n_obs integer,
+  regime_spread integer,
   created_at text not null
 );
 
@@ -188,6 +195,8 @@ create table if not exists research_notes (
   embedding vector(1536)            -- pgvector: RAG over notes + graveyard (text-embedding-3-small dim)
 );
 create index if not exists idx_research_notes_embedding on research_notes using hnsw (embedding vector_cosine_ops);
+-- recall()/novelty always filter `where kind = ?` before the vector scan; index the predicate.
+create index if not exists idx_research_notes_kind on research_notes(kind);
 
 create table if not exists recommendations (
   id text primary key, ts text not null, kind text not null, body text not null, state text not null, payload text not null
