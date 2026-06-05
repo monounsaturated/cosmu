@@ -34,3 +34,19 @@ This is how the 2026-06-04 7-PR merge train was landed.
 
 ## Skip
 A standing Fly/Railway compute box; TradingView/QuantConnect as compute runners (those are idea scratchpads, not CI/ML infra).
+
+---
+
+## DECISION (2026-06-05): keep Railway + ADD Modal for heavy compute
+Operator decision: **Railway stays** (always-on engine API + the autonomous tick/crons), and we **add Modal** as the scale-to-zero lane for heavy bursts (cohort sweeps, ML train, big backfills). No Fly.io. Concrete build steps for the next session:
+1. `pip install modal` + `modal token new` (operator creates a Modal account; ~$0 idle, per-second billing).
+2. Add `apps/engine/remote/modal_app.py`: one Modal `App` + an image built from `apps/engine[dev]`; functions = `run_tick`, `run_cohort`/sweep, `backfill`. Each reads `DATABASE_URL` from a Modal secret so results land in prod Postgres.
+3. Drive from Claude Code: `modal run apps/engine/remote/modal_app.py::run_cohort -- --n 200`. Scale-to-zero → $0 when idle.
+4. Keep the engine's deps importable on Modal by reusing the same `pyproject` extras — no dep drift.
+
+## Operational findings from the 2026-06-05 session (runbook)
+- **The autonomous tick is NOT scheduled.** No `Procfile`/`railway.json`/cron/in-process scheduler exists in the repo despite "4h cron" comments. **Until a Railway cron is wired, the tick never runs on its own** → the app has ingest data but no strategies/tracks. Wire a Railway cron service running `python -m cosmu.master.scheduler` every 4h.
+- **Run a tick manually (writes prod DB, no HTTP timeout):** `railway run env PYTHONPATH=apps/engine python3 -m cosmu.master.scheduler --n 6`. Confirmed working: emits `authored=… gated_passed=… funded=… survivors=…`.
+- **`POST /autonomy/tick` returns `upstream error`** — the endpoint runs the tick synchronously and exceeds Railway's gateway timeout. Fix: make it async (return 202 + run in background), or just use the CLI above.
+- **`manage_data backfill bars` returned 0** on the Mac because `ccxt` isn't installed there (`railway run` uses local Python); funding worked because it uses stdlib `urllib`. Fixed on branch `claude/fix-bars-rest-fallback` (keyless Binance REST fallback). NB: bars are a local **file cache**, not Postgres — a local backfill can't populate the deployed app; the deployed engine fetches its own bars (REST fallback, no ccxt needed).
+- **Verify is the slow gate (~16 min).** Compute Phase 1 (parallelize `verify.yml` jobs + cache pnpm & `.next/cache`) is the cheap fix; not yet done.
