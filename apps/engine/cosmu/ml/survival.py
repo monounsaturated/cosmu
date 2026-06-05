@@ -295,37 +295,54 @@ def _labeled_outcomes(store: Store) -> tuple[list[list[float]], list[int]]:
     """Read LABELED outcomes from the store: every screen backtest joined to its strategy_version, labeled
     1 if it passed the gate (survived → forward-test/live track) and 0 if it was killed. Ordered oldest-first so the
     chronological train/OOS split is point-in-time. The label is the deterministic gate's verdict — the model
-    learns to PREDICT the gate's survival call, never to override it."""
-    rows = store.rows(
-        """
-        SELECT b.sharpe AS sharpe, b.num_trades AS num_trades, b.max_dd AS max_dd,
-               b.folds_positive AS folds_positive, b.pbo AS pbo, b.passed_gates AS passed_gates,
-               b.created_at AS created_at, b.regime_label AS regime_label, b.oos_return AS oos_return
-        FROM backtests b
-        WHERE b.kind = 'screen'
-        ORDER BY b.created_at ASC, b.id ASC
-        """
+    learns to PREDICT the gate's survival call, never to override it.
+
+    The full feature row (per-obs Sharpe + higher moments + obs count + regime breadth) is now persisted on the
+    screen backtest, so train-time features match the serve-time `features_from_metrics`. Against a DB that
+    predates that migration (the columns are absent), we fall back to the legacy column set and zero-fill the
+    higher moments — exactly the prior behaviour — so survival ranking degrades gracefully, never errors."""
+    rich_cols = (
+        "b.sharpe_per_obs AS sharpe_per_obs, b.skew AS skew, b.kurtosis AS kurtosis, "
+        "b.n_obs AS n_obs, b.regime_spread AS regime_spread, "
     )
+    base = (
+        "SELECT b.sharpe AS sharpe, b.num_trades AS num_trades, b.max_dd AS max_dd, "
+        "b.folds_positive AS folds_positive, b.pbo AS pbo, b.passed_gates AS passed_gates, "
+        "b.created_at AS created_at, b.regime_label AS regime_label, b.oos_return AS oos_return"
+    )
+    tail = " FROM backtests b WHERE b.kind = 'screen' ORDER BY b.created_at ASC, b.id ASC"
+    try:
+        rows = store.rows(f"{base}, {rich_cols.rstrip(', ')}{tail}")
+        rich = True
+    except Exception:  # noqa: BLE001 — pre-migration DB without the survival columns: use the legacy row.
+        rows = store.rows(f"{base}{tail}")
+        rich = False
     vectors: list[list[float]] = []
     labels: list[int] = []
     for r in rows:
-        # Reconstruct the survival feature row from the persisted screen columns. folds_positive is stored as a
-        # count out of 6 folds (loop.py writes int(folds_positive_pct * 6)), so /6 recovers the pct.
+        # folds_positive is stored as a count out of 6 folds (loop.py writes int(folds_positive_pct * 6)).
         folds_pct = float(r["folds_positive"] or 0) / 6.0
-        # We persist sharpe (annualized) not sharpe_per_obs on the backtests row; the per-obs proxy used for the
-        # heuristic+model is the annualized sharpe scaled down — monotone, which is all the ranker needs.
-        sharpe_proxy = float(r["sharpe"] or 0) / 16.0  # ~sqrt(252) de-annualization proxy; monotone in SR
+        if rich and r.get("sharpe_per_obs") is not None:
+            sharpe_feat = float(r["sharpe_per_obs"])
+            skew = float(r.get("skew") or 0.0)
+            kurt_excess = (float(r["kurtosis"]) - 3.0) if r.get("kurtosis") is not None else 0.0
+            n_obs = float(r.get("n_obs") or 0.0)
+            regime_spread = float(r.get("regime_spread") or 0.0)
+        else:
+            # Legacy/empty row: annualized Sharpe scaled down is a monotone per-obs proxy; moments neutral.
+            sharpe_feat = float(r["sharpe"] or 0) / 16.0  # ~sqrt(252) de-annualization; monotone in SR
+            skew = kurt_excess = n_obs = regime_spread = 0.0
         vectors.append(
             [
-                sharpe_proxy,
+                sharpe_feat,
                 float(r["num_trades"] or 0),
                 float(r["max_dd"] or 0),
                 folds_pct,
                 float(r["pbo"] or 0),
-                0.0,  # skew not persisted on the screen row — neutral
-                0.0,  # excess kurtosis not persisted — neutral
-                0.0,  # n_obs not persisted — neutral (the live ranker uses the full feature row)
-                0.0,  # regime_spread not persisted per-regime — neutral
+                skew,
+                kurt_excess,
+                n_obs,
+                regime_spread,
             ]
         )
         labels.append(1 if int(r["passed_gates"] or 0) else 0)
