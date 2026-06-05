@@ -15,6 +15,7 @@
 
 <!-- ↓↓↓ DUMP BELOW THIS LINE ↓↓↓ -->
 
+- [2026-06-05] Review https://crowdintel.xyz/#pricing — pricing/packaging reference (on-chain Polymarket smart-money analytics + MCP). Mine for our social-authority/insider feature + any pricing/product ideas.
 
 <!-- ↑↑↑ DUMP ABOVE THIS LINE ↑↑↑ -->
 
