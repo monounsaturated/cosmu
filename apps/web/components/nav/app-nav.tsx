@@ -1,10 +1,8 @@
 "use client";
 
-// module: app navigation. ONE persistent nav — Overview · Costs · Console — each serving one decision:
-// Overview (is the machine running + the verdict ledger + idea intake), Costs (the ROI read-out), and
-// Console (decide · steer · arm). There is no money yet, so there is no fund dashboard. The remaining
-// deep-link utilities (Live · Settings · Commands) live under "More", off the primary nav. Desktop =
-// persistent icon-rail sidebar; mobile = a bottom tab bar (3 tabs + a More sheet).
+// module: app navigation. FOUR persistent surfaces — Overview · Strategies · Costs · Console — each
+// serving one decision. Desktop = persistent icon-rail sidebar; mobile = a bottom tab bar (4 tabs + a
+// More sheet).
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -13,6 +11,7 @@ import { createPortal } from "react-dom";
 import {
   DollarSign,
   LayoutDashboard,
+  ListChecks,
   MoreHorizontal,
   Radio,
   SlidersHorizontal,
@@ -23,9 +22,10 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; desc?: string; icon: typeof LayoutDashboard; gated?: boolean };
 
-// The three persistent surfaces — one per decision the operator makes.
+// The four persistent surfaces — one per decision the operator makes.
 export const navItems: NavItem[] = [
   { href: "/", label: "Overview", desc: "Status · verdicts · ideas", icon: LayoutDashboard },
+  { href: "/strategies", label: "Strategies", desc: "Which deserve capital?", icon: ListChecks },
   { href: "/costs", label: "Costs", desc: "What is it costing?", icon: DollarSign },
   { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal }
 ];
@@ -39,6 +39,9 @@ export const moreItems: NavItem[] = [
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
+  if (href === "/strategies") {
+    return pathname.startsWith("/strategies") || pathname.startsWith("/strategy");
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -154,7 +157,7 @@ export function BottomNav() {
     <>
       <nav
         aria-label="Primary"
-        className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
+        className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
       >
         {navItems.map((item) => (
           <DockTab key={item.href} item={item} active={isActive(pathname, item.href)} />
