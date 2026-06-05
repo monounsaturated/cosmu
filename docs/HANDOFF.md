@@ -58,7 +58,9 @@ The human only dumps and reviews results. Keep that promise.
 **Now: run locally on the Mac (M2 16GB).** It's enough for the master's job — control,
 merge, dispatch — because heavy work is offloaded: **verify → GitHub Actions CI**, **heavy
 quant → Modal**. Do NOT run full `pnpm verify` / `next build` on the Mac (slow + OOM);
-use targeted `pytest -k` and let CI be the gate.
+use targeted `pytest -k` and let CI be the gate. The pre-push hook now runs only
+the fast local checks (naming + contracts drift, ~seconds); heavy verify (typecheck,
+build, pytest) is CI-only — see `.githooks/pre-push` and `pnpm verify:local`.
 
 **Local setup (once, Mac):** add `MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET` (and any missing
 keys) to **`.env.local`** (gitignored — your single source of truth; the engine reads it in
