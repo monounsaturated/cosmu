@@ -9,7 +9,9 @@ from typing import Any
 
 import os
 
-from fastapi import FastAPI, HTTPException
+import uuid
+
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from cosmu.api.models import (
@@ -17,6 +19,8 @@ from cosmu.api.models import (
     ActivateResponse,
     AutonomyPauseResponse,
     AutonomyStatusResponse,
+    AutonomyTickAcceptedResponse,
+    AutonomyTickJobResponse,
     AutonomyTickResponse,
     AuthorRequest,
     AuthorResponse,
@@ -39,6 +43,7 @@ from cosmu.api.models import (
     CostsResponse,
     InfraLine,
     LlmCallSummary,
+    VendorActual,
     CrossAssetVerdict,
     DefundRequest,
     DefundResponse,
@@ -639,6 +644,11 @@ def recommendations() -> RecommendationsResponse:
     )
 
 
+# In-memory job registry for async tick dispatch.  Single-process; Railway restarts clear it,
+# which is fine — the events ledger is the durable record.
+_tick_jobs: dict[str, dict] = {}
+
+
 def _autonomy_status_response() -> AutonomyStatusResponse:
     from cosmu.api.models import TickSummary as _TickSummary
     from cosmu.master.scheduler import autonomy_status
@@ -684,31 +694,52 @@ def autonomy_resume() -> AutonomyPauseResponse:
     return AutonomyPauseResponse(paused=False)
 
 
-@app.post("/autonomy/tick", response_model=AutonomyTickResponse)
-def autonomy_tick() -> AutonomyTickResponse:
-    """Run ONE bounded, idempotent, audited autonomous cycle: ingest → author (LLM proposes if a key is set, else
-    deterministic) → DETERMINISTIC gate + flywheel → open standalone forward-test tracks from survivors → emit recommendations.
-    LIVE STAYS OFF — sim fills only; the tick never arms live. Cron-able (one tick per call, not a daemon)."""
+def _run_tick_job(job_id: str) -> None:
+    """Background worker: runs the tick and writes the result into _tick_jobs."""
     from cosmu.master.scheduler import run_tick
 
-    # REAL data only: screen + fund on actual Binance spot bars. Synthetic fixtures are CI/offline only —
-    # the app must never display or fund on fabricated edge.
-    report = run_tick(store, n=6, seed=7, edge_market=False)
-    # Persist a point-in-time reflection (the analyst-panel debate) so the agent accrues a memory of HOW IT
-    # THOUGHT each cycle. Defensive: a reasoning record only — it never moves money, and never blocks the tick.
     try:
-        from cosmu.mind import reflect
+        report = run_tick(store, n=6, seed=7, edge_market=False)
+        try:
+            from cosmu.mind import reflect
 
-        reflect(store, reference_bars=_brain_reference_bars())
-    except Exception:  # noqa: BLE001 — reflection is best-effort; the tick must not depend on it
-        pass
-    s = report.summary
-    return AutonomyTickResponse(
-        authored=s.authored,
-        gated_passed=s.gated_passed,
-        funded=s.funded,
-        recommendations=s.recommendations,
-    )
+            reflect(store, reference_bars=_brain_reference_bars())
+        except Exception:  # noqa: BLE001 — reflection is best-effort
+            pass
+        s = report.summary
+        _tick_jobs[job_id] = {
+            "status": "done",
+            "result": AutonomyTickResponse(
+                authored=s.authored,
+                gated_passed=s.gated_passed,
+                funded=s.funded,
+                recommendations=s.recommendations,
+            ),
+            "error": None,
+        }
+    except Exception as exc:  # noqa: BLE001
+        _tick_jobs[job_id] = {"status": "error", "result": None, "error": str(exc)}
+
+
+@app.post("/autonomy/tick", response_model=AutonomyTickAcceptedResponse, status_code=202)
+def autonomy_tick(background_tasks: BackgroundTasks) -> AutonomyTickAcceptedResponse:
+    """Enqueue ONE bounded, idempotent, audited autonomous cycle and return 202 immediately.
+    The cycle (ingest → author → DETERMINISTIC gate + flywheel → fund → recommend) runs in the
+    background so Railway's gateway never times out.  Poll GET /autonomy/tick/{job_id} for the result.
+    LIVE STAYS OFF — sim fills only; the tick never arms live."""
+    job_id = str(uuid.uuid4())
+    _tick_jobs[job_id] = {"status": "running", "result": None, "error": None}
+    background_tasks.add_task(_run_tick_job, job_id)
+    return AutonomyTickAcceptedResponse(job_id=job_id, status="running")
+
+
+@app.get("/autonomy/tick/{job_id}", response_model=AutonomyTickJobResponse)
+def autonomy_tick_job(job_id: str) -> AutonomyTickJobResponse:
+    """Poll the result of an async tick dispatch.  Returns status: running | done | error."""
+    job = _tick_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="tick job not found")
+    return AutonomyTickJobResponse(job_id=job_id, **job)
 
 
 @app.post("/recommendations/{rec_id}/approve", response_model=RecommendationActionResponse)
@@ -1658,6 +1689,42 @@ def costs() -> CostsResponse:
     task_rows = store.rows("SELECT task, COUNT(*) AS n FROM llm_calls GROUP BY task")
     by_task = {r["task"]: int(r["n"]) for r in task_rows}
 
+    # Vendor actuals: latest live-fetched row per vendor (meta seed='vendor').
+    # Enriched with per-vendor budget caps from settings — never stored in DB (secrets stay server-side).
+    from cosmu.config.settings import get_settings as _get_settings
+    _settings = _get_settings()
+    _budget = _settings.budget
+    _vendor_budget_map: dict[str, float] = {
+        "OpenRouter": float(_budget.openrouter.monthly_cap),
+        "xAI": float(_budget.xai.monthly_cap),
+        "Railway": float(_budget.railway.monthly_cap),
+        "Modal": float(_budget.modal.monthly_cap),
+        "Claude": float(_budget.claude.monthly_cap),
+    }
+    vendor_rows = store.rows(
+        "SELECT vendor, category, CAST(amount AS REAL) AS amount, meta "
+        "FROM costs WHERE meta LIKE ? ORDER BY ts DESC",
+        ('%"seed": "vendor"%',),
+    )
+    seen_v: set[str] = set()
+    vendor_actuals: list[VendorActual] = []
+    for r in vendor_rows:
+        v = r["vendor"]
+        if v in seen_v:
+            continue
+        seen_v.add(v)
+        try:
+            meta = _json_mod.loads(r["meta"]) if isinstance(r["meta"], str) else (r["meta"] or {})
+        except (ValueError, TypeError):
+            meta = {}
+        vendor_actuals.append(VendorActual(
+            vendor=v,
+            category=r["category"],
+            amount=float(r["amount"] or 0),
+            budget=_vendor_budget_map.get(v, 0.0),
+            period=str(meta.get("month", "")),
+        ))
+
     return CostsResponse(
         total_usd=total,
         by_category=by_category,
@@ -1665,6 +1732,7 @@ def costs() -> CostsResponse:
         per_strategy=per_strategy,
         infra_lines=infra_lines,
         llm_calls=LlmCallSummary(call_count=llm_count, total_cost=llm_total, by_task=by_task),
+        vendor_actuals=vendor_actuals,
     )
 
 

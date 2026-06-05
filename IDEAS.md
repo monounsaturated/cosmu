@@ -7,6 +7,18 @@
 > Drop a one-liner under **Inbox** in this format: `- [YYYY-MM-DD] <idea> — <why it matters>`.
 > `/triage-ideas` promotes ripe ideas into the backlog (with tags), then moves them down to **Archived**. Keep the Inbox lean — only un-triaged ideas live here.
 
+## 🗑️ DUMP ZONE — your ONE inbox: write ANYTHING here (ideas · trades · features · gripes)
+> No rules, no format. Half-baked, one word, a link, "scrape X and score it", a screenshot note, a trade hunch — dump it.
+> **This is the only file you have to touch.** On the next `/triage-ideas`, Claude runs the whole loop for you:
+> **read → sort → route** (product/infra → `BACKLOG.md` as a defined **user story**; trade → `/strategize` → typed spec → the **Gate**; junk → dropped) **→ prioritize → `/fan-out` builds it (Claude Code) → CI tests it.** Then it clears this zone.
+> You dump; the machine defines, builds, and tests. Review the result in `BACKLOG.md` / the app.
+
+<!-- ↓↓↓ DUMP BELOW THIS LINE ↓↓↓ -->
+
+- [2026-06-05] Review https://crowdintel.xyz/#pricing — pricing/packaging reference (on-chain Polymarket smart-money analytics + MCP). Mine for our social-authority/insider feature + any pricing/product ideas.
+
+<!-- ↑↑↑ DUMP ABOVE THIS LINE ↑↑↑ -->
+
 ## Inbox (append below)
 - [2026-06-03] Mission-control UI: extend `/mind` into one visual surface (pipeline funnel, data freshness, backlog state, open PRs/agents, ML model status, gate efficiency) — one glance answers "is the machine healthy and earning?"
 - [2026-06-03] Decide ML compute home: VPS worker vs scheduled cloud-session cron for nightly survival-model training — picks where the heavy ML loop runs without OOMing the Air or burning API tokens.

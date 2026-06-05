@@ -7,7 +7,7 @@
 
 import { DollarSign, Cpu, TrendingUp, TrendingDown, Bot } from "lucide-react";
 import { engineConfigured, getCosts } from "../data";
-import type { InfraLine, CostPerStrategy, LlmCallSummary } from "../data";
+import type { InfraLine, CostPerStrategy, LlmCallSummary, VendorActual } from "../data";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
@@ -125,6 +125,44 @@ export default async function CostsPage() {
             <LlmCallsPanel summary={costs.llm_calls} />
           </CardContent>
         </Card>
+      </section>
+
+      {/* Vendor actuals vs budget */}
+      <section>
+        <h2 className="mb-3 text-[13px] font-semibold text-foreground">Vendor actuals vs budget</h2>
+        {costs.vendor_actuals.length === 0 ? (
+          <Card>
+            <CardContent>
+              <EmptyState
+                title="No live vendor costs fetched yet."
+                hint="Run pnpm modal:costs or wait for the 6h refresh. Budget caps set via BUDGET__<VENDOR>__MONTHLY_CAP env vars."
+              />
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12.5px]">
+                  <thead>
+                    <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-quiet">
+                      <th className="px-4 py-2.5 text-left font-medium">Vendor</th>
+                      <th className="px-4 py-2.5 text-left font-medium">Category</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Spend / mo</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Budget cap</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Used</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {costs.vendor_actuals.map((row: VendorActual) => (
+                      <VendorActualRow key={row.vendor} row={row} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </section>
 
       {/* Per-strategy ROI */}
@@ -258,5 +296,31 @@ function Metric({ label, value, tone }: { label: string; value: string; tone: st
       <div className={`text-[14px] font-semibold tabular ${tone}`}>{value}</div>
       <div className="mt-0.5 text-[10px] uppercase tracking-wide text-quiet">{label}</div>
     </div>
+  );
+}
+
+function VendorActualRow({ row }: { row: VendorActual }) {
+  const uncapped = row.budget <= 0;
+  const usedPct = uncapped ? null : row.amount / row.budget;
+  const tone =
+    usedPct === null ? "text-quiet" : usedPct >= 1.0 ? "text-down" : usedPct >= 0.8 ? "text-warn" : "text-up";
+  return (
+    <tr className="border-b border-border/40 last:border-0 hover:bg-surface-2/20 transition-colors">
+      <td className="px-4 py-2.5 font-medium text-foreground">{row.vendor}</td>
+      <td className="px-4 py-2.5">
+        <Badge variant={row.category === "llm" ? "iris" : "muted"} className="text-[10px]">
+          {row.category}
+        </Badge>
+      </td>
+      <td className="px-4 py-2.5 text-right tabular text-foreground">
+        {row.amount === 0 ? <span className="text-up text-[11px]">free / $0</span> : formatUsd(row.amount)}
+      </td>
+      <td className="px-4 py-2.5 text-right tabular text-muted">
+        {uncapped ? <span className="text-quiet text-[11px]">uncapped</span> : formatUsd(row.budget)}
+      </td>
+      <td className={`px-4 py-2.5 text-right tabular text-[12px] font-medium ${tone}`}>
+        {usedPct === null ? "—" : `${(usedPct * 100).toFixed(0)}%`}
+      </td>
+    </tr>
   );
 }

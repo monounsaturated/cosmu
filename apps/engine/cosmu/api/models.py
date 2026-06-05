@@ -719,6 +719,18 @@ class AutonomyTickResponse(BaseModel):
     recommendations: int
 
 
+class AutonomyTickAcceptedResponse(BaseModel):
+    job_id: str
+    status: str  # always "running" on 202
+
+
+class AutonomyTickJobResponse(BaseModel):
+    job_id: str
+    status: str  # "running" | "done" | "error"
+    result: AutonomyTickResponse | None = None
+    error: str | None = None
+
+
 class RecommendationActionResponse(BaseModel):
     ok: bool
     applied: bool = False
@@ -759,6 +771,16 @@ class LlmCallSummary(BaseModel):
     by_task: dict[str, int]  # task -> call count
 
 
+class VendorActual(BaseModel):
+    """Live-fetched vendor spend for the current month vs its configured monthly budget cap.
+    amount=0 for free/constant vendors; budget=0 means uncapped (no alert threshold set)."""
+    vendor: str
+    category: str
+    amount: float
+    budget: float   # 0 = uncapped
+    period: str     # YYYY-MM
+
+
 class CostsResponse(BaseModel):
     total_usd: float
     by_category: list[CostByCategory]
@@ -766,6 +788,7 @@ class CostsResponse(BaseModel):
     per_strategy: list[CostPerStrategy]
     infra_lines: list[InfraLine]
     llm_calls: LlmCallSummary
+    vendor_actuals: list[VendorActual]
 
 
 # ---- alpha-decay: edge half-life + live-vs-funded drift (master/drift; web consumes) ----
