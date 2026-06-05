@@ -6,33 +6,39 @@
 
 ---
 
-## 🧭 THE BIG REFRAME (read first — it changes the mission)
-After 127 authored strategies + 7 powered FAILs, the honest conclusion (deep external review + our own
-verdicts): **the binding constraint is NOT data/compute/capital/speed — it's MARKET SELECTION.** We
-aimed an A-grade honest falsification machine at the most competed-away corner: **liquid large-cap
-crypto · daily bars · free public features.** There our advantages (patience, tiny size, LLM synthesis,
-honest discipline) are worth ~nothing and our disadvantages (no speed, no private data, no capital) are
-maximal. The gate killing everything = the machine **correctly reporting no free lunch there.** A
-result, not a failure.
+## 🧭 RE-AIM, DON'T REBUILD (read first — the vision is INTACT)
+**Keep everything we built.** The machine (LLM-proposes → honest deterministic Gate disposes →
+self-learning graveyard → autonomy, all PIT/look-ahead-safe, LLM-walled-from-money) is the moat and it
+STAYS. Nothing below removes the vision — it *points the same machine at markets where it can win* and
+*adds an output to monetize the signal it already finds.*
 
-**Re-aim the same machine at games it can win (ranked by EV):**
-1. 🥇 **Numerai Signals + Numerai Crypto** — monetizes EXACTLY what our reports keep finding: signal that
-   is **real but sub-transaction-cost** (social-accel leads price; BTC→alt contagion robust —
-   `docs/reports/phase0-social-nonobvious-leadlag.md`). Numerai pays for marginal, decorrelated signal net
-   of *their* execution → **no capital, no venue keys, no execution infra, no beat-fees requirement.** Our
-   "dies on costs" signal IS a Numerai submission. **Fastest path to first dollars.** (Footnote in
-   VISION.md:309 today — make it the headline.)
-2. 🥈 **Prediction markets (Polymarket/Kalshi)** — the one venue where our architecture has a *structural*
-   edge: better/slower probability estimation on resolving events, where small size is an advantage and big
-   funds can't deploy. Currently data-only, "data too thin, backfill needed"; execution unbuilt. Backfill →
-   wire CLOB adapter → point the LLM-synthesis machine here.
-3. 🥉 **Cross-sectional market-neutral perps** — everything tested was long-only directional (= levered
-   beta, fails "beat buy-and-hold" in a bull regime). A dollar-neutral long-short book over the 30-perp
-   universe strips beta + tests the PURE signal; on perps you can short + harvest funding. The one untested
-   lever. Do ONE disciplined pass; if it FAILs, *close* the crypto-directional question.
+Why: after 127 strategies + 7 powered FAILs, the honest read (deep review + our own verdicts) is that
+the binding constraint isn't data/compute/capital/speed — it's **WHERE the machine is aimed.** We aimed
+it at the most competed-away corner (liquid large-cap crypto · daily bars · free public features), where
+our edges (patience, tiny size, LLM synthesis, honesty) are worth ~nothing. The Gate killing everything
+is the machine **working correctly** — reporting no free lunch there. That graveyard of powered negatives
+is a real asset, not a loss.
 
-**Do NOT spend another dollar on data / compute / capital / a faster box until re-aimed.** Fix is
-direction, not horsepower.
+**Three aligned moves — additive, ranked by EV (none is a pivot away from the vision):**
+1. 🥇 **Numerai Crypto submission — an OUTPUT, not a rewrite.** Bolt a submission step onto the EXISTING
+   signal pipeline: the same features the Gate scores → a per-asset signal → submitted to Numerai Crypto
+   (our crypto data fits Numerai *Crypto* directly; *Signals* = equities, only if we add equity data later).
+   Numerai pays for marginal, decorrelated signal net of *their* execution → **monetizes the "real but
+   sub-transaction-cost" signal our reports keep finding** (social-accel leads price; BTC→alt contagion —
+   `docs/reports/phase0-social-nonobvious-leadlag.md`). No capital, no venue keys, no beat-fees bar. The
+   machine is unchanged; we just stop throwing the signal away. **Caution: prove it small first** (one
+   submission, watch diagnostics) before any real stake — it's a complement, not a bet-the-farm switch.
+2. 🥈 **Prediction markets (Polymarket/Kalshi)** — a new TARGET for the same machine, where patience +
+   small size + LLM synthesis are a *structural* edge (slower/better probability on resolving events).
+   Currently data-only, "data too thin"; execution unbuilt. Backfill → wire CLOB → aim the machine here.
+3. 🥉 **Cross-sectional market-neutral perps** — a new INSTRUMENT, same machine. Everything tested was
+   long-only directional (= levered beta, fails beat-buy-and-hold in a bull regime). A dollar-neutral
+   long/short book over the 30-perp universe strips beta + tests the PURE signal; on perps you can short +
+   harvest funding. The one untested lever (our own handoff named it). One disciplined pass.
+
+**The vision ("autonomous self-learning profit machine") is unchanged.** We're widening WHERE it hunts +
+ADDING Numerai as a way to earn from what it finds. Don't spend on data/compute/capital/a faster box to
+make the machine *bigger* — aim it better first.
 
 ---
 
