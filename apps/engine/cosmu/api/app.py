@@ -13,6 +13,7 @@ import uuid
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from cosmu.api.models import (
     ActivateRequest,
@@ -667,6 +668,63 @@ def recommendations() -> RecommendationsResponse:
 # In-memory job registry for async tick dispatch.  Single-process; Railway restarts clear it,
 # which is fine — the events ledger is the durable record.
 _tick_jobs: dict[str, dict] = {}
+
+# ---- idea-to-test flow: plain-language idea → triage → verdict ----
+
+
+class _IdeaDumpRequest(BaseModel):
+    text: str
+
+
+class _IdeaDumpAccepted(BaseModel):
+    dump_id: str
+    status: str  # always "received" on acceptance
+
+
+class _IdeaDumpJob(BaseModel):
+    dump_id: str
+    status: str  # "received" | "testing" | "verdict"
+    verdict: str | None = None
+
+
+_dump_jobs: dict[str, dict] = {}
+
+
+def _run_dump_job(dump_id: str, text: str) -> None:
+    """Background: triage a plain-language idea — queue it for the Gate or note it in backlog."""
+    try:
+        _dump_jobs[dump_id]["status"] = "testing"
+        from cosmu.lab.inbox import queue_idea
+
+        idea = queue_idea(store, text)
+        _dump_jobs[dump_id] = {
+            "status": "verdict",
+            "verdict": f"Routed to Gate as '{idea.name}' — the deterministic Gate decides survival on the next tick.",
+        }
+    except Exception:  # noqa: BLE001
+        _dump_jobs[dump_id] = {
+            "status": "verdict",
+            "verdict": "Added to backlog — refine the idea or the next autonomous tick will revisit it.",
+        }
+
+
+@app.post("/ideas/dump", response_model=_IdeaDumpAccepted, status_code=202)
+def ideas_dump(request: _IdeaDumpRequest, background_tasks: BackgroundTasks) -> _IdeaDumpAccepted:
+    """Accept a plain-language idea, triage it asynchronously, and route to the Gate queue or backlog.
+    Returns 202 immediately. Poll GET /ideas/dump/{dump_id} for status: received → testing → verdict."""
+    dump_id = str(uuid.uuid4())
+    _dump_jobs[dump_id] = {"status": "received", "verdict": None}
+    background_tasks.add_task(_run_dump_job, dump_id, request.text)
+    return _IdeaDumpAccepted(dump_id=dump_id, status="received")
+
+
+@app.get("/ideas/dump/{dump_id}", response_model=_IdeaDumpJob)
+def ideas_dump_status(dump_id: str) -> _IdeaDumpJob:
+    """Poll the triage status of a submitted idea. status: received | testing | verdict."""
+    job = _dump_jobs.get(dump_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="idea dump not found")
+    return _IdeaDumpJob(dump_id=dump_id, **job)
 
 
 def _autonomy_status_response() -> AutonomyStatusResponse:

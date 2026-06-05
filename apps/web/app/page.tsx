@@ -19,6 +19,7 @@ import { TvChart } from "@/components/charts/tv-chart";
 import { ChartEmpty } from "@/components/charts/chart-kit";
 import { GlobalLiveToggle } from "@/components/live/global-live-toggle";
 import { cn, formatSigned, formatUsd, timeAgo } from "@/lib/utils";
+import { IdeaDump } from "@/components/overview/idea-dump";
 
 export default async function DashboardPage() {
   const [{ overview, connected }, { mind }, { intelligence }] = await Promise.all([
@@ -104,6 +105,9 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Idea-to-test: plain language → triage → verdict. */}
+      <IdeaDump connected={connected} />
     </div>
   );
 }
