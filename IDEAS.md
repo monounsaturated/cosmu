@@ -17,6 +17,8 @@
 
 - [2026-06-05] CrowdIntel (https://crowdintel.xyz) — NO-GO. Their wallet-positioning scores are RETROACTIVELY recomputed as Polymarket markets resolve; using them in a backtest is look-ahead bias — the Gate would pass on phantom edge. Raw on-chain trades are PIT-honest but the scored signal (the only thing they sell) is not. Revisit only if they expose a frozen as-of-event score snapshot.
 
+- [2026-06-05] (NOT priority — park) "ML-for-noobs" product: chat with an AI → it runs deep ML / cross-data analysis / queries on ANY dataset (finance, health, engineering), bias-guarded, for non-technical users. COSMU's anti-bias Gate discipline could be the differentiator. BUT the space is CROWDED — strong existing competitors / buy-not-build APIs: Julius AI, ChatGPT Advanced Data Analysis, Akkio, Obviously AI, AWS SageMaker Canvas, Google Vertex AutoML, DataRobot, H2O Driverless AI, Hex/Deepnote (AI notebooks). Verdict: as a *general* product it fights well-funded players and is hard; the real edge is applying the rigorous-gate discipline to ONE vertical (trading = COSMU). Revisit only as a vertical ("rigorous, bias-guarded analysis for X"), not a general ML-for-everyone tool.
+
 <!-- ↑↑↑ DUMP ABOVE THIS LINE ↑↑↑ -->
 
 ## Inbox (append below)
