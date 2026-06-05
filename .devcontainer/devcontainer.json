@@ -1,0 +1,38 @@
+{
+  "name": "cosmu",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" },
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.12" },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  // Install everything on create so the box is ready to verify, run the engine, and drive Modal.
+  "postCreateCommand": "corepack enable && pnpm install && python3 -m pip install -e 'apps/engine[dev,remote]'",
+  // Web on :3000, engine API on :8000 — auto-forwarded so previews just work.
+  "forwardPorts": [3000, 8000],
+  "remoteEnv": { "APP_ENV": "dev" },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss"
+      ]
+    }
+  },
+  // Keys come from Codespaces Secrets (Settings → Codespaces → Secrets), injected as env vars.
+  // The engine + `pnpm modal:secret` read them; nothing is committed.
+  "secrets": {
+    "DATABASE_URL": { "description": "Supabase pooler URL (EU region)" },
+    "XAI_API_KEY": { "description": "xAI — Twitter/X data" },
+    "OPENROUTER_API_KEY": { "description": "OpenRouter — 24/7 LLM loop (free models default)" },
+    "FRED_API_KEY": { "description": "FRED macro (free)" },
+    "MODAL_TOKEN_ID": { "description": "Modal token id" },
+    "MODAL_TOKEN_SECRET": { "description": "Modal token secret" },
+    "RAILWAY_API_TOKEN": { "description": "Railway usage/cost API" },
+    "SLACK_WEBHOOK_URL": { "description": "Slack alerts" }
+  }
+}
