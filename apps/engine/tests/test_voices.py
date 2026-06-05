@@ -3,18 +3,20 @@
 Covers all three providers (X via xAI/Grok, Reddit, RSS/Atom) plus the append-only point-in-time store.
 Every test injects a fixture fetcher or uses `offline=True`, so CI runs fully deterministically.
 Invariants under test: honest degradation (no key / dead fetch → []), point-in-time stamping
-(`available_at` = read time, never back-dated), dedup by post_id, and ascending-by-ts ordering.
+(`available_at` = read time, never back-dated), dedup by post_id, ascending-by-ts ordering, and
+retrospective PIT stamping (available_at == ts) for the backfill history path.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from cosmu.data.sources.voices import (
     FIXTURE_X_POSTS,
     FixtureVoiceProvider,
     RedditVoiceProvider,
     RssVoiceProvider,
+    VoiceBackfillRunner,
     VoicePost,
     VoiceTimelineStore,
     XaiVoiceProvider,
@@ -269,3 +271,173 @@ def test_fixture_provider_returns_canned_timeline_ascending() -> None:
     assert [p.post_id for p in got] == ["p1", "p2"]  # sorted ascending by ts
     assert prov.fetch_timeline("@unknown", limit=10) == []
     assert prov.calls == [("@v", 10), ("@unknown", 10)]
+
+
+# ---------------------------------------------------------------------------
+# Backfill history: PIT invariant (available_at == ts), pagination, since cutoff
+# ---------------------------------------------------------------------------
+
+# Epoch seconds for month-spaced anchors (2024 Q1).
+_JAN = int(datetime(2024, 1, 1, tzinfo=UTC).timestamp())
+_FEB = int(datetime(2024, 2, 1, tzinfo=UTC).timestamp())
+_MAR = int(datetime(2024, 3, 1, tzinfo=UTC).timestamp())
+_DEC_2023 = int(datetime(2023, 12, 1, tzinfo=UTC).timestamp())
+
+
+def _r_listing(rows: list[dict], after: str | None = None) -> dict:
+    return {"data": {"children": [{"data": d} for d in rows], "after": after}}
+
+
+def test_reddit_history_available_at_equals_ts() -> None:
+    """The retrospective PIT invariant: every backfill post has available_at == ts."""
+    rows = [
+        {"id": "a", "title": "March call", "selftext": "", "created_utc": _MAR, "permalink": "/r/x/a"},
+        {"id": "b", "title": "Jan call", "selftext": "", "created_utc": _JAN, "permalink": "/r/x/b"},
+    ]
+    p = RedditVoiceProvider(_fetcher=lambda url: _r_listing(rows))
+    posts = p.fetch_timeline_history("u/trader", since=datetime(2024, 1, 1, tzinfo=UTC))
+    assert all(post.available_at == post.ts for post in posts), "backfill must stamp available_at = ts"
+
+
+def test_reddit_history_respects_since_cutoff() -> None:
+    """Posts older than `since` are excluded even when returned by the API."""
+    rows = [
+        {"id": "new", "title": "New post", "selftext": "", "created_utc": _MAR, "permalink": "/r/x/new"},
+        {"id": "old", "title": "Old post", "selftext": "", "created_utc": _DEC_2023, "permalink": "/r/x/old"},
+    ]
+    p = RedditVoiceProvider(_fetcher=lambda url: _r_listing(rows))
+    since = datetime(2024, 1, 1, tzinfo=UTC)
+    posts = p.fetch_timeline_history("u/trader", since=since)
+    assert all(post.ts >= since for post in posts)
+    assert not any(post.post_id == "old" for post in posts)
+
+
+def test_reddit_history_paginates_across_pages() -> None:
+    """Two API pages are fetched and merged when the cursor is non-null after page 1."""
+    page1 = [{"id": "p3", "title": "March", "selftext": "", "created_utc": _MAR, "permalink": "/r/x/p3"}]
+    page2 = [{"id": "p2", "title": "Feb", "selftext": "", "created_utc": _FEB, "permalink": "/r/x/p2"}]
+    page3: list = []
+
+    calls: list[str] = []
+
+    def fetcher(url: str) -> dict:
+        calls.append(url)
+        if "after" not in url:
+            return _r_listing(page1, after="t3_p3")
+        if "after=t3_p3" in url:
+            return _r_listing(page2, after=None)
+        return _r_listing(page3)
+
+    p = RedditVoiceProvider(_fetcher=fetcher)
+    posts = p.fetch_timeline_history("u/trader", since=datetime(2024, 1, 15, tzinfo=UTC))
+    post_ids = {post.post_id for post in posts}
+    assert "p3" in post_ids
+    assert "p2" in post_ids  # second page was fetched
+    assert len([c for c in calls if "submitted" in c]) == 2  # two submitted pages
+
+
+def test_reddit_history_stops_at_since_without_over_fetching() -> None:
+    """Pagination stops as soon as a post older than `since` is encountered."""
+    rows = [
+        {"id": "new", "title": "Recent", "selftext": "", "created_utc": _MAR, "permalink": "/r/x/new"},
+        {"id": "old", "title": "Old", "selftext": "", "created_utc": _DEC_2023, "permalink": "/r/x/old"},
+    ]
+    calls: list[str] = []
+
+    def fetcher(url: str) -> dict:
+        calls.append(url)
+        return _r_listing(rows, after="t3_would_continue")  # cursor always non-null
+
+    p = RedditVoiceProvider(_fetcher=fetcher)
+    posts = p.fetch_timeline_history("u/trader", since=datetime(2024, 1, 1, tzinfo=UTC))
+    # Pagination stops after the cutoff hit — we should NOT have fetched a second page.
+    submitted_calls = [c for c in calls if "submitted" in c]
+    assert len(submitted_calls) == 1, "should stop paginating once cutoff hit"
+    assert all(post.ts >= datetime(2024, 1, 1, tzinfo=UTC) for post in posts)
+
+
+def test_reddit_history_deduplicates_by_post_id() -> None:
+    """Same post_id appearing twice (e.g. from overlapping pages) produces one VoicePost."""
+    rows = [
+        {"id": "dup", "title": "Dupe", "selftext": "", "created_utc": _FEB, "permalink": "/r/x/dup"},
+        {"id": "dup", "title": "Dupe again", "selftext": "", "created_utc": _FEB, "permalink": "/r/x/dup"},
+    ]
+    p = RedditVoiceProvider(_fetcher=lambda url: _r_listing(rows))
+    posts = p.fetch_timeline_history("u/trader", since=datetime(2024, 1, 1, tzinfo=UTC))
+    dup_ids = [post.post_id for post in posts if post.post_id == "dup"]
+    assert len(dup_ids) == 1
+
+
+def test_rss_history_available_at_equals_ts() -> None:
+    """RSS backfill sets available_at == ts (retrospective PIT)."""
+    p = RssVoiceProvider(_fetcher=lambda url: _RSS)
+    since = datetime(2024, 1, 1, tzinfo=UTC)
+    posts = p.fetch_timeline_history("https://sub.stack/feed", since=since)
+    assert len(posts) == 2
+    assert all(post.available_at == post.ts for post in posts)
+
+
+def test_rss_history_filters_by_since() -> None:
+    """Items with ts < since are excluded."""
+    p = RssVoiceProvider(_fetcher=lambda url: _RSS)
+    since = datetime(2024, 1, 2, tzinfo=UTC)
+    posts = p.fetch_timeline_history("https://sub.stack/feed", since=since)
+    assert all(post.ts >= since for post in posts)
+    assert len(posts) == 1  # only Jan 3 entry survives
+
+
+def test_xai_history_available_at_equals_ts() -> None:
+    """XAI backfill stamps available_at == ts for returned posts."""
+    p = XaiVoiceProvider(api_key="", offline=True)
+    since = datetime(2024, 1, 1, tzinfo=UTC)
+    posts = p.fetch_timeline_history("@trader", since=since)
+    assert all(post.available_at == post.ts for post in posts)
+
+
+def test_xai_history_filters_posts_before_since() -> None:
+    """Posts older than `since` are excluded even if the provider returned them."""
+    raw = [
+        {"id": "x1", "text": "Recent", "created_at": "2024-03-01T00:00:00Z"},
+        {"id": "x2", "text": "Old", "created_at": "2023-11-01T00:00:00Z"},
+    ]
+    p = XaiVoiceProvider(_fetcher=lambda h, lim: raw)
+    since = datetime(2024, 1, 1, tzinfo=UTC)
+    posts = p.fetch_timeline_history("@trader", since=since)
+    assert all(post.ts >= since for post in posts)
+    assert not any(post.post_id == "x2" for post in posts)
+
+
+def test_xai_history_no_key_returns_empty() -> None:
+    p = XaiVoiceProvider(api_key="", offline=False)
+    since = datetime(2024, 1, 1, tzinfo=UTC)
+    assert p.fetch_timeline_history("@trader", since=since) == []
+
+
+def test_voice_backfill_runner_integrates_providers_and_store(tmp_path) -> None:
+    """VoiceBackfillRunner feeds each provider's history into the store and returns per-handle counts."""
+    store = VoiceTimelineStore(tmp_path / "voices")
+
+    reddit_rows = [{"id": "r1", "title": "BTC up", "selftext": "", "created_utc": _FEB, "permalink": "/r/x/r1"}]
+    reddit = RedditVoiceProvider(_fetcher=lambda url: _r_listing(reddit_rows))
+    rss = RssVoiceProvider(_fetcher=lambda url: _RSS)
+
+    runner = VoiceBackfillRunner(store=store, reddit=reddit, rss=rss)
+    results = runner.run(
+        reddit_handles=["u/trader"],
+        rss_handles=["https://sub.stack/feed"],
+        since=datetime(2023, 12, 1, tzinfo=UTC),  # explicit since so fixture dates (2024 Q1) are in range
+    )
+
+    assert results["reddit/u/trader"] >= 1
+    assert results["rss/https://sub.stack/feed"] >= 1
+    # All stored posts must satisfy available_at == ts (retrospective PIT).
+    for platform, handle in [("reddit", "u/trader"), ("rss", "https://sub.stack/feed")]:
+        for post in store.read_all(platform, handle):
+            assert post.available_at == post.ts, f"{platform}/{handle}: available_at != ts"
+
+
+def test_voice_backfill_runner_empty_handles_skips_gracefully(tmp_path) -> None:
+    store = VoiceTimelineStore(tmp_path / "voices")
+    runner = VoiceBackfillRunner(store=store)
+    results = runner.run(reddit_handles=None, rss_handles=None, xai_handles=None)
+    assert results == {}
