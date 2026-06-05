@@ -139,6 +139,12 @@ Money-path fixes must be trustworthy before autonomy runs or any POC is believed
    Also re-attack PR #105's REAL social lead-lag signal that died on *costs* (lower-fee venue / longer holds).
 4. **On the first 30-day forward-test survivor:** complete the `adapter="nautilus.binance"` execution
    path (BUY NautilusTrader — MIT, slots behind the typed ExecutionAdapter), arm live small via /console.
+5. **Inbox addition (2026-06-05):** `meridian-flow-smc-bos-choch.json` — SMC BOS/CHoCH breakout
+   translated from Pine (Meridian Flow [WillyAlgoTrader] v1.4.0, strategy mode). Signal: `bb_z >
+   breakout_z` (pivot-detection approximated via range-relative breakout), `MaTrendFilter` for HTF bias,
+   multi-TP `ExitPlan` (TP1/TP2/TP3) with `break_even_after_tp1`. Static-check: PASS. Picked up on
+   next deploy/boot. Honest prior: powered fail expected — breakout in spot post-~20bps costs; purpose
+   is to map the breakout parameter surface. No action needed; inbox scanner handles it.
 
 ---
 
