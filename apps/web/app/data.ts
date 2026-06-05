@@ -452,3 +452,9 @@ export async function getSettingsKeys(): Promise<{ keys: SettingsKeyRow[]; conne
   const { data, connected } = await getJson<SettingsKeysResponse>("/settings/keys", emptySettingsKeys);
   return { keys: data.rows, connected };
 }
+<<<<<<< HEAD
+=======
+
+// VerdictItem removed — use VerdictRow (richer, from the verdict ledger PR #95).
+export type VerdictItem = VerdictRow;
+>>>>>>> 713a517 (fix: resolve VerdictItem→VerdictRow import crash (prod down) + dedup frontend types)
