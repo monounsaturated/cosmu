@@ -1,0 +1,56 @@
+{
+  "name": "Galaxy Score breakout with price momentum — social-health momentum confirmation",
+  "rationale": "LunarCrush Galaxy Score is a composite rank [0, 100] blending price performance, social volume, social engagement, contributor activity, and market dominance into a single asset-health score. Because it aggregates multiple partially-independent social and price dimensions, a breakout to a high Galaxy Score level — while the asset's own price momentum simultaneously confirms — creates a dual-signal regime where both the crowd's holistic assessment and the price trend agree. The two signals are not perfectly collinear: Galaxy Score can improve from social activity while price is flat, or price can trend while social health is stagnant; their conjunction reduces false positives versus either signal alone. We enter the intersection and hold until Galaxy Score retreats back through an exit threshold (crowd health deteriorates) or risk limits are reached. Disconfirmer: a Galaxy Score cross_down through gs_exit signals the social tailwind has reversed — exit regardless of price trajectory, since the momentum was social-health dependent. NOTE: DATA-BLOCKED — galaxy_score requires LUNARCRUSH_API_KEY; queued until ingested. tier1 + low-confidence until validated OOS; the Gate down-weights until it earns its place.",
+  "catalyst": "galaxy_score breaks above high-health threshold while price momentum is positive",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": { "name": "galaxy_score" },
+      "op": "gt",
+      "threshold": { "param": "gs_floor" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "galaxy_score" },
+        "op": "cross_down",
+        "threshold": { "param": "gs_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.40
+  },
+  "param_space": {
+    "gs_floor":  { "kind": "float", "lo": 55.0,  "hi": 80.0 },
+    "gs_exit":   { "kind": "float", "lo": 40.0,  "hi": 65.0 },
+    "mom_lb":    { "kind": "int",   "lo": 5,     "hi": 30,   "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.005, "hi": 0.08 },
+    "stop":      { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":        { "kind": "float", "lo": 0.08,  "hi": 0.28 },
+    "time_stop": { "kind": "int",   "lo": 3,     "hi": 14,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
