@@ -1,186 +1,120 @@
-# COSMU — Next-Session Handoff (2026-06-05, main @ 24c9c1a)
+# COSMU — Master Handoff (2026-06-05, main @ 3d592d6)
 
-> Complete, ordered work plan from two verified deep-reviews (integrity + product/architecture).
-> The HUMAN dispatches the prompts; AGENTS open PRs (never merge); the HUMAN merges in order.
-> One branch = disjoint files. Push `--no-verify` (heavy verify is CI). Repo stays PRIVATE (decided).
-
----
-
-## 0. WHAT COSMU IS
-A private, single-operator cockpit for an **autonomous crypto trading research machine** (Binance
-spot). You drop a vibe in plain language → the machine authors a typed `StrategySpec` → backtests on
-point-in-time data → a deterministic, **LLM-free Gate** (Deflated/Probabilistic Sharpe + CSCV-PBO +
-holdout + regime folds + BH-FDR + buy-and-hold) renders stop-or-go → survivors forward-test → human
-arms live, small. LLM proposes; Gate disposes; **LLM never touches money.** North star: profit net of
-fees. The product's proof isn't "it made money" — it's that **the falsification loop visibly works.**
-Engine `apps/engine` (pure-Python), web `apps/web` (Next.js), Railway+Vercel+Supabase+Modal, push=deploy.
-
-## 1. CURRENT STATE
-- main @ 24c9c1a, 0 open PRs, prod healthy. Cost ≈ $120/mo (Claude ~70%). Repo PRIVATE (GH Actions ~$6/mo accepted).
-- **0 real edges.** 7 theses falsified WITH power (carry, funding-crowding, xsec-momentum, meta-label,
-  social, cross-market, social-lead-lag) — the gate working. Verdicts in `docs/reports/phase0-*.md`.
-- Engineering: A. Honesty: A+. Alpha: not yet.
+> For the next big agent + the human. Lean, prioritized, copy-paste. The HUMAN dispatches; AGENTS
+> open PRs and **self-merge if clean** (`gh pr merge --squash --auto || gh pr merge --squash`); a
+> file-moving refactor merges ALONE. Repo PRIVATE. CI = PR/main only (feature pushes free).
 
 ---
 
-## THE PLAN — 5 finite waves. Finish a wave before the next ONLY where noted.
+## 🧭 THE BIG REFRAME (read first — it changes the mission)
+After 127 authored strategies + 7 powered FAILs, the honest conclusion (deep external review + our own
+verdicts): **the binding constraint is NOT data/compute/capital/speed — it's MARKET SELECTION.** We
+aimed an A-grade honest falsification machine at the most competed-away corner: **liquid large-cap
+crypto · daily bars · free public features.** There our advantages (patience, tiny size, LLM synthesis,
+honest discipline) are worth ~nothing and our disadvantages (no speed, no private data, no capital) are
+maximal. The gate killing everything = the machine **correctly reporting no free lunch there.** A
+result, not a failure.
 
-### WAVE 0 — INTEGRITY (do first; a "PASS" is worthless until these land)
-Money-path fixes must be trustworthy before autonomy runs or any POC is believed.
-**Order: fix-1 then fix-2 (shared scorer.py/backtest.py). fix-3/4/5 parallel, disjoint.**
+**Re-aim the same machine at games it can win (ranked by EV):**
+1. 🥇 **Numerai Signals + Numerai Crypto** — monetizes EXACTLY what our reports keep finding: signal that
+   is **real but sub-transaction-cost** (social-accel leads price; BTC→alt contagion robust —
+   `docs/reports/phase0-social-nonobvious-leadlag.md`). Numerai pays for marginal, decorrelated signal net
+   of *their* execution → **no capital, no venue keys, no execution infra, no beat-fees requirement.** Our
+   "dies on costs" signal IS a Numerai submission. **Fastest path to first dollars.** (Footnote in
+   VISION.md:309 today — make it the headline.)
+2. 🥈 **Prediction markets (Polymarket/Kalshi)** — the one venue where our architecture has a *structural*
+   edge: better/slower probability estimation on resolving events, where small size is an advantage and big
+   funds can't deploy. Currently data-only, "data too thin, backfill needed"; execution unbuilt. Backfill →
+   wire CLOB adapter → point the LLM-synthesis machine here.
+3. 🥉 **Cross-sectional market-neutral perps** — everything tested was long-only directional (= levered
+   beta, fails "beat buy-and-hold" in a bull regime). A dollar-neutral long-short book over the 30-perp
+   universe strips beta + tests the PURE signal; on perps you can short + harvest funding. The one untested
+   lever. Do ONE disciplined pass; if it FAILs, *close* the crypto-directional question.
 
-**fix-1 — FarmLoop global deflation** · opus · `fix/farmloop-global-deflation` · RUN FIRST
-> P0 money-path. `cosmu/evolution/loop.py:331` calls `score()` with NO `trials=` → deflates each
-> candidate vs only ~7 params; BH-FDR is cohort-local. Violates "deflate vs every hypothesis ever run."
-> Thread the global ledger mirroring `cosmu/lab/finder.py` (finder.py:287,335,435; contract in
-> master/cohort.py:42-68): split run_cohort → (1) screen all + `register_trial(...)` each
-> (source="farmloop"), snapshot ledger once; (2) `combined=trial_stats(store)` then
-> `score(metrics, settings.gates, trials=combined)`, persist that deflated_sharpe. Update only the
-> cohort.py:60 docstring. Tests: 2 sequential cohorts deflate the 2nd vs 1st; trials rowcount==screened.
-> Do NOT edit scorer/backtest logic (fix-2 owns them). pnpm verify + /deploy-check. PR, don't merge.
-
-**fix-2 — buy-and-hold gate** · opus · `fix/gate-beat-buy-and-hold` · AFTER fix-1
-> P1 money-path. Deployed promotion has no BnH check → a bull-regime momentum can beat DSR/PBO/holdout/FDR
-> yet underperform BTC and get funded. Port `research/gate.py:35,135-136`: (1) backtest.py ~80-181 compute
-> validation-slice BnH NET return (reuse gate.py:379-393 `_buy_and_hold` on bars[:split], NEVER holdout),
-> surface on BacktestMetrics; (2) scorer.py:20 add `buy_and_hold_return: Decimal`; (3) scorer.py:188-203
-> add `if gates.require_beat_buy_and_hold and metrics.oos_return <= metrics.buy_and_hold_return:
-> reasons.append("buy_and_hold")`; (4) settings.py:28 `require_beat_buy_and_hold: bool=True`; (5)
-> orchestrator/loop.py:51 add `AND b.holdout_passed=1`. Tests + regenerate contracts if exposed. PR, don't merge.
-
-**fix-3 — remove synthetic display leak** · sonnet · `fix/no-synthetic-seed` · PARALLEL
-> P2 display. `spine/engine.py:158` fakes sharpe≈1.35, seeded on boot (app.py:217); fails gate (can't reach
-> money) but shows fake numbers + hardcoded "WFO accepted/holdout passed" (app.py:638-639) on
-> /leaderboard + /strategies. Remove boot seed (KEEP `EngineFacade.create` — seed_catalog is real),
-> remove POST /spine/backtest + dead synthetic code in spine/engine.py (grep refs first), drop the
-> hardcoded notes/holdout → honest empty. Net-negative diff. PR, don't merge.
-
-**fix-4 — LunarCrush cache/cost safety** · sonnet · `fix/lunarcrush-cache-safety` · PARALLEL
-> P2 cost. Ingest re-spends API + double-writes on re-run (pipeline.py:99 raw `append`, no incremental).
-> (1) use `append_dedup`; read max ts → pass `since`. (2) altdata.py LunarCrushProvider.fetch_series: add
-> `since` → `start=<epoch>` on v4 URL. (3) schema.sql UNIQUE INDEX on (provider,symbol,metric,ts) + ON
-> CONFLICT DO NOTHING. (4) research_tools.py ~104 _social: serve from store if <25h fresh before API.
-> Tests: re-run writes 0; since forwarded; store hit avoids API. (One-time row dedup may precede the index.)
-> **UNTIL THIS MERGES: do NOT re-run LunarCrush ingest.** PR, don't merge.
-
-**fix-5 — docs vendor-reality** · sonnet · `docs/reconcile-vendor-reality` · PARALLEL
-> <40-line annotate. WIRED: ccxt, XGBoost/LightGBM, Modal, FastAPI, SQLAlchemy, pgvector(hash embeddings).
-> NOT WIRED (mark aspirational): NautilusTrader, vectorbt, Optuna, Deepgram/ElevenLabs, E2B. Edit
-> VISION.md~290, IMPLEMENTATION.md:211, BUILD_PLAN.md~67-89 (Status col), PLAN.md~254-257,
-> schema_postgres.sql:195 comment. PR, don't merge.
-
-### WAVE 1 — DE-COLLIDE THE GOD-FILES (ends the merge pain we kept hitting)
-4 files cause ~all collisions: app.py(42 touches), models.py(32), page.tsx(30), data.ts(23).
-**Land R1 first (rewrites app.py; collides with fix-3 → do AFTER fix-3 merges). Then R2/R3/R4 parallel.**
-
-**R1 — split api/app.py into routers** · opus · `refactor/api-routers`
-> Convert `cosmu/api/app.py` (1876 lines, 52 routes) → `cosmu/api/routers/*.py` (one APIRouter per
-> prefix: health, spine, evolution, population, strategy, lab, overview, leaderboard, strategies, console,
-> recommendations, autonomy, live, universe, research, mind, scores, settings, drift, skills, memory,
-> costs, events, intelligence, verdicts). Each router carries only its routes + private helpers it uses
-> (shared → api/_shared.py). app.py → app construction + CORS + lifespan + include_router (<120 lines).
-> Each router imports only the models it uses (kills the 107-line import block app.py:17-123). Keep
-> `from cosmu.api.app import app` working. ZERO behavior change; OpenAPI schema set identical. Verify:
-> pytest + generate_contracts + `git diff --stat openapi.json`. `# intent:` header per AGENTS.md:132. PR.
-
-**R2 — split models.py by section** · sonnet · `refactor/api-models-pkg` · AFTER R1
-> `cosmu/api/models.py` (1193 lines, 123 classes, already `# ----` sectioned) → `models/` package, one
-> module per section, re-export ALL from `models/__init__.py` so `from cosmu.api.models import X` is
-> unchanged. No renames/field changes. Verify pytest + contracts identical. PR.
-
-**R3 — modularize web data.ts** · sonnet · `refactor/web-data-fetchers` · PARALLEL (engine-independent)
-> `apps/web/app/data.ts` (481 lines, ~22 getX) → `app/data/` (client.ts + one file per domain),
-> barrel `data/index.ts` so `import {getX} from "@/app/data"` keeps working. No behavior change.
-> Verify `pnpm --filter web build`. PR.
-
-**R4 — split altdata.py by provider** · sonnet · `refactor/data-providers-split` · PARALLEL
-> `cosmu/data/altdata.py` (1468 lines, ~15 providers) → `data/providers/` (lunarcrush, reddit,
-> funding_binance/okx/kraken, news, store.py, _types.py). Re-export from altdata.py so imports unchanged
-> (sources/registry.py:18). Makes "add a venue source" a NEW FILE. Verify pytest. PR.
-> AFTER all land: add to AGENTS.md — add endpoint→routers/, add model→models/, add source→providers/+1 registry line, add surface→app/data/.
-
-### WAVE 2 — MAKE THE CORE PROMISE VISIBLE (parallel; the vibe loop is invisible today)
-**P1 — close the vibe loop on Overview** · sonnet · `web/vibe-loop-overview` · apps/web only
-> The loop DIES at "queued": `getInboxQueue()` (data.ts:253) has ZERO callers; `components/overview/
-> idea-inbox.tsx` (renders per-item status) is ORPHANED; no web code calls `POST /lab/author`. Engine
-> fully supports it — just connect the pipes. Replace `idea-dump-box` with `idea-inbox.tsx`; server-fetch
-> `getInboxQueue()` in page.tsx, pass as initial. Add "Preview typed spec" → POST /lab/author
-> (AuthorResponse) rendering named features+fitted params read-only. Link `imported` items → /strategies
-> (and /strategy/[id] when version_id exists). Honest empty/offline states; additive only. pnpm verify. PR.
-
-**P2 — fix nav surface map** · sonnet · `web/nav-surface-map` · apps/web only
-> app-nav.tsx:27-30 ships Overview·Strategies·Costs·Console — **Mind is missing** (only linked from
-> orphaned widgets) and Lab has no primary path. Add Mind (/mind, Brain icon) + a path to Lab (/lab);
-> strategy-stages.tsx:16 repoint dead `/forward-test` → /strategies status facet. Keep desktop rail +
-> mobile tabs + More drawer, ≤5 surfaces. KEEP all redirect stubs (/farm,/paper,/research,/scores,/steer).
-> **DECISION: do NOT build a "Stack & Tools" links section** (bookmarks don't help decide/earn). pnpm verify. PR.
-
-### WAVE 3 — LEAN THE TREE + SURFACE THE MOAT (parallel; after R1 so router files are stable)
-- **C1** `chore/delete-research-cohorts` · sonnet · delete falsified one-shot harnesses
-  `cosmu/research/{carry_ablation,perp_gate_sweep,social_signal_cohort,funding_crowding_cohort,
-  social_nonobvious_cohort,social_norm,attribution}.py` (~-2200 LOC). KEEP gate.py, loop.py,
-  cost_surface.py, fixtures.py. Verdicts already preserved in docs/reports + /verdicts.
-- **C2** `chore/delete-unconnected-adapters` · sonnet · delete `adapters/data/{ibkr,okx,kraken_futures}.py`
-  + `master/neutral.py` + `ml/metalabel.py` + test_neutral_marking.py (~-580 LOC; carry/meta falsified).
-- **C3** `chore/prune-registry-orphans` · sonnet · set `enabled=False` (don't delete names) on registry
-  orphans: cftc_net_positioning, short_interest_ratio, insider_buy_ratio, days_to_earnings,
-  xasset_risk_appetite, authority_weighted_claim_signal, author_authority, reg_risk_crypto, risk_on_off, pm_prob_velocity.
-- **A1** `feat/lab-coverage-and-graveyard` · opus · expose GET /ingest/coverage; add Data-Freshness strip +
-  Graveyard summary above the inbox; move "the deterministic Gate alone decides" to the hero. The moat = the falsification record; make it the hero, not a buried widget.
-- **D1** `web/overview-intake-dedupe` · sonnet · AFTER P1 · one intake, remove orphaned widgets, net-negative.
-
-### WAVE 4 — EARN THE EDGE (the only open-ended stretch — and the right one to be)
-1. **Close the 7→45 feature-wiring gap** — only ~7 of ~45 registry features reach the backtest; the Gate
-   is SOTA but starved. THIS is the binding constraint on finding an edge, not more surface. (Continue
-   the fix-4-adjacent wiring; PR #104 wired pm_risk_on + liquidation_cascade — keep going.)
-2. **Run wider FarmLoop sweeps on the richer data** through the now-trustworthy gate (post fix-1/fix-2).
-3. **Pull the one untested lever** — derivatives / cross-sectional funding-dispersion / funding-contrarian
-   on perps (`DERIVATIVES_PLAN.md`; perp harness bugs fixed in #103). Spot-only is the binding limit.
-   Also re-attack PR #105's REAL social lead-lag signal that died on *costs* (lower-fee venue / longer holds).
-4. **On the first 30-day forward-test survivor:** complete the `adapter="nautilus.binance"` execution
-   path (BUY NautilusTrader — MIT, slots behind the typed ExecutionAdapter), arm live small via /console.
-5. **Inbox addition (2026-06-05):** `meridian-flow-smc-bos-choch.json` — SMC BOS/CHoCH breakout
-   translated from Pine (Meridian Flow [WillyAlgoTrader] v1.4.0, strategy mode). Signal: `bb_z >
-   breakout_z` (pivot-detection approximated via range-relative breakout), `MaTrendFilter` for HTF bias,
-   multi-TP `ExitPlan` (TP1/TP2/TP3) with `break_even_after_tp1`. Static-check: PASS. Picked up on
-   next deploy/boot. Honest prior: powered fail expected — breakout in spot post-~20bps costs; purpose
-   is to map the breakout parameter surface. No action needed; inbox scanner handles it.
+**Do NOT spend another dollar on data / compute / capital / a faster box until re-aimed.** Fix is
+direction, not horsepower.
 
 ---
 
-## BUY / BUILD / KEEP
-| Capability | Decision | Why |
-|---|---|---|
-| Backtest engine | KEEP-CUSTOM | PIT fees/embargo/CSCV-PBO/regimes; vectorbt only if sweeps >10k/run (cohorts are O(10-100)) |
-| Data ingest | KEEP | thin urllib; bottleneck is data quality not harness |
-| Experiment tracking | KEEP-CUSTOM | MLflow NO-GO; registry ~80 LOC, carries data_version+code_hash |
-| Param opt (Optuna) | NO-BUY | Gate caps attempts to prevent p-hacking; a Bayesian optimizer fights it |
-| Vector memory | KEEP-CUSTOM | deterministic FNV TF-IDF = keyless + reproducible |
-| Monitoring (Slack) | KEEP | one cron; buy observability only at multi-strategy scale |
-| **Execution adapter** | **BUY NautilusTrader WHEN-LIVE** | trigger = first 30-day forward survivor; MIT, slots behind typed ExecutionAdapter; raw ccxt order loop is a maintenance sink |
-No second buy is warranted now — the bottleneck is data coverage + feature wiring, not infra.
+## 1. STATE (post-merge)
+- main @ 3d592d6. ✅ **fix-1 + fix-2 merged** (#110): the deployed gate now deflates vs the global trial
+  ledger AND requires beating buy-and-hold = **trustworthy**. ✅ **God-files split** (#109):
+  `api/app.py`→`api/routers/*`, `api/models.py`→`api/models/`, web `data.ts`→`app/data/`,
+  `data/altdata.py`→`data/providers/`. Future agents work in these dirs = **collision-free**.
+- 0 edges. Cost ≈ $120/mo (Claude ~70%). Engineering A · Honesty A+ · Alpha not-yet.
 
-## HUMAN CHECKLIST (only you)
-- [ ] Dispatch Wave 0 (fix-1→fix-2; fix-3/4/5 parallel) → merge each green PR.
-- [ ] Then Wave 1 (R1 → R2/R3/R4 parallel). Then Waves 2/3 (mostly parallel). Then Wave 4 (the edge).
-- [ ] Do NOT enable `AUTONOMY_CRON_ENABLED` (Railway) until fix-1+fix-2 merge (else autonomy funds on a leaky gate).
-- [ ] Do NOT re-run LunarCrush ingest until fix-4 merges (re-spends $5/day). Buy a fresh $5 day before any new ingest.
-- [ ] Repo stays PRIVATE. GH Actions ~$6/mo accepted.
-- [ ] POC target: ONE strategy survives the HONEST gate (post fix-1/2) AND survives 30-day forward-test (SIM). That is "it works."
+## 2. RE-APPLY WAVE (3 PRs collided with the refactor's moves — re-do on the NEW structure)
+Built on the OLD layout; #109 moved those files. Re-apply each small known diff onto the new modular
+structure, then close the stale PR. **Priority: RA-1 > RA-2 > RA-3.**
 
-## THE HONEST FRAME
-The expensive part is done: an honest machine + 7 powered falsifications. The rest is FINITE — fix
-integrity → de-collide the god-files → make the vibe loop visible → lean the tree → then the open-ended
-hunt for an edge through a now-trustworthy gate, with feature-wiring (7→45) as the real lever. Don't
-polish UI or widen the funnel as a substitute for finding an edge. The moat is the honest Gate + PIT
-discipline + the falsification record — make that the hero.
+**RA-1 — integrity hygiene (was PR #111)** · sonnet · `fix/hygiene-reapply` · HIGH (cost-safety + repairs main)
+> Re-apply PR #111 onto the NEW structure (`gh pr diff 111` for the exact diff). Moved targets: synthetic
+> removal → `api/routers/*` + `spine/engine.py`; LunarCrush dedup/incremental → `data/providers/lunarcrush.py`
+> + `data/providers/store.py` + `ingest/pipeline.py`. Includes fix-3 (remove synthetic seed), **fix-4
+> (LunarCrush append_dedup + `since` incremental + UNIQUE index — REQUIRED before autonomy cron)**, fix-5
+> (docs aspirational), AND the pre-existing fixes it found (risk_on→pm_risk_on, liquidations→
+> liquidation_cascade — these repair latent broken tests on main). TARGETED tests while iterating, full
+> suite ONCE at the end. Self-merge if clean.
 
-## SCALING THE RESEARCH ENGINE (autonomous ingestion + iteration)
-See **`docs/RESEARCH_THROUGHPUT.md`** — the clean Railway(orchestrate) → Modal(compute) → DB(store)
-workflow for autonomous data ingestion + the strategy×asset×timeframe×view matrix sweep, with build
-prompts T1–T4. HARD PREREQUISITE: fix-1 (global deflation) + Wave 1 (router split) must land first —
-scaling draft volume without global FDR is a false-positive factory. Autonomous draft generation =
-OpenRouter API in-engine (NOT Claude Code, which is interactive); compute = Modal; LLM never computes
-ML or touches money.
+**RA-2 — usable vibe loop + nav (was PR #106)** · sonnet · `web/usable-reapply` · apps/web only
+> Re-apply PR #106 onto the new `app/data/` structure (`gh pr diff 106`). Wire orphaned
+> `components/overview/idea-inbox.tsx` + `getInboxQueue` + `POST /lab/author` so the loop shows
+> queued→spec→verdict; add Mind + Lab to nav; repoint dead /forward-test. Additive, never delete a page.
 
-> Deeper raw reviews (this session) are in the workflow transcripts if needed; everything actionable is above.
+**RA-3 — groom (was PR #108)** · sonnet · `chore/groom-reapply` · LOW · AFTER RA-2
+> Re-apply PR #108's dead-code/orphan pruning onto the new structure (`gh pr diff 108`). Net-negative.
+> ⚠️ Do NOT prune `idea-inbox.tsx` if RA-2 wired it.
+
+## 3. DEV-SPEED FIX — "building is a CI job, not interactive" (kills the M2/slow-cloud pain)
+The slowness was never the box — it was **building interactively** (OOMs M2 / cold cloud) because CI gave
+no verdict on feature branches. Fix the loop, not the hardware. **Codespaces/a faster box just papers over
+building in the wrong place — skip it.**
+**DS-1 — dev-loop speedups** · sonnet · `chore/dev-speed`
+> (1) `verify:remote` = push current branch + trigger `verify.yml` via `workflow_dispatch` + tail the run
+> (one-liner "is it green?", no local build). (2) Add `verify:fast` =
+> `naming:check && contracts:generate && engine:test -n auto && typecheck` (everything EXCEPT `next build` —
+> no OOM, ~1 min; CI's build job catches prerender). (3) `next build --turbopack` + `next dev --turbopack`
+> (lower memory → fixes build OOM). (4) Pin `"latest"` deps (next/react/react-dom/typescript/@types/*) to
+> exact versions (kills cache-miss + drift). (5) `-n auto` on local `engine:test`. Low-risk tooling. Self-merge.
+
+## 4. COSTS PAGE — real suppliers, dynamic (NO Fly.io)
+**C-1 — costs accuracy** · sonnet · `feat/costs-real-suppliers`
+> Costs surface references wrong/stale suppliers (e.g. Fly.io). We use: **Railway, Vercel, Supabase, Modal,
+> OpenRouter, LunarCrush, GitHub Actions, Anthropic (Claude)**. Update `cosmu/costs/*` to fetch real spend
+> where an API exists (Railway, Vercel, OpenRouter, Modal), else a maintained static rate; store in DB (PIT,
+> deduped — reuse the cache pattern), refresh on the tick. Surface on /costs + the Overview opex line. Lean,
+> not duplicated, no fabricated numbers.
+
+## 5. THE EDGE WORK (after re-aim — the real mission)
+- **E-1 (highest EV) — Numerai path** · opus · `feat/numerai-signals` — turn the PIT signal pipeline into a
+  Numerai Signals + Crypto submission (no capital, no execution). Map features → per-ticker signal, schedule
+  submission, track diagnostics. Monetizes sub-cost signal we already find. Read VISION.md:309. Prove the pipe small.
+- **E-2 — prediction markets** · opus · backfill Polymarket → wire CLOB → LLM-synth probability on resolving events.
+- **E-3 — cross-sectional market-neutral perp gate** · opus · the one untested crypto lever; if FAIL, close crypto-directional.
+
+## 6. 🧑‍🚀 HUMAN — your clicks (optimistic + careful)
+- ✅ **Set `AUTONOMY_CRON_ENABLED=1` on Railway — ONLY after RA-1 (fix-4) merges.** fix-1+fix-2 are already
+  in (gate trustworthy); cost-safety (fix-4) is the last gate — until then the 4h tick re-spends LunarCrush
+  ($5/day) every run. After RA-1 → flip it → **the machine self-runs** (Slack pings on a pass).
+- 🟢 Buy a fresh $5 LunarCrush day only right before a NEW backfill (incremental after RA-1 = cheap).
+- 🟢 Repo private; CI cheap (PR/main only). **No Codespaces/faster box** — DS-1 is the cure.
+- 🎯 Win = ONE Numerai submission earning, OR one strategy surviving the honest gate + 30-day forward-test.
+
+## 7. ⚙️ BEST PRACTICES (so it stops being slow — learned the hard way)
+- **A file-moving refactor merges ALONE, never parallel with edits to those files.** (#109 collided with
+  #106/#108/#111 run in parallel → cost a re-apply wave.)
+- **Targeted tests while iterating** (`pytest -k … -n auto`), full suite ONCE at the end. (A Sonnet agent
+  burned 1h26m re-running the 14-min suite ~5×.)
+- **Building is a CI job** (DS-1). Inner loop = edit → `verify:fast`/`pytest -k` → push for CI verdict.
+- **Right-size models:** Sonnet/Haiku for mechanical, Opus only for hard judgment/money-path. Mind Claude
+  usage limits (support.claude.com/articles/9797557) — don't burn Opus on refactors.
+- **Autonomous LLM = OpenRouter API in-engine (cheap); Claude Code = operator-driven.** Do NOT build
+  "scheduled headless Claude Code for autonomous work" — burns the Max quota. The 4h tick + OpenRouter
+  already batches autonomous authoring. (Decision: discard that idea.)
+- One branch = disjoint files; agents self-merge clean PRs; you stay out of the loop.
+
+## 8. DISPATCH ORDER (lean)
+1. **RA-1** (hygiene re-apply — cost-safety) → merge → **flip the Railway cron** = machine self-runs.
+2. **RA-2 + DS-1 + C-1** in parallel (disjoint: web / tooling / costs) → self-merge.
+3. **RA-3** after RA-2. Then **E-1 (Numerai)** — the highest-EV move.
+> Stale PRs #106/#108/#111 stay open only as `gh pr diff` reference for the re-applies; close after.
