@@ -18,6 +18,11 @@ _NORMAL = NormalDist()
 
 class BacktestMetrics(BaseModel):
     oos_return: Decimal
+    # Validation-slice buy-and-hold NET return (fees in) over the SAME bars[:split] window as `oos_return`, so the
+    # two are directly comparable. The promotion gate requires a strategy to BEAT just holding the basket (a
+    # bull-regime momentum can clear DSR/PBO/holdout/FDR yet still underperform BTC). Computed in data/backtest.py;
+    # 0 by default so a directly-constructed metrics row (or one with no market) imposes no buy-and-hold hurdle.
+    buy_and_hold_return: Decimal = Decimal("0")
     sharpe: Decimal  # annualized — for display/ranking only
     sortino: Decimal
     max_drawdown: Decimal
@@ -201,6 +206,12 @@ def score(metrics: BacktestMetrics, gates: GateSettings, *, trials: TrialStats |
         reasons.append("deflated_sharpe")
     if metrics.holdout_deflated_sharpe <= gates.holdout_min_deflated_sharpe:
         reasons.append("holdout")
+    # Beat-buy-and-hold: a promotable edge must out-return simply holding the same validation-slice basket, net of
+    # fees. Without this a bull-regime long can pass every statistical gate yet underperform BTC and still get
+    # funded. Mirrors research/gate.py's pre-registered `must_beat_buy_and_hold` bar. Opt-out via GateSettings so a
+    # caller that has not populated `buy_and_hold_return` (default 0) is unaffected when the flag is off.
+    if gates.require_beat_buy_and_hold and metrics.oos_return <= metrics.buy_and_hold_return:
+        reasons.append("buy_and_hold")
     return ScoreVerdict(
         ranking_scalar=Decimal(str(round(dsr, 6))),
         deflated_sharpe_prob=Decimal(str(round(dsr, 6))),

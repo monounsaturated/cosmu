@@ -10,13 +10,22 @@ from __future__ import annotations
 
 import json
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import GateSettings, Settings
 from cosmu.knowledge.store import Store
 from cosmu.master.scheduler import _load_survivor_specs, _screen_provider, run_tick
 
 
 def _store(tmp_path, name: str = "tick") -> Store:
-    return Store(Settings(database_url=f"sqlite:///{tmp_path}/{name}.sqlite3", openrouter_api_key=None))
+    # The replication tick's screen fixture trends up, so a long-only survivor cannot beat holding; this test
+    # exercises the replicate-survivors-through-the-same-gate PLUMBING, not the cash benchmark, so opt the
+    # beat-buy-and-hold gate out (covered separately). The statistical gate still decides what survives.
+    return Store(
+        Settings(
+            database_url=f"sqlite:///{tmp_path}/{name}.sqlite3",
+            openrouter_api_key=None,
+            gates=GateSettings(require_beat_buy_and_hold=False),
+        )
+    )
 
 
 def _no_ingest(_store) -> dict:

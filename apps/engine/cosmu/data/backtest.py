@@ -157,8 +157,14 @@ def run_strategy_backtest_detailed(
     h_sr, h_skew, h_kurt, h_n = sample_moments(holdout.bar_returns)
     holdout_dsr = probabilistic_sharpe(h_sr, h_n, h_skew, h_kurt, 0.0) - 0.5  # > 0 ⇔ holdout Sharpe significantly positive
 
+    # Validation-slice buy-and-hold benchmark: what just HOLDING the same basket over bars[:split] returns, net of
+    # the round-trip fee. Computed on the SAME validation window as `val.total_return` (never the holdout, which
+    # the gate keeps untouched) so the promotion gate's "beat buy-and-hold" check compares like with like.
+    buy_and_hold = _buy_and_hold_return(market, fee_bps)
+
     metrics = BacktestMetrics(
         oos_return=Decimal(str(round(val.total_return, 8))),
+        buy_and_hold_return=Decimal(str(round(buy_and_hold, 8))),
         sharpe=Decimal(str(round(val.sharpe, 6))),
         sortino=Decimal(str(round(val.sortino, 6))),
         max_drawdown=Decimal(str(round(val.max_drawdown, 6))),
@@ -230,6 +236,25 @@ def _avg_cross_correlation(series: list[list[float]]) -> float:
             if c is not None:
                 corrs.append(c)
     return statistics.fmean(corrs) if corrs else 0.0
+
+
+def _buy_and_hold_return(market: dict[str, list[Bar]], fee_bps: Decimal) -> float:
+    """Net-of-fee buy-and-hold return over the VALIDATION slice (bars[:split], the same window the strategy is
+    scored on — never the holdout). For each symbol with enough bars, buy at the slice's first close and sell at
+    its last, charged one round-trip fee, then average across the basket. Mirrors research/gate.py's `_buy_and_hold`
+    but uses the single venue fee passed to the backtest. Empty market / no usable symbol → 0.0 (no benchmark to
+    beat). The split matches `_purged_embargoed_split`, so the benchmark window equals the strategy's exactly."""
+    fee = float(fee_bps) / 10000.0
+    rets: list[float] = []
+    for bars in market.values():
+        if len(bars) < 80:
+            continue
+        split = max(40, int(len(bars) * 0.8))
+        window = bars[:split]
+        first, last = float(window[0].close), float(window[-1].close)
+        if first:
+            rets.append(last / first - 1.0 - 2.0 * fee)  # entry + exit fee = one round trip
+    return statistics.fmean(rets) if rets else 0.0
 
 
 def _effective_obs(n_obs: int, n_symbols: int, rho_sym: float) -> int:

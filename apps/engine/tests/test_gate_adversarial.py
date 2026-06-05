@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import pytest
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import GateSettings, Settings
 from cosmu.data.market import Bar
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.knowledge.store import Store
@@ -47,7 +47,17 @@ class _Bars:
 
 def _finder(tmp_path, market: dict[str, list[Bar]], name: str) -> StrategyFinder:
     # No openrouter_api_key → the whole path runs offline (CI has no keys; the LLM is never in this path).
-    store = Store(Settings(database_url=f"sqlite:///{tmp_path}/{name}.sqlite3", openrouter_api_key=None))
+    # These probe STATISTICAL edge-vs-noise discrimination (DSR/PBO/FDR/holdout). The edge fixtures are strong
+    # uptrends where holding the basket out-returns any long-only strategy, so the beat-buy-and-hold gate (a
+    # separate concern, covered by test_beat_buy_and_hold.py) would mask the statistical signal — and disabling it
+    # only RELAXES promotion, so the no-edge null arms must still reject on the statistics alone (the sharper claim).
+    store = Store(
+        Settings(
+            database_url=f"sqlite:///{tmp_path}/{name}.sqlite3",
+            openrouter_api_key=None,
+            gates=GateSettings(require_beat_buy_and_hold=False),
+        )
+    )
     return StrategyFinder(settings=store.settings, store=store, market_data=_Bars(market))
 
 

@@ -5,13 +5,22 @@ from __future__ import annotations
 
 import os
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import GateSettings, Settings
 from cosmu.knowledge.store import Store
 from cosmu.lab.research import run_research_pass
 
 
 def _store(tmp_path) -> Store:
-    return Store(Settings(database_url=f"sqlite:///{tmp_path}/brain.sqlite3", openrouter_api_key=None))
+    # The edge-bearing fixture is a strong uptrend (holding the basket out-returns any long-only strategy), so the
+    # separate beat-buy-and-hold gate (covered by test_beat_buy_and_hold.py) would block the sleeve-open path this
+    # test exercises. Opt it out; the deterministic statistical gate (DSR/PBO/FDR/holdout) still decides survival.
+    return Store(
+        Settings(
+            database_url=f"sqlite:///{tmp_path}/brain.sqlite3",
+            openrouter_api_key=None,
+            gates=GateSettings(require_beat_buy_and_hold=False),
+        )
+    )
 
 
 def test_edge_bearing_fixture_yields_survivor(tmp_path):
