@@ -134,6 +134,38 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         ),
         transform_version="news-event-score-v1",
     ),
+    # --- LLM qualitative→quantitative INDEX scores (VISION §6): an LLM-as-judge standardizes narrative into a
+    # rubric-anchored numeric score, stored POINT-IN-TIME WITH HISTORY so the gate can train on it. The LLM ONLY
+    # proposes the number against an explicit rubric; the deterministic Gate alone disposes — NEVER the money path.
+    # Both are market-wide + tier1 (low-confidence until validated OOS; the gate down-weights until it earns its
+    # place). transform_version pins the rubric+prompt so a gate-passed survivor is re-runnable byte-for-byte. ---
+    FeatureDefinition(
+        name="reg_risk_crypto",
+        source="llm_index",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="LLM index minted at evidence-availability time (availability == observation, no look-ahead)",
+        prior=(
+            "An LLM-as-judge standardizes qualitative regulatory news into a [0, 1] crackdown-pressure score "
+            "against an explicit rubric (0 = supportive/clear, 1 = severe crackdown). A spike marks rising "
+            "regulatory risk that may precede de-risking. The LLM proposes; the deterministic Gate disposes — "
+            "low-confidence until validated OOS."
+        ),
+        transform_version="llm-index-v1",
+    ),
+    FeatureDefinition(
+        name="risk_on_off",
+        source="llm_index",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="LLM index minted at evidence-availability time (availability == observation, no look-ahead)",
+        prior=(
+            "An LLM-as-judge standardizes macro/geopolitical narrative into a [-1, +1] risk-appetite score "
+            "against an explicit rubric (+1 risk-on, -1 risk-off) — a shared cross-asset regime tag. The LLM "
+            "proposes; the deterministic Gate disposes — low-confidence until validated OOS."
+        ),
+        transform_version="llm-index-v1",
+    ),
     # --- cross-asset daily price levels (free, no key) via Stooq/Yahoo: one asset class's price IS another's
     # macro feature. Each is market-wide, point-in-time (a daily close is known the next day — see
     # multiasset-daily-v1), and tier0 like the other liquid macro reads (dxy/vix). They condition the shared

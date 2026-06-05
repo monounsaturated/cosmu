@@ -243,10 +243,10 @@ def profile_source(
 def _main(argv: list[str] | None = None) -> int:
     import argparse
     import json
+    from datetime import UTC, datetime
     from pathlib import Path
 
     from cosmu.data.altdata import AltDataStore
-    from cosmu.knowledge.store import utcnow
 
     parser = argparse.ArgumentParser(
         description="Data-trust audit for a new alt-source: coverage · gaps · staleness · look-ahead · PIT-lag → "
@@ -262,7 +262,7 @@ def _main(argv: list[str] | None = None) -> int:
 
     store = AltDataStore(Path(args.altdata_root))
     declared = args.declared_lag_hours * 3600 if args.declared_lag_hours is not None else None
-    profile = profile_source(store, args.provider, args.symbol, args.metric, now=utcnow(), declared_lag_seconds=declared)
+    profile = profile_source(store, args.provider, args.symbol, args.metric, now=datetime.now(UTC), declared_lag_seconds=declared)
     print(json.dumps(profile.to_dict(), indent=2) if args.json else profile.to_text())
     # Exit non-zero on NO-GO so the audit can gate a script/CI step without parsing stdout.
     return 0 if profile.verdict != "NO-GO" else 1

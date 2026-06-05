@@ -927,6 +927,9 @@ _STORE_PROVIDER_OF = {
     "galaxy_score": "lunarcrush",
     "twitter_sentiment": "xai",
     "twitter_influencer_sentiment": "xai",
+    # LLM qualitative→quantitative index scores (market-wide; the LLM standardizes text only, never the money path).
+    "reg_risk_crypto": "llm_index",
+    "risk_on_off": "llm_index",
     # Cross-asset daily price levels (free, no key) via Stooq/Yahoo — metals, commodities, equity indexes, FX.
     "gold_xau": "stooq",
     "silver_xag": "stooq",
@@ -941,6 +944,7 @@ _STORE_MARKET_WIDE = frozenset({
     "defi_tvl", "dxy", "yield_curve_2s10s", "credit_spread", "vix_term_slope",
     "osint_air_activity", "pm_implied_prob", "pm_prob_velocity", "pm_book_depth",
     "reddit_sentiment", "twitter_sentiment", "twitter_influencer_sentiment",
+    "reg_risk_crypto", "risk_on_off",
     "gold_xau", "silver_xag", "wti_crude", "spx_index", "ndx_index", "eurusd", "usdjpy",
 })
 
