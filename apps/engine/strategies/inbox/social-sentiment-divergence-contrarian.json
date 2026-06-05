@@ -1,0 +1,63 @@
+{
+  "name": "Social-sentiment rising while price depressed — contrarian sentiment-lead long",
+  "rationale": "When LunarCrush crowd sentiment (social_sentiment, the platform's normalised bullish-to-bearish crowd mood score) is above a positive floor while the asset's recent price return is still negative, the crowd has already begun reassessing the asset before price recovers — sentiment is leading price. This is the constructive version of contrarian wisdom: the vocal community is turning bullish while the asset is still cheap, ahead of the buying wave. We enter the divergence and hold until either the target is reached or the sentiment signal itself reverses (cross_down exit), which would signal the crowd was wrong or premature. A medium-term trend filter (trend_lb / trend_floor) guards against catching a falling knife in a structural downtrend — the crowd can be early and wrong in a regime break. Disconfirmer: a deeply negative trend (below trend_floor) kills the entry; a sentiment reversal (cross_down sent_exit) exits any open position. NOTE: DATA-BLOCKED — social_sentiment requires LUNARCRUSH_API_KEY; queued until ingested. tier1 + low-confidence until validated OOS.",
+  "catalyst": "social_sentiment positive while recent price return is negative (sentiment-price divergence)",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": { "name": "social_sentiment" },
+      "op": "gt",
+      "threshold": { "param": "sent_floor" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "price_lb" } },
+      "op": "lt",
+      "threshold": { "param": "price_neg_ceiling" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } },
+      "op": "gt",
+      "threshold": { "param": "trend_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "social_sentiment" },
+        "op": "cross_down",
+        "threshold": { "param": "sent_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.35
+  },
+  "param_space": {
+    "sent_floor":        { "kind": "float", "lo": 0.15,  "hi": 0.50 },
+    "price_lb":          { "kind": "int",   "lo": 2,     "hi": 10,   "step": 1 },
+    "price_neg_ceiling": { "kind": "float", "lo": -0.12, "hi": -0.01 },
+    "trend_lb":          { "kind": "int",   "lo": 20,    "hi": 60,   "step": 1 },
+    "trend_floor":       { "kind": "float", "lo": -0.15, "hi": 0.0 },
+    "sent_exit":         { "kind": "float", "lo": 0.0,   "hi": 0.20 },
+    "stop":              { "kind": "float", "lo": 0.06,  "hi": 0.18 },
+    "tp":                { "kind": "float", "lo": 0.10,  "hi": 0.30 },
+    "time_stop":         { "kind": "int",   "lo": 3,     "hi": 12,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
