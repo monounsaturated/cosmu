@@ -11,6 +11,7 @@ pnpm install
 pnpm modal:secret                 # pushes your keys to Modal (heavy compute)
 ```
 Keys go in **3 places, .env.local is the source**: `.env.local` → Railway dashboard → `pnpm modal:secret`.
+Full key reference: [`docs/SETUP_APIS.md`](SETUP_APIS.md)
 
 ## 2. Use it every day — 3 doors
 | I want to… | Do this |
