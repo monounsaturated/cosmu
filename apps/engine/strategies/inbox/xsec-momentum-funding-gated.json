@@ -36,7 +36,7 @@
     "mom_lookback":    { "kind": "int",   "lo": 20,      "hi": 35,   "step": 1 },
     "mom_floor":       { "kind": "float", "lo": 0.02,    "hi": 0.15 },
     "mom_exit":        { "kind": "float", "lo": -0.05,   "hi": 0.01 },
-    "funding_ceiling": { "kind": "float", "lo": 0.0001,  "hi": 0.01 },
+    "funding_ceiling": { "kind": "float", "lo": -0.00002, "hi": 0.0001 },
     "ma_lookback":     { "kind": "int",   "lo": 30,      "hi": 100,  "step": 1 },
     "trend_floor":     { "kind": "float", "lo": 0.0,     "hi": 0.05 },
     "vol_ceiling":     { "kind": "float", "lo": 0.02,    "hi": 0.12 },
