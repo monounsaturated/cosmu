@@ -45,6 +45,12 @@ from cosmu.ingest.pipeline import (
     ingest_putcall,
 )
 from cosmu.ingest.standardize import NewsEventScore, StandardizedNews
+from cosmu.lab.indexes import (
+    INDEX_RUBRICS,
+    LlmIndexProvider,
+    NewsEvidenceProvider,
+    build_index_provider_from_settings,
+)
 
 logger = logging.getLogger("cosmu.ingest.run")
 
@@ -80,6 +86,11 @@ class Providers:
     # xAI/Grok Twitter sentiment: key-gated — returns [] without XAI_API_KEY (honest degradation).
     # LLM only standardizes text; never touches the gate/scoring/money path.
     xai_twitter: AltDataProvider = field(default_factory=lambda: XaiTwitterProvider())
+    # LLM qualitative→quantitative index scores (reg_risk_crypto / risk_on_off). Key-gated: no LLM key → the
+    # provider ingests nothing (honest). The LLM only proposes the rubric-anchored number; the Gate disposes.
+    llm_index: AltDataProvider = field(
+        default_factory=lambda: LlmIndexProvider(evidence=NewsEvidenceProvider(GdeltNewsProvider()))
+    )
     # Venue fees: key-gated (ccxt exchange needed for live reads). Default = Binance static-catalog fallback
     # (offline-safe, no key). A live ccxt client can be injected at deploy time for account-specific rates.
     venue_fees: AltDataProvider = field(default_factory=lambda: VenueFeesProvider("binance"))
@@ -112,6 +123,8 @@ class Providers:
             xai_twitter=XaiTwitterProvider(api_key=settings.xai_api_key or ""),
             # Typed event/news scorer via the cheap-OpenRouter formatter — key-gated (None without OPENROUTER_API_KEY).
             event_llm=build_event_formatter_from_settings(settings),
+            # LLM index scorer — xAI preferred, OpenRouter fallback; no key → ingests nothing (honest).
+            llm_index=build_index_provider_from_settings(settings),
             polymarket_token="risk_on",
         )
 
@@ -308,6 +321,16 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     counts["dvol"] = _safe(
         "dvol", lambda: ingest_numeric(store, p.dvol, symbols, "dvol", provider_name="deribit")
     )
+    # LLM qualitative→quantitative index scores: each is market-wide, ingested once under the MARKET key under
+    # its own SEMANTIC name. Key-gated (no LLM key → the provider returns [] → counted 0, never an abort). The
+    # LLM only proposes the rubric-anchored number at ingest; the deterministic Gate alone disposes.
+    for _index in INDEX_RUBRICS:
+        counts[_index] = _safe(
+            _index,
+            lambda m=_index: ingest_market_wide_numeric(
+                store, p.llm_index, source_metric=m, stored_metric=m, provider_name="llm_index"
+            ),
+        )
     # Cross-asset daily price levels (free, no key): metals / commodities / equity indexes / FX. Each is
     # market-wide (ingested once under the MARKET key under its SEMANTIC name). Numeric → no LLM.
     for _metric in MULTIASSET_METRICS:
