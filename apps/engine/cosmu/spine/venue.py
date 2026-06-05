@@ -234,9 +234,28 @@ def default_catalog() -> VenueCatalog:
             # OKX spot
             Instrument(id="btc-usdt-okx",      venue_id="okx", symbol="BTC-USDT",      asset_class="crypto", tick_size=Decimal("0.1"),  lot_size=Decimal("0.00001"), min_notional=Decimal("1")),
             Instrument(id="eth-usdt-okx",      venue_id="okx", symbol="ETH-USDT",      asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.0001"),  min_notional=Decimal("1")),
-            # OKX perpetual swaps (same venue, -SWAP suffix is OKX convention)
-            Instrument(id="btc-usdt-swap-okx", venue_id="okx", symbol="BTC-USDT-SWAP", asset_class="crypto", tick_size=Decimal("0.1"),  lot_size=Decimal("0.001"),  min_notional=Decimal("1")),
-            Instrument(id="eth-usdt-swap-okx", venue_id="okx", symbol="ETH-USDT-SWAP", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.01"),   min_notional=Decimal("1")),
+            # OKX perpetual swaps — 20-asset universe for the funding-dispersion strategy.
+            # tick_size/lot_size sourced from OKX public instrument API; min_notional=1 USDT for all.
+            Instrument(id="btc-usdt-swap-okx",   venue_id="okx", symbol="BTC-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.1"),      lot_size=Decimal("0.001"),    min_notional=Decimal("1")),
+            Instrument(id="eth-usdt-swap-okx",   venue_id="okx", symbol="ETH-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.01"),     lot_size=Decimal("0.01"),     min_notional=Decimal("1")),
+            Instrument(id="sol-usdt-swap-okx",   venue_id="okx", symbol="SOL-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.01"),     lot_size=Decimal("0.1"),      min_notional=Decimal("1")),
+            Instrument(id="xrp-usdt-swap-okx",   venue_id="okx", symbol="XRP-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.0001"),   lot_size=Decimal("10"),       min_notional=Decimal("1")),
+            Instrument(id="link-usdt-swap-okx",  venue_id="okx", symbol="LINK-USDT-SWAP",  asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("0.1"),      min_notional=Decimal("1")),
+            Instrument(id="avax-usdt-swap-okx",  venue_id="okx", symbol="AVAX-USDT-SWAP",  asset_class="crypto", tick_size=Decimal("0.01"),     lot_size=Decimal("0.1"),      min_notional=Decimal("1")),
+            Instrument(id="ada-usdt-swap-okx",   venue_id="okx", symbol="ADA-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.0001"),   lot_size=Decimal("10"),       min_notional=Decimal("1")),
+            Instrument(id="dot-usdt-swap-okx",   venue_id="okx", symbol="DOT-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("1"),        min_notional=Decimal("1")),
+            Instrument(id="pol-usdt-swap-okx",   venue_id="okx", symbol="POL-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.0001"),   lot_size=Decimal("10"),       min_notional=Decimal("1")),
+            Instrument(id="atom-usdt-swap-okx",  venue_id="okx", symbol="ATOM-USDT-SWAP",  asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("0.1"),      min_notional=Decimal("1")),
+            Instrument(id="ltc-usdt-swap-okx",   venue_id="okx", symbol="LTC-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.01"),     lot_size=Decimal("0.01"),     min_notional=Decimal("1")),
+            Instrument(id="bch-usdt-swap-okx",   venue_id="okx", symbol="BCH-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.1"),      lot_size=Decimal("0.01"),     min_notional=Decimal("1")),
+            Instrument(id="doge-usdt-swap-okx",  venue_id="okx", symbol="DOGE-USDT-SWAP",  asset_class="crypto", tick_size=Decimal("0.00001"),  lot_size=Decimal("100"),      min_notional=Decimal("1")),
+            Instrument(id="near-usdt-swap-okx",  venue_id="okx", symbol="NEAR-USDT-SWAP",  asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("1"),        min_notional=Decimal("1")),
+            Instrument(id="uni-usdt-swap-okx",   venue_id="okx", symbol="UNI-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("0.1"),      min_notional=Decimal("1")),
+            Instrument(id="fil-usdt-swap-okx",   venue_id="okx", symbol="FIL-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("1"),        min_notional=Decimal("1")),
+            Instrument(id="inj-usdt-swap-okx",   venue_id="okx", symbol="INJ-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("0.1"),      min_notional=Decimal("1")),
+            Instrument(id="op-usdt-swap-okx",    venue_id="okx", symbol="OP-USDT-SWAP",    asset_class="crypto", tick_size=Decimal("0.0001"),   lot_size=Decimal("1"),        min_notional=Decimal("1")),
+            Instrument(id="arb-usdt-swap-okx",   venue_id="okx", symbol="ARB-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.0001"),   lot_size=Decimal("1"),        min_notional=Decimal("1")),
+            Instrument(id="ton-usdt-swap-okx",   venue_id="okx", symbol="TON-USDT-SWAP",   asset_class="crypto", tick_size=Decimal("0.001"),    lot_size=Decimal("1"),        min_notional=Decimal("1")),
             # Kraken Futures linear perpetuals (PF_ = linear; PI_ = inverse, not wired yet)
             Instrument(id="xbt-usd-kf",  venue_id="kraken_futures", symbol="PF_XBTUSD", asset_class="crypto", tick_size=Decimal("0.5"),  lot_size=Decimal("1"), min_notional=Decimal("1")),
             Instrument(id="eth-usd-kf",  venue_id="kraken_futures", symbol="PF_ETHUSD", asset_class="crypto", tick_size=Decimal("0.05"), lot_size=Decimal("1"), min_notional=Decimal("1")),

@@ -25,6 +25,7 @@ from cosmu.data.altdata import (
     GdeltToneProvider,
     LunarCrushProvider,
     NewsProvider,
+    OkxFundingRateProvider,
     OsintAirActivityProvider,
     PolymarketClobProvider,
     PolymarketGammaProvider,
@@ -61,6 +62,16 @@ DEFAULT_SYMBOLS = ("BTCUSDT", "ETHUSDT")
 DEFAULT_FRED_SERIES = "T10Y2Y"  # 10y-2y curve slope: one macro read conditions risk across classes
 DEFAULT_POLYMARKET_TOKEN = "risk-on"  # a market token id; real runs override via --polymarket-token
 
+# 20-asset OKX USDT-M perpetual-swap universe for the funding-dispersion strategy.
+# Symbols match the OKX public API `instId` format (<BASE>-USDT-SWAP).
+OKX_PERP_UNIVERSE = (
+    "BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP", "XRP-USDT-SWAP",
+    "LINK-USDT-SWAP", "AVAX-USDT-SWAP", "ADA-USDT-SWAP", "DOT-USDT-SWAP",
+    "POL-USDT-SWAP", "ATOM-USDT-SWAP", "LTC-USDT-SWAP", "BCH-USDT-SWAP",
+    "DOGE-USDT-SWAP", "NEAR-USDT-SWAP", "UNI-USDT-SWAP", "FIL-USDT-SWAP",
+    "INJ-USDT-SWAP", "OP-USDT-SWAP", "ARB-USDT-SWAP", "TON-USDT-SWAP",
+)
+
 
 @dataclass
 class Providers:
@@ -68,6 +79,8 @@ class Providers:
     so a pass runs fully offline. News standardization uses the offline lexicon unless an `llm` is given."""
 
     funding: AltDataProvider = field(default_factory=FundingRateProvider)
+    # OKX perp funding rate for the 20-asset dispersion universe (public endpoint, no key).
+    okx_funding: AltDataProvider = field(default_factory=OkxFundingRateProvider)
     feargreed: AltDataProvider = field(default_factory=FearGreedProvider)
     news: NewsProvider = field(default_factory=GdeltNewsProvider)
     fred: AltDataProvider = field(default_factory=FredMacroProvider)
@@ -175,6 +188,10 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     counts: dict[str, int] = {}
     counts["funding_rate"] = _safe(
         "funding_rate", lambda: ingest_numeric(store, p.funding, symbols, "funding_rate", provider_name="binance")
+    )
+    counts["okx_funding_rate"] = _safe(
+        "okx_funding_rate",
+        lambda: ingest_numeric(store, p.okx_funding, list(OKX_PERP_UNIVERSE), "funding_rate", provider_name="okx_perp"),
     )
     # Fear & Greed and the cross-asset transfer series are market-wide → ingest once under the MARKET key.
     counts["fear_greed"] = _safe(
