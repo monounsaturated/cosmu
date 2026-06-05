@@ -19,7 +19,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from cosmu.data.altdata import AltDataProvider, CachedFundingRateProvider
-from cosmu.data.backtest import align_asof, run_strategy_backtest
+from cosmu.data.backtest import align_asof, run_strategy_backtest, run_strategy_backtest_detailed
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
 from cosmu.data.universe import PERP_UNIVERSE
 from cosmu.knowledge.store import Store
@@ -163,6 +163,8 @@ def _apply_funding_cost(
     metrics: BacktestMetrics,
     funding_bps_per_bar: float,
     direction: int,
+    *,
+    already_accrued: bool = False,
 ) -> BacktestMetrics:
     """Subtract (long) or add (short) a daily funding cost from the net return.
 
@@ -170,8 +172,12 @@ def _apply_funding_cost(
     For a SHORT perp (direction=-1): positive funding is INCOME (shorts receive); we add.
     The adjustment scales with the average hold length: cost = funding × num_trades × avg_hold.
     This is a conservative MODEL ESTIMATE layered on the backtest output, not a per-bar tweak.
+
+    `already_accrued=True` skips the overlay entirely — use this when the spec carries a
+    `funding_feature` so the backtest has already accrued real per-bar funding cash flows.
+    Applying the model overlay on top would double-count the cost.
     """
-    if funding_bps_per_bar == 0.0 or metrics.num_trades == 0:
+    if already_accrued or funding_bps_per_bar == 0.0 or metrics.num_trades == 0:
         return metrics
     funding_frac_per_bar = funding_bps_per_bar / 10000.0
     # Approximate cost: if the strategy holds for ~(oos_return/num_trades) bps per trade on average,
@@ -209,9 +215,13 @@ def _run_scenario(
     lp, long_m = _best_variant(long_spec,  market, fee_bps=fee, alt=alt, store=store, gates=gates, label=f"{label}:long")
     sp, short_m = _best_variant(short_spec, market, fee_bps=fee, alt=alt, store=store, gates=gates, label=f"{label}:short")
 
-    # Apply funding drag on top of the backtest result (model overlay, not per-bar; conservative)
-    long_m  = _apply_funding_cost(long_m,  funding_bps_per_bar, direction=+1)
-    short_m = _apply_funding_cost(short_m, funding_bps_per_bar, direction=-1)
+    # Apply funding drag only when the spec has NOT already accrued it per-bar via funding_feature.
+    # When funding_feature is set the backtest's _accrue_funding() loop handles the real cost; the
+    # model overlay would double-count it.
+    long_funding_accrued  = bool(getattr(long_spec,  "funding_feature", None))
+    short_funding_accrued = bool(getattr(short_spec, "funding_feature", None))
+    long_m  = _apply_funding_cost(long_m,  funding_bps_per_bar, direction=+1, already_accrued=long_funding_accrued)
+    short_m = _apply_funding_cost(short_m, funding_bps_per_bar, direction=-1, already_accrued=short_funding_accrued)
 
     # Gross (friction-free, same signals, zero cost): for cost_ratio denominator
     long_g  = run_strategy_backtest(long_spec,  lp, market, fee_bps=Decimal("0"), slippage_bps=Decimal("0"), impact_bps=Decimal("0"), alt_by_symbol=alt)
@@ -228,9 +238,22 @@ def _run_scenario(
     pair_cr = round(max(0.0, pair_net / pair_gross) if pair_gross > 0.0 else 0.0, 4)
     pair_trades = long_m.num_trades + short_m.num_trades
     pair_max_dd = max(float(long_m.max_drawdown), float(short_m.max_drawdown))
-    pair_sharpe = (float(long_m.sharpe) + float(short_m.sharpe)) / 2.0
-    pair_skew = (float(long_m.skew) + float(short_m.skew)) / 2.0
-    pair_kurt = (float(long_m.kurtosis) + float(short_m.kurtosis)) / 2.0
+
+    # Compute pair sharpe/skew/kurt on the ACTUAL combined dollar-neutral bar-return stream
+    # (50/50 of long and short), not the naive average of per-leg stats.  Averaging individual
+    # skews/kurts is wrong: skew(0.5*X + 0.5*Y) ≠ 0.5*skew(X) + 0.5*skew(Y) in general.
+    long_detail  = run_strategy_backtest_detailed(long_spec,  lp, market, fee_bps=fee, alt_by_symbol=alt)
+    short_detail = run_strategy_backtest_detailed(short_spec, sp, market, fee_bps=fee, alt_by_symbol=alt)
+    n_pair = min(len(long_detail.val_returns), len(short_detail.val_returns))
+    if n_pair >= 2:
+        pair_stream = [(long_detail.val_returns[i] + short_detail.val_returns[i]) / 2.0 for i in range(n_pair)]
+        _sr_obs, pair_skew, pair_kurt, _ = sample_moments(pair_stream)
+        sd = statistics.pstdev(pair_stream)
+        pair_sharpe = statistics.fmean(pair_stream) / sd * math.sqrt(365.0) if sd else 0.0
+    else:
+        pair_sharpe = (float(long_m.sharpe) + float(short_m.sharpe)) / 2.0
+        pair_skew   = (float(long_m.skew)   + float(short_m.skew))   / 2.0
+        pair_kurt   = (float(long_m.kurtosis) + float(short_m.kurtosis)) / 2.0
 
     return ScenarioResult(
         label=label, venue=venue, fee_bps=fee_bps, funding_bps_per_bar=funding_bps_per_bar,
@@ -445,6 +468,9 @@ def _main() -> int:
     # cosmu.research.carry_ablation.fetch_and_cache_funding().
     funding = CachedFundingRateProvider()
     market_provider = BinanceSpotOHLCVProvider()
+    # SURVIVORSHIP BIAS: PERP_UNIVERSE is today's liquid perps; assets that delisted or lost
+    # liquidity during the 2-year backtest window are absent.  A point-in-time universe calendar
+    # is the proper fix — deferred.  Results should be interpreted with this caveat.
     symbols = list(PERP_UNIVERSE[:20])  # the wide 20-asset universe matching the dispersion spec
     market: dict[str, list[Bar]] = {}
     for sym in symbols:
