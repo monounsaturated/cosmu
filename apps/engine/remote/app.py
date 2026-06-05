@@ -79,6 +79,14 @@ def cost_refresh() -> int:
 
 
 @app.function(**_HEAVY)
+def perp_gate_sweep() -> int:
+    """Run the funding-dispersion strategy through the cost-scenario grid (OKX/Kraken Futures fees ×
+    funding regimes). Reports skew/tail/cost_ratio per scenario — the Phase 0 P0.6 perp cost surface.
+    Needs the offline funding cache; run `ingest` first to populate it (or funding will be empty)."""
+    return _run(["cosmu.research.perp_gate_sweep"])
+
+
+@app.function(**_HEAVY)
 def run_module(module: str, args: list[str] | None = None) -> int:
     """Escape hatch: run any engine module as `python -m <module> [args…]` on Modal compute.
     e.g. modal run apps/engine/remote/app.py --job run_module --module cosmu.research.gate"""
@@ -87,13 +95,14 @@ def run_module(module: str, args: list[str] | None = None) -> int:
 
 @app.local_entrypoint()
 def main(job: str = "gate_sweep", module: str = "", args: str = "") -> None:
-    """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|forward_mark|cost_refresh|run_module]`.
+    """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|perp_gate_sweep|forward_mark|cost_refresh|run_module]`.
     For run_module pass --module cosmu.x.y and optional --args "--flag value" (space-split)."""
     jobs = {
         "gate_sweep": gate_sweep,
         "ingest": ingest,
         "forward_mark": forward_mark,
         "cost_refresh": cost_refresh,
+        "perp_gate_sweep": perp_gate_sweep,
     }
     if job == "run_module":
         code = run_module.remote(module, args.split() if args else [])
