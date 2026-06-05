@@ -1,0 +1,56 @@
+{
+  "name": "Cross-sectional funding dispersion — short leg (high-funding perps, carry received on short)",
+  "rationale": "Mirror of the long-low-funding leg (xsec-funding-dispersion-long-leg.json). Among the 20-asset OKX USDT-M perp universe, perpetuals with the HIGHEST cross-sectional funding rank are the 'most crowded longs' — longs in these perps pay the most carry. A SHORT in a high-funding perp RECEIVES that carry (positive funding is collected by the short side). The premium has two exit paths: (1) funding normalises back to mid-universe levels (momentum mean-reversion), or (2) the crowded long unwinds abruptly (directional downside also profits the short). xsec_funding_rank > rank_floor (top quartile) is the entry condition. Paired with the long-low-funding leg, the two legs form a dollar-neutral, market-beta-cancelled book; the combined edge is the cross-sectional funding dispersion premium. Leverage: 2:1 gross (FR-legal, OKX EU). Funding_feature accrues positive carry to P&L every bar on the short (positive funding received). Vol ceiling guards against violent short-squeezes that would overwhelm the carry income. No magic numbers — all thresholds in param_space.",
+  "catalyst": "Cross-sectional funding dispersion: high-funding perps are over-crowded relative to peers; short receives carry and benefits from mean-reversion of crowding.",
+  "universe": {
+    "venues": ["okx"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 1000000,
+    "min_instruments": 15
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 7
+  },
+  "entry": [
+    {
+      "feature": { "name": "xsec_funding_rank", "lookback": { "param": "rank_lookback" } },
+      "op": "gt",
+      "threshold": { "param": "rank_floor" }
+    },
+    {
+      "feature": { "name": "vol_realized" },
+      "op": "lt",
+      "threshold": { "param": "vol_ceiling" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "xsec_funding_rank", "lookback": { "param": "rank_lookback" } },
+        "op": "lt",
+        "threshold": { "param": "rank_exit_floor" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.1,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rank_lookback":  { "kind": "int",   "lo": 1,      "hi": 5,    "step": 1 },
+    "rank_floor":     { "kind": "float", "lo": 0.65,   "hi": 0.85 },
+    "rank_exit_floor":{ "kind": "float", "lo": 0.40,   "hi": 0.60 },
+    "vol_ceiling":    { "kind": "float", "lo": 0.03,   "hi": 0.12 },
+    "stop":           { "kind": "float", "lo": 0.03,   "hi": 0.10 },
+    "tp":             { "kind": "float", "lo": 0.04,   "hi": 0.20 },
+    "time_stop":      { "kind": "int",   "lo": 2,      "hi": 7,    "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}
