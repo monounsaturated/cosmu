@@ -466,15 +466,23 @@ export interface LeaderboardResponse {
 }
 
 export interface LeaderboardRow {
+  asset_class: string;
   deflated_sharpe: number;
+  edge_type: string;
+  features: string[];
   forward_age_days: number;
   lineage: string;
   live_ready: boolean;
   name: string;
   net_pct: number;
+  origin: string;
   pbo: number;
+  signal_family: string;
+  signal_family_label: string;
   status: string;
+  timeframe: string;
   track_return_pct: number;
+  venue: string;
   version_id: string;
 }
 

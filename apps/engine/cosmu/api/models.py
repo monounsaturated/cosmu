@@ -43,6 +43,17 @@ class LeaderboardRow(BaseModel):
     # modal at their discretion; the 5 interlocks remain the only hard gate. Never consulted by the gate/money path.
     forward_age_days: float
     live_ready: bool
+    # Faceted taxonomy (cosmu/strategy/taxonomy.py), all DERIVED from the spec — never hand-tagged. The
+    # Strategies surface filters on these real fields. `signal_family` is the primary filter (from the
+    # named features the spec references); the rest are orthogonal facets.
+    signal_family: str
+    signal_family_label: str
+    features: list[str]
+    asset_class: str
+    venue: str
+    timeframe: str
+    origin: str
+    edge_type: str
 
 
 class LeaderboardResponse(BaseModel):

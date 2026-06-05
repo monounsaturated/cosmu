@@ -6,13 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/ui/section";
 import { StrategiesTable } from "@/components/research/strategies-table";
-import { StrategyStages } from "@/components/nav/strategy-stages";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 
-// Strategies answers ONE question: where is every Version in its lifecycle, and which are winning?
-// The searchable, stage-segmented table (with per-stage counts in its own filter chips) is the old
-// leaderboard's real home; rows link to per-Version detail. The left nav already navigates the pipeline,
-// so there's no separate funnel strip here — the stage chips below carry the counts.
+// Strategies (the Leaderboard, docs/PRODUCT.md Epic B) answers ONE question: which strategies deserve my
+// attention/capital, on what edge? Every Version runs on its own standalone $100k track, ranked by
+// risk-adjusted % (deflated OOS Sharpe). The faceted filters slice the population by HOW it makes money:
+// signal-family (primary, derived from referenced features) + asset class · venue · timeframe · status ·
+// origin · edge-type. Rows link to per-Version detail. No pooled wallet, no demo rows.
 export default async function StrategiesPage() {
   const { leaderboard, connected } = await getLeaderboard();
   const rows = leaderboard.rows as LeaderboardRow[];
@@ -21,16 +21,13 @@ export default async function StrategiesPage() {
     <div className="mx-auto max-w-[1200px] space-y-6 px-5 py-7 lg:px-7">
       <SectionHeader
         eyebrow="strategies"
-        title="Every Version, by lifecycle stage"
+        title="Every Version, ranked & faceted"
         aside={
           <Badge variant="iris">
-            <ChartCandlestick className="size-3" /> ranked by Score (deflated Sharpe)
+            <ChartCandlestick className="size-3" /> ranked by risk-adjusted %
           </Badge>
         }
       />
-
-      {/* Lifecycle stage-filters (Discover → Screened → Forward-test → Live) — these moved off the top nav. */}
-      <StrategyStages />
 
       {/* How a strategy is born — plain language, both authoring paths through the one Gate. */}
       <BornNote />
@@ -38,7 +35,7 @@ export default async function StrategiesPage() {
       {!connected ? (
         <NotConnected
           configured={engineConfigured}
-          what="Every Version is judged in net-of-fee % on its own track — no pooled wallet. The searchable, stage-by-stage table appears here once the engine is connected — no demo rows."
+          what="Every Version is judged in net-of-fee % on its own track — no pooled wallet. The faceted, ranked table appears here once the engine is connected — no demo rows."
         />
       ) : rows.length === 0 ? (
         <Card>

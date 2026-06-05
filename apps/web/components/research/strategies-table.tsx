@@ -1,367 +1,310 @@
 "use client";
 
-// module: strategies list, organized by LIFECYCLE. A Version moves through clear stages —
-// Discovering (just authored / screening) → Validating (optimizing on more data) → Forward-test (funded on
-// Forward-test → Live (real money) — or it dies (Graveyard). We segment the table by stage so
-// the operator can tell at a glance what is new vs. learning vs. proven, with a count + one-line
-// plain-language explainer per stage and a stage filter. Within each stage rows rank by Score
-// (deflated Sharpe), highest first — no survivor bias, the same honest ranking everywhere.
+// module: the unified, faceted Strategies leaderboard (docs/PRODUCT.md Epic B; VISION §1.2, §5). Every
+// strategy-version runs on its own standalone $100k track and is ranked by RISK-ADJUSTED % (deflated OOS
+// Sharpe), with net % shown prominently. The PRIMARY filter is signal-family — {Social · News/Events ·
+// Math/Price · Macro/Positioning · On-chain/Flow} — DERIVED from the features the spec references (engine
+// taxonomy.py), never hand-tagged. Orthogonal facets refine it: asset class · venue · timeframe · status
+// (lifecycle) · origin · edge-type. Facets compose (AND across facets, OR within a facet) and read REAL
+// fields off the leaderboard row. Nothing fabricated; the honest empty/offline states live on the page.
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Loader2, Search } from "lucide-react";
-import type { LeaderboardRow, StrategyDetailResponse } from "@cosmu/contracts-ts";
-import { fetchStrategyDetail } from "@/app/strategies/actions";
+import { Filter, Search, X } from "lucide-react";
+import type { LeaderboardRow } from "@cosmu/contracts-ts";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { cn, formatPct } from "@/lib/utils";
 
-// Disambiguate the two return columns right where they live.
-const TRACK_VS_AGGREGATE = (
-  <div className="space-y-1.5">
-    <p>
-      <span className="font-semibold text-foreground">Return</span> — this Version&apos;s raw return on its own track.
-    </p>
-    <p>
-      <span className="font-semibold text-foreground">Net</span> — the same track after fees and costs. Each strategy
-      stands on its own — there is no pooled wallet.
-    </p>
-  </div>
-);
-
-// Lifecycle stages, in funnel order. Each engine status maps to exactly one stage.
-type Stage = "discovering" | "validating" | "forward_test" | "live" | "graveyard";
-
-const STAGES: { id: Stage; label: string; explainer: string; badge: "warn" | "iris" | "up" | "info" | "down" }[] = [
-  {
-    id: "discovering",
-    label: "Discovering",
-    explainer: "Freshly authored — running the deterministic Gate screen. Most won't make it past here.",
-    badge: "warn"
-  },
-  {
-    id: "validating",
-    label: "Validating",
-    explainer: "Cleared the screen — now re-tested on more data to confirm the edge is real, not luck.",
-    badge: "iris"
-  },
-  {
-    id: "forward_test",
-    label: "Forward-test",
-    explainer: "Proving itself on its own track on real prices — no real money, no pooled wallet.",
-    badge: "up"
-  },
-  {
-    id: "live",
-    label: "Live",
-    explainer: "Armed on real capital. Only reachable after the Gate passes and you confirm on Live.",
-    badge: "info"
-  },
-  {
-    id: "graveyard",
-    label: "Graveyard",
-    explainer: "Killed — the edge didn't hold. Kept so the machine (and you) can learn from the deaths.",
-    badge: "down"
-  }
+// The five signal-families, in a fixed display order (matches the engine taxonomy).
+const FAMILIES: { id: string; label: string }[] = [
+  { id: "onchain_flow", label: "On-chain/Flow" },
+  { id: "macro_positioning", label: "Macro/Positioning" },
+  { id: "math_price", label: "Math/Price" },
+  { id: "news_events", label: "News/Events" },
+  { id: "social", label: "Social" }
 ];
 
-// Map a raw engine status onto a lifecycle stage. Unknown/new statuses default to Discovering so a
-// Version is never silently hidden.
-function stageOf(status: string | null | undefined): Stage {
+// Map a raw engine status onto the lifecycle facet {lab → screened → forward → live → killed}.
+type LifeStatus = "lab" | "screened" | "forward" | "live" | "killed";
+const STATUS_LABELS: Record<LifeStatus, string> = {
+  lab: "Lab",
+  screened: "Screened",
+  forward: "Forward",
+  live: "Live",
+  killed: "Killed"
+};
+function lifeStatusOf(status: string | null | undefined): LifeStatus {
   const s = (status ?? "").toLowerCase();
-  if (s === "killed" || s === "dead" || s === "graveyard") return "graveyard";
+  if (s === "killed" || s === "dead" || s === "graveyard") return "killed";
   if (s === "live") return "live";
-  if (s === "forward_test" || s === "paper") return "forward_test";
-  if (s === "validating" || s === "optimizing") return "validating";
-  // draft, new, screening, screened, and anything else → the entry stage.
-  return "discovering";
+  if (s === "forward_test" || s === "forward" || s === "paper") return "forward";
+  if (s === "screening" || s === "screened" || s === "validating" || s === "optimizing") return "screened";
+  return "lab";
 }
-
-const statusVariant: Record<string, "up" | "warn" | "down" | "info"> = {
-  forward_test: "up",
+const STATUS_VARIANT: Record<LifeStatus, "warn" | "iris" | "up" | "info" | "down"> = {
+  lab: "warn",
+  screened: "iris",
+  forward: "up",
   live: "info",
-  screening: "warn",
   killed: "down"
 };
+
+// Orthogonal facets, each backed by a real field on the row. `valueOf` extracts the facet value.
+type FacetKey = "asset_class" | "venue" | "timeframe" | "status" | "origin" | "edge_type";
+const FACETS: { key: FacetKey; label: string; valueOf: (r: LeaderboardRow) => string }[] = [
+  { key: "asset_class", label: "Asset class", valueOf: (r) => r.asset_class },
+  { key: "venue", label: "Venue", valueOf: (r) => r.venue },
+  { key: "timeframe", label: "Timeframe", valueOf: (r) => r.timeframe },
+  { key: "status", label: "Status", valueOf: (r) => lifeStatusOf(r.status) },
+  { key: "origin", label: "Origin", valueOf: (r) => r.origin },
+  { key: "edge_type", label: "Edge type", valueOf: (r) => r.edge_type }
+];
+
+function facetDisplay(key: FacetKey, value: string): string {
+  if (key === "status") return STATUS_LABELS[value as LifeStatus] ?? value;
+  return value;
+}
 
 export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [stageFilter, setStageFilter] = useState<Stage | "all">("all");
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [detailCache, setDetailCache] = useState<Record<string, StrategyDetailResponse>>({});
-  const [isPending, startTransition] = useTransition();
+  const [family, setFamily] = useState<string | "all">("all");
+  // Each orthogonal facet holds a set of selected values (empty = no constraint).
+  const [selected, setSelected] = useState<Record<FacetKey, Set<string>>>(() => ({
+    asset_class: new Set(),
+    venue: new Set(),
+    timeframe: new Set(),
+    status: new Set(),
+    origin: new Set(),
+    edge_type: new Set()
+  }));
+  const [showFilters, setShowFilters] = useState(false);
 
-  // Search-filter once, then bucket by stage and rank each bucket by Score (deflated Sharpe) desc.
-  const { buckets, counts, totalMatching } = useMemo(() => {
+  // Per-family counts (over the search-filtered rows) for the primary chip row.
+  const searched = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const matched = q
-      ? rows.filter((r) => r.name.toLowerCase().includes(q) || r.status.toLowerCase().includes(q))
-      : rows;
-
-    const buckets: Record<Stage, LeaderboardRow[]> = {
-      discovering: [],
-      validating: [],
-      forward_test: [],
-      live: [],
-      graveyard: []
-    };
-    for (const r of matched) buckets[stageOf(r.status)].push(r);
-    for (const stage of Object.keys(buckets) as Stage[]) {
-      buckets[stage].sort((a, b) => b.deflated_sharpe - a.deflated_sharpe);
-    }
-    const counts = Object.fromEntries(
-      (Object.keys(buckets) as Stage[]).map((s) => [s, buckets[s].length])
-    ) as Record<Stage, number>;
-    return { buckets, counts, totalMatching: matched.length };
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) ||
+        r.features.some((f) => f.toLowerCase().includes(q)) ||
+        r.edge_type.toLowerCase().includes(q)
+    );
   }, [rows, query]);
 
-  const visibleStages = STAGES.filter((s) => stageFilter === "all" || s.id === stageFilter);
+  const familyCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of searched) counts[r.signal_family] = (counts[r.signal_family] ?? 0) + 1;
+    return counts;
+  }, [searched]);
+
+  // Available facet values (from the search + family scope), so we never offer an empty facet.
+  const facetValues = useMemo(() => {
+    const scope = family === "all" ? searched : searched.filter((r) => r.signal_family === family);
+    const out: Record<FacetKey, string[]> = {
+      asset_class: [],
+      venue: [],
+      timeframe: [],
+      status: [],
+      origin: [],
+      edge_type: []
+    };
+    for (const facet of FACETS) {
+      const set = new Set<string>();
+      for (const r of scope) set.add(facet.valueOf(r));
+      out[facet.key] = [...set].filter((v) => v && v !== "—").sort();
+    }
+    return out;
+  }, [searched, family]);
+
+  // Final filtered + ranked rows: family (single) AND each facet (OR within). Ranked by deflated Sharpe
+  // (risk-adjusted), the same honest ranking everywhere.
+  const filtered = useMemo(() => {
+    const result = searched.filter((r) => {
+      if (family !== "all" && r.signal_family !== family) return false;
+      for (const facet of FACETS) {
+        const sel = selected[facet.key];
+        if (sel.size > 0 && !sel.has(facet.valueOf(r))) return false;
+      }
+      return true;
+    });
+    return result.sort((a, b) => b.deflated_sharpe - a.deflated_sharpe);
+  }, [searched, family, selected]);
+
+  const activeFacetCount = (Object.keys(selected) as FacetKey[]).reduce((n, k) => n + selected[k].size, 0);
+
+  function toggleFacet(key: FacetKey, value: string) {
+    setSelected((prev) => {
+      const next = new Set(prev[key]);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return { ...prev, [key]: next };
+    });
+  }
+
+  function clearAll() {
+    setFamily("all");
+    setSelected({
+      asset_class: new Set(),
+      venue: new Set(),
+      timeframe: new Set(),
+      status: new Set(),
+      origin: new Set(),
+      edge_type: new Set()
+    });
+  }
 
   return (
-    <div className="space-y-5">
-      {/* Search + stage filter */}
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative w-full max-w-xs">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-quiet" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search Strategies…"
-              className="h-8 w-full rounded-md border border-border bg-background/60 pl-8 pr-2 text-[12.5px] text-foreground outline-none transition-colors placeholder:text-quiet focus-visible:border-iris/60 focus-visible:ring-2 focus-visible:ring-ring/40"
-            />
-          </div>
-          <span className="ml-auto inline-flex items-center gap-1 text-[11.5px] text-quiet">
-            Return vs net <Tooltip content={TRACK_VS_AGGREGATE} /> · {totalMatching} Versions
-          </span>
+    <div className="space-y-4">
+      {/* Search + filter toggle */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full max-w-xs">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-quiet" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search name, feature, edge…"
+            className="h-8 w-full rounded-md border border-border bg-background/60 pl-8 pr-2 text-[12.5px] text-foreground outline-none transition-colors placeholder:text-quiet focus-visible:border-iris/60 focus-visible:ring-2 focus-visible:ring-ring/40"
+          />
         </div>
+        <button
+          type="button"
+          onClick={() => setShowFilters((v) => !v)}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12px] font-medium transition-colors",
+            showFilters || activeFacetCount > 0
+              ? "border-iris/50 bg-iris/10 text-foreground"
+              : "border-border/70 bg-surface-2/30 text-muted hover:border-border hover:text-foreground"
+          )}
+        >
+          <Filter className="size-3.5" /> Facets
+          {activeFacetCount > 0 ? <span className="tabular text-iris-soft">{activeFacetCount}</span> : null}
+        </button>
+        <span className="ml-auto inline-flex items-center gap-1 text-[11.5px] text-quiet">
+          ranked by deflated OOS Sharpe <Tooltip content="The single risk-adjusted ranking scalar (VISION §5). Net % is shown prominently; we rank robustly and show the %." /> · {filtered.length} of {rows.length}
+        </span>
+      </div>
 
-        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter by lifecycle stage">
-          <StageChip label="All stages" count={totalMatching} active={stageFilter === "all"} onClick={() => setStageFilter("all")} />
-          {STAGES.map((s) => (
-            <StageChip key={s.id} label={s.label} count={counts[s.id]} active={stageFilter === s.id} onClick={() => setStageFilter(s.id)} />
+      {/* PRIMARY filter — signal-family, derived from referenced features (no manual tagging). */}
+      <div className="space-y-1.5">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-quiet">Signal family</div>
+        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter by signal family">
+          <FilterChip label="All families" count={searched.length} active={family === "all"} onClick={() => setFamily("all")} />
+          {FAMILIES.map((f) => (
+            <FilterChip
+              key={f.id}
+              label={f.label}
+              count={familyCounts[f.id] ?? 0}
+              active={family === f.id}
+              onClick={() => setFamily(family === f.id ? "all" : f.id)}
+            />
           ))}
         </div>
       </div>
 
-      {/* One segment per stage. Empty stages stay visible (with a calm note) so the funnel reads
-          honestly — you can see a stage is empty rather than wondering where it went. */}
-      <div className="space-y-6">
-        {visibleStages.map((stage) => {
-          const stageRows = buckets[stage.id];
-          return (
-            <section key={stage.id} className="space-y-2.5">
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-foreground">
-                  <Badge variant={stage.badge}>{stage.label}</Badge>
-                  <span className="tabular text-quiet">{stageRows.length}</span>
-                </h3>
-                <p className="text-[11.5px] leading-snug text-quiet">{stage.explainer}</p>
-              </div>
-
-              {stageRows.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border/60 px-3 py-3 text-[11.5px] text-quiet">
-                  Nothing in {stage.label} yet.
+      {/* Orthogonal facets */}
+      {showFilters ? (
+        <div className="space-y-3 rounded-lg border border-border/60 bg-surface-2/20 p-3.5">
+          {FACETS.map((facet) => {
+            const values = facetValues[facet.key];
+            if (values.length === 0) return null;
+            return (
+              <div key={facet.key} className="space-y-1.5">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-quiet">{facet.label}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {values.map((v) => (
+                    <FilterChip
+                      key={v}
+                      label={facetDisplay(facet.key, v)}
+                      active={selected[facet.key].has(v)}
+                      onClick={() => toggleFacet(facet.key, v)}
+                    />
+                  ))}
                 </div>
-              ) : (
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH className="w-6" />
-                      <TH className="sticky-col">Version</TH>
-                      <TH>Status</TH>
-                      <TH className="text-right">Return</TH>
-                      <TH className="text-right">Net</TH>
-                      <TH className="text-right">
-                        <span className="inline-flex items-center gap-1">Score</span>
-                      </TH>
-                      <TH className="text-right">PBO</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {stageRows.map((row) => {
-                      const isExpanded = expanded === row.version_id;
-                      const detail = detailCache[row.version_id];
-                      return (
-                        <>
-                          <TR
-                            key={row.version_id}
-                            className="group cursor-pointer transition-colors hover:bg-surface-2/50"
-                          >
-                            <TD
-                              className="w-6 px-1"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (isExpanded) {
-                                  setExpanded(null);
-                                } else {
-                                  setExpanded(row.version_id);
-                                  if (!detailCache[row.version_id]) {
-                                    startTransition(async () => {
-                                      const { strategy, connected } = await fetchStrategyDetail(row.version_id);
-                                      if (connected && strategy.version_id) {
-                                        setDetailCache((c) => ({ ...c, [row.version_id]: strategy }));
-                                      }
-                                    });
-                                  }
-                                }
-                              }}
-                            >
-                              <ChevronRight
-                                className={cn(
-                                  "size-3.5 text-quiet transition-transform",
-                                  isExpanded && "rotate-90"
-                                )}
-                              />
-                            </TD>
-                            <TD
-                              className="sticky-col group-hover:bg-surface-2/50"
-                              onClick={() => router.push(`/strategy/${row.version_id}`)}
-                            >
-                              <div className="font-medium text-foreground">{row.name}</div>
-                              <div className="text-[11px] text-quiet">{row.lineage}</div>
-                            </TD>
-                            <TD>
-                              <Badge variant={statusVariant[(row.status ?? "").toLowerCase()] ?? "muted"}>{row.status ?? "—"}</Badge>
-                            </TD>
-                            <TD className={`text-right tabular ${row.track_return_pct >= 0 ? "text-up" : "text-down"}`}>
-                              {formatPct(row.track_return_pct)}
-                            </TD>
-                            <TD className={`text-right tabular ${row.net_pct >= 0 ? "text-up" : "text-down"}`}>{formatPct(row.net_pct)}</TD>
-                            <TD className="text-right tabular text-foreground">{Number.isFinite(row.deflated_sharpe) ? row.deflated_sharpe.toFixed(2) : "—"}</TD>
-                            <TD className="text-right tabular text-muted">{Number.isFinite(row.pbo) ? row.pbo.toFixed(2) : "—"}</TD>
-                          </TR>
-                          {isExpanded && (
-                            <TR key={`${row.version_id}-detail`}>
-                              <TD colSpan={7} className="bg-surface-2/20 px-4 py-3">
-                                {isPending && !detail ? (
-                                  <div className="flex items-center gap-2 text-[12px] text-quiet">
-                                    <Loader2 className="size-3.5 animate-spin" /> Loading spec…
-                                  </div>
-                                ) : detail ? (
-                                  <VersionDetailInline spec={detail.spec} params={detail.params} versionId={row.version_id} />
-                                ) : (
-                                  <div className="text-[12px] text-quiet">Could not load detail — engine may be offline.</div>
-                                )}
-                              </TD>
-                            </TR>
-                          )}
-                        </>
-                      );
-                    })}
-                  </TBody>
-                </Table>
-              )}
-            </section>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
-function extractFeatures(spec: Record<string, unknown>): string[] {
-  const found = new Set<string>();
-  const walk = (node: unknown) => {
-    if (Array.isArray(node)) node.forEach(walk);
-    else if (isRecord(node)) {
-      for (const [k, v] of Object.entries(node)) {
-        if ((k === "feature" || k === "indicator") && typeof v === "string") found.add(v);
-        else walk(v);
-      }
-    }
-  };
-  walk(spec.entry);
-  walk(spec.exit);
-  walk(spec.setup);
-  return [...found].sort();
-}
-
-function VersionDetailInline({
-  spec,
-  params,
-  versionId,
-}: {
-  spec: Record<string, unknown>;
-  params: Record<string, unknown>;
-  versionId: string;
-}) {
-  const router = useRouter();
-  const hasSpec = spec && Object.keys(spec).length > 0;
-  if (!hasSpec) {
-    return <div className="text-[12px] text-quiet">No spec recorded for this version.</div>;
-  }
-
-  const universe = isRecord(spec.universe) ? spec.universe : null;
-  const features = extractFeatures(spec);
-  const paramSpace = isRecord(spec.param_space) ? spec.param_space : {};
-  const fitted = params && Object.keys(params).length > 0 ? params : paramSpace;
-  const paramKeys = Object.keys(fitted);
-
-  return (
-    <div className="space-y-2.5">
-      {typeof spec.rationale === "string" && spec.rationale ? (
-        <p className="text-[12px] leading-relaxed text-muted">{spec.rationale}</p>
+              </div>
+            );
+          })}
+          {activeFacetCount > 0 ? (
+            <button type="button" onClick={clearAll} className="inline-flex items-center gap-1 text-[11.5px] font-medium text-iris-soft hover:underline">
+              <X className="size-3" /> Clear all filters
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-x-6 gap-y-2 text-[12px]">
-        {universe ? (
-          <div>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-quiet">Universe </span>
-            <span className="text-foreground">
-              {Array.isArray(universe.asset_classes) ? (universe.asset_classes as string[]).join(", ") : "—"}
-            </span>
-            {Array.isArray(universe.venues) && universe.venues.length > 0 && (
-              <span className="text-quiet"> · {(universe.venues as string[]).join(", ")}</span>
-            )}
-          </div>
-        ) : null}
-        {features.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-quiet">Signals </span>
-            {features.map((f) => (
-              <Badge key={f} variant="iris" className="text-[10px]">{f}</Badge>
-            ))}
-          </div>
-        )}
-        {paramKeys.length > 0 && (
-          <div>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-quiet">
-              Params{Object.keys(params).length > 0 ? " (fitted)" : ""}{" "}
-            </span>
-            <span className="font-mono text-[11px] text-muted">
-              {paramKeys.slice(0, 5).map((k) => `${k}=${typeof fitted[k] === "number" ? (fitted[k] as number).toPrecision(3) : fitted[k]}`).join(", ")}
-              {paramKeys.length > 5 && ` +${paramKeys.length - 5} more`}
-            </span>
-          </div>
-        )}
-      </div>
-
-      <button
-        type="button"
-        onClick={() => router.push(`/strategy/${versionId}`)}
-        className="text-[11px] font-medium text-iris-soft hover:underline"
-      >
-        Full detail →
-      </button>
+      {/* Ranked table */}
+      {filtered.length === 0 ? (
+        <div className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-[12px] text-quiet">
+          No versions match these filters.
+        </div>
+      ) : (
+        <Table>
+          <THead>
+            <TR>
+              <TH className="sticky-col">Version</TH>
+              <TH>Family · edge</TH>
+              <TH>Status</TH>
+              <TH>Class · venue · tf</TH>
+              <TH className="text-right">Return</TH>
+              <TH className="text-right">Net</TH>
+              <TH className="text-right">Score</TH>
+              <TH className="text-right">PBO</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {filtered.map((row) => {
+              const status = lifeStatusOf(row.status);
+              return (
+                <TR
+                  key={row.version_id}
+                  className="cursor-pointer transition-colors hover:bg-surface-2/50"
+                  onClick={() => router.push(`/strategy/${row.version_id}`)}
+                >
+                  <TD className="sticky-col">
+                    <div className="font-medium text-foreground">{row.name}</div>
+                    <div className="truncate text-[11px] text-quiet">
+                      {row.features.length > 0 ? row.features.slice(0, 3).join(" · ") : row.lineage}
+                      {row.features.length > 3 ? ` +${row.features.length - 3}` : ""}
+                    </div>
+                  </TD>
+                  <TD>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Badge variant="iris">{row.signal_family_label}</Badge>
+                      <span className="text-[11px] text-quiet">{row.edge_type}</span>
+                    </div>
+                  </TD>
+                  <TD>
+                    <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABELS[status]}</Badge>
+                  </TD>
+                  <TD className="text-[11.5px] text-muted">
+                    {row.asset_class} · {row.venue} · {row.timeframe}
+                  </TD>
+                  <TD className={cn("text-right tabular", row.track_return_pct >= 0 ? "text-up" : "text-down")}>
+                    {formatPct(row.track_return_pct)}
+                  </TD>
+                  <TD className={cn("text-right tabular", row.net_pct >= 0 ? "text-up" : "text-down")}>{formatPct(row.net_pct)}</TD>
+                  <TD className="text-right tabular text-foreground">{Number.isFinite(row.deflated_sharpe) ? row.deflated_sharpe.toFixed(2) : "—"}</TD>
+                  <TD className="text-right tabular text-muted">{Number.isFinite(row.pbo) ? row.pbo.toFixed(2) : "—"}</TD>
+                </TR>
+              );
+            })}
+          </TBody>
+        </Table>
+      )}
     </div>
   );
 }
 
-function StageChip({
+function FilterChip({
   label,
   count,
   active,
   onClick
 }: {
   label: string;
-  count: number;
+  count?: number;
   active: boolean;
   onClick: () => void;
 }) {
@@ -379,7 +322,7 @@ function StageChip({
       )}
     >
       {label}
-      <span className={cn("tabular text-[11px]", active ? "text-iris-soft" : "text-quiet")}>{count}</span>
+      {count !== undefined ? <span className={cn("tabular text-[11px]", active ? "text-iris-soft" : "text-quiet")}>{count}</span> : null}
     </button>
   );
 }

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
-// "Paper" (the old pooled wallet) was dropped in favour of per-strategy Forward-test — each
-// survivor proves itself on its own track, no pooled wallet. Keep the old path working.
+// "Paper" (the old pooled wallet) was dropped for per-strategy tracks; the forward-test stage is now a
+// `status` facet inside the unified Strategies leaderboard. Keep the old path working.
 export default function PaperPage() {
-  redirect("/forward-test");
+  redirect("/strategies");
 }

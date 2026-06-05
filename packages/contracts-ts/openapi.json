@@ -2258,6 +2258,41 @@
           "version_id": {
             "title": "Version Id",
             "type": "string"
+          },
+          "signal_family": {
+            "title": "Signal Family",
+            "type": "string"
+          },
+          "signal_family_label": {
+            "title": "Signal Family Label",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "asset_class": {
+            "title": "Asset Class",
+            "type": "string"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          },
+          "timeframe": {
+            "title": "Timeframe",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "edge_type": {
+            "title": "Edge Type",
+            "type": "string"
           }
         },
         "required": [
@@ -2270,7 +2305,15 @@
           "status",
           "lineage",
           "forward_age_days",
-          "live_ready"
+          "live_ready",
+          "signal_family",
+          "signal_family_label",
+          "features",
+          "asset_class",
+          "venue",
+          "timeframe",
+          "origin",
+          "edge_type"
         ],
         "title": "LeaderboardRow",
         "type": "object"

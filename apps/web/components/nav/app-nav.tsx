@@ -1,10 +1,10 @@
 "use client";
 
-// module: app navigation. The top nav answers FOUR questions only — Overview · Strategies · Scores ·
-// Mind. The strategy lifecycle (Lab → Forward-test → Live) is NOT a set of top-level tabs; those are
-// stage-filters rendered inside Strategies (see components/nav/strategy-stages.tsx) and still reachable
-// by deep link. Costs/Settings/Commands live under "More". Desktop = persistent icon-rail sidebar;
-// mobile = a native-feeling bottom tab bar (4 tabs + a More sheet). Links are real routes only.
+// module: app navigation. FOUR surfaces only (VISION §11, docs/PRODUCT.md §2) — Dashboard · Strategies ·
+// Mind · Console — each serving one decision. The strategy lifecycle (lab → forward → live) is a FILTER
+// inside Strategies (faceted `status`), not a set of tabs. Scores fold into Mind; Costs fold into the
+// Dashboard. The full Live screen + Settings/Commands live under "More" (deep-link utilities, off the
+// primary nav). Desktop = persistent icon-rail sidebar; mobile = a bottom tab bar (4 tabs + a More sheet).
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -12,8 +12,6 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Brain,
-  DollarSign,
-  Gauge,
   LayoutDashboard,
   LineChart,
   ListChecks,
@@ -28,17 +26,18 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; desc?: string; icon: typeof LayoutDashboard; gated?: boolean };
 
-// The four top-level tabs — one per question the operator monitors.
+// The four surfaces — one per decision the operator makes (docs/PRODUCT.md §2).
 export const navItems: NavItem[] = [
-  { href: "/", label: "Overview", desc: "Are we making money?", icon: LayoutDashboard },
-  { href: "/strategies", label: "Strategies", desc: "Discover → prove → live", icon: ListChecks },
-  { href: "/scores", label: "Scores", desc: "Source & index signals", icon: Gauge },
-  { href: "/mind", label: "Mind", desc: "Knows · thinks · learned", icon: Brain }
+  { href: "/", label: "Dashboard", desc: "Are we making money?", icon: LayoutDashboard },
+  { href: "/strategies", label: "Strategies", desc: "Which deserve capital?", icon: ListChecks },
+  { href: "/mind", label: "Mind", desc: "What does it believe?", icon: Brain },
+  { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal }
 ];
 
-// Secondary routes, tucked under "More" (desktop sidebar footer + mobile sheet).
+// Secondary deep-link utilities, tucked under "More" (desktop sidebar footer + mobile sheet). The live
+// toggle itself lives on the Dashboard + Console; this is the full positions/caps screen.
 export const moreItems: NavItem[] = [
-  { href: "/costs", label: "Costs", desc: "Infra · ROI · opex", icon: DollarSign },
+  { href: "/live", label: "Live", desc: "Positions · caps", icon: Radio, gated: true },
   { href: "/settings", label: "Settings", desc: "Keys · universe · data", icon: SlidersHorizontal },
   { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal }
 ];

@@ -135,6 +135,7 @@ from cosmu.spine.universe import (
     venue_rows,
 )
 from cosmu.strategy.pine import translate_pine
+from cosmu.strategy.taxonomy import derive_facets
 from cosmu.strategy.pine_samples import PINE_SAMPLES
 
 
@@ -540,7 +541,7 @@ def leaderboard() -> LeaderboardResponse:
     # appear with a 0-day clock (not yet ready).
     rows = store.rows(
         """
-        SELECT sv.id, s.name, sv.status, b.deflated_sharpe, b.oos_return, b.pbo, ev.funded_at
+        SELECT sv.id, s.name, sv.status, sv.spec, sv.origin, b.deflated_sharpe, b.oos_return, b.pbo, ev.funded_at
         FROM strategy_versions sv
         JOIN strategies s ON s.id = sv.strategy_id
         LEFT JOIN backtests b ON b.strategy_version_id = sv.id
@@ -560,6 +561,9 @@ def leaderboard() -> LeaderboardResponse:
         # ADVISORY ONLY (master/forward_maturity.py): surfaced, never a gate. The forward-test clock runs from the
         # track's first mark; live_ready recommends a matured + net-positive track. The operator decides.
         mat = forward_maturity(row["funded_at"], net_pct)
+        # Facets are DERIVED from the spec's named features (taxonomy.py) — no manual tagging — so the
+        # Strategies filters always reflect the strategy's real inputs and structure.
+        facets = derive_facets(_json(row["spec"]), row["origin"])
         out.append(
             LeaderboardRow(
                 version_id=row["id"],
@@ -574,6 +578,14 @@ def leaderboard() -> LeaderboardResponse:
                 lineage="seed:template -> wfo",
                 forward_age_days=mat.forward_age_days,
                 live_ready=mat.live_ready,
+                signal_family=facets.signal_family,
+                signal_family_label=facets.signal_family_label,
+                features=facets.features,
+                asset_class=facets.asset_class,
+                venue=facets.venue,
+                timeframe=facets.timeframe,
+                origin=facets.origin,
+                edge_type=facets.edge_type,
             )
         )
     return LeaderboardResponse(rows=out)
