@@ -7,9 +7,11 @@
 > Drop a one-liner under **Inbox** in this format: `- [YYYY-MM-DD] <idea> — <why it matters>`.
 > `/triage-ideas` promotes ripe ideas into the backlog (with tags), then moves them down to **Archived**. Keep the Inbox lean — only un-triaged ideas live here.
 
-## 🗑️ DUMP ZONE — write ANYTHING here, any time, any format
-> No rules. Half-baked, one word, a link, "scrape X and score it", a screenshot note, a complaint, a trade hunch — dump it.
-> **Claude reads this every `/triage-ideas` run**, cleans it up, sorts it (feature → BACKLOG, trade → `/strategize`, junk → dropped), assigns priority, and clears this zone. You never have to format anything.
+## 🗑️ DUMP ZONE — your ONE inbox: write ANYTHING here (ideas · trades · features · gripes)
+> No rules, no format. Half-baked, one word, a link, "scrape X and score it", a screenshot note, a trade hunch — dump it.
+> **This is the only file you have to touch.** On the next `/triage-ideas`, Claude runs the whole loop for you:
+> **read → sort → route** (product/infra → `BACKLOG.md` as a defined **user story**; trade → `/strategize` → typed spec → the **Gate**; junk → dropped) **→ prioritize → `/fan-out` builds it (Claude Code) → CI tests it.** Then it clears this zone.
+> You dump; the machine defines, builds, and tests. Review the result in `BACKLOG.md` / the app.
 
 <!-- ↓↓↓ DUMP BELOW THIS LINE ↓↓↓ -->
 
