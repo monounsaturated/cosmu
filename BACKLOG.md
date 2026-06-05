@@ -23,5 +23,5 @@
 - [ ] Kraken Futures live adapter (post-edge) · IBKR equities (data-only first)
 - [ ] Gate hardening: route the cohort through the full `research/gate.py:PREREGISTERED_BAR`
 - [ ] Cross-strategy correlation signals
-- [ ] Fly.io scale-to-zero worker for unattended 24/7 ML (ONLY post-edge)
+- [ ] **Consolidate compute onto Modal** (decision 2026-06-05, see docs/COMPUTE.md): Phase 2 Modal app for backtests/ML/gate sweeps first; then fold the engine API (ASGI) + 4h cron onto Modal and retire Railway. Fly.io rejected (services-first, no free tier, not in VISION) (infra, opus)
 - [ ] Options support

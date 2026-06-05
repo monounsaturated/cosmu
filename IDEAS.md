@@ -27,5 +27,7 @@
 
 - [2026-06-04] External validation (top-firm AI-in-trading writeups): the reusable kernel is "AI = research-throughput compressor + adversarial reviewer + unstructured→typed signal, NOT the money-decision-maker." Keep REJECTING the Bridgewater "AI as primary decision-maker" model — LLM proposes, the deterministic gate disposes (our locked non-negotiable). GPU/datacenter scale-ups are anti-thesis to lean. The one practical nudge already in the plan: every authored hypothesis should ship with a disconfirmer (gate-side proven by #57; author-side still open).
 
+- [2026-06-05] Polymarket smart-money flow as a PIT alt-data feature (news/scoring, NOT copy-trading): index the on-chain Polymarket ledger (top-decile-profitable + insider-flagged wallet net-flow per market) → `/profile-source` audit → feature registry → Gate. Treat like a sentiment/news score: confirm/veto in liquid markets, may *originate* in prediction markets (§7). Passive copy-trading is rejected — latency means you always fill after the whale; any "insider z-score" runs through OUR deflated-Sharpe/PBO gate, not theirs. Powers the reserved "LLM research-desk for Polymarket ONLY" idea above. (Inspired by CrowdIntel's Postgres-MCP-over-ledger writeup.)
+
 ## Archived
 <!-- Triaged ideas move here with their disposition: promoted / deferred / dropped. -->
