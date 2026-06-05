@@ -27,6 +27,11 @@ dev = [
   "pytest>=8.3",
   "ruff>=0.7",
 ]
+# The Modal client — ONLY needed where you invoke `modal run` (laptop / cloud session), never inside the
+# Railway image (`pip install .` skips extras). Install with: pip install -e ".[remote]"  (or: pip install modal)
+remote = [
+  "modal>=0.64",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
