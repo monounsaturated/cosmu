@@ -7,11 +7,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
-from cosmu.config.feature_registry import FEATURE_REGISTRY, FeatureDefinition
+from cosmu.config.feature_registry import FEATURE_REGISTRY
 
 # Freshness buckets (hours since last `available_at`). Anything older than STALE_H is labelled stale.
 FRESH_H = 8          # ≤ 8 h → "fresh"

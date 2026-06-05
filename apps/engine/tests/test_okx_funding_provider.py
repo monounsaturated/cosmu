@@ -81,6 +81,20 @@ def test_fetch_history_deduplicates_rows() -> None:
     assert len(pts) == 1
 
 
+def test_fetch_history_respects_end_ms_cutoff() -> None:
+    """Points newer than `end_ms` are excluded — honours the point-in-time cutoff (no look-ahead)."""
+    pages = [_CANNED, []]  # _FT1 < _FT2 < _FT3, all within the page
+
+    def fetcher(url: str) -> list:  # noqa: ARG001
+        return pages.pop(0) if pages else []
+
+    provider = OkxFundingRateProvider(_fetcher=fetcher)
+    pts = provider.fetch_history("BTC-USDT-SWAP", start_ms=0, end_ms=_FT2)
+
+    # _FT3 is newer than the cutoff → dropped; _FT1 and _FT2 survive.
+    assert [int(p.ts.timestamp() * 1000) for p in pts] == [_FT1, _FT2]
+
+
 def test_okx_perp_universe_has_20_assets() -> None:
     """Universe constant must contain exactly 20 OKX SWAP symbols for the dispersion strategy."""
     assert len(OKX_PERP_UNIVERSE) == 20

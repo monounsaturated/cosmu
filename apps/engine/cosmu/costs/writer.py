@@ -128,7 +128,6 @@ def seed_infra_costs(store: Any) -> int:
     month = _month_key()
     import json
 
-    seed_meta = json.dumps({"seed": "infra", "month": month}, sort_keys=True)
     try:
         # Idempotency check: is this month's infra seed already present? The inserted rows carry extra
         # keys (note/amount_min/amount_max), so match on the stable seed+month substrings, NOT exact meta

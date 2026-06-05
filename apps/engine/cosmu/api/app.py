@@ -122,7 +122,7 @@ from cosmu.api.models import (
     VenueState,
     VenueToggleRequest,
 )
-from cosmu.adapters.exec.binance import BinanceSpotExecutionAdapter, resolve_mode
+from cosmu.adapters.exec.binance import resolve_mode
 from cosmu.config.settings import get_settings
 from cosmu.evolution.loop import CohortSummary, FarmLoop
 from cosmu.knowledge.store import Store, utcnow

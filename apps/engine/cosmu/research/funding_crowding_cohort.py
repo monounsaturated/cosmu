@@ -23,12 +23,11 @@ from cosmu.data.backtest import _regime_labels, run_strategy_backtest_detailed
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
-from cosmu.master.scorer import BacktestMetrics, cscv_pbo, score
+from cosmu.master.scorer import cscv_pbo, score
 from cosmu.master.trials import record_trial, trial_stats
 from cosmu.spine.venue import default_catalog
 from cosmu.strategy.spec import StrategySpec
 from cosmu.research.carry_ablation import (
-    _btc_daily_returns,
     _clip_to_funding_window,
     _funding_alt,
     _merge_alt,
@@ -139,7 +138,6 @@ def run_cohort(
 ) -> CohortReport:
     gates = store.settings.gates
     fee_bps = default_catalog().venue("binance").taker_fee_bps
-    btc_returns = _btc_daily_returns(market)
 
     funding_points = {s: len(funding.fetch_series(s, "funding_rate", limit=3000)) for s in market}
     regimes_covered: dict[str, int] = {}

@@ -30,7 +30,6 @@ def compute_intelligence(store: Store) -> dict[str, Any]:
 def _funnel(store: Store) -> dict[str, int]:
     """Strategy funnel: how many at each stage."""
     total = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions")
-    screened = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions WHERE status != 'killed' OR killed_at IS NOT NULL")
     forward_test = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions WHERE status = 'forward_test'")
     live = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions WHERE status = 'live'")
     killed = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions WHERE status = 'killed'")

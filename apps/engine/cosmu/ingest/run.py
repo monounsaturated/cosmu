@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 
 from cosmu.config.settings import get_settings
 from cosmu.data.altdata import (
-    AltDataPoint,
     AltDataProvider,
     AltDataStore,
     BinanceBasisProvider,
@@ -30,7 +29,6 @@ from cosmu.data.altdata import (
     OsintAirActivityProvider,
     PolymarketClobProvider,
     PolymarketGammaProvider,
-    PolymarketOddsProvider,
     RedditSentimentProvider,
     VenueFeesProvider,
 )
@@ -390,8 +388,6 @@ def _ingest_venue_fees(store, provider: AltDataProvider, symbols: list[str]) -> 
     """Snapshot venue fees for every tracked symbol into the alt_data store.
     Each symbol gets two rows: venue_fees_maker and venue_fees_taker.
     The store key is ``symbol="<venue_id>:<symbol>"`` so multi-venue can coexist."""
-    from datetime import datetime, UTC
-    from cosmu.data.altdata import AltDataPoint
 
     # Determine the venue_id from the provider (default "binance").
     venue_id = getattr(provider, "exchange_id", "binance")

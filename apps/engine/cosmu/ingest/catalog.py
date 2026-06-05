@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from cosmu.data.altdata import _STORE_MARKET_WIDE, _STORE_PROVIDER_OF

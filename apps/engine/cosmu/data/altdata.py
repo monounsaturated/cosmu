@@ -424,7 +424,7 @@ class OkxFundingRateProvider:
         """Paginate OKX funding-rate history for `symbol` from `start_ms` to now (or `end_ms`).
 
         OKX paginates via `after` (exclusive upper cursor on fundingTime ms) so each
-        page walks BACKWARD.  We collect all pages then filter by start_ms and deduplicate.
+        page walks BACKWARD.  We collect all pages then filter to [start_ms, end] and deduplicate.
         """
         import time as _time
 
@@ -445,8 +445,8 @@ class OkxFundingRateProvider:
                 if ft in seen:
                     continue
                 seen.add(ft)
-                if ft < start_ms:
-                    continue
+                if ft < start_ms or ft > end:
+                    continue  # respect [start_ms, end_ms]; end honours the point-in-time cutoff like the Binance sibling
                 ts = datetime.fromtimestamp(ft / 1000, tz=UTC)
                 out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["realizedRate"])))
             # The oldest fundingTime on this page becomes the next `after` cursor
