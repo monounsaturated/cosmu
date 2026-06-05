@@ -185,6 +185,7 @@ def run_cohort(
     *,
     data_source: str = "live-cached",
     fdr_q: float = 0.10,
+    override_alt: dict[str, dict[str, dict[str, float]]] | None = None,
 ) -> CohortReport:
     from cosmu.master.scorer import cscv_pbo
 
@@ -206,7 +207,9 @@ def run_cohort(
             win_hi = max(win_hi, bars[-1].ts) if win_hi else bars[-1].ts
     window = f"{win_lo.date()}..{win_hi.date()}" if win_lo and win_hi else "n/a"
 
-    social_alt = _social_alt(market, provider)
+    # override_alt lets a caller supply a DERIVED (e.g. normalized) social join instead of the raw-level one —
+    # the only seam the non-obvious cohort changes; everything downstream (grid, scorer, FDR) is identical.
+    social_alt = override_alt if override_alt is not None else _social_alt(market, provider)
     notes: list[str] = []
     if not social_alt or all(v == 0 for v in social_points.values()):
         return CohortReport("INSUFFICIENT-DATA", "no real social history in cache", data_source, window,
