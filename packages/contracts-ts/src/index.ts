@@ -981,6 +981,22 @@ export interface VenueToggleRequest {
   venue_id: string;
 }
 
+export interface VerdictRow {
+  cost_ratio?: number | null;
+  date: string;
+  deflated_sharpe?: number | null;
+  id: string;
+  reason: string;
+  slug: string;
+  status: "PASS" | "FAIL" | "INSUFFICIENT-DATA" | "DATA-BLOCKED";
+  thesis: string;
+  trades?: number | null;
+}
+
+export interface VerdictsResponse {
+  rows: VerdictRow[];
+}
+
 export type ApiRoutes = {
   overview: OverviewResponse;
   leaderboard: LeaderboardResponse;
