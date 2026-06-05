@@ -443,6 +443,33 @@ export async function getNewsIntel(symbol = "BTCUSDT", limit = 20): Promise<{ in
   return { intel: data, connected };
 }
 
+// ── Verdict ledger: parsed phase0-*-verdict.md research history ──────────────────────────────────
+
+export interface VerdictRow {
+  slug: string;
+  thesis: string;
+  id: string;
+  date: string;
+  status: "PASS" | "FAIL" | "INSUFFICIENT-DATA" | "DATA-BLOCKED";
+  deflated_sharpe: number | null;
+  trades: number | null;
+  cost_ratio: number | null;
+  reason: string;
+}
+
+export interface VerdictsResponse {
+  rows: VerdictRow[];
+}
+
+const emptyVerdicts: VerdictsResponse = { rows: [] };
+
+// GET /verdicts — static research history parsed from docs/reports/phase0-*-verdict.md.
+// Returns empty rows when engine is offline or docs are not deployed alongside the engine.
+export async function getVerdicts(): Promise<{ verdicts: VerdictsResponse; connected: boolean }> {
+  const { data, connected } = await getJson<VerdictsResponse>("/verdicts", emptyVerdicts);
+  return { verdicts: { rows: data.rows ?? [] }, connected };
+}
+
 // GET /settings/keys — the read-only key inventory for Settings → Keys: which provider keys are
 // configured on the engine and what each unlocks. SECURITY: the engine returns a boolean `configured`
 // per key, NEVER the value. Honest empty/offline when the engine is unreachable.

@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Brain,
+  ClipboardList,
   LayoutDashboard,
   LineChart,
   ListChecks,
@@ -38,6 +39,7 @@ export const navItems: NavItem[] = [
 // toggle itself lives on the Dashboard + Console; this is the full positions/caps screen.
 export const moreItems: NavItem[] = [
   { href: "/live", label: "Live", desc: "Positions · caps", icon: Radio, gated: true },
+  { href: "/verdicts", label: "Verdicts", desc: "Research history", icon: ClipboardList },
   { href: "/settings", label: "Settings", desc: "Keys · universe · data", icon: SlidersHorizontal },
   { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal }
 ];

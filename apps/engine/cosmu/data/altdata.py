@@ -95,8 +95,10 @@ class LunarCrushProvider:
     to one bar after observation (a day's social data is known only after the day closes — point-in-time, no
     look-ahead). Low-confidence/tier1 until it earns its place out-of-sample."""
 
-    # semantic metric (feature_registry name) -> LunarCrush v4 coin time-series field
-    _FIELD = {"social_volume": "social_volume", "social_sentiment": "sentiment", "galaxy_score": "galaxy_score"}
+    # semantic metric (feature_registry name) -> LunarCrush v4 coin time-series field.
+    # The v4 API exposes `interactions` (total engagement) — NOT `social_volume` — as its social-volume
+    # measure; `social_volume` does not appear in the response and would return 0 rows if used directly.
+    _FIELD = {"social_volume": "interactions", "social_sentiment": "sentiment", "galaxy_score": "galaxy_score"}
 
     def __init__(self, api_key: str = "", base_url: str = "https://lunarcrush.com/api4/public", *, _fetcher: Callable[[str], dict] | None = None) -> None:
         self.api_key = api_key or ""

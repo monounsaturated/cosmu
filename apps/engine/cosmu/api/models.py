@@ -1171,15 +1171,23 @@ class NewsIntelResponse(BaseModel):
     events: list[NewsEventRow]
 
 
-class VerdictItem(BaseModel):
-    """One pre-registered phase-0 thesis verdict parsed from docs/reports/."""
+# ---- Verdict ledger: parsed phase0-*-verdict.md research history. ----
 
+
+class VerdictRow(BaseModel):
+    """One parsed phase0 verdict file — the research history made scannable."""
+
+    slug: str
+    thesis: str
     id: str
-    name: str
-    verdict: str  # "PASS" | "FAIL" | "INSUFFICIENT-DATA" | "DATA-BLOCKED" | "pending"
+    date: str
+    status: Literal["PASS", "FAIL", "INSUFFICIENT-DATA", "DATA-BLOCKED"]
+    deflated_sharpe: float | None = None
+    trades: int | None = None
+    cost_ratio: float | None = None
     reason: str
 
 
 class VerdictsResponse(BaseModel):
-    verdicts: list[VerdictItem]
+    rows: list[VerdictRow]
 
