@@ -958,29 +958,16 @@ class OsintAirActivityProvider:
 
 
 class PolymarketClobProvider:
-    """Polymarket CLOB metrics: implied probability, probability velocity, and book depth.
-    Uses the Gamma API to discover macro markets and compute aggregate metrics."""
+    """Thin adapter over PolymarketClobSource (data/sources/polymarket.py), which fetches full daily
+    history via the CLOB prices-history endpoint. Three metrics: pm_implied_prob, pm_prob_velocity,
+    pm_book_depth — each a daily time series going back to market inception (180-400+ rows typical)."""
 
     def __init__(self, pin_token: str | None = None) -> None:
-        self._gamma = PolymarketGammaProvider(pin_token=pin_token)
+        from cosmu.data.sources.polymarket import PolymarketClobSource
+        self._src = PolymarketClobSource(pin_token=pin_token)
 
     def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
-        if metric not in ("pm_implied_prob", "pm_prob_velocity", "pm_book_depth"):
-            return []
-        series = self._gamma.fetch_series(symbol, "risk_on", limit=max(limit, 2))
-        if not series:
-            return []
-        if metric == "pm_implied_prob":
-            return series[-limit:]
-        if metric == "pm_prob_velocity" and len(series) >= 2:
-            out: list[AltDataPoint] = []
-            for i in range(1, len(series)):
-                velocity = series[i].value - series[i - 1].value
-                out.append(AltDataPoint(ts=series[i].ts, available_at=series[i].available_at, value=velocity))
-            return out[-limit:]
-        if metric == "pm_book_depth":
-            return [AltDataPoint(ts=series[-1].ts, available_at=series[-1].available_at, value=1.0)]
-        return []
+        return self._src.fetch_series(symbol, metric, limit=limit)
 
 
 class GdeltToneProvider:
