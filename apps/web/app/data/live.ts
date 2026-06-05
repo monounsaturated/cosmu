@@ -1,0 +1,34 @@
+import type { PositionsResponse, LiveVenuesResponse } from "@/components/live/contracts";
+import { EMPTY_AUTONOMY_STATUS, type AutonomyStatus } from "@/app/autonomy-contracts";
+import { getJson } from "./client";
+
+const emptyPositions: PositionsResponse = {
+  armed: false,
+  mode: "sim",
+  daily_loss: 0,
+  caps: { per_strategy_cap: 0, global_cap: 0, max_daily_loss: 0 },
+  positions: []
+};
+
+const emptyVenues: LiveVenuesResponse = { jurisdiction: "", global_cap: 0, total_deployed_usd: 0, venues: [] };
+
+// GET /autonomy/status — the command-center status of the autonomous machine the human oversees:
+// running/paused, live on/off, cycles run, what it last did + will do next, and the last cycle's
+// counts. `connected:false` renders an honest "machine status unknown" state — never a fake running
+// machine. The deterministic Gate/scorer still disposes; this status only reports, never decides.
+export async function getAutonomyStatus(): Promise<{ status: AutonomyStatus; connected: boolean }> {
+  const { data, connected } = await getJson("/autonomy/status", EMPTY_AUTONOMY_STATUS);
+  return { status: data, connected };
+}
+
+// Live trading positions snapshot for the /live surface. `connected:false` is shown as engine-
+// offline — never presented as armed or live.
+export async function getLivePositions(): Promise<PositionsResponse & { connected: boolean }> {
+  const { data, connected } = await getJson<PositionsResponse>("/live/positions", emptyPositions);
+  return { ...data, connected };
+}
+
+export async function getLiveVenues(): Promise<LiveVenuesResponse & { connected: boolean }> {
+  const { data, connected } = await getJson<LiveVenuesResponse>("/live/venues", emptyVenues);
+  return { ...data, connected };
+}
