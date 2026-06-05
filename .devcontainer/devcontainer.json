@@ -1,20 +1,21 @@
 {
   "name": "cosmu",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
-
-  // Secrets come from GitHub Codespaces Secrets (NEVER hardcode).
-  // Add ALPACA_KEY, ALPACA_SECRET, etc. in repo / org Codespaces settings.
-  // See: https://docs.github.com/codespaces/managing-your-codespaces/managing-secrets-for-your-codespaces
-
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
       "version": "22"
     }
   },
-
+  // Secrets (API keys, broker credentials, etc.) are injected via
+  // GitHub Codespaces Secrets — set them in repo or org Settings → Codespaces → Secrets.
   "postCreateCommand": "pip install -e apps/engine[dev] && npm i -g pnpm && pnpm install --frozen-lockfile",
-
   "forwardPorts": [8000, 3000],
-
-  "remoteUser": "vscode"
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ]
+    }
+  }
 }
