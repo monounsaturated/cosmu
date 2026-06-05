@@ -37,13 +37,27 @@ WANTED = (
 
 
 def _parse_env(path: Path) -> dict[str, str]:
+    """Parse .env.local the SAME way python-dotenv / pydantic-settings does, so a synced secret matches what
+    the local engine reads. The key fix over a naive split: an UNQUOTED value ends at its first ` #` inline
+    comment (e.g. `DATABASE_URL=postgres://…   # Supabase` must NOT push the comment into the DB name — that
+    breaks every Modal job). A quoted value is taken verbatim between the quotes (a literal `#` inside is kept)."""
     out: dict[str, str] = {}
     for raw in path.read_text().splitlines():
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, val = line.partition("=")
-        out[key.strip()] = val.strip().strip('"').strip("'")
+        val = val.strip()
+        if val[:1] in ('"', "'"):
+            quote = val[0]
+            end = val.find(quote, 1)
+            val = val[1:end] if end != -1 else val[1:]
+        else:
+            hash_pos = val.find(" #")  # inline comment on an unquoted value starts at the first space-hash
+            if hash_pos != -1:
+                val = val[:hash_pos]
+            val = val.strip()
+        out[key.strip()] = val
     return out
 
 

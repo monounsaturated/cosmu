@@ -1,0 +1,54 @@
+{
+  "name": "Social-authority influencer surge (authority sentiment leads crowd)",
+  "rationale": "A shift in HIGH-AUTHORITY social sentiment (vetted influencer / insider accounts, not raw crowd volume) can precede a move before the broad crowd and price catch up — an attention/positioning lead. Ride crypto momentum only while authority sentiment is above a fitted floor; exit when authority sentiment rolls over. Disconfirmer: exit when twitter_influencer_sentiment crosses back down through the exit level. NOTE: DATA-BLOCKED — the authority-sentiment feeds are KEY-GATED (twitter_influencer_sentiment needs XAI_API_KEY; the LunarCrush social metrics need LUNARCRUSH_API_KEY) and currently return 0 rows, and the keyless proxies (reddit_sentiment, osint_air_activity) are snapshot-thin (0-4 rows). So this spec CANNOT be gated yet — it is queued behind either a paid key or a continuous keyless-proxy backfill. The deterministic Gate (deflated Sharpe / PBO / holdout / FDR) judges it only once a real point-in-time history exists; this is a low-confidence tier1 hypothesis that must earn its place OOS, never the money path until it passes.",
+  "catalyst": "rising high-authority social sentiment while crypto momentum is positive",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    },
+    {
+      "feature": { "name": "twitter_influencer_sentiment" },
+      "op": "gt",
+      "threshold": { "param": "auth_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "twitter_influencer_sentiment" },
+        "op": "cross_down",
+        "threshold": { "param": "auth_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "mom_lb": { "kind": "int", "lo": 10, "hi": 45, "step": 1 },
+    "mom_floor": { "kind": "float", "lo": -0.02, "hi": 0.05 },
+    "auth_floor": { "kind": "float", "lo": 0.05, "hi": 0.5 },
+    "auth_exit": { "kind": "float", "lo": -0.3, "hi": 0.1 },
+    "stop": { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp": { "kind": "float", "lo": 0.08, "hi": 0.28 },
+    "time_stop": { "kind": "int", "lo": 4, "hi": 12, "step": 1 }
+  }
+}
