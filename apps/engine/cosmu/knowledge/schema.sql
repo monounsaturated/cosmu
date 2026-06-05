@@ -296,6 +296,9 @@ CREATE TABLE IF NOT EXISTS alt_data (
   ingested_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_alt_data_lookup ON alt_data (provider, symbol, metric, available_at);
+-- Dedup guard: a (provider, symbol, metric, ts) tuple is one observation instant — never two.
+-- PgAltDataStore.append uses ON CONFLICT DO NOTHING so re-runs are safe without a full read.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_alt_data_dedup ON alt_data (provider, symbol, metric, ts);
 
 -- Mind reflections: a point-in-time record of the agent's standardized market read (the analyst-panel debate),
 -- so it accrues a memory of HOW IT THOUGHT over time. Append-only. A reasoning record only — never moves money.

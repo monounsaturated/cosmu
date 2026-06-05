@@ -212,9 +212,7 @@ async def lifespan(_: FastAPI):
 
     def _boot():
         try:
-            facade = EngineFacade.create(settings)
-            if not store.row("SELECT id FROM runs LIMIT 1"):
-                facade.run_backtest(seed=11)
+            EngineFacade.create(settings)  # seeds venue/instrument catalog
             ensure_recommendations()
             _scan_inbox_on_startup()
             _fund_tracks_on_startup()
@@ -275,10 +273,6 @@ app.add_middleware(
 def health() -> dict[str, str]:
     return {"ok": "true", "service": "cosmu-engine"}
 
-
-@app.post("/spine/backtest")
-def spine_backtest() -> dict[str, str | int | bool]:
-    return EngineFacade.create(settings).run_backtest(seed=13)
 
 
 def _summary_to_response(summary: CohortSummary) -> CohortSummaryResponse:
@@ -621,6 +615,11 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
     version_id = row["id"]
     executions = store.rows("SELECT * FROM executions WHERE strategy_version_id = ? ORDER BY ts DESC LIMIT 50", (version_id,))
     backtests = store.rows("SELECT * FROM backtests WHERE strategy_version_id = ? ORDER BY created_at DESC", (version_id,))
+    latest_bt = backtests[0] if backtests else None
+    holdout = (
+        {"passed": bool(int(latest_bt["holdout_passed"] or 0)), "deflated_sharpe": _metric(latest_bt["deflated_sharpe"])}
+        if latest_bt else {}
+    )
     return StrategyDetailResponse(
         version_id=version_id,
         name=row["name"],
@@ -635,8 +634,8 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
             Backtest(id=bt["id"], kind=bt["kind"], oos_return=float(bt["oos_return"]), deflated_sharpe=float(bt["deflated_sharpe"]), max_dd=float(bt["max_dd"]), win_rate=float(bt["win_rate"]), num_trades=int(bt["num_trades"]), pbo=float(bt["pbo"]), passed_gates=bool(bt["passed_gates"]))
             for bt in backtests
         ],
-        notes_md="Deterministic WFO accepted this version for the standardized track. Live capital remains gated by the global toggle, sim survival, regime fit, and caps.",
-        holdout={"passed": True, "deflated_sharpe": 0.35, "seen_once": True},
+        notes_md="",
+        holdout=holdout,
     )
 
 
@@ -1222,7 +1221,7 @@ def _alt_store():  # noqa: ANN202 - returns AltDataStore
 def _has_cross_asset_data(alt_store) -> bool:  # noqa: ANN001
     """True once the two cross-asset transfer series (prediction-market risk_on + FRED macro_regime) have
     been ingested — that is exactly what the cross-asset gate's arm (3) needs to differ from price-only."""
-    return bool(alt_store.read_all("polymarket", "MARKET", "risk_on")) and bool(alt_store.read_all("fred", "MARKET", "macro_regime"))
+    return bool(alt_store.read_all("polymarket", "MARKET", "pm_risk_on")) and bool(alt_store.read_all("fred", "MARKET", "macro_regime"))
 
 
 @app.post("/research/cross-asset-gate", response_model=CrossAssetVerdict)

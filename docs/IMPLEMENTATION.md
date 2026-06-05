@@ -207,8 +207,24 @@ LLMs may help narrate, but the **deterministic Gate alone disposes of money** �
 - **Cohort screen is a deterministic surrogate** standing in for the vectorbt/Nautilus two-tier backtest (those are BUY/BORROW vendors). The architecture (cheap screen → full validate) mirrors the plan so wiring the real vendors is a swap, not a rewrite. The scorer/gates are already the real, authoritative deterministic layer.
 - **External coding agents (Claude Code / Cursor) author by writing typed specs**, not by a bespoke bridge: a spec is JSON validated by `static_check` + `instructor`/Pydantic. The in-product path is the Console; both funnel into the same farm under the same guardrails.
 
-## Not yet wired (vendor swaps, same seams)
-NautilusTrader event-driven validation · vectorbt fast screen · Optuna param fitting · OpenRouter model router + `instructor` · Databento/equity data ingestion · Supabase Postgres/pgvector in prod.
+## Wired
+ccxt · XGBoost/LightGBM · pypbo · OpenRouter + instructor · FastAPI/Pydantic · Modal · SQLAlchemy · pgvector (hash embeddings) · shadcn/Tremor/TanStack · APScheduler · Exa/Tavily.
+
+## Not yet wired — aspirational (swap at the named trigger, not before)
+| Vendor | Trigger to adopt |
+|---|---|
+| **NautilusTrader** | First 30-day forward-test survivor (execution path) |
+| **vectorbt** | Cohort sweep >10 k/run (cheap screen tier) |
+| **Optuna** | Gate shows param sensitivity worth optimising |
+| **Deepgram / ElevenLabs** | V2 voice Console |
+| **E2B** | Autonomous lab agent needs untrusted code sandbox |
+| **Polars / Pandera** | Feature wiring reaches 45+ registry features |
+| **QuantStats** | Strategy detail page redesign |
+| **OpenTelemetry + Langfuse / Sentry** | Multi-strategy scale |
+| **Supabase pgvector semantic search** | Graveyard > 200 entries |
+| **Supabase Storage** | Console image-upload path |
+| **exchange_calendars** | Equities added |
+| **Databento / equity data** | Equities added |
 
 ---
 

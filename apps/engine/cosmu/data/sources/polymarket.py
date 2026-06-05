@@ -158,7 +158,7 @@ class PolymarketClobSource:
             for day, vals in sorted(by_day.items())
         ]
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: "datetime | None" = None) -> list[AltDataPoint]:
         if metric not in ("pm_implied_prob", "pm_prob_velocity", "pm_book_depth"):
             return []
 

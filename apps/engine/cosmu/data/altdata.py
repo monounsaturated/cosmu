@@ -33,8 +33,8 @@ class AltDataPoint:
 
 
 class AltDataProvider(Protocol):
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
-        """Return ascending alt-data points for one symbol/metric."""
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
+        """Return ascending alt-data points for one symbol/metric. `since` is an optional incremental cursor."""
 
 
 class AltDataStore:
@@ -108,14 +108,17 @@ class LunarCrushProvider:
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if not self.api_key:  # honest degradation — no key, no data (never a fabricated read)
             return []
         field = self._FIELD.get(metric)
         if field is None:
             return []
         coin = symbol[:-4] if symbol.endswith("USDT") else symbol
-        query = urllib.parse.urlencode({"bucket": "day"})
+        params: dict = {"bucket": "day"}
+        if since is not None:
+            params["start"] = int(since.timestamp())
+        query = urllib.parse.urlencode(params)
         url = f"{self.base_url}/coins/{coin}/time-series/v2?{query}"
         payload = self._fetcher(url)
         out: list[AltDataPoint] = []
@@ -159,7 +162,7 @@ class RedditSentimentProvider:
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "reddit_sentiment":
             return []
         bull = bear = total = 0
@@ -191,10 +194,10 @@ class FixtureAltDataProvider:
 
     def __init__(self, series: dict[tuple[str, str], list[AltDataPoint]]) -> None:
         self.series = series
-        self.calls: list[tuple[str, str, int]] = []
+        self.calls: list[tuple[str, str, int, datetime | None]] = []
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
-        self.calls.append((symbol, metric, limit))
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
+        self.calls.append((symbol, metric, limit, since))
         return self.series.get((symbol, metric), [])[-limit:]
 
 
@@ -228,7 +231,7 @@ class PgAltDataStore:
         with self.store.batch() as writer:
             for p in points:
                 writer._con.execute(
-                    "INSERT INTO alt_data(provider, symbol, metric, ts, available_at, value, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO alt_data(provider, symbol, metric, ts, available_at, value, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (provider, symbol, metric, ts) DO NOTHING",
                     (provider, symbol, metric, p.ts.isoformat(), p.available_at.isoformat(), float(p.value), now),
                 )
 
@@ -256,7 +259,7 @@ class FundingRateProvider:
     def __init__(self, base_url: str = "https://fapi.binance.com") -> None:
         self.base_url = base_url.rstrip("/")
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "funding_rate":
             return []
         query = urllib.parse.urlencode({"symbol": symbol, "limit": min(limit, 1000)})
@@ -282,7 +285,7 @@ class CachedFundingRateProvider:
     def __init__(self, cache_dir: Path | str = ".cosmu/market_data/binance_funding") -> None:
         self.cache_dir = Path(cache_dir)
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "funding_rate":
             return []
         path = self.cache_dir / f"{symbol}.json"
@@ -364,7 +367,7 @@ class BinanceFundingHistoryProvider:
         out.sort(key=lambda p: p.ts)
         return out
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         """AltDataProvider seam: the trailing `limit` funding points (covers ~limit/3 days at 8h funding).
         Backfills should call `fetch_history` with an explicit `start_ms` for a full ≥1yr span instead."""
         if metric != "funding_rate":
@@ -461,7 +464,7 @@ class OkxFundingRateProvider:
         out.sort(key=lambda p: p.ts)
         return out
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         """AltDataProvider seam: trailing `limit` funding points (~limit/3 days at 8 h funding)."""
         if metric != "funding_rate":
             return []
@@ -539,7 +542,7 @@ class KrakenFuturesFundingRateProvider:
         out.sort(key=lambda p: p.ts)
         return out
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         """AltDataProvider seam: trailing `limit` funding points."""
         if metric != "funding_rate":
             return []
@@ -560,7 +563,7 @@ class FearGreedProvider:
     def __init__(self, base_url: str = "https://api.alternative.me") -> None:
         self.base_url = base_url.rstrip("/")
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "fear_greed":
             return []
         query = urllib.parse.urlencode({"limit": limit, "format": "json"})
@@ -587,7 +590,7 @@ class FredMacroProvider:
         self.base_url = base_url.rstrip("/")
         self.release_lag_days = release_lag_days
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         params = {"series_id": metric, "file_type": "json", "sort_order": "desc", "limit": min(limit, 100000)}
         if self.api_key:
             params["api_key"] = self.api_key
@@ -612,7 +615,7 @@ class PolymarketOddsProvider:
     def __init__(self, base_url: str = "https://clob.polymarket.com") -> None:
         self.base_url = base_url.rstrip("/")
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         query = urllib.parse.urlencode({"market": metric, "fidelity": 1440})  # daily buckets
         url = f"{self.base_url}/prices-history?{query}"
         req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
@@ -733,7 +736,7 @@ class PolymarketGammaProvider:
         hits.sort(key=lambda h: h["liquidity"], reverse=True)
         return hits[: self.max_markets]
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         markets = self.discover_markets()
         if not markets:
             return []
@@ -752,7 +755,7 @@ class DefiLlamaTvlProvider:
     def __init__(self, url: str = "https://api.llama.fi/v2/historicalChainTvl") -> None:
         self.url = url
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "defi_tvl":
             return []
         req = urllib.request.Request(self.url, headers={"User-Agent": "cosmu-engine/0.1"})
@@ -787,7 +790,7 @@ class CoinglassLiquidationProvider:
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "liquidations":
             return []
         coin = symbol[:-4] if symbol.endswith("USDT") else symbol
@@ -819,7 +822,7 @@ class CboePutCallProvider:
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             return resp.read().decode("utf-8")
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "putcall_ratio":
             return []
         text = self._fetcher(self.url)
@@ -861,7 +864,7 @@ class BinanceOpenInterestProvider:
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "open_interest":
             return []
         query = urllib.parse.urlencode({"symbol": symbol, "period": "1h", "limit": min(limit, 500)})
@@ -887,7 +890,7 @@ class BinanceBasisProvider:
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "perp_spot_basis":
             return []
         url = f"{self.base_url}/fapi/v1/premiumIndex?{urllib.parse.urlencode({'symbol': symbol})}"
@@ -915,7 +918,7 @@ class ExchangeNetflowProvider:
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "exchange_netflow":
             return []
         query = urllib.parse.urlencode({"symbol": symbol, "period": "1h", "limit": min(limit, 500)})
@@ -945,7 +948,7 @@ class OsintAirActivityProvider:
     def __init__(self, offline: bool = False) -> None:
         self.offline = offline
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "osint_air_activity":
             return []
         from cosmu.data.sources.osint_adsb import AdsbDataSource
@@ -966,7 +969,7 @@ class PolymarketClobProvider:
         from cosmu.data.sources.polymarket import PolymarketClobSource
         self._src = PolymarketClobSource(pin_token=pin_token)
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         return self._src.fetch_series(symbol, metric, limit=limit)
 
 
@@ -998,7 +1001,7 @@ class GdeltToneProvider:
         with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "gdelt_tone":
             return []
         params = {
@@ -1044,7 +1047,7 @@ class DeribitDvolProvider:
         with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         if metric != "dvol":
             return []
         coin = symbol[:-4] if symbol.endswith("USDT") else symbol
@@ -1249,11 +1252,15 @@ _STORE_MARKET_WIDE = frozenset({
     "gdelt_tone", "reg_risk_crypto", "risk_on_off",
     "gold_xau", "silver_xag", "wti_crude", "spx_index", "ndx_index", "eurusd", "usdjpy",
 })
-# Registry name → stored metric name, for features renamed after their first ingest.
-# StoreBackedAltProvider tries the registry name first; if the store returns nothing it falls back here
-# so data written under the old name is still accessible until re-ingested under the canonical name.
+# Gate-facing name → canonical stored metric name.  The gate and fixtures use the short name "risk_on";
+# the ingest pipeline stores it as "pm_risk_on".  StoreBackedAltProvider resolves the stored name first
+# so neither the gate code nor the fixture fixtures need to know the internal storage key.
+_GATE_TO_STORE_METRIC: dict[str, str] = {
+    "risk_on": "pm_risk_on",
+}
+# Stored metric name → old stored name, for backward-compat when a metric was re-ingested under a new key.
+# StoreBackedAltProvider tries the canonical name first; if the store has nothing it falls back here.
 _STORE_METRIC_ALIAS: dict[str, str] = {
-    "pm_risk_on": "risk_on",
     "liquidation_cascade": "liquidations",
 }
 
@@ -1269,14 +1276,15 @@ class StoreBackedAltProvider:
         self._provider_of = provider_of or dict(_STORE_PROVIDER_OF)
         self._market_wide = market_wide
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
-        provider = self._provider_of.get(metric)
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
+        stored = _GATE_TO_STORE_METRIC.get(metric, metric)
+        provider = self._provider_of.get(stored)
         if provider is None:
             return []
-        key = "MARKET" if metric in self._market_wide else symbol
-        points = self._store.read_all(provider, key, metric)
+        key = "MARKET" if stored in self._market_wide else symbol
+        points = self._store.read_all(provider, key, stored)
         if not points:
-            alias = _STORE_METRIC_ALIAS.get(metric)
+            alias = _STORE_METRIC_ALIAS.get(stored)
             if alias:
                 points = self._store.read_all(provider, key, alias)
         return points[-limit:]
@@ -1381,7 +1389,7 @@ class VenueFeesProvider:
     # Public AltDataProvider seam
     # ------------------------------------------------------------------
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: datetime | None = None) -> list[AltDataPoint]:
         """Fetch one fee metric for one symbol.  `metric` is one of
         ``venue_fees_maker`` or ``venue_fees_taker``.  Returns a list with a
         single point stamped now (the snapshot is a current read, not a history).

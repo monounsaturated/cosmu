@@ -52,7 +52,7 @@ class ScrapedAltDataProvider:
     def __init__(self, scrape_dir: Path | str = ".cosmu/scrape") -> None:
         self.scrape_dir = Path(scrape_dir)
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: "datetime | None" = None) -> list[AltDataPoint]:
         if not self.scrape_dir.exists():
             return []
         out: list[AltDataPoint] = []

@@ -116,7 +116,7 @@ class StooqDailyProvider:
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:  # noqa: S310 — fixed host
             return resp.read().decode("utf-8")
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: "datetime | None" = None) -> list[AltDataPoint]:
         ticker = _STOOQ_SYMBOL.get(metric)
         if ticker is None:
             return []
@@ -143,7 +143,7 @@ class YahooDailyProvider:
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:  # noqa: S310 — fixed host
             return json.loads(resp.read().decode("utf-8"))
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: "datetime | None" = None) -> list[AltDataPoint]:
         ticker = _YAHOO_SYMBOL.get(metric)
         if ticker is None:
             return []

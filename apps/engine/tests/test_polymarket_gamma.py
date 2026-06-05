@@ -259,4 +259,4 @@ def test_run_once_uses_gamma_provider(tmp_path):
         putcall=FixtureAltDataProvider({}),
     )
     counts = run_once(store, symbols=["BTCUSDT"], providers=providers)
-    assert counts["risk_on"] == 1
+    assert counts["pm_risk_on"] == 1

@@ -99,9 +99,27 @@ def _news_read(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _social(payload: dict[str, Any]) -> dict[str, Any]:
+    from datetime import UTC, datetime
+
     symbol = str(payload.get("symbol", "BTCUSDT"))
     coin = _coin_of(symbol)
     api_key = payload.get("_api_key")  # LunarCrush key, server-side only
+    store = payload.get("_store")       # AltDataStore | PgAltDataStore, injected server-side
+
+    # Serve from store if a fresh read (< 25 h) is already there — avoids spending API quota
+    if store is not None:
+        now = datetime.now(UTC)
+        galaxy = store.read_asof("lunarcrush", coin, "galaxy_score", now)
+        if galaxy and (now - galaxy[-1].available_at).total_seconds() < 25 * 3600:
+            vol = store.read_asof("lunarcrush", coin, "social_volume", now)
+            sent = store.read_asof("lunarcrush", coin, "social_sentiment", now)
+            metrics = {
+                "galaxy_score": galaxy[-1].value,
+                "social_volume": vol[-1].value if vol else 0.0,
+                "sentiment": sent[-1].value if sent else 0.0,
+            }
+            return {"ok": True, "source": "store", "symbol": symbol, "metrics": metrics}
+
     if api_key:
         url = f"https://lunarcrush.com/api4/public/coins/{coin}/v1"
         data = _http_json(url, headers={"Authorization": f"Bearer {api_key}"})
@@ -128,7 +146,7 @@ def _rag_read(payload: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "source": "offline", "query": query, "matches": matches or _RAG_FIXTURES}
 
 
-def register_research_tools(bus: ToolBus, *, lunarcrush_key: str | None = None, web_search_key: str | None = None) -> ToolBus:
+def register_research_tools(bus: ToolBus, *, lunarcrush_key: str | None = None, web_search_key: str | None = None, alt_store: Any | None = None) -> ToolBus:
     """Extend an existing lab ToolBus with the propose-only research tools. Keys are bound server-side here
     (closed over), so the LLM payload can never carry a secret. Returns the same bus for chaining."""
 
@@ -138,9 +156,20 @@ def register_research_tools(bus: ToolBus, *, lunarcrush_key: str | None = None, 
 
         return wrapped
 
+    def _bind_social(handler, key, store):  # noqa: ANN001
+        def wrapped(payload: dict[str, Any]) -> dict[str, Any]:
+            extras: dict[str, Any] = {}
+            if key:
+                extras["_api_key"] = key
+            if store is not None:
+                extras["_store"] = store
+            return handler({**payload, **extras})
+
+        return wrapped
+
     bus.register(ToolDefinition(name="web_search", intent="Search the web for strategy ideas / prior art (read-only context).", readonly=True, handler=_bind(_web_search, web_search_key)))
     bus.register(ToolDefinition(name="news_read", intent="Read point-in-time news headlines for a symbol (read-only context).", readonly=True, handler=_news_read))
-    bus.register(ToolDefinition(name="social", intent="Read LunarCrush social metrics (galaxy score, social volume, sentiment).", readonly=True, handler=_bind(_social, lunarcrush_key)))
+    bus.register(ToolDefinition(name="social", intent="Read LunarCrush social metrics (galaxy score, social volume, sentiment).", readonly=True, handler=_bind_social(_social, lunarcrush_key, alt_store)))
     bus.register(ToolDefinition(name="pine_fetch", intent="Fetch a community Pine script from the curated corpus to translate (read-only).", readonly=True, handler=_pine_fetch))
     bus.register(ToolDefinition(name="rag_read", intent="Read relevant prior art and structured research notes (read-only).", readonly=True, handler=_rag_read))
     return bus

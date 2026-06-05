@@ -304,7 +304,7 @@ class XaiTwitterProvider:
     # AltDataProvider protocol
     # ------------------------------------------------------------------
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: "datetime | None" = None) -> list[AltDataPoint]:
         """Return a one-point list (the current influencer-weighted sentiment) or [] on any failure.
 
         Supported metrics:

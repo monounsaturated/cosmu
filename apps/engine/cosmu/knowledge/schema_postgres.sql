@@ -192,7 +192,7 @@ create table if not exists research_notes (
   body_md text not null,
   structured text not null,
   created_at text not null,
-  embedding vector(1536)            -- pgvector: RAG over notes + graveyard (text-embedding-3-small dim)
+  embedding vector(1536)            -- pgvector: RAG over notes + graveyard (text-embedding-3-small dim) [aspirational — not yet wired in prod]
 );
 create index if not exists idx_research_notes_embedding on research_notes using hnsw (embedding vector_cosine_ops);
 -- recall()/novelty always filter `where kind = ?` before the vector scan; index the predicate.
@@ -273,6 +273,9 @@ create table if not exists alt_data (
   ingested_at text not null default (now()::text)
 );
 create index if not exists idx_alt_data_lookup on alt_data (provider, symbol, metric, available_at);
+-- Dedup guard: a (provider, symbol, metric, ts) tuple is one observation instant — never two.
+-- PgAltDataStore.append uses ON CONFLICT DO NOTHING so re-runs are safe without a full read.
+create unique index if not exists idx_alt_data_dedup on alt_data (provider, symbol, metric, ts);
 
 -- Experiments registry: every finder/gate run logs config + seed + data_version + metrics so results are
 -- comparable across runs and exactly regenerable; soft_label carries the continuous forward-P&L so the ML

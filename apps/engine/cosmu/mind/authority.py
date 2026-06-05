@@ -403,7 +403,7 @@ class AuthorityProvider:
     def _now(self) -> datetime:
         return self.now or datetime.now(tz=UTC)
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: "datetime | None" = None) -> list[AltDataPoint]:
         if metric not in ("authority_weighted_claim_signal", "author_authority"):
             return []
         if not self.claims:  # no Phase-0 timeline → honest degradation (never a fabricated authority)

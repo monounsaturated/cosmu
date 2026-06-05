@@ -62,33 +62,33 @@
 
 ## 2. Buy-vs-build matrix (the heart of "more buy than build")
 
-| Layer | Decision | Choice | Why this, not hand-rolled |
-|-------|----------|--------|---------------------------|
-| Trading engine (backtest/paper/live) | **BUY** | NautilusTrader | Rust-native, 3-mode parity, native Binance/IBKR/**Polymarket** adapters + sandbox |
-| Fast screening backtest | **BUY** | vectorbt | thousands of candidates in seconds (Numba/Rust) |
-| Crypto venue breadth | **BUY** | ccxt | free, standard, many venues |
-| Equities history | **BUY** | Norgate (survivorship-free daily) + Databento (intraday/breadth) | point-in-time, corp-actions-adjusted |
-| Equity fundamentals | **BUY** | Sharadar (Nasdaq Data Link) or SimFin (~$30–50/mo) | point-in-time, pre-parsed — vs building an EDGAR ETL |
-| Prediction markets | **BUY/lib** | Polymarket native adapter (+ Kalshi optional) | data + execution via CLOB |
-| Model access | **BUY** | OpenRouter | one key, all tiers, config'd IDs |
-| Structured LLM output | **BUY (OSS)** | instructor | Pydantic-validated, retried |
-| Agent sandbox (untrusted code) | **BUY** | E2B | isolation, ~400ms cold start |
-| ML / GPU bursts | **BUY** | Modal | usage-priced CPU/GPU |
-| Voice | **BUY** | Deepgram / ElevenLabs | STT/TTS |
-| Research / web | **BUY** | Exa or Tavily + news API + youtube-transcript + LunarCrush | per-query, cap-able |
-| Embeddings | **BUY** | OpenAI / Voyage API | cheap |
-| Vision / screenshot understanding | **BUY** | multimodal model via OpenRouter | no new vendor; powers the Console image path |
-| Uploaded-image storage | **BUY/managed** | Supabase Storage | we already run Supabase |
-| Param-space optimizer | **BORROW (OSS)** | Optuna | Bayesian/TPE + pruning + multi-objective; fits `param_space` (App. B) |
-| Fast dataframe / feature pipeline | **BORROW (OSS)** | Polars | columnar speed over pandas; pairs with the parquet cache |
-| Data-quality / look-ahead guard | **BORROW (OSS)** | Pandera | dataframe contracts; asserts point-in-time, no nulls/peeking |
-| Equity hours / halts | **BORROW (OSS)** | exchange_calendars | honest equity SIM fills |
-| Strategy tearsheets | **BORROW (OSS)** | QuantStats | cheap rich analytics for Strategy detail |
-| App errors / alerting | **BUY/OSS** | Sentry | 24/7 reliability; complements Langfuse traces |
-| Property-based tests | **BORROW (OSS)** | Hypothesis | fuzz the compiler/validator/risk gauntlet |
-| DB + RAG | **BUY/managed** | Supabase Postgres + pgvector | one store, a switch not a build |
-| Observability + evals | **BUY/OSS** | OpenTelemetry + Langfuse | vendor-neutral; free tier/self-host |
-| Hosting | **BUY/managed** | Render (worker+API), Vercel (web) | predictable beats metered |
+| Layer | Decision | Choice | Status | Why this, not hand-rolled |
+|-------|----------|--------|--------|---------------------------|
+| Trading engine (backtest/paper/live) | **BUY** | NautilusTrader | **aspirational** — trigger: first 30-day survivor | Rust-native, 3-mode parity, native Binance/IBKR/**Polymarket** adapters + sandbox |
+| Fast screening backtest | **BUY** | vectorbt | **aspirational** — trigger: cohort sweep >10k/run | thousands of candidates in seconds (Numba/Rust) |
+| Crypto venue breadth | **BUY** | ccxt | **wired** | free, standard, many venues |
+| Equities history | **BUY** | Norgate + Databento | **aspirational** — trigger: equities added | point-in-time, corp-actions-adjusted |
+| Equity fundamentals | **BUY** | Sharadar or SimFin (~$30–50/mo) | **aspirational** — trigger: equities added | point-in-time, pre-parsed — vs building an EDGAR ETL |
+| Prediction markets | **BUY/lib** | Polymarket native adapter | **wired** (data); execution aspirational | data + execution via CLOB |
+| Model access | **BUY** | OpenRouter | **wired** | one key, all tiers, config'd IDs |
+| Structured LLM output | **BUY (OSS)** | instructor | **wired** | Pydantic-validated, retried |
+| Agent sandbox (untrusted code) | **BUY** | E2B | **aspirational** — trigger: autonomous lab agent | isolation, ~400ms cold start |
+| ML / GPU bursts | **BUY** | Modal | **wired** | usage-priced CPU/GPU |
+| Voice | **BUY** | Deepgram / ElevenLabs | **aspirational** — trigger: V2 product | STT/TTS |
+| Research / web | **BUY** | Exa or Tavily + LunarCrush | **wired** (Exa/Tavily); LunarCrush optional | per-query, cap-able |
+| Embeddings | **BUY** | OpenAI / Voyage API | **aspirational** — trigger: pgvector semantic search | cheap |
+| Vision / screenshot understanding | **BUY** | multimodal via OpenRouter | **aspirational** — trigger: Console image path | no new vendor |
+| Uploaded-image storage | **BUY/managed** | Supabase Storage | **aspirational** — trigger: Console image path | we already run Supabase |
+| Param-space optimizer | **BORROW (OSS)** | Optuna | **aspirational** — trigger: Gate shows param sensitivity | Bayesian/TPE + pruning + multi-objective; fits `param_space` (App. B) |
+| Fast dataframe / feature pipeline | **BORROW (OSS)** | Polars | **aspirational** — trigger: 45+ features wired | columnar speed over pandas; pairs with the parquet cache |
+| Data-quality / look-ahead guard | **BORROW (OSS)** | Pandera | **aspirational** — trigger: 45+ features wired | dataframe contracts; asserts point-in-time, no nulls/peeking |
+| Equity hours / halts | **BORROW (OSS)** | exchange_calendars | **aspirational** — trigger: equities added | honest equity SIM fills |
+| Strategy tearsheets | **BORROW (OSS)** | QuantStats | **aspirational** — trigger: strategy detail redesign | cheap rich analytics for Strategy detail |
+| App errors / alerting | **BUY/OSS** | Sentry | **aspirational** — trigger: multi-strategy scale | 24/7 reliability; complements Langfuse traces |
+| Property-based tests | **BORROW (OSS)** | Hypothesis | **wired** | fuzz the compiler/validator/risk gauntlet |
+| DB + RAG | **BUY/managed** | Supabase Postgres + pgvector | **wired** (hash embeddings); semantic search aspirational | one store, a switch not a build |
+| Observability + evals | **BUY/OSS** | OpenTelemetry + Langfuse | **aspirational** — trigger: multi-strategy scale | vendor-neutral; free tier/self-host |
+| Hosting | **BUY/managed** | Railway + Vercel | **wired** | predictable beats metered |
 | Anti-overfit stats | **BORROW (OSS)** | pypbo | deflated Sharpe + PBO |
 | Indicators | **BORROW (OSS)** | pandas-ta / ta-lib | standard library |
 | Tabular ML | **BORROW (OSS)** | XGBoost / LightGBM | CPU, proven |

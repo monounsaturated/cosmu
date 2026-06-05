@@ -62,3 +62,50 @@ def test_ingest_lunarcrush_per_symbol(tmp_path) -> None:
     count = ingest_numeric(store, p, ["BTCUSDT", "ETHUSDT"], "social_sentiment", provider_name="lunarcrush")
     assert count == 8  # 4 points x 2 symbols
     assert len(store.read_all("lunarcrush", "BTCUSDT", "social_sentiment")) == 4
+
+
+def test_ingest_rerun_writes_zero(tmp_path) -> None:
+    """append_dedup makes ingest_numeric idempotent — a re-run returns 0 new points."""
+    from cosmu.ingest.pipeline import ingest_numeric
+
+    store = AltDataStore(tmp_path / "alt")
+    p = _provider()
+    ingest_numeric(store, p, ["BTCUSDT"], "social_volume", provider_name="lunarcrush")
+    count2 = ingest_numeric(store, p, ["BTCUSDT"], "social_volume", provider_name="lunarcrush")
+    assert count2 == 0
+
+
+def test_since_forwarded_to_url() -> None:
+    """When `since` is provided, LunarCrushProvider appends `start=<epoch>` to the v4 URL."""
+    captured: list[str] = []
+
+    def recording_fetcher(url: str) -> dict:
+        captured.append(url)
+        return FIXTURE
+
+    p = LunarCrushProvider(api_key="test-key", _fetcher=recording_fetcher)
+    cutoff = datetime(2024, 1, 2, tzinfo=UTC)
+    p.fetch_series("BTCUSDT", "social_volume", limit=10, since=cutoff)
+
+    assert len(captured) == 1
+    assert f"start={int(cutoff.timestamp())}" in captured[0]
+
+
+def test_ingest_since_forwarded_incremental(tmp_path) -> None:
+    """After the first run, ingest_numeric passes the max stored ts as `since` to LunarCrush."""
+    captured: list[str] = []
+
+    def recording_fetcher(url: str) -> dict:
+        captured.append(url)
+        return FIXTURE
+
+    from cosmu.ingest.pipeline import ingest_numeric
+
+    store = AltDataStore(tmp_path / "alt")
+    p = LunarCrushProvider(api_key="test-key", _fetcher=recording_fetcher)
+    ingest_numeric(store, p, ["BTCUSDT"], "social_volume", provider_name="lunarcrush")
+    captured.clear()
+    ingest_numeric(store, p, ["BTCUSDT"], "social_volume", provider_name="lunarcrush")
+
+    assert len(captured) == 1
+    assert "start=" in captured[0]

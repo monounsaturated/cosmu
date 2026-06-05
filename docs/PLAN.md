@@ -251,10 +251,10 @@ Do **not** `shadcn add dashboard-01` (clashes with our Tailwind v4 design + ship
 ### Buy-vs-build matrix (every aspect)
 | Capability | Buy / OSS | Cost | vs building | Pick |
 |---|---|---|---|---|
-| Fast backtest screen | **vectorbt** | free | weeks → hours | adopt (Phase 2) |
-| Exec + sim/live parity | **NautilusTrader** | free | months saved | adopt (Phase 3) |
+| Fast backtest screen | **vectorbt** | free | weeks → hours | **aspirational** — trigger: cohort sweep >10k/run |
+| Exec + sim/live parity | **NautilusTrader** | free | months saved | **aspirational** — trigger: first 30-day forward survivor |
 | Stats wall (DSR/PBO/CPCV) | papers, ~150 LOC | free | exact + tiny — the *one* justified build | **built ✓** |
-| Param optimization | **Optuna** | free | adopt (Phase 2) |
+| Param optimization | **Optuna** | free | **aspirational** — trigger: Gate shows param sensitivity worth optimising |
 | Tabular ML / survival model | **LightGBM / AutoGluon** | free (CPU) | don't hand-build models | adopt (Phase 3) as a tool |
 | Managed AutoML (optional) | Vertex / SageMaker Autopilot | ~$ per train | skip unless needed |
 | Time-series foundation model | **Chronos / TimesFM** (OSS) · TimeGPT (API) | free / API | call, don't train | adopt as feature (Phase 3) |

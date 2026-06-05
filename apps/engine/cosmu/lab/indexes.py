@@ -234,7 +234,7 @@ class LlmIndexProvider:
     evidence_limit: int = _DEFAULT_EVIDENCE_LIMIT
     max_retries: int = 2
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: "datetime | None" = None) -> list[AltDataPoint]:
         rubric = self.rubrics.get(metric)
         if rubric is None:
             return []

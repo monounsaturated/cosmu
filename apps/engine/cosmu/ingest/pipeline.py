@@ -33,7 +33,7 @@ class MemoizingProvider:
         self._cache: dict[tuple[str, str, int], list[AltDataPoint]] = {}
         self.calls = 0  # number of times the INNER provider was actually hit (cache misses)
 
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+    def fetch_series(self, symbol: str, metric: str, *, limit: int, since: "datetime | None" = None) -> list[AltDataPoint]:
         key = (symbol, metric, limit)
         if key not in self._cache:
             self.calls += 1
@@ -97,13 +97,14 @@ def backfill_funding(
 
 
 def ingest_numeric(alt_store: AltDataStore, provider: AltDataProvider, symbols: list[str], metric: str, *, provider_name: str, limit: int = 1000) -> int:
-    """Pull a numeric metric for each symbol and append it point-in-time. No LLM."""
+    """Pull a numeric metric for each symbol, dedup-write, and return new-point count. No LLM.
+    Reads the current max ts so paid APIs (LunarCrush) receive an incremental `since` cursor."""
     total = 0
     for symbol in symbols:
-        points = provider.fetch_series(symbol, metric, limit=limit)
-        if points:
-            alt_store.append(provider_name, symbol, metric, points)
-            total += len(points)
+        existing = alt_store.read_all(provider_name, symbol, metric)
+        since = max((p.ts for p in existing), default=None)
+        points = provider.fetch_series(symbol, metric, limit=limit, since=since)
+        total += append_dedup(alt_store, provider_name, symbol, metric, points)
     return total
 
 
