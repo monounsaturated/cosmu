@@ -144,3 +144,33 @@ def test_proposal_is_structure_only_no_numbers_field():
     # The typed proposal has no place to put a threshold/number — defence at the schema boundary.
     p = LlmProposal(base_template="momentum", features=["ret_Nd"])
     assert set(p.model_dump().keys()) == {"base_template", "features", "bar_size", "rationale"}
+
+
+def test_llm_brief_includes_graveyard_kill_reasons(tmp_path):
+    """When a store has prior deaths, the LLM prompt must include graveyard kill-reasons so the model
+    avoids re-testing dead ideas."""
+    from cosmu.evolution.seeder import seed_momentum_spec
+    from cosmu.knowledge.memory import GraveyardMemory
+
+    class _Ev:
+        def __init__(self, vid, name, passed, reasons):  # noqa: ANN001
+            self.version_id = vid; self.name = name; self.origin = "test"
+            self.passed = passed; self.reasons = reasons
+            self.deflated_sharpe = -0.3; self.oos_return_pct = -0.05
+
+    store = _store(tmp_path, key="sk-test")
+    spec = seed_momentum_spec()
+    spec.name = "dead_momentum"
+    GraveyardMemory(store).remember(spec, _Ev("v1", "dead_momentum", False, ["sharpe_too_low"]))
+
+    seen: list[str] = []
+
+    def chat(_model_id: str, prompt: str) -> str:
+        seen.append(prompt)
+        return json.dumps({"base_template": "momentum", "features": ["ret_Nd"]})
+
+    draft_from_brief("momentum trend crypto", llm_enabled=True, store=store, chat=chat)
+
+    assert seen, "chat seam was never called"
+    assert "Graveyard" in seen[0], "LLM prompt must include graveyard context"
+    assert "sharpe_too_low" in seen[0], "LLM prompt must include kill reasons"
