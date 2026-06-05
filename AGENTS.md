@@ -18,6 +18,15 @@ Stack:
   - **Cloud Claude Code session:** anything heavy — the **full `pnpm verify` / `engine:test`**, **`next build`**, **grid-search / walk-forward / backtest sweeps**, broad multi-file refactors. Don't fight OOM locally; switch to cloud.
   - **Cost lever:** heavy *LLM* work (mass authoring, research, judgment) belongs to **Claude Code on the flat Max subscription**, NOT per-token API calls — the sub is already paid. The deployed engine's autonomous loop uses cheap/free OpenRouter models. **Any coding agent: if a task will spike RAM or burn many tokens, say so and recommend a cloud session — don't silently grind locally.**
 - **Cloud runs only:** the always-on API for the UI, gate disposition on authored specs, a mark-to-market cron, and (eventually) live execution.
+- **Routing — model · agent · compute (default cheap, escalate on need).** Three independent dials; pick the cheapest that fits.
+
+  | Dial | Default | Escalate to | Escalate when |
+  |------|---------|-------------|---------------|
+  | **Model** | **Sonnet** — nearly all coding, strategy authoring, docs, review (fast, parallel-friendly) | **Opus** | genuinely hard *single-threaded* judgment: gate/scorer design, architecture, subtle debugging, high-stakes authoring |
+  | **Where the agent runs** | **local M2** — editing, reading, `rg`, targeted tests, one skill run | **cloud Claude session(s)**, fanned out one-branch-per-agent | heavy/many-file work, RAM spikes (`next build`, full `engine:test`), or independent tasks that parallelize |
+  | **Heavy *quant* compute** | (none — don't run it on the M2 or inline in a Claude session) | **Modal** (`modal run`, see docs/COMPUTE.md) | backtests · walk-forward/gate sweeps · ML train · agent sandbox |
+
+  **Always:** default to Sonnet + local; reserve Opus for the hard call, not the routine one. **Never:** burn Opus on boilerplate, grind a RAM-spiking job locally, or run a backtest sweep in a chat session instead of Modal. Backend services (API + cron) stay on **Railway** (warm, EU); Modal is *only* the bursty heavy lane.
 - **Forward-test clock.** Funded SIM tracks are **held and marked-to-market across bars** on real closes. A track's **≥ 30 forward-day net-of-fee proof** is the **recommended** live-readiness signal — *surfaced, not enforced*: the operator may launch a strategy live sooner via the launch modal, at their discretion. The **hard requirement is the 5 interlocks** (incl. gate-passed). Each survivor proves itself on its **own standalone track** — there is NO pooled wallet.
 - **Deterministic funding gate.** A deterministic scorer — not any LLM — is the only judge that funds SIM tracks: deflated Sharpe, CSCV-PBO, holdout, regime folds, **and a cohort-level Benjamini-Hochberg FDR**. The FDR control is wired into the deployed `FarmLoop.run_cohort` (`GateSettings.fdr_q`, default 0.10): a candidate that clears `score()` but fails BH-FDR across its cohort is demoted (`passed_gates→0`, status `killed`, Track removed) before the orchestrator can fund it — so authoring more candidates per tick can't manufacture a winner. *Still pending:* `must_beat_buy_and_hold` + routing the cohort through the full `research/gate.py:PREREGISTERED_BAR`.
 
@@ -130,4 +139,4 @@ packages/contracts-ts/ Generated from engine OpenAPI (never hand-typed)
 .claude/skills/        Runnable playbooks (this repo's source of truth for procedures)
 apps/engine/strategies/inbox/  Drop specs here — scanned on deploy (under apps/engine so the Railway image ships it)
 ```
-Hosting: **Railway** (engine API + cron) · **Vercel** (web) · **Supabase** (Postgres + pgvector).
+Hosting (EU regions — operator is France-based): **Railway** (engine API + cron) · **Vercel** (web) · **Supabase** (Postgres + pgvector) · **Modal** (bursty heavy compute: backtests/ML/gate sweeps/sandbox — added lane, not a Railway replacement; see docs/COMPUTE.md).

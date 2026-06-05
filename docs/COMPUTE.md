@@ -3,19 +3,37 @@
 > **Problem:** the dev loop is slow because the full gate (`pnpm verify` = engine tests + typecheck + `next build`) gets run on the operator's M2 (OOMs) or in a cloud Claude session (also slow). Heavy quant compute (backtests, ML, gate sweeps) has no dedicated home yet.
 > **Principle (VISION §0/§12):** buy commodity compute, build only the differentiator. Don't rent an idle box; use bursty, scale-to-zero compute driven by Claude Code commands.
 
-## Decision (2026-06-05): Modal is the single compute platform
+## Decision (2026-06-05): Modal for the heavy lane, Railway stays for the backend (hybrid)
 
-Evaluated **Modal vs Fly.io vs staying on Railway** against: leanest · cheapest · most powerful · vision-aligned · fewest platforms to manage.
+Evaluated **Modal vs Fly.io vs RunPod vs all-Railway**, scored on: leanest · cheapest · most powerful · vision-aligned · **EU-accessible (operator is France-based)** · easy to manage.
 
-**Verdict — Modal, and use it to RETIRE Railway (not add a vendor). Fly is rejected.**
-- **Heavy research is the bottleneck**, and it is exactly Modal's sweet spot (per-second, scale-to-zero, image-as-code so deps can't drift from CI, GPU on demand). Fly's Machines can run batch but you hand-manage lifecycle — it's a services platform first. Railway has no real batch lane at all.
-- **Modal also absorbs the services** the engine needs: the API as a Modal ASGI web endpoint, the 4h research loop as a `@modal.cron` scheduled function. So one platform covers API + cron + backtests + ML + sandbox.
-- **Cost for our bursty profile:** Modal's $30/mo free Starter credits realistically cover the whole R&D/forward-test phase; the US non-preemptible 3.75× multiplier only bites on *sustained* 24/7 load — the post-edge V2 moment VISION §12 already defers ("vertical first, then a worker pool when alpha justifies it"). Fly killed its free tier (2024), bills volumes even on stopped machines, and drifts to the $99/mo performance tier for the lane it's worst at. Consolidating drops Railway (~$25/mo) and runs ~$0 cash during R&D.
-- **Vision fit:** VISION §4/§12 already commit to "E2B or **Modal**" for sandbox/ML. Fly appears nowhere in the memo. Modal-as-one-platform is strictly *more* aligned than today's Railway+Modal split.
+**Verdict — keep the hybrid. It's the simplest AND smartest split:**
+- **Backend (engine API + 4h cron) STAYS on Railway.** Light, always-on, **warm (no cold-start)**, already wired, git-push deploy, EU region available, ~$5–20/mo. Re-platforming a working service onto a batch platform buys nothing and adds cold-start latency on the user-facing API.
+- **Heavy bursty lane (backtests · gate sweeps · ML train · agent sandbox) → Modal.** Per-second, scale-to-zero (~$0 idle), image-as-code (no dep drift from CI), invoked via `modal run` from Claude Code or triggered by the engine. **$30/mo free Starter credits cover the R&D phase.**
+- **Clean seam, not added complexity.** Railway runs the loop/API exactly as today; Modal is "a command that runs a heavy job." Each tool does only what it's best at — that's easier to manage than rebuilding the backend on a batch platform.
 
-**Target stack:** Modal (all compute) · Supabase (data) · Vercel (web) · OpenRouter (models). Each irreplaceable; nothing idle.
+**Why Modal over the alternatives for the heavy lane:**
+- *vs Fly.io* — Fly is services-first; its batch lane is hand-managed, no free tier (since 2024), bills stopped volumes. Loses on the one lane we actually need.
+- *vs RunPod* — RunPod is GPU-*pod*-centric (great for cheap sustained GPU, explicit EU regions incl. **France**). Our heavy lane is **CPU-bound batch + sandbox**, where Modal's serverless DX wins. **Revisit RunPod only if/when post-edge ML training becomes GPU-hour-dominated** and Modal's GPU multiplier gets pricey.
+- *vs all-Railway* — no real batch lane; resource-priced always-on means idle costs money.
 
-**Honest caveat:** Modal web endpoints cold-start (~seconds) after idle. Fine for a personal monitoring cockpit; if the API feels laggy, pin `min_containers=1` (small cost) or leave just the API on Railway. Everything *heavy* lives on Modal regardless.
+**EU note (operator is France-based):** keep **Railway + Supabase in an EU region** (latency + residency). Modal jobs are batch so compute-location latency is low-stakes, and market-bar data carries no PII — but **verify Modal's EU region pinning at modal.com/docs** before any residency-sensitive use. (Polymarket's France ANJ geoblock is an operator legality call — VISION §7/§15 — unrelated to compute.)
+
+**Stack:** Railway (backend) · Modal (heavy compute) · Supabase (data, EU) · Vercel (web) · OpenRouter (loop LLM) · Claude Max sub (coding-agent compute).
+
+## Current spend (EU, R&D phase) — keep this DYNAMIC
+Unit rates below are **reasoning inputs only**; the **live Costs card / `costs` table in the app is the canonical, dynamic source of truth** for actual spend (cost/ROI writers already wired). Re-check rates when making a scale decision.
+
+| Vendor | Rate (2026) | R&D-phase cash |
+|--------|-------------|----------------|
+| **Railway** (backend) | $5/mo Hobby + $20/vCPU-mo + $10/GB-mo, billed/sec | ~$5–20/mo (light, mostly idle) |
+| **Modal** (heavy lane) | $0.0000131/core/s + $0.0000022/GiB/s (×3.75 non-preempt US/EU); **$30/mo free credits** | ~$0 during R&D |
+| **Supabase** (data) | Free or Pro $25/mo (pgvector) | $0–25/mo |
+| **Vercel** (web) | Free / Pro $20/mo | $0–20/mo |
+| **OpenRouter** (loop LLM) | `:free` tier by default | ~$0 |
+| **Claude Max** (coding-agent compute) | flat sub | $100/mo (already paid; *is* the heavy-LLM lane) |
+
+**Net new infra cash ≈ $5–45/mo** on top of the existing Max sub. Fly/RunPod would add cost without earning their lane today.
 
 ## The two compute tiers (different problems, different homes)
 
@@ -27,7 +45,7 @@ Evaluated **Modal vs Fly.io vs staying on Railway** against: leanest · cheapest
 **Today the engine is light** (deps: ccxt/fastapi/pydantic/sqlalchemy; ~80 fast hermetic test files). So the current slowness is almost entirely **JS install + `next build`**, NOT Python. The Modal tier matters once the heavy quant deps are pulling weight; the CI tier is the pain *now*.
 
 ## Why NOT a persistent Fly/Railway dev box
-Renting a beefy always-on box is the worst of the options: you pay for it idle, you hand-maintain its deps (they drift from CI and break differently), and it doesn't auto-scale for a big sweep. **Modal beats it** — scale-to-zero (≈$0 idle), beefy on demand, image defined in code (deps can't drift), per-second billing. Fly is a *services* platform first; its batch lane is hand-managed and it has no free tier — so it loses to Modal on the heavy lane *and* doesn't earn its place as a second vendor (see Decision above: Modal also takes the services, so Railway is retired rather than swapped for Fly).
+Renting a beefy always-on box is the worst of the options: you pay for it idle, you hand-maintain its deps (they drift from CI and break differently), and it doesn't auto-scale for a big sweep. **Modal beats it** — scale-to-zero (≈$0 idle), beefy on demand, image defined in code (deps can't drift), per-second billing. Fly is a *services* platform first; its batch lane is hand-managed and it has no free tier — so it loses to Modal on the heavy lane *and* doesn't earn its place as a vendor. The backend that genuinely needs always-on hosting (engine API + cron) stays on Railway, which is light and warm; Modal is added only for the bursty heavy jobs (see Decision above — hybrid).
 
 ## The critical CI caveat (read this)
 **Push = deploy.** Railway + Vercel auto-deploy on every push to the working branch, and `verify.yml` runs in **parallel** with that deploy, not as a gate before it. So "let CI verify on push to main" does **not** protect main from deploying broken.
@@ -47,4 +65,4 @@ This is how the 2026-06-04 7-PR merge train was landed.
 5. A thin `apps/engine/remote/` Modal app: one function = "run the Gate / a backtest / an ML train" on a defined image. Claude invokes `modal run …`; results stream to the session. Scale-to-zero → $0 idle. This is the same E2B/Modal sandbox the VISION already commits to, wired earlier for dev speed.
 
 ## Skip
-A standing Fly/Railway compute box; a Fly migration of the services (lateral move, new vendor not in VISION — Modal absorbs them instead, see Decision); TradingView/QuantConnect as compute runners (those are idea scratchpads, not CI/ML infra).
+A standing Fly/Railway compute box; a Fly migration of the services (lateral move, new vendor not in VISION); RunPod for now (GPU-pod-centric — post-edge GPU-training option only, see Decision); re-platforming the working Railway backend onto a batch platform; TradingView/QuantConnect as compute runners (those are idea scratchpads, not CI/ML infra).
