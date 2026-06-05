@@ -169,4 +169,12 @@ hunt for an edge through a now-trustworthy gate, with feature-wiring (7→45) as
 polish UI or widen the funnel as a substitute for finding an edge. The moat is the honest Gate + PIT
 discipline + the falsification record — make that the hero.
 
+## SCALING THE RESEARCH ENGINE (autonomous ingestion + iteration)
+See **`docs/RESEARCH_THROUGHPUT.md`** — the clean Railway(orchestrate) → Modal(compute) → DB(store)
+workflow for autonomous data ingestion + the strategy×asset×timeframe×view matrix sweep, with build
+prompts T1–T4. HARD PREREQUISITE: fix-1 (global deflation) + Wave 1 (router split) must land first —
+scaling draft volume without global FDR is a false-positive factory. Autonomous draft generation =
+OpenRouter API in-engine (NOT Claude Code, which is interactive); compute = Modal; LLM never computes
+ML or touches money.
+
 > Deeper raw reviews (this session) are in the workflow transcripts if needed; everything actionable is above.
