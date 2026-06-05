@@ -1,0 +1,55 @@
+{
+  "name": "BTC social-attention contagion — buy the alt the day after BTC's crowd spikes",
+  "rationale": "NON-OBVIOUS finding from the cross-asset contagion study in the probe: a spike in BITCOIN's social_volume (BTC social acceleration, ln v_t/v_{t-1}) LEADS the mean-ALT forward return — corr(BTC social-change_t, mean-ALT fwd return) = +0.068 at k=1, +0.064 at k=2, decaying to +0.027 by k=3 (n~1000 days). A head-to-head OLS confirms it is BTC's CROWD, not its price: standardized beta on BTC_social_accel +0.064 (t=+2.01) dominates BTC_price_return -0.016 (t=-0.50). The lead is the SAME sign and shape as the within-asset attention-acceleration effect, but it is BTC's crowd read on the ALTS — when attention floods into Bitcoin, the alt complex pops the next 1-2 days. The failed cross-asset-social-rotation spec rotated on each asset's OWN social VOLUME LEVEL (always-true on the 160x-drifted scale) and never tested a cross-asset lead at all. This spec enters a long in an alt the day AFTER btc_social_accel clears a floor (BTC attention spiked, known next day — point-in-time), while the alt itself is not already crowded (own social_attention_z below a ceiling) and not falling, and holds 1-2 days (the contagion is gone by k=3). Disconfirmer: the contagion is distinct ONLY if BTC's social lead beats the asset's OWN social lead AND beats BTC's PRICE lead. It is FALSIFIED if replacing btc_social_accel with the asset's own social_volume_accel (the Spec-1 trigger) does as well — then this is just the within-asset attention effect, not contagion. It is also FALSIFIED if a plain 'buy alts after BTC price rose' rule (BTC return contagion) does as well — then the social data adds nothing over price (this second leg is checked in the cohort harness/report, not encodable in the spec DSL). tier1 + low-confidence until validated OOS.",
+  "catalyst": "Bitcoin social attention spikes; the alt complex follows 1-2 days later",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 3
+  },
+  "entry": [
+    {
+      "feature": { "name": "btc_social_accel" },
+      "op": "gt",
+      "threshold": { "param": "btc_accel_floor" }
+    },
+    {
+      "feature": { "name": "social_attention_z" },
+      "op": "lt",
+      "threshold": { "param": "alt_ceiling" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": []
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.35
+  },
+  "param_space": {
+    "btc_accel_floor": { "kind": "float", "lo": 0.05,  "hi": 0.50 },
+    "alt_ceiling":     { "kind": "float", "lo": 0.50,  "hi": 2.50 },
+    "mom_lb":          { "kind": "int",   "lo": 3,     "hi": 20,   "step": 1 },
+    "mom_floor":       { "kind": "float", "lo": -0.02, "hi": 0.03 },
+    "stop":            { "kind": "float", "lo": 0.03,  "hi": 0.12 },
+    "tp":              { "kind": "float", "lo": 0.04,  "hi": 0.20 },
+    "time_stop":       { "kind": "int",   "lo": 1,     "hi": 3,    "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

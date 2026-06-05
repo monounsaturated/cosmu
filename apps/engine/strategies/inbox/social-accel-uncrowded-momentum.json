@@ -1,0 +1,62 @@
+{
+  "name": "Social-volume ACCELERATION (not altitude) — long the fresh attention jump while still uncrowded",
+  "rationale": "NON-OBVIOUS finding from the lead-lag probe (scripts/social_leadlag_probe.py, 30 assets, ~1000 PIT daily bars each): the day-over-day CHANGE in social_volume carries the signal that the absolute LEVEL does not. A fresh acceleration (ln v_t/v_{t-1}) LEADS price UP at k=1-3d — cross-asset mean corr +0.024/+0.030/+0.020, t=+5.3/+9.4/+5.7, 83-100% of assets positive — then decays to insignificance by k=5 (t=+1.67, p=0.105). The same data's LEVEL effect (within-asset z of social_volume -> fwd ret) is only weakly negative and NOT robust on the full sample (best t=-1.98 at k=5, p=0.057), so the altitude guard below is the spec's WEAKEST leg, kept only as a falsifiable hypothesis. A partial-correlation disconfirmer confirms the acceleration edge SURVIVES controlling for the level (raw r +0.030 -> level-residualized r +0.033) — it is genuinely the change, not the altitude, that pays. The generic social cohort that just FAILED the Gate fitted ABSOLUTE volume floors on a series that grew ~160x (2020-26), so its filter was always-true and it tested neither effect. This spec separates them: enter LONG only on a fresh social_volume_accel jump (ride the crowd piling in) WHILE social_attention_z is still BELOW a ceiling (the crowd has NOT already piled in), with own-price momentum confirming. Exit fast (max 3 days, before the k=5 decay) or when the acceleration rolls over. Disconfirmer: the edge must come from the ACCELERATION, not the altitude guard — if dropping the `social_attention_z < alt_ceiling` condition yields an equal-or-better deflated Sharpe (likely, given the level effect is marginal), the altitude leg adds nothing and should be killed, leaving pure attention-momentum. Second disconfirmer: max_hold is capped at 3d because the change->return signal decays to insignificance by k=5; if the fit wants to hold >=5d to make money, the decay finding is violated and the edge is not the one claimed. tier1 + low-confidence until validated OOS.",
+  "catalyst": "social_volume accelerates (fresh attention jump) while the crowd is not yet crowded and price momentum confirms",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 3
+  },
+  "entry": [
+    {
+      "feature": { "name": "social_volume_accel" },
+      "op": "gt",
+      "threshold": { "param": "accel_floor" }
+    },
+    {
+      "feature": { "name": "social_attention_z" },
+      "op": "lt",
+      "threshold": { "param": "alt_ceiling" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "social_volume_accel" },
+        "op": "cross_down",
+        "threshold": { "param": "accel_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.35
+  },
+  "param_space": {
+    "accel_floor": { "kind": "float", "lo": 0.05,  "hi": 0.50 },
+    "alt_ceiling": { "kind": "float", "lo": 0.50,  "hi": 2.50 },
+    "mom_lb":      { "kind": "int",   "lo": 3,     "hi": 20,   "step": 1 },
+    "mom_floor":   { "kind": "float", "lo": 0.0,   "hi": 0.05 },
+    "stop":        { "kind": "float", "lo": 0.03,  "hi": 0.12 },
+    "tp":          { "kind": "float", "lo": 0.04,  "hi": 0.20 },
+    "time_stop":   { "kind": "int",   "lo": 1,     "hi": 3,    "step": 1 },
+    "accel_exit":  { "kind": "float", "lo": -0.10, "hi": 0.10 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,56 @@
+{
+  "name": "Excess social attention (loud RELATIVE to volume) — ~1-week continuation",
+  "rationale": "NON-OBVIOUS finding from the lead-lag probe (scripts/social_leadlag_probe.py, 30 assets, ~1000 PIT daily bars each): it is not the ABSOLUTE social_volume that leads price, but social attention RELATIVE to the money actually trading — excess_attention = ln(social_volume) - ln(dollar_volume), within-asset z. High excess attention LEADS price UP at the ~1-week horizon: the cross-asset mean corr(excess-attention_t, fwd-ret_{t->t+7}) = +0.044 (t=+4.34, 73% of assets positive), and the top-vs-bottom decile forward-return spread at k=7 is +1.81% (t=+5.77, p<0.001). The effect is essentially absent at k=1-3 (|t|<0.8) and emerges only by k=5-7 — a SLOW continuation, not a day-trade. This is the exact seam the social cohort that just FAILED the Gate could not test: it fitted absolute social_volume floors (always-true on a 160x-drifted series) and never normalized by traded volume, so it conflated 'a big coin with lots of everything' with 'a coin the crowd is unusually loud about for its size'. We enter LONG when social_excess_attention_z is HIGH (the crowd is disproportionately loud vs money) with price momentum not already broken, and hold to the ~1-week horizon where the edge lives. Disconfirmer: the signal is RELATIVE attention, not raw attention. It is FALSIFIED if replacing social_excess_attention_z with the raw social_attention_z (level, not normalized by dollar volume) does as well or better — then dollar-volume normalization adds nothing and this is just the (weak, marginal) level effect. Second disconfirmer: the edge is horizon-specific (k~7); if the fit makes money with a max_hold of 1-2 days, it is trading a different (short-horizon) signal than the one found, and the k=7 thesis is not what is paying. tier1 + low-confidence until validated OOS.",
+  "catalyst": "the crowd is unusually loud relative to the money trading the asset; price continues over the following week",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": { "name": "social_excess_attention_z" },
+      "op": "gt",
+      "threshold": { "param": "excess_floor" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "social_excess_attention_z" },
+        "op": "cross_down",
+        "threshold": { "param": "excess_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.40
+  },
+  "param_space": {
+    "excess_floor": { "kind": "float", "lo": 0.50,  "hi": 2.50 },
+    "excess_exit":  { "kind": "float", "lo": -0.50, "hi": 1.00 },
+    "mom_lb":       { "kind": "int",   "lo": 5,     "hi": 30,   "step": 1 },
+    "mom_floor":    { "kind": "float", "lo": -0.02, "hi": 0.04 },
+    "stop":         { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":           { "kind": "float", "lo": 0.06,  "hi": 0.25 },
+    "time_stop":    { "kind": "int",   "lo": 4,     "hi": 10,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
