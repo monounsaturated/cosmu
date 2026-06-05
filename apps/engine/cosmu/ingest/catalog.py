@@ -146,6 +146,19 @@ def _fetch_dvol(store: Any, symbols: list[str], providers: Any) -> int:
     return ingest_numeric(store, providers.dvol, symbols, "dvol", provider_name="deribit")
 
 
+def _fetch_llm_index(store: Any, symbols: list[str], providers: Any) -> int:
+    """LLM qualitative→quantitative index scores — each market-wide under its semantic name. Key-gated (no LLM
+    key → provider returns [] → 0, never an abort). The LLM only proposes the rubric-anchored number at ingest."""
+    from cosmu.lab.indexes import INDEX_RUBRICS
+
+    total = 0
+    for metric in INDEX_RUBRICS:
+        total += ingest_market_wide_numeric(
+            store, providers.llm_index, source_metric=metric, stored_metric=metric, provider_name="llm_index",
+        )
+    return total
+
+
 def _fetch_risk_on(store: Any, symbols: list[str], providers: Any) -> int:
     return ingest_market_wide_numeric(
         store, providers.polymarket, source_metric=providers.polymarket_token, stored_metric="risk_on", provider_name="polymarket",
@@ -190,8 +203,16 @@ def managed_sources() -> dict[str, SourceSpec]:
         ),
         SourceSpec("gdelt_tone", "alt", ("gdelt_tone",), _fetch_gdelt_tone, market_wide=True, per_symbol=False, note="GDELT geopolitical news tone (keyless, EU-accessible, market-wide daily)."),
         SourceSpec("dvol", "alt", ("dvol",), _fetch_dvol, note="Deribit DVOL implied vol (keyless, EU-native, BTC/ETH only)."),
+        SourceSpec("llm_index", "alt", tuple(_index_metrics()), _fetch_llm_index, market_wide=True, per_symbol=False, note="LLM qualitative→quantitative index scores (key-gated; market-wide)."),
     ]
     return {s.name: s for s in specs}
+
+
+def _index_metrics() -> tuple[str, ...]:
+    """The LLM index metric names, derived from the rubric registry (DRY — never a second hand-listing)."""
+    from cosmu.lab.indexes import INDEX_RUBRICS
+
+    return tuple(INDEX_RUBRICS)
 
 
 def source_names() -> list[str]:
