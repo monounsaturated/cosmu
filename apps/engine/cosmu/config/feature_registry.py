@@ -148,6 +148,25 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     FeatureDefinition(name="pm_implied_prob", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Odds are a cross-market probability signal."),
     FeatureDefinition(name="pm_prob_velocity", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Probability repricing speed identifies changing beliefs."),
     FeatureDefinition(name="pm_book_depth", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Depth defines fillable capacity."),
+    # --- EU-accessible, keyless alt-data (tier1 until validated OOS): GDELT geopolitical tone + Deribit DVOL ---
+    FeatureDefinition(
+        name="gdelt_tone",
+        source="gdelt",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="daily geopolitical news tone (next-day availability floor — a day's indexed articles are closed by end-of-day; no look-ahead)",
+        prior="Aggregate geopolitical/macro news tone from GDELT (keyless, global); negative tone spikes mark risk-off events that can precede drawdowns; sustained positive tone may tag risk-on regimes. tier1 — must earn its place OOS.",
+        transform_version="gdelt-tone-v1",
+    ),
+    FeatureDefinition(
+        name="dvol",
+        source="deribit",
+        tier="tier0",
+        asset_classes=["crypto"],
+        asof_semantics="daily close (next-day availability floor — DVOL bar opens at midnight UTC and is finalized at day-end; no look-ahead)",
+        prior="Deribit DVOL is the crypto-native options implied volatility index (30-day annualized), the VIX equivalent for BTC/ETH options; elevated DVOL marks stress or opportunity and conditions position sizing and regime filters.",
+        transform_version="dvol-v1",
+    ),
 )
 
 

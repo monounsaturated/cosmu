@@ -16,11 +16,13 @@ from cosmu.data.altdata import (
     CboePutCallProvider,
     CoinglassLiquidationProvider,
     DefiLlamaTvlProvider,
+    DeribitDvolProvider,
     ExchangeNetflowProvider,
     FearGreedProvider,
     FredMacroProvider,
     FundingRateProvider,
     GdeltNewsProvider,
+    GdeltToneProvider,
     LunarCrushProvider,
     NewsProvider,
     OsintAirActivityProvider,
@@ -83,6 +85,9 @@ class Providers:
     venue_fees: AltDataProvider = field(default_factory=lambda: VenueFeesProvider("binance"))
     # Cross-asset daily price levels (free, no key): Stooq is primary; YahooDailyProvider is a drop-in alt.
     multiasset: AltDataProvider = field(default_factory=StooqDailyProvider)
+    # EU-accessible, keyless: GDELT geopolitical news tone (market-wide) + Deribit DVOL (per-symbol BTC/ETH).
+    gdelt_tone: AltDataProvider = field(default_factory=GdeltToneProvider)
+    dvol: AltDataProvider = field(default_factory=DeribitDvolProvider)
     llm: Callable[[str], StandardizedNews] | None = None
     # Typed event/news scorer LLM (the cheap-OpenRouter formatter). Key-gated → None without a key, so the
     # event scorer uses the deterministic lexicon. The LLM only standardizes text at ingest, never the money path.
@@ -292,6 +297,16 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     # ONLY at ingest (cached); the offline lexicon is used when no LLM key is set.
     counts["news_event_score"] = _safe(
         "news_event_score", lambda: ingest_news_event_score(store, p.news, symbols, llm=p.event_llm)
+    )
+    # EU-accessible, keyless: GDELT geopolitical news tone (market-wide) + Deribit DVOL (per-symbol BTC/ETH).
+    counts["gdelt_tone"] = _safe(
+        "gdelt_tone",
+        lambda: ingest_market_wide_numeric(
+            store, p.gdelt_tone, source_metric="gdelt_tone", stored_metric="gdelt_tone", provider_name="gdelt"
+        ),
+    )
+    counts["dvol"] = _safe(
+        "dvol", lambda: ingest_numeric(store, p.dvol, symbols, "dvol", provider_name="deribit")
     )
     # Cross-asset daily price levels (free, no key): metals / commodities / equity indexes / FX. Each is
     # market-wide (ingested once under the MARKET key under its SEMANTIC name). Numeric → no LLM.
