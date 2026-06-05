@@ -133,6 +133,17 @@ so we never bust budget.** Extend `cosmu/costs/`:
 thresholds emit a Slack + recommendation (tested), `costs` rows written. `pytest -k cost` green. PR, don't merge.
 **Buy vs build:** build — it's a few API calls + the existing costs table + Slack. No SaaS needed.
 
+### M · Slack notifier — wire the alert webhook (engine, CLOUD code / LOCAL run, sonnet)
+Branch `claude/slack-notifier`. **Today Slack is a SEAM, not wired** — events are emitted (`fee_model_drift`,
+drawdown kill-switch) and `SLACK_WEBHOOK_URL` is only shown as a status key in `api/app.py`; nothing actually POSTs.
+Build the consumer:
+1. Add `slack_webhook_url: str | None` to `config/settings.py` (read from env/.env.local).
+2. A tiny `cosmu/.../notify.py` (stdlib `urllib`) that POSTs a compact message; **key-gated** (no URL → no-op).
+3. Subscribe it to the alert-worthy events: **drawdown kill-switch**, **fee-model drift**, **cost-budget thresholds
+   (Task L)**, **new recommendation**, **new funded survivor**. One concise line each, with a link/context.
+4. Offline test (mock POST): event → formatted payload; no-URL → no-op.
+**Done when:** `pytest -k slack` green; an event produces a POST when keyed. CLOUD to build; LOCAL/Railway to fire.
+
 ---
 
 ## ⚪ QUEUED (need local/Railway or real data — run after the cloud wave)
