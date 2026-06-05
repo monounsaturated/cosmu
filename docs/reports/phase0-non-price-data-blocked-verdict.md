@@ -159,10 +159,14 @@ gate ran fine), masking the bug. Fixed here (`_parse_env` now ends an unquoted v
 
 The **local deterministic per-candidate sweep above is the binding verdict** (same scorer Modal uses)
 — cross-market STOPs, and the two data-blocked specs join 0 PIT rows on the same shared Supabase, so
-they are un-gateable on Modal too. Re-running the Modal cohort with the fixed secret (to exercise the
-whole population FDR-across-family on bigger compute, and to let the key-gated feeds ingest where the
-keys live) is a fast follow-up — it cannot overturn a 0/48 per-candidate STOP, but it confirms the
-secret fix end-to-end.
+they are un-gateable on Modal too.
+
+**Secret fix confirmed end-to-end (re-run):** with the corrected `_parse_env`, `pnpm modal:gate`
+connects to Supabase with **zero** `database "…" does not exist` errors (previously every job died at
+DB connect) and proceeds into the scheduler's ingest/gate cycle on bigger compute. (One unrelated
+note surfaced: `ingest source funding_rate failed … HTTP Error 451` — Binance geo-blocks Modal's
+egress IPs; a pre-existing region issue independent of this work, tracked separately.) This cannot
+overturn a 0/48 per-candidate STOP; it confirms the Modal lane is unblocked again.
 
 ---
 
