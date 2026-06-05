@@ -719,6 +719,18 @@ class AutonomyTickResponse(BaseModel):
     recommendations: int
 
 
+class AutonomyTickAcceptedResponse(BaseModel):
+    job_id: str
+    status: str  # always "running" on 202
+
+
+class AutonomyTickJobResponse(BaseModel):
+    job_id: str
+    status: str  # "running" | "done" | "error"
+    result: AutonomyTickResponse | None = None
+    error: str | None = None
+
+
 class RecommendationActionResponse(BaseModel):
     ok: bool
     applied: bool = False

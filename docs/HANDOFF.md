@@ -1,55 +1,162 @@
-# Cosmu — Handoff & Overview (read this first in a fresh chat)
+# COSMU — Master / Orchestrator Brief
 
-> One screen to pick up the project without re-explaining. Pair with [AGENTS.md](../AGENTS.md), [MASTER_PLAN.md](MASTER_PLAN.md), [KEYS.md](KEYS.md).
+> The canonical handoff. Read this first, then `AGENTS.md`. You own `main`, design
+> sub-agent prompts, merge their work, drive compute, and **decide the means**. The
+> goal is fixed; the path is yours. **Buy-over-build** when cheaper/faster/easier to
+> maintain. If you do anything twice, make it a **skill**. Keep everything lean,
+> durable, replicable, agentic-first.
 
-## North star
-Autonomous, **honest, LEAN** crypto money-machine. LLM **proposes** strategies; a deterministic **FDR gate disposes** (out of any LLM reach). Profit net of fees. Internal tool — Claude Code is part of the product. Stack: pure-Python engine (Railway) · Next web cockpit (Vercel) · Supabase.
+## 🧭 Operator direction (current, from the operator)
+1. **Both depth AND breadth.** Nail edges end-to-end *and* widen the research machine.
+2. **Test SEVERAL high-impact ideas where we have an unfair advantage** — smart, logical,
+   small-size niches big funds ignore. **Across ALL assets + strategy variants**
+   (the strategy × asset × timeframe matrix). Likely edges to probe: funding carry,
+   social-authority/insider signals (our build moat), prediction markets, cross-market
+   signal transfer, vol-regime — but **you test and let the Gate decide**.
+3. **Live with real money is wanted** — once a strategy proves in SIM, the operator
+   WILL fund it small to try, **across all assets** (crypto, equities, prediction mkts).
+4. **Spend:** manage fees first; **invest more for high-impact work or to clear a
+   bottleneck; scale spend as profit grows** — build a continuously-better machine.
+5. **Track external trends** (AI-narrative coins, rates/macro, geopolitics via
+   prediction markets, X/Reddit sentiment) and exploit where there's edge.
 
-## State (2026-06-04 — post 7-PR merge train)
-- **The autonomous machine is ON.** Merged to main this session (one integration branch, CI-gated, ONE remote verify): **#47** replicate/evolve flywheel wired into the tick · **#48** experiments registry + soft-labels (cold-start ML gradient) · **#57** adversarial gate proof (no-edge→0, known-edge→pass; *no leak found*) · **#58** SIM→live variance-attribution + `/profile-source` data-trust audit · **#59** modular Notion-vibe cockpit (tool-aligned KPIs, TradingView charts, `/command` hints) · **#60** wider perp universe (~30) + multi-timeframe bars + ML-ready point-in-time panels. (#56 LLM-formatter was dropped as a **duplicate** of the wired `ingest/llm_formatter.py` — see BACKLOG debt note.)
-- **Compute strategy is now explicit** — see [COMPUTE.md](COMPUTE.md): CI/verify → GitHub Actions (the remote gate; push=deploy so the gate is **PR CI before merge**); heavy research → **Modal** scale-to-zero later. Do NOT run full `verify` locally — targeted tests + remote CI.
-- **Engine = lean pure-Python** (deps: ccxt/fastapi/pydantic/sqlalchemy only). Deflated-Sharpe, CSCV-PBO, BH-FDR, backtester are **hand-rolled on purpose** (auditable, low-RAM). Real Binance bars · FDR-gated funding · forward-mark clock.
-- **Discovery is now TRUSTWORTHY** — `finder.py` significance leaks FIXED in pure-Python (#51): true trial-count, effective-N correlation haircut, real CSCV-PBO, purged+embargoed WFO, per-symbol min_trades, dedupe-before-FDR + a permutation-null regression test.
-- **Data:** funding deep (**20 symbols × 2yr**). Most alt sources free + wired; multi-asset (stocks via Stooq, etc.) wired. Add a key → that source un-greys.
-- **UI:** 4-tab cockpit — **Overview · Strategies · Scores · Mind** — honest empty states, dynamic "What to do next", per-source index scores, Settings→Keys status page. Synthetic verdicts killed. **No API auth** (internal tool).
-- **0 survivors = honest "no edge found yet"** (data was thin; now deep — re-test pending).
+## 🔑 Your authority & autonomy (you may operate the whole stack)
+You may **edit and operate everything**, smartly and securely:
+- **Code/GitHub:** own `main`, branches, PRs, merges, CI.
+- **Infra:** Railway, Vercel, Supabase, Modal — config, deploys, migrations, regions.
+- **Secrets:** edit `.env.local` (gitignored) to add Modal + any keys; **sync secrets
+  OUT to the platforms** — `pnpm modal:secret` (Modal), and for Railway create the
+  mirror `railway:sync` (Railway CLI `railway variables --set …` or API with
+  `RAILWAY_API_TOKEN`). **Feasible & secure IF:** secrets only ever pass as env/CLI
+  args, **never printed to chat/logs, never committed, never put in an LLM prompt**;
+  `.env.local` stays gitignored; prefer a script over hand-typing (replicable).
+- **Spend/models:** **audit and decide** — OpenRouter free is the 24/7 default; escalate
+  to a paid model (e.g. Kimi) when a step is genuinely hard and it's worth it; pay when
+  it raises expected return; throttle when it doesn't. Be wise; ROI-gate everything.
+- **Ask the operator only** on money-at-risk, product direction, or genuine uncertainty.
 
-## The plan (focused, in order)
-1. **NOW:** hand-author the lucrative set — **funding-carry · cross-sectional momentum · funding-contrarian · vol-regime** → run through the now-honest gate on the deep 20×2yr data → **first real survivor (or honest fail)**.
-2. **THEN:** forward-test → **$100 live crypto** (Binance/Kraken) once an edge truly passes → multi-asset.
-3. **LATER:** rebase + merge held PRs (#47 evolve flywheel, #48 experiment tracking) onto the honest finder · adopt OpenBB for plug-and-play multi-asset data · bots.
+## 🎯 Mission / success
+Autonomous risk-adjusted **PROFIT, net of every cost**. Success = the FIRST strategy
+that clears the deterministic **Gate** AND proves net-of-fee edge on its own track
+(today: 127 authored → 0 passed → **no edge yet**). Then decorrelated survivors →
+operator arms one Live small → it keeps edge live. The human drives in plain language.
 
-## Locked decisions (do NOT re-litigate)
-- **Stay LEAN pure-Python.** NO numpy/scipy/sklearn/skfolio/mlfinlab, **NO QuantConnect/LEAN rewrite** — the hand-rolled honest gate is the moat; heavy frameworks = more LLM error, OOM, lost auditability, huge migration. (QC only ever as an *optional* live-broker adapter, much later.)
-- **No pooled wallet** (per-strategy tracks; "live" is a stage, not a separate wallet). No mock wallets.
-- **Free-data-first**; pay only after a category proves edge; **≤$200/mo**.
-- **No API auth** (internal). **No new hardware** (Fly.io / Mac mini / Pi won't help — see Speed).
-- **Buy-not-build COMMODITY infra** (OpenBB data, ccxt) — never the core gate.
+## 🧑‍🚀 The only loop the human touches
+They dump ANYTHING — idea, trade hunch, feature, gripe — into `IDEAS.md` 🗑️ **DUMP ZONE**.
+You run the rest, every time: **read → sort → route** (product/infra → `BACKLOG.md` as a
+defined **user story**; trade → `/strategize` → typed spec → the **Gate**; junk → dropped)
+**→ prioritize → `/fan-out` builds it (sub-agents) → CI tests it → clear the zone.**
+The human only dumps and reviews results. Keep that promise.
 
-## Speed / compute rules (the real cheat codes)
-- **Build on local M2.** Cloud Claude only to isolate truly-disjoint parallel agents (cloud terminal is *also* slow — not a magic speed-up).
-- **The slowness is verify + LLM latency, not CPU.** `pnpm verify` = full `next build` + full pytest (~6–9 min). Running 2+ verify-agents on one 16GB M2 → contention → 40-min runs.
-- **Cheat codes:** during work use **targeted tests** (`pytest -k …`), push with `--no-verify`, run **ONE** full verify at merge. Don't reinstall deps per worktree. Do **big audits at the END**, not 24/7. Engine-only changes skip `next build`.
+## ✅ Checkpoint 0 — verify live/merged/deployed (do first)
+- `git log --oneline origin/main -1` → `f05b58c`, clean (this was confirmed pushed).
+- `curl -s https://cosmu.up.railway.app/health` → ok ; open the Vercel URL → cockpit
+  loads on real data ; `railway run env PYTHONPATH=apps/engine python3 -m
+  cosmu.master.scheduler --n 6` → a tick runs end-to-end. Fix anything red first.
 
-## How to use it
-- **Web cockpit:** Overview (making money? + what to do) · Strategies (lifecycle stages) · Scores (data indexes) · Mind (reasoning). Settings→Keys shows what's plugged.
-- **Claude Code:** `/strategize` (chat a vibe → gated strategy) · `/manage-data verify` (data coverage) · `/run-gate` · `/start-session` (orient).
+## 🖥️ Runtime & dev environment
+**Now: run locally on the Mac (M2 16GB).** It's enough for the master's job — control,
+merge, dispatch — because heavy work is offloaded: **verify → GitHub Actions CI**, **heavy
+quant → Modal**. Do NOT run full `pnpm verify` / `next build` on the Mac (slow + OOM);
+use targeted `pytest -k` and let CI be the gate.
 
-## Human tasks (what YOU connect) → details in [KEYS.md](KEYS.md)
-- Add keys in **Railway → Variables** (server-side). The Settings→Keys page shows configured-vs-not; missing = that source greys, **app still works**.
-- Required already set. Free recommended: **FRED** ✅. Optional/paid (LunarCrush…): only when a category proves edge. Live (Binance/Kraken keys): only when going live.
+**Local setup (once, Mac):** add `MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET` (and any missing
+keys) to **`.env.local`** (gitignored — your single source of truth; the engine reads it in
+dev). Then `pip install modal` and `npm i -g @railway/cli` (+ `gh`). Sync secrets OUT:
+`pnpm modal:secret` (Modal); for Railway, push via `railway variables --set …` or build the
+mirror `railway:sync` script. Secrets only ever pass as env/CLI args — never printed,
+committed, or put in a prompt.
 
-## The goal (autonomous machine)
-A system that **reads → scrapes → ingests → proposes (LLM, from vibes/weak signals) → verifies on the honest gate (no hallucination) → forward-tests → trades live on your click**, leaning hard on current APIs/LLMs/ML. Vibe → verified → live. The leverage: **LLM-formatted, standardized, point-in-time scores/indexes stored with history → train ML on them**.
+**Ready to switch FAST if the Mac gets laggy/buggy, or for parallel envs (not now, be
+prepared):** a GitHub **Codespace** — devcontainer `cosmu` is already configured (4-core/16GB,
+EU-West, keys via Codespaces Secrets injected as env vars; if a file-reading script needs
+`.env.local`, generate it once from those env vars) — **or Gitpod** (equivalent,
+devcontainer-compatible, free tier). **No VPS/Hetzner.** Switching = open the repo there,
+secrets auto-inject, zero migration (same repo); stop it when idle (bursty use ≈ free).
 
-## Next wave (cloud agents; one master orchestrator merges)
-1. **Turn ON the autonomous machine** — rebase + merge **#47 (evolve flywheel)** + **#48 (experiment tracking)** onto the now-honest finder → the machine searches thousands of hypotheses, gate as the brake.
-2. **UI rethink** — modular, **Notion-vibe**, data-rich, less clutter; pick-what-to-display; deep-detail on demand; kill the "$ dollars" KPIs for tool-aligned metrics; logic+buttons+hover-modals not walls of text.
-3. **Data depth + pipelines** — wider perp universe (carry was INSUFFICIENT-DATA on 5 symbols), more sources, **multiple timeframes**, no duplicates, ML-ready standardized storage.
-4. **Inspiration skills** (in IDEAS): `/profile-source` data-trust audit (before) · backtest integrity audit (after) · **SIM→live variance attribution** · Polymarket-only LLM research-desk · adaptive scraper.
-5. **Strategy × asset × timeframe matrix** — the core ML feature (tailor each strategy per asset/timeframe).
+## 🤖 Agentic operating model (the codebase IS your interface)
+- **Skills = your verbs** (`.claude/skills/*`): start-session, strategize, create-strategy,
+  dump-idea, triage-ideas, run-gate, scan-signals, evolve-strategy, debug-strategy,
+  add-venue, add-data-source, profile-source, manage-data, import-pine, fan-out,
+  split-tasks, groom, tech-debt, align-check, code-review, deploy-check, deploy-iterate,
+  variance-attribution. Use them; **if a procedure recurs, write a new skill.**
+- **Docs = your map:** `AGENTS.md` → `docs/START_HERE.md` → `docs/AGENT_TASKS.md` →
+  `BACKLOG.md` → `IDEAS.md` → `docs/COMPUTE.md` → VISION. Read the INDEX, not everything.
+- **Types:** TS contracts generated from the engine OpenAPI (`@cosmu/contracts-ts`) —
+  never hand-typed. Every module opens with an intent-spec. Keep docs token-frugal.
+- **Buy-over-build:** managed for plumbing (OpenRouter, Modal, Supabase, social-listening,
+  voice, search). Build only the differentiator: the deterministic Gate + the loop.
 
-## Decisions to carry (don't re-litigate)
-- **QuantConnect: NO rewrite** (the honest hand-rolled gate is the moat). **But DO offload COMMODITY layers to external services** to maintain less + keep the codebase readable: **OpenBB** (data), **TradingView** (charts/Pine), a **broker SDK** (live exec). Lean core stays ours. *(This is "buy>build, modular, easy-to-read" applied correctly.)*
-- **Compute/where things run:** BUILD on **local M2** (now fast — hermetic tests dropped verify 28→12 min) for 1–2 agents; use **cloud Claude chats** only for **3+ truly-parallel** agents (separate VMs → no M2 contention). **AUTONOMOUS RUNNING** (data fetch, the tick, ML) = **Railway crons**, NOT Claude agents. Speed cheat codes: targeted tests during work, `--no-verify` push, ONE verify at merge, big audits at the end.
-- **Idea intake:** drop one-liners in `IDEAS.md` → `/triage-ideas` promotes into `BACKLOG.md` → `/fan-out` → PRs. Never break the current plan; prioritize, don't pile.
+## 🧩 Sub-agent dispatch (quick · smart · coherent)
+Queue: `docs/AGENT_TASKS.md` (spawn via `/fan-out` + `/split-tasks`). Standard prompt
+shape: **branch · 🌍 env (cloud = offline code+tests+`next build` | local =
+secrets/Modal/Railway/live data) · 🔌 needs · scope · done-when (targeted tests) ·
+"PR, don't merge".** **One branch = one environment.** Cloud = parallel offline code;
+you (networked) = `.env`/Modal/Railway/live. Heavy quant → Modal. Verify → CI.
+
+## 🧪 Human checkpoints (small, testable, frequent)
+After each wave, hand the operator a thing to click/run: (a) live app loads + a surface
+shows new real data; (b) a tick runs, counts move; (c) `/run-gate` verdict on a real spec;
+(d) Costs card shows real vendor spend; (e) **first survivor in Forward-test** — the
+milestone that matters. Give the exact command/URL each time.
+
+## 🗺️ Architecture
+Deterministic **MASTER** (money/schedule/caps/live-gate/**SCORER**) + LLM **LAB AGENT**
+(authors/mutates/ML in sandbox). **LLM proposes, Gate disposes — no LLM in money.**
+Flow: author → screen → walk-forward (real fees) → **GATE** (deflated Sharpe · CSCV-PBO ·
+holdout · regime folds · cohort BH-FDR) → $100k SIM track → forward-test → Live (armed).
+**THE MIND:** analyst panel (Technical · Macro · Sentiment · Social · OSINT · Positioning
++ ML-survival + Memory) → consensus; reasons only, never funds, abstains w/o data.
+No pooled wallet. Live OFF behind 5 interlocks.
+
+## 📊 Stack
+- **Data** (PIT, look-ahead-safe, each needs a prior hypothesis): FREE — ccxt
+  funding/OI/liq/basis/netflow, FRED, fear&greed, DefiLlama, Polymarket odds, Reddit,
+  GDELT tone, Deribit DVOL, ECB. KEYED — xAI (Twitter), LunarCrush (paid, wired).
+  DERIVED — LLM index scores (reg_risk_crypto, risk_on_off) + planned social-authority.
+  Prod DB: ~731d funding + macro depth (real).
+- **ML:** deterministic tabular **survival** ranker (orders compute, never vetoes) +
+  agent-written ML + LLM-as-judge index scores (rubric + structured, PIT w/ history).
+  Lean pure-Python today (no numpy/scipy/sklearn — deliberate; revisit on Modal only if
+  edge justifies).
+- **LLM routing:** OpenRouter free = 24/7 default (protect ~$10) · xAI = Twitter only ·
+  paid OpenRouter (e.g. Kimi) on hard steps under a cap · Claude Code (Max) = heavy.
+- **Venues** (EU/FR, live gated): binance, kraken(spot), coinbase, ibkr, okx,
+  kraken_futures; polymarket/alpaca data-only. Real per-venue fees = costing truth.
+  Operator wants **all assets** in scope.
+- **Compute:** Railway = engine API + crons (→ EU-West). Modal = heavy lane
+  (`pnpm modal:gate/ingest/secret`). GitHub Actions = verify gate.
+
+## 🚦 State / in-flight
+main green & deployed (`f05b58c`). Tick works but is **NOT scheduled** (no cron → runs
+only when invoked). In-flight sub-agent PRs to verify + merge: LLM routing (free-first),
+parallel-CI, frontend refine + unified input, social-authority, cost monitor (/costs
+prerender fixed `f84ee84`), Slack notifier (Slack is a **seam** — emits events, nothing
+POSTs yet), async `/autonomy/tick` (sync = gateway timeout). Edges: apply survival-features
+migration to Supabase; some free feeds blocked (CBOE/Coinglass); verify ≈ 18 min
+(parallel-CI fixes it).
+
+## 🔒 Non-negotiables
+LLM proposes / Gate disposes · scorer + money out of LLM reach · no magic numbers ·
+PIT / no look-ahead · never display synthetic · generated TS only · live OFF · one
+scheduler, every tick audited. **Never read pytest results through `tail`/`head`** (it
+masked a failure → broken `main` once). Coerce web response arrays to `[]` (prerender
+safety). Auto-merge green + low-risk; fix risky yourself; ask operator only on
+money/product/Gate calls.
+
+## 🔓 Open decisions (yours — facts, not answers)
+1. **Dev box — DECIDED:** Mac now (heavy → CI/Modal). Switch FAST to Codespaces or Gitpod
+   if it's laggy/buggy or you want parallel envs (devcontainer ready, zero migration). No
+   VPS/Hetzner. See **Runtime & dev environment** above.
+2. First-edge selection (test several high-impact, all assets) · 3. schedule the tick or
+   not · 4. when a step earns a paid model + the cap · 5. buy-vs-build & premium-data buys
+   (ROI-gated; operator will fund high-impact).
+
+## 📌 Resources & budget
+Keys: DATABASE_URL, XAI, OPENROUTER, FRED, MODAL, RAILWAY, SLACK. Budget ≈ $5–45/mo infra
++ $100/mo Claude Max; OpenRouter ~$10; Modal ~$0 ($30 credits). Operator will invest more
+for high-impact / bottlenecks and scale with profit.
+
+## ▶️ First move
+Checkpoint 0 → pick your dev box → merge the in-flight PRs (CI-gated train) → then drive
+the highest-leverage path to the FIRST surviving edge across the asset matrix. Go.

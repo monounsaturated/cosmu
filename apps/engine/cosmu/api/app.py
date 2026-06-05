@@ -9,7 +9,9 @@ from typing import Any
 
 import os
 
-from fastapi import FastAPI, HTTPException
+import uuid
+
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from cosmu.api.models import (
@@ -17,6 +19,8 @@ from cosmu.api.models import (
     ActivateResponse,
     AutonomyPauseResponse,
     AutonomyStatusResponse,
+    AutonomyTickAcceptedResponse,
+    AutonomyTickJobResponse,
     AutonomyTickResponse,
     AuthorRequest,
     AuthorResponse,
@@ -640,6 +644,11 @@ def recommendations() -> RecommendationsResponse:
     )
 
 
+# In-memory job registry for async tick dispatch.  Single-process; Railway restarts clear it,
+# which is fine — the events ledger is the durable record.
+_tick_jobs: dict[str, dict] = {}
+
+
 def _autonomy_status_response() -> AutonomyStatusResponse:
     from cosmu.api.models import TickSummary as _TickSummary
     from cosmu.master.scheduler import autonomy_status
@@ -685,31 +694,52 @@ def autonomy_resume() -> AutonomyPauseResponse:
     return AutonomyPauseResponse(paused=False)
 
 
-@app.post("/autonomy/tick", response_model=AutonomyTickResponse)
-def autonomy_tick() -> AutonomyTickResponse:
-    """Run ONE bounded, idempotent, audited autonomous cycle: ingest → author (LLM proposes if a key is set, else
-    deterministic) → DETERMINISTIC gate + flywheel → open standalone forward-test tracks from survivors → emit recommendations.
-    LIVE STAYS OFF — sim fills only; the tick never arms live. Cron-able (one tick per call, not a daemon)."""
+def _run_tick_job(job_id: str) -> None:
+    """Background worker: runs the tick and writes the result into _tick_jobs."""
     from cosmu.master.scheduler import run_tick
 
-    # REAL data only: screen + fund on actual Binance spot bars. Synthetic fixtures are CI/offline only —
-    # the app must never display or fund on fabricated edge.
-    report = run_tick(store, n=6, seed=7, edge_market=False)
-    # Persist a point-in-time reflection (the analyst-panel debate) so the agent accrues a memory of HOW IT
-    # THOUGHT each cycle. Defensive: a reasoning record only — it never moves money, and never blocks the tick.
     try:
-        from cosmu.mind import reflect
+        report = run_tick(store, n=6, seed=7, edge_market=False)
+        try:
+            from cosmu.mind import reflect
 
-        reflect(store, reference_bars=_brain_reference_bars())
-    except Exception:  # noqa: BLE001 — reflection is best-effort; the tick must not depend on it
-        pass
-    s = report.summary
-    return AutonomyTickResponse(
-        authored=s.authored,
-        gated_passed=s.gated_passed,
-        funded=s.funded,
-        recommendations=s.recommendations,
-    )
+            reflect(store, reference_bars=_brain_reference_bars())
+        except Exception:  # noqa: BLE001 — reflection is best-effort
+            pass
+        s = report.summary
+        _tick_jobs[job_id] = {
+            "status": "done",
+            "result": AutonomyTickResponse(
+                authored=s.authored,
+                gated_passed=s.gated_passed,
+                funded=s.funded,
+                recommendations=s.recommendations,
+            ),
+            "error": None,
+        }
+    except Exception as exc:  # noqa: BLE001
+        _tick_jobs[job_id] = {"status": "error", "result": None, "error": str(exc)}
+
+
+@app.post("/autonomy/tick", response_model=AutonomyTickAcceptedResponse, status_code=202)
+def autonomy_tick(background_tasks: BackgroundTasks) -> AutonomyTickAcceptedResponse:
+    """Enqueue ONE bounded, idempotent, audited autonomous cycle and return 202 immediately.
+    The cycle (ingest → author → DETERMINISTIC gate + flywheel → fund → recommend) runs in the
+    background so Railway's gateway never times out.  Poll GET /autonomy/tick/{job_id} for the result.
+    LIVE STAYS OFF — sim fills only; the tick never arms live."""
+    job_id = str(uuid.uuid4())
+    _tick_jobs[job_id] = {"status": "running", "result": None, "error": None}
+    background_tasks.add_task(_run_tick_job, job_id)
+    return AutonomyTickAcceptedResponse(job_id=job_id, status="running")
+
+
+@app.get("/autonomy/tick/{job_id}", response_model=AutonomyTickJobResponse)
+def autonomy_tick_job(job_id: str) -> AutonomyTickJobResponse:
+    """Poll the result of an async tick dispatch.  Returns status: running | done | error."""
+    job = _tick_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="tick job not found")
+    return AutonomyTickJobResponse(job_id=job_id, **job)
 
 
 @app.post("/recommendations/{rec_id}/approve", response_model=RecommendationActionResponse)
