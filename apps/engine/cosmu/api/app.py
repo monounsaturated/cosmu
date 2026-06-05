@@ -203,6 +203,11 @@ def _live_caps_row() -> dict[str, float]:
 async def lifespan(_: FastAPI):
     import threading
 
+    from cosmu.notify.slack import SlackNotifier, notify_health_change
+
+    notifier = SlackNotifier.from_settings(settings)
+    notify_health_change(notifier, status="healthy", detail="cosmu-engine started")
+
     def _boot():
         try:
             facade = EngineFacade.create(settings)
@@ -215,7 +220,10 @@ async def lifespan(_: FastAPI):
             pass
 
     threading.Thread(target=_boot, daemon=True).start()
-    yield
+    try:
+        yield
+    finally:
+        notify_health_change(notifier, status="down", detail="cosmu-engine shutting down")
 
 
 def _fund_tracks_on_startup() -> None:
