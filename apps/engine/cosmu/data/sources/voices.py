@@ -27,7 +27,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -35,6 +35,10 @@ from typing import Any, Protocol
 # Bump if the VoicePost schema or any provider's extraction convention changes, so a downstream
 # (Phase 1+) artifact built on these timelines stays reproducible (mirrors xai_twitter's TRANSFORM_VERSION).
 VOICES_TRANSFORM_VERSION = "voices-ingest-v1"
+
+# Default lookback for a first-run Phase-0 historical backfill. Long enough to seed the authority
+# ranker with ≥1 claim-resolution cycle before the Gate evaluates the strategy OOS.
+VOICES_BACKFILL_DAYS = 365
 
 _XAI_BASE_URL = "https://api.x.ai/v1"
 _XAI_MODEL = "grok-3-mini"  # cheap LiveSearch retrieval; the LLM only fetches text, never scores
@@ -263,6 +267,63 @@ class XaiVoiceProvider:
         out.sort(key=lambda p: p.ts)
         return out[-limit:] if limit and len(out) > limit else out
 
+    def _live_fetch_since(self, handle: str, *, since: datetime, limit: int) -> list[dict[str, Any]]:
+        """Prompt Grok LiveSearch for posts by handle on or after `since`. Coverage of past dates
+        is best-effort — LiveSearch indexes are not a guaranteed historical archive."""
+        user = handle.lstrip("@")
+        since_str = since.strftime("%Y-%m-%d")
+        prompt = (
+            f"Use the LiveSearch tool to find up to {limit} posts by X/Twitter user @{user} "
+            f"posted on or after {since_str}. "
+            "Return ONLY a JSON array of objects, each with fields: "
+            '{"id": "<post id>", "text": "<post text>", "created_at": "<ISO-8601 timestamp>", "url": "<permalink>"}. '
+            "No markdown, no commentary — raw JSON only."
+        )
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "tools": [{"type": "live_search"}],
+            "tool_choice": "auto",
+            "temperature": 0,
+            "max_tokens": 8192,
+        }
+        try:
+            resp = self._http_post(f"{self.base_url}/chat/completions", payload)
+            content = (resp.get("choices") or [{}])[0].get("message", {}).get("content") or "[]"
+            content = content.strip()
+            if content.startswith("```"):
+                content = "\n".join(content.split("\n")[1:])
+            if content.endswith("```"):
+                content = content[: content.rfind("```")]
+            parsed = json.loads(content.strip())
+            return parsed if isinstance(parsed, list) else []
+        except Exception:  # noqa: BLE001
+            return []
+
+    def fetch_timeline_history(
+        self, handle: str, *, since: datetime, limit: int = 200, now: datetime | None = None
+    ) -> list[VoicePost]:
+        """Search for handle's posts from `since` using Grok LiveSearch. KEY-GATED: no api_key → [].
+        available_at == ts (retrospective PIT). Coverage is best-effort — LiveSearch is not a deep archive."""
+        if self._fetcher is None and not self.offline and not self.api_key:
+            return []
+        if self._fetcher is not None:
+            raw = self._fetcher(handle, limit)
+        elif self.offline:
+            raw = list(FIXTURE_X_POSTS)
+        else:
+            raw = self._live_fetch_since(handle, since=since, limit=limit)
+        out: list[VoicePost] = []
+        for row in raw or []:
+            text = (row.get("text") or "").strip()
+            ts = _parse_ts(row.get("created_at"))
+            if not text or ts is None or ts < since:
+                continue
+            pid = str(row.get("id") or "").strip() or _stable_id("x", handle, text, ts)
+            out.append(VoicePost("x", handle, pid, text, ts, ts, url=row.get("url", "") or ""))
+        out.sort(key=lambda p: p.ts)
+        return out
+
 
 # ---------------------------------------------------------------------------
 # Reddit (public user JSON API: submissions + comments, no auth needed)
@@ -297,6 +358,25 @@ class RedditVoiceProvider:
             return []
         return [(c.get("data") or {}) for c in ((payload.get("data", {}) or {}).get("children", []) or [])]
 
+    def _listing_paged(
+        self, handle: str, kind: str, *, limit: int = 100, after_id: str | None = None
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """One paginated page, newest-first. Returns (post-data dicts, next-page cursor or None).
+        The cursor is Reddit's `data.after` fullname (e.g. 't3_abc123') used as the `after` query param
+        on the next call. None cursor signals the listing is exhausted."""
+        user = handle.lstrip("@").removeprefix("u/").removeprefix("/u/")
+        params: dict[str, Any] = {"limit": min(limit, 100)}
+        if after_id:
+            params["after"] = after_id
+        url = f"https://www.reddit.com/user/{user}/{kind}.json?{urllib.parse.urlencode(params)}"
+        try:
+            payload = self._fetcher(url)
+        except Exception:  # noqa: BLE001
+            return [], None
+        data = payload.get("data") or {}
+        children = [(c.get("data") or {}) for c in (data.get("children") or [])]
+        return children, data.get("after") or None
+
     def fetch_timeline(self, handle: str, *, limit: int, now: datetime | None = None) -> list[VoicePost]:
         if limit <= 0:
             return []
@@ -327,6 +407,57 @@ class RedditVoiceProvider:
         permalink = d.get("permalink") or ""
         url = f"https://www.reddit.com{permalink}" if permalink else ""
         return VoicePost("reddit", handle, pid, text, ts, read_at, url=url)
+
+    def _post_pit(self, handle: str, d: dict[str, Any], text: str) -> VoicePost | None:
+        """Build a VoicePost with available_at == ts (retrospective PIT).
+        A Reddit post is publicly visible the moment it is posted, so for historical simulation
+        we can treat it as known at publication — available_at = ts is the honest backfill stamp."""
+        if not text:
+            return None
+        created = d.get("created_utc")
+        if created is None:
+            return None
+        ts = datetime.fromtimestamp(float(created), tz=UTC)
+        pid = str(d.get("id") or "").strip() or _stable_id("reddit", handle, text, ts)
+        permalink = d.get("permalink") or ""
+        url = f"https://www.reddit.com{permalink}" if permalink else ""
+        return VoicePost("reddit", handle, pid, text, ts, ts, url=url)
+
+    def fetch_timeline_history(self, handle: str, *, since: datetime) -> list[VoicePost]:
+        """Paginate back through the user's submitted + comments until posts pre-date `since`.
+        available_at == ts so signal_history() can replay the authority series from the backfill
+        window start. Reddit caps listings at ~1 000 items per user, newest-first."""
+        out: list[VoicePost] = []
+        for kind in ("submitted", "comments"):
+            cursor: str | None = None
+            exhausted = False
+            while not exhausted:
+                children, cursor = self._listing_paged(handle, kind, after_id=cursor)
+                if not children:
+                    break
+                for d in children:
+                    created = d.get("created_utc")
+                    if created is None:
+                        continue
+                    ts = datetime.fromtimestamp(float(created), tz=UTC)
+                    if ts < since:
+                        exhausted = True
+                        break
+                    if kind == "comments":
+                        text = (d.get("body") or "").strip()
+                    else:
+                        title = (d.get("title") or "").strip()
+                        body = (d.get("selftext") or "").strip()
+                        text = f"{title}\n\n{body}".strip() if body else title
+                    p = self._post_pit(handle, d, text)
+                    if p:
+                        out.append(p)
+                if cursor is None:
+                    break
+        seen: dict[str, VoicePost] = {}
+        for p in out:
+            seen[p.post_id] = p
+        return sorted(seen.values(), key=lambda p: p.ts)
 
 
 # ---------------------------------------------------------------------------
@@ -370,6 +501,17 @@ class RssVoiceProvider:
         posts.sort(key=lambda p: p.ts)
         return posts[-limit:] if limit and len(posts) > limit else posts
 
+    def fetch_timeline_history(self, handle: str, *, since: datetime) -> list[VoicePost]:
+        """Return all feed items with ts >= since. available_at == ts (retrospective PIT mode).
+        RSS feeds contain only the items the publisher exposes; typical depth is 30-100 entries."""
+        feed_url = self.feeds.get(handle, handle)
+        try:
+            xml_text = self._fetcher(feed_url)
+        except Exception:  # noqa: BLE001
+            return []
+        posts = _parse_feed(xml_text, handle, None)  # None → available_at = ts
+        return sorted((p for p in posts if p.ts >= since), key=lambda p: p.ts)
+
 
 def _strip_ns(tag: str) -> str:
     """`{http://www.w3.org/2005/Atom}entry` -> `entry` (namespace-agnostic element matching)."""
@@ -391,9 +533,10 @@ def _text_of(el: ET.Element | None) -> str:
     return (el.text or "").strip() if el is not None else ""
 
 
-def _parse_feed(xml_text: str, handle: str, read_at: datetime) -> list[VoicePost]:
+def _parse_feed(xml_text: str, handle: str, read_at: datetime | None) -> list[VoicePost]:
     """Parse RSS 2.0 (<item>) or Atom (<entry>) into VoicePosts. Title + summary/content is the text; the
-    entry's published/updated date is `ts`. Unparseable XML or undated entries are skipped (never fabricated)."""
+    entry's published/updated date is `ts`. Unparseable XML or undated entries are skipped (never fabricated).
+    `read_at=None` sets available_at == ts (retrospective PIT mode for historical backfill)."""
     try:
         root = ET.fromstring(xml_text.strip())
     except ET.ParseError:
@@ -419,7 +562,7 @@ def _parse_feed(xml_text: str, handle: str, read_at: datetime) -> list[VoicePost
         url = _entry_link(it)
         guid = _text_of(_find_child(it, "guid")) or _text_of(_find_child(it, "id")) or url
         pid = guid or _stable_id("rss", handle, text, ts)
-        out.append(VoicePost("rss", handle, pid, text, ts, read_at, url=url))
+        out.append(VoicePost("rss", handle, pid, text, ts, read_at if read_at is not None else ts, url=url))
     return out
 
 
@@ -493,8 +636,54 @@ FIXTURE_X_POSTS: list[dict[str, Any]] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Backfill runner — Phase-0 historical ingest (available_at == ts for PIT replay)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class VoiceBackfillRunner:
+    """Orchestrates a Phase-0 historical backfill: fetch timelines for a set of handles going back
+    `days_back` days and append to the VoiceTimelineStore. Every post gets available_at == ts so
+    signal_history() (Phase 3) can replay the authority series from the start of the backfill window.
+    Downstream Phase 1 (LLM claim extraction) + Phase 3 must run separately after the store is seeded."""
+
+    store: VoiceTimelineStore
+    reddit: RedditVoiceProvider | None = None
+    rss: RssVoiceProvider | None = None
+    xai: XaiVoiceProvider | None = None
+
+    def run(
+        self,
+        *,
+        reddit_handles: list[str] | None = None,
+        rss_handles: list[str] | None = None,
+        xai_handles: list[str] | None = None,
+        days_back: int = VOICES_BACKFILL_DAYS,
+        since: datetime | None = None,
+    ) -> dict[str, int]:
+        """Backfill each configured handle. Returns {platform/handle: posts_appended}.
+        `since` overrides `days_back` when an explicit start datetime is needed."""
+        since = since if since is not None else datetime.now(tz=UTC) - timedelta(days=days_back)
+        results: dict[str, int] = {}
+        if self.reddit and reddit_handles:
+            for handle in reddit_handles:
+                posts = self.reddit.fetch_timeline_history(handle, since=since)
+                results[f"reddit/{handle}"] = self.store.append(posts)
+        if self.rss and rss_handles:
+            for handle in rss_handles:
+                posts = self.rss.fetch_timeline_history(handle, since=since)
+                results[f"rss/{handle}"] = self.store.append(posts)
+        if self.xai and xai_handles:
+            for handle in xai_handles:
+                posts = self.xai.fetch_timeline_history(handle, since=since)
+                results[f"x/{handle}"] = self.store.append(posts)
+        return results
+
+
 __all__ = [
     "VOICES_TRANSFORM_VERSION",
+    "VOICES_BACKFILL_DAYS",
     "VoicePost",
     "VoiceTimelineProvider",
     "VoiceTimelineStore",
@@ -502,5 +691,6 @@ __all__ = [
     "RedditVoiceProvider",
     "RssVoiceProvider",
     "FixtureVoiceProvider",
+    "VoiceBackfillRunner",
     "FIXTURE_X_POSTS",
 ]
