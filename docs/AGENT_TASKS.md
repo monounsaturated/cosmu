@@ -15,13 +15,36 @@
 > **Cloud vs local:** this repo's cloud sessions can't reach modal.com / Railway / many live APIs. So **CLOUD =
 > pure code + offline tests + `next build`**; **LOCAL = `.env.local`, real ingest, `modal run`, `railway run`.**
 
-Status legend: 🟢 RUNNING (don't re-dispatch) · 🔵 NEXT (dispatch now) · ⚪ QUEUED.
+Status legend: 🟢 DONE/merging · 🔵 NEXT (dispatch now) · ⚪ QUEUED.
+
+## Surface → where it runs (this is the cloud/local answer)
+| Surface | Path | Runs on | Why |
+|---|---|---|---|
+| **Web** | `apps/web` (Next.js) | **CLOUD** | `next build` only, no live network needed |
+| **Engine** | `apps/engine` (Python) | **CLOUD** | offline pytest (fixtures/mock-LLM), no live network |
+| **Config/CI** | `.github`, `scripts` | **CLOUD** | pure code |
+| **Docs** | markdown | **CLOUD** | text |
+| **Infra** | Railway / Modal / live ingest | **LOCAL** | cloud sessions here can't reach Railway/modal.com/live APIs |
+| **`.env.local`** | secrets | **LOCAL** | gitignored; lives on your Mac |
+
+## Master dispatch table
+| # | Task (branch) | Surface | Run where + why | Model |
+|---|---|---|---|---|
+| **G** | `verify-parallel` | Config/CI | CLOUD | sonnet |
+| **E** | `web-product-redesign` | Web | CLOUD | **opus** |
+| **C** | `social-authority` | Engine | ph1–3 CLOUD (offline) · ph0 LOCAL (live xAI/Reddit) | **opus** |
+| **F** | `mind-judges` | Engine | CLOUD (mock-LLM) | **opus** |
+| **I** | `autonomy-tick-async` | Engine (api) | CLOUD | sonnet |
+| **L** | `cost-monitor` | Engine (costs) | CLOUD code · LOCAL to run (vendor keys) | sonnet |
+| **J** | `autonomy-cron` + Railway→EU | Infra | LOCAL (Railway dashboard) | sonnet |
+| **K** | `first-survivor` | Engine (strategies) | LOCAL/Modal (real data) | **opus** |
+| **H** | `lessons-loop` | Docs | CLOUD | sonnet |
 
 ---
 
-## 🟢 RUNNING (the 4 — leave alone until they PR)
-- `env-local-setup` (local) · `venues` · `data-sources` · `llm-index-scores`. If any of these were launched from the
-  earlier 01–04 files, the refined A/B/D below **supersede** them for the *next* round — don't double-dispatch.
+## 🟢 DONE — merged 2026-06-05 (don't re-dispatch)
+- **#63** OKX + Kraken Futures venues · **#64** GDELT tone + Deribit DVOL data · **#65** LLM index scores.
+- `env-local-setup` was local config (no PR). The refined A/B/D blocks at the bottom are now **superseded** by the above.
 
 ---
 
@@ -88,6 +111,27 @@ Branch `claude/autonomy-tick-async`. The endpoint runs the tick synchronously an
 (`upstream error`). Change it to **return 202 immediately + run the tick in a background task**, with a status the UI
 can poll. Don't change tick logic. Offline test the 202 + background dispatch. **Done when:** endpoint returns fast;
 `pytest -k autonomy` green. PR, don't merge.
+
+### L · Cost & budget monitor — fetch real vendor spend + alert (engine, CLOUD code / LOCAL run, sonnet)
+Branch `claude/cost-monitor`. **Goal: know what we're spending across vendors, fetched often, with budget alerts —
+so we never bust budget.** Extend `cosmu/costs/`:
+1. **Spend fetchers** (stdlib urllib, key-gated, read from settings/.env.local; no key → skip that vendor honestly):
+   - **OpenRouter**: `GET https://openrouter.ai/api/v1/credits` (usage + limit) — key `OPENROUTER_API_KEY`.
+   - **xAI/Grok**: no public billing API → derive from our own `llm_calls` ledger (tokens×price we already log);
+     it's the source of truth for LLM spend regardless of provider.
+   - **Railway**: GraphQL usage/estimated-cost query — key `RAILWAY_API_TOKEN` (operator adds to .env.local).
+   - **Modal**: workspace usage via the Modal API/CLI — uses the existing Modal token.
+   - **Vercel / Supabase**: free now → constant 0 (flag a TODO to wire when they go paid).
+   - **Claude Max sub**: flat $100/mo constant (config value).
+2. **Aggregate** into the existing `costs` table (vendor, category, amount, period) + a typed `BudgetConfig`
+   (monthly cap per vendor + global, in `config/settings.py`, no magic numbers — operator-set).
+3. **Alerts**: when spend (or month-end projection) crosses a threshold → emit to **`SLACK_WEBHOOK_URL`** (already in
+   settings) AND a `recommendations` row the Console surfaces. Tiers: 50% (info) / 80% (warn) / 100% (throttle-suggest).
+4. **Schedule**: a 6h fetch (add to the cron list / `pnpm modal:gate` companion) so it's always current.
+5. **Surface**: feed the Dashboard **Costs card** (already exists) — per-vendor actuals vs budget, opex-vs-alpha.
+**Done when:** fetchers return real numbers when keyed (offline tests with canned API payloads + no-key→skip), budget
+thresholds emit a Slack + recommendation (tested), `costs` rows written. `pytest -k cost` green. PR, don't merge.
+**Buy vs build:** build — it's a few API calls + the existing costs table + Slack. No SaaS needed.
 
 ---
 
