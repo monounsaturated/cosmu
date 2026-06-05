@@ -448,7 +448,7 @@ def _main() -> int:
     symbols = list(PERP_UNIVERSE[:20])  # the wide 20-asset universe matching the dispersion spec
     market: dict[str, list[Bar]] = {}
     for sym in symbols:
-        bars = market_provider.fetch_bars(sym, interval="1d", limit=800)
+        bars = market_provider.fetch_bars(sym, "1d", limit=800)
         if bars:
             market[sym] = bars
 
