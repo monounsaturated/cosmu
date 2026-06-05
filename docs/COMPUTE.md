@@ -35,6 +35,32 @@ Unit rates below are **reasoning inputs only**; the **live Costs card / `costs` 
 
 **Net new infra cash ≈ $5–45/mo** on top of the existing Max sub. Fly/RunPod would add cost without earning their lane today.
 
+## Setup: how Modal is wired (where keys go) — LIVE as of 2026-06-05
+
+The lane is `apps/engine/remote/app.py` (a Modal app) + `scripts/sync_modal_secret.py`. It runs the **same**
+engine commands the Railway crons run (`cosmu.master.scheduler`, `cosmu.research.loop`, `cosmu.orchestrator.loop`)
+on a beefier, scale-to-zero box, writing to the **same Supabase**.
+
+**Three places keys live (keep them in sync, .env.local is the source):**
+
+| Where | Holds | Why |
+|-------|-------|-----|
+| **`.env.local`** (gitignored) | everything for local dev **+ `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET`** | the single source you copy from; lets `modal run` auth in a cloud/Claude session |
+| **Railway env** (dashboard) | backend runtime secrets (DATABASE_URL, XAI_API_KEY, …) | already set — the always-on API + crons |
+| **Modal secret `cosmu-engine`** | the runtime secrets the Modal jobs read (+ `APP_ENV=production`) | injected into the job's env; **synced from .env.local**, never hand-typed |
+
+**One-time setup:**
+1. `pip install -e "apps/engine[remote]"` (or `pip install modal`) — the client, only where you run jobs.
+2. `modal setup` (writes `~/.modal.toml`) **or** put `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` in `.env.local` (from https://modal.com/settings/tokens) for non-interactive auth.
+3. `pnpm modal:secret` (= `python3 scripts/sync_modal_secret.py`) — pushes DATABASE_URL/XAI/FRED/… from `.env.local` into the Modal secret. Re-run whenever a key changes.
+
+**Run a heavy job (Claude or you):**
+- `pnpm modal:gate` — full cohort + deterministic gate + ML ordering on real data (the survival model trains here as labels accrue).
+- `pnpm modal:ingest` — free-data ingest + cross-asset gate.
+- `modal run apps/engine/remote/app.py --job run_module --module cosmu.research.gate` — escape hatch for any engine module.
+
+**Stays true to the rails:** these are the deterministic research/ingest entrypoints — no live orders, no LLM in the gate/money path (the engine enforces that). Modal is just more compute.
+
 ## The two compute tiers (different problems, different homes)
 
 | Tier | What | Best home | How Claude drives it |

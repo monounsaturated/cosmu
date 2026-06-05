@@ -23,5 +23,5 @@
 - [ ] Kraken Futures live adapter (post-edge) · IBKR equities (data-only first)
 - [ ] Gate hardening: route the cohort through the full `research/gate.py:PREREGISTERED_BAR`
 - [ ] Cross-strategy correlation signals
-- [ ] **Add the Modal heavy-compute lane** (decision 2026-06-05, see docs/COMPUTE.md): thin `apps/engine/remote/` Modal app for backtests/ML/gate sweeps, driven by `modal run`. **Keep Railway for the backend** (engine API + 4h cron) — hybrid. Fly rejected (services-first, no free tier); RunPod deferred (GPU-pod, post-edge only) (infra, opus)
+- [x] **Modal heavy-compute lane scaffolded** (2026-06-05, see docs/COMPUTE.md): `apps/engine/remote/app.py` (gate_sweep · ingest · forward_mark · run_module) + `scripts/sync_modal_secret.py` + `pnpm modal:gate/ingest/secret`. Hybrid: **Railway keeps the backend**. Fly rejected; RunPod deferred (post-edge GPU). *Remaining:* run a first real `modal run` end-to-end and confirm it writes to Supabase (needs Modal account + `pnpm modal:secret`) (infra, opus)
 - [ ] Options support
