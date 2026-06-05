@@ -15,12 +15,13 @@ from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
 from cosmu.knowledge.store import Store, Writer, utcnow
 from cosmu.master.fdr import benjamini_hochberg, dsr_pvalue
-from cosmu.master.scorer import BacktestMetrics, score
+from cosmu.master.scorer import BacktestMetrics, TrialStats, score
+from cosmu.master.trials import register_trial, trial_stats
 from cosmu.ml.regime import proven_regimes
 from cosmu.ml.survival import features_from_metrics, load_survival_model
 from cosmu.spine.universe import enabled_universe
 from cosmu.spine.venue import default_catalog
-from cosmu.strategy.compiler import compile_spec
+from cosmu.strategy.compiler import CompiledStrategy, compile_spec
 from cosmu.strategy.pine import translate_pine
 from cosmu.strategy.spec import ParamSpace, StrategySpec
 
@@ -32,7 +33,22 @@ class Candidate:
     lane: str
     operator: str | None = None
     rationale: str | None = None
-    parent_vid: str | None = None
+
+
+@dataclass
+class _Screened:
+    """A candidate after the cheap real-data SCREEN but BEFORE scoring/persistence. Screening + global-trial
+    registration happen for the WHOLE cohort first; only then is the trial ledger snapshotted and every candidate
+    scored against the same full count. `parent` is the screened wave-0 candidate an exploit child was mutated
+    from — resolved to a real version_id at persist time (children are persisted after their parents)."""
+
+    cand: Candidate
+    params: dict[str, float]
+    compiled: CompiledStrategy
+    metrics: BacktestMetrics
+    survival_score: float
+    proven: list[str]
+    parent: _Screened | None = None
 
 
 @dataclass
@@ -134,12 +150,10 @@ class FarmLoop:
         survival = load_survival_model(self.store)
 
         lanes = {"seed": 0, "chat": 0, "exploit": 0, "explore": 0, "pine": 0}
-        evaluated: list[Evaluated] = []
         # version_id → its spec, so the self-improvement flywheel (graveyard memory + Curator skills) can record
         # each death/win and distill survivors AFTER the cohort transaction commits (no nested writers).
         specs_by_vid: dict[str, StrategySpec] = {}
         invalid = 0
-        parents: list[tuple[str, StrategySpec]] = []
         pine_notes: list[str] = []
 
         # Wave 0 — seeds + chat-authored briefs + pine imports (the parent pool for the exploit lane).
@@ -162,7 +176,67 @@ class FarmLoop:
                 )
             )
 
-        # One connection + one transaction for the whole cohort.
+        # PHASE 1 — generate + cheap-screen the WHOLE cohort and register EVERY candidate in the global trial
+        # ledger (source="farmloop") BEFORE anyone is scored. Mirrors lab/finder.py: the Deflated Sharpe must
+        # deflate against the true running hypothesis count (this cohort + all history), not just ~len(param_space)
+        # of one candidate's params. No DB writes here except the trial ledger, so persistence stays one batch.
+        screened: list[_Screened] = []
+        parents: list[_Screened] = []   # the screened wave-0 candidates = the exploit lane's parent pool
+
+        for cand in wave0:
+            sc = self._screen_and_register(cand, seed, survival)
+            if sc is None:
+                invalid += 1
+                continue
+            screened.append(sc)
+            lanes[cand.lane] += 1
+            parents.append(sc)
+
+        # Waves 1..N — fill the cohort with exploit children and explore wildcards.
+        remaining = max(0, size - len(wave0))
+        explore_n = round(remaining * explore)
+        exploit_n = remaining - explore_n
+        parent_specs = [sc.cand.spec for sc in parents]
+        live_specs = [sc.cand.spec for sc in parents] if parents else []
+
+        for _ in range(exploit_n):
+            parent = rng.choice(parents)
+            child = mutator.mutate_exploit(parent.cand.spec, rng)
+            cand = Candidate(spec=child.spec, origin="mutation", lane="exploit", operator=child.operator, rationale=child.rationale)
+            if not self._novelty_ok(cand.spec, live_specs):
+                invalid += 1
+                continue
+            sc = self._screen_and_register(cand, seed, survival)
+            if sc is None:
+                invalid += 1
+                continue
+            sc.parent = parent
+            screened.append(sc)
+            lanes["exploit"] += 1
+
+        for _ in range(explore_n):
+            child = mutator.wildcard(parent_specs, rng)
+            cand = Candidate(spec=child.spec, origin="wildcard", lane="explore", operator=child.operator, rationale=child.rationale)
+            if not self._novelty_ok(cand.spec, live_specs):
+                invalid += 1
+                continue
+            sc = self._screen_and_register(cand, seed, survival)
+            if sc is None:
+                invalid += 1
+                continue
+            screened.append(sc)
+            lanes["explore"] += 1
+
+        # Snapshot the global ledger ONCE, now that every candidate is registered, so all candidates in this cohort
+        # are judged against the identical, full trial count (and every prior cohort's trials — two sequential
+        # cohorts deflate the second against the first). This is the contract finder.py honors via trial_stats().
+        combined = trial_stats(self.store)
+        evaluated: list[Evaluated] = []
+        vid_by_screened: dict[int, str] = {}   # id(_Screened) → persisted version_id, to resolve child parent_id
+
+        # PHASE 2 — score every screened candidate against the snapshot and persist. One connection + one
+        # transaction for the whole cohort. Parents are persisted before their children (wave-0 first), so an
+        # exploit child's parent_id always references an already-inserted row (the FK holds).
         with self.store.batch() as b:
             b.append_event(
                 actor="master",
@@ -172,52 +246,12 @@ class FarmLoop:
                 payload={"seed": seed, "cohort_size": size, "explore_pct": explore},
             )
 
-            for cand in wave0:
-                result, vid = self._evaluate(cand, b, rng, seed, survival)
-                if result is None:
-                    invalid += 1
-                    continue
+            for sc in screened:
+                parent_vid = vid_by_screened.get(id(sc.parent)) if sc.parent is not None else None
+                result, vid = self._persist(sc, combined, survival, parent_vid, b)
                 evaluated.append(result)
-                specs_by_vid[vid] = cand.spec
-                lanes[cand.lane] += 1
-                parents.append((vid, cand.spec))
-
-            # Waves 1..N — fill the cohort with exploit children and explore wildcards.
-            remaining = max(0, size - len(wave0))
-            explore_n = round(remaining * explore)
-            exploit_n = remaining - explore_n
-            parent_specs = [p[1] for p in parents]
-
-            live_specs = [p[1] for p in parents] if parents else []
-
-            for _ in range(exploit_n):
-                pvid, pspec = rng.choice(parents)
-                child = mutator.mutate_exploit(pspec, rng)
-                cand = Candidate(spec=child.spec, origin="mutation", lane="exploit", operator=child.operator, rationale=child.rationale, parent_vid=pvid)
-                if not self._novelty_ok(cand.spec, live_specs):
-                    invalid += 1
-                    continue
-                result, vid = self._evaluate(cand, b, rng, seed, survival)
-                if result is None:
-                    invalid += 1
-                    continue
-                evaluated.append(result)
-                specs_by_vid[vid] = cand.spec
-                lanes["exploit"] += 1
-
-            for _ in range(explore_n):
-                child = mutator.wildcard(parent_specs, rng)
-                cand = Candidate(spec=child.spec, origin="wildcard", lane="explore", operator=child.operator, rationale=child.rationale)
-                if not self._novelty_ok(cand.spec, live_specs):
-                    invalid += 1
-                    continue
-                result, vid = self._evaluate(cand, b, rng, seed, survival)
-                if result is None:
-                    invalid += 1
-                    continue
-                evaluated.append(result)
-                specs_by_vid[vid] = cand.spec
-                lanes["explore"] += 1
+                specs_by_vid[vid] = sc.cand.spec
+                vid_by_screened[id(sc)] = vid
 
             # FDR GATE — the multiple-testing correction the funding path depends on. score() judged each
             # candidate in isolation; this judges the COHORT together. A gate-passer that doesn't survive
@@ -320,23 +354,44 @@ class FarmLoop:
         except Exception:  # noqa: BLE001 — novelty is advisory; never blocks what the Gate should judge
             return True
 
-    def _evaluate(self, cand: Candidate, b: Writer, rng: random.Random, seed: int, survival) -> tuple[Evaluated | None, str]:  # noqa: ANN001
+    def _screen_and_register(self, cand: Candidate, seed: int, survival) -> _Screened | None:  # noqa: ANN001
+        """Compile + cheap-screen one candidate and register it in the GLOBAL trial ledger (source="farmloop").
+        Returns the screened bundle, or None for an invalid spec (counted as invalid, never persisted). No row is
+        written except the trial — scoring + persistence happen later, once the whole cohort is registered, so every
+        candidate deflates against the same full count."""
         try:
             params = fit_params(cand.spec)
             compiled = compile_spec(cand.spec, params)
         except ValueError:
-            return None, ""  # invalid spec — never persisted, counted as invalid
+            return None  # invalid spec — never persisted, counted as invalid
 
         metrics = self._screen(cand, compiled.code_hash, seed)
-        verdict = score(metrics, self.settings.gates)
-        passed = verdict.passed
-        status = "forward_test" if passed else "killed"
-        kill_reason = None if passed else ",".join(verdict.reasons) or "screened_out"
-
+        # THE choke point: every farmed candidate is one more hypothesis the Deflated Sharpe / FDR must deflate
+        # against — otherwise authoring more candidates per tick manufactures significance by sheer count.
+        register_trial(self.store, float(metrics.sharpe_per_obs), source="farmloop", label=cand.spec.name)
         # Survival model: edge-persistence score (ordering only) + the regimes this screen proved positive in
         # (the strategy's live-eligibility passport). Computed from the SCREEN metrics — never a veto.
         survival_score = round(survival.score_features(features_from_metrics(metrics)), 6)
         proven = sorted(proven_regimes(metrics.regime_returns))
+        return _Screened(
+            cand=cand, params=params, compiled=compiled, metrics=metrics,
+            survival_score=survival_score, proven=proven,
+        )
+
+    def _persist(self, sc: _Screened, trials: TrialStats, survival, parent_vid: str | None, b: Writer) -> tuple[Evaluated, str]:  # noqa: ANN001
+        """Score a screened candidate against the cohort-wide trial snapshot and persist its strategy / version /
+        screen-backtest (and, for a gate-passer, its forward-test track). Returns the Evaluated row + version_id."""
+        cand = sc.cand
+        metrics = sc.metrics
+        compiled = sc.compiled
+        params = sc.params
+        # Deflate against the FULL global trial count (this cohort + all history), not ~len(param_space).
+        verdict = score(metrics, self.settings.gates, trials=trials)
+        passed = verdict.passed
+        status = "forward_test" if passed else "killed"
+        kill_reason = None if passed else ",".join(verdict.reasons) or "screened_out"
+        survival_score = sc.survival_score
+        proven = sc.proven
 
         strategy_id = b.insert(
             "strategies",
@@ -346,7 +401,7 @@ class FarmLoop:
             "strategy_versions",
             {
                 "strategy_id": strategy_id,
-                "parent_id": cand.parent_vid,
+                "parent_id": parent_vid,
                 "spec": cand.spec.model_dump(mode="json"),
                 "generated_code": compiled.code,
                 "code_hash": compiled.code_hash,

@@ -48,7 +48,7 @@ def _survivor_tracks(store: Store, symbols: list[str]) -> list[tuple[str, Track,
         FROM strategy_versions sv
         JOIN tracks tr ON tr.strategy_version_id = sv.id
         JOIN backtests b ON b.strategy_version_id = sv.id AND b.kind = 'screen'
-        WHERE sv.status IN ('forward_test', 'live') AND b.passed_gates = 1
+        WHERE sv.status IN ('forward_test', 'live') AND b.passed_gates = 1 AND b.holdout_passed = 1
         ORDER BY CAST(b.deflated_sharpe AS REAL) DESC
         LIMIT 12
         """

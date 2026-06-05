@@ -10,7 +10,7 @@ from decimal import Decimal
 
 from fastapi.testclient import TestClient
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import GateSettings, Settings
 from cosmu.data.market import Bar
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.knowledge.store import Store
@@ -22,7 +22,10 @@ def _significant_edge_market(n: int = 300, seed: int = 5) -> dict[str, list[Bar]
     """A deterministic market bearing a GENUINELY SIGNIFICANT edge — a strong, tight-noise trend whose
     per-observation Sharpe survives the finder's HONEST multiple-testing deflation, so the close-the-loop path
     has a real survivor to fund. (The modest `edge_bearing_screen_market` fixture deliberately does NOT clear
-    honest deflation — see test_finder_honesty — so it can no longer stand in for a fundable winner here.)"""
+    honest deflation — see test_finder_honesty — so it can no longer stand in for a fundable winner here.)
+
+    NOTE: it is a relentless bull, so this long-only momentum edge does NOT beat buy-and-hold — the caller opts
+    the beat-BnH gate out, as the funding-plumbing test it backs is orthogonal to that gate (covered separately)."""
     rng = random.Random(seed)
     base = dt.datetime(2022, 1, 1, tzinfo=dt.UTC)
     factor = [rng.gauss(0, 0.004) for _ in range(n)]  # one shared path → correlated, realistic symbols
@@ -56,12 +59,22 @@ class _FixtureBars:
         return self._by.get(symbol, self._default)[-limit:]
 
 
-def _store(tmp_path) -> Store:
-    return Store(Settings(database_url=f"sqlite:///{tmp_path}/loop.sqlite3", openrouter_api_key=None))
+def _store(tmp_path, *, require_beat_buy_and_hold: bool = True) -> Store:
+    return Store(
+        Settings(
+            database_url=f"sqlite:///{tmp_path}/loop.sqlite3",
+            openrouter_api_key=None,
+            gates=GateSettings(require_beat_buy_and_hold=require_beat_buy_and_hold),
+        )
+    )
 
 
 def test_survivors_open_standalone_tracks_and_real_positions(tmp_path):
-    store = _store(tmp_path)
+    # This exercises the FUNDING PLUMBING (survivor → standalone track → real position → mark), which is
+    # orthogonal to the beat-buy-and-hold gate. The significant-edge fixture is a relentless bull, so no long-only
+    # strategy out-returns simply HOLDING the basket — the beat-BnH gate (covered by test_beat_buy_and_hold.py)
+    # correctly refuses to fund it. Opt that one gate out here so a real survivor reaches the plumbing under test.
+    store = _store(tmp_path, require_beat_buy_and_hold=False)
     fb = _FixtureBars()
     report = StrategyFinder(settings=store.settings, store=store, market_data=fb).find(seed_orb_fvg_spec(), max_variants=10)
     assert report.promoted >= 1   # at least one survivor to fund

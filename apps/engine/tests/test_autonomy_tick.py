@@ -13,13 +13,22 @@ import json
 
 from fastapi.testclient import TestClient
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import GateSettings, Settings
 from cosmu.knowledge.store import Store
 from cosmu.master.scheduler import autonomy_status, is_paused, pause, run_tick
 
 
 def _store(tmp_path, *, key: str | None = None) -> Store:
-    return Store(Settings(database_url=f"sqlite:///{tmp_path}/tick.sqlite3", openrouter_api_key=key))
+    # The tick's screen fixture trends up, so a long-only survivor cannot beat holding; this test exercises the
+    # end-to-end tick PLUMBING (author → gate → fund → audit), not the cash benchmark, so opt the beat-buy-and-hold
+    # gate out (it has dedicated coverage in test_beat_buy_and_hold.py). The statistical gate still gates promotion.
+    return Store(
+        Settings(
+            database_url=f"sqlite:///{tmp_path}/tick.sqlite3",
+            openrouter_api_key=key,
+            gates=GateSettings(require_beat_buy_and_hold=False),
+        )
+    )
 
 
 def _no_ingest(_store) -> dict:

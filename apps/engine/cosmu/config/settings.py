@@ -32,6 +32,10 @@ class GateSettings(BaseModel):
     max_pbo: Decimal = Decimal("0.50")
     holdout_min_deflated_sharpe: Decimal = Decimal("0")
     min_deflated_sharpe_prob: Decimal = Decimal("0.95")  # PSR against the trial-inflated benchmark
+    # A promoted strategy must BEAT buy-and-hold on the validation slice, net of fees — else a bull-regime long can
+    # clear DSR/PBO/holdout/FDR yet underperform BTC and still be funded. Default on; the deterministic gate's, not
+    # the agent's, to relax (e.g. for a market-neutral spec whose benchmark is cash, set this False per run).
+    require_beat_buy_and_hold: bool = True
     # Benjamini-Hochberg false-discovery-rate level applied ACROSS a cohort of distinct candidates before any
     # become fundable. Lower q = stricter (fewer false discoveries funded). Generating more ideas per tick no
     # longer manufactures a "winner": every candidate is one more test the cohort's BH cutoff must absorb.
