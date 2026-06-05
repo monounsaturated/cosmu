@@ -8,10 +8,12 @@ from cosmu.data.altdata import AltDataStore, LunarCrushProvider
 
 _T0 = datetime(2024, 1, 1, tzinfo=UTC)
 
-# LunarCrush v4 coin time-series rows: `time` (unix s) + native fields. social_sentiment maps to "sentiment".
+# LunarCrush v4 coin time-series rows: `time` (unix s) + native fields.
+# social_volume maps to "interactions" (the v4 field; "social_volume" does not exist in v4 responses).
+# social_sentiment maps to "sentiment".
 FIXTURE = {
     "data": [
-        {"time": int((_T0 + timedelta(days=i)).timestamp()), "social_volume": 1000 + i * 100, "sentiment": 60 + i, "galaxy_score": 70 + i}
+        {"time": int((_T0 + timedelta(days=i)).timestamp()), "interactions": 1000 + i * 100, "sentiment": 60 + i, "galaxy_score": 70 + i}
         for i in range(4)
     ]
 }
