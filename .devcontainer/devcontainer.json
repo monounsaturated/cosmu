@@ -6,15 +6,14 @@
       "version": "22"
     }
   },
-  // Secrets (API keys, broker credentials, etc.) are injected via
-  // GitHub Codespaces Secrets — set them in repo or org Settings → Codespaces → Secrets.
+  // Secrets via GitHub Codespaces Secrets — never hardcode credentials here.
   "postCreateCommand": "pip install -e apps/engine[dev] && npm i -g pnpm && pnpm install --frozen-lockfile",
   "forwardPorts": [8000, 3000],
   "customizations": {
     "vscode": {
       "extensions": [
         "ms-python.python",
-        "ms-python.vscode-pylance"
+        "dbaeumer.vscode-eslint"
       ]
     }
   }
