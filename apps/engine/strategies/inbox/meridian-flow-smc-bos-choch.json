@@ -1,0 +1,62 @@
+{
+  "name": "Meridian Flow — SMC BOS / CHoCH breakout",
+  "rationale": "Meridian Flow (WillyAlgoTrader v1.4.0) fires entries on Break of Structure (BOS = swing-level break in trend direction) and Change of Character (CHoCH = swing-level break against trend), with an optional higher-timeframe EMA bias filter and ATR-scaled SL / three-tier TP exits. Translation losses: (1) ta.pivothigh/pivotlow pivot-level detection is not in the feature registry — approximated by bb_z > breakout_z (price breaking above its recent Bollinger distribution; a structural breakout IS a high bb_z event on the relevant lookback); (2) the BOS/CHoCH trend-state machine (continuation vs reversal) collapses to a single bb_z threshold — the Finder will fit the lookback so it optimally matches the intended swing window; (3) the multi-timeframe HTF EMA filter becomes a same-timeframe MA filter via MaTrendFilter (long-only when close > MA — same directional gate, different resolution). Exit plan is faithfully ported: multi-TP partial exits at TP1 (33 % of position) and TP2 (33 %) with break-even arming after TP1, runner carries the rest to TP3. Honest prior: SMC breakout methods are popular but in automated spot backtests reduce to dressed-up momentum breakouts, which have historically been hard to fit profitably net of ~20 bps round-trip on Binance. Expected outcome: powered fail that maps the breakout parameter surface and informs whether bb_z approximation preserves any of the original swing-level edge.",
+  "catalyst": "bb_z breakout above recent range (approx BOS/CHoCH swing-level break) with optional MA trend bias",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 5000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 7
+  },
+  "direction": 1,
+  "entry": [
+    {
+      "feature": {
+        "name": "bb_z",
+        "lookback": {"param": "swing_window"}
+      },
+      "op": "gt",
+      "threshold": {"param": "breakout_z"}
+    }
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp3"},
+    "time_stop_days": {"param": "time_stop"},
+    "plan": {
+      "multi_tp": [
+        {"at": {"param": "tp1"}, "size_pct": {"param": "tp1_size"}},
+        {"at": {"param": "tp2"}, "size_pct": {"param": "tp2_size"}}
+      ],
+      "break_even_after_tp1": true,
+      "runner_trail": null
+    }
+  },
+  "setup": {
+    "ma_trend_filter": {
+      "ma_lookback": {"param": "ma_lb"}
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 3,
+    "max_position_pct": 0.1,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "swing_window": {"kind": "int",   "lo": 8,    "hi": 100,  "step": 2},
+    "breakout_z":   {"kind": "float", "lo": 0.0,  "hi": 2.5},
+    "stop":         {"kind": "float", "lo": 0.02, "hi": 0.12},
+    "tp1":          {"kind": "float", "lo": 0.02, "hi": 0.15},
+    "tp1_size":     {"kind": "float", "lo": 0.20, "hi": 0.50},
+    "tp2":          {"kind": "float", "lo": 0.04, "hi": 0.28},
+    "tp2_size":     {"kind": "float", "lo": 0.20, "hi": 0.50},
+    "tp3":          {"kind": "float", "lo": 0.06, "hi": 0.40},
+    "time_stop":    {"kind": "int",   "lo": 2,    "hi": 15,   "step": 1},
+    "ma_lb":        {"kind": "int",   "lo": 20,   "hi": 200,  "step": 5}
+  }
+}
