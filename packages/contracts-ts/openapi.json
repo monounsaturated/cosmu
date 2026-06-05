@@ -2284,9 +2284,24 @@
       },
       "LeaderboardRow": {
         "properties": {
+          "asset_class": {
+            "title": "Asset Class",
+            "type": "string"
+          },
           "deflated_sharpe": {
             "title": "Deflated Sharpe",
             "type": "number"
+          },
+          "edge_type": {
+            "title": "Edge Type",
+            "type": "string"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
           },
           "forward_age_days": {
             "title": "Forward Age Days",
@@ -2308,21 +2323,13 @@
             "title": "Net Pct",
             "type": "number"
           },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
           "pbo": {
             "title": "Pbo",
             "type": "number"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "track_return_pct": {
-            "title": "Track Return Pct",
-            "type": "number"
-          },
-          "version_id": {
-            "title": "Version Id",
-            "type": "string"
           },
           "signal_family": {
             "title": "Signal Family",
@@ -2332,31 +2339,24 @@
             "title": "Signal Family Label",
             "type": "string"
           },
-          "features": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Features",
-            "type": "array"
-          },
-          "asset_class": {
-            "title": "Asset Class",
-            "type": "string"
-          },
-          "venue": {
-            "title": "Venue",
+          "status": {
+            "title": "Status",
             "type": "string"
           },
           "timeframe": {
             "title": "Timeframe",
             "type": "string"
           },
-          "origin": {
-            "title": "Origin",
+          "track_return_pct": {
+            "title": "Track Return Pct",
+            "type": "number"
+          },
+          "venue": {
+            "title": "Venue",
             "type": "string"
           },
-          "edge_type": {
-            "title": "Edge Type",
+          "version_id": {
+            "title": "Version Id",
             "type": "string"
           }
         },
