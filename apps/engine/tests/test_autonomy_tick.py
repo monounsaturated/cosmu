@@ -145,15 +145,28 @@ def test_autonomy_status_shape(tmp_path, monkeypatch):
     assert body["live_enabled"] is False
 
 
+def _tick_and_poll(client) -> dict:
+    """POST /autonomy/tick → 202 + job_id, then poll until done.  With TestClient the background
+    task completes before the POST returns, so the first poll always resolves."""
+    r = client.post("/autonomy/tick")
+    assert r.status_code == 202
+    body = r.json()
+    assert set(body.keys()) == {"job_id", "status"}
+    assert body["status"] == "running"  # value set before bg task runs
+    job = client.get(f"/autonomy/tick/{body['job_id']}").json()
+    assert job["status"] == "done", f"tick job failed: {job.get('error')}"
+    return job["result"]
+
+
 def test_autonomy_pause_resume_tick_api(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     assert client.post("/autonomy/pause").json() == {"paused": True}
     assert client.get("/autonomy/status").json()["paused"] is True
     assert client.post("/autonomy/resume").json() == {"paused": False}
 
-    tick = client.post("/autonomy/tick").json()
-    assert set(tick.keys()) == {"authored", "gated_passed", "funded", "recommendations"}
-    assert tick["authored"] >= 1
+    result = _tick_and_poll(client)
+    assert set(result.keys()) == {"authored", "gated_passed", "funded", "recommendations"}
+    assert result["authored"] >= 1
     # Status now reflects the completed tick.
     status = client.get("/autonomy/status").json()
     assert status["cycles_run"] == 1
@@ -162,10 +175,23 @@ def test_autonomy_pause_resume_tick_api(tmp_path, monkeypatch):
     assert client.get("/autonomy/status").json()["live_enabled"] is False
 
 
+def test_tick_202_and_job_poll(tmp_path, monkeypatch):
+    """Endpoint returns 202 immediately; job can be polled and resolves to a valid result."""
+    client = _client(tmp_path, monkeypatch)
+    r = client.post("/autonomy/tick")
+    assert r.status_code == 202
+    job_id = r.json()["job_id"]
+    job = client.get(f"/autonomy/tick/{job_id}").json()
+    assert job["status"] == "done"
+    assert job["error"] is None
+    assert job["result"]["authored"] >= 1
+    assert client.get("/autonomy/tick/nonexistent").status_code == 404
+
+
 def test_recommendation_approve_and_dismiss(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     # A tick emits recommendations to act on.
-    client.post("/autonomy/tick")
+    _tick_and_poll(client)
     items = client.get("/recommendations").json()["items"]
     assert items
     rec = items[0]
