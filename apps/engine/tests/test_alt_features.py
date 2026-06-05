@@ -172,8 +172,11 @@ def test_farmloop_alt_join_is_registry_driven_and_wires_fear_greed():
     assert set(joined["BTCUSDT"]) == {"funding_rate", "fear_greed"}, "both registered alt features must be wired"
     assert joined["BTCUSDT"]["fear_greed"][bars[-1].ts.isoformat()] == 20.0
 
-    # And the registry-derived universe is the whole alt vocabulary, not a 1-item list.
-    universe = loop._alt_feature_universe()
+    # And the registry-derived universe is the whole alt vocabulary, not a 1-item list. The join logic now lives
+    # in the shared cosmu.data.alt_join (one source of truth for the loop screen AND the finder sweep).
+    from cosmu.data.alt_join import alt_feature_universe
+
+    universe = alt_feature_universe()
     assert {"funding_rate", "fear_greed"} <= universe
     assert "ret_Nd" not in universe, "price/TA features are computed from bars, never alt-joined"
     assert len(universe) >= 20

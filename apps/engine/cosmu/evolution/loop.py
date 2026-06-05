@@ -7,10 +7,9 @@ import random
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from cosmu.config.feature_registry import feature_names
 from cosmu.config.settings import Settings
-from cosmu.data.altdata import StoreBackedAltProvider
-from cosmu.data.backtest import PRICE_FEATURES, align_asof, run_strategy_backtest
+from cosmu.data.alt_join import build_alt_by_symbol
+from cosmu.data.backtest import run_strategy_backtest
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
@@ -24,13 +23,6 @@ from cosmu.spine.venue import default_catalog
 from cosmu.strategy.compiler import compile_spec
 from cosmu.strategy.pine import translate_pine
 from cosmu.strategy.spec import ParamSpace, StrategySpec
-
-
-# How many trailing alt-data points to pull per (symbol, feature) before the point-in-time as-of join.
-# Generous: covers >1yr at any ingest frequency, so the per-bar align_asof always has the full window it
-# needs (align_asof, not this slice, does the no-look-ahead selection). Bounded so a runaway series can't
-# blow up memory.
-_ALT_HISTORY_LIMIT = 100_000
 
 
 @dataclass
@@ -478,51 +470,13 @@ class FarmLoop:
                 self._cache["alt_store"] = AltDataStore()
         return self._cache["alt_store"]
 
-    def _alt_feature_universe(self) -> set[str]:
-        """The leading-signal (alt-data) feature names the screen joins point-in-time: every ENABLED
-        feature_registry name MINUS the ones the backtest computes itself from bars (PRICE_FEATURES). Read
-        from the registry AT RUNTIME (cached per loop), so a feature the data agent registers + ingests is
-        wired here automatically — this loop never hard-codes the key list, and the price/alt split has a
-        single source of truth (cosmu.data.backtest.PRICE_FEATURES)."""
-        if "alt_universe" not in self._cache:
-            self._cache["alt_universe"] = feature_names() - PRICE_FEATURES
-        return self._cache["alt_universe"]
-
     def _alt_by_symbol(self, spec: StrategySpec, market: dict[str, list]) -> dict | None:
-        """Build the per-symbol point-in-time alt-data join for EVERY registered leading-signal feature this
-        spec uses (funding_rate, fear_greed, macro, sentiment, …) — not just funding. The feature universe
-        comes from the feature_registry at runtime (`_alt_feature_universe`); StoreBackedAltProvider routes
-        each name to its stored series (provider + market-wide keying) and `align_asof` joins it bar-by-bar
-        as-of (each bar gets the latest value with available_at <= bar.ts — NO look-ahead). A feature with no
-        provider route or no stored data is simply omitted: the backtest reads None and its condition can't
-        fire (honest — never a fabricated value, never a skipped/crashed bar). The perp-funding carry leg
-        (`spec.funding_feature`) reads the same join. Offline / no alt store → None (price-only, unchanged).
-        Never raises."""
-        used = {c.feature.name for c in [*spec.entry, *spec.exit.signal_exits]}
-        funding = getattr(spec, "funding_feature", None)
-        if funding:
-            used.add(funding)
-        names = used & self._alt_feature_universe()
-        if not names:
-            return None
-        try:
-            provider = StoreBackedAltProvider(self._alt_store())
-        except Exception:  # noqa: BLE001 — no alt store available → price-only screen, never abort
-            return None
-        out: dict[str, dict[str, dict[str, float]]] = {}
-        for symbol, bars in market.items():
-            feats: dict[str, dict[str, float]] = {}
-            for name in names:
-                try:
-                    points = provider.fetch_series(symbol, name, limit=_ALT_HISTORY_LIMIT)
-                except Exception:  # noqa: BLE001 — a missing/erroring series is just no data for that feature
-                    points = []
-                aligned = align_asof(points, bars)
-                if aligned:
-                    feats[name] = aligned
-            if feats:
-                out[symbol] = feats
-        return out or None
+        """Build the per-symbol point-in-time alt-data join for every leading-signal feature this spec uses —
+        entry/exit conditions, the perp-funding carry leg, AND the secondary meta-label model's features.
+        Delegates to the shared `build_alt_by_symbol` (one join, also used by the Finder sweep), so the cohort
+        screen and the sweep evaluate a funding/meta spec identically. Offline / no alt store → None (price-only,
+        unchanged). Never raises."""
+        return build_alt_by_symbol(self._alt_store(), spec, market)
 
 
 def _binance_symbols(spec: StrategySpec, enabled_venues: set[str], enabled_classes: set[str]) -> list[str]:

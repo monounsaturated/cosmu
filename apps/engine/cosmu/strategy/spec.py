@@ -114,6 +114,32 @@ class EntrySetup(BaseModel):
     fvg: FairValueGap | None = None
 
 
+class MetaLabel(BaseModel):
+    """Triple-barrier meta-labeling (López de Prado). A SECONDARY regularized-logistic classifier predicts
+    P(the primary signal's trade is a net winner) from `features` read point-in-time at entry, and gates the
+    primary trade: SKIP it below `prob_threshold`, otherwise take it (optionally SIZING the notional by the
+    predicted probability). It only SIZES or SKIPS — it NEVER changes `direction` (the primary signal owns the
+    side). The training label for each past primary event is which of the three barriers (stop-loss /
+    take-profit / time) the trade hit first, netted of round-trip cost (win=1, else 0) — the same stop/take/
+    time that `ExitRules` already carries. Training is EXPANDING-WINDOW and point-in-time: at each entry only
+    primary events whose barrier RESOLVED on a strictly earlier bar feed the fit, so the secondary model never
+    sees its own trade's outcome (no look-ahead). Until META_MIN_TRAIN resolved events exist the trade is
+    ungated (the bare primary book), so the gate can only ever subtract trades the primary would have taken.
+    None on the spec => no meta-label at all (the primary book, byte-identical to the prior behaviour).
+
+    The secondary model is a logistic on purpose: spot history is <100k rows, far too thin for a boosted tree
+    to do anything but overfit (LightGBM is reserved for offline MDA feature-importance, never the live gate).
+    The `features` are FeatureRefs so each names a real registry feature with its own fitted lookback (no magic
+    numbers); `funding_rate` is the canonical one to include. `prob_threshold` is a ParamRef so the size/skip
+    cut is fit from the param space by the Finder/Gate like every other knob — never hardcoded."""
+
+    features: list[FeatureRef]
+    prob_threshold: ParamRef
+    # "skip": binary gate (take at full size iff p >= threshold). "proportional": also scale the notional by the
+    # predicted win probability above the threshold (conviction sizing). Both only size/skip — never flip side.
+    sizing: Literal["skip", "proportional"] = "skip"
+
+
 class StrategySpec(BaseModel):
     name: str
     rationale: str
@@ -136,4 +162,8 @@ class StrategySpec(BaseModel):
     # funding leg (spot — exactly the prior behaviour). A long pays funding when the rate is positive; a short
     # receives it. No magic numbers: the rate comes from the PIT alt-data join, not a constant.
     funding_feature: str | None = None
+    # Triple-barrier meta-labeling: a secondary logistic gate that SIZES/SKIPS the primary trade by its predicted
+    # win probability (never flips direction). None => no meta-label, byte-identical to the prior behaviour. See
+    # MetaLabel for the full point-in-time / no-look-ahead contract.
+    meta_label: MetaLabel | None = None
 

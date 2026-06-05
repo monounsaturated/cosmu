@@ -1,0 +1,47 @@
+{
+  "name": "Triple-barrier meta-labeled reversion (spot)",
+  "rationale": "Meta-labeling on a mean-reversion primary: the PRIMARY signal is bare oversold (RSI below a fitted floor) and decides only the SIDE (long spot the dip). A SECONDARY regularized-logistic classifier decides whether to ACT, trained expanding-window and point-in-time on which of the three barriers (stop / take-profit / time) each past oversold entry hit first, netted of cost (win=1 else 0), reading RSI depth, Bollinger z-score, realized vol and perp funding at entry. Size/skip only — never flips direction. HONEST PRIOR: identical to the momentum sibling — meta-labeling amplifies an existing edge and spot reversion after costs has not shown one, so a powered FAIL is expected; the value is a clean, leak-free test of whether the secondary model can rescue the primary on the holdout (it almost certainly can't on spot's thin history).",
+  "catalyst": "secondary model green-lights an oversold dip-buy in a regime where reversion has historically paid",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 5
+  },
+  "entry": [
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lookback" } }, "op": "lt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" }
+  },
+  "meta_label": {
+    "features": [
+      { "name": "rsi" },
+      { "name": "bb_z", "lookback": 20 },
+      { "name": "vol_realized", "lookback": 14 },
+      { "name": "funding_rate" }
+    ],
+    "prob_threshold": { "param": "meta_thr" },
+    "sizing": "skip"
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rsi_lookback": { "kind": "int",   "lo": 7,    "hi": 21,  "step": 1 },
+    "rsi_floor":    { "kind": "float", "lo": 25.0, "hi": 40.0 },
+    "stop":         { "kind": "float", "lo": 0.05, "hi": 0.15 },
+    "tp":           { "kind": "float", "lo": 0.05, "hi": 0.20 },
+    "time_stop":    { "kind": "int",   "lo": 2,    "hi": 5,   "step": 1 },
+    "meta_thr":     { "kind": "float", "lo": 0.45, "hi": 0.65 }
+  }
+}
