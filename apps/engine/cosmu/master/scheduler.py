@@ -396,9 +396,21 @@ def _main(argv: list[str] | None = None) -> int:
     This is what `python3 -m cosmu.master.scheduler` runs every 4h on Railway, so it MUST connect to the
     production DB (Settings() reads DATABASE_URL etc. from the env) and screen on real bars — never a
     throwaway temp DB or synthetic fixture. Use --offline for a self-contained demo (temp sqlite, edge-bearing
-    fixture, no network/keys) when running locally without a DB."""
+    fixture, no network/keys) when running locally without a DB.
+
+    SCHEDULE TOGGLE: the Railway cron fires this unconditionally, but the tick only runs when
+    AUTONOMY_CRON_ENABLED=1. Any other value (or absence) → the process exits 0 immediately so the cron
+    entry can stay in railway.toml without spending compute. Flip the Railway var to enable/disable instantly
+    without a deploy. Default: OFF (safe — no surprise live-like behaviour on first deploy).
+    LIVE STAYS OFF regardless: run_tick() never arms live; this guard is purely a cost/cadence knob."""
     import argparse
+    import os
     import tempfile
+
+    enabled = os.environ.get("AUTONOMY_CRON_ENABLED", "0").strip().lower()
+    if enabled not in ("1", "true", "yes"):
+        print("AUTONOMY_CRON_ENABLED != 1 — scheduled tick skipped (set AUTONOMY_CRON_ENABLED=1 on Railway to enable)")
+        return 0
 
     parser = argparse.ArgumentParser(description="Run ONE bounded autonomous master tick (cron-able, sim-only, never arms live).")
     parser.add_argument("--n", type=int, default=4, help="candidates to author this tick (default 4)")

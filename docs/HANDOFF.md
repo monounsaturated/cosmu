@@ -128,10 +128,14 @@ No pooled wallet. Live OFF behind 5 interlocks.
   Operator wants **all assets** in scope.
 - **Compute:** Railway = engine API + crons (→ EU-West). Modal = heavy lane
   (`pnpm modal:gate/ingest/secret`). GitHub Actions = verify gate.
+- **Autonomous tick schedule (SIM-only):** Railway cron `0 */4 * * *` fires
+  `python3 -m cosmu.master.scheduler` every 4 h. Guard: set `AUTONOMY_CRON_ENABLED=1`
+  on the Railway service env to enable; omit or set to `0` to disable instantly (no
+  redeploy needed). Default OFF. Live stays off regardless — sim fills only.
 
 ## 🚦 State / in-flight
-main green & deployed (`f05b58c`). Tick works but is **NOT scheduled** (no cron → runs
-only when invoked). In-flight sub-agent PRs to verify + merge: LLM routing (free-first),
+main green & deployed (`f05b58c`). Tick scheduled via Railway cron (every 4 h, SIM-only);
+**default OFF** — set `AUTONOMY_CRON_ENABLED=1` on Railway to enable. In-flight sub-agent PRs to verify + merge: LLM routing (free-first),
 parallel-CI, frontend refine + unified input, social-authority, cost monitor (/costs
 prerender fixed `f84ee84`), Slack notifier (Slack is a **seam** — emits events, nothing
 POSTs yet), async `/autonomy/tick` (sync = gateway timeout). Edges: apply survival-features
