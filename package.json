@@ -27,6 +27,7 @@
     "modal:costs": "modal run apps/engine/remote/app.py --job cost_refresh",
     "typecheck": "pnpm --filter @cosmu/contracts-ts typecheck && pnpm --filter @cosmu/web typecheck",
     "verify": "pnpm naming:check && pnpm contracts:generate && pnpm engine:test && pnpm typecheck && pnpm build",
+    "verify:local": "pnpm naming:check && pnpm contracts:generate",
     "verify:remote": "git push -u origin HEAD"
   }
 }
