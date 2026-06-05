@@ -56,6 +56,18 @@ _SOCIAL_FIXTURES: dict[str, dict[str, float]] = {
     "BTC": {"galaxy_score": 71.0, "social_volume": 42100.0, "sentiment": 0.44},
     "ETH": {"galaxy_score": 64.0, "social_volume": 27800.0, "sentiment": 0.38},
 }
+_SOCIAL_TOP_FIXTURES: list[dict[str, Any]] = [
+    {"symbol": "BTCUSDT",   "galaxy_score": 71.0, "social_volume": 42100.0, "sentiment": 0.44},
+    {"symbol": "ETHUSDT",   "galaxy_score": 64.0, "social_volume": 27800.0, "sentiment": 0.38},
+    {"symbol": "SOLUSDT",   "galaxy_score": 68.0, "social_volume": 19500.0, "sentiment": 0.41},
+    {"symbol": "BNBUSDT",   "galaxy_score": 58.0, "social_volume": 14200.0, "sentiment": 0.35},
+    {"symbol": "ADAUSDT",   "galaxy_score": 52.0, "social_volume": 12800.0, "sentiment": 0.29},
+    {"symbol": "AVAXUSDT",  "galaxy_score": 60.0, "social_volume": 16300.0, "sentiment": 0.37},
+    {"symbol": "DOTUSDT",   "galaxy_score": 49.0, "social_volume":  9600.0, "sentiment": 0.26},
+    {"symbol": "LINKUSDT",  "galaxy_score": 54.0, "social_volume": 11100.0, "sentiment": 0.31},
+    {"symbol": "MATICUSDT", "galaxy_score": 47.0, "social_volume":  8200.0, "sentiment": 0.24},
+    {"symbol": "LTCUSDT",   "galaxy_score": 44.0, "social_volume":  7400.0, "sentiment": 0.22},
+]
 _RAG_FIXTURES: list[dict[str, str]] = [
     {"title": "Prior art: oversold mean reversion", "note": "Washed-out sentiment + statistically unusual selloff reverts at swing horizon.", "feature": "rsi"},
     {"title": "Prior art: cross-asset risk transfer", "note": "Prediction-market odds + macro regime price risk before any single asset.", "feature": "macro_regime"},
@@ -112,6 +124,29 @@ def _social(payload: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "source": "offline", "symbol": symbol, "metrics": _SOCIAL_FIXTURES.get(coin, _SOCIAL_FIXTURES["_default"])}
 
 
+def _social_top(payload: dict[str, Any]) -> dict[str, Any]:
+    """List top coins ranked by LunarCrush social_volume or galaxy_score.
+
+    Returns a homogeneous list of {symbol, galaxy_score, social_volume, sentiment} dicts so
+    the lab agent can reason about CROSS-ASSET social rotation without a separate query per coin.
+    Offline path returns the bundled ten-coin fixture sorted by social_volume desc."""
+    limit = max(1, min(int(payload.get("limit", 10)), 50))
+    sort_by = str(payload.get("sort_by", "social_volume"))  # "social_volume" | "galaxy_score"
+    api_key = payload.get("_api_key")
+    if api_key:
+        qs = urllib.parse.urlencode({"sort": sort_by, "limit": limit})
+        url = f"https://lunarcrush.com/api4/public/coins/list/v2?{qs}"
+        data = _http_json(url, headers={"Authorization": f"Bearer {api_key}"})
+        if data and data.get("data"):
+            coins = []
+            for c in data["data"][:limit]:
+                sym = f"{c.get('symbol', '').upper()}USDT"
+                sv = c.get("social_volume_24h") or c.get("social_volume") or 0.0
+                coins.append({"symbol": sym, "galaxy_score": float(c.get("galaxy_score", 0.0)), "social_volume": float(sv), "sentiment": float(c.get("sentiment", 0.0))})
+            return {"ok": True, "source": "live", "coins": coins, "sort_by": sort_by}
+    return {"ok": True, "source": "offline", "coins": _SOCIAL_TOP_FIXTURES[:limit], "sort_by": sort_by}
+
+
 def _pine_fetch(payload: dict[str, Any]) -> dict[str, Any]:
     """Fetch a community Pine script by name from the bundled sample library (the offline/no-key corpus the
     pine translator already exercises). A live scraper is intentionally NOT on the bus — that would be an
@@ -140,7 +175,8 @@ def register_research_tools(bus: ToolBus, *, lunarcrush_key: str | None = None, 
 
     bus.register(ToolDefinition(name="web_search", intent="Search the web for strategy ideas / prior art (read-only context).", readonly=True, handler=_bind(_web_search, web_search_key)))
     bus.register(ToolDefinition(name="news_read", intent="Read point-in-time news headlines for a symbol (read-only context).", readonly=True, handler=_news_read))
-    bus.register(ToolDefinition(name="social", intent="Read LunarCrush social metrics (galaxy score, social volume, sentiment).", readonly=True, handler=_bind(_social, lunarcrush_key)))
+    bus.register(ToolDefinition(name="social", intent="Read LunarCrush social metrics (galaxy score, social volume, sentiment) for a single coin.", readonly=True, handler=_bind(_social, lunarcrush_key)))
+    bus.register(ToolDefinition(name="social_top", intent="List top coins ranked by LunarCrush social_volume or galaxy_score for cross-asset comparison.", readonly=True, handler=_bind(_social_top, lunarcrush_key)))
     bus.register(ToolDefinition(name="pine_fetch", intent="Fetch a community Pine script from the curated corpus to translate (read-only).", readonly=True, handler=_pine_fetch))
     bus.register(ToolDefinition(name="rag_read", intent="Read relevant prior art and structured research notes (read-only).", readonly=True, handler=_rag_read))
     return bus
