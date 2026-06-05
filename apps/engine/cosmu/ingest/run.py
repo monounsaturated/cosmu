@@ -32,7 +32,7 @@ from cosmu.data.altdata import (
     RedditSentimentProvider,
     VenueFeesProvider,
 )
-from cosmu.data.sources.multiasset import MULTIASSET_METRICS, StooqDailyProvider
+from cosmu.data.sources.multiasset import MULTIASSET_METRICS, YahooDailyProvider
 from cosmu.data.sources.xai_twitter import XaiTwitterProvider
 from cosmu.ingest.llm_formatter import build_event_formatter_from_settings
 from cosmu.ingest.pipeline import (
@@ -94,8 +94,12 @@ class Providers:
     # Venue fees: key-gated (ccxt exchange needed for live reads). Default = Binance static-catalog fallback
     # (offline-safe, no key). A live ccxt client can be injected at deploy time for account-specific rates.
     venue_fees: AltDataProvider = field(default_factory=lambda: VenueFeesProvider("binance"))
-    # Cross-asset daily price levels (free, no key): Stooq is primary; YahooDailyProvider is a drop-in alt.
-    multiasset: AltDataProvider = field(default_factory=StooqDailyProvider)
+    # Cross-asset daily price levels (free, no key). Stooq's free CSV endpoint now demands a captcha-gated
+    # apikey (returns "Get your apikey" instead of data), so it degrades to [] — the documented drop-in
+    # YahooDailyProvider is now the active free source. 5y range gives the gate real depth + an OOS holdout.
+    # The PIT contract is identical (daily close, next-day availability floor); rows are still stored under
+    # the stable "stooq" cross-asset bucket key (an opaque store routing id, not a vendor claim).
+    multiasset: AltDataProvider = field(default_factory=lambda: YahooDailyProvider(range_="5y"))
     # EU-accessible, keyless: GDELT geopolitical news tone (market-wide) + Deribit DVOL (per-symbol BTC/ETH).
     gdelt_tone: AltDataProvider = field(default_factory=GdeltToneProvider)
     dvol: AltDataProvider = field(default_factory=DeribitDvolProvider)
