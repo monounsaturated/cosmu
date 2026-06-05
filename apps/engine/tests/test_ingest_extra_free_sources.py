@@ -31,12 +31,12 @@ def test_extra_free_sources_land_in_store_point_in_time(tmp_path):
     liquidations, putcall, news = _providers()
 
     summary = ingest_extra_free_sources(store, liquidation_provider=liquidations, putcall_provider=putcall, news_provider=news, symbols=["BTCUSDT"])
-    assert summary.counts["liquidations"] == 5
+    assert summary.counts["liquidation_cascade"] == 5
     assert summary.counts["putcall_ratio"] == 5
     assert summary.counts["news_sentiment"] == 5
 
-    # liquidations stored per-symbol under the coinglass provider
-    liq_now = store.read_asof("coinglass", "BTCUSDT", "liquidations", _FAR)
+    # liquidations stored per-symbol under the coinglass provider under the canonical registry name
+    liq_now = store.read_asof("coinglass", "BTCUSDT", "liquidation_cascade", _FAR)
     assert len(liq_now) == 5
     assert all(p.available_at > p.ts for p in liq_now)  # next-bucket availability floor preserved
 
@@ -60,4 +60,4 @@ def test_extra_free_sources_reingest_is_idempotent_in_view(tmp_path):
     ingest_extra_free_sources(store, liquidation_provider=liquidations, putcall_provider=putcall, news_provider=news, symbols=["BTCUSDT"])
     after = store.read_asof("cboe", "MARKET", "putcall_ratio", _FAR)
     assert [(p.ts, p.value) for p in before] == [(p.ts, p.value) for p in after]
-    assert len(store.read_asof("coinglass", "BTCUSDT", "liquidations", _FAR)) == 5
+    assert len(store.read_asof("coinglass", "BTCUSDT", "liquidation_cascade", _FAR)) == 5
