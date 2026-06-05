@@ -123,6 +123,10 @@ class Settings(BaseSettings):
     # and the deterministic risk guardian. Default on; flip to false to freeze the machine.
     scheduler_enabled: bool = True
     guardian_enabled: bool = True
+    # The Mind's LLM-as-judge committee is OPT-IN: off (default) → the analyst panel is fully deterministic and
+    # offline ($0, fast). On + an LLM key → each pillar WITH data is rubric-scored by the model, while the
+    # consensus stays deterministic math and the gate alone disposes. Flip with MIND_JUDGE_ENABLED.
+    mind_judge_enabled: bool = False
     # Free cross-asset transfer sources: FRED needs a (free) key; Polymarket needs a real market token id
     # (not a secret). Wired into the ingest providers so setting them is all it takes to go live.
     fred_api_key: str | None = Field(default=None, repr=False)

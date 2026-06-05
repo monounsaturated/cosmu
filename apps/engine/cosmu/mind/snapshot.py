@@ -13,8 +13,9 @@ from typing import Any
 
 from cosmu.config.feature_registry import FEATURE_REGISTRY
 from cosmu.knowledge.store import Store, utcnow
-from cosmu.mind.analysts import ALL_ANALYSTS, gather_context
+from cosmu.mind.analysts import gather_context, run_panel
 from cosmu.mind.debate import RAILGUARD, debate
+from cosmu.mind.judge import JudgeFn
 
 # Map each registry source to the analyst perspective that reads it, so "what it knows" lines up with "how it
 # thinks". Substring match on the feature's `source` (then a few name overrides) keeps this short and stable.
@@ -46,17 +47,19 @@ def _perspective_for(feature) -> str:
     return "Other"
 
 
-def build_mind(store: Store, *, reference_bars=None) -> dict[str, Any]:
+def build_mind(store: Store, *, reference_bars=None, judge: JudgeFn | None = None) -> dict[str, Any]:
     """The full Mind snapshot. Computes the panel once, debates a consensus, and bundles what the agent knows
     and has learned alongside it. Read-only and offline-safe; a perspective with no ingested data abstains.
-    All reads share ONE connection (store.reading()) — opening one per query timed out the web on remote PG."""
+    All reads share ONE connection (store.reading()) — opening one per query timed out the web on remote PG.
+    `judge` is the optional LLM-as-judge seam: None (the default) keeps the panel fully deterministic; when
+    supplied, pillars WITH data are rubric-scored by the model while the consensus stays deterministic math."""
     with store.reading():
-        return _build_mind(store, reference_bars=reference_bars)
+        return _build_mind(store, reference_bars=reference_bars, judge=judge)
 
 
-def _build_mind(store: Store, *, reference_bars=None) -> dict[str, Any]:
+def _build_mind(store: Store, *, reference_bars=None, judge: JudgeFn | None = None) -> dict[str, Any]:
     ctx = gather_context(store, reference_bars=reference_bars)
-    snap = debate([analyst(ctx) for analyst in ALL_ANALYSTS])
+    snap = debate(run_panel(ctx, judge=judge))
     return {
         "as_of": snap.as_of,
         "railguard": RAILGUARD,
@@ -68,16 +71,17 @@ def _build_mind(store: Store, *, reference_bars=None) -> dict[str, Any]:
         "stances": [asdict(s) for s in snap.stances],
         "bull_case": snap.bull_case,
         "bear_case": snap.bear_case,
+        "consensus_audit": snap.audit,
         "knows": _knows(ctx),
         "learnings": _learnings(store, ctx),
     }
 
 
-def reflect(store: Store, *, reference_bars=None) -> dict[str, Any] | None:
+def reflect(store: Store, *, reference_bars=None, judge: JudgeFn | None = None) -> dict[str, Any] | None:
     """Persist ONE point-in-time reflection (the consensus + the full payload) so the agent builds a memory of
     how it thought over time. Defensive: the audit event always writes; the mind_reflections insert is wrapped
     so a prod database that has not yet had the additive table applied degrades gracefully (no crash)."""
-    mind = build_mind(store, reference_bars=reference_bars)
+    mind = build_mind(store, reference_bars=reference_bars, judge=judge)
     payload = {"consensus": mind["consensus"], "conviction": mind["conviction"], "agreement": mind["agreement"]}
     try:
         store.append_event(actor="master", kind="mind_reflection", ref_type="mind", payload=payload)

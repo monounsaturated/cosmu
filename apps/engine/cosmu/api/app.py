@@ -1292,9 +1292,13 @@ def mind() -> MindResponse:
     the ML survival model, regime coverage, gate efficiency). The panel reads REAL ingested signals only — a
     perspective with no data abstains, never fabricates. RAILGUARD: this reasons; it never funds or fires an
     order — the deterministic gate alone disposes."""
-    from cosmu.mind import build_mind
+    from cosmu.mind import build_mind, judge_from_settings
 
-    return MindResponse(**build_mind(store, reference_bars=_brain_reference_bars()))
+    # LLM-as-judge is OPT-IN (MIND_JUDGE_ENABLED): off → the committee is fully deterministic (default, $0,
+    # fast). On + a key → pillars WITH data are rubric-scored by the model; the consensus stays deterministic
+    # math and the gate alone disposes. The seam degrades gracefully, so enabling it can never stall the read.
+    judge = judge_from_settings(settings) if settings.mind_judge_enabled else None
+    return MindResponse(**build_mind(store, reference_bars=_brain_reference_bars(), judge=judge))
 
 
 @app.get("/mind/source-trust", response_model=SourceTrustResponse)
