@@ -119,6 +119,8 @@ from cosmu.api.models import (
     VenueInstrumentInfo,
     VenueState,
     VenueToggleRequest,
+    VerdictRow,
+    VerdictsResponse,
 )
 from cosmu.adapters.exec.binance import BinanceSpotExecutionAdapter, resolve_mode
 from cosmu.config.settings import get_settings
@@ -1754,6 +1756,13 @@ def costs() -> CostsResponse:
         llm_calls=LlmCallSummary(call_count=llm_count, total_cost=llm_total, by_task=by_task),
         vendor_actuals=vendor_actuals,
     )
+
+
+@app.get("/verdicts", response_model=VerdictsResponse)
+def verdicts_endpoint() -> VerdictsResponse:
+    from cosmu.api.verdicts import load_verdicts
+
+    return VerdictsResponse(rows=load_verdicts())
 
 
 @app.get("/events", response_model=EventsResponse)
