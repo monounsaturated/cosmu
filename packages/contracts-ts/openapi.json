@@ -4775,6 +4775,100 @@
         ],
         "title": "VenueToggleRequest",
         "type": "object"
+      },
+      "VerdictRow": {
+        "description": "One parsed phase0 verdict file \u2014 the research history made scannable.",
+        "properties": {
+          "cost_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Ratio"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "deflated_sharpe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deflated Sharpe"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "INSUFFICIENT-DATA",
+              "DATA-BLOCKED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "thesis": {
+            "title": "Thesis",
+            "type": "string"
+          },
+          "trades": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trades"
+          }
+        },
+        "required": [
+          "slug",
+          "thesis",
+          "id",
+          "date",
+          "status",
+          "reason"
+        ],
+        "title": "VerdictRow",
+        "type": "object"
+      },
+      "VerdictsResponse": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/VerdictRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "VerdictsResponse",
+        "type": "object"
       }
     }
   },
@@ -6176,6 +6270,25 @@
           }
         },
         "summary": "Universe Toggle Venue"
+      }
+    },
+    "/verdicts": {
+      "get": {
+        "description": "Parse docs/reports/phase0-*-verdict.md and return structured per-thesis verdicts.",
+        "operationId": "verdicts_list_verdicts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerdictsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verdicts List"
       }
     }
   }
