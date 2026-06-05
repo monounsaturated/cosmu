@@ -1,21 +1,18 @@
 "use client";
 
-// module: app navigation. FOUR surfaces only (VISION §11, docs/PRODUCT.md §2) — Dashboard · Strategies ·
-// Mind · Console — each serving one decision. The strategy lifecycle (lab → forward → live) is a FILTER
-// inside Strategies (faceted `status`), not a set of tabs. Scores fold into Mind; Costs fold into the
-// Dashboard. The full Live screen + Settings/Commands live under "More" (deep-link utilities, off the
-// primary nav). Desktop = persistent icon-rail sidebar; mobile = a bottom tab bar (4 tabs + a More sheet).
+// module: app navigation. ONE persistent nav — Overview · Costs · Console — each serving one decision:
+// Overview (is the machine running + the verdict ledger + idea intake), Costs (the ROI read-out), and
+// Console (decide · steer · arm). There is no money yet, so there is no fund dashboard. The remaining
+// deep-link utilities (Live · Settings · Commands) live under "More", off the primary nav. Desktop =
+// persistent icon-rail sidebar; mobile = a bottom tab bar (3 tabs + a More sheet).
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  Brain,
+  DollarSign,
   LayoutDashboard,
-  LineChart,
-  ListChecks,
-  Microscope,
   MoreHorizontal,
   Radio,
   SlidersHorizontal,
@@ -26,43 +23,22 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; desc?: string; icon: typeof LayoutDashboard; gated?: boolean };
 
-// The four surfaces — one per decision the operator makes (docs/PRODUCT.md §2).
+// The three persistent surfaces — one per decision the operator makes.
 export const navItems: NavItem[] = [
-  { href: "/", label: "Dashboard", desc: "Are we making money?", icon: LayoutDashboard },
-  { href: "/strategies", label: "Strategies", desc: "Which deserve capital?", icon: ListChecks },
-  { href: "/mind", label: "Mind", desc: "What does it believe?", icon: Brain },
+  { href: "/", label: "Overview", desc: "Status · verdicts · ideas", icon: LayoutDashboard },
+  { href: "/costs", label: "Costs", desc: "What is it costing?", icon: DollarSign },
   { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal }
 ];
 
-// Secondary deep-link utilities, tucked under "More" (desktop sidebar footer + mobile sheet). The live
-// toggle itself lives on the Dashboard + Console; this is the full positions/caps screen.
+// Secondary deep-link utilities, tucked under "More" (desktop sidebar footer + mobile sheet).
 export const moreItems: NavItem[] = [
   { href: "/live", label: "Live", desc: "Positions · caps", icon: Radio, gated: true },
   { href: "/settings", label: "Settings", desc: "Keys · universe · data", icon: SlidersHorizontal },
   { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal }
 ];
 
-// Stage routes — the strategy lifecycle. Surfaced as a filter strip INSIDE Strategies (and via deep
-// links), never as top-level tabs. Exported for components/nav/strategy-stages.tsx. `/strategies` itself
-// is the "screened" stage and lives in navItems, so it isn't repeated here.
-export const stageItems: NavItem[] = [
-  { href: "/lab", label: "Lab", desc: "Discover · research", icon: Microscope },
-  { href: "/forward-test", label: "Forward-test", desc: "Per-strategy · proving", icon: LineChart },
-  { href: "/live", label: "Live", desc: "Real money", icon: Radio, gated: true }
-];
-
-// While the operator is on any lifecycle stage, the Strategies top tab stays lit (the stages live under it).
-const STAGE_HREFS = stageItems.map((i) => i.href);
-
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
-  if (href === "/strategies") {
-    return (
-      pathname.startsWith("/strategies") ||
-      pathname.startsWith("/strategy") ||
-      STAGE_HREFS.some((h) => pathname === h || pathname.startsWith(`${h}/`))
-    );
-  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -178,7 +154,7 @@ export function BottomNav() {
     <>
       <nav
         aria-label="Primary"
-        className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
+        className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
       >
         {navItems.map((item) => (
           <DockTab key={item.href} item={item} active={isActive(pathname, item.href)} />
