@@ -1,57 +1,46 @@
 // Overview — the landing page. This is NOT a fund dashboard (there is no money yet). In one glance it
 // answers three things: (a) is the machine running, and in what mode (Sim/Live) — with its last tick;
-// (b) the verdict ledger — every thesis tested, PASS or FAIL, from GET /verdicts; (c) a place to dump a
-// new idea (text → POST /lab/inbox, the engine's idea-dump). HONEST: when the engine is unreachable we
-// render a single "not connected" state and never fabricate a status or a verdict.
+// (b) the idea inbox — queue a vibe, it becomes a typed, gated spec next tick, showing queued→imported
+// status; (c) the verdict ledger — every thesis tested, PASS or FAIL, from GET /verdicts.
+// HONEST: all sections handle engine-unreachable gracefully and never fabricate a status or verdict.
 
-import { Activity, ClipboardCheck, FlaskConical, Pause, Play } from "lucide-react";
-import { engineConfigured, getAutonomyStatus, getVerdicts } from "./data";
+import { Activity, ClipboardCheck, Pause, Play } from "lucide-react";
+import { engineConfigured, getAutonomyStatus, getVerdicts, getInboxQueue } from "./data";
 import type { VerdictRow } from "./data";
-import { IdeaDumpBox } from "./idea-dump-box";
-import { NotConnected, EmptyState } from "@/components/ui/honest-state";
+import { IdeaInbox } from "@/components/overview/idea-inbox";
+import { NotConnectedBanner, EmptyState } from "@/components/ui/honest-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn, timeAgo } from "@/lib/utils";
 
 export default async function OverviewPage() {
-  const [{ status, connected: statusConnected }, { verdicts, connected: verdictsConnected }] = await Promise.all([
+  const [
+    { status, connected: statusConnected },
+    { verdicts, connected: verdictsConnected },
+    { items: queueItems, connected: queueConnected }
+  ] = await Promise.all([
     getAutonomyStatus(),
-    getVerdicts()
+    getVerdicts(),
+    getInboxQueue()
   ]);
   const connected = statusConnected || verdictsConnected;
 
-  if (!connected) {
-    return (
-      <div className="mx-auto max-w-[1100px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:px-7">
-        <Header />
-        <NotConnected
-          configured={engineConfigured}
-          what="The Overview shows the machine's status and the verdict ledger — every thesis tested, PASS or FAIL. Connect the engine to see real status; nothing is fabricated."
-        />
-      </div>
-    );
-  }
-
-  // Coerce to a safe array — an older engine shape (or an offline verdicts read) must never crash render.
+  // Coerce to safe arrays — an older engine shape must never crash render.
   const rows: VerdictRow[] = verdicts.rows ?? [];
+  const inbox = queueItems ?? [];
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:px-7">
       <Header />
 
+      {!connected && (
+        <NotConnectedBanner configured={engineConfigured} />
+      )}
+
       <MachineStatus status={status} connected={statusConnected} />
 
-      {/* Dump a new idea — queued as prose, then translated into a typed, gated spec. */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5">
-            <FlaskConical className="size-4 text-iris-soft" /> Dump an idea
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <IdeaDumpBox />
-        </CardContent>
-      </Card>
+      {/* Idea inbox — queue a vibe; next tick turns it into a typed, gated spec. Handles offline itself. */}
+      <IdeaInbox initial={inbox} connected={queueConnected} configured={engineConfigured} />
 
       {/* The verdict ledger — every thesis tested, PASS or FAIL. */}
       <VerdictLedger rows={rows} connected={verdictsConnected} />

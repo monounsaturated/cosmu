@@ -1,7 +1,7 @@
 "use client";
 
-// module: app navigation. FOUR persistent surfaces — Overview · Strategies · Costs · Console — each
-// serving one decision. Desktop = persistent icon-rail sidebar; mobile = a bottom tab bar (4 tabs + a
+// module: app navigation. FIVE persistent surfaces — Overview · Strategies · Mind · Costs · Console — each
+// serving one decision. Desktop = persistent icon-rail sidebar; mobile = a bottom tab bar (5 tabs + a
 // More sheet).
 
 import Link from "next/link";
@@ -9,7 +9,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  Brain,
   DollarSign,
+  FlaskConical,
   LayoutDashboard,
   ListChecks,
   MoreHorizontal,
@@ -22,16 +24,18 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; desc?: string; icon: typeof LayoutDashboard; gated?: boolean };
 
-// The four persistent surfaces — one per decision the operator makes.
+// Five persistent surfaces — one per decision the operator makes.
 export const navItems: NavItem[] = [
   { href: "/", label: "Overview", desc: "Status · verdicts · ideas", icon: LayoutDashboard },
   { href: "/strategies", label: "Strategies", desc: "Which deserve capital?", icon: ListChecks },
+  { href: "/mind", label: "Mind", desc: "Knows · thinks · learned", icon: Brain },
   { href: "/costs", label: "Costs", desc: "What is it costing?", icon: DollarSign },
   { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal }
 ];
 
 // Secondary deep-link utilities, tucked under "More" (desktop sidebar footer + mobile sheet).
 export const moreItems: NavItem[] = [
+  { href: "/lab", label: "Lab", desc: "Discover · gate · graveyard", icon: FlaskConical },
   { href: "/live", label: "Live", desc: "Positions · caps", icon: Radio, gated: true },
   { href: "/settings", label: "Settings", desc: "Keys · universe · data", icon: SlidersHorizontal },
   { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal }
@@ -133,7 +137,7 @@ function DockTab({
   );
 }
 
-// Mobile primary navigation: a fixed bottom tab bar — the four top tabs + a More sheet (5 cells).
+// Mobile primary navigation: a fixed bottom tab bar — the five top tabs + a More sheet (6 cells).
 export function BottomNav() {
   const pathname = usePathname();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -157,7 +161,7 @@ export function BottomNav() {
     <>
       <nav
         aria-label="Primary"
-        className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
+        className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
       >
         {navItems.map((item) => (
           <DockTab key={item.href} item={item} active={isActive(pathname, item.href)} />

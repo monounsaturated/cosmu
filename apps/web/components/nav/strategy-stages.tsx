@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 const STAGES = [
   { href: "/lab", label: "Discover", desc: "research", icon: Microscope },
   { href: "/strategies", label: "Screened", desc: "pipeline", icon: ListChecks },
-  { href: "/forward-test", label: "Forward-test", desc: "proving", icon: LineChart },
+  { href: "/strategies", label: "Forward-test", desc: "proving", icon: LineChart },
   { href: "/live", label: "Live", desc: "real money", icon: Radio, gated: true }
 ];
 
@@ -24,13 +24,18 @@ function isStageActive(pathname: string, href: string): boolean {
 
 export function StrategyStages() {
   const pathname = usePathname();
+  // First match wins — prevents two stages sharing a href (e.g. Screened + Forward-test both
+  // pointing to /strategies) from both appearing active at once.
+  let claimed = false;
   return (
     <nav
       aria-label="Strategy lifecycle"
       className="glass flex gap-1 overflow-x-auto rounded-lg border border-border/70 p-1"
     >
       {STAGES.map((stage) => {
-        const active = isStageActive(pathname, stage.href);
+        const matches = isStageActive(pathname, stage.href);
+        const active = matches && !claimed;
+        if (matches) claimed = true;
         const Icon = stage.icon;
         return (
           <Link

@@ -8,8 +8,9 @@
 // never fabricates a queue; the deterministic Gate alone decides what survives.
 
 import { useState, useTransition } from "react";
-import { Lightbulb, Send, ShieldCheck } from "lucide-react";
-import type { InboxIdeaResponse, InboxQueueItem, InboxQueueResponse } from "@cosmu/contracts-ts";
+import Link from "next/link";
+import { Eye, Lightbulb, Send, ShieldCheck } from "lucide-react";
+import type { AuthorResponse, InboxIdeaResponse, InboxQueueItem, InboxQueueResponse } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,14 +27,17 @@ export function IdeaInbox({
   configured: boolean;
 }) {
   const [text, setText] = useState("");
-  const [items, setItems] = useState<InboxQueueItem[]>(initial);
+  const [items, setItems] = useState<InboxQueueItem[]>(initial ?? []);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [specPreview, setSpecPreview] = useState<AuthorResponse | null>(null);
   const [pending, startTransition] = useTransition();
+  const [previewing, startPreview] = useTransition();
 
   function submit() {
     setNote(null);
     setError(null);
+    setSpecPreview(null);
     const body = text.trim();
     if (!body) return;
     if (!ENGINE_CONFIGURED) {
@@ -55,10 +59,34 @@ export function IdeaInbox({
         const listRes = await engineFetch("/lab/inbox");
         if (listRes.ok) {
           const list = (await listRes.json()) as InboxQueueResponse;
-          setItems(list.items);
+          setItems(list.items ?? []);
         }
       } catch {
         setError("Engine not connected — could not queue the idea.");
+      }
+    });
+  }
+
+  function previewSpec() {
+    setSpecPreview(null);
+    setError(null);
+    const body = text.trim();
+    if (!body) return;
+    if (!ENGINE_CONFIGURED) {
+      setError("Engine not connected — set API_BASE_URL to preview a spec.");
+      return;
+    }
+    startPreview(async () => {
+      try {
+        const res = await engineFetch("/lab/author", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ brief: body })
+        });
+        if (!res.ok) throw new Error("engine unavailable");
+        setSpecPreview((await res.json()) as AuthorResponse);
+      } catch {
+        setError("Engine not connected — could not preview the spec.");
       }
     });
   }
@@ -82,9 +110,14 @@ export function IdeaInbox({
           <span className="text-[11.5px] text-quiet">
             The next tick turns this into a typed spec the deterministic Gate judges.
           </span>
-          <Button variant="primary" size="sm" type="button" onClick={submit} disabled={pending || !text.trim()}>
-            <Send /> {pending ? "Queuing…" : "Queue idea"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="sm" type="button" onClick={previewSpec} disabled={previewing || pending || !text.trim()}>
+              <Eye /> {previewing ? "Previewing…" : "Preview spec"}
+            </Button>
+            <Button variant="primary" size="sm" type="button" onClick={submit} disabled={pending || previewing || !text.trim()}>
+              <Send /> {pending ? "Queuing…" : "Queue idea"}
+            </Button>
+          </div>
         </div>
 
         {note ? (
@@ -95,6 +128,37 @@ export function IdeaInbox({
         ) : null}
         {error ? (
           <div className="rounded-md border border-warn/30 bg-warn/5 p-3 text-[12.5px] leading-relaxed text-warn">{error}</div>
+        ) : null}
+
+        {/* Spec preview — read-only; the Gate alone decides if the authored spec survives. */}
+        {specPreview ? (
+          <div className="space-y-2 rounded-md border border-iris/20 bg-iris/5 p-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[12.5px] font-semibold text-foreground">{specPreview.name}</span>
+              <Badge variant={specPreview.valid ? "up" : "warn"}>{specPreview.valid ? "valid" : "invalid"}</Badge>
+              <span className="text-[11px] text-quiet">read-only preview</span>
+            </div>
+            {specPreview.rationale ? (
+              <p className="text-[12px] leading-relaxed text-muted">{specPreview.rationale}</p>
+            ) : null}
+            {specPreview.features.length > 0 ? (
+              <div>
+                <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-quiet">Features</div>
+                <div className="flex flex-wrap gap-1">
+                  {specPreview.features.map((f) => (
+                    <Badge key={f} variant="info">{f}</Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {specPreview.issues.length > 0 ? (
+              <ul className="space-y-0.5">
+                {specPreview.issues.map((iss) => (
+                  <li key={iss} className="text-[11.5px] text-warn">{iss}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         ) : null}
 
         {/* Queued ideas — honest: read straight off the engine's event ledger. */}
@@ -111,15 +175,27 @@ export function IdeaInbox({
           ) : (
             <ul className="space-y-1.5">
               {items.slice(0, 6).map((item) => (
-                <li
-                  key={item.filename}
-                  className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2"
-                >
-                  <span className="min-w-0 truncate text-[12.5px] text-foreground">{item.name}</span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <span className="text-[11px] text-quiet">{timeAgo(item.ts) ?? ""}</span>
-                    <Badge variant={item.status === "imported" ? "up" : "info"}>{item.status}</Badge>
-                  </span>
+                <li key={item.filename}>
+                  {item.status === "imported" ? (
+                    <Link
+                      href="/strategies"
+                      className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2 transition-colors hover:bg-surface-2/50"
+                    >
+                      <span className="min-w-0 truncate text-[12.5px] text-foreground">{item.name}</span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-[11px] text-quiet">{timeAgo(item.ts) ?? ""}</span>
+                        <Badge variant="up">{item.status}</Badge>
+                      </span>
+                    </Link>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2">
+                      <span className="min-w-0 truncate text-[12.5px] text-foreground">{item.name}</span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-[11px] text-quiet">{timeAgo(item.ts) ?? ""}</span>
+                        <Badge variant="info">{item.status}</Badge>
+                      </span>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
