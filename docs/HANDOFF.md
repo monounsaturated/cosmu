@@ -54,6 +54,15 @@ The human only dumps and reviews results. Keep that promise.
   loads on real data ; `railway run env PYTHONPATH=apps/engine python3 -m
   cosmu.master.scheduler --n 6` → a tick runs end-to-end. Fix anything red first.
 
+## 🖥️ Codespaces runtime (where you run)
+You're in a GitHub Codespace: **4-core/16GB, Europe-West**, devcontainer `cosmu` (Node 22 +
+Py 3.12 + pnpm + engine deps + Claude Code/VS Code extensions auto-installed). Keys are
+injected as **env vars** from Codespaces Secrets — the engine reads them directly
+(pydantic reads process env), so **no `.env.local` is needed to RUN**. BUT file-reading
+scripts (`pnpm modal:secret`, a future `railway:sync`) parse `.env.local` — so **generate
+it once from the env vars** (it's gitignored), e.g. write the `KEY=value` lines you need,
+then `pnpm modal:secret`. Stop the Codespace when idle (auto-suspends ~30 min) to save cost.
+
 ## 🤖 Agentic operating model (the codebase IS your interface)
 - **Skills = your verbs** (`.claude/skills/*`): start-session, strategize, create-strategy,
   dump-idea, triage-ideas, run-gate, scan-signals, evolve-strategy, debug-strategy,
