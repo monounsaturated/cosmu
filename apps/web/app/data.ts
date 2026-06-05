@@ -452,3 +452,17 @@ export async function getSettingsKeys(): Promise<{ keys: SettingsKeyRow[]; conne
   const { data, connected } = await getJson<SettingsKeysResponse>("/settings/keys", emptySettingsKeys);
   return { keys: data.rows, connected };
 }
+
+export interface VerdictItem {
+  id: string;
+  name: string;
+  verdict: string;
+  reason: string;
+}
+
+const emptyVerdicts: { verdicts: VerdictItem[] } = { verdicts: [] };
+
+export async function getVerdicts(): Promise<{ verdicts: VerdictItem[]; connected: boolean }> {
+  const { data, connected } = await getJson<{ verdicts: VerdictItem[] }>("/verdicts", emptyVerdicts);
+  return { verdicts: Array.isArray(data.verdicts) ? data.verdicts : [], connected };
+}

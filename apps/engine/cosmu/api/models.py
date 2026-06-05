@@ -1170,3 +1170,16 @@ class NewsIntelResponse(BaseModel):
     symbol: str
     events: list[NewsEventRow]
 
+
+class VerdictItem(BaseModel):
+    """One pre-registered phase-0 thesis verdict parsed from docs/reports/."""
+
+    id: str
+    name: str
+    verdict: str  # "PASS" | "FAIL" | "INSUFFICIENT-DATA" | "DATA-BLOCKED" | "pending"
+    reason: str
+
+
+class VerdictsResponse(BaseModel):
+    verdicts: list[VerdictItem]
+

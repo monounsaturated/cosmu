@@ -44,6 +44,8 @@ from cosmu.api.models import (
     InfraLine,
     LlmCallSummary,
     VendorActual,
+    VerdictItem,
+    VerdictsResponse,
     CrossAssetVerdict,
     DefundRequest,
     DefundResponse,
@@ -1791,6 +1793,80 @@ def _json(value: Any) -> Any:
         except json.JSONDecodeError:
             return value
     return value
+
+
+@app.get("/verdicts", response_model=VerdictsResponse)
+def verdicts_list() -> VerdictsResponse:
+    """Parse docs/reports/phase0-*-verdict.md and return structured per-thesis verdicts."""
+    import re
+    from pathlib import Path
+
+    reports_dir = Path(__file__).parents[4] / "docs" / "reports"
+    items: list[VerdictItem] = []
+
+    try:
+        paths = sorted(reports_dir.glob("phase0-*-verdict.md"))
+    except Exception:
+        return VerdictsResponse(verdicts=[])
+
+    for path in paths:
+        stem = path.stem  # e.g. "phase0-carry-verdict"
+        slug = re.sub(r"^phase0-|-verdict$", "", stem)
+        name = " ".join(p.capitalize() for p in slug.split("-"))
+
+        try:
+            content = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        verdict = "pending"
+        # Priority order: section-header inline → sub-heading → inline bold statement
+        _patterns = [
+            r"##\s+3\.[^#\n]+\*\*(PASS|FAIL|INSUFFICIENT-DATA|DATA-BLOCKED)\*\*",
+            r"###\s+\*\*(FAIL|PASS|INSUFFICIENT-DATA|DATA-BLOCKED)\*\*",
+            r"\*\*Verdict:\s+(FAIL|PASS|INSUFFICIENT-DATA|DATA-BLOCKED)",
+            r"Powered\s+(FAIL|PASS)",
+        ]
+        for pat in _patterns:
+            m = re.search(pat, content, re.IGNORECASE)
+            if m:
+                verdict = m.group(1).upper()
+                break
+
+        # Normalise "FAIL (STOP)" → "FAIL"
+        if verdict.startswith("FAIL"):
+            verdict = "FAIL"
+
+        reason = ""
+        m = re.search(r"\*\*Headline:\*\*\s+(.+?)(?:\n|$)", content)
+        if m:
+            reason = re.sub(r"[*`]", "", m.group(1)).strip()
+        if not reason:
+            # Sub-heading: "### **FAIL** — detail text"
+            m = re.search(r"###\s+\*\*(?:FAIL|PASS)[^*]*\*\*\s*(?:—\s*)?(.+?)(?:\n|$)", content)
+            if m:
+                reason = re.sub(r"[*`]", "", m.group(1)).strip()
+        if not reason:
+            # Section header: "## 3. Results — verdict: **PASS** (extra detail)"
+            m = re.search(r"##\s+3\.[^#\n]+\*\*(?:PASS|FAIL)[^*]*\*\*\s*[·]?\s*(.+?)(?:\n|$)", content)
+            if m:
+                reason = re.sub(r"[*`]", "", m.group(1)).strip()
+        if not reason:
+            # Inline: "**Verdict: FAIL (STOP).** rest of sentence"
+            m = re.search(r"\*\*Verdict:[^*]+\*\*\s*(.+?)(?:\.|$)", content)
+            if m:
+                reason = re.sub(r"[*`]", "", m.group(1)).strip()
+        if not reason:
+            # Final summary line: "**No threshold was changed. No PASS was manufactured. ... ; rest"
+            m = re.search(r"\*\*No threshold was changed\.[^;]+;\s*(.+?)(?:\.|$)", content)
+            if m:
+                reason = re.sub(r"[*`]", "", m.group(1)).strip()
+        if len(reason) > 120:
+            reason = reason[:117] + "…"
+
+        items.append(VerdictItem(id=slug, name=name, verdict=verdict, reason=reason))
+
+    return VerdictsResponse(verdicts=items)
 
 
 if __name__ == "__main__":
