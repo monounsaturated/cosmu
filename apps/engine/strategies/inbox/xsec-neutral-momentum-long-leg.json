@@ -51,7 +51,7 @@
     "mom_lookback":   { "kind": "int",   "lo": 20,    "hi": 40,   "step": 1 },
     "rank_floor":     { "kind": "float", "lo": 0.70,  "hi": 0.90 },
     "rank_exit_floor":{ "kind": "float", "lo": 0.40,  "hi": 0.65 },
-    "funding_ceiling":{ "kind": "float", "lo": 0.001, "hi": 0.01 },
+    "funding_ceiling":{ "kind": "float", "lo": 0.0001, "hi": 0.0005 },
     "vol_ceiling":    { "kind": "float", "lo": 0.02,  "hi": 0.12 },
     "stop":           { "kind": "float", "lo": 0.05,  "hi": 0.15 },
     "tp":             { "kind": "float", "lo": 0.08,  "hi": 0.30 },

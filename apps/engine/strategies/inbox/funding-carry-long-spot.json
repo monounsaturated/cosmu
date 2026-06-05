@@ -48,8 +48,8 @@
     "conviction": 0.5
   },
   "param_space": {
-    "funding_floor":      { "kind": "float", "lo": 0.0001, "hi": 0.005 },
-    "funding_exit_floor": { "kind": "float", "lo": -0.001, "hi": 0.001 },
+    "funding_floor":      { "kind": "float", "lo": 0.00001, "hi": 0.00015 },
+    "funding_exit_floor": { "kind": "float", "lo": -0.0001, "hi": 0.00005 },
     "trend_lookback":     { "kind": "int",   "lo": 10,     "hi": 30,   "step": 1 },
     "trend_floor":        { "kind": "float", "lo": -0.05,  "hi": 0.05 },
     "vol_ceiling":        { "kind": "float", "lo": 0.02,   "hi": 0.12 },
