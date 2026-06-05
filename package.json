@@ -25,6 +25,7 @@
     "modal:gate": "modal run apps/engine/remote/app.py --job gate_sweep",
     "modal:ingest": "modal run apps/engine/remote/app.py --job ingest",
     "typecheck": "pnpm --filter @cosmu/contracts-ts typecheck && pnpm --filter @cosmu/web typecheck",
-    "verify": "pnpm naming:check && pnpm contracts:generate && pnpm engine:test && pnpm typecheck && pnpm build"
+    "verify": "pnpm naming:check && pnpm contracts:generate && pnpm engine:test && pnpm typecheck && pnpm build",
+    "verify:remote": "git push -u origin HEAD"
   }
 }

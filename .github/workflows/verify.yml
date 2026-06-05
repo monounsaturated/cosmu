@@ -12,10 +12,38 @@ on:
       - "**" # any branch (matches names with slashes, unlike "*")
 
 jobs:
-  verify:
-    name: verify
+  engine_test:
+    name: engine_test
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('apps/engine/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install engine
+        run: pip install -e "apps/engine[dev]"
+
+      - name: Naming check
+        run: python3 scripts/check_naming.py
+
+      - name: Engine tests
+        run: PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,24 +59,46 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
 
-      - name: Cache pip
+      - name: Generate contracts
+        # app import fails without pip; script falls back to committed openapi.json
+        run: python3 scripts/generate_contracts.py
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Cache Next.js
         uses: actions/cache@v4
         with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('apps/engine/pyproject.toml') }}
+          path: apps/web/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**') }}
           restore-keys: |
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
 
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install engine (Python)
-        run: pip install -e "apps/engine[dev]"
-
-      - name: Run verify
-        run: pnpm verify
+      - name: Build
+        # build script runs contracts:generate internally; python3 available on ubuntu-latest
+        # without pip the script falls back to committed openapi.json
+        run: pnpm build
