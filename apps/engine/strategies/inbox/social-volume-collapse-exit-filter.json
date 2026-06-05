@@ -1,0 +1,56 @@
+{
+  "name": "Social-volume collapse exit filter — crowd-attention-gated momentum",
+  "rationale": "Sustained directional price moves in crypto require a continuous stream of new buyers to maintain velocity. Social volume is a real-time proxy for the pool of engaged participants: while the crowd is actively discussing an asset (high social_volume) there is a marginal buyer pipeline that can absorb and add to price pressure; when social volume collapses back toward baseline, the energy source for the move is exhausted — fewer new participants are being recruited into the trade. This strategy enters on a standard momentum signal (elevated short-horizon return) but requires the crowd to be engaged at entry (social_volume above sv_entry_floor). A cross_down signal exit triggers whenever social_volume falls through the collapse threshold, forcing exit before the now-unsupported position fully gives back gains. The two-layer filter removes both momentum positions with no social fuel (blocked at entry) and positions that lose social fuel mid-trade (exited early). Disconfirmer: if social_volume was never elevated to begin with, the entry is blocked — protecting against entering quiet low-attention moves that are statistically indistinguishable from noise. NOTE: DATA-BLOCKED — social_volume requires LUNARCRUSH_API_KEY; queued until ingested. tier1 + low-confidence until validated OOS.",
+  "catalyst": "momentum entry gated by elevated social_volume; exit triggered by crowd-interest collapse",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    },
+    {
+      "feature": { "name": "social_volume" },
+      "op": "gt",
+      "threshold": { "param": "sv_entry_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "social_volume" },
+        "op": "cross_down",
+        "threshold": { "param": "sv_collapse_threshold" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.45
+  },
+  "param_space": {
+    "mom_lb":                { "kind": "int",   "lo": 5,       "hi": 30,   "step": 1 },
+    "mom_floor":             { "kind": "float", "lo": 0.02,    "hi": 0.12 },
+    "sv_entry_floor":        { "kind": "float", "lo": 10000.0, "hi": 40000.0 },
+    "sv_collapse_threshold": { "kind": "float", "lo": 5000.0,  "hi": 20000.0 },
+    "stop":                  { "kind": "float", "lo": 0.04,    "hi": 0.14 },
+    "tp":                    { "kind": "float", "lo": 0.08,    "hi": 0.28 },
+    "time_stop":             { "kind": "int",   "lo": 3,       "hi": 14,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
