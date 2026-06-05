@@ -112,6 +112,24 @@ def draft_from_brief(
         # The LLM CONDITIONS on the gathered research context (prior-art features) — the agentic loop:
         # tools gather → model proposes informed structure → the deterministic Gate disposes.
         llm_brief = brief if not prior_art else f"{brief}\n\nResearch context — prior art supports these features: {', '.join(prior_art)}."
+        # Graveyard RAG: surface why prior specs FAILED before the LLM proposes new structure so the
+        # machine doesn't re-test dead ideas. Keyless + offline-safe; a hiccup silently degrades.
+        if store is not None:
+            try:
+                from cosmu.knowledge.memory import GraveyardMemory
+                _grv = GraveyardMemory(store).recall(brief, k=5)
+                dead_structs = [
+                    ", ".join(h.structure.get("entry_features", []))
+                    for h in _grv.dead_ends
+                    if h.structure.get("entry_features")
+                ]
+                if dead_structs:
+                    llm_brief += (
+                        "\n\nGraveyard (DO NOT re-propose) — these feature structures previously"
+                        f" FAILED the gate: {'; '.join(dead_structs)}."
+                    )
+            except Exception:  # noqa: BLE001 — memory is advisory; a hiccup must not break authoring
+                pass
         proposal, llm_notes = _llm_propose(llm_brief, store=store, chat=chat)
         notes.extend(llm_notes)
         if proposal is not None:

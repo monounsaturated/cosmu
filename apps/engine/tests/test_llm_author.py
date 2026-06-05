@@ -144,3 +144,47 @@ def test_proposal_is_structure_only_no_numbers_field():
     # The typed proposal has no place to put a threshold/number — defence at the schema boundary.
     p = LlmProposal(base_template="momentum", features=["ret_Nd"])
     assert set(p.model_dump().keys()) == {"base_template", "features", "bar_size", "rationale"}
+
+
+def test_graveyard_context_appears_in_llm_prompt_before_authoring(tmp_path):
+    """recall() is invoked BEFORE the LLM proposes structure so the model sees why prior specs
+    failed and can avoid re-testing dead ideas (graveyard RAG)."""
+    from cosmu.evolution.seeder import seed_meanrev_spec
+    from cosmu.knowledge.memory import GraveyardMemory
+    from cosmu.knowledge.store import utcnow
+
+    store = _store(tmp_path, key="sk-test")
+    mem = GraveyardMemory(store)
+
+    dead = seed_meanrev_spec()
+    dead.name = "Oversold RSI/BB fade"
+
+    class _DeadEv:
+        version_id = "v-dead"
+        name = "Oversold RSI/BB fade"
+        origin = "seed"
+        passed = False
+        reasons = ["pbo"]
+        deflated_sharpe = 0.1
+        oos_return_pct = -2.0
+
+    mem.remember(dead, _DeadEv())
+
+    captured: list[str] = []
+
+    def capturing_chat(model_id: str, prompt: str) -> str | None:  # noqa: ARG001
+        captured.append(prompt)
+        return None  # triggers deterministic fallback; we only care the prompt is enriched
+
+    draft_from_brief(
+        "Fade oversold RSI when Bollinger band z-score is extended",
+        llm_enabled=True,
+        store=store,
+        chat=capturing_chat,
+    )
+
+    assert captured, "the LLM chat seam must have been called"
+    full_prompt = "\n".join(captured)
+    # Dead-end context must reach the model BEFORE it proposes structure.
+    assert "graveyard" in full_prompt.lower(), "prompt must reference the graveyard dead-end structures"
+    assert "rsi" in full_prompt, "dead feature 'rsi' from the killed spec must appear in the LLM prompt"
