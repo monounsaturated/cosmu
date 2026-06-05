@@ -567,6 +567,23 @@ export interface MemoryInsightsResponse {
   insights: MemoryInsight[];
 }
 
+export interface MindAuditContribution {
+  contribution: number;
+  conviction: number;
+  lean: string;
+  perspective: string;
+  source: string;
+  weight: number;
+}
+
+export interface MindConsensusAudit {
+  consensus: string;
+  contributions: MindAuditContribution[];
+  method: string;
+  tally: Record<string, unknown>;
+  total: number;
+}
+
 export interface MindLearnings {
   dead_ends: number;
   gate_improving: boolean;
@@ -597,6 +614,7 @@ export interface MindResponse {
   bear_case: string[];
   bull_case: string[];
   consensus: "bullish" | "bearish" | "neutral";
+  consensus_audit?: MindConsensusAudit | null;
   contested: boolean;
   conviction: number;
   knows: MindLens[];
@@ -627,6 +645,9 @@ export interface MindStance {
   low_confidence?: boolean;
   perspective: string;
   rationale: string;
+  rubric?: string | null;
+  score?: number;
+  source?: "heuristic" | "llm" | "abstain";
   weight: number;
 }
 

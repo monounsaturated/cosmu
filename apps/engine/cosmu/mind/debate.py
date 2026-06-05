@@ -31,6 +31,10 @@ class MindSnapshot:
     bear_case: list[str] = field(default_factory=list)
     narrative: str = ""
     as_of: str | None = None
+    # `audit` is the deterministic aggregation, exposed so the math is inspectable: per-pillar contributions,
+    # the per-lean tally they sum to, and the fixed rule that picks the consensus. The LLM (when used) only
+    # scores each pillar; THIS combination is pure math — that is the railguard's "auditable" half.
+    audit: dict = field(default_factory=dict)
 
 
 def debate(stances: list[Stance]) -> MindSnapshot:
@@ -52,6 +56,7 @@ def debate(stances: list[Stance]) -> MindSnapshot:
             contested=False,
             narrative=_no_signal_narrative(stances),
             as_of=_latest_asof(stances),
+            audit=_audit(market, tally, total),
         )
 
     # Deterministic argmax: highest weighted vote, ties broken by a fixed lean order.
@@ -75,7 +80,35 @@ def debate(stances: list[Stance]) -> MindSnapshot:
         bear_case=bear_case,
         narrative=_narrative(consensus, conviction, agreement, contested, bull_case, bear_case, stances),
         as_of=_latest_asof(stances),
+        audit=_audit(market, tally, total, consensus=consensus),
     )
+
+
+# --------------------------------------------------------------------------- audit (deterministic, inspectable)
+
+
+def _audit(market: list[Stance], tally: dict[str, float], total: float, *, consensus: str | None = None) -> dict:
+    """The combination, laid bare. Each voting pillar's contribution (source_weight × confidence) is recorded,
+    they sum to the per-lean tally, and the rule that picks the winner is stated. Pure math over the per-pillar
+    verdicts — no LLM, no money — so anyone can replay how the consensus was reached."""
+    contributions = [
+        {
+            "perspective": s.perspective,
+            "lean": s.lean,
+            "weight": round(s.weight, 4),
+            "conviction": round(s.conviction, 4),
+            "source": s.source,
+            "contribution": round(s.weight * s.conviction, 4),
+        }
+        for s in market
+    ]
+    return {
+        "method": "weighted vote: sum(source_weight × confidence) per lean; argmax with fixed tie-break bullish > neutral > bearish",
+        "tally": {k: round(v, 4) for k, v in tally.items()},
+        "total": round(total, 4),
+        "consensus": consensus or "neutral",
+        "contributions": contributions,
+    }
 
 
 # --------------------------------------------------------------------------- narrative (deterministic)

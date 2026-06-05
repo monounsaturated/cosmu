@@ -2689,6 +2689,85 @@
         "title": "MemoryInsightsResponse",
         "type": "object"
       },
+      "MindAuditContribution": {
+        "description": "One voting pillar's contribution to the consensus tally \u2014 exposed so the aggregation is replayable.\n`contribution` = `weight` \u00d7 `conviction` (the LLM scores each pillar; this combination is pure math).",
+        "properties": {
+          "contribution": {
+            "title": "Contribution",
+            "type": "number"
+          },
+          "conviction": {
+            "title": "Conviction",
+            "type": "number"
+          },
+          "lean": {
+            "title": "Lean",
+            "type": "string"
+          },
+          "perspective": {
+            "title": "Perspective",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "perspective",
+          "lean",
+          "weight",
+          "conviction",
+          "source",
+          "contribution"
+        ],
+        "title": "MindAuditContribution",
+        "type": "object"
+      },
+      "MindConsensusAudit": {
+        "description": "The deterministic, auditable aggregation laid bare: the rule, the per-lean tally, and the per-pillar\ncontributions that sum to it. No LLM and no money on this path \u2014 the committee's vote is just math.",
+        "properties": {
+          "consensus": {
+            "title": "Consensus",
+            "type": "string"
+          },
+          "contributions": {
+            "items": {
+              "$ref": "#/components/schemas/MindAuditContribution"
+            },
+            "title": "Contributions",
+            "type": "array"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "tally": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Tally",
+            "type": "object"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          }
+        },
+        "required": [
+          "method",
+          "tally",
+          "total",
+          "consensus",
+          "contributions"
+        ],
+        "title": "MindConsensusAudit",
+        "type": "object"
+      },
       "MindLearnings": {
         "description": "What the agent has LEARNED: long-term memory, the ML survival model's state, regime coverage, and whether\nthe gate pass-rate is improving.",
         "properties": {
@@ -2855,6 +2934,16 @@
             ],
             "title": "Consensus",
             "type": "string"
+          },
+          "consensus_audit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MindConsensusAudit"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "contested": {
             "title": "Contested",
@@ -3025,6 +3114,32 @@
           },
           "rationale": {
             "title": "Rationale",
+            "type": "string"
+          },
+          "rubric": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rubric"
+          },
+          "score": {
+            "default": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "source": {
+            "default": "heuristic",
+            "enum": [
+              "heuristic",
+              "llm",
+              "abstain"
+            ],
+            "title": "Source",
             "type": "string"
           },
           "weight": {
