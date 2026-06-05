@@ -23,6 +23,7 @@ from cosmu.data.altdata import (
     FundingRateProvider,
     GdeltNewsProvider,
     GdeltToneProvider,
+    KrakenFuturesFundingRateProvider,
     LunarCrushProvider,
     NewsProvider,
     OkxFundingRateProvider,
@@ -72,6 +73,13 @@ OKX_PERP_UNIVERSE = (
     "INJ-USDT-SWAP", "OP-USDT-SWAP", "ARB-USDT-SWAP", "TON-USDT-SWAP",
 )
 
+# Kraken Futures linear perpetuals available for data ingest (PF_ = linear USDT-settled).
+# Smaller universe than OKX; funding settled hourly via premium index.
+KRAKEN_FUTURES_UNIVERSE = (
+    "PF_XBTUSD", "PF_ETHUSD", "PF_SOLUSD", "PF_XRPUSD", "PF_LINKUSD",
+    "PF_AVAXUSD", "PF_ADAUSD", "PF_DOTUSD", "PF_DOGEUSD", "PF_LTCUSD",
+)
+
 
 @dataclass
 class Providers:
@@ -81,6 +89,8 @@ class Providers:
     funding: AltDataProvider = field(default_factory=FundingRateProvider)
     # OKX perp funding rate for the 20-asset dispersion universe (public endpoint, no key).
     okx_funding: AltDataProvider = field(default_factory=OkxFundingRateProvider)
+    # Kraken Futures funding rate (public endpoint, no key). FR-legal perp venue (MiCA EU).
+    kraken_futures_funding: AltDataProvider = field(default_factory=KrakenFuturesFundingRateProvider)
     feargreed: AltDataProvider = field(default_factory=FearGreedProvider)
     news: NewsProvider = field(default_factory=GdeltNewsProvider)
     fred: AltDataProvider = field(default_factory=FredMacroProvider)
@@ -192,6 +202,12 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     counts["okx_funding_rate"] = _safe(
         "okx_funding_rate",
         lambda: ingest_numeric(store, p.okx_funding, list(OKX_PERP_UNIVERSE), "funding_rate", provider_name="okx_perp"),
+    )
+    counts["kraken_futures_funding_rate"] = _safe(
+        "kraken_futures_funding_rate",
+        lambda: ingest_numeric(
+            store, p.kraken_futures_funding, list(KRAKEN_FUTURES_UNIVERSE), "funding_rate", provider_name="kraken_futures"
+        ),
     )
     # Fear & Greed and the cross-asset transfer series are market-wide → ingest once under the MARKET key.
     counts["fear_greed"] = _safe(

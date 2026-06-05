@@ -476,6 +476,84 @@ class OkxFundingRateProvider:
         return pts[-limit:] if limit and len(pts) > limit else pts
 
 
+class KrakenFuturesFundingRateProvider:
+    """Kraken Futures historical funding rates (public REST, no key required).
+
+    Fetches /api/v3/historicalfundingrates for PF_-prefixed linear perpetuals.
+    `available_at == ts` (Kraken publishes the realized premium at its effective
+    time — no look-ahead).  Kraken Futures settles funding on an hourly basis via
+    a premium index; rates are expressed per-interval (convert to 8h-equivalent
+    in the dispersion strategy if comparing cross-venue).
+
+    Offline-testable via the injected `_fetcher(url) -> list[dict]` callable.
+    Falls back to [] on any network / parse error.
+    """
+
+    _BASE = "https://futures.kraken.com"
+
+    def __init__(
+        self,
+        base_url: str = _BASE,
+        *,
+        sleep_s: float = 0.2,
+        _fetcher: "Callable[[str], list] | None" = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.sleep_s = sleep_s
+        self._live = _fetcher is None
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> list:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        try:
+            with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            return payload.get("rates", [])
+        except Exception:  # noqa: BLE001
+            return []
+
+    def fetch_history(self, symbol: str, *, start_ms: int, end_ms: int | None = None) -> list[AltDataPoint]:
+        """Fetch all funding rate entries for `symbol` from `start_ms` to now (or `end_ms`).
+
+        Kraken returns the full history in one request (no pagination cursor needed
+        for most symbols).  Filter to [start_ms, end_ms] and deduplicate.
+        """
+        import time as _time
+
+        end = int(end_ms) if end_ms is not None else int(_time.time() * 1000)
+        url = f"{self.base_url}/api/v3/historicalfundingrates?symbol={urllib.parse.quote(symbol)}"
+        try:
+            rows = self._fetcher(url)
+        except Exception:  # noqa: BLE001
+            return []
+        seen: set[int] = set()
+        out: list[AltDataPoint] = []
+        for row in rows:
+            # Kraken returns effectiveTime as a millisecond Unix epoch integer
+            ft = int(row["timestamp"])
+            if ft in seen or ft < start_ms or ft > end:
+                continue
+            seen.add(ft)
+            ts = datetime.fromtimestamp(ft / 1000, tz=UTC)
+            out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["fundingRate"])))
+        out.sort(key=lambda p: p.ts)
+        return out
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        """AltDataProvider seam: trailing `limit` funding points."""
+        if metric != "funding_rate":
+            return []
+        import time as _time
+
+        days = max(1, int(limit / 24) + 2)  # ~24 events/day at 1h settlement
+        start_ms = int((_time.time() - days * 86400) * 1000)
+        try:
+            pts = self.fetch_history(symbol, start_ms=start_ms)
+        except Exception:  # noqa: BLE001
+            return []
+        return pts[-limit:] if limit and len(pts) > limit else pts
+
+
 class FearGreedProvider:
     """Crypto Fear & Greed index (alternative.me, free, daily). Market-wide; symbol ignored."""
 
