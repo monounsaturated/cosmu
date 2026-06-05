@@ -72,6 +72,13 @@ def forward_mark() -> int:
 
 
 @app.function(**_HEAVY)
+def cost_refresh() -> int:
+    """Fetch live vendor spend (OpenRouter, Railway, Modal, xAI ledger), check budget thresholds,
+    emit Slack alerts + recommendation rows. Mirrors the 6h Railway cron."""
+    return _run(["cosmu.costs.refresh"])
+
+
+@app.function(**_HEAVY)
 def run_module(module: str, args: list[str] | None = None) -> int:
     """Escape hatch: run any engine module as `python -m <module> [args…]` on Modal compute.
     e.g. modal run apps/engine/remote/app.py --job run_module --module cosmu.research.gate"""
@@ -80,9 +87,14 @@ def run_module(module: str, args: list[str] | None = None) -> int:
 
 @app.local_entrypoint()
 def main(job: str = "gate_sweep", module: str = "", args: str = "") -> None:
-    """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|forward_mark|run_module]`.
+    """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|forward_mark|cost_refresh|run_module]`.
     For run_module pass --module cosmu.x.y and optional --args "--flag value" (space-split)."""
-    jobs = {"gate_sweep": gate_sweep, "ingest": ingest, "forward_mark": forward_mark}
+    jobs = {
+        "gate_sweep": gate_sweep,
+        "ingest": ingest,
+        "forward_mark": forward_mark,
+        "cost_refresh": cost_refresh,
+    }
     if job == "run_module":
         code = run_module.remote(module, args.split() if args else [])
     elif job in jobs:

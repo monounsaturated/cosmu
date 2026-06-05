@@ -934,6 +934,13 @@
           "total_usd": {
             "title": "Total Usd",
             "type": "number"
+          },
+          "vendor_actuals": {
+            "items": {
+              "$ref": "#/components/schemas/VendorActual"
+            },
+            "title": "Vendor Actuals",
+            "type": "array"
           }
         },
         "required": [
@@ -942,7 +949,8 @@
           "opex_vs_alpha",
           "per_strategy",
           "infra_lines",
-          "llm_calls"
+          "llm_calls",
+          "vendor_actuals"
         ],
         "title": "CostsResponse",
         "type": "object"
@@ -4277,13 +4285,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -4313,6 +4314,40 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VendorActual": {
+        "description": "Live-fetched vendor spend for the current month vs its configured monthly budget cap.\namount=0 for free/constant vendors; budget=0 means uncapped (no alert threshold set).",
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "budget": {
+            "title": "Budget",
+            "type": "number"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vendor",
+          "category",
+          "amount",
+          "budget",
+          "period"
+        ],
+        "title": "VendorActual",
         "type": "object"
       },
       "VenueCatalogResponse": {

@@ -39,6 +39,7 @@ from cosmu.api.models import (
     CostsResponse,
     InfraLine,
     LlmCallSummary,
+    VendorActual,
     CrossAssetVerdict,
     DefundRequest,
     DefundResponse,
@@ -1654,6 +1655,42 @@ def costs() -> CostsResponse:
     task_rows = store.rows("SELECT task, COUNT(*) AS n FROM llm_calls GROUP BY task")
     by_task = {r["task"]: int(r["n"]) for r in task_rows}
 
+    # Vendor actuals: latest live-fetched row per vendor (meta seed='vendor').
+    # Enriched with per-vendor budget caps from settings — never stored in DB (secrets stay server-side).
+    from cosmu.config.settings import get_settings as _get_settings
+    _settings = _get_settings()
+    _budget = _settings.budget
+    _vendor_budget_map: dict[str, float] = {
+        "OpenRouter": float(_budget.openrouter.monthly_cap),
+        "xAI": float(_budget.xai.monthly_cap),
+        "Railway": float(_budget.railway.monthly_cap),
+        "Modal": float(_budget.modal.monthly_cap),
+        "Claude": float(_budget.claude.monthly_cap),
+    }
+    vendor_rows = store.rows(
+        "SELECT vendor, category, CAST(amount AS REAL) AS amount, meta "
+        "FROM costs WHERE meta LIKE ? ORDER BY ts DESC",
+        ('%"seed": "vendor"%',),
+    )
+    seen_v: set[str] = set()
+    vendor_actuals: list[VendorActual] = []
+    for r in vendor_rows:
+        v = r["vendor"]
+        if v in seen_v:
+            continue
+        seen_v.add(v)
+        try:
+            meta = _json_mod.loads(r["meta"]) if isinstance(r["meta"], str) else (r["meta"] or {})
+        except (ValueError, TypeError):
+            meta = {}
+        vendor_actuals.append(VendorActual(
+            vendor=v,
+            category=r["category"],
+            amount=float(r["amount"] or 0),
+            budget=_vendor_budget_map.get(v, 0.0),
+            period=str(meta.get("month", "")),
+        ))
+
     return CostsResponse(
         total_usd=total,
         by_category=by_category,
@@ -1661,6 +1698,7 @@ def costs() -> CostsResponse:
         per_strategy=per_strategy,
         infra_lines=infra_lines,
         llm_calls=LlmCallSummary(call_count=llm_count, total_cost=llm_total, by_task=by_task),
+        vendor_actuals=vendor_actuals,
     )
 
 

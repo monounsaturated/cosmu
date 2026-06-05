@@ -194,6 +194,7 @@ export interface CostsResponse {
   opex_vs_alpha: number;
   per_strategy: CostPerStrategy[];
   total_usd: number;
+  vendor_actuals: VendorActual[];
 }
 
 export interface CrossAssetVerdict {
@@ -881,11 +882,17 @@ export interface UniverseResponse {
 }
 
 export interface ValidationError {
-  ctx?: Record<string, unknown>;
-  input?: string;
   loc: string | number[];
   msg: string;
   type: string;
+}
+
+export interface VendorActual {
+  amount: number;
+  budget: number;
+  category: string;
+  period: string;
+  vendor: string;
 }
 
 export interface VenueCatalogResponse {

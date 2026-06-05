@@ -38,7 +38,8 @@ import type {
   SkillsResponse,
   SourceTrustResponse,
   SourceTrustRow,
-  StrategyDetailResponse
+  StrategyDetailResponse,
+  VendorActual,
 } from "@cosmu/contracts-ts";
 import type { PositionsResponse, LiveVenuesResponse } from "@/components/live/contracts";
 import { EMPTY_AUTONOMY_STATUS, type AutonomyStatus } from "./autonomy-contracts";
@@ -55,6 +56,7 @@ export type {
   CostsResponse,
   InfraLine,
   LlmCallSummary,
+  VendorActual,
   SourceTrustRow,
   SourceTrustResponse,
   NewsEventRow,
@@ -180,7 +182,8 @@ const emptyCosts: CostsResponse = {
   opex_vs_alpha: 0,
   per_strategy: [],
   infra_lines: [],
-  llm_calls: { call_count: 0, total_cost: 0, by_task: {} }
+  llm_calls: { call_count: 0, total_cost: 0, by_task: {} },
+  vendor_actuals: [],
 };
 
 const emptyPositions: PositionsResponse = {
