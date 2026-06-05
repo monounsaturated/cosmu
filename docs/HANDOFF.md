@@ -54,14 +54,25 @@ The human only dumps and reviews results. Keep that promise.
   loads on real data ; `railway run env PYTHONPATH=apps/engine python3 -m
   cosmu.master.scheduler --n 6` → a tick runs end-to-end. Fix anything red first.
 
-## 🖥️ Codespaces runtime (where you run)
-You're in a GitHub Codespace: **4-core/16GB, Europe-West**, devcontainer `cosmu` (Node 22 +
-Py 3.12 + pnpm + engine deps + Claude Code/VS Code extensions auto-installed). Keys are
-injected as **env vars** from Codespaces Secrets — the engine reads them directly
-(pydantic reads process env), so **no `.env.local` is needed to RUN**. BUT file-reading
-scripts (`pnpm modal:secret`, a future `railway:sync`) parse `.env.local` — so **generate
-it once from the env vars** (it's gitignored), e.g. write the `KEY=value` lines you need,
-then `pnpm modal:secret`. Stop the Codespace when idle (auto-suspends ~30 min) to save cost.
+## 🖥️ Runtime & dev environment
+**Now: run locally on the Mac (M2 16GB).** It's enough for the master's job — control,
+merge, dispatch — because heavy work is offloaded: **verify → GitHub Actions CI**, **heavy
+quant → Modal**. Do NOT run full `pnpm verify` / `next build` on the Mac (slow + OOM);
+use targeted `pytest -k` and let CI be the gate.
+
+**Local setup (once, Mac):** add `MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET` (and any missing
+keys) to **`.env.local`** (gitignored — your single source of truth; the engine reads it in
+dev). Then `pip install modal` and `npm i -g @railway/cli` (+ `gh`). Sync secrets OUT:
+`pnpm modal:secret` (Modal); for Railway, push via `railway variables --set …` or build the
+mirror `railway:sync` script. Secrets only ever pass as env/CLI args — never printed,
+committed, or put in a prompt.
+
+**Ready to switch FAST if the Mac gets laggy/buggy, or for parallel envs (not now, be
+prepared):** a GitHub **Codespace** — devcontainer `cosmu` is already configured (4-core/16GB,
+EU-West, keys via Codespaces Secrets injected as env vars; if a file-reading script needs
+`.env.local`, generate it once from those env vars) — **or Gitpod** (equivalent,
+devcontainer-compatible, free tier). **No VPS/Hetzner.** Switching = open the repo there,
+secrets auto-inject, zero migration (same repo); stop it when idle (bursty use ≈ free).
 
 ## 🤖 Agentic operating model (the codebase IS your interface)
 - **Skills = your verbs** (`.claude/skills/*`): start-session, strategize, create-strategy,
@@ -134,10 +145,9 @@ safety). Auto-merge green + low-risk; fix risky yourself; ask operator only on
 money/product/Gate calls.
 
 ## 🔓 Open decisions (yours — facts, not answers)
-1. **Dev box:** Mac M2 16GB (free, full control, ~16–18 min verify + `next build` OOM) ·
-   GitHub Codespaces (~free 120h then ~$0.18–0.36/h, fast, networked, secrets,
-   devcontainer ready, ephemeral) · Hetzner VM (~€8/mo always-on EU, you set up). Decide
-   or ask.
+1. **Dev box — DECIDED:** Mac now (heavy → CI/Modal). Switch FAST to Codespaces or Gitpod
+   if it's laggy/buggy or you want parallel envs (devcontainer ready, zero migration). No
+   VPS/Hetzner. See **Runtime & dev environment** above.
 2. First-edge selection (test several high-impact, all assets) · 3. schedule the tick or
    not · 4. when a step earns a paid model + the cap · 5. buy-vs-build & premium-data buys
    (ROI-gated; operator will fund high-impact).
