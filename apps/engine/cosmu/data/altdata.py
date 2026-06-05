@@ -1202,9 +1202,9 @@ _STORE_PROVIDER_OF = {
     "fear_greed": "alternative.me",
     "news_sentiment": "news",
     "news_event_score": "news",  # typed event/news scorer: sign × magnitude, stored per-symbol
-    "risk_on": "polymarket",
+    "pm_risk_on": "polymarket",
     "macro_regime": "fred",
-    "liquidations": "coinglass",
+    "liquidation_cascade": "coinglass",
     "putcall_ratio": "cboe",
     "vix_level": "fred",
     "fed_funds_rate": "fred",
@@ -1242,13 +1242,20 @@ _STORE_PROVIDER_OF = {
     "usdjpy": "stooq",
 }
 _STORE_MARKET_WIDE = frozenset({
-    "fear_greed", "risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",
+    "fear_greed", "pm_risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",
     "defi_tvl", "dxy", "yield_curve_2s10s", "credit_spread", "vix_term_slope",
     "osint_air_activity", "pm_implied_prob", "pm_prob_velocity", "pm_book_depth",
     "reddit_sentiment", "twitter_sentiment", "twitter_influencer_sentiment",
     "gdelt_tone", "reg_risk_crypto", "risk_on_off",
     "gold_xau", "silver_xag", "wti_crude", "spx_index", "ndx_index", "eurusd", "usdjpy",
 })
+# Registry name → stored metric name, for features renamed after their first ingest.
+# StoreBackedAltProvider tries the registry name first; if the store returns nothing it falls back here
+# so data written under the old name is still accessible until re-ingested under the canonical name.
+_STORE_METRIC_ALIAS: dict[str, str] = {
+    "pm_risk_on": "risk_on",
+    "liquidation_cascade": "liquidations",
+}
 
 
 class StoreBackedAltProvider:
@@ -1267,7 +1274,12 @@ class StoreBackedAltProvider:
         if provider is None:
             return []
         key = "MARKET" if metric in self._market_wide else symbol
-        return self._store.read_all(provider, key, metric)[-limit:]
+        points = self._store.read_all(provider, key, metric)
+        if not points:
+            alias = _STORE_METRIC_ALIAS.get(metric)
+            if alias:
+                points = self._store.read_all(provider, key, alias)
+        return points[-limit:]
 
 
 class FixtureNewsProvider:

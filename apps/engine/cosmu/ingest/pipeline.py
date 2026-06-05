@@ -193,8 +193,15 @@ def ingest_news_event_score(
 
 def ingest_liquidations(alt_store: AltDataStore, provider: AltDataProvider, symbols: list[str], *, provider_name: str = "coinglass", limit: int = 1000) -> int:
     """Pull per-crypto-symbol total liquidations (long+short USD) point-in-time. Numeric → no LLM.
-    Thin wrapper over ingest_numeric so the scheduled pass + tests read the same primitive."""
-    return ingest_numeric(alt_store, provider, symbols, "liquidations", provider_name=provider_name, limit=limit)
+    The Coinglass provider exposes the data as metric="liquidations"; we store it under the canonical
+    registry name "liquidation_cascade" so backtest wiring is consistent with feature_registry.py."""
+    total = 0
+    for symbol in symbols:
+        points = provider.fetch_series(symbol, "liquidations", limit=limit)
+        if points:
+            alt_store.append(provider_name, symbol, "liquidation_cascade", points)
+            total += len(points)
+    return total
 
 
 def ingest_putcall(alt_store: AltDataStore, provider: AltDataProvider, *, provider_name: str = "cboe", limit: int = 1000) -> int:
@@ -217,7 +224,7 @@ def ingest_extra_free_sources(
     CBOE put/call market-wide, GDELT real news → standardized sentiment). Append-only + point-in-time, so
     re-runs never rewrite the view. Offline-safe via injected providers (fixtures in tests)."""
     counts = {
-        "liquidations": ingest_liquidations(alt_store, liquidation_provider, symbols),
+        "liquidation_cascade": ingest_liquidations(alt_store, liquidation_provider, symbols),
         "putcall_ratio": ingest_putcall(alt_store, putcall_provider),
         "news_sentiment": ingest_news_sentiment(alt_store, news_provider, symbols, llm=llm),
     }
@@ -247,7 +254,7 @@ def ingest_cross_asset_sources(
     summary.counts["macro_regime"] = ingest_market_wide_numeric(
         alt_store, fred_provider, source_metric=fred_series, stored_metric="macro_regime", provider_name="fred",
     )
-    summary.counts["risk_on"] = ingest_market_wide_numeric(
-        alt_store, polymarket_provider, source_metric=polymarket_token, stored_metric="risk_on", provider_name="polymarket",
+    summary.counts["pm_risk_on"] = ingest_market_wide_numeric(
+        alt_store, polymarket_provider, source_metric=polymarket_token, stored_metric="pm_risk_on", provider_name="polymarket",
     )
     return summary
