@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import random
+from datetime import UTC, datetime, timedelta
+
 import cosmu.research.gate as gate_mod
 from cosmu.config.feature_registry import FEATURE_REGISTRY
 from cosmu.config.settings import Settings
-from cosmu.data.altdata import AltDataStore, StoreBackedAltProvider
+from cosmu.data.altdata import AltDataPoint, AltDataStore, FixtureAltDataProvider, StoreBackedAltProvider
+from cosmu.data.sources.multiasset import MULTIASSET_METRICS
 from cosmu.ingest.pipeline import ingest_market_wide_numeric, ingest_news_sentiment, ingest_numeric
 from cosmu.knowledge.store import Store
 from cosmu.research.fixtures import synthetic_cross_asset_inputs
@@ -131,3 +135,110 @@ def test_cross_asset_transfer_features_are_registered_with_pinned_transforms():
         assert feat.transform_version is not None  # a survivor must be re-runnable byte-for-byte
         assert len(feat.asset_classes) >= 2  # cross-asset by construction
         assert feat.prior  # every source declares a prior hypothesis (more data = more overfit surface)
+
+
+# --- Cross-market STATIONARY transfer features (gold/silver/wti/spx/ndx/eurusd/usdjpy) -----------
+# These are free, market-wide daily price LEVELS. PR #87 read them as RAW levels, so an absolute threshold
+# overfit the in-sample range. The gate now turns each into a causal rolling z-score (stationary) and folds
+# them into the cross-asset arm as one equal-weight composite, with per-source drop-one attribution. The
+# tests below pin the contract: the sources are attributed, the z-score is location/scale invariant (no
+# raw-level overfit), an absent series is a clean pass-through, a real cross-market signal flows through, and
+# the whole thing is deterministic. All offline (the multiasset series are injected as fixtures; no network).
+
+_XA_START = datetime(2023, 1, 1, tzinfo=UTC)  # matches synthetic_cross_asset_inputs' bar window
+
+
+def _xmarket_levels(metric: str, *, n: int = 600, seed: int = 7, scale: float = 1.0, offset: float = 0.0, noise: float = 0.01) -> list[AltDataPoint]:
+    """A deterministic, point-in-time daily LEVEL series (a positive random walk) for one cross-market metric,
+    aligned day-for-day to the synthetic bar window. `scale`/`offset` apply an affine transform to the LEVEL —
+    used to prove the z-score (and thus the verdict) is invariant to the absolute level."""
+    rng = random.Random(f"xm-level-{metric}-{seed}")  # str seed → process-stable
+    level = 1000.0
+    out: list[AltDataPoint] = []
+    for i in range(n):
+        level = max(1.0, level * (1 + rng.gauss(0, noise)))
+        ts = _XA_START + timedelta(days=i)
+        out.append(AltDataPoint(ts=ts, available_at=ts, value=level * scale + offset))
+    return out
+
+
+def _augment_with_xmarket(alt: FixtureAltDataProvider, *, scale: float = 1.0, offset: float = 0.0, signal_into: dict[str, str] | None = None) -> FixtureAltDataProvider:
+    """Return a fresh provider carrying the synthetic alt series PLUS a cross-market LEVEL series per metric.
+    `signal_into` maps a metric → an existing market-wide series name (e.g. "risk_on") whose values are copied
+    in as that metric's levels, so the metric's z-score carries a REAL transfer signal instead of noise."""
+    series = dict(alt.series)
+    signal_into = signal_into or {}
+    for m in MULTIASSET_METRICS:
+        if m in signal_into:
+            src = alt.series[("MARKET", signal_into[m])]
+            series[("MARKET", m)] = [AltDataPoint(ts=p.ts, available_at=p.available_at, value=1000.0 + 1000.0 * p.value) for p in src]
+        else:
+            series[("MARKET", m)] = _xmarket_levels(m, scale=scale, offset=offset)
+    return FixtureAltDataProvider(series)
+
+
+def test_cross_market_sources_are_attributed_in_drop_one(tmp_path):
+    """Every multiasset cross-market metric is wired into the arm and gets its own per-source drop-one entry
+    (alongside the original news/funding/fear_greed/risk_on/macro_regime sources)."""
+    market_by_class, alt, news = synthetic_cross_asset_inputs(edge=True, seed=7)
+    alt = _augment_with_xmarket(alt)
+    v = evaluate_cross_asset_ablation(market_by_class, alt, news, _store(tmp_path, "xm_attr"))
+    sources = {d.source for d in v.drop_one_source}
+    assert set(MULTIASSET_METRICS) <= sources, f"cross-market sources missing from drop-one: {set(MULTIASSET_METRICS) - sources}"
+    # drop-one stays diagnostic-only — the counted attempts (arms + CSCV grid) are unchanged by the new sources.
+    assert v.attempts <= v.bar["attempt_budget"]
+
+
+def test_cross_market_zscore_is_location_and_scale_invariant(tmp_path):
+    """The whole point of the stationary fix: the verdict CANNOT depend on the cross-market series' absolute
+    level. A causal rolling z-score is affine-invariant, so multiplying every level by 1e3 and adding 5e6
+    (the exact overfit surface a raw EUR/USD threshold exploited) leaves the decision, returns, and every
+    cross-market drop-one delta byte-for-byte identical."""
+    mbc_a, alt_a, news_a = synthetic_cross_asset_inputs(edge=True, seed=7)
+    mbc_b, alt_b, news_b = synthetic_cross_asset_inputs(edge=True, seed=7)
+    a = evaluate_cross_asset_ablation(mbc_a, _augment_with_xmarket(alt_a, scale=1.0, offset=0.0), news_a, _store(tmp_path, "inv_a"))
+    b = evaluate_cross_asset_ablation(mbc_b, _augment_with_xmarket(alt_b, scale=1000.0, offset=5_000_000.0), news_b, _store(tmp_path, "inv_b"))
+    assert (a.decision, a.xasset_return, a.xasset_dsr, a.num_trades) == (b.decision, b.xasset_return, b.xasset_dsr, b.num_trades)
+    da = {d.source: d.delta for d in a.drop_one_source if d.source in set(MULTIASSET_METRICS)}
+    db = {d.source: d.delta for d in b.drop_one_source if d.source in set(MULTIASSET_METRICS)}
+    assert da == db
+
+
+def test_cross_market_is_passthrough_and_inert_when_absent(tmp_path):
+    """With NO multiasset data the composite term is a clean pass-through: each cross-market source is still
+    attributed, but dropping it cannot change the signal, so its delta is exactly zero (no fabricated edge)."""
+    market_by_class, alt, news = synthetic_cross_asset_inputs(edge=True, seed=7)  # no multiasset series
+    v = evaluate_cross_asset_ablation(market_by_class, alt, news, _store(tmp_path, "xm_absent"))
+    xm_deltas = {d.source: d.delta for d in v.drop_one_source if d.source in set(MULTIASSET_METRICS)}
+    assert set(xm_deltas) == set(MULTIASSET_METRICS)
+    assert all(delta == 0.0 for delta in xm_deltas.values()), xm_deltas
+
+
+def test_cross_market_transfer_signal_flows_through_the_composite(tmp_path):
+    """The wiring is NOT inert: a genuine cross-market transfer signal flows through the composite and is
+    consulted by the arm. Feed every cross-market metric a level series that tracks the risk_on regime (so the
+    composite reduces to a true regime lead). The arm still PASSES and still beats the single-asset arm — the
+    transfer signal is captured without breaking the edge — and the verdict measurably differs from the
+    no-cross-market case, proving the term is live (not dead code).
+
+    Note (honesty): we deliberately do NOT assert a signal-carrying metric out-ranks noise in drop-one. On
+    these synthetic bars the cross-market series have no TRUE relationship to returns, so per-source drop-one
+    deltas are dominated by spurious in-sample correlation — a noise metric can out-rank a planted one. That
+    is exactly why the gate's verdict rests on the pre-registered DSR/PBO/regime bar, not the drop-one ranking."""
+    mbc_a, alt_a, news_a = synthetic_cross_asset_inputs(edge=True, seed=7)
+    v_absent = evaluate_cross_asset_ablation(mbc_a, alt_a, news_a, _store(tmp_path, "xm_absent2"))
+    mbc_b, alt_b, news_b = synthetic_cross_asset_inputs(edge=True, seed=7)
+    alt_b = _augment_with_xmarket(alt_b, signal_into={m: "risk_on" for m in MULTIASSET_METRICS})
+    v = evaluate_cross_asset_ablation(mbc_b, alt_b, news_b, _store(tmp_path, "xm_signal"))
+    assert v.decision == "PASS"
+    assert v.xasset_return > v.single_alt_return  # the cross-asset arm still beats single-asset with the composite live
+    assert v.xasset_return != v_absent.xasset_return  # the composite term is genuinely consulted, not inert
+
+
+def test_cross_market_wiring_is_deterministic(tmp_path):
+    market_by_class, alt, news = synthetic_cross_asset_inputs(edge=True, seed=7)
+    a = evaluate_cross_asset_ablation(market_by_class, _augment_with_xmarket(alt), news, _store(tmp_path, "det_a"))
+    mbc2, alt2, news2 = synthetic_cross_asset_inputs(edge=True, seed=7)
+    b = evaluate_cross_asset_ablation(mbc2, _augment_with_xmarket(alt2), news2, _store(tmp_path, "det_b"))
+    assert (a.decision, a.xasset_return, a.xasset_dsr, a.cscv_pbo) == (b.decision, b.xasset_return, b.xasset_dsr, b.cscv_pbo)
+    assert [(d.source, d.delta) for d in a.drop_one_source] == [(d.source, d.delta) for d in b.drop_one_source]

@@ -6,6 +6,7 @@ import json
 
 from cosmu.config.settings import get_settings
 from cosmu.data.altdata import StoreBackedAltProvider
+from cosmu.data.sources.multiasset import MULTIASSET_METRICS
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.research.fixtures import synthetic_cross_asset_inputs
 from cosmu.research.gate import CrossAssetVerdict, evaluate_cross_asset_ablation
@@ -81,7 +82,10 @@ def auto_research_pass(store: Store, *, ingest: bool = False, alt_store=None, pr
 
     market_by_class, synth_alt, synth_news = synthetic_cross_asset_inputs()
     if _has_cross_asset_data(alt_store):
-        provider = StoreBackedAltProvider(alt_store, market_wide=frozenset({"risk_on", "macro_regime", "putcall_ratio"}))
+        provider = StoreBackedAltProvider(
+            alt_store,
+            market_wide=frozenset({"risk_on", "macro_regime", "putcall_ratio", *MULTIASSET_METRICS}),
+        )
         verdict = evaluate_cross_asset_ablation(market_by_class, provider, None, store)
         data_source = "live"
     else:
