@@ -9,7 +9,7 @@ import ssl
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Protocol
@@ -411,8 +411,6 @@ class FredMacroProvider:
         self.release_lag_days = release_lag_days
 
     def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
-        from datetime import timedelta
-
         params = {"series_id": metric, "file_type": "json", "sort_order": "desc", "limit": min(limit, 100000)}
         if self.api_key:
             params["api_key"] = self.api_key
@@ -591,7 +589,6 @@ class DefiLlamaTvlProvider:
             ts = datetime.fromtimestamp(int(row.get("date", 0)), tz=UTC)
             tvl = float(row.get("tvl", 0))
             if tvl > 0:
-                from datetime import timedelta
                 out.append(AltDataPoint(ts=ts, available_at=ts + timedelta(days=1), value=tvl))
         return sorted(out, key=lambda p: p.ts)
 
@@ -809,6 +806,105 @@ class PolymarketClobProvider:
         return []
 
 
+class GdeltToneProvider:
+    """GDELT v2 geopolitical/news tone as a daily numeric series (keyless, free, EU-accessible). Queries
+    risk/geopolitical keywords via GDELT's TimelineTone API → one average-tone value per day in the range
+    [-100, +100] (negative = negative sentiment, positive = positive). Market-wide: the query covers global
+    risk themes, not a single asset. `available_at = ts + 1 day` — a day's indexed articles are closed by
+    end-of-day; the conservative next-day floor means we never read the future. Offline-testable via an
+    injected `_fetcher(url) -> dict`. One dead fetch → [] (never aborts the run)."""
+
+    DEFAULT_QUERY = "crisis war sanctions recession inflation geopolitical risk conflict tariff"
+
+    def __init__(
+        self,
+        base_url: str = "https://api.gdeltproject.org/api/v2/doc/doc",
+        query: str | None = None,
+        timespan: str = "30d",
+        *,
+        _fetcher: Callable[[str], dict] | None = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.query = query or self.DEFAULT_QUERY
+        self.timespan = timespan
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> dict:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "gdelt_tone":
+            return []
+        params = {
+            "query": self.query,
+            "mode": "TimelineTone",
+            "format": "json",
+            "timespan": self.timespan,
+            "sort": "DateAsc",
+        }
+        url = f"{self.base_url}?{urllib.parse.urlencode(params)}"
+        try:
+            payload = self._fetcher(url)
+        except Exception:  # noqa: BLE001
+            return []
+        return _points_from_gdelt_tone(payload, limit)
+
+
+class DeribitDvolProvider:
+    """Deribit BTC/ETH implied volatility index (DVOL) — free public REST, no key, EU-native (Netherlands).
+    DVOL is Deribit's 30-day forward implied vol for BTC or ETH options — the crypto equivalent of VIX.
+    Per-symbol (BTCUSDT → BTC, ETHUSDT → ETH); unknown symbols → []. `available_at = ts + 1 day`:
+    each daily bar starts at midnight UTC and is finalized at end-of-day; the conservative next-day floor
+    means we never claim to know today's close before it happens. Offline-testable via an injected
+    `_fetcher(url) -> dict`. One dead fetch → [] (never aborts the run)."""
+
+    _CURRENCY = {"BTC": "BTC", "ETH": "ETH"}
+
+    def __init__(
+        self,
+        base_url: str = "https://www.deribit.com/api/v2",
+        resolution: int = 86400,
+        days_back: int = 60,
+        *,
+        _fetcher: Callable[[str], dict] | None = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.resolution = resolution
+        self.days_back = days_back
+        self._fetcher = _fetcher or self._fetch
+
+    def _fetch(self, url: str) -> dict:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "dvol":
+            return []
+        coin = symbol[:-4] if symbol.endswith("USDT") else symbol
+        currency = self._CURRENCY.get(coin.upper())
+        if currency is None:
+            return []
+        import time as _time
+
+        end_ms = int(_time.time() * 1000)
+        start_ms = end_ms - self.days_back * 86400 * 1000
+        params = {
+            "currency": currency,
+            "start_timestamp": start_ms,
+            "end_timestamp": end_ms,
+            "resolution": str(self.resolution),
+        }
+        url = f"{self.base_url}/public/get_volatility_index_data?{urllib.parse.urlencode(params)}"
+        try:
+            payload = self._fetcher(url)
+        except Exception:  # noqa: BLE001
+            return []
+        return _points_from_deribit_dvol(payload, limit)
+
+
 def _gdelt_query(coin: str) -> str:
     """Map a coin ticker to a GDELT keyword query. Tickers alone are too noisy, so the common majors get a
     name; everything else falls back to the ticker plus "crypto" to keep the topic anchored."""
@@ -839,8 +935,6 @@ def _points_from_coinglass(payload: dict, bucket_seconds: int) -> list[AltDataPo
 def _points_from_cboe_putcall(csv_text: str, release_lag_days: int) -> list[AltDataPoint]:
     """CBOE total put/call CSV: a few preamble lines then `DATE,PUT/CALL RATIO` (or `Date,...`). Each
     session's ratio is finalized after the close → available `release_lag_days` later (next-day floor)."""
-    from datetime import timedelta
-
     out: list[AltDataPoint] = []
     for line in csv_text.splitlines():
         cols = [c.strip() for c in line.split(",")]
@@ -894,6 +988,47 @@ def _parse_gdelt_date(raw: str) -> datetime | None:
     return None
 
 
+def _points_from_gdelt_tone(payload: dict, limit: int) -> list[AltDataPoint]:
+    """GDELT TimelineTone JSON: {"timeline": [{"data": [{"date": "YYYYMMDDHHMMSS", "value": float}]}]}.
+    `available_at = ts + 1 day` — a day's indexed articles are closed by end-of-day; the next-day
+    conservative floor means we never read the future. Deduplicates by ts (latest wins)."""
+    seen: dict[datetime, AltDataPoint] = {}
+    for series in payload.get("timeline", []) or []:
+        for row in (series.get("data", []) or []):
+            date_raw = row.get("date")
+            value_raw = row.get("value")
+            if not date_raw or value_raw is None:
+                continue
+            ts = _parse_gdelt_date(date_raw)
+            if ts is None:
+                continue
+            seen[ts] = AltDataPoint(ts=ts, available_at=ts + timedelta(days=1), value=float(value_raw))
+    out = sorted(seen.values(), key=lambda p: p.ts)
+    return out[-limit:] if limit and len(out) > limit else out
+
+
+def _points_from_deribit_dvol(payload: dict, limit: int) -> list[AltDataPoint]:
+    """Deribit get_volatility_index_data: {"result": {"data": [[ts_ms, open, high, low, close], ...]}}.
+    We use the `close` (daily DVOL value at bar-end). `available_at = ts + 1 day` — a daily bar opens at
+    midnight UTC and is finalized at end-of-day; the next-day floor means we never claim today's close
+    before it happens. Rows with zero or negative close are dropped (Deribit occasionally emits nulls)."""
+    rows = (payload.get("result") or {}).get("data") or []
+    out: list[AltDataPoint] = []
+    for row in rows:
+        if not isinstance(row, (list, tuple)) or len(row) < 5:
+            continue
+        ts_ms, close = row[0], row[4]
+        if close is None:
+            continue
+        close_f = float(close)
+        if close_f <= 0:
+            continue
+        ts = datetime.fromtimestamp(int(ts_ms) / 1000, tz=UTC)
+        out.append(AltDataPoint(ts=ts, available_at=ts + timedelta(days=1), value=close_f))
+    out.sort(key=lambda p: p.ts)
+    return out[-limit:] if limit and len(out) > limit else out
+
+
 # Default routing: the gate asks for a SEMANTIC metric name; the store keyed it under the ingesting
 # provider. Market-wide metrics live under the "MARKET" symbol (one series for the whole tape).
 _STORE_PROVIDER_OF = {
@@ -927,6 +1062,9 @@ _STORE_PROVIDER_OF = {
     "galaxy_score": "lunarcrush",
     "twitter_sentiment": "xai",
     "twitter_influencer_sentiment": "xai",
+    # Geopolitical news tone (GDELT, keyless, market-wide) and crypto options IV (Deribit, keyless, per-symbol).
+    "gdelt_tone": "gdelt",
+    "dvol": "deribit",
     # Cross-asset daily price levels (free, no key) via Stooq/Yahoo — metals, commodities, equity indexes, FX.
     "gold_xau": "stooq",
     "silver_xag": "stooq",
@@ -941,6 +1079,7 @@ _STORE_MARKET_WIDE = frozenset({
     "defi_tvl", "dxy", "yield_curve_2s10s", "credit_spread", "vix_term_slope",
     "osint_air_activity", "pm_implied_prob", "pm_prob_velocity", "pm_book_depth",
     "reddit_sentiment", "twitter_sentiment", "twitter_influencer_sentiment",
+    "gdelt_tone",
     "gold_xau", "silver_xag", "wti_crude", "spx_index", "ndx_index", "eurusd", "usdjpy",
 })
 

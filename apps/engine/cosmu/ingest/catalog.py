@@ -136,6 +136,16 @@ def _fetch_xai(store: Any, symbols: list[str], providers: Any) -> int:
     return total
 
 
+def _fetch_gdelt_tone(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_market_wide_numeric(
+        store, providers.gdelt_tone, source_metric="gdelt_tone", stored_metric="gdelt_tone", provider_name="gdelt",
+    )
+
+
+def _fetch_dvol(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_numeric(store, providers.dvol, symbols, "dvol", provider_name="deribit")
+
+
 def _fetch_risk_on(store: Any, symbols: list[str], providers: Any) -> int:
     return ingest_market_wide_numeric(
         store, providers.polymarket, source_metric=providers.polymarket_token, stored_metric="risk_on", provider_name="polymarket",
@@ -178,6 +188,8 @@ def managed_sources() -> dict[str, SourceSpec]:
             _fetch_multiasset, market_wide=True, per_symbol=False,
             note="Free cross-asset daily price levels via Stooq/Yahoo (metals/commodities/equity-index/FX).",
         ),
+        SourceSpec("gdelt_tone", "alt", ("gdelt_tone",), _fetch_gdelt_tone, market_wide=True, per_symbol=False, note="GDELT geopolitical news tone (keyless, EU-accessible, market-wide daily)."),
+        SourceSpec("dvol", "alt", ("dvol",), _fetch_dvol, note="Deribit DVOL implied vol (keyless, EU-native, BTC/ETH only)."),
     ]
     return {s.name: s for s in specs}
 
