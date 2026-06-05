@@ -1,14 +1,19 @@
 name: verify
 
 on:
-  # push == deploy and branch protection isn't available on the current plan, so
-  # verify runs on EVERY branch's pushes (covers main and all feature branches).
-  # The local pre-push hook (.githooks/pre-push) is the first gate; this is the
-  # safety net. pull_request trigger removed — it was a duplicate that fired a
-  # second run for every PR push, doubling Actions spend with no extra coverage.
+  # COST: CI runs ONLY on PRs against main (the actual gate before merge) + on
+  # pushes to main itself (the deploy-safety net), NOT on every feature-branch
+  # push. This kills the ~$0.30-per-agent-push spend — agents commit freely to
+  # their branches for $0; verify runs once when a PR is opened/updated, and on
+  # the merge to main. The local pre-push hook (.githooks/pre-push) is the fast
+  # first gate. `workflow_dispatch` lets you run it manually on any branch.
+  pull_request:
+    branches:
+      - main
   push:
     branches:
-      - "**" # any branch (matches names with slashes, unlike "*")
+      - main
+  workflow_dispatch:
 
 # Cancel any in-flight run on the same branch when a newer push lands.
 concurrency:
