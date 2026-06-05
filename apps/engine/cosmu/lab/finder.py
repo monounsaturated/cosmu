@@ -641,6 +641,13 @@ def _backtest_row(version_id: str, m: BacktestMetrics, deflated: float, passed: 
         "folds_positive": int(m.folds_positive_pct * 6),
         "passed_gates": int(passed),
         "holdout_passed": int(holdout_ok),
+        # Survival-model feature row (see ml/survival.py) — persisted so the ranker trains on the same vector
+        # it scores with. Matches the evolution-loop screen insert; nullable in the schema for older rows.
+        "sharpe_per_obs": str(m.sharpe_per_obs),
+        "skew": str(m.skew),
+        "kurtosis": str(m.kurtosis),
+        "n_obs": m.n_obs,
+        "regime_spread": sum(1 for pnl in m.regime_returns.values() if pnl > 0),
         "created_at": utcnow(),
     }
 

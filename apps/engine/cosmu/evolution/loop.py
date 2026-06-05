@@ -386,6 +386,13 @@ class FarmLoop:
                 "folds_positive": int(metrics.folds_positive_pct * 6),
                 "passed_gates": int(passed),
                 "holdout_passed": int(metrics.holdout_deflated_sharpe > self.settings.gates.holdout_min_deflated_sharpe),
+                # Survival-model feature row persisted alongside the verdict so the ranker trains on the SAME
+                # vector it scores with (no more zero-filling skew/kurtosis/n_obs/regime breadth at train time).
+                "sharpe_per_obs": str(metrics.sharpe_per_obs),
+                "skew": str(metrics.skew),
+                "kurtosis": str(metrics.kurtosis),
+                "n_obs": metrics.n_obs,
+                "regime_spread": sum(1 for pnl in metrics.regime_returns.values() if pnl > 0),
                 "created_at": utcnow(),
             },
         )

@@ -70,6 +70,14 @@ CREATE TABLE IF NOT EXISTS backtests (
   folds_positive INTEGER NOT NULL,
   passed_gates INTEGER NOT NULL,
   holdout_passed INTEGER NOT NULL,
+  -- The survival-model feature row (ml/survival.py) persisted off the screen: per-obs Sharpe + higher moments
+  -- + observation count + regime breadth. Nullable so pre-migration rows stay valid (the reader coalesces
+  -- NULL -> neutral, i.e. the old zero-filled behaviour) and other backtest kinds may leave them unset.
+  sharpe_per_obs NUMERIC,
+  skew NUMERIC,
+  kurtosis NUMERIC,
+  n_obs INTEGER,
+  regime_spread INTEGER,
   created_at TEXT NOT NULL
 );
 
@@ -331,5 +339,7 @@ CREATE INDEX IF NOT EXISTS idx_executions_run ON executions(run_id);
 CREATE INDEX IF NOT EXISTS idx_executions_ts ON executions(ts);
 CREATE INDEX IF NOT EXISTS idx_strategy_versions_status ON strategy_versions(status);
 CREATE INDEX IF NOT EXISTS idx_research_notes_created ON research_notes(created_at);
+-- recall()/novelty always filter `WHERE kind = ?`; without this the append-only graveyard is a full scan.
+CREATE INDEX IF NOT EXISTS idx_research_notes_kind ON research_notes(kind);
 CREATE INDEX IF NOT EXISTS idx_skills_pruned ON skills(pruned_at);
 

@@ -371,11 +371,16 @@ def novelty_gate(
             return False, f"too_similar_to_dead_end (dist={dist:.3f}, features={sorted(dead_features)})"
 
     if live_specs:
+        # Reject if the candidate is too SIMILAR to ANY live spec — that is what actually prevents a
+        # monoculture (admitting a near-duplicate of something already running). The prior logic was inverted:
+        # it accepted as soon as the candidate was far from *some one* live spec, so in a diverse population
+        # near-duplicates of an existing strategy sailed through (every candidate differs from at least one
+        # member). Novel = distinct from EVERY live spec.
         for live in live_specs:
             dist = structural_distance(spec, live)
-            if dist >= min_distance:
-                return True, "novel"
-        return False, f"monoculture (all live specs within dist {min_distance})"
+            if dist < min_distance:
+                return False, f"monoculture (within dist {min_distance:.2f} of a live spec)"
+        return True, "novel"
 
     return True, "novel"
 
