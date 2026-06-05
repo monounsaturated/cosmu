@@ -13,7 +13,7 @@ from cosmu.spine.venue import default_catalog
 def test_catalog_has_multi_asset_venues() -> None:
     cat = default_catalog()
     ids = {v.id for v in cat.venues}
-    assert {"binance", "kraken", "coinbase", "ibkr", "alpaca", "polymarket"} <= ids
+    assert {"binance", "kraken", "coinbase", "ibkr", "alpaca", "polymarket", "okx", "kraken_futures"} <= ids
 
 
 def test_venue_for_prices_a_spec_against_its_own_venue() -> None:
@@ -75,6 +75,68 @@ def test_jurisdiction_picks_the_live_venue() -> None:
     us_live = {v.id for v in cat.live_legal_venues("US")}
     assert "binance" not in us_live
     assert {"kraken", "coinbase", "ibkr"} <= us_live
+
+
+def test_eu_venues_are_data_only_not_live() -> None:
+    """OKX and Kraken Futures are wired as data/research venues — no money moves until live interlock passes."""
+    cat = default_catalog()
+    assert cat.venue("okx").live_enabled is False
+    assert cat.venue("kraken_futures").live_enabled is False
+
+
+def test_okx_real_fees_and_instruments() -> None:
+    """OKX fees: retail 8/10 bps spot, tighten at volume (MiCA EU entity). Instruments: spot + swap."""
+    cat = default_catalog()
+    okx = cat.venue("okx")
+    assert okx.maker_fee_bps == Decimal("8") and okx.taker_fee_bps == Decimal("10")
+    # Volume tiers lower fees
+    _, base_taker = okx.effective_fee(0)
+    _, high_taker = okx.effective_fee(400_000_000)
+    assert high_taker < base_taker
+    # Both spot and perp symbols catalogued
+    okx_symbols = {i.symbol for i in cat.instruments if i.venue_id == "okx"}
+    assert {"BTC-USDT", "ETH-USDT", "BTC-USDT-SWAP", "ETH-USDT-SWAP"} <= okx_symbols
+
+
+def test_kraken_futures_real_fees_and_instruments() -> None:
+    """Kraken Futures: retail 2/5 bps perps, maker rebate at >$100M. Instruments: PF_ linear perps."""
+    cat = default_catalog()
+    kf = cat.venue("kraken_futures")
+    assert kf.maker_fee_bps == Decimal("2") and kf.taker_fee_bps == Decimal("5")
+    # Maker rebate at highest tier (negative maker = rebate)
+    best_maker, _ = kf.effective_fee(200_000_000)
+    assert best_maker < Decimal("0")
+    # Linear perps catalogued
+    kf_symbols = {i.symbol for i in cat.instruments if i.venue_id == "kraken_futures"}
+    assert {"PF_XBTUSD", "PF_ETHUSD"} <= kf_symbols
+
+
+def test_fr_eu_legality_is_correct() -> None:
+    """FR/EU operator can use Binance spot, OKX, Kraken (spot), Kraken Futures, IBKR. US is restricted on crypto."""
+    cat = default_catalog()
+    # OKX and Kraken Futures are not live-enabled so live_legal_in always False regardless of jurisdiction
+    assert cat.venue("okx").live_legal_in("FR") is False
+    assert cat.venue("kraken_futures").live_legal_in("FR") is False
+    # Once live_enabled=True (post interlock), jurisdiction must allow FR
+    assert "FR" not in cat.venue("okx").restricted_jurisdictions
+    assert "FR" not in cat.venue("kraken_futures").restricted_jurisdictions
+    # US is restricted on all crypto derivatives and OKX
+    assert "US" in cat.venue("okx").restricted_jurisdictions
+    assert "US" in cat.venue("kraken_futures").restricted_jurisdictions
+    # Binance spot and IBKR jurisdiction flags remain correct
+    assert cat.venue("binance").live_legal_in("FR") is True
+    assert cat.venue("ibkr").live_legal_in("FR") is True
+
+
+def test_venue_for_resolves_new_venues() -> None:
+    """venue_for() dispatches OKX and Kraken Futures specs to their own fee models."""
+    cat = default_catalog()
+    assert cat.venue_for(["okx"]).id == "okx"
+    assert cat.venue_for(["kraken_futures"]).id == "kraken_futures"
+    # Kraken Futures perp fees are cheaper than Binance spot at base volume
+    _, kf_taker = cat.venue("kraken_futures").effective_fee(0)
+    _, binance_taker = cat.venue("binance").effective_fee(0)
+    assert kf_taker < binance_taker
 
 
 def test_fee_schedule_bridge_reflects_venue_and_volume() -> None:
