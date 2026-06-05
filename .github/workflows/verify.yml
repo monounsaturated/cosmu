@@ -1,15 +1,19 @@
 name: verify
 
 on:
-  pull_request:
-    branches:
-      - main
-  # Backstop: push == deploy and branch protection isn't available on the current
-  # plan, so verify runs on EVERY branch's pushes, not just main. The local
-  # pre-push hook (.githooks/pre-push) is the first gate; this is the safety net.
+  # push == deploy and branch protection isn't available on the current plan, so
+  # verify runs on EVERY branch's pushes (covers main and all feature branches).
+  # The local pre-push hook (.githooks/pre-push) is the first gate; this is the
+  # safety net. pull_request trigger removed — it was a duplicate that fired a
+  # second run for every PR push, doubling Actions spend with no extra coverage.
   push:
     branches:
       - "**" # any branch (matches names with slashes, unlike "*")
+
+# Cancel any in-flight run on the same branch when a newer push lands.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   engine_test:
@@ -39,7 +43,7 @@ jobs:
         run: python3 scripts/check_naming.py
 
       - name: Engine tests
-        run: PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests
+        run: PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests -n auto
 
   typecheck:
     name: typecheck
