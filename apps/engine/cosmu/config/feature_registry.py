@@ -10,6 +10,12 @@ from pydantic import BaseModel
 # the scoring prompt or weighting logic changes so a gate-passed survivor remains re-runnable.
 TWITTER_TRANSFORM_VERSION = "xai-twitter-sentiment-v1"
 
+# Pinned transform version for the social-authority features ("PageRank for credibility"). Bump when the
+# claim-extraction prompt, the deterministic resolver/scoring, or the authority fusion changes, so a gate-passed
+# survivor that depends on author authority stays re-runnable. Kept here (not imported from cosmu.mind) to avoid
+# an import cycle; cosmu.mind.authority.AUTHORITY_VERSION carries the same string.
+AUTHORITY_TRANSFORM_VERSION = "social-authority-v1"
+
 
 class FeatureDefinition(BaseModel):
     name: str
@@ -177,6 +183,41 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     FeatureDefinition(name="ndx_index", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="The Nasdaq-100 carries the high-beta tech/liquidity factor crypto co-moves with most strongly — a faster risk-appetite read than SPX.", transform_version="multiasset-daily-v1"),
     FeatureDefinition(name="eurusd", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="EUR/USD is the dominant dollar-strength gauge; a weaker dollar loosens global financial conditions, a tailwind for risk assets.", transform_version="multiasset-daily-v1"),
     FeatureDefinition(name="usdjpy", source="stooq", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="daily close (next-day availability floor)", prior="USD/JPY tracks the yen carry trade and global liquidity; a sharp JPY rally often coincides with cross-asset risk-off deleveraging.", transform_version="multiasset-daily-v1"),
+    # --- SOCIAL AUTHORITY ("PageRank for credibility", Phase 3): score voices by whether their PREDICTIVE claims
+    # came true (deterministic Brier-skill vs base rate), whether they were FIRST (primacy), and whether they LED
+    # an event vs ECHOED it — weighted by a citation-graph PageRank ANCHORED to that track record. Both features
+    # are POINT-IN-TIME with history (availability == observation; a real-time credibility judgement is knowable
+    # only when made — no look-ahead). Derived from the Phase-0 voice timeline, not a managed network pull, so they
+    # live outside the managed-ingest catalog. tier1 + low-confidence: influence ≠ authority and a loud-but-wrong
+    # account scores ~0, but the feature still must EARN its place out-of-sample through the gate. ---
+    FeatureDefinition(
+        name="authority_weighted_claim_signal",
+        source="social_authority",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="snapshot minted at observation time (availability == observation, no look-ahead); PIT history accrues per pass",
+        prior=(
+            "A credibility-weighted directional consensus [-1, +1] of recent claims on an asset: each voice's vote "
+            "(up/down/flat × conviction) is weighted by its citation-graph PageRank ANCHORED to a deterministic "
+            "track record (Brier-skill vs base rate), discounted for echoing vs leading. A positive shift flags "
+            "credible voices turning bullish before it is priced. Influence ≠ authority — a loud, wrong account "
+            "barely registers. tier1 — must earn its place via OOS."
+        ),
+        transform_version=AUTHORITY_TRANSFORM_VERSION,
+    ),
+    FeatureDefinition(
+        name="author_authority",
+        source="social_authority",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="snapshot minted at observation time (availability == observation, no look-ahead); PIT history accrues per pass",
+        prior=(
+            "Per-voice credibility weight (personalized PageRank over the who-cites-whom graph, teleport ∝ the "
+            "deterministic Brier-skill track record). The diagnostic per-handle series feeding the weighted claim "
+            "signal: a quiet calibrated voice scores high, a loud wrong one scores ~0. tier1 — must earn OOS."
+        ),
+        transform_version=AUTHORITY_TRANSFORM_VERSION,
+    ),
     FeatureDefinition(name="pm_implied_prob", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Odds are a cross-market probability signal."),
     FeatureDefinition(name="pm_prob_velocity", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Probability repricing speed identifies changing beliefs."),
     FeatureDefinition(name="pm_book_depth", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Depth defines fillable capacity."),
