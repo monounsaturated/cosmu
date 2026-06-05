@@ -146,45 +146,31 @@ def test_proposal_is_structure_only_no_numbers_field():
     assert set(p.model_dump().keys()) == {"base_template", "features", "bar_size", "rationale"}
 
 
-def test_graveyard_context_appears_in_llm_prompt_before_authoring(tmp_path):
-    """recall() is invoked BEFORE the LLM proposes structure so the model sees why prior specs
-    failed and can avoid re-testing dead ideas (graveyard RAG)."""
-    from cosmu.evolution.seeder import seed_meanrev_spec
+def test_llm_brief_includes_graveyard_kill_reasons(tmp_path):
+    """When a store has prior deaths, the LLM prompt must include graveyard kill-reasons so the model
+    avoids re-testing dead ideas."""
+    from cosmu.evolution.seeder import seed_momentum_spec
     from cosmu.knowledge.memory import GraveyardMemory
-    from cosmu.knowledge.store import utcnow
+
+    class _Ev:
+        def __init__(self, vid, name, passed, reasons):  # noqa: ANN001
+            self.version_id = vid; self.name = name; self.origin = "test"
+            self.passed = passed; self.reasons = reasons
+            self.deflated_sharpe = -0.3; self.oos_return_pct = -0.05
 
     store = _store(tmp_path, key="sk-test")
-    mem = GraveyardMemory(store)
+    spec = seed_momentum_spec()
+    spec.name = "dead_momentum"
+    GraveyardMemory(store).remember(spec, _Ev("v1", "dead_momentum", False, ["sharpe_too_low"]))
 
-    dead = seed_meanrev_spec()
-    dead.name = "Oversold RSI/BB fade"
+    seen: list[str] = []
 
-    class _DeadEv:
-        version_id = "v-dead"
-        name = "Oversold RSI/BB fade"
-        origin = "seed"
-        passed = False
-        reasons = ["pbo"]
-        deflated_sharpe = 0.1
-        oos_return_pct = -2.0
+    def chat(_model_id: str, prompt: str) -> str:
+        seen.append(prompt)
+        return json.dumps({"base_template": "momentum", "features": ["ret_Nd"]})
 
-    mem.remember(dead, _DeadEv())
+    draft_from_brief("momentum trend crypto", llm_enabled=True, store=store, chat=chat)
 
-    captured: list[str] = []
-
-    def capturing_chat(model_id: str, prompt: str) -> str | None:  # noqa: ARG001
-        captured.append(prompt)
-        return None  # triggers deterministic fallback; we only care the prompt is enriched
-
-    draft_from_brief(
-        "Fade oversold RSI when Bollinger band z-score is extended",
-        llm_enabled=True,
-        store=store,
-        chat=capturing_chat,
-    )
-
-    assert captured, "the LLM chat seam must have been called"
-    full_prompt = "\n".join(captured)
-    # Dead-end context must reach the model BEFORE it proposes structure.
-    assert "graveyard" in full_prompt.lower(), "prompt must reference the graveyard dead-end structures"
-    assert "rsi" in full_prompt, "dead feature 'rsi' from the killed spec must appear in the LLM prompt"
+    assert seen, "chat seam was never called"
+    assert "Graveyard" in seen[0], "LLM prompt must include graveyard context"
+    assert "sharpe_too_low" in seen[0], "LLM prompt must include kill reasons"

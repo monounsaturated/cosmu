@@ -112,24 +112,9 @@ def draft_from_brief(
         # The LLM CONDITIONS on the gathered research context (prior-art features) — the agentic loop:
         # tools gather → model proposes informed structure → the deterministic Gate disposes.
         llm_brief = brief if not prior_art else f"{brief}\n\nResearch context — prior art supports these features: {', '.join(prior_art)}."
-        # Graveyard RAG: surface why prior specs FAILED before the LLM proposes new structure so the
-        # machine doesn't re-test dead ideas. Keyless + offline-safe; a hiccup silently degrades.
+        # Show the LLM WHY prior specs failed so it avoids re-testing dead ideas.
         if store is not None:
-            try:
-                from cosmu.knowledge.memory import GraveyardMemory
-                _grv = GraveyardMemory(store).recall(brief, k=5)
-                dead_structs = [
-                    ", ".join(h.structure.get("entry_features", []))
-                    for h in _grv.dead_ends
-                    if h.structure.get("entry_features")
-                ]
-                if dead_structs:
-                    llm_brief += (
-                        "\n\nGraveyard (DO NOT re-propose) — these feature structures previously"
-                        f" FAILED the gate: {'; '.join(dead_structs)}."
-                    )
-            except Exception:  # noqa: BLE001 — memory is advisory; a hiccup must not break authoring
-                pass
+            llm_brief = _inject_graveyard(llm_brief, store, brief)
         proposal, llm_notes = _llm_propose(llm_brief, store=store, chat=chat)
         notes.extend(llm_notes)
         if proposal is not None:
@@ -308,6 +293,24 @@ def _apply_memory(
         else:
             new_chosen = leaned or chosen
     return new_chosen, leaned, avoid
+
+
+def _inject_graveyard(llm_brief: str, store: Store, brief: str) -> str:
+    """Prepend graveyard recall so the LLM sees WHY prior specs failed before proposing new structure."""
+    try:
+        from cosmu.knowledge.memory import GraveyardMemory
+        recall = GraveyardMemory(store).recall(brief, k=5)
+    except Exception:  # noqa: BLE001
+        return llm_brief
+    lines: list[str] = []
+    for hit in recall.dead_ends:
+        feats = hit.structure.get("entry_features", [])
+        reasons = "; ".join(hit.reasons) if hit.reasons else "gate-killed"
+        lines.append(f"- features {feats}: {reasons}")
+    if not lines:
+        return llm_brief
+    context = "Graveyard — structures the Gate has killed (do not repeat):\n" + "\n".join(lines)
+    return f"{context}\n\n{llm_brief}"
 
 
 def _pick_asset(text: str) -> tuple[str, str | None]:
