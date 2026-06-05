@@ -244,13 +244,13 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
             store, p.defillama, source_metric="defi_tvl", stored_metric="defi_tvl", provider_name="defillama"
         ),
     )
-    counts["risk_on"] = _safe(
-        "risk_on",
+    counts["pm_risk_on"] = _safe(
+        "pm_risk_on",
         lambda: ingest_market_wide_numeric(
-            store, p.polymarket, source_metric=p.polymarket_token, stored_metric="risk_on", provider_name="polymarket"
+            store, p.polymarket, source_metric=p.polymarket_token, stored_metric="pm_risk_on", provider_name="polymarket"
         ),
     )
-    counts["liquidations"] = _safe("liquidations", lambda: ingest_liquidations(store, p.liquidations, symbols))
+    counts["liquidation_cascade"] = _safe("liquidation_cascade", lambda: ingest_liquidations(store, p.liquidations, symbols))
     counts["putcall_ratio"] = _safe("putcall_ratio", lambda: ingest_putcall(store, p.putcall))
     # FRED-derived macro features (key from env: FRED_API_KEY)
     counts["dxy"] = _safe(
