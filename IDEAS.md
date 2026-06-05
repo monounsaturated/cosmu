@@ -15,7 +15,7 @@
 
 <!-- ↓↓↓ DUMP BELOW THIS LINE ↓↓↓ -->
 
-- [2026-06-05] Review https://crowdintel.xyz/#pricing — pricing/packaging reference (on-chain Polymarket smart-money analytics + MCP). Mine for our social-authority/insider feature + any pricing/product ideas.
+- [2026-06-05] CrowdIntel (https://crowdintel.xyz) — NO-GO. Their wallet-positioning scores are RETROACTIVELY recomputed as Polymarket markets resolve; using them in a backtest is look-ahead bias — the Gate would pass on phantom edge. Raw on-chain trades are PIT-honest but the scored signal (the only thing they sell) is not. Revisit only if they expose a frozen as-of-event score snapshot.
 
 <!-- ↑↑↑ DUMP ABOVE THIS LINE ↑↑↑ -->
 
