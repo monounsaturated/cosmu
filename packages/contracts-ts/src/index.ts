@@ -65,6 +65,18 @@ export interface AutonomyStatusResponse {
   running: boolean;
 }
 
+export interface AutonomyTickAcceptedResponse {
+  job_id: string;
+  status: string;
+}
+
+export interface AutonomyTickJobResponse {
+  error?: string | null;
+  job_id: string;
+  result?: AutonomyTickResponse | null;
+  status: string;
+}
+
 export interface AutonomyTickResponse {
   authored: number;
   funded: number;
