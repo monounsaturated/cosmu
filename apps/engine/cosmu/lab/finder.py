@@ -32,6 +32,7 @@ from cosmu.master.cohort import promote_cohort
 from cosmu.master.holdout import HoldoutLedger
 from cosmu.master.scorer import BacktestMetrics, TrialStats, cscv_pbo, score
 from cosmu.master.trials import register_trial
+from cosmu.ml.regime import proven_regimes
 from cosmu.spine.universe import enabled_universe
 from cosmu.spine.venue import default_catalog
 from cosmu.strategy.compiler import compile_spec
@@ -465,8 +466,10 @@ class StrategyFinder:
 
     def _persist(self, spec: StrategySpec, results: list[VariantResult], market: dict[str, list[Bar]]) -> None:
         """Write the config library: one strategies row + one strategy_versions row per variant (origin='finder',
-        config_tag carried in params), the screen backtest, and — for promoted+holdout-passing variants — a track
-        + a survivor event. Idempotent: a variant whose code_hash already exists is not re-inserted."""
+        config_tag carried in params), the screen backtest, and — for promoted+holdout-passing variants — a track,
+        a `track_opened` event (the forward-test clock origin + proven-regime passport that master/live_eligibility
+        reads, mirroring the evolution loop), and a finder-survivor event. Idempotent: a variant whose code_hash
+        already exists is not re-inserted."""
         with self.store.batch() as b:
             strategy_id = self._ensure_strategy(b, spec)
             for r in results:
@@ -509,6 +512,25 @@ class StrategyFinder:
                             "equity": str(equity.quantize(Decimal("0.01"))),
                             "return_pct": str((r.metrics.oos_return * Decimal("100")).quantize(Decimal("0.01"))),
                             "updated_at": utcnow(),
+                        },
+                    )
+                    # The forward-test clock origin. master/live_eligibility reads the FIRST `track_opened` event for
+                    # a version as BOTH its maturity-clock origin (forward_clock_origin) and its proven-regime
+                    # passport (proven_regimes_for) — exactly as the evolution loop writes it. Without this a promoted
+                    # finder survivor would have origin=None → forward_age_days 0 forever → never forward_ready →
+                    # never live-armable (forward-test is HARD-enforced in api/routers/live.py). So a finder survivor
+                    # gets the SAME track_opened mark, carrying the regimes its screen proved positive net edge in.
+                    proven = sorted(proven_regimes(r.metrics.regime_returns))
+                    b.append_event(
+                        actor="master",
+                        kind="track_opened",
+                        ref_type="strategy_version",
+                        ref_id=version_id,
+                        payload={
+                            "deflated_sharpe": round(r.deflated_sharpe, 6),
+                            "config_tag": r.config_tag,
+                            "origin": "finder",
+                            "proven_regimes": proven,
                         },
                     )
                     b.append_event(
