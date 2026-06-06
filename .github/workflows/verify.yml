@@ -88,36 +88,11 @@ jobs:
       - name: Engine tests
         run: PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests -n auto
 
-  typecheck:
-    name: typecheck
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.web == 'true'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.18.0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - name: Install JS dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Generate contracts
-        # app import fails without pip; script falls back to committed openapi.json
-        run: python3 scripts/generate_contracts.py
-
-      - name: Typecheck
-        run: pnpm typecheck
-
+  # typecheck job removed 2026-06-06 (Actions cost-cut): it was redundant with `build`.
+  # `next build` typechecks by default (next.config.ts sets no typescript.ignoreBuildErrors)
+  # and apps/web/tsconfig.json `include`s ../../packages/contracts-ts/src/**, so `build`
+  # already runs tsc over the identical fileset. Removing it drops one runner per web PR.
+  # (Restore this job if a non-built fileset — scripts/tests — ever needs standalone tsc.)
   build:
     name: build
     runs-on: ubuntu-latest
@@ -142,7 +117,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: apps/web/.next/cache
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**') }}
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/app/**', 'apps/web/components/**', 'apps/web/lib/**') }}
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
 
