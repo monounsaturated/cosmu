@@ -335,7 +335,8 @@ class Extractor:
         self.sleep_between = sleep_between
         self.dry_run = dry_run
         self._now = datetime.now(tz=UTC)
-        self._last_gated = False  # set True when a fetch fails because the endpoint isn't on this plan
+        self._last_gated = False  # True when a fetch fails because the endpoint isn't on this plan (auth/plan)
+        self._last_dead = False   # True when a single entity 404s (untracked) — skip it, don't abort the bucket
 
     def _calls_remaining(self) -> int:
         return self.daily_quota - self.manifest.calls_today
@@ -354,24 +355,29 @@ class Extractor:
             return True  # counts toward the preview count but hits no API
 
         self._last_gated = False
+        self._last_dead = False
         try:
             rows = fetch_fn(self.api_key, entity_id)
         except urllib.error.HTTPError as exc:
-            if exc.code in (401, 402, 403, 404):
-                # Endpoint not on this plan (e.g. stocks/topics on Individual). Do NOT mark done or burn
-                # quota — signal the caller to skip the whole bucket so a higher-tier re-run can still fetch it.
+            if exc.code in (401, 402, 403):
+                # Auth/plan gate: the WHOLE endpoint is unavailable on this plan. Do NOT mark done or burn
+                # quota — signal the caller to skip the bucket so a higher-tier re-run can still fetch it.
                 print(f"  GATED ({exc.code}) {entity_type}:{entity_id} — endpoint not on this plan", flush=True)
                 self._last_gated = True
                 return False
+            # 404 / other: a SINGLE dead-or-untracked entity (e.g. a coin LunarCrush doesn't cover, or a
+            # Binance ticker with no LunarCrush series). Mark done so a resume won't retry it, then keep going
+            # — one missing entity must never abort the whole bucket.
             print(f"  ERROR fetching {entity_type}:{entity_id}: {exc}", flush=True)
             self.manifest.mark_done(key)
             self.manifest.increment_calls()
+            self._last_dead = True
             return True
         except Exception as exc:  # noqa: BLE001 — one dead entity never aborts the pass
             print(f"  ERROR fetching {entity_type}:{entity_id}: {exc}", flush=True)
-            # Still mark as done to avoid burning retries on a permanently-missing entity
             self.manifest.mark_done(key)
             self.manifest.increment_calls()
+            self._last_dead = True
             return True
 
         by_metric = _rows_to_points(rows, fields, self._now)
@@ -395,6 +401,7 @@ class Extractor:
     ) -> tuple[int, int]:
         """Process one bucket (coins/stocks/topics/categories). Returns (calls_spent, new_running_idx)."""
         calls_spent = 0
+        consec_dead = 0  # consecutive 404s with zero successes → the endpoint isn't on this plan
         for key, entity_id in entities:
             if not self.dry_run and self._calls_remaining() <= 0:
                 print(f"\nQUOTA EXHAUSTED. Resume tomorrow — {self.manifest.done_count()} entities complete.", flush=True)
@@ -412,11 +419,23 @@ class Extractor:
 
             made_call = self._spend(key, label, entity_id, fields, fetch_fn)
             if self._last_gated:
-                print(f"  → '{label}' endpoints are not on this plan — skipping the whole {label} bucket "
-                      f"(no quota burned). Upgrade to Builder to fetch these.", flush=True)
-                break
+                if calls_spent == 0:
+                    print(f"  → '{label}' endpoints are not on this plan — skipping the whole {label} bucket "
+                          f"(no quota burned). Upgrade to Builder to fetch these.", flush=True)
+                    break
+                self.manifest.mark_done(key)  # gated after a success is odd; skip this one and keep going
+                continue
             if made_call:
-                calls_spent += 1
+                if self._last_dead:
+                    consec_dead += 1
+                    # A bucket that only ever 404s (never a single hit) isn't on this plan → bail it cheaply.
+                    if calls_spent == 0 and consec_dead >= 8:
+                        print(f"  → '{label}' returned only 404s ({consec_dead} in a row, 0 hits) — endpoint "
+                              f"not on this plan; skipping bucket.", flush=True)
+                        break
+                else:
+                    calls_spent += 1
+                    consec_dead = 0
                 if not self.dry_run:
                     print(f"  rows_fetched=done  calls_today={self.manifest.calls_today}", flush=True)
                     if running_idx < total_planned:
@@ -447,6 +466,7 @@ def run_extract(
     n_stocks: int = 500,
     n_topics: int = 400,
     n_categories: int = 200,
+    coins_extra: list[str] | None = None,  # explicit coin symbols (e.g. full Binance universe) — skips discovery
     dry_run: bool = False,
     daily_quota: int = DAILY_QUOTA,
     sleep_between: float = SLEEP_BETWEEN_CALLS,
@@ -465,18 +485,26 @@ def run_extract(
     # ---- COINS ----
     coins_calls = 0
     if n_coins > 0 and (dry_run or extractor._calls_remaining() > 0):
-        print(f"--- Discovering top {n_coins} coins (1 discovery call) …", flush=True)
-        if not dry_run:
-            try:
-                raw_coins = _list_coins(api_key, n_coins)
-                extractor.manifest.increment_calls()  # the list call itself
-                coin_ids = _prioritise_coins([c.get("symbol", "") for c in raw_coins if c.get("symbol")])
-            except Exception as e:  # noqa: BLE001 — discovery endpoint gated on the Individual plan (HTTP 402)
-                print(f"  [coins/list gated on this plan: {e}] → curated Numerai+PERP universe", flush=True)
-                coin_ids = _prioritise_coins(list(NUMERAI_CRYPTO_UNIVERSE))
+        if coins_extra:
+            # Explicit universe (e.g. every Binance USDT-spot base asset) ∪ the curated Numerai+PERP set.
+            # Skips the discovery call entirely (it's 402-gated on Individual anyway). Untracked coins 404
+            # and are skipped one-by-one (see _run_bucket), so over-supplying symbols is safe.
+            merged = list(dict.fromkeys([*NUMERAI_CRYPTO_UNIVERSE, *coins_extra]))
+            coin_ids = _prioritise_coins(merged)
+            print(f"--- Using injected coin universe: {len(coin_ids)} unique coins (discovery skipped)", flush=True)
         else:
-            # In dry-run, synthesise a representative preview list
-            coin_ids = list(NUMERAI_CRYPTO_UNIVERSE[:n_coins])
+            print(f"--- Discovering top {n_coins} coins (1 discovery call) …", flush=True)
+            if not dry_run:
+                try:
+                    raw_coins = _list_coins(api_key, n_coins)
+                    extractor.manifest.increment_calls()  # the list call itself
+                    coin_ids = _prioritise_coins([c.get("symbol", "") for c in raw_coins if c.get("symbol")])
+                except Exception as e:  # noqa: BLE001 — discovery endpoint gated on the Individual plan (HTTP 402)
+                    print(f"  [coins/list gated on this plan: {e}] → curated Numerai+PERP universe", flush=True)
+                    coin_ids = _prioritise_coins(list(NUMERAI_CRYPTO_UNIVERSE))
+            else:
+                # In dry-run, synthesise a representative preview list
+                coin_ids = list(NUMERAI_CRYPTO_UNIVERSE[:n_coins])
         coin_entities = [(f"coin:{cid}", cid) for cid in coin_ids[:n_coins]]
         coins_calls, idx = extractor._run_bucket("coin", coin_entities, _COIN_FIELDS, _fetch_coin_series, total_budget, 0)
     else:
@@ -568,6 +596,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     )
     p.add_argument("--coins",      type=int, default=900, help="max coin entities to fetch (default 900)")
+    p.add_argument("--coins-file", default=None, help="newline-separated coin symbols to fetch (e.g. full Binance USDT-spot universe); unioned with the curated set, skips discovery")
     # Stocks/topics/categories are Builder-plan-only (they 404 on Individual). Default OFF so a bare run is
     # coins-only; pass explicit counts for a one-day Builder mega-grab. A gated bucket also self-aborts (below).
     p.add_argument("--stocks",     type=int, default=0, help="max stock entities (Builder plan only; default 0)")
@@ -608,6 +637,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"→ store: local JSONL ({args.store})", flush=True)
     manifest = Manifest(Path(args.manifest))
 
+    coins_extra: list[str] | None = None
+    if args.coins_file:
+        with open(args.coins_file) as fh:
+            coins_extra = [ln.strip().upper() for ln in fh if ln.strip() and not ln.startswith("#")]
+        print(f"→ coins-file: {len(coins_extra)} symbols from {args.coins_file}", flush=True)
+
     run_extract(
         api_key=api_key,
         store=store,
@@ -616,6 +651,7 @@ def main(argv: list[str] | None = None) -> int:
         n_stocks=args.stocks,
         n_topics=args.topics,
         n_categories=args.categories,
+        coins_extra=coins_extra,
         dry_run=args.dry_run,
         daily_quota=args.quota,
         sleep_between=args.sleep,
