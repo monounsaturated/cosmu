@@ -83,6 +83,17 @@ tier later only if a social edge screens).
 - `edge-plan-2026-06-06.md` — the 3 hypotheses to Gate (+ PIT-trust verdict on the social hoard).
 - `generalization-plan-2026-06-06.md` — the barbell + the oracle doctrine.
 
+## STEP 0 for the next session — declutter (do FIRST, ~1 min)
+The previous session ran in a worktree on the **stale `train/web` branch** (an old superseded redesign — its work is
+already on main via #59/#113/#116/#119/#122/#124; the cockpit it deletes is already gone, PRODUCT.md already on main).
+**Do NOT merge it — it would regress the current mobile-first UI.** Just drop it + prune the worktree clutter:
+```
+git -C /Users/device/cosmu worktree remove /Users/device/cosmu/.claude/worktrees/peaceful-edison-656718 --force
+git -C /Users/device/cosmu branch -D train/web
+git -C /Users/device/cosmu worktree prune && git -C /Users/device/cosmu fetch -p
+# then remove any remaining stale agent-* worktrees whose PRs merged (there are ~25): worktree remove + branch -D
+```
+
 ## Where the master runs
 Fresh Claude Code chat in **`/Users/device/cosmu` on `main`** (NOT a worktree — worktree sandboxes can't open
 main-repo files). It dispatches; real work goes to cloud (code) / local (keys+data) / Modal (heavy).
