@@ -15,7 +15,7 @@ of fees.** (NOT a signal-vendor. Numerai is a footnote, not the plan — see bot
 ---
 
 ## WHAT TO DO (in order — simple)
-1. **LunarCrush grab (running) → then CANCEL.** Banking the **full Binance-tradeable universe** (~438 coins × ~6.4 yr × 7 metrics) into Supabase — this history is the irreplaceable asset. Cancel as soon as it finishes (stocks/topics need Builder; skip). Resumable + deduped; relaunch any time with `python3 scripts/lunarcrush_max_extract.py --coins 900 --coins-file <symbols.txt> --sleep 3`.
+1. **LunarCrush grab (running) → then CANCEL.** Banking the **full multi-venue tradeable universe** (~980 coins: Binance + Kraken spot/futures + Hyperliquid + Coinbase × ~6.4 yr × 7 metrics) into Supabase — this history is the irreplaceable asset. Universe lives at `.cosmu/coin_universe_allvenues.txt`. Cancel as soon as it finishes (stocks/topics need Builder; skip). Resumable + deduped. Relaunch: `python3 scripts/lunarcrush_max_extract.py --coins 1100 --coins-file .cosmu/coin_universe_allvenues.txt --sleep 3`. **To UPDATE later** (after cancel/re-subscribe): add `--refresh` (re-fetches all coins, writes only newer days). Ongoing freshness belongs in the `manage-data` skill / a cron, not this one-time script.
 2. **Cleanup wave** (cloud agents): RA-1 → then RA-2 / DS-1 / C-1 → RA-3. Then **flip the Railway cron** → the machine self-runs.
 3. **Find the edge** (the core mission): test the new social data + the two untested markets (below).
 4. **Win =** ONE strategy survives the honest Gate **+** a 30-day forward-test → arm live, small.
@@ -66,6 +66,37 @@ of fees.** (NOT a signal-vendor. Numerai is a footnote, not the plan — see bot
 > Only after crypto social signal proves useful. NOT a priority.
 
 ---
+
+## Going faster — bottlenecks & what to buy (cheap-first)
+The binding constraint is **NOT compute or money** — it's (a) features wired into the backtest (~7 of ~40)
+and (b) strategy *diversity* flowing through the Gate. So the lever is parallel engineering + automation, not
+a bigger box. Order of impact:
+1. **Wire the data → features → Gate** (E-1): the social hoard + funding + macro are banked but only ~7 feed
+   the backtest. Wiring the rest is the single highest-ROI task. Pure engineering — fan out cloud agents.
+2. **Automate the loop** (cron): LLM proposes (`scan-signals`/`strategize`) → Gate disposes → forward-test →
+   memory. Once flipped on, throughput stops depending on you babysitting. This IS the "automated trading firm".
+3. **Parallelize discovery**: many cheap LLM-proposed strategies (OpenRouter cheap models to propose, Opus only
+   for hard synthesis) → the deterministic Gate is the filter. Volume of *honest* attempts is the game.
+4. **Compute**: only when sweeps get big → Modal (pay-per-use, already wired). Don't pre-buy.
+
+**What to buy / upgrade (none urgent, all cheap):** keep Railway+Vercel+Supabase+Modal (~$120/mo). Biggest $
+is LLM (~70%) → cut by model right-sizing, not by spending more. NautilusTrader only once a 30-day forward
+survivor exists. No thousands-per-month infra — the bottleneck isn't buyable yet.
+
+**GitHub Actions:** already fixed/cheap (PR+main only, path-filtered, concurrency-cancel ≈ $1–6/mo). If you want
+$0: add a **self-hosted runner on the M2** (free compute) or lean on local pre-push `verify` + Railway/Vercel
+build checks. Not worth more effort now — it's no longer a real cost.
+
+## Frontend (make it smooth, coherent, honest)
+- 🐞 **PENDING PR (cloud agent):** `fix/venue-checkbox-bug` — clicking a live/venue checkbox greyed it out and
+  froze the app. Root-caused + fixed in an isolated worktree; review + merge.
+- ✍️ **Rename the lifecycle stages** for clarity (operator wants "SIM"/"Live" reworded). Decide the pair, then a
+  cloud agent renames consistently (badges/tabs/titles/status) — a naming map of every occurrence is in the PR above.
+- 📊 **Data viz (SOON, not now — buy don't build):** a charts page that overlays LunarCrush + price + funding +
+  macro on one time axis, with event dots on the curve (big-news markers), readable by human AND LLM. Prefer an
+  embeddable charting lib (TradingView Lightweight Charts / Recharts) over hand-rolled. Standardize a single
+  "series + annotations" data shape so any source plugs in. Goal: scan many signals at a glance + feed the LLM
+  a legible multi-series view for weak-signal reasoning.
 
 ## Data: hoard wide for backtest, run slim for live
 - **Hoard NOW (irreplaceable):** the *history*. We can re-subscribe for fresh values later, but ~6.4 yr of
