@@ -110,6 +110,58 @@ def test_gate_runs_on_the_real_ingestion_seam_with_zero_llm(tmp_path, monkeypatc
     assert v.xasset_return > v.buy_and_hold_return
 
 
+def _ingest_canonical(astore: AltDataStore, market_by_class, alt, news) -> None:
+    """Like [_ingest_synthetic] but stores the prediction-market transfer series under the CANONICAL name
+    `pm_risk_on` — exactly as the real scheduled pipeline does (cosmu/ingest/run.py). The gate still REQUESTS
+    it under the semantic name `risk_on`, so this is the live path the synthetic-named helper above does NOT
+    exercise: it depends on the provider's risk_on -> pm_risk_on bridge to feed the feature."""
+    crypto = list(market_by_class["crypto"])
+    all_symbols = [s for cls in market_by_class.values() for s in cls]
+    ingest_numeric(astore, alt, crypto, "funding_rate", provider_name="binance")
+    ingest_numeric(astore, alt, crypto, "fear_greed", provider_name="alternative.me")
+    ingest_news_sentiment(astore, news, all_symbols)
+    # CANONICAL store name (the fixture exposes the series as "risk_on"; ingest banks it as "pm_risk_on").
+    ingest_market_wide_numeric(astore, alt, source_metric="risk_on", stored_metric="pm_risk_on", provider_name="polymarket")
+    ingest_market_wide_numeric(astore, alt, source_metric="macro_regime", stored_metric="macro_regime", provider_name="fred")
+
+
+def test_live_gate_risk_on_feature_is_populated_via_pm_risk_on_bridge(tmp_path):
+    """Closes the gap the data_source=="live" assertions left open: on REAL ingested data the gate's
+    prediction-market risk-on transfer feature must actually be POPULATED, not silently empty.
+
+    The bug: ingest banks the series under the canonical `pm_risk_on`, but the gate requests it under the
+    semantic name `risk_on`. Before the request-alias bridge, fetch_series("MARKET","risk_on") returned [] →
+    f["risk_on"] aligned to all-None → the feature was inert (its drop-one delta is then exactly 0.0, the
+    silent-skip signature). With the bridge the request resolves to the stored pm_risk_on series, so the
+    feature carries real values and is genuinely consulted.
+
+    We assert BOTH: (1) the provider returns a non-empty risk_on series from the stored pm_risk_on, and
+    (2) the gate's risk_on drop-one delta is computed and NON-zero — i.e. the feature actually filtered,
+    distinguishing it from the all-None pass-through the unbridged path produced."""
+    market_by_class, alt, news = synthetic_cross_asset_inputs(edge=True, seed=7)
+    astore = AltDataStore(root=tmp_path / "alt")
+    _ingest_canonical(astore, market_by_class, alt, news)
+
+    # The request alias rewrites "risk_on" → "pm_risk_on" BEFORE routing, so pm_risk_on must be in the
+    # market-wide set; fear_greed is per-symbol in this fixture, so it is deliberately excluded (mirrors the
+    # live-seam test). This is the production routing minus the per-symbol fear_greed special-case.
+    store_alt = StoreBackedAltProvider(astore, market_wide=frozenset({"pm_risk_on", "macro_regime"}))
+
+    # (1) the provider bridges the request to the canonically-stored series (the previously-empty path).
+    bridged = store_alt.fetch_series("MARKET", "risk_on", limit=10**9)
+    assert bridged, "risk_on transfer feature is EMPTY on live data — the pm_risk_on bridge is not wired"
+    canonical = store_alt.fetch_series("MARKET", "pm_risk_on", limit=10**9)
+    assert [(p.ts, p.value) for p in bridged] == [(p.ts, p.value) for p in canonical], "bridge must resolve to the SAME stored pm_risk_on series"
+
+    # (2) the gate genuinely consults the feature: its drop-one delta is computed and non-zero (an all-None
+    #     pass-through — the unbridged symptom — would make this delta exactly 0.0).
+    v = evaluate_cross_asset_ablation(market_by_class, store_alt, None, _store(tmp_path, "bridge"))
+    deltas = {d.source: d.delta for d in v.drop_one_source}
+    assert "risk_on" in deltas, "risk_on must appear in the per-source drop-one report"
+    assert deltas["risk_on"] is not None
+    assert deltas["risk_on"] != 0.0, "risk_on drop-one delta is 0.0 → the feature was silently skipped, not populated"
+
+
 def test_ingestion_is_point_in_time_and_idempotent_in_view(tmp_path):
     market_by_class, alt, news = synthetic_cross_asset_inputs(edge=True, seed=7)
     astore = AltDataStore(root=tmp_path / "alt")
