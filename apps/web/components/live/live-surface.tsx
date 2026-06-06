@@ -36,9 +36,9 @@ const DEFAULT_CAPS: Caps = { per_strategy_cap: 250, global_cap: 1000, max_daily_
 
 function modeBadge(mode: LiveMode) {
   const map: Record<LiveMode, { variant: "up" | "warn" | "info"; label: string }> = {
-    sim: { variant: "info", label: "sim" },
+    sim: { variant: "info", label: "Simulation" },
     testnet: { variant: "warn", label: "testnet" },
-    live: { variant: "up", label: "live" }
+    live: { variant: "up", label: "Live" }
   };
   return map[mode];
 }
@@ -494,7 +494,7 @@ function ActivationModal({
         <p className="mt-3 rounded-md border border-border/60 bg-surface-2/40 px-3 py-2 text-[11.5px] leading-relaxed text-quiet">
           A note on safety: the engine only submits a real order when live is on, execution keys are present, the
           cross-asset gate has passed on real data, caps are available, and the kill-switch is clear. Otherwise it
-          paper-simulates and defaults to testnet. This capability is not proven profit.
+          runs in Simulation and defaults to testnet. This capability is not proven profit.
         </p>
 
         <div className="mt-4 space-y-3">

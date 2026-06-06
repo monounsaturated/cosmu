@@ -87,10 +87,10 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5">
-              Sim equity
-              <Tooltip content="Cumulative realized cash flow from this track's sim trades (sells add, buys and fees subtract). Built only from real trades — not a fabricated curve." />
+              Simulation equity
+              <Tooltip content="Cumulative realized cash flow from this track's simulation trades (sells add, buys and fees subtract). Built only from real trades — not a fabricated curve." />
             </CardTitle>
-            <Badge variant="info">SIM</Badge>
+            <Badge variant="info">Simulation</Badge>
           </CardHeader>
           <CardContent>
             {simCurve.length >= 2 ? (
@@ -222,7 +222,7 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
         </CardHeader>
         <CardContent>
           {strategy.trades.length === 0 ? (
-            <EmptyState title="No trades yet." hint="Fills appear here as this track trades in sim. Nothing is fabricated." />
+            <EmptyState title="No trades yet." hint="Fills appear here as this track trades in Simulation. Nothing is fabricated." />
           ) : (
             <Table>
               <THead>

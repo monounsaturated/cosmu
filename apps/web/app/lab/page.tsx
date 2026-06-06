@@ -42,7 +42,7 @@ export default async function LabPage() {
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Versions tested" value={connected ? population.total : "—"} accent="iris" />
-        <Stat label="In sim" value={connected ? population.forward_test : "—"} accent="up" />
+        <Stat label="In simulation" value={connected ? population.forward_test : "—"} accent="up" />
         <Stat label="In graveyard" value={connected ? population.killed : "—"} accent="down" />
         <Stat label="Kill rate" value={connected && population.total ? formatPct(population.kill_rate * 100, 1) : "—"} accent="warn" />
       </div>
@@ -52,7 +52,7 @@ export default async function LabPage() {
         <section className="space-y-3">
           <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
             Pipeline funnel
-            <Tooltip content="The full lifecycle: authored → screened → gate-passed → funded → live, with how many were killed at each stage." />
+            <Tooltip content="The full lifecycle: authored → Backtest → gate-passed → Simulation → Live, with how many were killed at each stage." />
           </h3>
           <Card>
             <CardContent className="pt-5">

@@ -220,7 +220,7 @@ export function LaunchLiveModal({ versionId, strategyName, onClose, onArmed }: P
 
             {/* Safety note */}
             <p className="rounded-md border border-border/60 bg-surface-2/40 px-3 py-2 text-[11.5px] leading-relaxed text-quiet">
-              Safety: the engine only submits a real order when live is on, execution keys are present, the gate has passed on real data, caps are available, and the kill-switch is clear. Otherwise it paper-simulates.
+              Safety: the engine only submits a real order when live is on, execution keys are present, the gate has passed on real data, caps are available, and the kill-switch is clear. Otherwise it runs in Simulation.
             </p>
           </div>
         )}
@@ -382,12 +382,12 @@ function LaunchOutcome({ result, strategyName }: { result: LaunchActivateRespons
       )}>
         <Info className="mt-0.5 size-3.5 shrink-0" />
         <div>
-          <span className="font-medium">Forward-test readiness: </span>
+          <span className="font-medium">Simulation readiness: </span>
           {proven
-            ? `proven — ${result.forward_test_days?.toFixed(0) ?? "30"}+ days net-positive in simulation`
+            ? `proven — ${result.forward_test_days?.toFixed(0) ?? "30"}+ days net-positive in Simulation`
             : result.forward_test_days != null
-              ? `not yet proven — ${result.forward_test_days.toFixed(0)} days so far (needs net-positive past the forward-test threshold)`
-              : "no forward-test track yet — not eligible to arm"}
+              ? `not yet proven — ${result.forward_test_days.toFixed(0)} days so far (needs net-positive past the Simulation threshold)`
+              : "no Simulation track yet — not eligible to arm"}
           <span className="ml-1 text-quiet opacity-80">· required to arm; the 5 interlocks remain the hard execution gate</span>
         </div>
       </div>

@@ -84,11 +84,11 @@ export function GlobalLiveToggle({
           <div className="leading-tight">
             <div className="text-[13px] font-semibold text-foreground">Global live toggle</div>
             <div className="text-[11.5px] text-quiet">
-              {enabled ? "Armed — real-money execution is ON, within caps." : "Off by default — everything runs in SIM."}
+              {enabled ? "Armed — real-money execution is ON, within caps." : "Off by default — everything runs in Simulation."}
             </div>
           </div>
         </div>
-        <Badge variant={enabled ? "up" : "info"}>{enabled ? "LIVE" : "SIM"}</Badge>
+        <Badge variant={enabled ? "up" : "info"}>{enabled ? "Live" : "Simulation"}</Badge>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

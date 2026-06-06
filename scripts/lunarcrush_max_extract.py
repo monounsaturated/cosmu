@@ -55,9 +55,14 @@ _COIN_FIELDS: dict[str, str] = {
     "sentiment": "social_sentiment",
     "galaxy_score": "galaxy_score",
     "alt_rank": "alt_rank",
+    "social_dominance": "social_dominance",        # coin's % share of ALL crypto social volume — the normalized cross-sectional signal
+    "market_dominance": "market_dominance",         # coin's % share of total market cap
+    "contributors_active": "contributors_active",   # unique authors talking — breadth/quality of the social signal
+    "posts_active": "posts_active",                 # active post count
+    "spam": "spam",                                 # noise level — lets a strategy de-weight low-quality social spikes
     "market_cap": "market_cap_usd",
     "volume_24h": "volume_24h_usd",
-    "price": "price_usd",
+    "close": "price_usd",                           # FIX: the price field is "close" (was wrongly "price" → 0 rows stored)
 }
 _STOCK_FIELDS: dict[str, str] = {
     "interactions": "social_volume",

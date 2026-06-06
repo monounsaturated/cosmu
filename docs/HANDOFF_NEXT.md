@@ -88,10 +88,12 @@ $0: add a **self-hosted runner on the M2** (free compute) or lean on local pre-p
 build checks. Not worth more effort now — it's no longer a real cost.
 
 ## Frontend (make it smooth, coherent, honest)
-- 🐞 **PENDING PR (cloud agent):** `fix/venue-checkbox-bug` — clicking a live/venue checkbox greyed it out and
-  froze the app. Root-caused + fixed in an isolated worktree; review + merge.
-- ✍️ **Rename the lifecycle stages** for clarity (operator wants "SIM"/"Live" reworded). Decide the pair, then a
-  cloud agent renames consistently (badges/tabs/titles/status) — a naming map of every occurrence is in the PR above.
+- ✅ **Checkbox freeze FIXED** (PR #113 merged): a page-global `pending` flag greyed every control; now per-row
+  state + 8s timeout + error-revert. Also fixed CI `permissions:` so paths-filter stops false-failing PRs.
+- ✍️ **Lifecycle naming LOCKED → `Backtest → Simulation → Live`** (in-flight PR `web/rename-lifecycle-stages`):
+  Backtest = historical (the Gate, no money); Simulation = paper-trading on LIVE data, no real money (was
+  "SIM"/"Paper"/"Forward"); Live = real capital. Labels only — backend `is_paper` unchanged. Same three words,
+  same order, every surface.
 - 📊 **Data viz (SOON, not now — buy don't build):** a charts page that overlays LunarCrush + price + funding +
   macro on one time axis, with event dots on the curve (big-news markers), readable by human AND LLM. Prefer an
   embeddable charting lib (TradingView Lightweight Charts / Recharts) over hand-rolled. Standardize a single
@@ -110,7 +112,17 @@ build checks. Not worth more effort now — it's no longer a real cost.
 - **Use for LIVE (later, slim):** once the Gate proves WHICH metric+transform+universe has edge, live needs
   only THAT one signal, for only the traded symbols, refreshed at the rebalance cadence — cheap to re-subscribe.
   The make-or-break is **honest `available_at` lag**: LunarCrush publishes with a delay; stamp it right so the
-  backtest can't see a value before it was knowable, or SIM→live will diverge (use the variance-attribution skill).
+  backtest can't see a value before it was knowable, or Simulation→Live will diverge (use variance-attribution).
+- **Sequencing is correct: Backtest-FIRST.** Async backtests on hoarded *historical* data are the cheap, safe,
+  parallel path — no venue/API cost, no money, runs on Modal/local. Do those first (social cohort + the
+  feature-wiring backlog). Only promote a Gate survivor to **Simulation** (needs the live-data cron over ~30d),
+  then **Live**. Don't build live plumbing before a backtest survivor exists.
+- **Next FREE, CLEAN data to backfill (no-noise, numeric, PIT) — via the `manage-data` skill, full universe:**
+  price/OHLCV bars (Binance/Kraken, free) · funding + open-interest + perp-basis (free) · DefiLlama TVL (free,
+  have) · FRED macro (free, have) · Fear/Greed (free, have) · GDELT news tone (free) · CoinGecko reference
+  (market-cap/categories, free tier) for coins off-Binance. These structured series feed backtests directly;
+  prefer them over noisy text. First action after the social grab: run a **coverage audit** (`manage-data`) →
+  backfill the biggest gaps for the full ~980-coin universe.
 
 ## Footnote: Numerai — NOT core, do not build as a focus
 Numerai pays you to *sell* a signal (no capital/execution on your side). It's a different profit model from
