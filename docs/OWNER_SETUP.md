@@ -71,7 +71,7 @@ python3 -m cosmu.research.gate              # print just PASS / STOP-narrow
 ## C. Options / alternatives (recommended pick in bold)
 
 - **LLM gateway:** ✅ **OpenRouter** (one key → Qwen/DeepSeek/Hermes/Grok/Claude/GPT, swap by config) · direct XAI/Anthropic/OpenAI (one vendor) · self-host (❌ saves nothing until spend is in the hundreds/mo).
-- **Always-on hosting:** ✅ **Railway** (usage billing, no sleep — keep it) · Fly.io (comparable) · Render (❌ free tier sleeps) · Hetzner VPS (~€4/mo, cheapest at scale, more ops).
+- **Always-on hosting:** ✅ **Railway** (usage billing, no sleep — keep it) · Hetzner VPS (~€4/mo, cheapest at scale, more ops). Render ❌ (free tier sleeps). Heavy bursty compute → **Modal** (see `docs/COMPUTE.md`).
 - **Database:** ✅ **Supabase** (managed Postgres + pgvector — keep it) · Neon · self-host PG (only at scale).
 - **Web host:** ✅ **Vercel** (Next.js native — keep it) · Cloudflare Pages · Netlify.
 - **Crypto data:** already **free** via ccxt/Binance (OHLCV, funding, Fear&Greed) — no spend.

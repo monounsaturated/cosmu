@@ -2,7 +2,7 @@
 
 The single source of truth for product terms. **DB tables, API fields, UI labels, and docs all use these exact words.** If a name here and a name in code/UI disagree, this file wins — fix the other side (ask before a broad rename; see `AGENTS.md`).
 
-> **The lifecycle is LOCKED:** **Lab → Strategies → Forward-test → Live.** There is **NO pooled wallet** — each survivor proves itself on its **own standalone track**. The dead words **"Paper"** (as a stage) and **"Incubate"** must not reappear.
+> **The lifecycle is LOCKED:** **Backtest → Simulation → Live.** There is **NO pooled wallet** — each survivor proves itself on its **own standalone track**. The dead words **"Paper"** (as a stage/label), **"Forward-test"** (as a user-facing stage name), and **"Incubate"** must not reappear in new UI/labels. (Code symbols `forward_test` / `is_paper` may remain as internal identifiers until fully migrated.)
 
 ## Strategy lifecycle
 
@@ -17,9 +17,8 @@ The single source of truth for product terms. **DB tables, API fields, UI labels
 
 | Term | One-line definition |
 |------|---------------------|
-| **Lab** | Discovery. The research brain + **Strategy Finder** + the config-library author screen Versions before any SIM money. |
-| **Strategies** | The screened pipeline — Versions that cleared the screen, grouped by stage. |
-| **Forward-test** | The validation stage — each proven Version trades on its **own standalone Track** in SIM 24/7. A **≥ N=30 forward-day** net-of-fee proof is the **recommended** live-readiness signal (surfaced, advisory — the operator decides when to launch; the 5 interlocks are the hard gate). (This stage was formerly mislabelled "Paper".) |
+| **Backtest** | Discovery + screening. The research brain, Strategy Finder, and the Gate run Walk-Forward OOS + holdout on historical data — no real money, no live prices. Formerly called "Lab". |
+| **Simulation** | Validation on live data. Each gate-passed Version gets its own standalone $100k SIM track that marks-to-market on real closes 24/7. A **≥ 30 forward-day net-of-fee proof** is the recommended live-readiness signal (advisory — the operator decides; the 5 interlocks are the hard gate). Formerly called "Forward-test" and (earlier) "Paper". |
 | **Live** | Real money. Off by default; only gate-passing Versions promote, and only when the live toggle is armed. Live bots are launched manually with dedicated capital (1-button + confirm). |
 
 ## Judging
@@ -71,8 +70,11 @@ These exact spellings are enforced; the dead spellings on the right must not ret
 
 | Concept | Canonical | Dead (do not use) |
 |---------|-----------|-------------------|
-| Forward-test stage value (`strategy_versions.status`) | `forward_test` | `paper`, `incubate` |
+| UI stage label — discovery/screening | **Backtest** | `Lab`, `Farm`, `Research` (as a stage name) |
+| UI stage label — live-data validation | **Simulation** | `Forward-test`, `Paper`, `SIM` (as a stage label) |
+| Code status value (`strategy_versions.status`) | `forward_test` (internal, pending rename) | `paper`, `incubate` |
 | Money-state / sim venue label | `sim` | `paper` |
+| Heavy compute vendor | **Modal** | `Fly.io`, `Render` (worker) |
 | Per-strategy unit (class · table) | `Track` · `tracks` | `Sleeve` · `sleeves` |
 | Aggregate snapshot scope | `aggregate` | `pool` |
 | Per-track snapshot scope | `track` | `sleeve` |

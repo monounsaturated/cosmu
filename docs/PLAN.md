@@ -229,7 +229,7 @@ Railway $10–25 · Vercel $0–20 · Supabase $0–25 · Modal $0–20 · ccxt/
 | **2 — Edge found** | after real gate PASS | Hetzner CX32 / Railway pro | Supabase Pro ($25) | Modal pay-per-use ($0–50) | cheap-tier + rare frontier, cap ~$30–80 | LunarCrush ($24–40) + on-chain basic (~$30) | **$60–150** |
 | **3 — Compounding/live** | sustained forward-test (SIM) edge | dedicated Hetzner AX (~$50) | Supabase Pro + add-ons | RunPod/Modal GPU bursts ($50–200) | frontier for novel, cap $100–250 | + Tardis/Databento/paid on-chain | **$250–600** |
 
-**Recommended lean stack:** Railway (DX) or Hetzner (cost) always-on · Supabase (Postgres+pgvector) · Modal (bursts) · OpenRouter+LiteLLM (LLM) · Vercel (web). Render is fine but pricier than Hetzner for always-on; RunPod best for cheap GPU bursts.
+**Chosen stack (live):** Railway (engine API + cron) · Supabase (Postgres+pgvector) · Modal (bursty heavy compute) · OpenRouter (LLM gateway) · Vercel (web) · GitHub Actions (CI). Hetzner is the cost-optimized alternative to Railway at scale; RunPod for cheap GPU bursts (post-edge ML only).
 
 ### Next unit — real data + central DB (ask-first: infra/schema)
 1. **Supabase Postgres + pgvector** replaces SQLite + JSONL caches → the central, indexed store the vision needs (feature store · append-only snapshots · graveyard RAG · INDEX).

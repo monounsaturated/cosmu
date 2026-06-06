@@ -40,7 +40,7 @@ ENGINE API (Railway, always-on) ── Gate · tick · mark-to-market · POST /l
    │                                                                                     │
 CLAUDE CODE (Max sub, $0) ── deep authoring, fan-out master (Opus), skills = control     │
    │ enqueue                                                                             │
-LAB COMPUTE WORKER (Fly.io, scale-to-zero) ── big sims / sweeps / ML train / burst scrape┘
+LAB COMPUTE WORKER (Modal, scale-to-zero) ── big sims / sweeps / ML train / burst scrape┘
    └──▶ writes results+scores ──▶ DATA (Supabase Postgres + pgvector, point-in-time store)
 LLM GATEWAY (OpenRouter; xAI/Grok fallback) ── tiered: cheap bulk → Opus master
 ```
@@ -59,7 +59,7 @@ Keep ML **classical and explainable** (survival model + meta-labeling + regime).
 SIM always runs (everything proves itself on its own $100k track). **Going live is a deliberate human action — no time gate.** Clicking a strategy → **Launch-live modal**: pick asset + venue, see **fees fetched live & shown** (per-venue, refreshed daily), set **budget (default $100, editable)** + risk settings, confirm. The **5 interlocks remain the hard safety**; the **30-day forward-test is now ADVISORY** — surfaced as an LLM/UI recommendation ("eligible / not yet proven"), the human may launch anyway. **Venue key-gating:** a venue is greyed-out / cannot arm unless its API keys are present in the engine env (Railway server-side; the UI reads a `configured: bool` flag, never the keys). Prep both crypto (Binance) and equities (IBKR) this way; each stays inert until its keys are plugged.
 
 ## 9. Infra
-Keep **Railway** (light always-on API + cron). Add a **Fly.io worker** for continuous big sims + ML + burst scraping (xAI/Grok, social). Owner wants **24/7 max-iteration**, so run it **always-on at 4 GB / 2 vCPU** (`shared-cpu-2x`, ~$25–35/mo) — the sweet spot for classical ML + parallel vectorbt backtests; **2 GB is too tight** for sweeps+model-train, **8 GB only if cohorts OOM** (~$45–60/mo). Can autostop to cut idle cost later. ML runs on the worker, **not inside Claude Code** (Claude authors/orchestrates; the worker computes).
+Keep **Railway** (light always-on API + cron). Heavy bursty compute (big sims, sweeps, ML train, burst scraping) runs on **Modal** (scale-to-zero, ~$0 idle, billed per-second — see `docs/COMPUTE.md`). ML runs on Modal, **not inside Claude Code** (Claude authors/orchestrates; Modal computes).
 
 **Latest infra & monthly cost (excludes already-paid Claude Max $100 / OpenRouter $10 credits / existing xAI credits):**
 
@@ -68,9 +68,9 @@ Keep **Railway** (light always-on API + cron). Add a **Fly.io worker** for conti
 | Railway | always-on engine API + crons | ~$5–20 |
 | Supabase | Postgres + pgvector | $0 (free) → $25 (Pro) |
 | Vercel | web | $0 (hobby) |
-| **Fly.io worker** | 24/7 sims/ML/scrape (4 GB) | **~$25–35** |
+| **Modal** | heavy compute: backtests/ML/sweeps (scale-to-zero) | **~$0** idle ($30/mo free credits covers R&D) |
 | Data APIs | FRED·GDELT·Polymarket free; LunarCrush optional | $0 (+~$24 if LunarCrush) |
-| **New recurring total** | | **~$35–65/mo** (within $50 target; $100 ceiling leaves room) |
+| **New recurring total** | | **~$5–45/mo** (Modal credits cover R&D phase; see `docs/COMPUTE.md`) |
 
 This table is the **source of truth for infra/cost**; an in-app **cost/infra view** (wiring the empty `costs` + `llm_calls` tables, see Wave 2) renders it live + per-strategy ROI.
 
@@ -98,7 +98,7 @@ This table is the **source of truth for infra/cost**; an in-app **cost/infra vie
 - W2.1 Event/news **scorer** + **source-trust scoreboard** + news/intel dashboard (plain language) — *web+engine · cloud · sonnet · worktree · PR*
 - W2.2 **`/evolve-strategy`** skill + engine hook (isolate→graft→cohort) — *engine · cloud · opus · worktree · PR*
 - W2.3 ~~`/pine-from-url`~~ **REMOVED** — TradingView renders Pine client-side so URL scraping doesn't work; copy-paste via `/import-pine` (+ the `pine_indicators/` indicator-port for feature mining) supersedes it.
-- W2.4 **Lab Compute Worker** (`POST /lab/experiment` + Fly.io worker) — *engine+infra · cloud · opus · worktree · PR*
+- W2.4 **Lab Compute Worker** (`POST /lab/experiment` + Modal heavy lane) — *engine+infra · cloud · opus · worktree · PR*
 
 **Wave 3 — multi-asset & live**
 - W3.1 **IBKR live execution adapter** (flip data-only→live-capable, stays interlock-gated) — *engine · cloud · opus · worktree · PR*
@@ -120,7 +120,7 @@ This table is the **source of truth for infra/cost**; an in-app **cost/infra vie
 - **Live:** human launches via a modal (asset/venue, live fees, **budget default $100 editable**, settings); **no time gate** — 30-day proof is advisory, LLM may suggest, human decides; 5 interlocks are the hard safety; **venues grey-out without keys**.
 - **Testing throughput:** start **many strategies at once** (SIM only), iterate continuously; LLMs fetch/propose ideas from Pine, social, NL, search — all funnel to the FDR gate.
 - **Scope:** crypto (Binance) + equities (IBKR) **prepped + key-gated**; read-only alt-data. Don't go live on a venue until its keys are plugged.
-- **Infra budget:** target **~$50/mo**, ceiling **$100** (excl. Claude Max + OpenRouter + xAI). Fly worker **4 GB always-on**.
+- **Infra budget:** target **~$50/mo**, ceiling **$100** (excl. Claude Max + OpenRouter + xAI). Modal covers bursty compute at ~$0 idle on free credits.
 - **Twitter = xAI/Grok** (credits already in env.local → move to Railway). **News/intel = buy-not-build / free / open-source** (GDELT free now; paid only if it clearly pays).
 - **Control:** Claude Code primary · web cockpit + Launch modal + Console page · **no ⌘K** · MCP later.
 - Edge-integrity first · near-autonomous · hedge-fund-grade capital management.
@@ -130,7 +130,7 @@ Tracked in [../IDEAS.md](../IDEAS.md). Remaining: LunarCrush paid tier yes/no ·
 
 ## 16. Accounts & APIs to set up (owner)
 Already have: Railway · Supabase · Vercel · Claude Max · OpenRouter ($10) · xAI credits (key in `.env.local`).
-- **Now (the only new spend):** create a **Fly.io** account (worker, ~$25–35/mo) — set up when Wave 2.4 lands.
+- **Now (the only new spend):** set up **Modal** (heavy compute lane, ~$0 idle on $30/mo free credits) — see `docs/COMPUTE.md` for one-time setup. Set up when Wave 2.4 lands (already wired in `apps/engine/remote/app.py`).
 - **Now (free):** confirm a **FRED** API key (macro feature); move **`XAI_API_KEY`** into **Railway env** (prod can't read `.env.local`).
 - **When going live crypto:** **Binance** API key+secret → Railway env (then the venue un-greys).
 - **When going live equities:** **IBKR** account + market-data subscription.
