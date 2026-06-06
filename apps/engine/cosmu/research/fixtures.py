@@ -392,7 +392,10 @@ def synthetic_cross_asset_inputs(*, edge: bool = True, seed: int = 7, n: int = 6
             mac = round(g.gauss(0, 1), 4)
         risk_on.append(AltDataPoint(ts=ts, available_at=ts, value=ron))
         macro.append(AltDataPoint(ts=ts, available_at=ts, value=mac))
-    alt_series[("MARKET", "risk_on")] = risk_on
+    # Key the prediction-market transfer series under the CANONICAL name the gate now requests
+    # (gate.py: fetch_series("MARKET","pm_risk_on")) so the direct-fixture path matches the live/store path,
+    # where ingest banks it as "pm_risk_on". (Was "risk_on" — which hid the P0 name-split bug offline.)
+    alt_series[("MARKET", "pm_risk_on")] = risk_on
     alt_series[("MARKET", "macro_regime")] = macro
 
     return market_by_class, FixtureAltDataProvider(alt_series), FixtureNewsProvider(news)

@@ -71,6 +71,7 @@ from cosmu.data.providers.store import (  # noqa: F401
     AltDataStore,
     PgAltDataStore,
     StoreBackedAltProvider,
+    UnknownAltMetricError,
 )
 from cosmu.data.providers.util import rolling_zscore  # noqa: F401
 
@@ -85,6 +86,7 @@ __all__ = [
     "AltDataStore",
     "PgAltDataStore",
     "StoreBackedAltProvider",
+    "UnknownAltMetricError",
     "_STORE_MARKET_WIDE",
     "_STORE_METRIC_ALIAS",
     "_STORE_PROVIDER_OF",

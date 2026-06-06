@@ -84,7 +84,7 @@ def _alt_store():  # noqa: ANN202 - returns AltDataStore
 
 
 def _has_cross_asset_data(alt_store) -> bool:  # noqa: ANN001
-    """True once the two cross-asset transfer series (prediction-market risk_on + FRED macro_regime) have
+    """True once the two cross-asset transfer series (prediction-market pm_risk_on + FRED macro_regime) have
     been ingested — that is exactly what the cross-asset gate's arm (3) needs to differ from price-only.
     The prediction-market series is stored under its CANONICAL name `pm_risk_on` (ingest run_once); reading
     the old `risk_on` name here made this predicate always False on real data, so the UI silently fell back
@@ -106,10 +106,10 @@ def run_cross_asset_gate() -> CrossAssetVerdict:
     market_by_class, synth_alt, synth_news = synthetic_cross_asset_inputs()
     alt_store = _alt_store()
     if _has_cross_asset_data(alt_store):
-        # Canonical market-wide set, mirroring cosmu/research/loop.run_once: the gate requests the
-        # transfer feature as "risk_on" but it is STORED + routed as "pm_risk_on" (the StoreBackedAltProvider
-        # rewrites the request), so pm_risk_on — not risk_on — must be flagged market-wide here. Include the
-        # multiasset price-level series too so the cross-market composite reads under the MARKET key.
+        # Canonical market-wide set, mirroring cosmu/research/loop.run_once: the gate requests + the store
+        # routes the transfer feature under its canonical name "pm_risk_on", so pm_risk_on — not risk_on —
+        # must be flagged market-wide here. Include the multiasset price-level series too so the cross-market
+        # composite reads under the MARKET key.
         provider = StoreBackedAltProvider(alt_store, market_wide=frozenset({"pm_risk_on", "macro_regime", "putcall_ratio", *MULTIASSET_METRICS}))
         verdict = evaluate_cross_asset_ablation(market_by_class, provider, None, store)
         data_source = "live"

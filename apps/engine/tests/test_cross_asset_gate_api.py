@@ -72,8 +72,11 @@ def _live_alt_store(tmp_path) -> AltDataStore:
     market_by_class, alt, news = synthetic_cross_asset_inputs(edge=True, seed=7)
     crypto = list(market_by_class["crypto"])
     all_symbols = [s for cls in market_by_class.values() for s in cls]
+    # The polymarket provider's NATIVE token id is "risk_on" (an arbitrary source id); run_once banks it under
+    # the canonical stored name pm_risk_on. The synthetic fixture exposes the series under its canonical name
+    # pm_risk_on, so the poly fixture is seeded from that and keyed by the native token id.
     fred = FixtureAltDataProvider({("MARKET", "macro_regime"): alt.fetch_series("MARKET", "macro_regime", limit=10**9)})
-    poly = FixtureAltDataProvider({("MARKET", "risk_on"): alt.fetch_series("MARKET", "risk_on", limit=10**9)})
+    poly = FixtureAltDataProvider({("MARKET", "risk_on"): alt.fetch_series("MARKET", "pm_risk_on", limit=10**9)})
     providers = Providers(
         funding=alt, feargreed=alt, news=FixtureNewsProvider({s: news.fetch_news(s, limit=10**9) for s in all_symbols}),
         fred=fred, polymarket=poly, fred_series="macro_regime", polymarket_token="risk_on",

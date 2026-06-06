@@ -5,10 +5,18 @@ from __future__ import annotations
 import random
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 import cosmu.research.gate as gate_mod
 from cosmu.config.feature_registry import FEATURE_REGISTRY
 from cosmu.config.settings import Settings
-from cosmu.data.altdata import AltDataPoint, AltDataStore, FixtureAltDataProvider, StoreBackedAltProvider
+from cosmu.data.altdata import (
+    AltDataPoint,
+    AltDataStore,
+    FixtureAltDataProvider,
+    StoreBackedAltProvider,
+    UnknownAltMetricError,
+)
 from cosmu.data.sources.multiasset import MULTIASSET_METRICS
 from cosmu.ingest.pipeline import ingest_market_wide_numeric, ingest_news_sentiment, ingest_numeric
 from cosmu.knowledge.store import Store
@@ -24,13 +32,14 @@ def _store(tmp_path, name="xa") -> Store:
 def _ingest_synthetic(astore: AltDataStore, market_by_class, alt, news) -> None:
     """Fill the append-only point-in-time store from the fixture providers, exactly as a scheduled worker
     would from the real free APIs — funding/fear-greed per crypto symbol, news standardized once, and the
-    two market-wide cross-asset transfer series (risk_on / macro_regime)."""
+    two market-wide cross-asset transfer series (pm_risk_on / macro_regime). Both the fixture source key and
+    the stored name are the CANONICAL pm_risk_on — exactly what the real pipeline banks and the gate requests."""
     crypto = list(market_by_class["crypto"])
     all_symbols = [s for cls in market_by_class.values() for s in cls]
     ingest_numeric(astore, alt, crypto, "funding_rate", provider_name="binance")
     ingest_numeric(astore, alt, crypto, "fear_greed", provider_name="alternative.me")
     ingest_news_sentiment(astore, news, all_symbols)  # LLM standardization happens HERE, once, offline
-    ingest_market_wide_numeric(astore, alt, source_metric="risk_on", stored_metric="risk_on", provider_name="polymarket")
+    ingest_market_wide_numeric(astore, alt, source_metric="pm_risk_on", stored_metric="pm_risk_on", provider_name="polymarket")
     ingest_market_wide_numeric(astore, alt, source_metric="macro_regime", stored_metric="macro_regime", provider_name="fred")
 
 
@@ -103,7 +112,7 @@ def test_gate_runs_on_the_real_ingestion_seam_with_zero_llm(tmp_path, monkeypatc
     monkeypatch.setattr(gate_mod, "standardize_news", _boom)
 
     # fear_greed is per-symbol in this fixture (crypto sentiment), so exclude it from the market-wide set.
-    store_alt = StoreBackedAltProvider(astore, market_wide=frozenset({"risk_on", "macro_regime"}))
+    store_alt = StoreBackedAltProvider(astore, market_wide=frozenset({"pm_risk_on", "macro_regime"}))
     v = evaluate_cross_asset_ablation(market_by_class, store_alt, None, _store(tmp_path, "seam"))
     assert v.decision == "PASS"
     assert v.xasset_return > v.single_alt_return > v.price_only_return
@@ -111,64 +120,83 @@ def test_gate_runs_on_the_real_ingestion_seam_with_zero_llm(tmp_path, monkeypatc
 
 
 def _ingest_canonical(astore: AltDataStore, market_by_class, alt, news) -> None:
-    """Like [_ingest_synthetic] but stores the prediction-market transfer series under the CANONICAL name
-    `pm_risk_on` — exactly as the real scheduled pipeline does (cosmu/ingest/run.py). The gate still REQUESTS
-    it under the semantic name `risk_on`, so this is the live path the synthetic-named helper above does NOT
-    exercise: it depends on the provider's risk_on -> pm_risk_on bridge to feed the feature."""
+    """Like [_ingest_synthetic]: stores the prediction-market transfer series under the CANONICAL name
+    `pm_risk_on` — exactly as the real scheduled pipeline does (cosmu/ingest/run.py) and exactly what the
+    gate now requests (gate.py: fetch_series("MARKET","pm_risk_on")). This is the live/store path that the
+    `("MARKET","risk_on")`-keyed bug used to silently strip from every gate run."""
     crypto = list(market_by_class["crypto"])
     all_symbols = [s for cls in market_by_class.values() for s in cls]
     ingest_numeric(astore, alt, crypto, "funding_rate", provider_name="binance")
     ingest_numeric(astore, alt, crypto, "fear_greed", provider_name="alternative.me")
     ingest_news_sentiment(astore, news, all_symbols)
-    # CANONICAL store name (the fixture exposes the series as "risk_on"; ingest banks it as "pm_risk_on").
-    ingest_market_wide_numeric(astore, alt, source_metric="risk_on", stored_metric="pm_risk_on", provider_name="polymarket")
+    # CANONICAL store name end-to-end (the fixture now exposes the series as "pm_risk_on", ingest banks it as
+    # "pm_risk_on", and the gate requests "pm_risk_on").
+    ingest_market_wide_numeric(astore, alt, source_metric="pm_risk_on", stored_metric="pm_risk_on", provider_name="polymarket")
     ingest_market_wide_numeric(astore, alt, source_metric="macro_regime", stored_metric="macro_regime", provider_name="fred")
 
 
-def test_live_gate_risk_on_feature_is_populated_via_pm_risk_on_bridge(tmp_path):
-    """Closes the gap the data_source=="live" assertions left open: on REAL ingested data the gate's
-    prediction-market risk-on transfer feature must actually be POPULATED, not silently empty.
+def test_live_gate_risk_on_feature_is_consumed_on_the_store_path(tmp_path):
+    """Regression for the P0 name-split bug: on REAL ingested data the gate's prediction-market risk-on
+    transfer feature must actually be CONSUMED, not silently empty.
 
-    The bug: ingest banks the series under the canonical `pm_risk_on`, but the gate requests it under the
-    semantic name `risk_on`. Before the request-alias bridge, fetch_series("MARKET","risk_on") returned [] →
-    f["risk_on"] aligned to all-None → the feature was inert (its drop-one delta is then exactly 0.0, the
-    silent-skip signature). With the bridge the request resolves to the stored pm_risk_on series, so the
-    feature carries real values and is genuinely consulted.
+    The bug: ingest banks the series under the canonical `pm_risk_on`, but the gate used to request it under
+    the wrong name `risk_on`, so fetch_series("MARKET","risk_on") returned [] → f["risk_on"] aligned to
+    all-None → the feature was inert (its drop-one delta is then exactly 0.0, the silent-skip signature). The
+    synthetic fixture hid this because IT stored "risk_on" too, so test-name == gate-name. This test pairs the
+    REAL ingest path (pm_risk_on) → StoreBackedAltProvider → gate, the combination nothing exercised before.
 
-    We assert BOTH: (1) the provider returns a non-empty risk_on series from the stored pm_risk_on, and
-    (2) the gate's risk_on drop-one delta is computed and NON-zero — i.e. the feature actually filtered,
-    distinguishing it from the all-None pass-through the unbridged path produced."""
+    We assert BOTH: (1) the provider returns the non-empty pm_risk_on series the gate will read, and
+    (2) the gate genuinely consults the feature — its risk_on drop-one delta is computed and NON-zero
+    (an all-None pass-through — the bug's symptom — would make this delta exactly 0.0)."""
     market_by_class, alt, news = synthetic_cross_asset_inputs(edge=True, seed=7)
     astore = AltDataStore(root=tmp_path / "alt")
     _ingest_canonical(astore, market_by_class, alt, news)
 
-    # The request alias rewrites "risk_on" → "pm_risk_on" BEFORE routing, so pm_risk_on must be in the
-    # market-wide set; fear_greed is per-symbol in this fixture, so it is deliberately excluded (mirrors the
-    # live-seam test). This is the production routing minus the per-symbol fear_greed special-case.
+    # Production routing minus the per-symbol fear_greed special-case (fear_greed is per-symbol in this fixture).
     store_alt = StoreBackedAltProvider(astore, market_wide=frozenset({"pm_risk_on", "macro_regime"}))
 
-    # (1) the provider bridges the request to the canonically-stored series (the previously-empty path).
-    bridged = store_alt.fetch_series("MARKET", "risk_on", limit=10**9)
-    assert bridged, "risk_on transfer feature is EMPTY on live data — the pm_risk_on bridge is not wired"
-    canonical = store_alt.fetch_series("MARKET", "pm_risk_on", limit=10**9)
-    assert [(p.ts, p.value) for p in bridged] == [(p.ts, p.value) for p in canonical], "bridge must resolve to the SAME stored pm_risk_on series"
+    # (1) the canonically-stored series the gate reads is non-empty (the path the bug returned [] on).
+    stored = store_alt.fetch_series("MARKET", "pm_risk_on", limit=10**9)
+    assert stored, "pm_risk_on transfer series is EMPTY on the store path — the live cross-asset feature is inert"
 
     # (2) the gate genuinely consults the feature: its drop-one delta is computed and non-zero (an all-None
-    #     pass-through — the unbridged symptom — would make this delta exactly 0.0).
-    v = evaluate_cross_asset_ablation(market_by_class, store_alt, None, _store(tmp_path, "bridge"))
+    #     pass-through — the bug's symptom — would make this delta exactly 0.0).
+    v = evaluate_cross_asset_ablation(market_by_class, store_alt, None, _store(tmp_path, "storepath"))
     deltas = {d.source: d.delta for d in v.drop_one_source}
     assert "risk_on" in deltas, "risk_on must appear in the per-source drop-one report"
     assert deltas["risk_on"] is not None
-    assert deltas["risk_on"] != 0.0, "risk_on drop-one delta is 0.0 → the feature was silently skipped, not populated"
+    assert deltas["risk_on"] != 0.0, "risk_on drop-one delta is 0.0 → the feature was silently skipped, not consumed"
+
+
+def test_store_provider_raises_on_unrouted_metric_but_returns_empty_on_known_metric_with_no_data(tmp_path):
+    """Hardening for the silent-miss class that hid the P0 bug: a request for a metric with NO store route is
+    ALWAYS a wiring bug (typo / unregistered / renamed), so fetch_series RAISES loudly instead of returning [].
+    A KNOWN metric that simply has no stored data is a legitimate gap and must STILL return [] (honest absence),
+    so the two cases are distinguished — the hardening never masks a real empty-data situation."""
+    astore = AltDataStore(root=tmp_path / "alt")
+    prov = StoreBackedAltProvider(astore)
+
+    # Unknown/unrouted metric → loud failure (the old silent [] is what let risk_on slip past every test).
+    with pytest.raises(UnknownAltMetricError):
+        prov.fetch_series("MARKET", "definitely_not_a_real_metric", limit=10)
+    # A typo of a real metric is exactly the bug class — it must raise, not silently no-op.
+    with pytest.raises(UnknownAltMetricError):
+        prov.fetch_series("BTCUSDT", "funding_rat", limit=10)  # typo of funding_rate
+
+    # KNOWN, routable metric with no stored data → honest empty (NOT a raise). funding_rate is routed but the
+    # store is empty here; the gate's per-bar join reads None and the feature simply can't contribute.
+    assert prov.fetch_series("BTCUSDT", "funding_rate", limit=10) == []
+    # The legacy request alias still resolves to its canonical route before the unknown-metric check fires.
+    assert prov.fetch_series("MARKET", "risk_on", limit=10) == []  # → pm_risk_on (routed), just no data yet
 
 
 def test_ingestion_is_point_in_time_and_idempotent_in_view(tmp_path):
     market_by_class, alt, news = synthetic_cross_asset_inputs(edge=True, seed=7)
     astore = AltDataStore(root=tmp_path / "alt")
     _ingest_synthetic(astore, market_by_class, alt, news)
-    before = astore.read_asof("polymarket", "MARKET", "risk_on", _far_future())
+    before = astore.read_asof("polymarket", "MARKET", "pm_risk_on", _far_future())
     _ingest_synthetic(astore, market_by_class, alt, news)  # re-run a scheduled pass
-    after = astore.read_asof("polymarket", "MARKET", "risk_on", _far_future())
+    after = astore.read_asof("polymarket", "MARKET", "pm_risk_on", _far_future())
     # append-only re-run never changes the point-in-time VIEW (latest-revision-per-ts is identical)
     assert [(p.ts, p.value) for p in before] == [(p.ts, p.value) for p in after]
 
@@ -216,8 +244,8 @@ def _xmarket_levels(metric: str, *, n: int = 600, seed: int = 7, scale: float = 
 
 def _augment_with_xmarket(alt: FixtureAltDataProvider, *, scale: float = 1.0, offset: float = 0.0, signal_into: dict[str, str] | None = None) -> FixtureAltDataProvider:
     """Return a fresh provider carrying the synthetic alt series PLUS a cross-market LEVEL series per metric.
-    `signal_into` maps a metric → an existing market-wide series name (e.g. "risk_on") whose values are copied
-    in as that metric's levels, so the metric's z-score carries a REAL transfer signal instead of noise."""
+    `signal_into` maps a metric → an existing market-wide series name (e.g. "pm_risk_on") whose values are
+    copied in as that metric's levels, so the metric's z-score carries a REAL transfer signal instead of noise."""
     series = dict(alt.series)
     signal_into = signal_into or {}
     for m in MULTIASSET_METRICS:
@@ -268,8 +296,8 @@ def test_cross_market_is_passthrough_and_inert_when_absent(tmp_path):
 
 def test_cross_market_transfer_signal_flows_through_the_composite(tmp_path):
     """The wiring is NOT inert: a genuine cross-market transfer signal flows through the composite and is
-    consulted by the arm. Feed every cross-market metric a level series that tracks the risk_on regime (so the
-    composite reduces to a true regime lead). The arm still PASSES and still beats the single-asset arm — the
+    consulted by the arm. Feed every cross-market metric a level series that tracks the pm_risk_on regime (so
+    the composite reduces to a true regime lead). The arm still PASSES and still beats the single-asset arm — the
     transfer signal is captured without breaking the edge — and the verdict measurably differs from the
     no-cross-market case, proving the term is live (not dead code).
 
@@ -280,7 +308,7 @@ def test_cross_market_transfer_signal_flows_through_the_composite(tmp_path):
     mbc_a, alt_a, news_a = synthetic_cross_asset_inputs(edge=True, seed=7)
     v_absent = evaluate_cross_asset_ablation(mbc_a, alt_a, news_a, _store(tmp_path, "xm_absent2"))
     mbc_b, alt_b, news_b = synthetic_cross_asset_inputs(edge=True, seed=7)
-    alt_b = _augment_with_xmarket(alt_b, signal_into={m: "risk_on" for m in MULTIASSET_METRICS})
+    alt_b = _augment_with_xmarket(alt_b, signal_into={m: "pm_risk_on" for m in MULTIASSET_METRICS})
     v = evaluate_cross_asset_ablation(mbc_b, alt_b, news_b, _store(tmp_path, "xm_signal"))
     assert v.decision == "PASS"
     assert v.xasset_return > v.single_alt_return  # the cross-asset arm still beats single-asset with the composite live
