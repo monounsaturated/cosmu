@@ -72,6 +72,12 @@ tier later only if a social edge screens).
 Fresh Claude Code chat in **`/Users/device/cosmu` on `main`** (NOT a worktree — worktree sandboxes can't open
 main-repo files). It dispatches; real work goes to cloud (code) / local (keys+data) / Modal (heavy).
 
+## QA discipline (NEW — the live-checkbox lesson)
+**Build-green ≠ a click works.** #113 passed CI but the operator says the Live-page controls still break. So for any
+UI/interaction fix, an agent MUST run the app with `.env.local` (engine connected) and exercise the ACTUAL control
+before claiming it's fixed — and include a **manual QA checklist** in the PR (control · click · expected result).
+Typecheck/build/naming are necessary, not sufficient, for interactive behavior.
+
 ## Lessons (banked, so we stop repeating)
 - A metric rename must be verified **end-to-end** (ingest→store→provider→gate→fixtures→tests); tests must assert a
   feature is **non-empty**, not just a label. Run the **full engine suite** on any engine change (path-filters hid a
