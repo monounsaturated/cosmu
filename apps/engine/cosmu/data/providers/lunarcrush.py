@@ -16,21 +16,29 @@ class LunarCrushProvider:
     to one bar after observation (a day's social data is known only after the day closes — point-in-time, no
     look-ahead). Low-confidence/tier1 until it earns its place out-of-sample."""
 
-    # semantic metric (feature_registry name) -> LunarCrush v4 coin time-series field. Mirrors the seven fields
-    # scripts/lunarcrush_max_extract.py hoards per coin, so the live provider and the bulk grab agree on naming.
-    # NB: social_volume maps to the v4 `interactions` field (the bulk grab's source of truth); `social_volume`
-    # is also accepted for backward-compat with the older fixture shape that exposed it directly.
+    # semantic metric (feature_registry name) -> LunarCrush v4 coin time-series field. Mirrors ALL twelve fields
+    # scripts/lunarcrush_max_extract.py (_COIN_FIELDS) hoards per coin, so the scheduled live provider and the
+    # bulk grab fetch + name the same series. NB: social_volume maps to the v4 `interactions` field (the bulk
+    # grab's source of truth); `social_volume` is also accepted for backward-compat with the older fixture shape
+    # that exposed it directly. price_usd maps to the v4 `close` field (the grab script's FIX: the price column
+    # is `close`, not `price`, which had stored 0 rows); `price` is kept as a back-compat fallback below.
     _FIELD = {
         "social_volume": "interactions",
         "social_sentiment": "sentiment",
         "galaxy_score": "galaxy_score",
         "alt_rank": "alt_rank",
+        "social_dominance": "social_dominance",
+        "market_dominance": "market_dominance",
+        "contributors_active": "contributors_active",
+        "posts_active": "posts_active",
+        "spam": "spam",
         "market_cap_usd": "market_cap",
         "volume_24h_usd": "volume_24h",
-        "price_usd": "price",
+        "price_usd": "close",
     }
-    # Older v4 field name for social_volume kept as a fallback so historical fixtures/responses still resolve.
-    _FIELD_FALLBACK = {"social_volume": "social_volume"}
+    # Older v4 field names kept as fallbacks so historical fixtures/responses still resolve: social_volume's
+    # legacy `social_volume` column, and price_usd's legacy `price` column (superseded by `close`).
+    _FIELD_FALLBACK = {"social_volume": "social_volume", "price_usd": "price"}
 
     def __init__(self, api_key: str = "", base_url: str = "https://lunarcrush.com/api4/public", *, _fetcher: Callable[[str], dict] | None = None) -> None:
         self.api_key = api_key or ""

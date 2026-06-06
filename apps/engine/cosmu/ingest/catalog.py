@@ -121,12 +121,13 @@ def _fetch_polymarket_clob(store: Any, symbols: list[str], providers: Any) -> in
     return total
 
 
-# All seven LunarCrush coin time-series fields the provider now maps (in lockstep with the bulk hoard,
-# scripts/lunarcrush_max_extract.py). The provider returns one HTTP response per symbol and the memoizing
-# wrapper caches it, so fetching seven metrics is still one network call per symbol.
+# All twelve LunarCrush coin time-series fields the provider now maps (in lockstep with the bulk hoard,
+# scripts/lunarcrush_max_extract.py _COIN_FIELDS). The provider returns one HTTP response per symbol and the
+# memoizing wrapper caches it, so fetching twelve metrics is still one network call per symbol.
 _LUNARCRUSH_METRICS = (
     "social_volume", "social_sentiment", "galaxy_score",
     "alt_rank", "market_cap_usd", "volume_24h_usd", "price_usd",
+    "social_dominance", "market_dominance", "contributors_active", "posts_active", "spam",
 )
 
 

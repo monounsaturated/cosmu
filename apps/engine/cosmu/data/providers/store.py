@@ -136,13 +136,21 @@ _STORE_PROVIDER_OF = {
     "social_volume": "lunarcrush",
     "social_sentiment": "lunarcrush",
     "galaxy_score": "lunarcrush",
-    # The four remaining LunarCrush coin time-series fields hoarded alongside the three above
-    # (scripts/lunarcrush_max_extract.py stores all seven per coin). Banked-but-unwired until now —
-    # routing them here makes them readable by the gate's per-bar as-of join. tier1, low-confidence.
+    # The remaining LunarCrush coin time-series fields hoarded alongside the three above
+    # (scripts/lunarcrush_max_extract.py _COIN_FIELDS stores all twelve per coin). Routing them here makes
+    # them readable by the gate's per-bar as-of join. tier1, low-confidence.
     "alt_rank": "lunarcrush",
     "market_cap_usd": "lunarcrush",
     "volume_24h_usd": "lunarcrush",
     "price_usd": "lunarcrush",
+    # The final five LunarCrush coin fields the bulk grab hoards (scripts/lunarcrush_max_extract.py
+    # _COIN_FIELDS) — banked-but-unwired until now. Per-symbol (NOT market-wide); routing them here makes
+    # them readable by the gate's per-bar as-of join. tier1, low-confidence.
+    "social_dominance": "lunarcrush",
+    "market_dominance": "lunarcrush",
+    "contributors_active": "lunarcrush",
+    "posts_active": "lunarcrush",
+    "spam": "lunarcrush",
     "twitter_sentiment": "xai",
     "twitter_influencer_sentiment": "xai",
     # Geopolitical news tone (GDELT, keyless, market-wide) and crypto options IV (Deribit, keyless, per-symbol).
@@ -176,6 +184,21 @@ _STORE_METRIC_ALIAS: dict[str, str] = {
     "liquidation_cascade": "liquidations",
 }
 
+# Semantic-REQUEST alias: a metric NAME a consumer asks for that is not itself a canonical stored series, but
+# is served by an existing one. Unlike _STORE_METRIC_ALIAS (a read-time fallback on the SAME canonical metric
+# for legacy renames), this rewrites the request to the canonical metric BEFORE provider/market-wide routing —
+# so it never enters _STORE_PROVIDER_OF / _STORE_MARKET_WIDE and the catalog + coverage report stay derived
+# purely from the canonical stored names (no phantom coverage rows, no lock-step break).
+#
+# The live cross-asset gate REQUESTS the prediction-market transfer feature under the semantic name "risk_on"
+# (gate.py: fetch_series("MARKET","risk_on")), but ingest banks it under the canonical "pm_risk_on". Without
+# this rewrite fetch_series("MARKET","risk_on") returned [] → the gate's risk-on feature was silently EMPTY on
+# real data (the synthetic fixture hid it by supplying "risk_on" directly). Resolving it to pm_risk_on here
+# inherits pm_risk_on's provider + market-wide routing, so the feature is actually populated on the live path.
+_STORE_REQUEST_ALIAS: dict[str, str] = {
+    "risk_on": "pm_risk_on",
+}
+
 # Providers whose per-symbol series may be stored under the BASE-ASSET form (e.g. "BTC") rather than the
 # venue pair the backtest keys by ("BTCUSDT"). The bulk LunarCrush hoard (scripts/lunarcrush_max_extract.py)
 # keys each coin by its base symbol (the API entity id), while the scheduled ingest path keys by the full
@@ -204,6 +227,9 @@ class StoreBackedAltProvider:
         self._market_wide = market_wide
 
     def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        # Resolve a semantic-request alias (e.g. the gate's "risk_on") to its canonical stored metric
+        # ("pm_risk_on") BEFORE routing, so it inherits the canonical metric's provider + market-wide rules.
+        metric = _STORE_REQUEST_ALIAS.get(metric, metric)
         provider = self._provider_of.get(metric)
         if provider is None:
             return []
