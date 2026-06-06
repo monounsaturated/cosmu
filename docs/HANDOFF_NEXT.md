@@ -167,3 +167,20 @@ merged`) vs KEEP (genuinely unmerged unique content). Delete ONLY SAFE ones (`gi
 counts + the KEEP list with why. Goal: lean branch list, zero code lost. (~51 branches today; most are
 squash-merged → SAFE.)
 ```
+
+## 10. FUTURE: LunarCrush BUILDER 1-day mega-grab (stocks + topics + full coins) — when ready
+> Why later: the Individual plan ($5/day) is COINS-ONLY (stocks/topics 402/404). The 2026-06-06 grab banked
+> ~95 coins × ~6.4yr × 7 metrics to Supabase. To get STOCKS + TOPICS + the full coin long-tail, do a ONE-DAY
+> Builder grab — but only AFTER crypto social signal proves useful (don't pre-pay).
+>
+> **The play (one $15 day → permanent dataset → cancel):**
+> 1. Upgrade LunarCrush to **Builder ($15/day)** — unlocks ALL endpoints + **100 req/min** + 20k/day.
+> 2. The extract script (`scripts/lunarcrush_max_extract.py`) ALREADY supports stocks/topics/categories +
+>    auto-discovery; on Builder the 402s lift, so list endpoints return the FULL top-N (no curated ~95 cap).
+> 3. Run (local-background or Modal), faster sleep since 100/min, big counts, → Supabase (DATABASE_URL routing
+>    is built-in; LUNARCRUSH_API_KEY in .env.local):
+>    `PYTHONPATH=apps/engine python3 scripts/lunarcrush_max_extract.py --coins 4000 --stocks 2000 --topics 800 --categories 300 --sleep 0.7 --quota 20000 > lc_builder.log 2>&1 &`
+>    (~7k entities at 0.7s ≈ ~1.5h; resumable via manifest, deduped, PIT — safe to re-run.)
+> 4. Verify Supabase row count, then **CANCEL Builder immediately** (one-day spend).
+> Result: stocks (Numerai Signals/equities) + topic/narrative time-series + full coin universe, banked
+> permanently for $15. Same extract-then-cancel pattern as the $5 coin grab.
