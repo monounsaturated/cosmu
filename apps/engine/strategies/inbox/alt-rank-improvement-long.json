@@ -1,0 +1,56 @@
+{
+  "name": "AltRank improvement — long assets climbing LunarCrush's combined social+market rank",
+  "rationale": "LunarCrush AltRank is a CROSS-SECTIONAL composite rank that blends an asset's social activity and market performance against the whole coin universe (1 = best, larger = worse). Unlike the raw social_volume LEVEL — which drifts ~160x over 2020-26 and makes any fitted level floor always-true (the phase0-social-signal §4 trap) — AltRank is a BOUNDED rank, so a threshold on it genuinely binds across the sample and a CROSS into a better band is a real, scale-stable event. The hypothesis: an asset whose AltRank is IMPROVING (the rank NUMBER falling, i.e. cross_down through a strong-band floor) is gaining relative social+market strength faster than its peers — the Barber-Odean attention-buying bias plus relative-strength continuation should carry it for a few days before the improvement is fully priced. We enter LONG (spot-only — no shorts on Binance spot) when AltRank crosses DOWN into the top band WHILE own-price momentum confirms (so we ride genuine relative strength, not a dead-cat where the rank improves only because everything else fell harder), and exit when AltRank deteriorates back up through an exit threshold (relative strength lost) or risk limits hit. Disconfirmer 1: the edge must come from the IMPROVEMENT (the cross), not the static altitude — if replacing the `cross_down` entry with a plain `lt rank_floor` level filter yields an equal-or-better deflated Sharpe, the signal is just 'currently high-ranked' (already priced), not 'climbing', and the claimed edge is false. Disconfirmer 2: AltRank co-moves mechanically with price (price IS one of its inputs), so a price-momentum control arm must NOT subsume it — if dropping AltRank entirely and keeping only ret_Nd momentum matches the deflated Sharpe, AltRank adds no orthogonal information. NOTE: DATA-BLOCKED until the LunarCrush hoard (scripts/lunarcrush_max_extract.py) lands alt_rank per coin; tier1 + low-confidence until validated OOS — the Gate down-weights until it earns its place.",
+  "catalyst": "alt_rank crosses DOWN into the top band (relative social+market strength improving) while price momentum confirms",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": { "name": "alt_rank" },
+      "op": "cross_down",
+      "threshold": { "param": "rank_floor" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "alt_rank" },
+        "op": "cross_up",
+        "threshold": { "param": "rank_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.35
+  },
+  "param_space": {
+    "rank_floor": { "kind": "float", "lo": 25.0,  "hi": 120.0 },
+    "rank_exit":  { "kind": "float", "lo": 120.0, "hi": 400.0 },
+    "mom_lb":     { "kind": "int",   "lo": 3,     "hi": 20,   "step": 1 },
+    "mom_floor":  { "kind": "float", "lo": 0.0,   "hi": 0.05 },
+    "stop":       { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":         { "kind": "float", "lo": 0.06,  "hi": 0.24 },
+    "time_stop":  { "kind": "int",   "lo": 2,     "hi": 10,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -121,9 +121,18 @@ def _fetch_polymarket_clob(store: Any, symbols: list[str], providers: Any) -> in
     return total
 
 
+# All seven LunarCrush coin time-series fields the provider now maps (in lockstep with the bulk hoard,
+# scripts/lunarcrush_max_extract.py). The provider returns one HTTP response per symbol and the memoizing
+# wrapper caches it, so fetching seven metrics is still one network call per symbol.
+_LUNARCRUSH_METRICS = (
+    "social_volume", "social_sentiment", "galaxy_score",
+    "alt_rank", "market_cap_usd", "volume_24h_usd", "price_usd",
+)
+
+
 def _fetch_lunarcrush(store: Any, symbols: list[str], providers: Any) -> int:
     total = 0
-    for metric in ("social_volume", "social_sentiment", "galaxy_score"):
+    for metric in _LUNARCRUSH_METRICS:
         total += ingest_numeric(store, providers.lunarcrush, symbols, metric, provider_name="lunarcrush")
     return total
 
@@ -193,7 +202,7 @@ def managed_sources() -> dict[str, SourceSpec]:
         SourceSpec("osint", "alt", ("osint_air_activity",), _fetch_market_wide("osint_air_activity", "osint_air_activity", "osint", "opensky"), market_wide=True, per_symbol=False),
         SourceSpec("polymarket_clob", "alt", ("pm_implied_prob", "pm_prob_velocity", "pm_book_depth"), _fetch_polymarket_clob, market_wide=True, per_symbol=False),
         SourceSpec("reddit", "alt", ("reddit_sentiment",), _fetch_market_wide("reddit_sentiment", "reddit_sentiment", "reddit", "reddit"), market_wide=True, per_symbol=False),
-        SourceSpec("lunarcrush", "alt", ("social_volume", "social_sentiment", "galaxy_score"), _fetch_lunarcrush, note="Key-gated: empty without LUNARCRUSH_API_KEY."),
+        SourceSpec("lunarcrush", "alt", _LUNARCRUSH_METRICS, _fetch_lunarcrush, note="Key-gated: empty without LUNARCRUSH_API_KEY."),
         SourceSpec("xai", "alt", ("twitter_sentiment", "twitter_influencer_sentiment"), _fetch_xai, market_wide=True, per_symbol=False, note="Key-gated: empty without XAI_API_KEY."),
         SourceSpec("venue_fees", "alt", ("venue_fees_maker", "venue_fees_taker"), _fetch_venue_fees, note="Per venue:symbol maker/taker snapshot."),
         SourceSpec(

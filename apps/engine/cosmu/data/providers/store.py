@@ -136,6 +136,13 @@ _STORE_PROVIDER_OF = {
     "social_volume": "lunarcrush",
     "social_sentiment": "lunarcrush",
     "galaxy_score": "lunarcrush",
+    # The four remaining LunarCrush coin time-series fields hoarded alongside the three above
+    # (scripts/lunarcrush_max_extract.py stores all seven per coin). Banked-but-unwired until now —
+    # routing them here makes them readable by the gate's per-bar as-of join. tier1, low-confidence.
+    "alt_rank": "lunarcrush",
+    "market_cap_usd": "lunarcrush",
+    "volume_24h_usd": "lunarcrush",
+    "price_usd": "lunarcrush",
     "twitter_sentiment": "xai",
     "twitter_influencer_sentiment": "xai",
     # Geopolitical news tone (GDELT, keyless, market-wide) and crypto options IV (Deribit, keyless, per-symbol).
@@ -169,6 +176,21 @@ _STORE_METRIC_ALIAS: dict[str, str] = {
     "liquidation_cascade": "liquidations",
 }
 
+# Providers whose per-symbol series may be stored under the BASE-ASSET form (e.g. "BTC") rather than the
+# venue pair the backtest keys by ("BTCUSDT"). The bulk LunarCrush hoard (scripts/lunarcrush_max_extract.py)
+# keys each coin by its base symbol (the API entity id), while the scheduled ingest path keys by the full
+# pair. fetch_series tries the EXACT symbol first and only falls back to the base-asset form when nothing was
+# found — so an exact match always wins and no series is ever silently re-routed. Conservative + additive.
+_STORE_BASE_ASSET_PROVIDERS = frozenset({"lunarcrush"})
+
+
+def _strip_quote(symbol: str) -> str | None:
+    """Base-asset form of a venue pair (BTCUSDT -> BTC), or None if `symbol` is not a recognised quote pair."""
+    for quote in ("USDT", "USDC", "USD", "BUSD"):
+        if symbol.endswith(quote) and len(symbol) > len(quote):
+            return symbol[: -len(quote)]
+    return None
+
 
 class StoreBackedAltProvider:
     """Adapts the append-only point-in-time store (AltDataStore / PgAltDataStore) into the AltDataProvider
@@ -191,4 +213,15 @@ class StoreBackedAltProvider:
             alias = _STORE_METRIC_ALIAS.get(metric)
             if alias:
                 points = self._store.read_all(provider, key, alias)
+        # Base-asset fallback: a provider hoarded by coin id (e.g. LunarCrush "BTC") is read by the backtest
+        # under the venue pair ("BTCUSDT"). Only fires when the exact key found nothing, so an exact match
+        # always wins and the point-in-time semantics are unchanged (we just look under the other key form).
+        if not points and provider in _STORE_BASE_ASSET_PROVIDERS and key != "MARKET":
+            base = _strip_quote(key)
+            if base:
+                points = self._store.read_all(provider, base, metric)
+                if not points:
+                    alias = _STORE_METRIC_ALIAS.get(metric)
+                    if alias:
+                        points = self._store.read_all(provider, base, alias)
         return points[-limit:]

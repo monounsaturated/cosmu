@@ -16,8 +16,21 @@ class LunarCrushProvider:
     to one bar after observation (a day's social data is known only after the day closes — point-in-time, no
     look-ahead). Low-confidence/tier1 until it earns its place out-of-sample."""
 
-    # semantic metric (feature_registry name) -> LunarCrush v4 coin time-series field
-    _FIELD = {"social_volume": "social_volume", "social_sentiment": "sentiment", "galaxy_score": "galaxy_score"}
+    # semantic metric (feature_registry name) -> LunarCrush v4 coin time-series field. Mirrors the seven fields
+    # scripts/lunarcrush_max_extract.py hoards per coin, so the live provider and the bulk grab agree on naming.
+    # NB: social_volume maps to the v4 `interactions` field (the bulk grab's source of truth); `social_volume`
+    # is also accepted for backward-compat with the older fixture shape that exposed it directly.
+    _FIELD = {
+        "social_volume": "interactions",
+        "social_sentiment": "sentiment",
+        "galaxy_score": "galaxy_score",
+        "alt_rank": "alt_rank",
+        "market_cap_usd": "market_cap",
+        "volume_24h_usd": "volume_24h",
+        "price_usd": "price",
+    }
+    # Older v4 field name for social_volume kept as a fallback so historical fixtures/responses still resolve.
+    _FIELD_FALLBACK = {"social_volume": "social_volume"}
 
     def __init__(self, api_key: str = "", base_url: str = "https://lunarcrush.com/api4/public", *, _fetcher: Callable[[str], dict] | None = None) -> None:
         self.api_key = api_key or ""
@@ -35,15 +48,19 @@ class LunarCrushProvider:
         field = self._FIELD.get(metric)
         if field is None:
             return []
+        fallback = self._FIELD_FALLBACK.get(metric)
         coin = symbol[:-4] if symbol.endswith("USDT") else symbol
         query = urllib.parse.urlencode({"bucket": "day"})
         url = f"{self.base_url}/coins/{coin}/time-series/v2?{query}"
         payload = self._fetcher(url)
         out: list[AltDataPoint] = []
         for row in payload.get("data", [])[-limit:]:
-            if row.get(field) is None:
+            raw = row.get(field)
+            if raw is None and fallback is not None:
+                raw = row.get(fallback)  # older v4 field name (e.g. social_volume) for back-compat
+            if raw is None:
                 continue
             ts = datetime.fromtimestamp(int(row["time"]), tz=UTC)
             available = datetime.fromtimestamp(int(row["time"]) + 86400, tz=UTC)
-            out.append(AltDataPoint(ts=ts, available_at=available, value=float(row[field])))
+            out.append(AltDataPoint(ts=ts, available_at=available, value=float(raw)))
         return out
