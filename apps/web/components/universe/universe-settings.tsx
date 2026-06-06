@@ -8,7 +8,7 @@ import { useEffect, useState, useTransition } from "react";
 import { Check, Info, TriangleAlert } from "lucide-react";
 import type { AssetClassState, UniverseResponse, VenueState } from "@cosmu/contracts-ts";
 import { Badge } from "@/components/ui/badge";
-import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
+import { ENGINE_CONFIGURED, engineFetch, engineFetchTimeout } from "@/lib/engine";
 import { cn } from "@/lib/utils";
 
 const OFFLINE: UniverseResponse = {
@@ -63,7 +63,7 @@ export function UniverseSettings() {
     }
     startTransition(async () => {
       try {
-        const res = await engineFetch(path, {
+        const res = await engineFetchTimeout(path, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body)

@@ -7,7 +7,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { Check, Globe, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
+import { ENGINE_CONFIGURED, engineFetch, engineFetchTimeout } from "@/lib/engine";
 
 interface JurisdictionOption {
   code: string;
@@ -43,7 +43,7 @@ export function JurisdictionSetting() {
     setData((d) => (d ? { ...d, current: code } : d)); // optimistic
     startTransition(async () => {
       try {
-        const res = await engineFetch("/live/jurisdiction", {
+        const res = await engineFetchTimeout("/live/jurisdiction", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ code })
