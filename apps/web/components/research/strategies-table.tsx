@@ -26,12 +26,12 @@ const FAMILIES: { id: string; label: string }[] = [
   { id: "social", label: "Social" }
 ];
 
-// Map a raw engine status onto the lifecycle facet {lab → screened → forward → live → killed}.
+// Map a raw engine status onto the lifecycle facet {lab → backtest → simulation → live → killed}.
 type LifeStatus = "lab" | "screened" | "forward" | "live" | "killed";
 const STATUS_LABELS: Record<LifeStatus, string> = {
   lab: "Lab",
-  screened: "Screened",
-  forward: "Forward",
+  screened: "Backtest",
+  forward: "Simulation",
   live: "Live",
   killed: "Killed"
 };

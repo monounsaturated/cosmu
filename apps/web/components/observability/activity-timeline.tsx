@@ -24,7 +24,7 @@ type Family = {
 const FAMILIES: Record<string, Family> = {
   research: { label: "research", icon: Microscope, tone: "text-iris-soft" },
   gate: { label: "gate", icon: ShieldCheck, tone: "text-info" },
-  sim: { label: "sim", icon: Wallet, tone: "text-up" },
+  sim: { label: "simulation", icon: Wallet, tone: "text-up" },
   live: { label: "live", icon: Radio, tone: "text-warn" },
   system: { label: "system", icon: Activity, tone: "text-quiet" }
 };

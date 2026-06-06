@@ -92,18 +92,18 @@ function buildSuggestions({
   if (alive > 0 && proving > 0 && liveReady.length === 0) {
     out.push({
       tone: "info",
-      text: `${proving} strateg${proving > 1 ? "ies are" : "y is"} proving in sim — none has enough net-positive forward evidence for live yet. Give them time.`,
+      text: `${proving} strateg${proving > 1 ? "ies are" : "y is"} in Simulation — none has enough net-positive forward evidence for live yet. Give them time.`,
       href: "/forward-test",
-      cta: "Forward-test"
+      cta: "Simulation"
     });
   }
 
   if (hasTrackRecord && returnPct >= 0) {
     out.push({
       tone: "good",
-      text: "Net positive across forward-tests. Keep monitoring; consider a small live allocation once a track is proven.",
+      text: "Net positive across Simulation tracks. Keep monitoring; consider a small live allocation once a track is proven.",
       href: "/forward-test",
-      cta: "Forward-test"
+      cta: "Simulation"
     });
   }
 

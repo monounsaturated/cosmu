@@ -76,7 +76,7 @@ export const COMMANDS: Record<string, Command> = {
   "/run-gate": {
     cmd: "/run-gate",
     icon: Gavel,
-    what: "Run the deterministic real-data Gate and report the verdict: fund a SIM track, or kill with reasons.",
+    what: "Run the deterministic real-data Gate and report the verdict: fund a Simulation track, or kill with reasons.",
     when: "Checking whether an edge is real, net of costs."
   },
   "/debug-strategy": {
