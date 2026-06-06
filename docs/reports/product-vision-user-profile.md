@@ -23,6 +23,23 @@ to it in Claude Code** — not by writing code. They think in ideas/vibes ("test
 6. **Simple to drive, deep underneath.** The operator's actions are simple ("find me an edge in X"); the *machine's*
    actions are deep + technical (deflated Sharpe, CSCV-PBO, FDR cohorts, PIT joins) — hidden behind the conversation.
 
+## 🔬 The framing that nails it: an "investigation agent" — *"I chat with my intuitions and the AI investigates if they're true"*
+A user says: *"I feel like when Paris is ~20°C and Trump posts <3×/day, the Nasdaq underperforms."* The agent should:
+fetch the data (weather, social activity, Nasdaq) → align dates → test correlation → **check significance · detect
+selection bias · p-hacking · out-of-sample · control for the market · calendar effects** → conclude real / weak / noise.
+**This IS COSMU.** The hypothesis → typed spec → the Gate. And the ONE thing that makes COSMU more than a naive
+"LLM + MCP" agent (the pasted comparison's worry that "LLMs are weak at stats / use GPT"):
+
+> **COSMU's statistics are DETERMINISTIC CODE, not LLM-guessed.** The Gate (deflated/probabilistic Sharpe · CSCV-PBO
+> overfit check · BH-FDR across trials · OOS holdout · regime folds · beat-buy-and-hold) computes the verdict — the LLM
+> only proposes the hypothesis and standardizes text into features. So the Claude-vs-GPT "who's better at stats" debate
+> is moot: **neither LLM does the stats — honest code does.** That's the moat against self-deception (p-hacking, the
+> exact failure the pasted example warns about).
+
+The **MCP layer + `/add-data-source`** are the investigation toolkit (Postgres, web/news, Python, FRED, Open-Meteo,
+finance feeds — the agent picks tools). Already on the roadmap (MCP in BACKLOG; sources via the generalization plan).
+**Build toward this UX: talk your intuition → the agent investigates honestly → a confidence verdict.**
+
 ## 🧭 The non-negotiables that keep it honest (don't drift)
 - **Profit, net of fees, is the only score.** LLM proposes; the deterministic Gate disposes; LLM never touches money.
 - **No oracle → no graduation** (finance is the proving ground; other domains wait behind their own incorruptible scorer).

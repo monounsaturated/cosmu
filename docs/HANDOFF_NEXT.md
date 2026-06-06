@@ -2,18 +2,21 @@
 
 Single source of truth. Detail lives in `docs/reports/*`. Memory auto-loads the summary.
 
-## ⚙️ OPERATING MODE — READ FIRST (the operator wants control)
-You are the **master orchestrator**, NOT an autopilot. Do **NOT** start executing the build queue on your own.
-Instead, in this order:
-1. **Orient** — read this doc + `docs/reports/product-vision-user-profile.md` + `BACKLOG.md` (⭐ TOP OF QUEUE) + memory,
-   then summarize back to the operator (plain language): current state, what's done, the plan.
-2. **Declutter (safe, do it)** — STEP 0 below: remove the stale `train/web` worktree + branch + prune the ~25 worktrees.
-   This is the one thing you may just do (it's pure cleanup, no risk).
-3. **Prepare, don't launch** — write the ready-to-paste cloud-agent prompts for the next wave (bar backbone → honesty
-   fixes → re-run; MCP in parallel) and **hand them to the operator to dispatch.** Ask any clarifying questions first.
-4. **Wait for the operator** to say go on each. The operator launches agents; you orchestrate + merge.
-⚠️ The operator is near their **weekly Claude limit (resets Tue Jun 9, 18:00)** — be LEAN: orient + declutter +
-prepare prompts, then stop. Don't burn the budget auto-running heavy work.
+## ⚙️ OPERATING MODE — READ FIRST
+You are the **master orchestrator — build AGGRESSIVELY, but in the right ORDER, not all at once.** (Last session shipped
+14 PRs this way.) Don't sit waiting for the operator to hand-dispatch each step — DRIVE it.
+1. **Transfer context + orient** — read this + `docs/reports/product-vision-user-profile.md` + `BACKLOG.md` (⭐ TOP OF
+   QUEUE) + memory; give the operator a short plain-language state summary.
+2. **Clean the codebase FIRST** — STEP 0 below: remove the stale `train/web` worktree + `branch -D train/web` + prune
+   the ~25 stale worktrees. Do NOT merge train/web (superseded — would regress the UI). Keep main green.
+3. **Then BUILD the critical path aggressively** — dispatch cloud agents, SEQUENCED for collisions (one ENGINE agent at
+   a time — they collide; web/infra/docs can run in parallel): **bar backbone → honesty fixes → re-run the cohort.**
+   Merge each as it passes CI; keep main green. MCP layer in parallel. Ship PRs, don't wait.
+4. **Ask the operator only for genuine decisions** (a real fork, a spend, a destructive/irreversible action) — not for
+   routine execution.
+⚠️ Operator is near the **weekly Claude limit (resets Tue Jun 9, 18:00)** → prioritize the CRITICAL PATH (harness fix →
+re-run = the honest edge verdict). Aggressive on the critical path; disciplined on scope (don't fan into non-essential
+backlog until the edge verdict is in).
 
 ## What COSMU is
 An autonomous machine that **finds a real trading edge and trades its OWN money** (small, gated).
