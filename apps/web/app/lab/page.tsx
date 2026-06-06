@@ -16,6 +16,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { StrategyStages } from "@/components/nav/strategy-stages";
 import { EmptyState, NotConnected, NotConnectedBanner } from "@/components/ui/honest-state";
 import { IdeaInbox } from "@/components/overview/idea-inbox";
+import { ExpandableSection } from "@/components/ui/expandable-section";
 import { cn, formatPct } from "@/lib/utils";
 
 export default async function LabPage() {
@@ -75,125 +76,133 @@ export default async function LabPage() {
         </section>
       )}
 
-      {/* Research brain: gate funnel + survivors */}
-      {brainConnected && (
+      {/* Progressive disclosure — digestible by default. Gate charts, brain detail, finder, activity
+          and graveyard are secondary; show them on demand. */}
+      <ExpandableSection
+        showLabel="Show brain detail, gates, finder & graveyard"
+        hideLabel="Hide detail"
+        summary={null}
+      >
+        {/* Research brain: gate funnel + survivors */}
+        {brainConnected && (
+          <section className="space-y-3">
+            <div className="grid gap-3 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-1.5">
+                    Gate funnel
+                    <Tooltip content="Every generated Version runs the deterministic Gate. Most are killed — the funnel shows how many survive." />
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <GateFunnel gated={brain.gated} />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-1.5">
+                    Survival distribution
+                    <Tooltip content="Each survivor's score — the model's estimate the edge persists. It only orders the queue; never vetoes." />
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <SurvivalDistribution survivors={brain.survivors} />
+                </CardContent>
+              </Card>
+            </div>
+
+            <ResearchBrain brain={brain} />
+          </section>
+        )}
+
+        {/* Gates */}
         <section className="space-y-3">
-          <div className="grid gap-3 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-1.5">
-                  Gate funnel
-                  <Tooltip content="Every generated Version runs the deterministic Gate. Most are killed — the funnel shows how many survive." />
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <GateFunnel gated={brain.gated} />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-1.5">
-                  Survival distribution
-                  <Tooltip content="Each survivor's score — the model's estimate the edge persists. It only orders the queue; never vetoes." />
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <SurvivalDistribution survivors={brain.survivors} />
-              </CardContent>
-            </Card>
-          </div>
-
-          <ResearchBrain brain={brain} />
-        </section>
-      )}
-
-      {/* Gates */}
-      <section className="space-y-3">
-        <h3 className="text-[13px] font-semibold text-foreground">Is there an edge?</h3>
-        <div className="grid gap-3">
-          <EdgeGate />
-          <CrossAssetGate />
-        </div>
-      </section>
-
-      {/* The machine's memory + what it has learned now lives on the Mind page (one consolidated surface). */}
-
-      {/* Strategy Finder */}
-      <section className="space-y-3">
-        <h3 className="text-[13px] font-semibold text-foreground">Strategy Finder</h3>
-        <FarmConsole />
-      </section>
-
-      {/* Activity */}
-      {evtConnected && events.length > 0 && (
-        <section className="space-y-3">
-          <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-            <Activity className="size-4 text-iris-soft" /> Recent activity
-          </h3>
-          <Card>
-            <CardContent className="pt-4">
-              <ActivityTimeline events={events} />
-            </CardContent>
-          </Card>
-        </section>
-      )}
-
-      {/* Graveyard */}
-      {connected && population.killed > 0 && (
-        <section className="space-y-3">
-          <h3 className="text-[13px] font-semibold text-foreground">Graveyard</h3>
-          <div className="grid gap-3 lg:grid-cols-[1fr_1.6fr]">
-            <Card>
-              <CardHeader>
-                <CardTitle>By origin</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {Object.entries(population.by_lane).map(([lane, raw]) => {
-                  const n = Number(raw);
-                  const pct = population.total ? (n / population.total) * 100 : 0;
-                  return (
-                    <div key={lane} className="space-y-1.5">
-                      <div className="flex items-center justify-between text-[12.5px]">
-                        <span className="capitalize text-foreground">{lane}</span>
-                        <span className="tabular text-muted">{n}</span>
-                      </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-                        <div className="h-full rounded-full bg-iris/75" style={{ width: `${Math.max(pct, 2)}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent deaths</CardTitle>
-                <Badge variant="down">with kill reasons</Badge>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {population.graveyard.map((row: GraveyardRow) => (
-                  <div
-                    key={row.version_id}
-                    className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate text-[12.5px] font-medium text-foreground">{row.name}</div>
-                      <div className="text-[11px] text-quiet">{row.origin}</div>
-                    </div>
-                    <div className="flex flex-wrap justify-end gap-1">
-                      {row.kill_reason.split(",").map((r) => (
-                        <Badge key={r} variant="down">
-                          {r.replace(/_/g, " ")}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+          <h3 className="text-[13px] font-semibold text-foreground">Is there an edge?</h3>
+          <div className="grid gap-3">
+            <EdgeGate />
+            <CrossAssetGate />
           </div>
         </section>
-      )}
+
+        {/* The machine's memory + what it has learned now lives on the Mind page (one consolidated surface). */}
+
+        {/* Strategy Finder */}
+        <section className="space-y-3">
+          <h3 className="text-[13px] font-semibold text-foreground">Strategy Finder</h3>
+          <FarmConsole />
+        </section>
+
+        {/* Activity */}
+        {evtConnected && events.length > 0 && (
+          <section className="space-y-3">
+            <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
+              <Activity className="size-4 text-iris-soft" /> Recent activity
+            </h3>
+            <Card>
+              <CardContent className="pt-4">
+                <ActivityTimeline events={events} />
+              </CardContent>
+            </Card>
+          </section>
+        )}
+
+        {/* Graveyard */}
+        {connected && population.killed > 0 && (
+          <section className="space-y-3">
+            <h3 className="text-[13px] font-semibold text-foreground">Graveyard</h3>
+            <div className="grid gap-3 lg:grid-cols-[1fr_1.6fr]">
+              <Card>
+                <CardHeader>
+                  <CardTitle>By origin</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {Object.entries(population.by_lane).map(([lane, raw]) => {
+                    const n = Number(raw);
+                    const pct = population.total ? (n / population.total) * 100 : 0;
+                    return (
+                      <div key={lane} className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[12.5px]">
+                          <span className="capitalize text-foreground">{lane}</span>
+                          <span className="tabular text-muted">{n}</span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+                          <div className="h-full rounded-full bg-iris/75" style={{ width: `${Math.max(pct, 2)}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent deaths</CardTitle>
+                  <Badge variant="down">with kill reasons</Badge>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {population.graveyard.map((row: GraveyardRow) => (
+                    <div
+                      key={row.version_id}
+                      className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-[12.5px] font-medium text-foreground">{row.name}</div>
+                        <div className="text-[11px] text-quiet">{row.origin}</div>
+                      </div>
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {row.kill_reason.split(",").map((r) => (
+                          <Badge key={r} variant="down">
+                            {r.replace(/_/g, " ")}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          </section>
+        )}
+      </ExpandableSection>
     </div>
   );
 }

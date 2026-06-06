@@ -20,6 +20,7 @@ import { SkillsGrid } from "@/components/learning/skills-grid";
 import { ScoresCockpit } from "@/components/scores/scores-cockpit";
 import { SourceTrustScoreboard } from "@/components/mind/source-trust-scoreboard";
 import { NewsIntelPanel } from "@/components/mind/news-intel-panel";
+import { ExpandableSection } from "@/components/ui/expandable-section";
 
 export default async function MindPage() {
   const [{ mind, connected }, { scores }, { skills }, { trust }, { intel }] = await Promise.all([
@@ -60,59 +61,67 @@ export default async function MindPage() {
         <MindKnows knows={mind.knows} />
       </section>
 
-      {/* SCORES — first-class index scores + per-source "what this means" reviews, by category. */}
-      <section className="space-y-3">
-        <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-          <Gauge className="size-4 text-iris-soft" /> Scores
-        </h3>
-        <p className="text-[11.5px] text-muted">
-          Composite + per-category INDEX scores (e.g. regulatory risk, risk-on/off), each with a plain-language review and
-          freshness. A key-gated source with no key is greyed — never fabricated.
-        </p>
-        <ScoresCockpit scores={scores} />
-      </section>
+      {/* Progressive disclosure — digestible by default: Think + Know above. Scores, source trust,
+          and learning detail are secondary and shown on demand. */}
+      <ExpandableSection
+        showLabel="Show scores, source trust & learnings"
+        hideLabel="Hide detail"
+        summary={null}
+      >
+        {/* SCORES — first-class index scores + per-source "what this means" reviews, by category. */}
+        <section className="space-y-3">
+          <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
+            <Gauge className="size-4 text-iris-soft" /> Scores
+          </h3>
+          <p className="text-[11.5px] text-muted">
+            Composite + per-category INDEX scores (e.g. regulatory risk, risk-on/off), each with a plain-language review and
+            freshness. A key-gated source with no key is greyed — never fabricated.
+          </p>
+          <ScoresCockpit scores={scores} />
+        </section>
 
-      {/* SOURCE SCOREBOARD + NEWS/INTEL — freshness × gate contribution per source; recent news events */}
-      <section className="space-y-3">
-        <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-          <Star className="size-4 text-iris-soft" /> Source trust &amp; news/intel
-        </h3>
-        <p className="text-[11.5px] text-muted">
-          Trust = freshness × realized gate contribution. Honest: sources with no data show &quot;no data&quot;. Never fabricated.
-        </p>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <SourceTrustScoreboard rows={trust.rows} asOf={trust.as_of} />
-          <NewsIntelPanel events={intel.events} symbol={intel.symbol} />
-        </div>
-      </section>
+        {/* SOURCE SCOREBOARD + NEWS/INTEL — freshness × gate contribution per source; recent news events */}
+        <section className="space-y-3">
+          <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
+            <Star className="size-4 text-iris-soft" /> Source trust &amp; news/intel
+          </h3>
+          <p className="text-[11.5px] text-muted">
+            Trust = freshness × realized gate contribution. Honest: sources with no data show &quot;no data&quot;. Never fabricated.
+          </p>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <SourceTrustScoreboard rows={trust.rows} asOf={trust.as_of} />
+            <NewsIntelPanel events={intel.events} symbol={intel.symbol} />
+          </div>
+        </section>
 
-      {/* WHAT IT HAS LEARNED — ML, regimes, gate efficiency, memory, skills */}
-      <section className="space-y-3">
-        <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-          <GraduationCap className="size-4 text-iris-soft" /> What it has learned
-        </h3>
-        <MindLearnings learnings={mind.learnings} />
-        <div className="grid gap-3 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Dead ends &amp; winner patterns</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <MemoryInsights insights={mind.learnings.insights} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-1.5">
-                <BookOpen className="size-4 text-iris-soft" /> Distilled skills
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <SkillsGrid skills={skills} />
-            </CardContent>
-          </Card>
-        </div>
-      </section>
+        {/* WHAT IT HAS LEARNED — ML, regimes, gate efficiency, memory, skills */}
+        <section className="space-y-3">
+          <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
+            <GraduationCap className="size-4 text-iris-soft" /> What it has learned
+          </h3>
+          <MindLearnings learnings={mind.learnings} />
+          <div className="grid gap-3 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Dead ends &amp; winner patterns</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <MemoryInsights insights={mind.learnings.insights} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-1.5">
+                  <BookOpen className="size-4 text-iris-soft" /> Distilled skills
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <SkillsGrid skills={skills} />
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      </ExpandableSection>
     </div>
   );
 }

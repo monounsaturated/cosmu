@@ -204,3 +204,22 @@
     overflow-x: hidden;
   }
 }
+
+/* Safe-area top padding for notched / Dynamic-Island devices. Applied to the sticky header so it
+   clears the status bar. The bottom nav already uses pb-[env(safe-area-inset-bottom)]. */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .header-safe {
+    padding-top: max(0.625rem, env(safe-area-inset-top));
+  }
+}
+
+/* Smooth page-content entrance on route change. Pairs with the Next.js router; the animation runs
+   only when the browser supports it and the user hasn't requested reduced motion (the global rule
+   above kills it otherwise). */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+main > *:first-child {
+  animation: page-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
