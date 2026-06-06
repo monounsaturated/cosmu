@@ -1,15 +1,13 @@
 name: verify
 
 on:
-  # COST: CI runs ONLY on PRs against main (the gate before merge) + manual dispatch.
-  # We deliberately DROPPED the push:[main] trigger: every change merges via a
-  # CI-verified PR, so re-running the full suite on the merge commit is redundant
-  # (~doubled the cost for ~zero safety gain on a solo repo). Vercel (web) + Railway
-  # (engine) build on push independently, so a deploy-breaking merge still surfaces.
-  # If you ever need to verify main directly, use `workflow_dispatch`.
-  pull_request:
-    branches:
-      - main
+  # COST (2026-06-06): PR-triggered CI is OFF — it was the GitHub Actions spend, and on a private/
+  # free repo with NO branch protection it never actually gated merges. Verification is now FREE:
+  # every cloud agent runs `pnpm verify` in its OWN sandbox before opening a PR, the integration
+  # agent runs the full suite before merge, and the operator runs it locally on the M2. Vercel +
+  # Railway still build on push independently, so a deploy-breaking merge surfaces there.
+  # Run the suite on demand here via workflow_dispatch; re-enable `pull_request` only if branch
+  # protection is ever added (then CI would actually be a gate worth paying for).
   workflow_dispatch:
 
 # Cancel any in-flight run on the same branch when a newer push lands.
