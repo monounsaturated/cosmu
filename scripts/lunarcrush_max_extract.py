@@ -327,6 +327,7 @@ class Extractor:
         daily_quota: int = DAILY_QUOTA,
         sleep_between: float = SLEEP_BETWEEN_CALLS,
         dry_run: bool = False,
+        refresh: bool = False,
     ) -> None:
         self.api_key = api_key
         self.store = store
@@ -334,6 +335,7 @@ class Extractor:
         self.daily_quota = daily_quota
         self.sleep_between = sleep_between
         self.dry_run = dry_run
+        self.refresh = refresh  # re-fetch even already-"done" entities (append_dedup writes only new days)
         self._now = datetime.now(tz=UTC)
         self._last_gated = False  # True when a fetch fails because the endpoint isn't on this plan (auth/plan)
         self._last_dead = False   # True when a single entity 404s (untracked) — skip it, don't abort the bucket
@@ -344,7 +346,7 @@ class Extractor:
     def _spend(self, key: str, entity_type: str, entity_id: str, fields: dict[str, str], fetch_fn: Any) -> bool:
         """Fetch one entity's full time-series, store it, mark the manifest, sleep.
         Returns True if a real API call was made, False if skipped."""
-        if self.manifest.is_done(key):
+        if self.manifest.is_done(key) and not self.refresh:
             return False
         if self._calls_remaining() <= 0:
             print(f"  QUOTA EXHAUSTED ({self.manifest.calls_today}/{self.daily_quota} today) — stopping. Resume tomorrow.", flush=True)
@@ -408,7 +410,7 @@ class Extractor:
                 break
 
             running_idx += 1
-            already_done = self.manifest.is_done(key) and not self.dry_run
+            already_done = self.manifest.is_done(key) and not self.dry_run and not self.refresh
             status = "SKIP" if already_done else ("DRY-RUN" if self.dry_run else "fetch")
             pct = f"{running_idx}/{total_planned}"
             remaining = self._calls_remaining() if not self.dry_run else (self.daily_quota - calls_spent)
@@ -470,9 +472,10 @@ def run_extract(
     dry_run: bool = False,
     daily_quota: int = DAILY_QUOTA,
     sleep_between: float = SLEEP_BETWEEN_CALLS,
+    refresh: bool = False,
 ) -> dict[str, int]:
     """Top-level extraction. Returns {bucket: calls_made}."""
-    extractor = Extractor(api_key, store, manifest, daily_quota=daily_quota, sleep_between=sleep_between, dry_run=dry_run)
+    extractor = Extractor(api_key, store, manifest, daily_quota=daily_quota, sleep_between=sleep_between, dry_run=dry_run, refresh=refresh)
 
     # ------------------------------------------------------------------ #
     # Phase 0: discover entity lists (these burn ~4 discovery calls)       #
@@ -607,6 +610,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--store",      default=".cosmu/altdata", help="alt-data store root directory")
     p.add_argument("--manifest",   default=".cosmu/lunarcrush_manifest.json", help="progress manifest path")
     p.add_argument("--dry-run",    action="store_true", help="preview only — ZERO API calls, shows what would be fetched")
+    p.add_argument("--refresh",    action="store_true", help="re-fetch even already-done coins to pull NEWER days (append_dedup writes only new points) — use for periodic updates")
     p.add_argument("--local",      action="store_true", help="force local JSONL store even if DATABASE_URL is set (default: Postgres/Supabase when DATABASE_URL present)")
     return p.parse_args(argv)
 
@@ -653,6 +657,7 @@ def main(argv: list[str] | None = None) -> int:
         n_categories=args.categories,
         coins_extra=coins_extra,
         dry_run=args.dry_run,
+        refresh=args.refresh,
         daily_quota=args.quota,
         sleep_between=args.sleep,
     )
