@@ -15,6 +15,27 @@ of fees.** (NOT a signal-vendor. Numerai is a footnote, not the plan — see bot
 ---
 
 ## WHAT TO DO (in order — simple)
+
+> 🔴 **NEW #1 PRIORITY (2026-06-06): FIX THE HARNESS, THEN RE-RUN — the "0 edges" verdict is suspect.**
+> Two adversarial workflows found the backtest infra is broken/starved (read `docs/reports/integrity-bugs-2026-06-06.md`
+> + `docs/reports/poc-acceleration-plan.md`). Do NOT trust the 7 powered fails until the harness is fixed.
+>
+> **Running now (cloud agents):** `engine/harness-trust-fix` (P0 `risk_on→pm_risk_on` 4 spots + provider hardening +
+> social wiring → makes the Gate trustworthy on live) · `web/mobile-ux-polish` (nav on every page + progressive disclosure).
+>
+> **Next parallel cloud agents to fire (disjoint, ready to paste):**
+> 1. **Price-bar backbone** (engine, `ingest/bars.py` + new provider, opus): the bar cache is EMPTY → every Gate run is
+>    starved. Build a `BinanceVisionBarBackfiller` (Binance Vision bulk OHLCV, 2017→now, spot+perp, full universe) on the
+>    existing `fetch_history`→`write_bars_cache` seam; fixture-test; PR. **The RUN is LOCAL** (writes `.cosmu/market_data/`).
+> 2. **Honesty fixes** (engine, `altdata.py`+`carry_ablation.py`, sonnet): rename/disable the FAKE `exchange_netflow`
+>    (it's `globalLongShortAccountRatio`+fabricated prior, 30d); fix funding annualization (raw rates ×3/day but perps
+>    moved to 4h/1h → carry understated 2-8×); FRED point-in-time vintage (ALFRED). PR. *(Fire AFTER harness-trust-fix merges — both touch engine.)*
+> 3. **Re-run the cohort** (LOCAL, after 1+2+harness merge): re-run the gate on the now-trustworthy harness, starting
+>    with the **btc-social risk-on OVERLAY** (the only non-overfit signal; needs a low-turnover overlay harness shape).
+> 4. **Declutter** (git, when NO agents active): branch-graveyard prune (~28 worktrees + stale branches). Never remove an
+>    active worktree. `git worktree prune` + remove merged-PR worktrees + `git fetch -p`.
+> 5. **Re-do data-viz** (web): the agent's WIP is in `git stash` (data-viz-wip-2026-06-06) — recover or re-run for the
+>    overlay charts page.
 1. **LunarCrush grab (running) → then CANCEL.** Banking the **full multi-venue tradeable universe** (~980 coins: Binance + Kraken spot/futures + Hyperliquid + Coinbase × ~6.4 yr × 7 metrics) into Supabase — this history is the irreplaceable asset. Universe lives at `.cosmu/coin_universe_allvenues.txt`. Cancel as soon as it finishes (stocks/topics need Builder; skip). Resumable + deduped. Relaunch: `python3 scripts/lunarcrush_max_extract.py --coins 1100 --coins-file .cosmu/coin_universe_allvenues.txt --sleep 3`. **To UPDATE later** (after cancel/re-subscribe): add `--refresh` (re-fetches all coins, writes only newer days). Ongoing freshness belongs in the `manage-data` skill / a cron, not this one-time script.
 2. **Cleanup wave** (cloud agents): RA-1 → then RA-2 / DS-1 / C-1 → RA-3. Then **flip the Railway cron** → the machine self-runs.
 3. **Find the edge** (the core mission): test the new social data + the two untested markets (below).
