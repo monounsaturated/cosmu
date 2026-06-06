@@ -21,8 +21,14 @@ gets funded. Live trading is **OFF by default** behind 5 interlocks.
 
 ```bash
 pnpm install
-pnpm dev          # web on :3000 (regenerates contracts, then next dev)
+pnpm dev          # web on :3000 (regenerates contracts, then next dev --turbopack)
 pnpm engine:api   # engine API on :8000 (FastAPI / uvicorn)
+```
+
+First clone — also install the Python dev deps so `pytest -n auto` works locally:
+
+```bash
+pip install -e "apps/engine[dev]"
 ```
 
 Point the web app at the engine with `.env.local`:
@@ -37,11 +43,16 @@ With no engine configured, every surface renders its honest "not connected" stat
 ## Verify before pushing
 
 ```bash
-pnpm verify   # naming:check · contracts:generate · engine:test · typecheck · build
+pnpm verify         # full: naming:check · contracts:generate · engine:test · typecheck · next build
+pnpm verify:fast    # skip next build — lint + typecheck + engine tests only (fast local loop)
+pnpm verify:remote  # push current branch → tail the GitHub Actions 'verify' run in CI
 ```
 
-`build` runs the real `next build` — the step that catches a Vercel-breaking page before you push.
-On a RAM-tight machine, run the heavy parts (`engine:test`, `next build`) in a cloud session.
+`verify:remote` is the CI-offload path: push once, watch the real `next build` run on GitHub
+Actions without burning local RAM. Requires `gh` CLI authenticated (`gh auth login`).
+
+`verify:fast` is the tight feedback loop — skips the slow Next.js production build.
+Use it during active development; let CI handle the full build.
 
 ## Deploy
 

@@ -27,7 +27,8 @@
     "modal:costs": "modal run apps/engine/remote/app.py --job cost_refresh",
     "typecheck": "pnpm --filter @cosmu/contracts-ts typecheck && pnpm --filter @cosmu/web typecheck",
     "verify": "pnpm naming:check && pnpm contracts:generate && pnpm engine:test && pnpm typecheck && pnpm build",
+    "verify:fast": "pnpm naming:check && pnpm contracts:generate && pnpm engine:test && pnpm typecheck",
     "verify:local": "pnpm naming:check && pnpm contracts:generate",
-    "verify:remote": "git push -u origin HEAD"
+    "verify:remote": "git push -u origin HEAD && gh run watch $(gh run list --branch $(git rev-parse --abbrev-ref HEAD) --workflow verify.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status"
   }
 }
