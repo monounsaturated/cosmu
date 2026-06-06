@@ -41,6 +41,26 @@ _Z_WINDOW = 30
 _Z_MIN = 10  # need at least this many trailing points before a z-score is defined (else the feature reads None)
 SOCIAL_NORM_VERSION = "social-norm-v1"
 
+# --- btc_social_regime (the LOW-TURNOVER risk-on overlay) -------------------------------------------------
+# A SLOW market-wide risk-on/off regime derived from BTC's social_volume_accel. The point is LOW TURNOVER: a
+# handful of regime flips per year, so it TILTS a slow base book's exposure rather than firing daily trades.
+#   1. SMOOTH: an EWMA of BTC social_volume_accel over _REGIME_EWMA_DAYS (W=20–40d) — the slow attention trend.
+#   2. NORMALIZE: a within-sample z of that smoothed series (mean/sd over the whole sample) so the +0.5/-0.5
+#      hysteresis bands are scale-free. (Within-SAMPLE, not trailing: this is a regime LABEL the overlay tilts
+#      by, computed once over the run window — it is NOT a per-bar trade threshold that must be strictly PIT
+#      trailing. The disconfirmers below guard against the look-ahead this could otherwise smuggle in.)
+#   3. HYSTERESIS + MIN-DWELL: turn ON when z crosses above +_REGIME_ON_Z, OFF when it crosses below
+#      -_REGIME_OFF_Z, and hold each state at least _REGIME_MIN_DWELL_DAYS before it may flip again. This is
+#      what makes the regime flip only a few times a year (turnover ≪ a daily trigger).
+# The regime value is in {0,1} (a [0,1] clamp by construction); the overlay maps it to an exposure tilt
+# lo+(hi-lo)*regime in research/rerun_cohort.py. available_at is inherited from the smoothed accel point, so
+# the regime is point-in-time honest the same way every other social derivation is.
+_REGIME_EWMA_DAYS = 30          # W (20–40d): the slow smoothing window for BTC social_volume_accel
+_REGIME_ON_Z = 0.5              # enter risk-ON when the within-sample z crosses above +this
+_REGIME_OFF_Z = 0.5             # fall risk-OFF when the within-sample z crosses below -this
+_REGIME_MIN_DWELL_DAYS = 20     # hold each ON/OFF state at least this many days before another flip is allowed
+_REGIME_Z_MIN = 10              # need this many smoothed points before the within-sample z is defined
+
 
 def _accel(points: list[AltDataPoint]) -> list[AltDataPoint]:
     """ln(v_t / v_{t-1}) — point-in-time: available_at inherited from the LATER point (known when t closes)."""
@@ -65,6 +85,64 @@ def _rolling_z(points: list[AltDataPoint]) -> list[AltDataPoint]:
             sd = math.sqrt(var)
             if sd > 0:
                 out.append(AltDataPoint(ts=p.ts, available_at=p.available_at, value=(p.value - mean) / sd))
+    return out
+
+
+def _ewma(points: list[AltDataPoint], span_days: int) -> list[AltDataPoint]:
+    """Exponential moving average over `points` with the standard span→alpha = 2/(span+1). Causal (each output
+    consumes only points up to and including t), so available_at is inherited from the current point — no
+    look-ahead. The slow smoother that turns the noisy daily social_volume_accel into a regime trend."""
+    if not points:
+        return []
+    alpha = 2.0 / (max(1, span_days) + 1.0)
+    out: list[AltDataPoint] = []
+    ema: float | None = None
+    for p in points:
+        ema = p.value if ema is None else alpha * p.value + (1.0 - alpha) * ema
+        out.append(AltDataPoint(ts=p.ts, available_at=p.available_at, value=ema))
+    return out
+
+
+def slow_social_regime(
+    accel: list[AltDataPoint],
+    *,
+    ewma_days: int = _REGIME_EWMA_DAYS,
+    on_z: float = _REGIME_ON_Z,
+    off_z: float = _REGIME_OFF_Z,
+    min_dwell_days: int = _REGIME_MIN_DWELL_DAYS,
+) -> list[AltDataPoint]:
+    """The LOW-TURNOVER risk-on/off regime ∈ {0,1} derived from a social_volume_accel series (BTC's).
+
+    Pipeline: EWMA(span=ewma_days) → within-sample z → hysteresis (ON when z>+on_z, OFF when z<-off_z) with a
+    min-dwell of `min_dwell_days` per state. Returns one regime point per smoothed accel point that has a
+    defined z, with available_at inherited from the smoothed point (point-in-time on availability). By
+    construction this flips only a handful of times per year — it is a SLOW exposure tilt, never a daily trade.
+
+    The z is WITHIN-SAMPLE (mean/sd over the whole run window), not trailing: the regime is a label the overlay
+    tilts exposure by, computed once over the run — the pre-registered disconfirmers (a BTC-PRICE regime of
+    equal turnover, a within-regime time-shuffle placebo, and the flat-exposure baseline) are what guard against
+    any edge this within-sample normalization could manufacture."""
+    smoothed = _ewma(accel, ewma_days)
+    if len(smoothed) < _REGIME_Z_MIN:
+        return []
+    vals = [p.value for p in smoothed]
+    mean = sum(vals) / len(vals)
+    var = sum((x - mean) ** 2 for x in vals) / len(vals)
+    sd = math.sqrt(var)
+    if sd <= 0:
+        return []
+    out: list[AltDataPoint] = []
+    state = 0          # current regime: 0 = risk-off, 1 = risk-on
+    dwell = min_dwell_days  # allow the first flip immediately (start neutral-off, flip on first ON cross)
+    for p in smoothed:
+        z = (p.value - mean) / sd
+        if dwell >= min_dwell_days:
+            if state == 0 and z > on_z:
+                state, dwell = 1, 0
+            elif state == 1 and z < -off_z:
+                state, dwell = 0, 0
+        dwell += 1
+        out.append(AltDataPoint(ts=p.ts, available_at=p.available_at, value=float(state)))
     return out
 
 
@@ -94,13 +172,16 @@ def derive_social_alt(
     """Build the PIT NORMALIZED social alt-join: symbol -> {feature: {bar.ts.isoformat(): value}}.
 
     Mirrors social_signal_cohort._social_alt but emits the derived (scale-stable) features instead of raw levels,
-    so a fitted threshold genuinely binds. BTC's acceleration is broadcast to every symbol as btc_social_accel."""
+    so a fitted threshold genuinely binds. BTC's acceleration is broadcast to every symbol as btc_social_accel,
+    and BTC's SLOW risk-on/off regime as btc_social_regime (the low-turnover overlay)."""
     # BTC acceleration series, derived once and broadcast (the contagion signal is BTC's, read by every alt).
     btc_bars = market.get("BTCUSDT")
     btc_accel: list[AltDataPoint] = []
+    btc_regime: list[AltDataPoint] = []
     if btc_bars:
         btc_vol = provider.fetch_series("BTCUSDT", "social_volume", limit=len(btc_bars) + 2400)
         btc_accel = _accel(btc_vol)
+        btc_regime = slow_social_regime(btc_accel)  # the slow, hysteresis+dwell risk-on/off regime ∈ {0,1}
 
     out: dict[str, dict[str, dict[str, float]]] = {}
     for symbol, bars in market.items():
@@ -113,6 +194,7 @@ def derive_social_alt(
             ("social_excess_attention_z", _excess_attention_z(vol, bars)),
             ("galaxy_score_z", _rolling_z(gal)),
             ("btc_social_accel", btc_accel),
+            ("btc_social_regime", btc_regime),
         ):
             joined = align_asof(derived, bars)
             if joined:
