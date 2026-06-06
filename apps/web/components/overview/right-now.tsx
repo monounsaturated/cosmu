@@ -111,7 +111,7 @@ export function RightNow({
           <Vital icon={<ListChecks className="size-3.5" />} label="Strategies" href="/strategies">
             <div className="text-lg font-semibold tracking-tight tabular text-foreground">{alive}</div>
             <div className="mt-0.5 truncate text-[11.5px] text-quiet">
-              <span className="text-up">{population.forward_test} sim</span> ·{" "}
+              <span className="text-up">{population.forward_test} simulation</span> ·{" "}
               <span className="text-info">{population.live} live</span> ·{" "}
               <span className="text-down">{population.killed} graveyard</span>
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-// module: the strategy lifecycle filter strip. The stages (Discover → Screened → Forward-test → Live)
+// module: the strategy lifecycle filter strip. The stages (Discover → Screened → Simulation → Live)
 // used to be top-level nav tabs; they're now stage-filters that live INSIDE Strategies. Rendered at the
 // top of /strategies and each stage route so the mental model (discover → screen → prove → live) reads
 // straight off the strip and deep links land with the right segment lit. Each segment is a real route.
@@ -12,9 +12,9 @@ import { cn } from "@/lib/utils";
 
 const STAGES = [
   { href: "/lab", label: "Discover", desc: "research", icon: Microscope },
-  { href: "/strategies", label: "Screened", desc: "pipeline", icon: ListChecks },
-  { href: "/forward-test", label: "Forward-test", desc: "proving", icon: LineChart },
-  { href: "/live", label: "Live", desc: "real money", icon: Radio, gated: true }
+  { href: "/strategies", label: "Backtest", desc: "historical data", icon: ListChecks },
+  { href: "/forward-test", label: "Simulation", desc: "live data, no money", icon: LineChart },
+  { href: "/live", label: "Live Trading", desc: "real capital", icon: Radio, gated: true }
 ];
 
 function isStageActive(pathname: string, href: string): boolean {

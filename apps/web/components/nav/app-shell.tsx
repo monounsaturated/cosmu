@@ -85,7 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const statusLabel = engine.connected
-    ? engine.live ? "Live armed" : engine.state === "running" ? "Running · Sim" : "Connected · Sim"
+    ? engine.live ? "Live armed" : engine.state === "running" ? "Running · Simulation" : "Connected · Simulation"
     : engine.checked ? "Offline" : "Connecting…";
   const statusColor = engine.live ? "text-info" : engine.connected ? "text-up" : "text-quiet";
 
@@ -139,13 +139,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
             <Activity className={cn("size-4", statusColor)} />
             <span className={cn("hidden sm:inline", statusColor)}>{statusLabel}</span>
-            <span className={cn("sm:hidden", statusColor)}>{engine.connected ? (engine.live ? "Live" : "Sim") : engine.checked ? "Off" : "…"}</span>
+            <span className={cn("sm:hidden", statusColor)}>{engine.connected ? (engine.live ? "Live" : "Simulation") : engine.checked ? "Off" : "…"}</span>
           </div>
           <div className="flex items-center gap-2">
             {engine.live ? (
               <Badge variant="info"><Activity className="size-3" /> Live</Badge>
             ) : (
-              <Badge variant="muted"><Lock className="size-3" /> Sim only</Badge>
+              <Badge variant="muted"><Lock className="size-3" /> Simulation only</Badge>
             )}
             <ThemeToggle />
           </div>

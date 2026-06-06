@@ -42,7 +42,7 @@ export default async function StrategiesPage() {
           <CardContent>
             <EmptyState
               title="No Versions yet — the Lab hasn't produced any."
-              hint="Once the Lab authors a batch (or you drop an idea in the inbox) and Versions reach Forward-test, they show up here grouped by stage."
+              hint="Once the Lab authors a batch (or you drop an idea in the inbox) and Versions reach Simulation, they show up here grouped by stage."
             />
           </CardContent>
         </Card>
@@ -88,7 +88,7 @@ function BornNote() {
             <p className="flex items-center gap-1.5 text-[11.5px] text-quiet">
               <ShieldCheck className="size-3.5 shrink-0 text-up" />
               Both flow through the <span className="font-medium text-foreground">same deterministic Gate</span> — no
-              shortcut to Forward-test or Live.
+              shortcut to Simulation or Live.
             </p>
           </div>
         </div>

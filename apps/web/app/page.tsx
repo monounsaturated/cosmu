@@ -80,7 +80,7 @@ function MachineStatus({
   const running = connected && status.running && !status.paused;
   const stateLabel = !connected ? "Unknown" : status.paused ? "Paused" : status.running ? "Running" : "Idle";
   const stateVariant = running ? "up" : status.paused ? "warn" : "muted";
-  const modeLabel = status.live_enabled ? "Live" : "Sim";
+  const modeLabel = status.live_enabled ? "Live" : "Simulation";
   const lastTick = timeAgo(status.last_tick_at);
 
   return (
