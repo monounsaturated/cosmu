@@ -11,6 +11,7 @@ import { TvChart } from "@/components/charts/tv-chart";
 import { FoldBars } from "@/components/charts/fold-bars";
 import { ChartEmpty } from "@/components/charts/chart-kit";
 import { SpecView } from "@/components/strategy/spec-view";
+import { StrategyStages } from "@/components/nav/strategy-stages";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 import { ExpandableSection } from "@/components/ui/expandable-section";
 import { cn, formatUsd } from "@/lib/utils";
@@ -51,6 +52,7 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
   if (!connected || !strategy.version_id) {
     return (
       <div className="mx-auto max-w-[1200px] space-y-6 px-5 py-7 lg:px-7">
+        <StrategyStages />
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">version</div>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{id}</h1>
@@ -67,6 +69,7 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-6 px-5 py-7 lg:px-7">
+      <StrategyStages />
       <div>
         <Link href="/strategies" className="mb-2 inline-flex items-center gap-1 text-[12.5px] text-muted transition-colors hover:text-foreground">
           <ArrowLeft className="size-3.5" /> All Strategies
