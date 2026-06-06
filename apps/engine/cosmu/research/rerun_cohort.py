@@ -412,6 +412,11 @@ def run_rerun_cohort(
             r.survived_fdr = p.survived_fdr
             r.promoted = p.promoted
             r.reasons = p.reasons
+            # Use the FINAL deflated Sharpe from promote_cohort — deflated against the FULL inflated trial
+            # ledger (every member × W/dwell × grid variant). The mid-run score() value used while building
+            # the member saw a SMALLER trial count, so it overstated significance; this is the honest number
+            # the family verdict is actually computed on.
+            r.deflated_sharpe_prob = round(p.deflated_sharpe_prob, 6)
 
     # Disconfirmer verdicts (read off deflated Sharpe — the per-candidate significance the FDR ranks).
     social_dsr = r_social.deflated_sharpe_prob
