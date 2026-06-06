@@ -1,5 +1,5 @@
 import { Activity, ArrowRight } from "lucide-react";
-import { getBrain, getEvents, getIntelligence, getPopulation, engineConfigured } from "../data";
+import { getBrain, getEvents, getIntelligence, getPopulation, getInboxQueue, engineConfigured } from "../data";
 import type { FunnelStats } from "../data";
 import type { GraveyardRow } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { ActivityTimeline } from "@/components/observability/activity-timeline";
 import { Tooltip } from "@/components/ui/tooltip";
 import { StrategyStages } from "@/components/nav/strategy-stages";
 import { EmptyState, NotConnected, NotConnectedBanner } from "@/components/ui/honest-state";
+import { IdeaInbox } from "@/components/overview/idea-inbox";
 import { cn, formatPct } from "@/lib/utils";
 
 export default async function LabPage() {
@@ -22,8 +23,9 @@ export default async function LabPage() {
     { population, connected },
     { brain, connected: brainConnected },
     { events, connected: evtConnected },
-    { intelligence, connected: intelConnected }
-  ] = await Promise.all([getPopulation(), getBrain(), getEvents(), getIntelligence()]);
+    { intelligence, connected: intelConnected },
+    { items: inboxItems, connected: inboxConnected }
+  ] = await Promise.all([getPopulation(), getBrain(), getEvents(), getIntelligence(), getInboxQueue()]);
 
   const anyConnected = connected || brainConnected;
 
@@ -38,6 +40,17 @@ export default async function LabPage() {
       <StrategyStages />
 
       {!anyConnected ? <NotConnectedBanner configured={engineConfigured} /> : null}
+
+      {/* Idea inbox — queue a vibe; the next tick authors a typed spec; the Gate rules.
+          The full vibe loop (queued → authored → Gate verdict) is visible in one place. */}
+      <section className="space-y-3">
+        <h3 className="text-[13px] font-semibold text-foreground">Vibe loop — idea → spec → verdict</h3>
+        <IdeaInbox
+          initial={inboxItems}
+          connected={inboxConnected}
+          configured={engineConfigured}
+        />
+      </section>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

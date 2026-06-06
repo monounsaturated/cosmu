@@ -1,12 +1,13 @@
-// Overview — the landing page. This is NOT a fund dashboard (there is no money yet). In one glance it
-// answers three things: (a) is the machine running, and in what mode (Sim/Live) — with its last tick;
-// (b) the verdict ledger — every thesis tested, PASS or FAIL, from GET /verdicts; (c) a place to dump a
-// new idea (text → POST /lab/inbox, the engine's idea-dump). HONEST: when the engine is unreachable we
-// render a single "not connected" state and never fabricate a status or a verdict.
+// Overview — the landing page. In one glance it answers: (a) is the machine running, and in what mode
+// (Sim/Live) — with its last tick; (b) the verdict ledger — every thesis tested, PASS or FAIL; (c) a place
+// to dump a new idea (text → POST /lab/inbox) and see the queue status so the vibe loop is visible.
+// HONEST: when the engine is unreachable we render a single "not connected" state and never fabricate.
 
-import { Activity, ClipboardCheck, FlaskConical, Pause, Play } from "lucide-react";
-import { engineConfigured, getAutonomyStatus, getVerdicts } from "./data";
+import { Activity, ArrowRight, ClipboardCheck, FlaskConical, Pause, Play } from "lucide-react";
+import Link from "next/link";
+import { engineConfigured, getAutonomyStatus, getVerdicts, getInboxQueue } from "./data";
 import type { VerdictRow } from "./data";
+import type { InboxQueueItem } from "@cosmu/contracts-ts";
 import { IdeaDumpBox } from "./idea-dump-box";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,9 +15,14 @@ import { Badge } from "@/components/ui/badge";
 import { cn, timeAgo } from "@/lib/utils";
 
 export default async function OverviewPage() {
-  const [{ status, connected: statusConnected }, { verdicts, connected: verdictsConnected }] = await Promise.all([
+  const [
+    { status, connected: statusConnected },
+    { verdicts, connected: verdictsConnected },
+    { items: inboxItems, connected: inboxConnected }
+  ] = await Promise.all([
     getAutonomyStatus(),
-    getVerdicts()
+    getVerdicts(),
+    getInboxQueue()
   ]);
   const connected = statusConnected || verdictsConnected;
 
@@ -41,15 +47,18 @@ export default async function OverviewPage() {
 
       <MachineStatus status={status} connected={statusConnected} />
 
-      {/* Dump a new idea — queued as prose, then translated into a typed, gated spec. */}
+      {/* Dump a new idea + queue snapshot — the vibe loop entry point.
+          Queue shows queued → imported status so the operator knows what the next tick will see. */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-1.5">
             <FlaskConical className="size-4 text-iris-soft" /> Dump an idea
           </CardTitle>
+          <span className="text-[12px] text-quiet">Queued as prose → next tick authors a typed spec → Gate decides</span>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <IdeaDumpBox />
+          <IdeaQueuePreview items={inboxItems} connected={inboxConnected} />
         </CardContent>
       </Card>
 
@@ -178,5 +187,38 @@ function VerdictLedger({ rows, connected }: { rows: VerdictRow[]; connected: boo
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// Compact snapshot of the idea queue — queued (waiting for next tick to author a spec) or imported
+// (already turned into a typed StrategySpec, now flowing through Backtest → Gate). Server-rendered
+// so the operator sees the real queue state on page load. No optimistic rows; never fabricated.
+function IdeaQueuePreview({ items, connected }: { items: InboxQueueItem[]; connected: boolean }) {
+  if (!connected || items.length === 0) return null;
+  return (
+    <div className="border-t border-border/50 pt-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-quiet">
+          Queue — {items.length} idea{items.length === 1 ? "" : "s"}
+        </span>
+        <Link href="/lab" className="flex items-center gap-1 text-[11px] text-iris-soft hover:underline">
+          See full Lab <ArrowRight className="size-3" />
+        </Link>
+      </div>
+      <ul className="space-y-1.5">
+        {items.slice(0, 4).map((item) => (
+          <li
+            key={item.filename}
+            className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2"
+          >
+            <span className="min-w-0 truncate text-[12.5px] text-foreground">{item.name}</span>
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="text-[11px] text-quiet">{timeAgo(item.ts) ?? ""}</span>
+              <Badge variant={item.status === "imported" ? "up" : "info"}>{item.status}</Badge>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
