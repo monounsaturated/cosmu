@@ -180,3 +180,16 @@ def test_farmloop_alt_join_is_registry_driven_and_wires_fear_greed():
     assert {"funding_rate", "fear_greed"} <= universe
     assert "ret_Nd" not in universe, "price/TA features are computed from bars, never alt-joined"
     assert len(universe) >= 20
+
+
+def test_every_enabled_feature_is_routable_or_computed():
+    """The registry↔route guard. Every ENABLED registry feature must be EITHER store-routed (a provider can
+    populate it point-in-time) OR computed (bar-TA + cohort-computed, the PRICE_FEATURES set). A feature that is
+    neither is dead weight: referenced by name but never populated — a silent no-op (the exact failure class
+    behind the fake tier-0 exchange_netflow and the unwired equity stubs). 0 unaccounted ⇔ no dead features."""
+    from cosmu.config.feature_registry import feature_names
+    from cosmu.data.backtest import PRICE_FEATURES
+    from cosmu.data.providers.store import _STORE_PROVIDER_OF
+
+    unaccounted = feature_names() - (PRICE_FEATURES | set(_STORE_PROVIDER_OF))
+    assert not unaccounted, f"no route, not bar-computed: {unaccounted}"

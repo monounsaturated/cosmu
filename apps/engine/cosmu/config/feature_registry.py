@@ -36,14 +36,26 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     FeatureDefinition(name="news_sentiment", source="news_headlines", tier="tier1", asset_classes=["crypto"], asof_semantics="LLM-standardized at headline availability time", prior="A positive news-flow shift precedes multi-day continuation before it is fully priced.", transform_version="news-sentiment-v1"),
     # --- cross-asset transfer features (Phase 1.6): one market's price IS another's feature. ---
     FeatureDefinition(name="pm_risk_on", source="polymarket", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="CLOB midpoint at quote time (no lag)", prior="Prediction-market odds on macro/risk events price the risk regime before it shows in any single asset's own price — a cross-asset risk-on/off tag.", transform_version="pm-riskon-v1"),
-    FeatureDefinition(name="xasset_risk_appetite", source="ccxt", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="exchange publication time", prior="Crypto perp funding is a fast, 24/7 read on speculative risk appetite that leads slower equity/macro signals — transfer crypto's read onto equities.", transform_version="xasset-funding-v1"),
+    # DISABLED (honesty fix): registered with a pinned transform but NEVER wired — there is no provider, no
+    # ingest, and no computation that produces it (absent from _STORE_PROVIDER_OF and the catalog). An enabled
+    # feature with no route AND no bar/cohort computation is dead weight the registry↔route guard now forbids;
+    # disabled until a real cross-venue funding-transfer source exists. Still in FEATURE_REGISTRY (its metadata
+    # is pinned) but dropped from feature_names()/the gate universe.
+    FeatureDefinition(name="xasset_risk_appetite", source="ccxt", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="exchange publication time", prior="Crypto perp funding is a fast, 24/7 read on speculative risk appetite that leads slower equity/macro signals — transfer crypto's read onto equities.", transform_version="xasset-funding-v1", enabled=False),
     FeatureDefinition(name="macro_regime", source="fred", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="FRED release time (next-day availability floor)", prior="Macro regime (curve slope, real rates, liquidity) conditions risk premia across every asset class — a shared regime tag, not a single-market signal.", transform_version="macro-regime-v1"),
     FeatureDefinition(name="vix_level", source="fred", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="FRED release time (next-day availability floor)", prior="VIX measures implied volatility; extremes signal regime shifts and mean-revert at swing horizon", transform_version="vix-level-v1"),
     FeatureDefinition(name="fed_funds_rate", source="fred", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="FRED release time (next-day availability floor)", prior="Federal funds rate changes drive risk premia across all asset classes", transform_version="fed-funds-v1"),
     FeatureDefinition(name="defi_tvl", source="defillama", tier="tier0", asset_classes=["crypto"], asof_semantics="daily publication time (next-day availability floor)", prior="DeFi TVL flows indicate risk appetite and liquidity across crypto protocols", transform_version="defi-tvl-v1"),
     FeatureDefinition(name="open_interest", source="exchange", tier="tier0", asset_classes=["crypto"], asof_semantics="exchange publication time", prior="OI changes reveal leverage build-up."),
     FeatureDefinition(name="perp_spot_basis", source="exchange", tier="tier0", asset_classes=["crypto"], asof_semantics="exchange publication time", prior="Basis captures risk appetite and carry."),
-    FeatureDefinition(name="exchange_netflow", source="exchange", tier="tier0", asset_classes=["crypto"], asof_semantics="provider knowledge time", prior="Net inflows can precede sell pressure."),
+    # DISABLED (honesty fix — TOP PRIORITY): this was NEVER on-chain exchange netflow. Its provider
+    # (data/providers/onchain.ExchangeNetflowProvider) fetches Binance USDⓈ-M globalLongShortAccountRatio —
+    # perp CROWD POSITIONING — and stored ratio-1.0 under a FABRICATED "net inflows precede sell pressure"
+    # prior, at TIER-0 (high gate weight), on only ~30 days of data. That manufactured false positives at high
+    # weight. Disabled: dropped from feature_names()/the gate universe and the ML panel. The provider, ingest
+    # closure (catalog "netflow"), and store route remain so already-banked data is preserved (dormant, no
+    # longer gate-weighted), pending an honest relabel to a tier1 perp_long_short_ratio with a real prior.
+    FeatureDefinition(name="exchange_netflow", source="exchange", tier="tier0", asset_classes=["crypto"], asof_semantics="provider knowledge time", prior="MISLABELED Binance long/short ratio (perp crowd positioning), NOT on-chain netflow; fabricated prior — disabled pending honest relabel.", enabled=False),
     FeatureDefinition(name="vix_term_slope", source="fred/cboe", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="daily publication time", prior="Term slope encodes risk regime."),
     FeatureDefinition(name="putcall_ratio", source="cboe", tier="tier0", asset_classes=["equity"], asof_semantics="daily publication time (next-day availability floor)", prior="Sentiment extremes mean-revert at swing horizon.", transform_version="putcall-zscore-v1"),
     FeatureDefinition(name="liquidation_cascade", source="coinglass", tier="tier0", asset_classes=["crypto"], asof_semantics="liquidation bucket close time (next-bucket availability floor)", prior="A spike in total long+short liquidations marks forced deleveraging that overshoots — a cascade exhausts sellers and mean-reverts at the swing horizon.", transform_version="liquidation-cascade-zscore-v1"),
@@ -52,13 +64,16 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     # knowable when taken — no look-ahead). tier1 + the explicit low-confidence prior mean it must earn its
     # place via out-of-sample; the gate down-weights it until it pays.
     FeatureDefinition(name="osint_air_activity", source="opensky", tier="tier1", asset_classes=["crypto", "equity"], asof_semantics="live ADS-B snapshot time (availability == observation, no look-ahead)", prior="Aircraft activity is a crude, low-confidence macro risk-appetite/economic-activity proxy (best-effort OSINT); must earn its place via OOS — flag low-confidence.", transform_version="osint-adsb-v1"),
-    FeatureDefinition(name="cftc_net_positioning", source="cftc", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="CFTC release time", prior="Crowded positioning can unwind."),
+    # DISABLED (honesty fix): the four equity/CFTC features below are registered but UNWIRED — no provider, no
+    # ingest, no route, no computation produces them. The registry↔route guard forbids enabled-but-dead features;
+    # disabled until a real data source is wired. Kept in FEATURE_REGISTRY (metadata intact), out of feature_names().
+    FeatureDefinition(name="cftc_net_positioning", source="cftc", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="CFTC release time", prior="Crowded positioning can unwind.", enabled=False),
     FeatureDefinition(name="dxy", source="fred", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="daily publication time", prior="Dollar strength changes risk appetite."),
     FeatureDefinition(name="yield_curve_2s10s", source="fred", tier="tier0", asset_classes=["equity"], asof_semantics="daily publication time", prior="Curve slope tracks macro regime."),
     FeatureDefinition(name="credit_spread", source="fred", tier="tier0", asset_classes=["equity"], asof_semantics="daily publication time", prior="Credit stress drives equity risk premia."),
-    FeatureDefinition(name="days_to_earnings", source="fundamentals_vendor", tier="tier0", asset_classes=["equity"], asof_semantics="vendor availability time", prior="Earnings windows alter drift and volatility."),
-    FeatureDefinition(name="insider_buy_ratio", source="sec_edgar", tier="tier0", asset_classes=["equity"], asof_semantics="Form 4 publication time", prior="Insider buying can signal undervaluation."),
-    FeatureDefinition(name="short_interest_ratio", source="fundamentals_vendor", tier="tier0", asset_classes=["equity"], asof_semantics="vendor availability time", prior="High short interest can fuel squeezes."),
+    FeatureDefinition(name="days_to_earnings", source="fundamentals_vendor", tier="tier0", asset_classes=["equity"], asof_semantics="vendor availability time", prior="Earnings windows alter drift and volatility.", enabled=False),
+    FeatureDefinition(name="insider_buy_ratio", source="sec_edgar", tier="tier0", asset_classes=["equity"], asof_semantics="Form 4 publication time", prior="Insider buying can signal undervaluation.", enabled=False),
+    FeatureDefinition(name="short_interest_ratio", source="fundamentals_vendor", tier="tier0", asset_classes=["equity"], asof_semantics="vendor availability time", prior="High short interest can fuel squeezes.", enabled=False),
     FeatureDefinition(name="ret_Nd", source="parquet_bars", tier="tier0", asset_classes=["crypto", "equity", "prediction"], asof_semantics="bar close time", prior="Medium-term return captures momentum/reversal."),
     # Cross-sectional rank of N-day return across the universe at bar-close time: 0 = worst, 1 = best.
     # Computed from parquet_bars (same source as ret_Nd) at the bar close so it is point-in-time: rank is

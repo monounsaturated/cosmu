@@ -19,7 +19,6 @@ Every `entry` condition references a feature from this list. Each has a stated p
 | `news_sentiment` | A positive news-flow shift precedes multi-day continuation before it is fully priced. |
 | `open_interest` | OI changes reveal leverage build-up. |
 | `perp_spot_basis` | Basis captures risk appetite and carry. |
-| `exchange_netflow` | Net inflows can precede sell pressure. |
 | `liquidation_cascade` | Spike in long+short liquidations marks forced deleveraging that overshoots — mean-reverts at swing. |
 | `defi_tvl` | DeFi TVL flows indicate risk appetite and liquidity across crypto protocols. |
 
@@ -28,13 +27,11 @@ Every `entry` condition references a feature from this list. Each has a stated p
 | Feature | Prior |
 |---------|-------|
 | `pm_risk_on` | Prediction-market odds on macro/risk events price the risk regime before any single asset. |
-| `xasset_risk_appetite` | Crypto perp funding is a fast 24/7 read on speculative risk appetite that leads slower equity/macro signals. |
 | `macro_regime` | Macro regime (curve slope, real rates, liquidity) conditions risk premia across every asset class. |
 | `vix_level` | VIX measures implied volatility; extremes signal regime shifts and mean-revert at swing horizon. |
 | `fed_funds_rate` | Federal funds rate changes drive risk premia across all asset classes. |
 | `vix_term_slope` | Term slope encodes risk regime. |
 | `dxy` | Dollar strength changes risk appetite. |
-| `cftc_net_positioning` | Crowded positioning can unwind. |
 | `osint_air_activity` | Aircraft activity as crude macro risk-appetite proxy (low-confidence, must earn its place via OOS). |
 
 ### Equity
@@ -44,9 +41,6 @@ Every `entry` condition references a feature from this list. Each has a stated p
 | `putcall_ratio` | Sentiment extremes mean-revert at swing horizon. |
 | `yield_curve_2s10s` | Curve slope tracks macro regime. |
 | `credit_spread` | Credit stress drives equity risk premia. |
-| `days_to_earnings` | Earnings windows alter drift and volatility. |
-| `insider_buy_ratio` | Insider buying can signal undervaluation. |
-| `short_interest_ratio` | High short interest can fuel squeezes. |
 
 ### Price-derived (all asset classes)
 

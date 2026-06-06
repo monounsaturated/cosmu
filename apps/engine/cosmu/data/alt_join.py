@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from cosmu.config.feature_registry import feature_names
 from cosmu.data.altdata import StoreBackedAltProvider
-from cosmu.data.backtest import PRICE_FEATURES, align_asof
+from cosmu.data.backtest import FUNDING_ACCRUAL_KEY, PRICE_FEATURES, align_asof, sum_funding_per_bar
 from cosmu.data.market import Bar
 from cosmu.strategy.spec import StrategySpec
 
@@ -57,6 +57,7 @@ def build_alt_by_symbol(
         provider = StoreBackedAltProvider(alt_store)
     except Exception:  # noqa: BLE001 — no usable alt store → price-only screen, never abort
         return None
+    funding_feat = getattr(spec, "funding_feature", None)
     out: dict[str, dict[str, dict[str, float]]] = {}
     for symbol, bars in market.items():
         feats: dict[str, dict[str, float]] = {}
@@ -68,6 +69,13 @@ def build_alt_by_symbol(
             aligned = align_asof(points, bars)
             if aligned:
                 feats[name] = aligned
+            # The perp carry leg accrues the per-bar SUMMED funding (every settlement in the bar interval),
+            # stored separately from the level series above (which still serves a funding-as-condition read).
+            # align_asof alone under/over-counts carry 2–8x; sum_funding_per_bar is the funding-correct join.
+            if name == funding_feat:
+                accrual = sum_funding_per_bar(points, bars)
+                if accrual:
+                    feats[FUNDING_ACCRUAL_KEY] = accrual
         if feats:
             out[symbol] = feats
     return out or None
