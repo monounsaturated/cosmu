@@ -1,16 +1,13 @@
 name: verify
 
 on:
-  # COST: CI runs ONLY on PRs against main (the actual gate before merge) + on
-  # pushes to main itself (the deploy-safety net), NOT on every feature-branch
-  # push. This kills the ~$0.30-per-agent-push spend — agents commit freely to
-  # their branches for $0; verify runs once when a PR is opened/updated, and on
-  # the merge to main. The local pre-push hook (.githooks/pre-push) is the fast
-  # first gate. `workflow_dispatch` lets you run it manually on any branch.
+  # COST: CI runs ONLY on PRs against main (the gate before merge) + manual dispatch.
+  # We deliberately DROPPED the push:[main] trigger: every change merges via a
+  # CI-verified PR, so re-running the full suite on the merge commit is redundant
+  # (~doubled the cost for ~zero safety gain on a solo repo). Vercel (web) + Railway
+  # (engine) build on push independently, so a deploy-breaking merge still surfaces.
+  # If you ever need to verify main directly, use `workflow_dispatch`.
   pull_request:
-    branches:
-      - main
-  push:
     branches:
       - main
   workflow_dispatch:
