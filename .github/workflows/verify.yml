@@ -20,6 +20,13 @@ concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 
+# Least-privilege token. `pull-requests: read` lets dorny/paths-filter call the PR
+# listFiles API; without it the change-detection job fails "Resource not accessible by
+# integration" and skips every downstream job — a false red on PRs (esp. agent-created).
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   # Cheap change-detection job (~5 s). All heavy jobs depend on its outputs.
   # Docs-only / .md-only / .claude/**-only pushes skip all three heavy jobs.
