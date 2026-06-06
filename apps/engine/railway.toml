@@ -34,3 +34,16 @@ command = "python3 -m cosmu.master.scheduler"
 [[cron]]
 schedule = "0 * * * *"
 command = "python3 -m cosmu.orchestrator.loop"
+
+# DAILY BAR BACKFILL: keep OHLCV history fresh for the full ~30-symbol perp universe.
+# Binance Vision bulk + ccxt tail; 7-day window fills any overnight gap without re-pulling full history.
+# Runs at 03:00 UTC (after the daily close settles) — appends new bars, writes 0 on a re-run (idempotent).
+[[cron]]
+schedule = "0 3 * * *"
+command = "python3 -m cosmu.ingest.manage backfill bars --days 7"
+
+# DAILY FUNDING BACKFILL: keep the Binance USDⓈ-M fundingRate history fresh for the full perp universe.
+# 7-day window plugs overnight gaps; the paginated provider deduplicates on ts so re-runs write 0.
+[[cron]]
+schedule = "30 3 * * *"
+command = "python3 -m cosmu.ingest.manage backfill funding --days 7"

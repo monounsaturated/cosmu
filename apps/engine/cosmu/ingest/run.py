@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from cosmu.config.settings import get_settings
+from cosmu.data.universe import perp_universe
 from cosmu.data.altdata import (
     AltDataPoint,
     AltDataProvider,
@@ -191,7 +192,7 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
         from cosmu.data.altdata import PgAltDataStore
 
         store = PgAltDataStore(store)
-    symbols = list(symbols) if symbols is not None else list(DEFAULT_SYMBOLS)
+    symbols = list(symbols) if symbols is not None else perp_universe()
     p = providers if providers is not None else Providers.from_settings(get_settings())
 
     # Run-level cache: the single FRED provider feeds several semantic features off the SAME series
