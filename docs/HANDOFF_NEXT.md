@@ -59,8 +59,14 @@ tier later only if a social edge screens).
 - **CI (decided):** KEEP GitHub-hosted Actions — it's off-Mac, parallel, and lean (path-filtered + PR-only + $10 cap
   ≈ $1–5/mo steady-state). Do NOT self-host on the Mac (funnels all CI onto it → slows the Mac, esp. with cloud-agent
   PRs) and NOT Codespaces (paid dev VM, not CI). The big spend was a 13-PR/day spike, not the rate.
-- **Polymarket region:** US Railway regions (Virginia/California) are BLOCKED (Polymarket blocks the US). Singapore
-  (current) is fine but geo-circumvention is ToS-risky + NOT a priority — park prediction markets until an edge proves out.
+- **Polymarket:** BACKTEST it (data-only — ingest historical odds, test pm_implied_prob / pm_prob_velocity strategies
+  through the Gate; no live needed, cheap). LIVE is PARKED — US Railway regions (Virginia/California) are BLOCKED
+  (Polymarket blocks the US), Singapore (current) may reach it but geo-circumvention is ToS-risky. So: test the edge
+  on history; only wire live (with compliance) IF it survives the Gate + we decide it's worth it.
+- **Scaling (cheap if tiered):** keep Postgres for HOT data only (~$25 forever); archive full history to parquet on
+  Cloudflare R2 (~$0.015/GB, $0 egress) read by DuckDB/polars; Modal pay-per-use for compute; free data sources first.
+  Infra stays <$100/mo even at scale; Claude (dev) + trading capital are the only real scaling costs. See
+  `docs/reports/scaling-economics.md`. Build the hot/cold tiering when the 8 GB Pro cap nears (we're at ~6 GB).
 - **Agent rule:** one branch = DISJOINT files. Web vs engine = safe parallel; **two engine agents collide — serialize.**
 
 ## ▶️ Next parallel cloud agents (prompts ready in `.claude/tasks/` + below)
