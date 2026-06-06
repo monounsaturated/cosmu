@@ -15,7 +15,7 @@ of fees.** (NOT a signal-vendor. Numerai is a footnote, not the plan — see bot
 ---
 
 ## WHAT TO DO (in order — simple)
-1. **Cancel LunarCrush now** — grab COMPLETE: 95 coins × ~6.4 yr × 7 metrics (**1.14M rows**) banked in Supabase. Stocks/topics need Builder (skip).
+1. **LunarCrush grab (running) → then CANCEL.** Banking the **full Binance-tradeable universe** (~438 coins × ~6.4 yr × 7 metrics) into Supabase — this history is the irreplaceable asset. Cancel as soon as it finishes (stocks/topics need Builder; skip). Resumable + deduped; relaunch any time with `python3 scripts/lunarcrush_max_extract.py --coins 900 --coins-file <symbols.txt> --sleep 3`.
 2. **Cleanup wave** (cloud agents): RA-1 → then RA-2 / DS-1 / C-1 → RA-3. Then **flip the Railway cron** → the machine self-runs.
 3. **Find the edge** (the core mission): test the new social data + the two untested markets (below).
 4. **Win =** ONE strategy survives the honest Gate **+** a 30-day forward-test → arm live, small.
@@ -24,7 +24,8 @@ of fees.** (NOT a signal-vendor. Numerai is a footnote, not the plan — see bot
 - **Code** (fixes, refactors, UI) → ☁️ **cloud** agents, parallel.
 - **Needs keys/data** (extraction, Gate-on-real-data, deploy) → 💻 **local** (Mac, `.env.local`).
 - **Heavy compute** (big backtests/sweeps) → ⚡ **Modal**.
-- **New master agent for next session** → just open a **fresh Claude Code chat, LOCAL** (it only dispatches; the real work goes to cloud/Modal). Say: *"read docs/HANDOFF_NEXT.md, run RA-1."* No VPS, ever.
+- **New master agent for next session** → open a **fresh Claude Code chat in the MAIN repo `/Users/device/cosmu` on branch `main`** (NOT a worktree). It only dispatches; the real work goes to cloud/Modal. Say: *"read docs/HANDOFF_NEXT.md, run RA-1."* No VPS, ever.
+  - ⚠️ If a handoff link won't open ("outside the session folder"), it's because the chat is running inside a `.claude/worktrees/…` sandbox — that can't open files in the main checkout. Start the chat in `/Users/device/cosmu` and the link works.
 
 ---
 
@@ -65,6 +66,20 @@ of fees.** (NOT a signal-vendor. Numerai is a footnote, not the plan — see bot
 > Only after crypto social signal proves useful. NOT a priority.
 
 ---
+
+## Data: hoard wide for backtest, run slim for live
+- **Hoard NOW (irreplaceable):** the *history*. We can re-subscribe for fresh values later, but ~6.4 yr of
+  daily social history vanishes when the plan lapses. So bank **deep × wide × right-metrics, point-in-time**:
+  all ~438 Binance-tradeable coins × 7 metrics (social_volume, social_sentiment, galaxy_score, alt_rank,
+  market_cap, volume_24h, price) × full daily history. Wide cross-section matters because the only untested
+  edge is **cross-sectional** (rank coins by social momentum) — and small-caps, not majors, are where social
+  signal is least arbitraged. Storage is trivial (~390 MB). Daily bucket is enough; skip intraday (10× the calls).
+- **Don't over-hoard:** stocks/topics (Builder-only + untradeable on spot = low value), coins on no venue we
+  can trade, sub-daily granularity. The hoard is *insurance + discovery fuel*, not proof of edge (E-1 unproven).
+- **Use for LIVE (later, slim):** once the Gate proves WHICH metric+transform+universe has edge, live needs
+  only THAT one signal, for only the traded symbols, refreshed at the rebalance cadence — cheap to re-subscribe.
+  The make-or-break is **honest `available_at` lag**: LunarCrush publishes with a delay; stamp it right so the
+  backtest can't see a value before it was knowable, or SIM→live will diverge (use the variance-attribution skill).
 
 ## Footnote: Numerai — NOT core, do not build as a focus
 Numerai pays you to *sell* a signal (no capital/execution on your side). It's a different profit model from
