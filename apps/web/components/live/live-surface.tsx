@@ -12,7 +12,7 @@
 // Types mirror the shared contract (see ./contracts) — same locally-typed pattern as
 // cross-asset-gate.tsx until @cosmu/contracts-ts ships them.
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { AlertTriangle, Building2, Lock, Power, Rocket, ShieldCheck, Unlock, X } from "lucide-react";
 import {
   type ActivateResponse,
@@ -57,10 +57,17 @@ export function LiveSurface({
   const [caps, setCaps] = useState<Caps>(initial.caps ?? DEFAULT_CAPS);
   const [eligible, setEligible] = useState<EligibleStrategy[]>([]);
   const [note, setNote] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  // Per-control in-flight flags. NEVER a page-global pending: one slow/hanging engine request must
+  // NEVER grey out (freeze) the entire surface. Each control owns its own flag, always cleared in
+  // `finally`, so no button can get permanently stuck disabled.
+  const [goLivePending, setGoLivePending] = useState(false);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const [defundAllPending, setDefundAllPending] = useState(false);
   // Venue toggling owns its OWN in-flight id so a single venue request can never disable (grey out)
   // the rest of the surface — and never the whole page. null = nothing toggling right now.
   const [togglingVenue, setTogglingVenue] = useState<string | null>(null);
+  // Per-row defund in-flight: only the row being defunded goes grey.
+  const [defundingPosition, setDefundingPosition] = useState<string | null>(null);
   // Launch-live modal state: which strategy to launch (null = closed).
   const [launchTarget, setLaunchTarget] = useState<{ versionId: string; name: string } | null>(null);
 
@@ -136,83 +143,108 @@ export function LiveSurface({
 
   // CLICK 1 — open the activation modal. This sends the live toggle request (enabled:true,
   // confirm:false). The engine answers requires_confirm; we never arm on this click.
-  function openGoLive() {
+  // Per-control in-flight: only the "Go live" button goes pending; the rest of the surface stays interactive.
+  async function openGoLive() {
+    if (goLivePending) return;
     setNote(null);
-    startTransition(async () => {
+    setGoLivePending(true);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
       if (!ENGINE_CONFIGURED) {
         setConnected(false);
         setNote("Engine not connected — set API_BASE_URL. Arming requires a connected engine with the Gate passed.");
         return;
       }
-      try {
-        const res = await engineFetch("/toggle/live", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ enabled: true, confirm: false })
-        });
-        if (!res.ok) throw new Error("engine unavailable");
-        const data = (await res.json()) as { enabled: boolean; requires_confirm: boolean; reason?: string };
-        if (data.reason) setNote(data.reason);
-        setModalOpen(true);
-        setConnected(true);
-      } catch {
-        setConnected(false);
-        setNote("Engine not connected — cannot review eligible strategies.");
-      }
-    });
+      const res = await engineFetch("/toggle/live", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ enabled: true, confirm: false }),
+        signal: ctrl.signal
+      });
+      if (!res.ok) throw new Error("engine unavailable");
+      const data = (await res.json()) as { enabled: boolean; requires_confirm: boolean; reason?: string };
+      if (data.reason) setNote(data.reason);
+      setModalOpen(true);
+      setConnected(true);
+    } catch {
+      setConnected(false);
+      setNote("Engine not connected — cannot review eligible strategies.");
+    } finally {
+      clearTimeout(timer);
+      setGoLivePending(false);
+    }
   }
 
   // CLICK 2 — confirm arming. Sends confirm:true with the caps the operator reviewed.
-  function confirmActivate() {
-    startTransition(async () => {
+  // Per-control in-flight: only the "Confirm arm" button goes pending; cancelling the modal always works.
+  async function confirmActivate() {
+    if (confirmPending) return;
+    setConfirmPending(true);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
       if (!ENGINE_CONFIGURED) {
         setNote("Engine not connected — cannot arm.");
         return;
       }
-      try {
-        const res = await engineFetch("/live/activate", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ...caps, confirm: true })
-        });
-        if (!res.ok) throw new Error("engine unavailable");
-        const data = (await res.json()) as ActivateResponse;
-        setEligible(data.eligible);
-        setCaps(data.caps);
-        if (data.armed) {
-          setModalOpen(false);
-          setNote(null);
-          await refreshPositions();
-        } else {
-          setNote(data.reason ?? "Not armed — the gate has not passed on real data.");
-        }
-      } catch {
-        setConnected(false);
-        setNote("Engine not connected — cannot arm.");
+      const res = await engineFetch("/live/activate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...caps, confirm: true }),
+        signal: ctrl.signal
+      });
+      if (!res.ok) throw new Error("engine unavailable");
+      const data = (await res.json()) as ActivateResponse;
+      setEligible(data.eligible);
+      setCaps(data.caps);
+      if (data.armed) {
+        setModalOpen(false);
+        setNote(null);
+        await refreshPositions();
+      } else {
+        setNote(data.reason ?? "Not armed — the gate has not passed on real data.");
       }
-    });
+    } catch {
+      setConnected(false);
+      setNote("Engine not connected — cannot arm.");
+    } finally {
+      clearTimeout(timer);
+      setConfirmPending(false);
+    }
   }
 
-  function defund(scope: "all" | "strategy", versionId?: string) {
-    startTransition(async () => {
+  // Defund: "Defund all" uses defundAllPending; per-row "Close" uses defundingPosition so only
+  // that row's button goes grey. The rest of the surface (and other rows) stay fully interactive.
+  async function defund(scope: "all" | "strategy", versionId?: string) {
+    const inFlight = scope === "all" ? defundAllPending : defundingPosition === versionId;
+    if (inFlight) return;
+    if (scope === "all") setDefundAllPending(true);
+    else if (versionId) setDefundingPosition(versionId);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
       if (!ENGINE_CONFIGURED) {
         setNote("Engine not connected — defund unavailable.");
         return;
       }
-      try {
-        const res = await engineFetch("/live/defund", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(scope === "strategy" ? { scope, version_id: versionId } : { scope })
-        });
-        if (!res.ok) throw new Error("engine unavailable");
-        (await res.json()) as DefundResponse;
-        await refreshPositions();
-      } catch {
-        setConnected(false);
-        setNote("Engine not connected — could not defund.");
-      }
-    });
+      const res = await engineFetch("/live/defund", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(scope === "strategy" ? { scope, version_id: versionId } : { scope }),
+        signal: ctrl.signal
+      });
+      if (!res.ok) throw new Error("engine unavailable");
+      (await res.json()) as DefundResponse;
+      await refreshPositions();
+    } catch {
+      setConnected(false);
+      setNote("Engine not connected — could not defund.");
+    } finally {
+      clearTimeout(timer);
+      if (scope === "all") setDefundAllPending(false);
+      else setDefundingPosition(null);
+    }
   }
 
   return (
@@ -237,11 +269,11 @@ export function LiveSurface({
           </Badge>
           {!connected ? <Badge variant="warn">engine not connected</Badge> : null}
           {!armed ? (
-            <Button variant="primary" size="md" onClick={openGoLive} disabled={pending}>
+            <Button variant="primary" size="md" onClick={openGoLive} disabled={goLivePending}>
               <Power className="size-4" /> Go live
             </Button>
           ) : (
-            <Button variant="outline" size="md" onClick={() => defund("all")} disabled={pending}>
+            <Button variant="outline" size="md" onClick={() => defund("all")} disabled={defundAllPending}>
               <X className="size-4" /> Defund all
             </Button>
           )}
@@ -331,7 +363,7 @@ export function LiveSurface({
                         {formatSigned(p.unrealized_pnl)}
                       </td>
                       <td className="px-2 py-2.5 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => defund("strategy", p.instrument_id)} disabled={pending}>
+                        <Button variant="ghost" size="sm" onClick={() => defund("strategy", p.instrument_id)} disabled={defundingPosition === p.instrument_id}>
                           <X className="size-3.5" /> Close
                         </Button>
                       </td>
@@ -349,7 +381,7 @@ export function LiveSurface({
           caps={caps}
           eligible={eligible}
           note={note}
-          pending={pending}
+          pending={confirmPending}
           connected={connected}
           onChangeCaps={setCaps}
           onConfirm={confirmActivate}
