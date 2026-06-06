@@ -77,6 +77,7 @@ def run_strategy_backtest(
     impact_bps: Decimal = Decimal("50"),
     size_multiplier: float = 1.0,
     alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
+    size_series: dict[str, float] | None = None,
 ) -> BacktestMetrics:
     """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout. Thin
     wrapper over `run_strategy_backtest_detailed` for callers that only need the scoreable metrics."""
@@ -89,6 +90,7 @@ def run_strategy_backtest(
         impact_bps=impact_bps,
         size_multiplier=size_multiplier,
         alt_by_symbol=alt_by_symbol,
+        size_series=size_series,
     ).metrics
 
 
@@ -102,6 +104,7 @@ def run_strategy_backtest_detailed(
     impact_bps: Decimal = Decimal("50"),
     size_multiplier: float = 1.0,
     alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
+    size_series: dict[str, float] | None = None,
 ) -> BacktestResult:
     """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout.
 
@@ -112,6 +115,12 @@ def run_strategy_backtest_detailed(
     (funding_rate, etc.) so leading-signal strategies are actually evaluable, not just price/TA ones. The
     values are keyed by bar timestamp, so the validation/holdout slice carries the right value automatically.
     None → price/TA only (alt features read None), i.e. exactly the prior behaviour.
+
+    `size_series` is an OPTIONAL per-bar, market-wide position-size multiplier keyed by bar.ts.isoformat()
+    (same shape/PIT semantics as the alt-data join — it travels with the bar through the validation/holdout
+    slice and never leaks the future). It lets a slow market-wide regime TILT exposure WITHOUT adding or
+    removing any trade (the entry/exit logic is untouched; only the entry notional is scaled). None → the
+    per-run scalar `size_multiplier` is used on every bar, so every existing spec is byte-identical.
 
     Holdout integrity: the holdout is the bars AT/AFTER `split`; its indicator warm-up is drawn from its OWN
     leading band (>= split), never from the training window. The previous `bars[split - warmup:]` slice fed
@@ -130,11 +139,11 @@ def run_strategy_backtest_detailed(
             continue
         alt = (alt_by_symbol or {}).get(symbol)
         val_bars, holdout_bars = _purged_embargoed_split(spec, params, bars)
-        v_run = _run_symbol(spec, params, val_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt)
+        v_run = _run_symbol(spec, params, val_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt, size_series)
         validation_runs.append(v_run)
         symbol_trades[symbol] = len(v_run.trades)
         if holdout_bars:
-            holdout_runs.append(_run_symbol(spec, params, holdout_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt))
+            holdout_runs.append(_run_symbol(spec, params, holdout_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt, size_series))
 
     if not validation_runs:
         return BacktestResult(_empty_metrics(spec), [], [], {})
@@ -276,6 +285,7 @@ def _run_symbol(
     impact_bps: Decimal,
     size_multiplier: float,
     alt: dict[str, dict[str, float]] | None = None,
+    size_series: dict[str, float] | None = None,
 ) -> SymbolRun:
     # direction: +1 long (the spot/upside-only default), -1 short (perp/short leg). 0 is reserved (no per-bar
     # direction signal yet) and is treated as long so existing condition-only specs are unchanged. `d` is the
@@ -317,6 +327,15 @@ def _run_symbol(
     # a short spec without setups is unaffected (the gate is all-True when no setup is present).
     setup_ok = _setup_entry_gate(spec, params, highs, lows, closes)
 
+    def _size_at(idx_now: int) -> float:
+        """Per-bar position-size multiplier. `size_series` (when supplied) is a point-in-time market-wide tilt
+        keyed by bar.ts.isoformat() — the SAME shape as an alt-data join, so it travels with the bar through the
+        validation/holdout slice unchanged and never leaks the future. A bar with no series entry falls back to
+        the per-run scalar `size_multiplier`, so a None series is byte-identical to the prior scalar behaviour."""
+        if size_series is None:
+            return size_multiplier
+        return size_series.get(bars[idx_now].ts.isoformat(), size_multiplier)
+
     def _book(exit_qty: float, exit_px: float, idx_now: int) -> None:
         nonlocal cash, position
         # `cash` settles the exit leg: a long SELLS (cash += proceeds net of fee); a short BUYS BACK
@@ -356,7 +375,7 @@ def _run_symbol(
     meta_proportional = bool(meta is not None and meta.sizing == "proportional")
     for idx in range(start, len(bars)):
         bar = bars[idx]
-        slip = _slippage(base_slip, impact, _entry_notional(cash, spec, size_multiplier), bar)
+        slip = _slippage(base_slip, impact, _entry_notional(cash, spec, _size_at(idx)), bar)
         if position > 0:
             _accrue_funding(idx)
             # Side-aware adverse/favourable extremes: a long's worst case is the bar low and best the high;
@@ -412,7 +431,7 @@ def _run_symbol(
                 take, meta_mult = meta_gate.decide(
                     idx, _meta_featvec(meta_refs, features, idx - 1), meta_threshold, meta_proportional
                 )
-            notional = _entry_notional(cash, spec, size_multiplier) * meta_mult if take else 0.0
+            notional = _entry_notional(cash, spec, _size_at(idx)) * meta_mult if take else 0.0
             if take and notional > 0:
                 # Entry crosses the spread the adverse way: long buys up (1+slip), short sells down (1-slip).
                 fill = float(bar.open) * (1 + d * slip)

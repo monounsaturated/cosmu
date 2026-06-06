@@ -1,0 +1,42 @@
+{
+  "name": "BTC-social risk-on overlay — a SLOW base book whose exposure is TILTED by a low-turnover BTC-social regime",
+  "rationale": "The high-turnover daily btc-social trigger already FAILED the Gate at deflated Sharpe 0.596. The honest re-run asks a different question: does BTC's SLOW social-attention regime carry information when used as a LOW-TURNOVER EXPOSURE TILT on a slow book, rather than as a daily entry trigger? This spec is the BASE BOOK: a weekly-rebalanced cross-sectional momentum long (ret over mom_lb above a fitted floor, held ~7d, no daily re-trigger). The overlay is NOT in this spec — it is applied by research/rerun_cohort.py as a per-bar market-wide size_multiplier = base*(lo + (hi-lo)*btc_social_regime), where btc_social_regime (research/social_norm.slow_social_regime) is a SLOW EWMA(W=20-40d) of BTC social_volume_accel, within-sample z-normalized, with hysteresis (ON z>+0.5 / OFF z<-0.5) and a min-dwell, so it flips only a handful of times per year. The size tilt adds/removes NO trades — it only scales exposure when the slow regime is risk-on vs risk-off. Pre-registered disconfirmers (rerun_cohort): the social tilt must beat (a) the flat-exposure baseline and (b) the SAME book tilted by an equal-turnover BTC-PRICE regime, and a within-regime time-shuffle placebo must NOT reproduce it. Falsified if any disconfirmer matches. The W/dwell free params are counted as trials in build_grid. Spot, long-only.",
+  "catalyst": "slow positive cross-sectional momentum, exposure scaled by the slow BTC-social risk-on regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lb": { "kind": "int", "lo": 20, "hi": 60, "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.0, "hi": 0.08 },
+    "stop": { "kind": "float", "lo": 0.08, "hi": 0.20 },
+    "tp": { "kind": "float", "lo": 0.12, "hi": 0.35 },
+    "time_stop": { "kind": "int", "lo": 5, "hi": 10, "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
