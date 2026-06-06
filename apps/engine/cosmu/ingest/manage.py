@@ -19,7 +19,15 @@ from pathlib import Path
 from typing import Any
 
 from cosmu.ingest import catalog
-from cosmu.ingest.bars import CcxtBarBackfiller, StooqBarBackfiller, bar_cache_path, read_cached_bars, write_bars_cache
+from cosmu.ingest.bars import (
+    BinanceVisionBarBackfiller,
+    BulkTailBarBackfiller,
+    CcxtBarBackfiller,
+    StooqBarBackfiller,
+    bar_cache_path,
+    read_cached_bars,
+    write_bars_cache,
+)
 from cosmu.ingest.coverage import (
     CoverageReport,
     build_alt_coverage,
@@ -39,10 +47,21 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
-def _default_bar_backfiller(venue: str):  # noqa: ANN202 — CcxtBarBackfiller | StooqBarBackfiller
-    """Pick the bar backfiller for a venue: `stooq` → the free non-crypto daily CSV (stocks/FX/metals/index);
-    every other venue (binance/kraken/bybit/okx) → ccxt OHLCV. Keeps `backfill bars:<venue>` venue-agnostic."""
-    return StooqBarBackfiller() if venue == "stooq" else CcxtBarBackfiller(venue)
+def _default_bar_backfiller(venue: str):  # noqa: ANN202 — Bulk/Ccxt/Stooq backfiller, one fetch_history seam
+    """Pick the bar backfiller for a venue, all behind the same `fetch_history` seam:
+      • `binance`     → Binance Vision archives (keyless BULK history) + ccxt/REST recent-tail gap-fill — the
+                        default backbone that fills the starved bar cache cheaply and deeply.
+      • `binanceperp` → the same, against the USDⓈ-M perpetual Vision tree (spot+perp coverage).
+      • `stooq`       → the free non-crypto daily CSV (stocks/FX/metals/index).
+      • everything else (kraken/bybit/okx) → ccxt OHLCV (Vision only publishes Binance archives).
+    Keeps `backfill bars:<venue>` venue-agnostic while making Vision the default bulk source for Binance."""
+    if venue == "stooq":
+        return StooqBarBackfiller()
+    if venue == "binance":
+        return BulkTailBarBackfiller(BinanceVisionBarBackfiller("spot"), CcxtBarBackfiller("binance"))
+    if venue == "binanceperp":
+        return BulkTailBarBackfiller(BinanceVisionBarBackfiller("perp"), CcxtBarBackfiller("binanceusdm"))
+    return CcxtBarBackfiller(venue)
 
 
 @dataclass
@@ -227,7 +246,7 @@ def _report_funding(results: dict[str, BackfillResult]) -> None:
 
 
 def _report_bars(results: dict[tuple[str, str, str], BarBackfillResult]) -> None:
-    print("BAR BACKFILL — multi-venue, multi-timeframe OHLCV history via ccxt (free, no key)")
+    print("BAR BACKFILL — multi-venue, multi-timeframe OHLCV history (Binance Vision bulk + ccxt/REST tail; free, no key)")
     print(f"  {'venue':<10}{'symbol':<12}{'tf':<5}{'new':>8}{'total':>8}{'days':>8}  span")
     for (venue, sym, tf), r in results.items():
         span = f"{r.start.date()} → {r.end.date()}" if r.start and r.end else "(no data)"
@@ -272,7 +291,7 @@ def _main(argv: list[str] | None = None) -> int:
     p_fetch.add_argument("--symbols", default="", help=_SYM_HELP)
 
     p_back = sub.add_parser("backfill", help="deep history for a source (funding | bars[:venue])")
-    p_back.add_argument("source", help="funding | bars | bars:binance | bars:kraken | <alt source>")
+    p_back.add_argument("source", help="funding | bars | bars:binance | bars:binanceperp | bars:kraken | <alt source>")
     p_back.add_argument("--days", type=int, default=400, help="lookback window in days (default 400 → ≥1yr)")
     p_back.add_argument("--symbols", default="", help=_SYM_HELP)
     p_back.add_argument("--timeframe", default="", help=_TF_HELP)
