@@ -33,7 +33,10 @@ of fees.** (NOT a signal-vendor. Numerai is a footnote, not the plan — see bot
 ### Cleanup wave (cloud, self-merge if clean)
 - **RA-1** `fix/hygiene-reapply` (sonnet, HIGH): re-apply the closed PR #111 onto the new structure
   (`gh pr diff 111`) — remove synthetic seed, LunarCrush dedup/incremental (cost-safety), doc fixes, + the
-  pre-existing fixes (risk_on→pm_risk_on, liquidations→liquidation_cascade). Targeted tests, not full-suite.
+  pre-existing fixes (risk_on→pm_risk_on, liquidations→liquidation_cascade). **ALSO: batch the Supabase
+  writes** — `PgAltDataStore.append` inserts row-by-row, which made the LunarCrush grab take ~1.5h for ~1.3M
+  rows; switch to a batched insert (psycopg2 `execute_values` / `executemany`, ~1000-row chunks) keeping the
+  ON CONFLICT dedup → 10–100× faster for ALL ingest. Targeted tests, not full-suite.
 - **RA-2** `web/usable-reapply` (sonnet, apps/web): re-apply PR #106 — wire the orphaned `idea-inbox.tsx` +
   `getInboxQueue` + `POST /lab/author` so the vibe loop shows queued→spec→verdict; add Mind+Lab to nav. Additive.
 - **DS-1** `chore/dev-speed` (sonnet): `verify:remote` (push→trigger→tail CI), `verify:fast` (no next build),
@@ -74,3 +77,6 @@ to monetize a sub-cost signal — never the mission. The mission is COSMU tradin
 - File-moving refactors merge ALONE (parallel = collisions). · Targeted tests while iterating, full suite once.
 - Building is a CI job, not local (no faster box needed). · All ingest defaults to the Supabase store, never
   silent-local. · Right-size models (Sonnet mechanical, Opus hard). · One branch = disjoint files; self-merge clean.
+- **Bulk writes must be BATCHED** — row-by-row Supabase inserts made a 1.3M-row grab take ~1.5h. Use
+  `execute_values`/`executemany` (chunked) for any backfill. Moving to Modal/cloud does NOT help — the
+  bottleneck is DB write latency, not compute. (Fixed in RA-1.)
