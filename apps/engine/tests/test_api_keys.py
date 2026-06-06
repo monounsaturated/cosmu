@@ -12,7 +12,9 @@ from cosmu.knowledge.store import Store
 def _client(tmp_path, monkeypatch, *, secret: str | None = None):
     from fastapi.testclient import TestClient
 
-    settings = Settings(database_url=f"sqlite:///{tmp_path}/api.sqlite3", openrouter_api_key=None, api_secret_key=secret)
+    # _env_file=None makes this hermetic: ignore the repo-root .env.local so the inventory reflects
+    # ONLY explicit/test env (else a dev box with real keys false-fails the "unconfigured" assertions).
+    settings = Settings(database_url=f"sqlite:///{tmp_path}/api.sqlite3", openrouter_api_key=None, api_secret_key=secret, _env_file=None)
     store = Store(settings)
     monkeypatch.setattr(app_mod, "store", store)
     monkeypatch.setattr(app_mod, "settings", settings)
