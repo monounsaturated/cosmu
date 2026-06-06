@@ -7,7 +7,7 @@ gets funded. Live trading is **OFF by default** behind 5 interlocks.
 
 - Authors trading strategies autonomously (or from your ideas)
 - Screens them through a deterministic, FDR-controlled gate (deflated Sharpe · CSCV-PBO · holdout · regime folds · cohort Benjamini-Hochberg)
-- Forward-tests survivors on their own standalone SIM tracks — ≥30 forward days net of fees is the recommended live-readiness proof (the operator decides when to go live; the 5 interlocks are the hard gate)
+- Runs Simulation tracks for survivors — each strategy gets its own standalone SIM track on live data; ≥30 days net of fees is the recommended live-readiness proof (the operator decides when to go live; the 5 interlocks are the hard gate)
 - Ingests free alt-data sources for cross-asset signals, surfaced through the Mind (analyst-panel reasoning)
 
 ## What it doesn't do
@@ -61,10 +61,12 @@ That's the only trigger — never also run `railway up` / `vercel deploy` (doubl
 
 ## Stack
 
-- **Engine** — Python 3.12, FastAPI, Pydantic, pytest (`apps/engine/cosmu`)
-- **Web** — Next.js, Tailwind, shadcn/ui (`apps/web`)
+- **Engine** — Python 3.12, FastAPI, Pydantic, pytest (`apps/engine/cosmu`) on **Railway**
+- **Web** — Next.js, Tailwind, shadcn/ui (`apps/web`) on **Vercel**
 - **Contracts** — `@cosmu/contracts-ts`, generated from the engine OpenAPI (never hand-typed)
-- **Data** — Postgres / Supabase · **LLM** — via OpenRouter (free tier by default; proposals only)
+- **Data** — Postgres / Supabase · **Heavy compute** — Modal (scale-to-zero backtests/ML/sweeps)
+- **LLM** — OpenRouter (free `:free` tier by default; xAI fallback) · proposals only, gate is deterministic
+- **CI** — GitHub Actions (`verify.yml`; path-filtered, runs on PRs to main + pushes to main)
 
 ## Docs
 

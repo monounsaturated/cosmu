@@ -88,7 +88,7 @@
 | Property-based tests | **BORROW (OSS)** | Hypothesis | fuzz the compiler/validator/risk gauntlet |
 | DB + RAG | **BUY/managed** | Supabase Postgres + pgvector | one store, a switch not a build |
 | Observability + evals | **BUY/OSS** | OpenTelemetry + Langfuse | vendor-neutral; free tier/self-host |
-| Hosting | **BUY/managed** | Render (worker+API), Vercel (web) | predictable beats metered |
+| Hosting | **BUY/managed** | Railway (engine + cron), Vercel (web) | predictable beats metered |
 | Anti-overfit stats | **BORROW (OSS)** | pypbo | deflated Sharpe + PBO |
 | Indicators | **BORROW (OSS)** | pandas-ta / ta-lib | standard library |
 | Tabular ML | **BORROW (OSS)** | XGBoost / LightGBM | CPU, proven |
@@ -376,14 +376,13 @@ Next.js + **shadcn/ui** + **Tremor** + **TanStack Table**, dark/modern, desktop-
 
 | Piece | Runs on | Notes |
 |-------|---------|-------|
-| Research worker (loop, scheduler, agent) | **Render** worker (CPU) | continuous; vertical-scale first, worker pool later |
-| API (FastAPI) | **Render** service | emits OpenAPI |
-| Web | **Vercel** | generated TS client |
-| DB + RAG | **Supabase** (Postgres + pgvector) | migrations on boot |
-| Untrusted code / ML bursts | **E2B** (code) / **Modal** (GPU) | usage-priced, capped |
+| Research worker (loop, scheduler, agent) + API (FastAPI) | **Railway** (engine service + cron) | always-on; `apps/engine/railway.toml` drives it |
+| Web | **Vercel** | generated TS client; `apps/web/vercel.json` |
+| DB + RAG | **Supabase** (Postgres + pgvector) | schema applied out-of-band |
+| Heavy compute bursts (backtests, ML, sweeps) | **Modal** (scale-to-zero) | `apps/engine/remote/app.py`; see `docs/COMPUTE.md` |
 | Traces | **Langfuse** (free tier/self-host) | OTel exporter |
 
-Migrations run on boot (port the v1 migrate-on-start pattern to Alembic). Secrets in Render/Vercel/Supabase env.
+Secrets in Railway / Vercel / Modal env (never committed). Push = deploy for Railway + Vercel.
 
 ---
 
