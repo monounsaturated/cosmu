@@ -18,6 +18,7 @@ import { StrategyStages } from "@/components/nav/strategy-stages";
 import { EmptyState, NotConnected, NotConnectedBanner } from "@/components/ui/honest-state";
 import { IdeaInbox } from "@/components/overview/idea-inbox";
 import { ExpandableSection } from "@/components/ui/expandable-section";
+import { DataPreview } from "@/components/ui/data-preview";
 import { cn, formatPct } from "@/lib/utils";
 
 export default async function LabPage() {
@@ -192,25 +193,29 @@ export default async function LabPage() {
                   <CardTitle>Recent deaths</CardTitle>
                   <Badge variant="down">with kill reasons</Badge>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  {population.graveyard.map((row: GraveyardRow) => (
-                    <div
-                      key={row.version_id}
-                      className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate text-[12.5px] font-medium text-foreground">{row.name}</div>
-                        <div className="text-[11px] text-quiet">{row.origin}</div>
-                      </div>
-                      <div className="flex flex-wrap justify-end gap-1">
-                        {row.kill_reason.split(",").map((r) => (
-                          <Badge key={r} variant="down">
-                            {r.replace(/_/g, " ")}
-                          </Badge>
-                        ))}
-                      </div>
+                <CardContent>
+                  <DataPreview href="/strategies" viewAllLabel="View all strategies" total={population.killed}>
+                    <div className="space-y-2">
+                      {population.graveyard.slice(0, 5).map((row: GraveyardRow) => (
+                        <div
+                          key={row.version_id}
+                          className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-[12.5px] font-medium text-foreground">{row.name}</div>
+                            <div className="text-[11px] text-quiet">{row.origin}</div>
+                          </div>
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {row.kill_reason.split(",").map((r) => (
+                              <Badge key={r} variant="down">
+                                {r.replace(/_/g, " ")}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </DataPreview>
                 </CardContent>
               </Card>
             </div>
