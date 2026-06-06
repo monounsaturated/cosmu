@@ -12,6 +12,10 @@ LLM-grades-its-own-homework advice). See `docs/reports/generalization-plan-2026-
 ## 🧭 The big reframe this session (the most important thing to understand)
 The old "**0 edges / 7 powered fails**" verdict is **NOT trustworthy** — the backtest harness was broken/starved.
 Two adversarial workflows + audits proved it:
+- ✅ **FIXED & HARDENED (#123 + #126):** the P0 `risk_on→pm_risk_on` split is fully resolved — gate queries the
+  canonical name, fixtures/API router reconciled, AND `StoreBackedAltProvider.fetch_series` now RAISES on an
+  unrouted metric (silent-miss class can't recur). 924 tests pass. **Harness P0 = DONE.** Remaining harness work:
+  bar backbone (empty cache) + honesty fixes (netflow/funding/FRED) → then re-run. *(Original detail below.)*
 - ✅ **FIXED (#123):** the P0 `risk_on→pm_risk_on` split — the live Gate's cross-asset feature was a **silent no-op**,
   production **scored synthetic**, the API router had the same bug. Now bridged + 5 social fields wired + a
   regression test that proves the feature is non-zero. **The Gate is now honest on live data.**
@@ -51,7 +55,12 @@ tier later only if a social edge screens).
   forward-survivor exists · LlamaParse for filings (Lane A2).
 - **UI:** mobile-first nav on every page + lifecycle stage-strip + progressive disclosure (shipped #121/#122);
   top-N preview → dedicated sortable data pages (in flight). Keep it digestible.
-- **Compute:** LOCAL default · Modal heavy · cloud worktree agents for parallel CODE · NO VPS.
+- **Compute:** LOCAL default · Modal heavy · cloud agents for parallel CODE · NO VPS.
+- **CI (decided):** KEEP GitHub-hosted Actions — it's off-Mac, parallel, and lean (path-filtered + PR-only + $10 cap
+  ≈ $1–5/mo steady-state). Do NOT self-host on the Mac (funnels all CI onto it → slows the Mac, esp. with cloud-agent
+  PRs) and NOT Codespaces (paid dev VM, not CI). The big spend was a 13-PR/day spike, not the rate.
+- **Polymarket region:** US Railway regions (Virginia/California) are BLOCKED (Polymarket blocks the US). Singapore
+  (current) is fine but geo-circumvention is ToS-risky + NOT a priority — park prediction markets until an edge proves out.
 - **Agent rule:** one branch = DISJOINT files. Web vs engine = safe parallel; **two engine agents collide — serialize.**
 
 ## ▶️ Next parallel cloud agents (prompts ready in `.claude/tasks/` + below)
