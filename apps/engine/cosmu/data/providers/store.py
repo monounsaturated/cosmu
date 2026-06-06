@@ -74,12 +74,18 @@ class PgAltDataStore:
         if not points:
             return
         now = utcnow()
+        rows = [
+            (provider, symbol, metric, p.ts.isoformat(), p.available_at.isoformat(), float(p.value), now)
+            for p in points
+        ]
+        # Batched multi-row insert: one round-trip per ~1000 rows, not per row. Row-by-row over the
+        # Supabase pooler made a 1.3M-row backfill take ~6h; this is the same data in minutes.
         with self.store.batch() as writer:
-            for p in points:
-                writer._con.execute(
-                    "INSERT INTO alt_data(provider, symbol, metric, ts, available_at, value, ingested_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (provider, symbol, metric, p.ts.isoformat(), p.available_at.isoformat(), float(p.value), now),
-                )
+            writer.insert_many(
+                "alt_data",
+                ["provider", "symbol", "metric", "ts", "available_at", "value", "ingested_at"],
+                rows,
+            )
 
     def read_asof(self, provider: str, symbol: str, metric: str, as_of: datetime) -> list[AltDataPoint]:
         rows = self.store.rows(

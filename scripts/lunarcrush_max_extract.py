@@ -335,6 +335,7 @@ class Extractor:
         self.sleep_between = sleep_between
         self.dry_run = dry_run
         self._now = datetime.now(tz=UTC)
+        self._last_gated = False  # set True when a fetch fails because the endpoint isn't on this plan
 
     def _calls_remaining(self) -> int:
         return self.daily_quota - self.manifest.calls_today
@@ -352,8 +353,20 @@ class Extractor:
             print(f"  [DRY-RUN] would fetch {entity_type}:{entity_id} ({len(fields)} metrics)", flush=True)
             return True  # counts toward the preview count but hits no API
 
+        self._last_gated = False
         try:
             rows = fetch_fn(self.api_key, entity_id)
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 402, 403, 404):
+                # Endpoint not on this plan (e.g. stocks/topics on Individual). Do NOT mark done or burn
+                # quota — signal the caller to skip the whole bucket so a higher-tier re-run can still fetch it.
+                print(f"  GATED ({exc.code}) {entity_type}:{entity_id} — endpoint not on this plan", flush=True)
+                self._last_gated = True
+                return False
+            print(f"  ERROR fetching {entity_type}:{entity_id}: {exc}", flush=True)
+            self.manifest.mark_done(key)
+            self.manifest.increment_calls()
+            return True
         except Exception as exc:  # noqa: BLE001 — one dead entity never aborts the pass
             print(f"  ERROR fetching {entity_type}:{entity_id}: {exc}", flush=True)
             # Still mark as done to avoid burning retries on a permanently-missing entity
@@ -398,6 +411,10 @@ class Extractor:
                 continue
 
             made_call = self._spend(key, label, entity_id, fields, fetch_fn)
+            if self._last_gated:
+                print(f"  → '{label}' endpoints are not on this plan — skipping the whole {label} bucket "
+                      f"(no quota burned). Upgrade to Builder to fetch these.", flush=True)
+                break
             if made_call:
                 calls_spent += 1
                 if not self.dry_run:
@@ -551,14 +568,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     )
     p.add_argument("--coins",      type=int, default=900, help="max coin entities to fetch (default 900)")
-    p.add_argument("--stocks",     type=int, default=500, help="max stock entities to fetch (default 500)")
-    p.add_argument("--topics",     type=int, default=400, help="max topic entities to fetch (default 400)")
-    p.add_argument("--categories", type=int, default=200, help="max category entities to fetch (default 200)")
+    # Stocks/topics/categories are Builder-plan-only (they 404 on Individual). Default OFF so a bare run is
+    # coins-only; pass explicit counts for a one-day Builder mega-grab. A gated bucket also self-aborts (below).
+    p.add_argument("--stocks",     type=int, default=0, help="max stock entities (Builder plan only; default 0)")
+    p.add_argument("--topics",     type=int, default=0, help="max topic entities (Builder plan only; default 0)")
+    p.add_argument("--categories", type=int, default=0, help="max category entities (Builder plan only; default 0)")
     p.add_argument("--quota",      type=int, default=DAILY_QUOTA, help=f"daily API call cap (default {DAILY_QUOTA})")
     p.add_argument("--sleep",      type=float, default=SLEEP_BETWEEN_CALLS, help=f"seconds between calls (default {SLEEP_BETWEEN_CALLS})")
     p.add_argument("--store",      default=".cosmu/altdata", help="alt-data store root directory")
     p.add_argument("--manifest",   default=".cosmu/lunarcrush_manifest.json", help="progress manifest path")
     p.add_argument("--dry-run",    action="store_true", help="preview only — ZERO API calls, shows what would be fetched")
+    p.add_argument("--local",      action="store_true", help="force local JSONL store even if DATABASE_URL is set (default: Postgres/Supabase when DATABASE_URL present)")
     return p.parse_args(argv)
 
 
@@ -574,7 +594,18 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print("(continuing in dry-run mode without a key — API shapes assumed correct)", file=sys.stderr)
 
-    store = AltDataStore(args.store)
+    # Route to Postgres/Supabase (the prod DB the engine/backtest/Numerai read) when DATABASE_URL is
+    # set — local JSONL is Mac-only and the deployed machine can't see it. --local forces JSONL.
+    db_url = os.environ.get("DATABASE_URL", "")
+    if db_url and not args.local and not args.dry_run:
+        from cosmu.knowledge.store import Store  # noqa: E402
+        from cosmu.config.settings import get_settings  # noqa: E402
+        from cosmu.data.providers.store import PgAltDataStore  # noqa: E402
+        store = PgAltDataStore(Store(get_settings()))
+        print("→ store: Postgres/Supabase (DATABASE_URL set)", flush=True)
+    else:
+        store = AltDataStore(args.store)
+        print(f"→ store: local JSONL ({args.store})", flush=True)
     manifest = Manifest(Path(args.manifest))
 
     run_extract(

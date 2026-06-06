@@ -62,6 +62,24 @@ class _Conn:
         else:
             self._raw.executescript(sql)
 
+    def insert_many(self, table: str, columns: list[str], rows: list[tuple[Any, ...]], *, page_size: int = 1000) -> None:
+        """Multi-row INSERT in ONE round-trip per chunk — psycopg2 `execute_values` on PG, `executemany` on
+        sqlite. Row-by-row `execute()` over a remote pooled Postgres is ~1 network RTT each; batching cut a
+        ~1.3M-row LunarCrush backfill from ~6h to minutes. Use for any bulk/backfill write."""
+        if not rows:
+            return
+        cur = self._raw.cursor()
+        cols = ", ".join(columns)
+        if self._pg:
+            import psycopg2.extras
+
+            psycopg2.extras.execute_values(
+                cur, f"INSERT INTO {table} ({cols}) VALUES %s", [tuple(r) for r in rows], page_size=page_size
+            )
+        else:
+            placeholders = ", ".join("?" for _ in columns)
+            cur.executemany(f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", [tuple(r) for r in rows])
+
     def commit(self) -> None:
         self._raw.commit()
 
@@ -88,6 +106,10 @@ class Writer:
     def execute(self, sql: str, params: Iterable[Any] = ()) -> None:
         """Run a raw write statement (e.g. DELETE/UPDATE) on this batch's single transaction."""
         self._con.execute(sql, params)
+
+    def insert_many(self, table: str, columns: list[str], rows: list[tuple[Any, ...]]) -> None:
+        """Batched multi-row INSERT on this transaction (see _Conn.insert_many) — for backfills/cohorts."""
+        self._con.insert_many(table, columns, [tuple(r) for r in rows])
 
     def append_event(
         self,

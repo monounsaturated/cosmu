@@ -15,7 +15,7 @@ of fees.** (NOT a signal-vendor. Numerai is a footnote, not the plan — see bot
 ---
 
 ## WHAT TO DO (in order — simple)
-1. **Let the LunarCrush grab finish → cancel LunarCrush** (cancellation already scheduled ✓).
+1. **Cancel LunarCrush now** — grab COMPLETE: 95 coins × ~6.4 yr × 7 metrics (**1.14M rows**) banked in Supabase. Stocks/topics need Builder (skip).
 2. **Cleanup wave** (cloud agents): RA-1 → then RA-2 / DS-1 / C-1 → RA-3. Then **flip the Railway cron** → the machine self-runs.
 3. **Find the edge** (the core mission): test the new social data + the two untested markets (below).
 4. **Win =** ONE strategy survives the honest Gate **+** a 30-day forward-test → arm live, small.
@@ -33,10 +33,8 @@ of fees.** (NOT a signal-vendor. Numerai is a footnote, not the plan — see bot
 ### Cleanup wave (cloud, self-merge if clean)
 - **RA-1** `fix/hygiene-reapply` (sonnet, HIGH): re-apply the closed PR #111 onto the new structure
   (`gh pr diff 111`) — remove synthetic seed, LunarCrush dedup/incremental (cost-safety), doc fixes, + the
-  pre-existing fixes (risk_on→pm_risk_on, liquidations→liquidation_cascade). **ALSO: batch the Supabase
-  writes** — `PgAltDataStore.append` inserts row-by-row, which made the LunarCrush grab take ~1.5h for ~1.3M
-  rows; switch to a batched insert (psycopg2 `execute_values` / `executemany`, ~1000-row chunks) keeping the
-  ON CONFLICT dedup → 10–100× faster for ALL ingest. Targeted tests, not full-suite.
+  pre-existing fixes (risk_on→pm_risk_on, liquidations→liquidation_cascade). Targeted tests, not full-suite.
+  (The batched-Supabase-write speedup — the grab-slowness fix — already LANDED on main; do not redo.)
 - **RA-2** `web/usable-reapply` (sonnet, apps/web): re-apply PR #106 — wire the orphaned `idea-inbox.tsx` +
   `getInboxQueue` + `POST /lab/author` so the vibe loop shows queued→spec→verdict; add Mind+Lab to nav. Additive.
 - **DS-1** `chore/dev-speed` (sonnet): `verify:remote` (push→trigger→tail CI), `verify:fast` (no next build),
@@ -77,6 +75,10 @@ to monetize a sub-cost signal — never the mission. The mission is COSMU tradin
 - File-moving refactors merge ALONE (parallel = collisions). · Targeted tests while iterating, full suite once.
 - Building is a CI job, not local (no faster box needed). · All ingest defaults to the Supabase store, never
   silent-local. · Right-size models (Sonnet mechanical, Opus hard). · One branch = disjoint files; self-merge clean.
-- **Bulk writes must be BATCHED** — row-by-row Supabase inserts made a 1.3M-row grab take ~1.5h. Use
-  `execute_values`/`executemany` (chunked) for any backfill. Moving to Modal/cloud does NOT help — the
-  bottleneck is DB write latency, not compute. (Fixed in RA-1.)
+- **Bulk writes MUST be batched** — row-by-row Supabase inserts made the ~1.3M-row grab crawl (~6h; ~4min/coin,
+  CPU 99% idle waiting on the DB). FIXED & LANDED on main: `Store.insert_many` (psycopg2 `execute_values`,
+  ~1000-row chunks) → ~4,500 rows/s (~77×). Modal/cloud does NOT help — bottleneck is DB write latency, not
+  compute. Batch ALL backfills.
+- **Don't churn plan-gated endpoints** — the grab tried 2000 stocks/topics one-by-one (404 on Individual) at
+  ~7s each ≈ hours wasted + false "done" marks. FIXED: gated buckets default to 0 and self-abort on the first
+  402/403/404 (no quota burned). Only Builder ($15/day) has stocks/topics/categories.
