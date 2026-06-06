@@ -1,4 +1,5 @@
-import { Activity, ArrowRight } from "lucide-react";
+import { Activity, ArrowRight, ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { getBrain, getEvents, getIntelligence, getPopulation, getInboxQueue, engineConfigured } from "../data";
 import type { FunnelStats } from "../data";
 import type { GraveyardRow } from "@cosmu/contracts-ts";
@@ -40,6 +41,19 @@ export default async function LabPage() {
       <StrategyStages />
 
       {!anyConnected ? <NotConnectedBanner configured={engineConfigured} /> : null}
+
+      {/* Next step nudge — surfaces when Gate survivors exist so the operator knows to check Backtest. */}
+      {connected && population.forward_test > 0 && (
+        <Link
+          href="/strategies"
+          className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-surface-2/30 px-4 py-3 text-[12.5px] text-muted transition-colors hover:bg-surface-2/55 hover:text-foreground"
+        >
+          <span>
+            <span className="font-medium text-foreground">{population.forward_test}</span> version{population.forward_test !== 1 ? "s" : ""} cleared the Gate — review them in Backtest
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-quiet" />
+        </Link>
+      )}
 
       {/* Idea inbox — queue a vibe; the next tick authors a typed spec; the Gate rules.
           The full vibe loop (queued → authored → Gate verdict) is visible in one place. */}

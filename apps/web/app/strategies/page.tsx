@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/ui/section";
 import { StrategiesTable } from "@/components/research/strategies-table";
+import { StrategyStages } from "@/components/nav/strategy-stages";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 
 // Strategies (the Leaderboard, docs/PRODUCT.md Epic B) answers ONE question: which strategies deserve my
@@ -28,6 +29,8 @@ export default async function StrategiesPage() {
           </Badge>
         }
       />
+
+      <StrategyStages />
 
       {/* How a strategy is born — plain language, both authoring paths through the one Gate. */}
       <BornNote />
