@@ -7,8 +7,12 @@
 // live OFF is immediate (enabled:false, confirm:true). This control never itself fires an order — the
 // deterministic master only submits a real order when this is ON, keys are present, the gate has passed,
 // caps are available, and the kill-switch is clear. Offline → an honest note, never a fabricated armed state.
+//
+// Per-button in-flight state: each of the three buttons (Go live / Confirm arm / Turn live off) owns its
+// own pending flag and AbortController timeout. One slow engine call can never permanently grey out the
+// Cancel button or any other control. Flags always clear in `finally` — no button can get stuck disabled.
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Lock, Power, ShieldCheck, Unlock } from "lucide-react";
 import type { ToggleResponse } from "@cosmu/contracts-ts";
@@ -27,32 +31,45 @@ export function GlobalLiveToggle({
   const [awaitingConfirm, setAwaitingConfirm] = useState(false);
   const [promoted, setPromoted] = useState<string[]>([]);
   const [note, setNote] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  // Per-button in-flight flags — never a shared pending so one request can't freeze the whole widget.
+  const [requestArmPending, setRequestArmPending] = useState(false);
+  const [confirmArmPending, setConfirmArmPending] = useState(false);
+  const [disarmPending, setDisarmPending] = useState(false);
 
-  function post(body: { enabled: boolean; confirm: boolean }, onOk: (data: ToggleResponse) => void) {
+  async function post(
+    body: { enabled: boolean; confirm: boolean },
+    setPending: (v: boolean) => void,
+    onOk: (data: ToggleResponse) => void
+  ) {
+    if (!ENGINE_CONFIGURED) {
+      setNote("Engine not connected — set API_BASE_URL. Live can only be armed against a connected engine.");
+      return;
+    }
     setNote(null);
-    startTransition(async () => {
-      if (!ENGINE_CONFIGURED) {
-        setNote("Engine not connected — set API_BASE_URL. Live can only be armed against a connected engine.");
-        return;
-      }
-      try {
-        const res = await engineFetch("/toggle/live", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body)
-        });
-        if (!res.ok) throw new Error("engine unavailable");
-        onOk((await res.json()) as ToggleResponse);
-      } catch {
-        setNote("Engine not connected — could not change the live toggle.");
-      }
-    });
+    setPending(true);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await engineFetch("/toggle/live", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      });
+      if (!res.ok) throw new Error("engine unavailable");
+      onOk((await res.json()) as ToggleResponse);
+    } catch {
+      setNote("Engine not connected — could not change the live toggle.");
+    } finally {
+      clearTimeout(timer);
+      setPending(false);
+    }
   }
 
   // CLICK 1 — ask what would happen. We never arm here.
   function requestArm() {
-    post({ enabled: true, confirm: false }, (data) => {
+    if (requestArmPending) return;
+    post({ enabled: true, confirm: false }, setRequestArmPending, (data) => {
       setAwaitingConfirm(true);
       if (data.reason) setNote(data.reason);
     });
@@ -60,7 +77,8 @@ export function GlobalLiveToggle({
 
   // CLICK 2 — arm.
   function confirmArm() {
-    post({ enabled: true, confirm: true }, (data) => {
+    if (confirmArmPending) return;
+    post({ enabled: true, confirm: true }, setConfirmArmPending, (data) => {
       setEnabled(data.enabled);
       setPromoted(data.promoted ?? []);
       setAwaitingConfirm(false);
@@ -69,7 +87,8 @@ export function GlobalLiveToggle({
   }
 
   function disarm() {
-    post({ enabled: false, confirm: true }, (data) => {
+    if (disarmPending) return;
+    post({ enabled: false, confirm: true }, setDisarmPending, (data) => {
       setEnabled(data.enabled);
       setPromoted([]);
       setAwaitingConfirm(false);
@@ -93,12 +112,12 @@ export function GlobalLiveToggle({
 
       <div className="flex flex-wrap items-center gap-2">
         {enabled ? (
-          <Button variant="outline" size="sm" type="button" onClick={disarm} disabled={pending || !connected}>
+          <Button variant="outline" size="sm" type="button" onClick={disarm} disabled={disarmPending || !connected}>
             <Power className="size-4" /> Turn live off
           </Button>
         ) : awaitingConfirm ? (
           <>
-            <Button variant="primary" size="sm" type="button" onClick={confirmArm} disabled={pending || !connected}>
+            <Button variant="primary" size="sm" type="button" onClick={confirmArm} disabled={confirmArmPending || !connected}>
               <ShieldCheck className="size-4" /> Confirm — arm live
             </Button>
             <Button variant="ghost" size="sm" type="button" onClick={() => { setAwaitingConfirm(false); setNote(null); }}>
@@ -106,7 +125,7 @@ export function GlobalLiveToggle({
             </Button>
           </>
         ) : (
-          <Button variant="secondary" size="sm" type="button" onClick={requestArm} disabled={pending || !connected}>
+          <Button variant="secondary" size="sm" type="button" onClick={requestArm} disabled={requestArmPending || !connected}>
             <Power className="size-4" /> Go live…
           </Button>
         )}

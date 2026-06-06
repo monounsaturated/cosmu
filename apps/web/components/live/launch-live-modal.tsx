@@ -10,7 +10,7 @@
 // Venue key-gating: venues whose `configured` flag is false are greyed-out and unselectable. The
 // `configured` flag comes from the engine (server-side key check) — keys are NEVER sent to the browser.
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Info, Lock, Power, Rocket, X } from "lucide-react";
 import type {
   LaunchActivateResponse,
@@ -46,7 +46,8 @@ export function LaunchLiveModal({ versionId, strategyName, onClose, onArmed }: P
   const [result, setResult] = useState<LaunchActivateResponse | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
-  const [pending, startTransition] = useTransition();
+  // Per-button in-flight flag — always cleared in `finally` so the Confirm button can never get stuck disabled.
+  const [pending, setPending] = useState(false);
 
   // Fetch the venue catalog (fees + configured flags) on mount.
   useEffect(() => {
@@ -90,7 +91,8 @@ export function LaunchLiveModal({ versionId, strategyName, onClose, onArmed }: P
     setNote(null);
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
+    if (pending) return;
     if (!ENGINE_CONFIGURED) {
       setNote("Engine not connected — cannot launch.");
       return;
@@ -104,35 +106,40 @@ export function LaunchLiveModal({ versionId, strategyName, onClose, onArmed }: P
       return;
     }
     setNote(null);
-    startTransition(async () => {
-      try {
-        const res = await engineFetch("/live/launch", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            version_id: versionId,
-            venue_id: selectedVenueId,
-            symbol: selectedSymbol,
-            budget,
-            per_strategy_cap: perStrategyCap,
-            global_cap: globalCap,
-            max_daily_loss: maxDailyLoss,
-            confirm: true,
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({})) as { detail?: string };
-          setNote(err.detail ?? `Engine error ${res.status}`);
-          return;
-        }
-        const data = (await res.json()) as LaunchActivateResponse;
-        setResult(data);
-        setConfirmed(true);
-        onArmed?.(data);
-      } catch {
-        setNote("Engine not reachable — cannot launch live.");
+    setPending(true);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await engineFetch("/live/launch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          version_id: versionId,
+          venue_id: selectedVenueId,
+          symbol: selectedSymbol,
+          budget,
+          per_strategy_cap: perStrategyCap,
+          global_cap: globalCap,
+          max_daily_loss: maxDailyLoss,
+          confirm: true,
+        }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { detail?: string };
+        setNote(err.detail ?? `Engine error ${res.status}`);
+        return;
       }
-    });
+      const data = (await res.json()) as LaunchActivateResponse;
+      setResult(data);
+      setConfirmed(true);
+      onArmed?.(data);
+    } catch {
+      setNote("Engine not reachable — cannot launch live.");
+    } finally {
+      clearTimeout(timer);
+      setPending(false);
+    }
   }
 
   return (
