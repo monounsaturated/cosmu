@@ -1,0 +1,56 @@
+{
+  "name": "DVOL calm-regime momentum — trade trend only when crypto-native implied vol is low",
+  "rationale": "Momentum survives in calm regimes and gets shredded in panics — the existing vol-regime gate proves this with REALIZED vol (vol_realized). This spec tests a DIFFERENT, forward-looking gate: Deribit DVOL, the crypto-native 30-day implied-volatility index (the BTC/ETH 'VIX'). DVOL is the options market's PRICE of future risk, so it can flag a fragile regime BEFORE realized vol blows up — the realized-vol gate only sees the storm once it has already started; the implied-vol gate sees the market pricing the storm in advance. The hypothesis: take long momentum (ret_Nd positive) ONLY while DVOL is inside a fitted calm band (between op: |dvol - 0| <= dvol_ceiling is the wrong frame — DVOL is a positive level, so we gate with a simple ceiling: dvol lt dvol_ceiling) and skip every entry when implied vol is elevated (the crowd is paying up for protection — a coming-storm tag). Exit when DVOL crosses UP through an exit ceiling (regime turning fragile) or the stop/TP fires. Spot-only LONG (direction=+1); DVOL is a read-only regime feature, no funding leg. Disconfirmer 1: the edge must come from the IMPLIED-vol gate adding information OVER realized vol. If swapping dvol for vol_realized (the existing gate) yields an equal-or-better deflated Sharpe, DVOL's forward-looking claim is false — it is just a noisier proxy for realized vol and the existing vol-regime spec already captures it. Disconfirmer 2: the gate must SUBTRACT bad trades, not just shrink the sample. If the calm-only book has a deflated Sharpe no better than the same momentum traded UNGATED across all DVOL regimes, the regime filter is cosmetic and the edge (if any) is plain momentum. tier0 feature, unproven combination — low-confidence until validated OOS; the Gate decides.",
+  "catalyst": "price momentum is positive WHILE crypto-native implied volatility (DVOL) sits in a calm regime — momentum's friendly weather.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    },
+    {
+      "feature": { "name": "dvol" },
+      "op": "lt",
+      "threshold": { "param": "dvol_ceiling" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "dvol" },
+        "op": "cross_up",
+        "threshold": { "param": "dvol_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.45
+  },
+  "param_space": {
+    "mom_lb":       { "kind": "int",   "lo": 5,    "hi": 30,  "step": 1 },
+    "mom_floor":    { "kind": "float", "lo": 0.0,  "hi": 0.05 },
+    "dvol_ceiling": { "kind": "float", "lo": 30.0, "hi": 75.0 },
+    "dvol_exit":    { "kind": "float", "lo": 55.0, "hi": 110.0 },
+    "stop":         { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":           { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":    { "kind": "int",   "lo": 2,    "hi": 14,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
