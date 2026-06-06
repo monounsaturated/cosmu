@@ -43,10 +43,20 @@ _SPECS = [
     "social-volume-collapse-exit-filter.json",
     "social-volume-spike-flat-price-entry.json",
     "cross-asset-social-rotation.json",
+    # Added once the four remaining LunarCrush fields (alt_rank et al.) were wired: the AltRank-improvement
+    # long spec is part of the SAME cohort family, so the BH-FDR correction spans it too (no free pass for
+    # adding a sixth test). It reads the newly-routed alt_rank metric.
+    "alt-rank-improvement-long.json",
 ]
 
-# LunarCrush semantic metrics joined as point-in-time alt features (feature_registry names).
-_SOCIAL_METRICS = ("social_volume", "social_sentiment", "galaxy_score")
+# LunarCrush semantic metrics joined as point-in-time alt features (feature_registry names). All seven hoarded
+# coin time-series fields are read; the first three are the long-standing ingest metrics, the last four were
+# banked-but-unwired until alt_rank/market_cap_usd/volume_24h_usd/price_usd were routed in store._STORE_PROVIDER_OF.
+# Joining a metric a spec doesn't reference is harmless (the backtest just never reads it).
+_SOCIAL_METRICS = (
+    "social_volume", "social_sentiment", "galaxy_score",
+    "alt_rank", "market_cap_usd", "volume_24h_usd", "price_usd",
+)
 # Fixed lookback the cross-asset-social-rotation spec's xsec_momentum_rank alt is precomputed at (mid of its
 # rank_lb param range). The backtest reads a precomputed rank series directly; the per-variant rank_lb is not
 # re-windowed for an alt feature (same approximation funding_crowding_cohort makes for xsec_momentum_rank).
