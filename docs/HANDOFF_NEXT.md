@@ -36,6 +36,11 @@ of fees.** (NOT a signal-vendor. Numerai is a footnote, not the plan — see bot
 >    active worktree. `git worktree prune` + remove merged-PR worktrees + `git fetch -p`.
 > 5. **Re-do data-viz** (web): the agent's WIP is in `git stash` (data-viz-wip-2026-06-06) — recover or re-run for the
 >    overlay charts page.
+> 6. **Summary → dedicated-data-page pattern** (web, AFTER the stage-nav PR merges — same files, don't parallelize):
+>    every data block on dashboards/pages shows only the TOP / most-recent **3–5 per info-type** (digestible), with a
+>    "View all" that opens a **dedicated full-data page** (mobile + desktop) — better/adjusted view, more rows,
+>    **sortable + filterable**, great UI. One reusable `<DataPreview top={5} href=…>` + a shared sortable
+>    `<DataTablePage>` so any data type (strategies, verdicts, trades, alt-data series, costs, learnings) plugs in.
 1. **LunarCrush grab (running) → then CANCEL.** Banking the **full multi-venue tradeable universe** (~980 coins: Binance + Kraken spot/futures + Hyperliquid + Coinbase × ~6.4 yr × 7 metrics) into Supabase — this history is the irreplaceable asset. Universe lives at `.cosmu/coin_universe_allvenues.txt`. Cancel as soon as it finishes (stocks/topics need Builder; skip). Resumable + deduped. Relaunch: `python3 scripts/lunarcrush_max_extract.py --coins 1100 --coins-file .cosmu/coin_universe_allvenues.txt --sleep 3`. **To UPDATE later** (after cancel/re-subscribe): add `--refresh` (re-fetches all coins, writes only newer days). Ongoing freshness belongs in the `manage-data` skill / a cron, not this one-time script.
 2. **Cleanup wave** (cloud agents): RA-1 → then RA-2 / DS-1 / C-1 → RA-3. Then **flip the Railway cron** → the machine self-runs.
 3. **Find the edge** (the core mission): test the new social data + the two untested markets (below).
