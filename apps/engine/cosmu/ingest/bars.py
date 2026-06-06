@@ -8,10 +8,15 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
+import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable
+import zipfile
+from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -19,6 +24,8 @@ from cosmu.data.market import Bar, _bar_from_ccxt, _bar_from_json, _ccxt_symbol,
 
 __all__ = [
     "Bar",
+    "BinanceVisionBarBackfiller",
+    "BulkTailBarBackfiller",
     "CcxtBarBackfiller",
     "StooqBarBackfiller",
     "TIMEFRAME_MS",
@@ -205,6 +212,178 @@ class StooqBarBackfiller:
             ))
         out.sort(key=lambda b: b.ts)
         return out
+
+
+def _vision_ms(value: int) -> int:
+    """Normalize a Binance Vision kline open_time to MILLISECONDS. Vision klines are ms, but some 2025+ archives
+    stamp microseconds; a ms epoch stays < 1e15 until year ~33658 while a µs epoch is ≥ 1e15 from 2001 on, so the
+    threshold cleanly disambiguates without ever mangling a real ms timestamp."""
+    return value // 1000 if value >= 1_000_000_000_000_000 else value
+
+
+def _iter_months(start: datetime, end: datetime) -> Iterator[str]:
+    """Yield `YYYY-MM` labels for every month from `start`'s month through `end`'s month, inclusive (ascending)."""
+    y, m = start.year, start.month
+    while (y, m) <= (end.year, end.month):
+        yield f"{y:04d}-{m:02d}"
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+
+
+def _iter_days(start: datetime, end: datetime) -> Iterator[str]:
+    """Yield `YYYY-MM-DD` labels for every UTC day from `start`'s date through `end`'s date, inclusive."""
+    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    last = end.replace(hour=0, minute=0, second=0, microsecond=0)
+    while day <= last:
+        yield f"{day.year:04d}-{day.month:02d}-{day.day:02d}"
+        day += timedelta(days=1)
+
+
+class BinanceVisionBarBackfiller:
+    """FREE, keyless BULK OHLCV history from Binance Vision (https://data.binance.vision) — the bulk-backbone
+    analogue of `CcxtBarBackfiller`. Where ccxt/REST paginate a few hundred bars per call, Vision serves a whole
+    MONTH as one zipped CSV, so a single `fetch_history` pulls years of 1m/1h/1d bars per symbol without a key.
+    Monthly archives cover the bulk; DAILY archives fill the current partial month (the month monthly hasn't
+    published yet). `market="spot"` reads `data/spot/monthly/klines/...`; `market="perp"` reads the USDⓈ-M
+    `data/futures/um/monthly/klines/...` tree. Same `fetch_history(symbol, timeframe, *, start_ms, end_ms)` seam
+    as every other backfiller, so the managed path treats it like any bar venue. A 404 on a month is a GAP (the
+    listing started later, or the month isn't published yet) → skip, never zero-fill. Never emits a future ts.
+    Offline-testable: inject `_fetcher(url) -> bytes | None` returning the raw zip bytes (None == 404/missing); a
+    test replays a zipped-CSV fixture and never touches the network (live runs sleep `sleep_s` between archives
+    to stay polite)."""
+
+    _BASE = "https://data.binance.vision"
+
+    def __init__(
+        self,
+        market: str = "spot",
+        *,
+        sleep_s: float = 0.2,
+        _fetcher: Callable[[str], bytes | None] | None = None,
+    ) -> None:
+        if market not in ("spot", "perp"):
+            raise ValueError(f"market must be 'spot' or 'perp', got {market!r}")
+        self.market = market
+        self.sleep_s = sleep_s
+        self._live = _fetcher is None  # only the live path sleeps between archive downloads
+        self._fetcher = _fetcher or self._fetch
+
+    def _root(self) -> str:
+        """The Vision path root for this market: spot vs the USDⓈ-M perpetual-futures tree."""
+        return "data/spot" if self.market == "spot" else "data/futures/um"
+
+    def _archive_url(self, symbol: str, timeframe: str, period: str, label: str) -> str:
+        """One archive URL. `period` ∈ {monthly, daily}; `label` is `YYYY-MM` (monthly) or `YYYY-MM-DD` (daily)."""
+        return f"{self._BASE}/{self._root()}/{period}/klines/{symbol}/{timeframe}/{symbol}-{timeframe}-{label}.zip"
+
+    def _fetch(self, url: str) -> bytes | None:
+        """Keyless HTTPS GET of one archive via stdlib urllib. A 404 (or any transport failure) → None so the
+        caller skips that month as a gap — never a fabricated bar."""
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        try:
+            with urllib.request.urlopen(req, timeout=60, context=_ssl_context()) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return None  # month not published / listing started later → gap, skip (never zero-fill)
+            return None
+        except Exception:  # noqa: BLE001 — any transport failure degrades to a skipped gap, never a fabricated bar
+            return None
+
+    def _parse_zip(self, raw: bytes) -> list[list]:
+        """Unzip → parse the Binance kline CSV → ccxt-shaped `[ms, o, h, l, c, v]` rows. Columns are
+        `open_time, open, high, low, close, volume, close_time, ...`; we keep the first six. A leading header row
+        (`open_time,...`) is detected by a non-numeric first cell and skipped. Pure (no network)."""
+        rows: list[list] = []
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            for name in zf.namelist():
+                if not name.endswith(".csv"):
+                    continue
+                with zf.open(name) as fh:
+                    for cells in csv.reader(io.TextIOWrapper(fh, encoding="utf-8")):
+                        if len(cells) < 6:
+                            continue
+                        try:
+                            ts = _vision_ms(int(cells[0]))
+                        except ValueError:
+                            continue  # header row → skip
+                        rows.append([ts, cells[1], cells[2], cells[3], cells[4], cells[5]])
+        return _klines_to_ohlcv(rows)
+
+    def _collect(self, url: str, start: int, end: int, seen: set[int], out: list[Bar]) -> None:
+        """Fetch + parse ONE archive, appending its in-window, not-yet-seen bars to `out`. A missing archive
+        (None) is a gap → skipped. The live path sleeps after each download to stay polite."""
+        import time
+
+        raw = self._fetcher(url)
+        if self._live and self.sleep_s:
+            time.sleep(self.sleep_s)
+        if not raw:
+            return
+        for row in self._parse_zip(raw):
+            ts_ms = int(row[0])
+            if ts_ms < start or ts_ms > end or ts_ms in seen:
+                continue
+            seen.add(ts_ms)
+            out.append(_bar_from_ccxt(row))
+
+    def fetch_history(self, symbol: str, timeframe: str, *, start_ms: int, end_ms: int | None = None) -> list[Bar]:
+        """Download monthly archives for every COMPLETE month in `[start_ms, end_ms]` plus daily archives for the
+        current partial month, then return ascending, de-duped Bars. `end_ms` (default now) is clamped to now so a
+        future ts is never emitted. A 404 month is a gap (skipped, not zero-filled)."""
+        import time
+
+        now_ms = int(time.time() * 1000)
+        end = min(int(end_ms), now_ms) if end_ms is not None else now_ms
+        start = int(start_ms)
+        if end < start:
+            return []
+        start_dt = datetime.fromtimestamp(start / 1000, tz=UTC)
+        end_dt = datetime.fromtimestamp(end / 1000, tz=UTC)
+        current_month = f"{end_dt.year:04d}-{end_dt.month:02d}"
+
+        seen: set[int] = set()
+        out: list[Bar] = []
+        # Bulk: one monthly archive per COMPLETE month (the current partial month is daily-only — its monthly
+        # archive isn't published yet, so fetching it would 404).
+        for label in _iter_months(start_dt, end_dt):
+            if label == current_month:
+                continue
+            self._collect(self._archive_url(symbol, timeframe, "monthly", label), start, end, seen, out)
+        # Current partial month: daily archives, from the later of start or the 1st of this month through end.
+        month_first = end_dt.replace(day=1)
+        for label in _iter_days(max(start_dt, month_first), end_dt):
+            self._collect(self._archive_url(symbol, timeframe, "daily", label), start, end, seen, out)
+        out.sort(key=lambda b: b.ts)
+        return out
+
+
+class BulkTailBarBackfiller:
+    """Compose a BULK backfiller (Binance Vision archives — years of keyless history) with a recent-TAIL
+    backfiller (ccxt/REST — the last days/hours Vision hasn't archived yet) behind ONE `fetch_history` seam, so
+    the manager sees a single venue that returns deep history AND a fresh tail. The tail walk resumes one step
+    before the last bulk bar (a small overlap so a boundary bar is never dropped) and the two sets are merged,
+    deduped on ts with the BULK bar authoritative. If bulk returns nothing (e.g. a symbol Vision hasn't listed)
+    the tail still runs from `start_ms` — honest degradation, never a fabricated bar."""
+
+    def __init__(self, bulk: object, tail: object) -> None:
+        self._bulk = bulk
+        self._tail = tail
+
+    def fetch_history(self, symbol: str, timeframe: str, *, start_ms: int, end_ms: int | None = None) -> list[Bar]:
+        bulk = self._bulk.fetch_history(symbol, timeframe, start_ms=start_ms, end_ms=end_ms)  # type: ignore[attr-defined]
+        step = TIMEFRAME_MS.get(timeframe, TIMEFRAME_MS["1d"])
+        if bulk:
+            last_ms = int(bulk[-1].ts.timestamp() * 1000)
+            tail_start = max(int(start_ms), last_ms - step)  # small overlap → no boundary gap
+        else:
+            tail_start = int(start_ms)
+        tail = self._tail.fetch_history(symbol, timeframe, start_ms=tail_start, end_ms=end_ms)  # type: ignore[attr-defined]
+        merged: dict[int, Bar] = {int(b.ts.timestamp() * 1000): b for b in bulk}
+        for b in tail:
+            merged.setdefault(int(b.ts.timestamp() * 1000), b)  # bulk wins on overlap (Vision is authoritative)
+        return sorted(merged.values(), key=lambda b: b.ts)
 
 
 def bar_cache_path(cache_dir: Path | str, symbol: str, timeframe: str) -> Path:
