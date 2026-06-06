@@ -120,7 +120,7 @@ function DockTab({
     </span>
   );
   const className = cn(
-    "flex min-h-[56px] items-center justify-center px-0.5 transition-colors",
+    "flex min-h-[56px] w-full items-center justify-center px-0.5 transition-colors",
     !active && "hover:text-foreground"
   );
   if (item.href) {
@@ -169,7 +169,7 @@ export function BottomNav() {
     <>
       <nav
         aria-label="Primary"
-        className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
+        className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border/70 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_0_color-mix(in_oklab,var(--color-border)_60%,transparent)] lg:hidden"
       >
         {primaryItems.map((item) => (
           <DockTab key={item.href} item={item} active={isActive(pathname, item.href)} />

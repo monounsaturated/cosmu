@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
 import { SectionHeader } from "@/components/ui/section";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
+import { ExpandableSection } from "@/components/ui/expandable-section";
 import { formatUsd, formatSigned, timeAgo } from "@/lib/utils";
 
 export default async function CostsPage() {
@@ -89,74 +90,82 @@ export default async function CostsPage() {
         <SupplierTable rows={supplierRows} total={supplierTotal} computedAt={computed_at} />
       </section>
 
-      {/* LLM call breakdown */}
-      <section>
-        <h2 className="mb-3 text-[13px] font-semibold text-foreground">LLM calls (ledger)</h2>
-        <Card>
-          <CardContent className="py-4">
-            <LlmCallsPanel summary={costs.llm_calls} />
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* Engine infra table — seeded by engine on first /costs call */}
-      {costs.infra_lines.length > 0 && (
+      {/* Progressive disclosure — digestible default: KPIs + supplier table. LLM ledger, infra
+          lines, and per-strategy ROI are detail; reveal on demand. */}
+      <ExpandableSection
+        showLabel="Show LLM ledger, infra lines & per-strategy ROI"
+        hideLabel="Hide detail"
+        summary={null}
+      >
+        {/* LLM call breakdown */}
         <section>
-          <h2 className="mb-3 text-[13px] font-semibold text-foreground">Engine infra lines</h2>
+          <h2 className="mb-3 text-[13px] font-semibold text-foreground">LLM calls (ledger)</h2>
           <Card>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-[12.5px]">
-                  <thead>
-                    <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-quiet">
-                      <th className="px-4 py-2.5 text-left font-medium">Vendor</th>
-                      <th className="px-4 py-2.5 text-left font-medium">Category</th>
-                      <th className="px-4 py-2.5 text-right font-medium">Mid / mo</th>
-                      <th className="px-4 py-2.5 text-right font-medium">Range</th>
-                      <th className="px-4 py-2.5 text-left font-medium">Role</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {costs.infra_lines.map((line: InfraLine) => (
-                      <InfraRow key={line.vendor} line={line} />
-                    ))}
-                    <tr className="border-t border-border/60 bg-surface-2/30 font-semibold">
-                      <td className="px-4 py-2.5 text-foreground" colSpan={2}>Total (mid)</td>
-                      <td className="px-4 py-2.5 text-right text-foreground">{formatUsd(totalMonthly)}</td>
-                      <td className="px-4 py-2.5 text-right text-muted">
-                        {formatUsd(costs.infra_lines.reduce((s, l) => s + l.amount_min, 0))}–
-                        {formatUsd(totalMonthlyMax)}
-                      </td>
-                      <td className="px-4 py-2.5 text-quiet text-[11px]">target ~$50 · ceiling $100</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+            <CardContent className="py-4">
+              <LlmCallsPanel summary={costs.llm_calls} />
             </CardContent>
           </Card>
         </section>
-      )}
 
-      {/* Per-strategy ROI */}
-      <section>
-        <h2 className="mb-3 text-[13px] font-semibold text-foreground">Per-strategy ROI</h2>
-        {costs.per_strategy.length === 0 ? (
-          <Card>
-            <CardContent>
-              <EmptyState
-                title="No strategy-attributed costs yet."
-                hint="Once LLM calls are attributed to a strategy version, ROI (opex vs net P&L) appears here. Costs accrue when strategies are screened or run."
-              />
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {costs.per_strategy.map((row: CostPerStrategy) => (
-              <RoiCard key={row.version_id} row={row} />
-            ))}
-          </div>
+        {/* Engine infra table — seeded by engine on first /costs call */}
+        {costs.infra_lines.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-[13px] font-semibold text-foreground">Engine infra lines</h2>
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[12.5px]">
+                    <thead>
+                      <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-quiet">
+                        <th className="px-4 py-2.5 text-left font-medium">Vendor</th>
+                        <th className="px-4 py-2.5 text-left font-medium">Category</th>
+                        <th className="px-4 py-2.5 text-right font-medium">Mid / mo</th>
+                        <th className="px-4 py-2.5 text-right font-medium">Range</th>
+                        <th className="px-4 py-2.5 text-left font-medium">Role</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {costs.infra_lines.map((line: InfraLine) => (
+                        <InfraRow key={line.vendor} line={line} />
+                      ))}
+                      <tr className="border-t border-border/60 bg-surface-2/30 font-semibold">
+                        <td className="px-4 py-2.5 text-foreground" colSpan={2}>Total (mid)</td>
+                        <td className="px-4 py-2.5 text-right text-foreground">{formatUsd(totalMonthly)}</td>
+                        <td className="px-4 py-2.5 text-right text-muted">
+                          {formatUsd(costs.infra_lines.reduce((s, l) => s + l.amount_min, 0))}–
+                          {formatUsd(totalMonthlyMax)}
+                        </td>
+                        <td className="px-4 py-2.5 text-quiet text-[11px]">target ~$50 · ceiling $100</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
         )}
-      </section>
+
+        {/* Per-strategy ROI */}
+        <section>
+          <h2 className="mb-3 text-[13px] font-semibold text-foreground">Per-strategy ROI</h2>
+          {costs.per_strategy.length === 0 ? (
+            <Card>
+              <CardContent>
+                <EmptyState
+                  title="No strategy-attributed costs yet."
+                  hint="Once LLM calls are attributed to a strategy version, ROI (opex vs net P&L) appears here. Costs accrue when strategies are screened or run."
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {costs.per_strategy.map((row: CostPerStrategy) => (
+                <RoiCard key={row.version_id} row={row} />
+              ))}
+            </div>
+          )}
+        </section>
+      </ExpandableSection>
     </div>
   );
 }
