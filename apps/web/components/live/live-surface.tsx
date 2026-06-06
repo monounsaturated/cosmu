@@ -58,6 +58,9 @@ export function LiveSurface({
   const [eligible, setEligible] = useState<EligibleStrategy[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Venue toggling owns its OWN in-flight id so a single venue request can never disable (grey out)
+  // the rest of the surface — and never the whole page. null = nothing toggling right now.
+  const [togglingVenue, setTogglingVenue] = useState<string | null>(null);
   // Launch-live modal state: which strategy to launch (null = closed).
   const [launchTarget, setLaunchTarget] = useState<{ versionId: string; name: string } | null>(null);
 
@@ -98,22 +101,37 @@ export function LiveSurface({
 
   // Tick / untick a venue into the trading universe (POST /universe/venue). Optimistic, then reconciled
   // from /live/venues. This selects WHERE money may go; "not connected" venues simply can't trade until wired.
-  function toggleVenue(id: string, enabled: boolean) {
-    if (!ENGINE_CONFIGURED) return;
-    setVenues((v) => ({ ...v, venues: v.venues.map((x) => (x.id === id ? { ...x, enabled } : x)) }));
-    startTransition(async () => {
-      try {
-        await engineFetch("/universe/venue", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ venue_id: id, enabled })
-        });
-        await refreshVenues();
-      } catch {
-        setConnected(false);
-        await refreshVenues();
-      }
-    });
+  //
+  // This deliberately does NOT use the page-wide `pending` transition: a single venue request must never
+  // grey out (or freeze) the whole surface. It owns a local `togglingVenue` flag instead, always clears it
+  // in `finally` (so the checkbox can never get stuck grey), reverts the optimistic flip on failure, and
+  // aborts after a timeout so a hanging engine can't lock the control open. Errors are caught and surfaced
+  // as a note — never thrown, so the React tree can't crash.
+  async function toggleVenue(id: string, enabled: boolean) {
+    if (!ENGINE_CONFIGURED || togglingVenue) return;
+    const flip = (val: boolean) =>
+      setVenues((v) => ({ ...v, venues: v.venues.map((x) => (x.id === id ? { ...x, enabled: val } : x)) }));
+    flip(enabled); // optimistic
+    setTogglingVenue(id);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await engineFetch("/universe/venue", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ venue_id: id, enabled }),
+        signal: ctrl.signal
+      });
+      if (!res.ok) throw new Error("toggle rejected");
+      setConnected(true);
+      await refreshVenues();
+    } catch {
+      flip(!enabled); // revert the optimistic change so the box reflects reality
+      setNote("Couldn’t update that venue — the engine didn’t accept the change. Try again.");
+    } finally {
+      clearTimeout(timer);
+      setTogglingVenue(null);
+    }
   }
 
   // CLICK 1 — open the activation modal. This sends the live toggle request (enabled:true,
@@ -249,7 +267,7 @@ export function LiveSurface({
         />
       </section>
 
-      <VenuesCard venues={venues} connected={connected} pending={pending} onToggle={toggleVenue} />
+      <VenuesCard venues={venues} connected={connected} togglingVenue={togglingVenue} onToggle={toggleVenue} />
 
       <Card>
         <CardHeader>
@@ -360,12 +378,12 @@ export function LiveSurface({
 function VenuesCard({
   venues,
   connected,
-  pending,
+  togglingVenue,
   onToggle
 }: {
   venues: LiveVenuesResponse;
   connected: boolean;
-  pending: boolean;
+  togglingVenue: string | null;
   onToggle: (id: string, enabled: boolean) => void;
 }) {
   const rows = venues.venues;
@@ -400,10 +418,12 @@ function VenuesCard({
                 <input
                   type="checkbox"
                   checked={v.enabled}
-                  disabled={pending}
+                  // Only the row that's actually in flight is disabled — never the whole list — and it
+                  // always clears, so a checkbox can't get stuck grey.
+                  disabled={togglingVenue === v.id}
                   onChange={(e) => onToggle(v.id, e.target.checked)}
                   aria-label={`Include ${v.name}`}
-                  className="size-4 shrink-0 accent-iris"
+                  className="size-4 shrink-0 accent-iris disabled:opacity-50"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
