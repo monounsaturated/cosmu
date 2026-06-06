@@ -18,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MoneyState, moneyMode } from "@/components/ui/money-state";
-import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
+import { ENGINE_CONFIGURED, engineFetchTimeout } from "@/lib/engine";
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "never";
@@ -66,7 +66,7 @@ export function AutonomyPanel({
   async function refresh() {
     if (!ENGINE_CONFIGURED) return;
     try {
-      const res = await engineFetch("/autonomy/status");
+      const res = await engineFetchTimeout("/autonomy/status");
       if (!res.ok) throw new Error("engine unavailable");
       setStatus((await res.json()) as AutonomyStatus);
       setConnected(true);
@@ -88,7 +88,7 @@ export function AutonomyPanel({
         return;
       }
       try {
-        const res = await engineFetch(`/autonomy/${paused ? "pause" : "resume"}`, { method: "POST" });
+        const res = await engineFetchTimeout(`/autonomy/${paused ? "pause" : "resume"}`, { method: "POST" });
         if (!res.ok) throw new Error("engine unavailable");
         const data = (await res.json()) as PauseResumeResult;
         setStatus((s) => ({ ...s, paused: data.paused }));
@@ -112,7 +112,7 @@ export function AutonomyPanel({
         return;
       }
       try {
-        const res = await engineFetch("/autonomy/tick", { method: "POST" });
+        const res = await engineFetchTimeout("/autonomy/tick", { method: "POST" });
         if (!res.ok) throw new Error("engine unavailable");
         setTick((await res.json()) as AutonomyTickResult);
         setConnected(true);

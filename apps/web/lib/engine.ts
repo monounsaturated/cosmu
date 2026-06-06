@@ -14,3 +14,17 @@ export function engineFetch(path: string, init?: RequestInit): Promise<Response>
   const p = path.startsWith("/") ? path : `/${path}`;
   return fetch(`/api/engine${p}`, init);
 }
+
+// engineFetchTimeout — engineFetch with a built-in AbortController so a hung/slow engine can NEVER leave a
+// control stuck "pending" (greyed) forever. It aborts after `ms` (default 8s), so the promise ALWAYS settles
+// and callers can reliably clear their per-control in-flight flag (in `finally`, or via useTransition). This
+// is the going-forward primitive for any mutating control; pair it with a try/catch that surfaces a note.
+export async function engineFetchTimeout(path: string, init: RequestInit = {}, ms = 8000): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await engineFetch(path, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}

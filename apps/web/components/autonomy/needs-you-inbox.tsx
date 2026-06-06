@@ -16,7 +16,7 @@ import type { ApproveResult, DismissResult } from "@/app/autonomy-contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/honest-state";
-import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
+import { ENGINE_CONFIGURED, engineFetchTimeout } from "@/lib/engine";
 
 type Resolved = { id: string; label: string; tone: "up" | "muted" };
 
@@ -47,7 +47,7 @@ export function NeedsYouInbox({
         return;
       }
       try {
-        const res = await engineFetch(`/recommendations/${rec.id}/${kind}`, { method: "POST" });
+        const res = await engineFetchTimeout(`/recommendations/${rec.id}/${kind}`, { method: "POST" });
         if (!res.ok) throw new Error("engine unavailable");
         if (kind === "approve") {
           const data = (await res.json()) as ApproveResult;
