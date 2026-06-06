@@ -18,7 +18,13 @@ from decimal import Decimal
 
 from cosmu.data.altdata import AltDataProvider, CachedFundingRateProvider
 from cosmu.data.universe import PERP_UNIVERSE
-from cosmu.data.backtest import _regime_labels, align_asof, run_strategy_backtest
+from cosmu.data.backtest import (
+    FUNDING_ACCRUAL_KEY,
+    _regime_labels,
+    align_asof,
+    run_strategy_backtest,
+    sum_funding_per_bar,
+)
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.knowledge.store import Store
 from cosmu.master.scorer import BacktestMetrics, sample_moments, score
@@ -95,18 +101,26 @@ def _correlation(a: list[float], b: list[float]) -> float:
 def _funding_alt(
     market: dict[str, list[Bar]], funding: AltDataProvider, feature: str = "funding_rate"
 ) -> dict[str, dict[str, dict[str, float]]]:
-    """Build the PIT alt-data join feeding run_strategy_backtest: symbol -> {funding_rate: {bar.ts: rate}}.
+    """Build the PIT alt-data join feeding run_strategy_backtest: symbol -> {funding_rate (level),
+    __funding_accrual__ (per-bar summed carry)}.
 
-    Binance funding is an 8h periodic rate; daily bars get the LATEST published rate <= the bar close
-    (align_asof — strictly point-in-time, no look-ahead). The accrual in data/backtest._accrue_funding then
-    applies that per held bar. (One daily accrual of the 8h rate UNDERSTATES true daily carry ~3x — a
-    CONSERVATIVE choice: it cannot inflate the edge.)"""
+    Binance funding is an 8h periodic rate. The LEVEL series (align_asof — the latest published rate <= the bar
+    close, point-in-time) serves any funding-as-condition read. The ACCRUAL series sums EVERY settlement in each
+    bar interval (sum_funding_per_bar), so the carry accrued per held bar is the real daily total — fixing the
+    old ~3x understatement (one daily accrual of a single 8h print) that align_asof alone produced. Both are
+    point-in-time (no look-ahead); data/backtest._accrue_funding consumes the accrual series."""
     out: dict[str, dict[str, dict[str, float]]] = {}
     for symbol, bars in market.items():
         pts = funding.fetch_series(symbol, "funding_rate", limit=len(bars) + 1100)
-        joined = align_asof(pts, bars)  # {bar.ts.isoformat(): rate}
+        joined = align_asof(pts, bars)  # {bar.ts.isoformat(): rate} — the LEVEL (funding-as-condition read)
+        accrual = sum_funding_per_bar(pts, bars)  # per-bar SUMMED carry (the correct accrual)
+        feats: dict[str, dict[str, float]] = {}
         if joined:
-            out[symbol] = {feature: joined}
+            feats[feature] = joined
+        if accrual:
+            feats[FUNDING_ACCRUAL_KEY] = accrual
+        if feats:
+            out[symbol] = feats
     return out
 
 
@@ -299,7 +313,7 @@ def run_carry_ablation(
         )
 
     arms: list[ArmReport] = []
-    no_fund = {s: {k: v for k, v in f.items() if k != "funding_rate"} for s, f in funding_alt.items()}
+    no_fund = {s: {k: v for k, v in f.items() if k not in ("funding_rate", FUNDING_ACCRUAL_KEY)} for s, f in funding_alt.items()}
 
     # ---- ARM: funding-carry short perp (standalone directional short + carry tailwind) ----
     # Grid-screen the authored param space on real funding (Finder-faithful), take the gate-best variant.

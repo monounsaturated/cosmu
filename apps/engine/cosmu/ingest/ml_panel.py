@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from cosmu.config.feature_registry import feature_names
 from cosmu.data.altdata import _STORE_MARKET_WIDE, _STORE_PROVIDER_OF
 from cosmu.data.market import Bar
 
@@ -28,13 +29,14 @@ ML_PANEL_TRANSFORM_VERSION = "ml-panel-zscore-v1"
 # like every alt column, so the raw scale (a return vs a dollar volume) does not matter to the model.
 PRICE_FEATURES: tuple[str, ...] = ("ret_1", "range_pct", "volume")
 
-# Default alt features to join (the liquid, crypto-relevant tier0 reads + the typed event score). Missing
-# series degrade to an all-None column (honest 'no data', never a fabricated value) — exactly what `verify`
-# would flag as `missing`. Callers can pass their own metric list.
-DEFAULT_ALT_FEATURES: tuple[str, ...] = (
-    "funding_rate", "open_interest", "perp_spot_basis", "exchange_netflow",
-    "fear_greed", "news_event_score", "macro_regime", "vix_level",
-)
+# Default alt features to join: EVERY feature that is both enabled in the registry AND has a store route — i.e.
+# the full point-in-time store-backed alt universe (the panel consumes everything we route, not a hand-picked 8;
+# the registry had 67 features and only these 8 were used). Derived at import so it can never drift from the
+# registry/routing: a newly routed+enabled feature is absorbed automatically, and a disabled one (e.g. the fake
+# exchange_netflow, now enabled=False) drops out automatically — no second hand-listing to forget. A missing
+# series degrades to an all-None column (honest 'no data', never a fabricated value) — exactly what `verify`
+# flags as `missing`. Callers can still pass their own metric list.
+DEFAULT_ALT_FEATURES: tuple[str, ...] = tuple(sorted(feature_names() & set(_STORE_PROVIDER_OF)))
 
 # Standardization guards.
 DEFAULT_MIN_OBS = 20   # below this many observations a z-score is meaningless → emit None (honest abstention)

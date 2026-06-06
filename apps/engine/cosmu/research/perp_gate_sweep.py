@@ -19,7 +19,13 @@ from decimal import Decimal
 from pathlib import Path
 
 from cosmu.data.altdata import AltDataProvider, CachedFundingRateProvider
-from cosmu.data.backtest import align_asof, run_strategy_backtest, run_strategy_backtest_detailed
+from cosmu.data.backtest import (
+    FUNDING_ACCRUAL_KEY,
+    align_asof,
+    run_strategy_backtest,
+    run_strategy_backtest_detailed,
+    sum_funding_per_bar,
+)
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
 from cosmu.data.universe import PERP_UNIVERSE
 from cosmu.knowledge.store import Store
@@ -338,9 +344,15 @@ def run_perp_gate_sweep(
     funding_alt = {}
     for symbol, bars in market.items():
         pts = funding.fetch_series(symbol, "funding_rate", limit=len(bars) + 1100)
-        joined = align_asof(pts, bars)
+        joined = align_asof(pts, bars)  # LEVEL (funding-as-condition read)
+        accrual = sum_funding_per_bar(pts, bars)  # per-bar SUMMED carry (the correct accrual; fixes 2-8x error)
+        feats: dict[str, dict[str, float]] = {}
         if joined:
-            funding_alt[symbol] = {"funding_rate": joined}
+            feats["funding_rate"] = joined
+        if accrual:
+            feats[FUNDING_ACCRUAL_KEY] = accrual
+        if feats:
+            funding_alt[symbol] = feats
 
     # xsec_funding_rank: cross-sectional percentile rank of funding rates across the universe
     rank_alt = _xsec_funding_rank_alt(market, funding)

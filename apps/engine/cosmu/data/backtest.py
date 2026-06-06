@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import statistics
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -455,7 +456,14 @@ def _funding_series(
     name = getattr(spec, "funding_feature", None)
     if not name:
         return None
-    series = (alt or {}).get(name, {})
+    alt = alt or {}
+    # Prefer the per-bar SUMMED carry series (every settlement in the bar interval — correct total regardless of
+    # how the bar size relates to the per-symbol settlement interval; built by the alt-join via
+    # `sum_funding_per_bar`). Fall back to the feature's level series for callers that build `alt` by hand
+    # (sign-only fixtures with one value per bar — accrued once per bar, the prior behaviour).
+    series = alt.get(FUNDING_ACCRUAL_KEY)
+    if series is None:
+        series = alt.get(name, {})
     return [series.get(bar.ts.isoformat()) for bar in bars]
 
 
@@ -658,11 +666,77 @@ def align_asof(points: list[AltDataPoint], bars: list[Bar]) -> dict[str, float]:
     return out
 
 
-# Features computed directly from the bar series; everything else is alt-data joined point-in-time.
-# Public (the single source of truth): the evolution loop derives the leading-signal / alt-data universe
-# it must join as `feature_registry.feature_names() - PRICE_FEATURES`, so the two stay in lockstep with no
-# duplicated key list. Anything NOT in here is read from the point-in-time alt join (None when absent).
-PRICE_FEATURES = frozenset({"ret_Nd", "rsi", "bb_z", "vol_realized", "atr", "adx"})
+# Reserved alt-dict key carrying the per-bar SUMMED funding cash-flow series (every settlement in the bar's
+# interval), kept SEPARATE from the funding feature's level series so a funding-as-CONDITION read (e.g.
+# "funding_rate < ceiling") still sees the point-in-time LEVEL while the carry leg accrues the correct TOTAL.
+# Dunder so it can never collide with a registry feature name (feature_names()/the route guard never see it).
+FUNDING_ACCRUAL_KEY = "__funding_accrual__"
+
+
+def sum_funding_per_bar(points: list[AltDataPoint], bars: list[Bar]) -> dict[str, float]:
+    """Funding-ONLY point-in-time join for CARRY ACCRUAL: SUM every funding settlement whose timestamp falls in
+    a bar's interval, so the carry accrued over a hold equals the actual sum of settlements — regardless of how
+    the bar size relates to the per-symbol settlement interval (8h on Binance/OKX, 1h on Kraken Futures, …). The
+    interval is READ FROM THE DATA (we sum whatever real settlements land in the bar), never hardcoded to a
+    "3/day" assumption.
+
+    This is the funding-correct counterpart to `align_asof`. align_asof carries the LAST value forward — right
+    for a level/condition read, but for a CASH FLOW it is 2–8x off: on a sub-interval grid (e.g. 1h bars, 8h
+    funding) it carries ONE 8h print across every bar and accrues it on each (over-count); on a super-interval
+    grid (e.g. 1d bars, 8h funding) it collapses the day's three 8h prints to the last one (under-count). Summing
+    per bar accrues each settlement exactly once, on the bar whose interval (prev_bar.ts, bar.ts] contains it.
+
+    The first bar opens one cadence earlier (bars[1].ts - bars[0].ts) so a settlement landing on it is captured
+    without dumping deep prior history into bar 0. available_at == ts for funding (the exchange publishes the
+    realized rate at the settlement instant), so a settlement in (·, bar.ts] is known by that bar's close — no
+    look-ahead. Keyed by bar.ts.isoformat() so the summed value travels with the bar through any later slice.
+    Bars with no settlement get no entry (the funding series reads None → accrues nothing — honest, never 0-fab)."""
+    if not points or not bars:
+        return {}
+    bars_sorted = sorted(bars, key=lambda b: b.ts)
+    pts = sorted(points, key=lambda p: p.ts)
+    cadence = (bars_sorted[1].ts - bars_sorted[0].ts) if len(bars_sorted) >= 2 else timedelta(0)
+    out: dict[str, float] = {}
+    j, n = 0, len(pts)
+    lo = bars_sorted[0].ts - cadence  # bar 0's lower bound (one cadence back), so pre-window funding is dropped
+    for bar in bars_sorted:
+        total = 0.0
+        hit = False
+        while j < n and pts[j].ts <= bar.ts:
+            if pts[j].ts > lo:  # inside (lo, bar.ts]; the guard only ever excludes deep pre-history at bar 0
+                total += float(pts[j].value)
+                hit = True
+            j += 1
+        if hit:
+            out[bar.ts.isoformat()] = total
+        lo = bar.ts
+    return out
+
+
+# TA features computed directly, per-symbol, from the bar series in `_feature_matrix` below.
+_BAR_TA_FEATURES = frozenset({"ret_Nd", "rsi", "bb_z", "vol_realized", "atr", "adx"})
+
+# COHORT-COMPUTED features: real, point-in-time features that are NOT ingested into the alt store and NOT
+# bar-TA either — they are COMPUTED by a research cohort and handed to the backtest via the caller's `alt`
+# dict (read through `_feature_matrix`'s else-branch), never store-joined. The cross-sectional momentum rank
+# (research.carry_ablation._xsec_rank_alt, derived from the whole universe's bars), the normalized LunarCrush
+# derivations (research.social_norm.derive_social_alt), and the social-authority signals
+# (mind.authority.AuthorityProvider). They belong with the computed features (not the store-joined universe),
+# so the registry↔route guard recognises them as "computed, not dead", and `alt_feature_universe` correctly
+# excludes them from the store alt-join it attempts (there is no store data to fetch — only the cohort computes
+# them). If one of these is later persisted to the store, move it to `_STORE_PROVIDER_OF` instead.
+_COHORT_COMPUTED_FEATURES = frozenset({
+    "xsec_momentum_rank",
+    "social_volume_accel", "social_attention_z", "social_excess_attention_z", "galaxy_score_z", "btc_social_accel",
+    "authority_weighted_claim_signal", "author_authority",
+})
+
+# Public union (the single source of truth): every feature the backtest does NOT alt-join from the store
+# because it is COMPUTED (bar-TA above, or cohort-computed) and supplied directly. The evolution loop derives
+# the leading-signal / store-joined universe as `feature_registry.feature_names() - PRICE_FEATURES`, so the two
+# stay in lockstep with no duplicated key list. (Name kept for back-compat with importers, incl. the
+# registry↔route guard test; it now means "computed / not-store-joined", a superset of the bar-TA features.)
+PRICE_FEATURES = _BAR_TA_FEATURES | _COHORT_COMPUTED_FEATURES
 
 
 def _feature_matrix(
