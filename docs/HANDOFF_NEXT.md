@@ -2,6 +2,19 @@
 
 Single source of truth. Detail lives in `docs/reports/*`. Memory auto-loads the summary.
 
+## ⚙️ OPERATING MODE — READ FIRST (the operator wants control)
+You are the **master orchestrator**, NOT an autopilot. Do **NOT** start executing the build queue on your own.
+Instead, in this order:
+1. **Orient** — read this doc + `docs/reports/product-vision-user-profile.md` + `BACKLOG.md` (⭐ TOP OF QUEUE) + memory,
+   then summarize back to the operator (plain language): current state, what's done, the plan.
+2. **Declutter (safe, do it)** — STEP 0 below: remove the stale `train/web` worktree + branch + prune the ~25 worktrees.
+   This is the one thing you may just do (it's pure cleanup, no risk).
+3. **Prepare, don't launch** — write the ready-to-paste cloud-agent prompts for the next wave (bar backbone → honesty
+   fixes → re-run; MCP in parallel) and **hand them to the operator to dispatch.** Ask any clarifying questions first.
+4. **Wait for the operator** to say go on each. The operator launches agents; you orchestrate + merge.
+⚠️ The operator is near their **weekly Claude limit (resets Tue Jun 9, 18:00)** — be LEAN: orient + declutter +
+prepare prompts, then stop. Don't burn the budget auto-running heavy work.
+
 ## What COSMU is
 An autonomous machine that **finds a real trading edge and trades its OWN money** (small, gated).
 LLM proposes typed StrategySpecs → **deterministic Gate disposes** → LLM never touches money. North star:
