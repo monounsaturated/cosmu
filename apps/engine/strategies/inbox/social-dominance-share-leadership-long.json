@@ -1,0 +1,56 @@
+{
+  "name": "Social-dominance share leadership — long coins with an elevated relative-attention share (~1-week)",
+  "rationale": "FRESH, NON-OBVIOUS hypothesis from an unbiased cross-asset lead-lag scan (cosmu/research/social_dominance_scan.py, 30-coin universe, ~1000 PIT daily bars each). The scan probed the DEEP, scale-stable LunarCrush cross-sectional ATTENTION SHARES that no spec rests on yet: social_dominance = a coin's % share of ALL crypto social volume. Unlike raw social_volume (drifts ~160x over 2020-26, so a fitted level floor is always-true — the phase0 §4 trap) and unlike social_volume_accel (probed DEAD on this universe: |t|<=1.1 at every horizon), the within-asset TRAILING z of social_dominance LEADS the cross-sectional forward return UP, monotonically in horizon: decile-spread t=+1.97 (k=1), +2.77 (k=2), +2.68 (k=3), +2.94 (k=5), +3.00 (k=7) — a SLOW ~1-week relative-attention-rotation continuation, distinct from absolute crowding (the registry's social_attention_z prior says elevated ABSOLUTE volume z leads DOWN; here elevated relative SHARE leads UP). The day-over-day CHANGE of dominance carries no signal (t~0) — it is the sustained elevated SHARE (z), not the jump, that pays. We enter LONG (spot-only, no shorts on Binance spot) when social_dom_z is HIGH (the coin owns an unusually large slice of crowd attention for its own recent history) AND own-price momentum is not already broken, and hold to the ~1-week horizon where the edge lives. DISCONFIRMER 1 (MANDATORY — subsumption): social_dominance co-moves with price (a coin getting more attention is often a coin that has already moved). A pre-registered DOUBLE-SORT holding 7d price-momentum ~fixed collapsed the spread to t=+0.20 (k=5) / +1.03 (k=7) — so the hypothesis is FALSIFIED if a momentum-ONLY control arm (drop social_dom_z, keep only ret_Nd) matches or beats its deflated Sharpe: then social_dom_z adds no orthogonal information and the 'attention share' story is just momentum. DISCONFIRMER 2 (relative vs absolute): swapping social_dom_z for the absolute social_volume_accel control must NOT match it — else it is the absolute level, not the relative share, that pays (and the absolute control already probed dead). DISCONFIRMER 3 (placebo): a within-asset time-shuffled social_dom_z (same marginal distribution, scrambled timing) must NOT reproduce the edge. tier1 + low-confidence until validated OOS — the Gate down-weights until it earns its place. PRIOR (honest): the double-sort already predicts disconfirmer 1 will likely FIRE; this is authored so the deterministic Gate disposes, not to be tuned to pass.",
+  "catalyst": "a coin's share of total crypto social attention is elevated vs its own recent history; relative-strength rotation continues over the following week",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": { "name": "social_dom_z" },
+      "op": "gt",
+      "threshold": { "param": "dom_floor" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "social_dom_z" },
+        "op": "cross_down",
+        "threshold": { "param": "dom_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.40
+  },
+  "param_space": {
+    "dom_floor": { "kind": "float", "lo": 0.50,  "hi": 2.50 },
+    "dom_exit":  { "kind": "float", "lo": -0.50, "hi": 1.00 },
+    "mom_lb":    { "kind": "int",   "lo": 5,     "hi": 30,   "step": 1 },
+    "mom_floor": { "kind": "float", "lo": -0.02, "hi": 0.04 },
+    "stop":      { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":        { "kind": "float", "lo": 0.06,  "hi": 0.25 },
+    "time_stop": { "kind": "int",   "lo": 4,     "hi": 10,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

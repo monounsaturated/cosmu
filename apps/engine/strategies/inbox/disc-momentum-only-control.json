@@ -1,0 +1,50 @@
+{
+  "name": "DISCONFIRMER — momentum-only control (the social-dominance spec with social_dom_z removed)",
+  "rationale": "Pre-registered SUBSUMPTION disconfirmer for social-dominance-share-leadership-long. IDENTICAL spec MINUS the social_dom_z legs: same long-only, same ~1-week hold, same price-momentum entry (ret_Nd > mom_floor) and the SAME stop/tp/time-stop param ranges. If this momentum-only arm matches or beats the social-dominance arm's deflated Sharpe under the SAME cohort BH-FDR, then social_dom_z adds NO orthogonal information and the 'relative-attention-share' edge is just price momentum (the double-sort that held momentum fixed already collapsed the spread to t~0.2-1.0). A control that reproduces the candidate FALSIFIES it.",
+  "catalyst": "price momentum alone (no social signal) — the null the attention-share hypothesis must beat",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+        "op": "lt",
+        "threshold": { "param": "mom_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.40
+  },
+  "param_space": {
+    "mom_lb":    { "kind": "int",   "lo": 5,     "hi": 30,   "step": 1 },
+    "mom_floor": { "kind": "float", "lo": -0.02, "hi": 0.04 },
+    "mom_exit":  { "kind": "float", "lo": -0.06, "hi": 0.0 },
+    "stop":      { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":        { "kind": "float", "lo": 0.06,  "hi": 0.25 },
+    "time_stop": { "kind": "int",   "lo": 4,     "hi": 10,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
