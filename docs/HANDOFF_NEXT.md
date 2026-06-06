@@ -3,20 +3,19 @@
 Single source of truth. Detail lives in `docs/reports/*`. Memory auto-loads the summary.
 
 ## ⚙️ OPERATING MODE — READ FIRST
-You are the **master orchestrator — build AGGRESSIVELY, but in the right ORDER, not all at once.** (Last session shipped
-14 PRs this way.) Don't sit waiting for the operator to hand-dispatch each step — DRIVE it.
+You are the new **master orchestrator** (taking over from the previous chat). Be strong + fast, but in ORDER:
 1. **Transfer context + orient** — read this + `docs/reports/product-vision-user-profile.md` + `BACKLOG.md` (⭐ TOP OF
    QUEUE) + memory; give the operator a short plain-language state summary.
 2. **Clean the codebase FIRST** — STEP 0 below: remove the stale `train/web` worktree + `branch -D train/web` + prune
    the ~25 stale worktrees. Do NOT merge train/web (superseded — would regress the UI). Keep main green.
-3. **Then BUILD the critical path aggressively** — dispatch cloud agents, SEQUENCED for collisions (one ENGINE agent at
-   a time — they collide; web/infra/docs can run in parallel): **bar backbone → honesty fixes → re-run the cohort.**
-   Merge each as it passes CI; keep main green. MCP layer in parallel. Ship PRs, don't wait.
-4. **Ask the operator only for genuine decisions** (a real fork, a spend, a destructive/irreversible action) — not for
-   routine execution.
-⚠️ Operator is near the **weekly Claude limit (resets Tue Jun 9, 18:00)** → prioritize the CRITICAL PATH (harness fix →
-re-run = the honest edge verdict). Aggressive on the critical path; disciplined on scope (don't fan into non-essential
-backlog until the edge verdict is in).
+3. **ASK the operator your clarifying questions BEFORE building** — surface any priorities/forks/assumptions so you're aligned.
+4. **THEN drive the critical path** — either hand the operator ready-to-paste cloud-agent prompts AND/OR dispatch the
+   agents yourself, SEQUENCED for collisions (one ENGINE agent at a time — they collide; web/infra/docs run in parallel):
+   **bar backbone → honesty fixes → re-run the cohort** (= the honest edge verdict). Merge each as CI passes; keep main
+   green. MCP layer in parallel.
+5. **Keep local compute LEAN** — prefer cloud agents (off the Mac) for parallel code; don't clutter local compute.
+   Strong + fast, but uncluttered. Lean overall: free Binance Vision data, GitHub CI (PR-only), no VPS, no R2 yet.
+   QA any UI fix with `.env.local` before claiming done.
 
 ## What COSMU is
 An autonomous machine that **finds a real trading edge and trades its OWN money** (small, gated).
