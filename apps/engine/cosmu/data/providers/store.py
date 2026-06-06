@@ -1,11 +1,24 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from ._types import AltDataPoint
+
+logger = logging.getLogger("cosmu.data.store")
+
+
+class UnknownAltMetricError(KeyError):
+    """A consumer asked StoreBackedAltProvider for a metric with NO route in `_provider_of`.
+
+    This is ALWAYS a wiring bug (a typo or a renamed/unregistered metric), never a data gap — the old
+    behaviour of silently returning [] turned such bugs into invisible no-ops (the P0 risk_on/pm_risk_on
+    name split: the gate read "risk_on", routing only knew "pm_risk_on", so the live cross-asset feature was
+    silently stripped from every Gate run with no error and no failing test). Raising turns that whole
+    silent-miss class into a loud, immediate failure. A KNOWN metric with no stored data still returns []."""
 
 
 class AltDataStore:
@@ -232,7 +245,19 @@ class StoreBackedAltProvider:
         metric = _STORE_REQUEST_ALIAS.get(metric, metric)
         provider = self._provider_of.get(metric)
         if provider is None:
-            return []
+            # No route for this metric — ALWAYS a wiring bug (typo / unregistered / renamed metric), never a
+            # data gap. Fail LOUD instead of silently returning [] (the silent-miss class that hid the P0
+            # risk_on/pm_risk_on split). A KNOWN metric with no stored data still falls through to [] below.
+            logger.warning(
+                "StoreBackedAltProvider: no store route for metric %r (symbol %r) — unknown/unrouted metric, raising",
+                metric, symbol,
+            )
+            raise UnknownAltMetricError(
+                f"no store route for metric {metric!r}: it is absent from _provider_of. This is a wiring bug "
+                f"(typo, unregistered, or renamed metric), not a data gap. Add it to _STORE_PROVIDER_OF (and "
+                f"_STORE_MARKET_WIDE if market-wide) or fix the request name. Known routes: "
+                f"{sorted(self._provider_of)}"
+            )
         key = "MARKET" if metric in self._market_wide else symbol
         points = self._store.read_all(provider, key, metric)
         if not points:

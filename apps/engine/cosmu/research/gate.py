@@ -761,7 +761,12 @@ def _xa_features(market, class_of, alt_provider, news_provider, lookback):  # no
     cache: dict = {}
     counter: dict = {}
     big = 10**9
-    risk_on_pts = alt_provider.fetch_series("MARKET", "risk_on", limit=big)
+    # Query the CANONICAL stored metric name. Ingest banks the prediction-market risk transfer series under
+    # "pm_risk_on" (cosmu/ingest/run.py); requesting the old "risk_on" relied on a store-side request alias and
+    # returned [] for any provider without it (the P0 integrity bug: the live cross-asset feature was silently
+    # empty). The feature key f["risk_on"], the _xp_riskon predicate, and the drop-one label stay "risk_on" —
+    # only the store-query name is the canonical one.
+    risk_on_pts = alt_provider.fetch_series("MARKET", "pm_risk_on", limit=big)
     macro_pts = alt_provider.fetch_series("MARKET", "macro_regime", limit=big)
     # Cross-market transfer sources: free, market-wide daily price LEVELS (metals/commodities/equity
     # indexes/FX) read once here, then turned STATIONARY per symbol via the causal rolling z-score below.
