@@ -25,3 +25,25 @@
 - [ ] Cross-strategy correlation signals
 - [x] **Modal heavy-compute lane scaffolded** (2026-06-05, see docs/COMPUTE.md): `apps/engine/remote/app.py` (gate_sweep · ingest · forward_mark · run_module) + `scripts/sync_modal_secret.py` + `pnpm modal:gate/ingest/secret`. Hybrid: **Railway keeps the backend**. Fly rejected; RunPod deferred (post-edge GPU). *Remaining:* run a first real `modal run` end-to-end and confirm it writes to Supabase (needs Modal account + `pnpm modal:secret`) (infra, opus)
 - [ ] Options support
+
+## ⭐ TOP OF QUEUE — 2026-06-06 session (SUPERSEDES the stale "Now" above; detail in docs/HANDOFF_NEXT.md + docs/reports/)
+> Big reframe this session: the "0 edges" verdict was untrustworthy — the harness was broken. P0 now FIXED (#123/#126).
+- [ ] **Bar backbone** — `BinanceVisionBarBackfiller` (bulk OHLCV 2017→now, spot+perp, full universe); the bar cache is
+      EMPTY → every Gate run is starved. THE precondition. Keyless/free; run is LOCAL. (engine, opus)
+- [ ] **Honesty fixes** — fake `exchange_netflow` (rename/disable), funding annualization (per-symbol interval, 2–8× off),
+      FRED ALFRED vintage, + `registry ⊆ routable` guard test. (engine, sonnet) — *serialize after bar backbone*
+- [ ] **Re-run the crypto cohort** on the trustworthy harness — btc-social risk-on OVERLAY first + Polymarket family on
+      historical odds (data-only); one BH-FDR family → honest edge verdict. (local)
+- [ ] **MCP layer** — Supabase + Postgres + thin engine/Gate-CLI MCP (Claude Code drives it natively). (infra) — parallel-safe
+- [ ] **P2 integrity** — route/disable the 5 enabled-but-unrouted registry features; harden `ingest/ml_panel.py`. (engine, sonnet)
+- [ ] **Hot/cold data tiering** — archive full history to parquet on Cloudflare R2 (DuckDB reads), keep hot in PG; build when
+      the 8 GB Supabase Pro cap nears (~6 GB now) → infra <$100/mo at scale. (engine+infra) — see docs/reports/scaling-economics.md
+- [ ] **Data-viz overlay charts** — recover stash `data-viz-wip-2026-06-06` or re-run (price+social+funding overlay, event dots). (web)
+- [ ] **"cohort" UI tooltip** — "tested together so a winner isn't just lucky." (web, xs)
+- [ ] **Branch graveyard cleanup** — prune stale worktrees/branches WHEN no agents active. (git)
+- [ ] **$15 LunarCrush BUILDER mega-grab** (when wanted): upgrade Builder 1 day (100 req/min) → `scripts/lunarcrush_max_extract.py
+      --coins 4000 --stocks 2000 --topics 800 --categories 300 --sleep 0.7` (gated-skip + batched writes already in) → store → CANCEL.
+- [ ] **Lane A2 buys** (AFTER the Gate is proven): LlamaParse filings (`.claude/tasks/lane-a-filings-llamaparse.md`),
+      Firecrawl/GDELT/Quiver, Cohere Rerank, Renovate + CodeRabbit. See docs/reports/generalization-plan-2026-06-06.md.
+- [x] **Decided 2026-06-06:** keep GitHub-hosted CI (PR-only, lean) — NOT self-hosted/Codespaces; NO VPS; Polymarket =
+      backtest-only (live parked, US blocked); Supabase Pro (8 GB) is the data home until tiering.

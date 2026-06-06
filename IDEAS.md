@@ -43,5 +43,18 @@
 
 - [2026-06-05] Polymarket smart-money flow as a PIT alt-data feature (news/scoring, NOT copy-trading): index the on-chain Polymarket ledger (top-decile-profitable + insider-flagged wallet net-flow per market) → `/profile-source` audit → feature registry → Gate. Treat like a sentiment/news score: confirm/veto in liquid markets, may *originate* in prediction markets (§7). Passive copy-trading is rejected — latency means you always fill after the whale; any "insider z-score" runs through OUR deflated-Sharpe/PBO gate, not theirs. Powers the reserved "LLM research-desk for Polymarket ONLY" idea above. (Inspired by CrowdIntel's Postgres-MCP-over-ledger writeup.)
 
+- [2026-06-06] **Product vision / user tailoring** (see docs/reports/product-vision-user-profile.md): operator is a
+  trend-spotter who wants to drive a deep quant machine by NATURAL LANGUAGE in Claude Code — "vibe-test a ton of ideas"
+  → typed spec → honest Gate → verdict, conversationally. Wants: clean cross-data, tons of well-behaved skills,
+  learning, no bugs, a clean mobile-first dashboard, easy to drive but deep underneath (Hermes-style: fast/capable/
+  tool-using/well-behaved). Goal: USED + makes money + functional. Build everything toward that UX.
+- [2026-06-06] **Generalization barbell / Lane B** (see docs/reports/generalization-plan-2026-06-06.md): the
+  formatter/source-trust/PIT-store/scan-signals are domain-agnostic → a "domain" = config (sources + taxonomy + its
+  OWN oracle). Finance funds + proves it; engineering/quant facts eligible sooner (reproducible benchmark = oracle);
+  health/habits = correlation surface with disconfirmers + disclaimers, NEVER advice. `/add-domain` skill scaffolds a
+  vertical with a REQUIRED oracle. No oracle → no graduation.
+- [2026-06-06] **NL backtest/stress-test UX polish**: make "describe an idea → stress-tested answer" frictionless in
+  Claude Code (the `strategize` front door + scenario/stress harness). The MCP layer (Backlog) is the enabler.
+
 ## Archived
 <!-- Triaged ideas move here with their disposition: promoted / deferred / dropped. -->
