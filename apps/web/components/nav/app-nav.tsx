@@ -1,15 +1,17 @@
 "use client";
 
-// module: app navigation. FOUR persistent surfaces — Overview · Strategies · Costs · Console — each
-// serving one decision. Desktop = persistent icon-rail sidebar; mobile = a bottom tab bar (4 tabs + a
-// More sheet).
+// module: app navigation. Seven surfaces covering the full vibe loop (idea → spec → verdict) and
+// the operator's main decisions. Desktop = persistent icon-rail sidebar; mobile = a bottom tab bar
+// (4 primary tabs + a More sheet with the rest).
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  Brain,
   DollarSign,
+  FlaskConical,
   LayoutDashboard,
   ListChecks,
   MoreHorizontal,
@@ -22,10 +24,12 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; desc?: string; icon: typeof LayoutDashboard; gated?: boolean };
 
-// The four persistent surfaces — one per decision the operator makes.
+// Primary surfaces — the full vibe loop + main operator decisions.
 export const navItems: NavItem[] = [
   { href: "/", label: "Overview", desc: "Status · verdicts · ideas", icon: LayoutDashboard },
-  { href: "/strategies", label: "Strategies", desc: "Which deserve capital?", icon: ListChecks },
+  { href: "/lab", label: "Lab", desc: "Idea → spec → verdict", icon: FlaskConical },
+  { href: "/strategies", label: "Strategies", desc: "Backtest · Simulation · Live", icon: ListChecks },
+  { href: "/mind", label: "Mind", desc: "What the agent knows & learned", icon: Brain },
   { href: "/costs", label: "Costs", desc: "What is it costing?", icon: DollarSign },
   { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal }
 ];
@@ -133,10 +137,16 @@ function DockTab({
   );
 }
 
-// Mobile primary navigation: a fixed bottom tab bar — the four top tabs + a More sheet (5 cells).
+// Mobile primary navigation: first 4 nav items as primary tabs + a More sheet (5 cells total).
+// Extra nav items beyond 4 go into the More sheet alongside the moreItems.
+const BOTTOM_NAV_LIMIT = 4;
+
 export function BottomNav() {
   const pathname = usePathname();
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  const primaryItems = navItems.slice(0, BOTTOM_NAV_LIMIT);
+  const overflowItems = navItems.slice(BOTTOM_NAV_LIMIT);
 
   // Close the sheet whenever the route changes (a tap inside it navigated).
   useEffect(() => {
@@ -153,32 +163,51 @@ export function BottomNav() {
     };
   }, [sheetOpen]);
 
+  const overflowActive = overflowItems.some((i) => isActive(pathname, i.href));
+
   return (
     <>
       <nav
         aria-label="Primary"
         className="glass fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border/70 pb-[env(safe-area-inset-bottom)] lg:hidden"
       >
-        {navItems.map((item) => (
+        {primaryItems.map((item) => (
           <DockTab key={item.href} item={item} active={isActive(pathname, item.href)} />
         ))}
         <DockTab
           item={{ label: "More", icon: MoreHorizontal }}
-          active={sheetOpen || moreItems.some((i) => isActive(pathname, i.href))}
+          active={sheetOpen || overflowActive || moreItems.some((i) => isActive(pathname, i.href))}
           onClick={() => setSheetOpen(true)}
         />
       </nav>
 
-      <MoreSheet open={sheetOpen} onClose={() => setSheetOpen(false)} pathname={pathname} />
+      <MoreSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        pathname={pathname}
+        overflowItems={overflowItems}
+      />
     </>
   );
 }
 
-// Bottom sheet holding the secondary routes. Smooth slide-up, scrim, safe-area aware, reduced-motion aware.
-function MoreSheet({ open, onClose, pathname }: { open: boolean; onClose: () => void; pathname: string }) {
+// Bottom sheet holding secondary routes + any nav items that overflow the primary bar.
+function MoreSheet({
+  open,
+  onClose,
+  pathname,
+  overflowItems
+}: {
+  open: boolean;
+  onClose: () => void;
+  pathname: string;
+  overflowItems: NavItem[];
+}) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
+
+  const allItems = [...overflowItems, ...moreItems];
 
   return createPortal(
     <div className={cn("fixed inset-0 z-40 lg:hidden", open ? "pointer-events-auto" : "pointer-events-none")} aria-hidden={!open}>
@@ -218,7 +247,7 @@ function MoreSheet({ open, onClose, pathname }: { open: boolean; onClose: () => 
           </button>
         </div>
         <div className="grid grid-cols-2 gap-2 px-4 pb-5 pt-1">
-          {moreItems.map((item) => {
+          {allItems.map((item) => {
             const active = isActive(pathname, item.href);
             const Icon = item.icon;
             return (
