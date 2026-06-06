@@ -450,9 +450,13 @@ def run_extract(
     if n_coins > 0 and (dry_run or extractor._calls_remaining() > 0):
         print(f"--- Discovering top {n_coins} coins (1 discovery call) …", flush=True)
         if not dry_run:
-            raw_coins = _list_coins(api_key, n_coins)
-            extractor.manifest.increment_calls()  # the list call itself
-            coin_ids = _prioritise_coins([c.get("symbol", "") for c in raw_coins if c.get("symbol")])
+            try:
+                raw_coins = _list_coins(api_key, n_coins)
+                extractor.manifest.increment_calls()  # the list call itself
+                coin_ids = _prioritise_coins([c.get("symbol", "") for c in raw_coins if c.get("symbol")])
+            except Exception as e:  # noqa: BLE001 — discovery endpoint gated on the Individual plan (HTTP 402)
+                print(f"  [coins/list gated on this plan: {e}] → curated Numerai+PERP universe", flush=True)
+                coin_ids = _prioritise_coins(list(NUMERAI_CRYPTO_UNIVERSE))
         else:
             # In dry-run, synthesise a representative preview list
             coin_ids = list(NUMERAI_CRYPTO_UNIVERSE[:n_coins])
@@ -465,12 +469,19 @@ def run_extract(
     stocks_calls = 0
     if n_stocks > 0 and (dry_run or extractor._calls_remaining() > 0):
         print(f"\n--- Discovering top {n_stocks} stocks (1 discovery call) …", flush=True)
+        _curated_stocks = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "JPM", "BRK.B", "V",
+                           "AMD", "INTC", "NFLX", "DIS", "BA", "COIN", "MSTR", "PYPL", "SQ", "HOOD",
+                           "GME", "AMC", "PLTR", "SOFI", "RIVN", "F", "GM", "UBER", "ABNB", "SHOP"]
         if not dry_run:
-            raw_stocks = _list_stocks(api_key, n_stocks)
-            extractor.manifest.increment_calls()
-            stock_ids = [s.get("symbol", "") for s in raw_stocks if s.get("symbol")]
+            try:
+                raw_stocks = _list_stocks(api_key, n_stocks)
+                extractor.manifest.increment_calls()
+                stock_ids = [s.get("symbol", "") for s in raw_stocks if s.get("symbol")]
+            except Exception as e:  # noqa: BLE001 — discovery gated (HTTP 402) on Individual
+                print(f"  [stocks/list gated: {e}] → curated top stocks", flush=True)
+                stock_ids = _curated_stocks[:n_stocks]
         else:
-            stock_ids = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "JPM", "BRK.B", "V"][:n_stocks]
+            stock_ids = _curated_stocks[:n_stocks]
         stock_entities = [(f"stock:{sid}", sid) for sid in stock_ids[:n_stocks]]
         stocks_calls, idx = extractor._run_bucket("stock", stock_entities, _STOCK_FIELDS, _fetch_stock_series, total_budget, idx)
 
@@ -478,12 +489,19 @@ def run_extract(
     topics_calls = 0
     if n_topics > 0 and (dry_run or extractor._calls_remaining() > 0):
         print(f"\n--- Discovering top {n_topics} topics (1 discovery call) …", flush=True)
+        _curated_topics = ["bitcoin", "ethereum", "solana", "artificial-intelligence", "defi", "nft",
+                           "web3", "metaverse", "memecoins", "stablecoins", "layer-2", "rwa", "depin",
+                           "gaming", "ai-agents", "etf", "federal-reserve", "inflation", "stocks", "tesla"]
         if not dry_run:
-            raw_topics = _list_topics(api_key, n_topics)
-            extractor.manifest.increment_calls()
-            topic_ids = [t.get("topic", t.get("id", "")) for t in raw_topics if t.get("topic") or t.get("id")]
+            try:
+                raw_topics = _list_topics(api_key, n_topics)
+                extractor.manifest.increment_calls()
+                topic_ids = [t.get("topic", t.get("id", "")) for t in raw_topics if t.get("topic") or t.get("id")]
+            except Exception as e:  # noqa: BLE001 — discovery gated (HTTP 402) on Individual
+                print(f"  [topics/list gated: {e}] → curated top topics", flush=True)
+                topic_ids = _curated_topics[:n_topics]
         else:
-            topic_ids = ["bitcoin", "ethereum", "artificial-intelligence", "defi", "nft", "web3", "metaverse"][:n_topics]
+            topic_ids = _curated_topics[:n_topics]
         topic_entities = [(f"topic:{tid}", tid) for tid in topic_ids[:n_topics]]
         topics_calls, idx = extractor._run_bucket("topic", topic_entities, _TOPIC_FIELDS, _fetch_topic_series, total_budget, idx)
 
@@ -491,12 +509,18 @@ def run_extract(
     categories_calls = 0
     if n_categories > 0 and (dry_run or extractor._calls_remaining() > 0):
         print(f"\n--- Discovering top {n_categories} categories (1 discovery call) …", flush=True)
+        _curated_cats = ["layer-1", "defi", "layer-2", "meme", "ai-tokens", "gaming", "rwa", "depin",
+                         "stablecoins", "exchange-tokens", "liquid-staking", "oracle"]
         if not dry_run:
-            raw_categories = _list_categories(api_key, n_categories)
-            extractor.manifest.increment_calls()
-            category_ids = [c.get("category", c.get("id", "")) for c in raw_categories if c.get("category") or c.get("id")]
+            try:
+                raw_categories = _list_categories(api_key, n_categories)
+                extractor.manifest.increment_calls()
+                category_ids = [c.get("category", c.get("id", "")) for c in raw_categories if c.get("category") or c.get("id")]
+            except Exception as e:  # noqa: BLE001 — discovery gated (HTTP 402) on Individual
+                print(f"  [categories/list gated: {e}] → curated categories", flush=True)
+                category_ids = _curated_cats[:n_categories]
         else:
-            category_ids = ["layer-1", "defi", "layer-2", "meme", "ai-tokens"][:n_categories]
+            category_ids = _curated_cats[:n_categories]
         cat_entities = [(f"category:{cid}", cid) for cid in category_ids[:n_categories]]
         categories_calls, idx = extractor._run_bucket("category", cat_entities, _CATEGORY_FIELDS, _fetch_category_series, total_budget, idx)
 
