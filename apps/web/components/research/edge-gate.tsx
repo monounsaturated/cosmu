@@ -69,7 +69,10 @@ export function EdgeGate() {
   // HONESTY INVARIANT: a verdict computed on anything other than LIVE data is NOT a verdict we will
   // display. We never render a synthetic PASS/STOP or its checklist — only an explicit "needs real data"
   // state. The numbers would be meaningless and showing them would violate "never display synthetic data".
+  // When the gate ran on synthetic data we relabel the card "machinery demo (synthetic)" so the operator
+  // can see at a glance that this is a wiring test, not a real stop-or-go verdict.
   const isLiveVerdict = verdict?.data_source === "live";
+  const isSyntheticVerdict = verdict !== null && verdict?.data_source === "synthetic";
   const passed = isLiveVerdict ? verdict?.passed : undefined;
 
   return (
@@ -78,6 +81,9 @@ export function EdgeGate() {
         <div>
           <CardTitle className="flex items-center gap-2">
             <FlaskConical className="size-4 text-iris-soft" /> Edge gate
+            {isSyntheticVerdict && (
+              <Badge variant="warn" className="text-[11px]">machinery demo (synthetic)</Badge>
+            )}
           </CardTitle>
           <CardDescription>Does an exploitable edge exist on Binance spot, after costs? Prove it before the Lab tests strategies.</CardDescription>
         </div>
