@@ -28,7 +28,7 @@ def _default_alt_store():  # noqa: ANN202 - AltDataStore | PgAltDataStore
 def _has_cross_asset_data(alt_store) -> bool:  # noqa: ANN001
     """True once the two cross-asset transfer series (prediction-market risk_on + FRED macro_regime) are
     ingested — exactly what arm (3) needs to differ from price-only. Same predicate the API uses."""
-    return bool(alt_store.read_all("polymarket", "MARKET", "risk_on")) and bool(
+    return bool(alt_store.read_all("polymarket", "MARKET", "pm_risk_on")) and bool(
         alt_store.read_all("fred", "MARKET", "macro_regime")
     )
 
@@ -84,7 +84,7 @@ def auto_research_pass(store: Store, *, ingest: bool = False, alt_store=None, pr
     if _has_cross_asset_data(alt_store):
         provider = StoreBackedAltProvider(
             alt_store,
-            market_wide=frozenset({"risk_on", "macro_regime", "putcall_ratio", *MULTIASSET_METRICS}),
+            market_wide=frozenset({"pm_risk_on", "macro_regime", "putcall_ratio", *MULTIASSET_METRICS}),
         )
         verdict = evaluate_cross_asset_ablation(market_by_class, provider, None, store)
         data_source = "live"

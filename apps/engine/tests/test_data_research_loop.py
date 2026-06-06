@@ -84,10 +84,10 @@ def test_run_once_populates_store_with_positive_counts(tmp_path, monkeypatch):
     astore = AltDataStore(root=tmp_path / "alt")
     counts = run_once(astore, symbols=list(_CRYPTO), providers=_fixture_providers())
 
-    for source in ("funding_rate", "fear_greed", "news_sentiment", "macro_regime", "risk_on", "liquidations", "putcall_ratio"):
+    for source in ("funding_rate", "fear_greed", "news_sentiment", "macro_regime", "pm_risk_on", "liquidation_cascade", "putcall_ratio"):
         assert counts[source] > 0, f"{source} should ingest > 0 points from fixtures"
     # the cross-asset transfer series landed under their SEMANTIC names at the MARKET key
-    assert astore.read_all("polymarket", "MARKET", "risk_on")
+    assert astore.read_all("polymarket", "MARKET", "pm_risk_on")
     assert astore.read_all("fred", "MARKET", "macro_regime")
     assert calls["n"] >= 1  # news standardization ran (offline, no LLM)
 
@@ -95,9 +95,9 @@ def test_run_once_populates_store_with_positive_counts(tmp_path, monkeypatch):
 def test_run_once_is_point_in_time_and_idempotent_in_view(tmp_path):
     astore = AltDataStore(root=tmp_path / "alt")
     run_once(astore, symbols=list(_CRYPTO), providers=_fixture_providers())
-    before = astore.read_asof("polymarket", "MARKET", "risk_on", _far_future())
+    before = astore.read_asof("polymarket", "MARKET", "pm_risk_on", _far_future())
     run_once(astore, symbols=list(_CRYPTO), providers=_fixture_providers())  # re-run a scheduled pass
-    after = astore.read_asof("polymarket", "MARKET", "risk_on", _far_future())
+    after = astore.read_asof("polymarket", "MARKET", "pm_risk_on", _far_future())
     # append-only re-run never changes the point-in-time VIEW (latest-revision-per-ts is identical)
     assert [(p.ts, p.value) for p in before] == [(p.ts, p.value) for p in after]
 
@@ -112,7 +112,7 @@ def test_run_once_one_dead_source_does_not_abort_the_pass(tmp_path):
     astore = AltDataStore(root=tmp_path / "alt")
     counts = run_once(astore, symbols=list(_CRYPTO), providers=providers)
     assert counts["funding_rate"] == 0  # dead source → 0 count, logged
-    assert counts["risk_on"] > 0  # the rest of the pass still completed
+    assert counts["pm_risk_on"] > 0  # the rest of the pass still completed
 
 
 # --- (b) auto_research_pass with fixtures, ZERO LLM in the gate path ---------------------------
