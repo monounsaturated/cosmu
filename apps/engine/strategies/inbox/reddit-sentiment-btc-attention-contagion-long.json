@@ -1,0 +1,55 @@
+{
+  "name": "Reddit sentiment confirmed by a BTC attention spike — two-source contagion long",
+  "rationale": "Single-source crowd signals are easy to spoof (bots, spam, a coordinated thread), which is why a raw social trigger so often turns out to be noise. This spec demands AGREEMENT across two INDEPENDENT crowd reads from different platforms before it acts — a cheap, structural low-spam filter that no single farmed feed can satisfy on its own. Source A is reddit_sentiment, a free keyless per-asset read of bull-vs-bear post mix (an organic discussion-forum crowd). Source B is btc_social_accel, the day-over-day log-change in BITCOIN's social volume broadcast to every alt — the registry's lead-lag probe shows a BTC attention spike leads the mean-alt return at k=1d (cross-asset attention contagion: when BTC's crowd lights up, capital rotates into alts). The hypothesis: go LONG an alt when its OWN Reddit sentiment is positive (organic per-asset conviction) AND the market-wide BTC attention engine is firing (btc_social_accel crossing up — the contagion catalyst). Requiring BOTH means the per-asset crowd read only counts when there is a genuine market-wide attention wave to ride; an isolated spammed Reddit thread with no BTC-attention backdrop never triggers. Exit when reddit_sentiment rolls over (the organic crowd has turned) or risk limits hit. Spot-only LONG (direction=+1), no funding leg. Disconfirmer 1: the TWO-SOURCE agreement must beat either source alone. If dropping the btc_social_accel leg (Reddit-only) OR dropping reddit_sentiment (BTC-attention-only) yields an equal-or-better deflated Sharpe, the cross-source confirmation adds nothing and one feed is carrying the (already-tested) edge — the anti-spam premise is unproven. Disconfirmer 2: the contagion is horizon-specific (k~1d per the probe); if the fit only makes money with a long max_hold, it is trading a different signal than the 1-day BTC->alt lead that was found. tier1 + low-confidence until validated OOS; the Gate down-weights until it earns its place.",
+  "catalyst": "an alt's own Reddit sentiment is positive WHILE a BTC social-attention spike (btc_social_accel cross_up) sets off cross-asset rotation.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 7
+  },
+  "entry": [
+    {
+      "feature": { "name": "btc_social_accel" },
+      "op": "cross_up",
+      "threshold": { "param": "btc_accel_floor" }
+    },
+    {
+      "feature": { "name": "reddit_sentiment" },
+      "op": "gt",
+      "threshold": { "param": "reddit_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "reddit_sentiment" },
+        "op": "cross_down",
+        "threshold": { "param": "reddit_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.35
+  },
+  "param_space": {
+    "btc_accel_floor": { "kind": "float", "lo": 0.05,  "hi": 0.60 },
+    "reddit_floor":    { "kind": "float", "lo": 0.05,  "hi": 0.50 },
+    "reddit_exit":     { "kind": "float", "lo": -0.30, "hi": 0.15 },
+    "stop":            { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":              { "kind": "float", "lo": 0.06,  "hi": 0.24 },
+    "time_stop":       { "kind": "int",   "lo": 1,     "hi": 7,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

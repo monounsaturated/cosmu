@@ -1,0 +1,56 @@
+{
+  "name": "Nasdaq risk-appetite lead-lag — long crypto momentum confirmed by a rising NDX",
+  "rationale": "Crypto's strongest cross-asset beta is to the high-beta tech/liquidity factor, which the Nasdaq-100 (ndx_index) carries more cleanly than the broad S&P. Equities close ~21h before the next crypto day rolls over, so a daily NDX close is a point-in-time, next-day-available read on the global risk-appetite REGIME that conditions crypto's drift — and because equities and crypto trade on different clocks, NDX can LEAD intraday-to-daily crypto moves rather than merely co-move with them. This is the macro analog of the BTC->alt social-contagion lead-lag, but the leader is the equity risk factor, not BTC's crowd. The hypothesis: take long crypto momentum (ret_Nd positive) ONLY when the Nasdaq risk backdrop is itself rising (ndx_index cross_up through a fitted level — risk-on confirmed by the asset class crypto co-moves with most) — the macro gate filters out crypto momentum that fires into a risk-OFF equity tape, which is exactly when crypto momentum decays into a drawdown. Exit when NDX rolls over (ndx_index cross_down — the risk-on regime that was supporting the trade has turned) or risk limits hit. Spot-only LONG (direction=+1); NDX is a read-only cross-asset regime feature, no funding leg. Disconfirmer 1: the edge must be the NDX gate adding regime information OVER crypto's own price. If dropping the ndx_index conditions and keeping only ret_Nd momentum yields an equal-or-better deflated Sharpe, the macro gate is redundant with crypto's own momentum (crypto already reflects the same risk regime) and the lead-lag claim is false. Disconfirmer 2: if a DXY (dollar) or SPX gate does materially better than NDX on the same setup, the specific 'Nasdaq tech-beta leads crypto' thesis is wrong — the edge (if any) is a generic macro-risk gate, not the tech factor in particular. tier0 macro feature; the COMBINATION is unproven — low-confidence until validated OOS.",
+  "catalyst": "ndx_index turns up (risk-on confirmed by the equity tech factor crypto co-moves with) WHILE crypto price momentum is positive.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": { "name": "ndx_index" },
+      "op": "cross_up",
+      "threshold": { "param": "ndx_floor" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "ndx_index" },
+        "op": "cross_down",
+        "threshold": { "param": "ndx_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "ndx_floor": { "kind": "float", "lo": 0.0,   "hi": 1.0 },
+    "ndx_exit":  { "kind": "float", "lo": -1.0,  "hi": 0.25 },
+    "mom_lb":    { "kind": "int",   "lo": 5,     "hi": 30,  "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.0,   "hi": 0.05 },
+    "stop":      { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":        { "kind": "float", "lo": 0.06,  "hi": 0.26 },
+    "time_stop": { "kind": "int",   "lo": 2,     "hi": 14,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

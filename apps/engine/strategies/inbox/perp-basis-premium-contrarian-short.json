@@ -1,0 +1,56 @@
+{
+  "name": "Perp-spot basis premium contrarian — short the over-rich perp (PERP, shorting required)",
+  "rationale": "PERP / SHORT LEG (direction=-1) — requires perpetual short capability; NOT executable on Binance SPOT. The perp-spot basis (perp price minus spot, as a fraction) is the market's revealed price of leverage: a large POSITIVE basis means perp longs are paying a steep premium over spot to stay levered long — a crowded, over-leveraged-long regime that historically reverts as the marginal long is exhausted and the carry/funding bleed forces de-grossing. This is the basis cousin of the funding-contrarian crash filter, but basis is a SPOT-PERP price spread (a cleaner, higher-frequency crowding read) rather than the realized funding print, so it can fire EARLIER. The hypothesis: SHORT the perp when perp_spot_basis crosses UP through a fitted rich-premium ceiling (crowding extreme) AND price is NOT in a violent uptrend (a parabolic move is the short's adversary — the trend_ceiling guards against shorting into a melt-up). Funding accrues to the short as P&L each bar via funding_feature (a positive-basis regime is typically a positive-funding regime, so the short is PAID to wait). Exit when the basis normalizes back down through an exit floor (crowding relieved, thesis played out) or the stop/TP fires. Disconfirmer 1: the edge must be the basis EXTREME mean-reverting, not a generic short bias — if a plain unconditional short over the same sample/costs matches the deflated Sharpe, the basis ceiling adds nothing. Disconfirmer 2: basis and funding are tightly coupled; if dropping perp_spot_basis and entering on a funding_rate ceiling alone does as well, this is just the existing funding-contrarian spec re-skinned and adds no orthogonal basis information. Basis-gap stop is enforced at the risk layer when it lands. tier0 feature, unproven combination — low-confidence until validated OOS.",
+  "catalyst": "perp_spot_basis crosses up into a rich-premium regime (perp longs over-paying for leverage) — a crowded long unwind setup.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": { "name": "perp_spot_basis" },
+      "op": "cross_up",
+      "threshold": { "param": "basis_ceiling" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } },
+      "op": "lt",
+      "threshold": { "param": "trend_ceiling" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "perp_spot_basis" },
+        "op": "cross_down",
+        "threshold": { "param": "basis_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "basis_ceiling": { "kind": "float", "lo": 0.001, "hi": 0.02 },
+    "basis_exit":    { "kind": "float", "lo": -0.005, "hi": 0.005 },
+    "trend_lb":      { "kind": "int",   "lo": 10,    "hi": 30,  "step": 1 },
+    "trend_ceiling": { "kind": "float", "lo": 0.03,  "hi": 0.25 },
+    "stop":          { "kind": "float", "lo": 0.04,  "hi": 0.15 },
+    "tp":            { "kind": "float", "lo": 0.04,  "hi": 0.25 },
+    "time_stop":     { "kind": "int",   "lo": 3,     "hi": 14,  "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}

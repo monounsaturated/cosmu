@@ -1,0 +1,55 @@
+{
+  "name": "Galaxy-Score health improvement (within-asset z) while still uncrowded — long",
+  "rationale": "LunarCrush's Galaxy Score blends an asset's price action and social health into one rank, but its RAW level drifts and differs wildly across coins, so a fitted raw-level floor is the always-true trap (the phase0 social-signal §4 problem). The registered galaxy_score_z is the WITHIN-ASSET trailing-30d z of Galaxy Score — scale-stable, point-in-time, and explicitly noted in the registry as 'no spec rests on it yet'. This spec is the honest test of whether a RISING crowd-health z carries information: the hypothesis is that an asset whose own Galaxy Score is improving sharply relative to its recent self (galaxy_score_z crossing UP through a fitted floor) is gaining genuine combined price+social health — early relative strength the crowd has not fully chased yet. The CRITICAL second leg is a crowding guard: we require social_attention_z BELOW a ceiling, because the registry's lead-lag finding is that SUSTAINED elevated social attention leads price DOWN (the crowd is already piled in). So we want improving health (galaxy_score_z up) while attention is still LOW (uncrowded) — health rising before the herd arrives, not after. Exit when galaxy_score_z deteriorates back down (health rolling over) or risk limits hit. Spot-only LONG (direction=+1), no funding leg. Disconfirmer 1: the edge must be the IMPROVEMENT (cross_up), not the altitude — if replacing the cross_up with a plain galaxy_score_z gt level filter does as well or better, the signal is 'currently healthy' (already priced), not 'getting healthier'. Disconfirmer 2: the uncrowded guard must MATTER — if dropping the social_attention_z ceiling leaves the deflated Sharpe unchanged, the crowding filter is decoration and the registry's 'no spec rests on galaxy_score_z' caution stands: the health-z alone is noise. tier1 + low-confidence until validated OOS; the Gate down-weights until it earns its place.",
+  "catalyst": "galaxy_score_z crosses up (crowd-health improving vs the asset's own recent self) WHILE social attention is still low (uncrowded).",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": { "name": "galaxy_score_z" },
+      "op": "cross_up",
+      "threshold": { "param": "gsz_floor" }
+    },
+    {
+      "feature": { "name": "social_attention_z" },
+      "op": "lt",
+      "threshold": { "param": "crowd_ceiling" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "galaxy_score_z" },
+        "op": "cross_down",
+        "threshold": { "param": "gsz_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.35
+  },
+  "param_space": {
+    "gsz_floor":     { "kind": "float", "lo": 0.25,  "hi": 1.75 },
+    "gsz_exit":      { "kind": "float", "lo": -1.00, "hi": 0.50 },
+    "crowd_ceiling": { "kind": "float", "lo": 0.00,  "hi": 1.50 },
+    "stop":          { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":            { "kind": "float", "lo": 0.06,  "hi": 0.24 },
+    "time_stop":     { "kind": "int",   "lo": 2,     "hi": 10,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

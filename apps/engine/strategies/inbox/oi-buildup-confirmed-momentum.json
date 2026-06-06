@@ -1,0 +1,56 @@
+{
+  "name": "Open-interest-confirmed momentum — ride trends backed by real leverage inflow",
+  "rationale": "Price momentum alone cannot tell apart a move funded by genuine new capital from a thin, low-conviction drift that fades. Open interest IS the missing confirmation: a rising OI alongside a rising price means NEW leveraged longs are being opened into the move (fresh money chasing), whereas a price rise on FLAT-or-falling OI is short-covering or spot-only churn that exhausts quickly. The hypothesis: long the assets whose price momentum (ret_Nd) is positive AND whose open_interest is building (cross_up through a fitted floor) — the OI build-up is the catalyst that distinguishes a real, capital-backed trend from noise. We hold while the trend persists and exit when OI stops confirming (open_interest cross_down — the leverage tide that was funding the move has turned) or risk limits hit. Spot-only LONG on Binance (direction=+1): OI is a perp-derived FEATURE here, read point-in-time as confirmation; we do NOT trade the perp, so no funding leg. Disconfirmer 1 (the core falsifier): the edge must come from OI CONFIRMING momentum, not from momentum alone. If dropping the open_interest conditions entirely and keeping only the ret_Nd momentum filter yields an equal-or-better deflated Sharpe, OI adds no orthogonal information and the claimed edge is just plain momentum already covered by the vol-gated specs. Disconfirmer 2: OI rises mechanically when price rises (more notional outstanding at a higher mark), so the cross_up could be a price proxy in disguise — if replacing the price-confirmation arm (ret_Nd gt mom_floor) with a price-DECLINE arm flips the sign of the edge, OI is not adding leverage-flow information, it is just tracking price. tier0 derivative feature, but the COMBINATION is unproven — low-confidence until validated OOS; the Gate decides.",
+  "catalyst": "open_interest builds (new leveraged longs opening) WHILE price momentum is positive — capital-backed trend, not thin drift.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": { "name": "open_interest" },
+      "op": "cross_up",
+      "threshold": { "param": "oi_floor" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "open_interest" },
+        "op": "cross_down",
+        "threshold": { "param": "oi_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "oi_floor":  { "kind": "float", "lo": 0.0,   "hi": 2.0 },
+    "oi_exit":   { "kind": "float", "lo": -1.0,  "hi": 0.5 },
+    "mom_lb":    { "kind": "int",   "lo": 3,     "hi": 20,  "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.0,   "hi": 0.05 },
+    "stop":      { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":        { "kind": "float", "lo": 0.06,  "hi": 0.24 },
+    "time_stop": { "kind": "int",   "lo": 2,     "hi": 12,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
