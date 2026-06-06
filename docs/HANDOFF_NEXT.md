@@ -2,6 +2,19 @@
 
 Single source of truth. Detail lives in `docs/reports/*`. Memory auto-loads the summary.
 
+## ⚠️ STEERING (from the outgoing master, 2026-06-06) — strong progress, one correction
+You've nailed the declutter + bar backbone (#129) + MCP (#128) + overview (#127). **Before you re-run the cohort, the
+HONESTY FIXES must land — they haven't yet:**
+- **Fake `exchange_netflow` is still tier0** (`feature_registry.py:46`): it's `globalLongShortAccountRatio` with a
+  fabricated "net inflows" prior + only 30 days of history → it WILL manufacture false positives at high weight.
+  Kill/relabel it (or set enabled=False). This is the #1 must-fix.
+- **Funding annualization** (`carry_ablation.py` / `altdata.py`): per-symbol settlement interval, not a hardcoded
+  ×3/day → currently understates carry 2–8×. + **FRED ALFRED vintage** + the **`registry ⊆ routable` guard test**.
+- **Bar backfill universe:** `.cosmu/market_data/binance/` shows ~42 symbols — fine for a 20–50-name xsec test, but
+  confirm it's deliberate (not a truncated run); the cohort needs bars for every coin it ranks. Bars are LOCAL
+  (`.cosmu/market_data/`) → fine for the LOCAL re-run; don't deploy-gate on them (Railway won't see local files).
+**Then** re-run the cohort (btc-social overlay + Polymarket-on-history) for the honest edge verdict. Everything else: keep driving.
+
 ## ⚙️ OPERATING MODE — READ FIRST
 You are the new **master orchestrator** (taking over from the previous chat). Be strong + fast, but in ORDER:
 1. **Transfer context + orient** — read this + `docs/reports/product-vision-user-profile.md` + `BACKLOG.md` (⭐ TOP OF
