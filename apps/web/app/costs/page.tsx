@@ -5,18 +5,18 @@
 // Supplier rows pull real billing APIs where a token is available; otherwise a
 // clearly-labelled static estimate is shown — nothing is fabricated.
 
-import { DollarSign, Cpu, TrendingUp, TrendingDown, Bot, Wifi, WifiOff } from "lucide-react";
+import { DollarSign, Cpu, Bot, Wifi, WifiOff } from "lucide-react";
 import { engineConfigured, getCosts } from "../data";
 import { getSupplierCosts } from "../data/supplier-costs";
-import type { InfraLine, CostPerStrategy, LlmCallSummary } from "../data";
+import type { LlmCallSummary } from "../data";
 import type { SupplierRow } from "../data/supplier-costs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
 import { SectionHeader } from "@/components/ui/section";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
-import { ExpandableSection } from "@/components/ui/expandable-section";
-import { formatUsd, formatSigned, timeAgo } from "@/lib/utils";
+import { DataPreview } from "@/components/ui/data-preview";
+import { formatUsd, timeAgo } from "@/lib/utils";
 
 export default async function CostsPage() {
   // Fetch supplier costs (real + estimates) and engine costs in parallel.
@@ -34,7 +34,7 @@ export default async function CostsPage() {
       <div className="mx-auto max-w-[1100px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:px-7">
         <SectionHeader eyebrow="costs · infra" title="What does running this cost?" />
         <section>
-          <SupplierTable rows={supplierRows} total={supplierTotal} computedAt={computed_at} />
+          <SupplierTable rows={supplierRows.slice(0, 4)} total={supplierTotal} computedAt={computed_at} fullCount={supplierRows.length} />
         </section>
         <NotConnected
           configured={engineConfigured}
@@ -44,8 +44,6 @@ export default async function CostsPage() {
     );
   }
 
-  const totalMonthly = costs.infra_lines.reduce((s, l) => s + l.amount, 0);
-  const totalMonthlyMax = costs.infra_lines.reduce((s, l) => s + l.amount_max, 0);
   const liveCount = supplierRows.filter((r) => r.source === "live").length;
 
   return (
@@ -85,87 +83,22 @@ export default async function CostsPage() {
         />
       </section>
 
-      {/* Supplier breakdown — real + estimates */}
+      {/* Supplier breakdown preview — top 4 rows by cost. Full sortable ledger at /costs/ledger. */}
       <section>
-        <SupplierTable rows={supplierRows} total={supplierTotal} computedAt={computed_at} />
+        <SupplierTable rows={supplierRows.slice(0, 4)} total={supplierTotal} computedAt={computed_at} fullCount={supplierRows.length} />
       </section>
 
-      {/* Progressive disclosure — digestible default: KPIs + supplier table. LLM ledger, infra
-          lines, and per-strategy ROI are detail; reveal on demand. */}
-      <ExpandableSection
-        showLabel="Show LLM ledger, infra lines & per-strategy ROI"
-        hideLabel="Hide detail"
-        summary={null}
-      >
-        {/* LLM call breakdown */}
-        <section>
-          <h2 className="mb-3 text-[13px] font-semibold text-foreground">LLM calls (ledger)</h2>
-          <Card>
-            <CardContent className="py-4">
+      {/* LLM call summary — compact, always visible. Full ledger at /costs/ledger. */}
+      <section>
+        <h2 className="mb-3 text-[13px] font-semibold text-foreground">LLM calls (summary)</h2>
+        <Card>
+          <CardContent className="py-4">
+            <DataPreview href="/costs/ledger" viewAllLabel="View full ledger">
               <LlmCallsPanel summary={costs.llm_calls} />
-            </CardContent>
-          </Card>
-        </section>
-
-        {/* Engine infra table — seeded by engine on first /costs call */}
-        {costs.infra_lines.length > 0 && (
-          <section>
-            <h2 className="mb-3 text-[13px] font-semibold text-foreground">Engine infra lines</h2>
-            <Card>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-[12.5px]">
-                    <thead>
-                      <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-quiet">
-                        <th className="px-4 py-2.5 text-left font-medium">Vendor</th>
-                        <th className="px-4 py-2.5 text-left font-medium">Category</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Mid / mo</th>
-                        <th className="px-4 py-2.5 text-right font-medium">Range</th>
-                        <th className="px-4 py-2.5 text-left font-medium">Role</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {costs.infra_lines.map((line: InfraLine) => (
-                        <InfraRow key={line.vendor} line={line} />
-                      ))}
-                      <tr className="border-t border-border/60 bg-surface-2/30 font-semibold">
-                        <td className="px-4 py-2.5 text-foreground" colSpan={2}>Total (mid)</td>
-                        <td className="px-4 py-2.5 text-right text-foreground">{formatUsd(totalMonthly)}</td>
-                        <td className="px-4 py-2.5 text-right text-muted">
-                          {formatUsd(costs.infra_lines.reduce((s, l) => s + l.amount_min, 0))}–
-                          {formatUsd(totalMonthlyMax)}
-                        </td>
-                        <td className="px-4 py-2.5 text-quiet text-[11px]">target ~$50 · ceiling $100</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-        )}
-
-        {/* Per-strategy ROI */}
-        <section>
-          <h2 className="mb-3 text-[13px] font-semibold text-foreground">Per-strategy ROI</h2>
-          {costs.per_strategy.length === 0 ? (
-            <Card>
-              <CardContent>
-                <EmptyState
-                  title="No strategy-attributed costs yet."
-                  hint="Once LLM calls are attributed to a strategy version, ROI (opex vs net P&L) appears here. Costs accrue when strategies are screened or run."
-                />
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {costs.per_strategy.map((row: CostPerStrategy) => (
-                <RoiCard key={row.version_id} row={row} />
-              ))}
-            </div>
-          )}
-        </section>
-      </ExpandableSection>
+            </DataPreview>
+          </CardContent>
+        </Card>
+      </section>
     </div>
   );
 }
@@ -176,10 +109,12 @@ function SupplierTable({
   rows,
   total,
   computedAt,
+  fullCount,
 }: {
   rows: SupplierRow[];
   total: number;
   computedAt: string;
+  fullCount: number;
 }) {
   const ago = timeAgo(computedAt);
   return (
@@ -190,35 +125,37 @@ function SupplierTable({
           <span className="text-[11px] text-quiet">refreshed {ago} ago · 30 min cache</span>
         ) : null}
       </div>
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-[12.5px]">
-              <thead>
-                <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-quiet">
-                  <th className="px-4 py-2.5 text-left font-medium">Supplier</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Role</th>
-                  <th className="px-4 py-2.5 text-right font-medium">$/mo</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Source</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Fetched</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <SupplierRow key={row.name} row={row} />
-                ))}
-                <tr className="border-t border-border/60 bg-surface-2/30 font-semibold">
-                  <td className="px-4 py-2.5 text-foreground" colSpan={2}>Total</td>
-                  <td className="px-4 py-2.5 text-right text-foreground">{formatUsd(total)}</td>
-                  <td className="px-4 py-2.5 text-quiet text-[11px]" colSpan={2}>
-                    mix of live + est — see source column
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+      <DataPreview href="/costs/ledger" viewAllLabel="View full ledger" total={fullCount}>
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-quiet">
+                    <th className="px-4 py-2.5 text-left font-medium">Supplier</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Role</th>
+                    <th className="px-4 py-2.5 text-right font-medium">$/mo</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Source</th>
+                    <th className="px-4 py-2.5 text-right font-medium">Fetched</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <SupplierRow key={row.name} row={row} />
+                  ))}
+                  <tr className="border-t border-border/60 bg-surface-2/30 font-semibold">
+                    <td className="px-4 py-2.5 text-foreground" colSpan={2}>Total</td>
+                    <td className="px-4 py-2.5 text-right text-foreground">{formatUsd(total)}</td>
+                    <td className="px-4 py-2.5 text-quiet text-[11px]" colSpan={2}>
+                      mix of live + est — see source column
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </DataPreview>
     </>
   );
 }
@@ -259,29 +196,6 @@ function SupplierRow({ row }: { row: SupplierRow }) {
       <td className="px-4 py-2.5 text-right text-[11px] text-quiet tabular">
         {ago ? `${ago} ago` : "—"}
       </td>
-    </tr>
-  );
-}
-
-// ─── Engine infra row ─────────────────────────────────────────────────────────
-
-function InfraRow({ line }: { line: InfraLine }) {
-  const isFree = line.amount_max === 0;
-  return (
-    <tr className="border-b border-border/40 last:border-0 transition-colors hover:bg-surface-2/20">
-      <td className="px-4 py-2.5 font-medium text-foreground">{line.vendor}</td>
-      <td className="px-4 py-2.5">
-        <Badge variant={line.category === "infra" ? "iris" : "muted"} className="text-[10px]">
-          {line.category}
-        </Badge>
-      </td>
-      <td className="px-4 py-2.5 text-right tabular text-foreground">
-        {isFree ? <span className="text-up text-[11px]">free</span> : formatUsd(line.amount)}
-      </td>
-      <td className="px-4 py-2.5 text-right tabular text-muted text-[11px]">
-        {isFree ? "—" : `${formatUsd(line.amount_min)}–${formatUsd(line.amount_max)}`}
-      </td>
-      <td className="px-4 py-2.5 text-quiet max-w-[220px] truncate">{line.note}</td>
     </tr>
   );
 }
@@ -330,49 +244,4 @@ function LlmCallsPanel({ summary }: { summary: LlmCallSummary }) {
   );
 }
 
-// ─── Per-strategy ROI card ────────────────────────────────────────────────────
 
-function RoiCard({ row }: { row: CostPerStrategy }) {
-  const profitable = row.net >= 0;
-  const roi = row.opex > 0 ? row.net / row.opex : null;
-  return (
-    <Card>
-      <CardContent className="space-y-3 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="truncate text-[13.5px] font-medium text-foreground">{row.name}</div>
-            <div className="truncate text-[11px] text-quiet">{row.version_id.slice(0, 8)}</div>
-          </div>
-          <Badge variant={profitable ? "up" : "down"}>
-            {profitable ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-            {profitable ? "profitable" : "underwater"}
-          </Badge>
-        </div>
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <Metric label="Opex" value={formatUsd(row.opex, 2)} tone="text-muted" />
-          <Metric
-            label="Net P&L"
-            value={formatSigned(row.net)}
-            tone={profitable ? "text-up" : "text-down"}
-          />
-          <Metric
-            label="ROI"
-            value={roi !== null ? `${(roi * 100).toFixed(0)}%` : "—"}
-            tone={
-              roi === null ? "text-quiet" : roi >= 1 ? "text-up" : roi >= 0 ? "text-warn" : "text-down"
-            }
-          />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Metric({ label, value, tone }: { label: string; value: string; tone: string }) {
-  return (
-    <div className="rounded-md border border-border/50 bg-surface-2/30 px-2 py-2">
-      <div className={`text-[14px] font-semibold tabular ${tone}`}>{value}</div>
-      <div className="mt-0.5 text-[10px] uppercase tracking-wide text-quiet">{label}</div>
-    </div>
-  );
-}

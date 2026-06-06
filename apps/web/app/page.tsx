@@ -12,6 +12,7 @@ import { IdeaDumpBox } from "./idea-dump-box";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DataPreview } from "@/components/ui/data-preview";
 import { cn, timeAgo } from "@/lib/utils";
 
 export default async function OverviewPage() {
@@ -142,9 +143,12 @@ const VERDICT_STYLE: Record<VerdictRow["status"], { label: string; variant: "up"
   "DATA-BLOCKED": { label: "Data-blocked", variant: "muted" }
 };
 
-// The verdict ledger — every pre-registered thesis the Gate has ruled on, PASS or FAIL. Read off
-// docs/reports/phase0-*-verdict.md by the engine; honest empty when nothing has been ruled on yet.
+// The verdict ledger preview — top 5 most-recent verdicts + "View all" link to /verdicts.
+// Full sortable + filterable table lives at /verdicts.
+const PREVIEW_N = 5;
+
 function VerdictLedger({ rows, connected }: { rows: VerdictRow[]; connected: boolean }) {
+  const preview = rows.slice(0, PREVIEW_N);
   return (
     <Card>
       <CardHeader>
@@ -165,25 +169,27 @@ function VerdictLedger({ rows, connected }: { rows: VerdictRow[]; connected: boo
             icon={<ClipboardCheck className="size-5" />}
           />
         ) : (
-          <ul className="divide-y divide-border/60">
-            {rows.map((r) => {
-              const style = VERDICT_STYLE[r.status] ?? VERDICT_STYLE.FAIL;
-              return (
-                <li key={r.slug} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1.5 py-3 first:pt-0 last:pb-0">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[13.5px] font-medium text-foreground">{r.thesis}</span>
-                      {r.date ? <span className="text-[11px] text-quiet">{r.date}</span> : null}
+          <DataPreview href="/verdicts" viewAllLabel="View all verdicts" total={rows.length}>
+            <ul className="divide-y divide-border/60">
+              {preview.map((r) => {
+                const style = VERDICT_STYLE[r.status] ?? VERDICT_STYLE.FAIL;
+                return (
+                  <li key={r.slug} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1.5 py-3 first:pt-0 last:pb-0">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13.5px] font-medium text-foreground">{r.thesis}</span>
+                        {r.date ? <span className="text-[11px] text-quiet">{r.date}</span> : null}
+                      </div>
+                      {r.reason ? <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{r.reason}</p> : null}
                     </div>
-                    {r.reason ? <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{r.reason}</p> : null}
-                  </div>
-                  <Badge variant={style.variant} className={cn("mt-0.5 shrink-0")}>
-                    {style.label}
-                  </Badge>
-                </li>
-              );
-            })}
-          </ul>
+                    <Badge variant={style.variant} className={cn("mt-0.5 shrink-0")}>
+                      {style.label}
+                    </Badge>
+                  </li>
+                );
+              })}
+            </ul>
+          </DataPreview>
         )}
       </CardContent>
     </Card>

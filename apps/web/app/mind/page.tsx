@@ -21,6 +21,7 @@ import { ScoresCockpit } from "@/components/scores/scores-cockpit";
 import { SourceTrustScoreboard } from "@/components/mind/source-trust-scoreboard";
 import { NewsIntelPanel } from "@/components/mind/news-intel-panel";
 import { ExpandableSection } from "@/components/ui/expandable-section";
+import { DataPreview } from "@/components/ui/data-preview";
 
 export default async function MindPage() {
   const [{ mind, connected }, { scores }, { skills }, { trust }, { intel }] = await Promise.all([
@@ -80,7 +81,7 @@ export default async function MindPage() {
           <ScoresCockpit scores={scores} />
         </section>
 
-        {/* SOURCE SCOREBOARD + NEWS/INTEL — freshness × gate contribution per source; recent news events */}
+        {/* SOURCE SCOREBOARD + NEWS/INTEL — top 5 sources previewed; full table at /mind/sources */}
         <section className="space-y-3">
           <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
             <Star className="size-4 text-iris-soft" /> Source trust &amp; news/intel
@@ -89,12 +90,15 @@ export default async function MindPage() {
             Trust = freshness × realized gate contribution. Honest: sources with no data show &quot;no data&quot;. Never fabricated.
           </p>
           <div className="grid gap-4 lg:grid-cols-2">
-            <SourceTrustScoreboard rows={trust.rows} asOf={trust.as_of} />
+            {/* Preview: top 5 sources by trust. Full sortable table at /mind/sources. */}
+            <DataPreview href="/mind/sources" viewAllLabel="View all sources" total={trust.rows.length}>
+              <SourceTrustScoreboard rows={trust.rows.slice(0, 5)} asOf={trust.as_of} />
+            </DataPreview>
             <NewsIntelPanel events={intel.events} symbol={intel.symbol} />
           </div>
         </section>
 
-        {/* WHAT IT HAS LEARNED — ML, regimes, gate efficiency, memory, skills */}
+        {/* WHAT IT HAS LEARNED — ML, regimes, gate efficiency, memory, skills (top 6 previewed) */}
         <section className="space-y-3">
           <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
             <GraduationCap className="size-4 text-iris-soft" /> What it has learned
@@ -109,6 +113,7 @@ export default async function MindPage() {
                 <MemoryInsights insights={mind.learnings.insights} />
               </CardContent>
             </Card>
+            {/* Preview: top 6 skills by grade. Full sortable table at /mind/skills. */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-1.5">
@@ -116,7 +121,9 @@ export default async function MindPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <SkillsGrid skills={skills} />
+                <DataPreview href="/mind/skills" viewAllLabel="View all skills" total={skills.length}>
+                  <SkillsGrid skills={skills.slice(0, 6)} />
+                </DataPreview>
               </CardContent>
             </Card>
           </div>
