@@ -15,7 +15,8 @@
 // Does NOT do data fetching — callers pass props from their server component.
 
 import { useMemo, useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { SearchInput } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 export interface ColumnDef<T> {
@@ -123,25 +124,13 @@ export function DataTablePage<T>({
     <div className="space-y-4">
       {/* Search + header action */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full max-w-xs flex-1 sm:flex-none">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-quiet" />
-          <input
-            value={query}
-            onChange={(e) => handleSearch(e.target.value)}
-            placeholder={searchPlaceholder}
-            className="h-8 w-full rounded-md border border-border bg-background/60 pl-8 pr-8 text-[12.5px] text-foreground outline-none transition-colors placeholder:text-quiet focus-visible:border-iris/60 focus-visible:ring-2 focus-visible:ring-ring/40"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => handleSearch("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-quiet hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <X className="size-3.5" />
-            </button>
-          )}
-        </div>
+        <SearchInput
+          className="flex-1 sm:flex-none"
+          value={query}
+          onChange={(e) => handleSearch(e.target.value)}
+          onClear={() => handleSearch("")}
+          placeholder={searchPlaceholder}
+        />
         <span className="ml-auto text-[11.5px] text-quiet tabular">
           {sorted.length.toLocaleString()} row{sorted.length !== 1 ? "s" : ""}
           {query ? ` · filtered from ${rows.length.toLocaleString()}` : ""}

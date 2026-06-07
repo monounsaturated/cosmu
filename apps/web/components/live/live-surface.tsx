@@ -28,6 +28,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Stat } from "@/components/ui/stat";
+import { MoneyInput } from "@/components/ui/input";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { MoneyState, moneyMode } from "@/components/ui/money-state";
 import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn, formatSigned, formatUsd } from "@/lib/utils";
@@ -371,38 +373,36 @@ export function LiveSurface({
               </div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-[12.5px]">
-                <thead>
-                  <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-quiet">
-                    <th className="sticky-col px-2 py-2 font-medium">Symbol</th>
-                    <th className="px-2 py-2 font-medium">Venue</th>
-                    <th className="px-2 py-2 text-right font-medium">Qty</th>
-                    <th className="px-2 py-2 text-right font-medium">Avg price</th>
-                    <th className="px-2 py-2 text-right font-medium">Unrealized P&L</th>
-                    <th className="px-2 py-2 text-right font-medium">Defund</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {state.positions.map((p) => (
-                    <tr key={p.instrument_id} className="border-b border-border/40 last:border-0">
-                      <td className="sticky-col px-2 py-2.5 font-medium text-foreground">{p.symbol}</td>
-                      <td className="px-2 py-2.5 text-muted">{p.venue}</td>
-                      <td className="px-2 py-2.5 text-right tabular text-muted">{p.qty}</td>
-                      <td className="px-2 py-2.5 text-right tabular text-muted">{formatUsd(p.avg_price)}</td>
-                      <td className={cn("px-2 py-2.5 text-right tabular", p.unrealized_pnl >= 0 ? "text-up" : "text-down")}>
-                        {formatSigned(p.unrealized_pnl)}
-                      </td>
-                      <td className="px-2 py-2.5 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => defund("strategy", p.instrument_id)} disabled={defundingPosition === p.instrument_id}>
-                          <X className="size-3.5" /> Close
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table>
+              <THead>
+                <TR>
+                  <TH className="sticky-col">Symbol</TH>
+                  <TH>Venue</TH>
+                  <TH className="text-right">Qty</TH>
+                  <TH className="text-right">Avg price</TH>
+                  <TH className="text-right">Unrealized P&amp;L</TH>
+                  <TH className="text-right">Defund</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {state.positions.map((p) => (
+                  <TR key={p.instrument_id}>
+                    <TD className="sticky-col font-medium text-foreground">{p.symbol}</TD>
+                    <TD className="text-muted">{p.venue}</TD>
+                    <TD className="text-right tabular text-muted">{p.qty}</TD>
+                    <TD className="text-right tabular text-muted">{formatUsd(p.avg_price)}</TD>
+                    <TD className={cn("text-right tabular", p.unrealized_pnl >= 0 ? "text-up" : "text-down")}>
+                      {formatSigned(p.unrealized_pnl)}
+                    </TD>
+                    <TD className="text-right">
+                      <Button variant="ghost" size="sm" onClick={() => defund("strategy", p.instrument_id)} disabled={defundingPosition === p.instrument_id}>
+                        <X className="size-3.5" /> Close
+                      </Button>
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
           )}
         </CardContent>
       </Card>
@@ -592,9 +592,9 @@ function ActivationModal({
           </div>
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <CapInput label="Per-strategy cap" value={caps.per_strategy_cap} onChange={(v) => onChangeCaps({ ...caps, per_strategy_cap: v })} />
-            <CapInput label="Global cap" value={caps.global_cap} onChange={(v) => onChangeCaps({ ...caps, global_cap: v })} />
-            <CapInput label="Max daily loss" value={caps.max_daily_loss} onChange={(v) => onChangeCaps({ ...caps, max_daily_loss: v })} />
+            <MoneyInput label="Per-strategy cap" value={caps.per_strategy_cap} onChange={(v) => onChangeCaps({ ...caps, per_strategy_cap: v })} />
+            <MoneyInput label="Global cap" value={caps.global_cap} onChange={(v) => onChangeCaps({ ...caps, global_cap: v })} />
+            <MoneyInput label="Max daily loss" value={caps.max_daily_loss} onChange={(v) => onChangeCaps({ ...caps, max_daily_loss: v })} />
           </div>
         </div>
 
@@ -618,20 +618,3 @@ function ActivationModal({
   );
 }
 
-function CapInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-quiet">{label}</span>
-      <div className="mt-1 flex items-center rounded-md border border-border bg-surface-2/40 px-2.5">
-        <span className="text-[12px] text-quiet">$</span>
-        <input
-          type="number"
-          min={0}
-          value={value}
-          onChange={(e) => onChange(Math.max(0, Number(e.target.value)))}
-          className="w-full bg-transparent py-2 pl-1 text-[13px] tabular text-foreground outline-none"
-        />
-      </div>
-    </label>
-  );
-}
