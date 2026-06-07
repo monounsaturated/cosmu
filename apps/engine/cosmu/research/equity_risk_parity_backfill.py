@@ -19,8 +19,9 @@ import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
+import os
 
-CACHE = Path("/Users/device/cosmu/.cosmu/market_data/equities")
+CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/market_data/equities"))
 RISK_PARITY_SYMBOLS = ["SPY", "AGG", "GLD"]
 # Start well before the youngest sleeve (GLD lists 2004-11) so the trailing-vol window is warm by the first rebalance.
 PERIOD1 = int(datetime(2003, 1, 1, tzinfo=UTC).timestamp())

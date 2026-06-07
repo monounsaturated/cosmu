@@ -32,11 +32,12 @@ from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_vaa as vaa
 from cosmu.research.equity_holdout import purged_embargoed_split
 from cosmu.spine.venue import default_catalog
+from cosmu.config.settings import get_settings
 
 STRATEGY_NAME = "Vigilant Asset Allocation (Keller VAA-G4 Aggressive)"
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strategy track, labeled honestly
 VENUE = "ibkr"
-TRACK_CAPITAL = Decimal("10000")  # the per-strategy standalone capital (matches RiskSettings.per_strategy_cap)
+TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size (settings.sim_track_capital)
 IBKR_ETF_BPS_PER_SIDE = vaa.IBKR_ETF_BPS_PER_SIDE
 # VAA is positive net-of-fee across the trend regimes on our data and its WHOLE POINT is to rotate to short Treasuries
 # in bear markets (the canary breadth signal). 2008 shows -7.9% while SPY lost 48%, COVID +4.9% vs SPY -9.2%, 2022

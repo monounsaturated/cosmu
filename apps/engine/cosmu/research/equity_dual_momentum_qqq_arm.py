@@ -26,11 +26,12 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_dual_momentum_qqq as var
 from cosmu.spine.venue import Instrument, default_catalog
+from cosmu.config.settings import get_settings
 
 STRATEGY_NAME = "Dual Momentum (QQQ/EFA tech-tilt)"  # UNIQUE — distinct from GEM (SPY/EFA) and VAA siblings
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — deploy-a-documented-strategy track, labeled honestly
 VENUE = "ibkr"
-TRACK_CAPITAL = Decimal("10000")  # per-strategy standalone capital (matches RiskSettings.per_strategy_cap)
+TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size (settings.sim_track_capital)
 IBKR_ETF_BPS_PER_SIDE = 1.0
 # This variant is positive net-of-fee across regimes (holds the stronger of QQQ/EFA in bull/chop, rotates to AGG in
 # bear — the 2008 subperiod shows +3.5% while SPY lost 41%). Full proven-regime passport so master/live_eligibility

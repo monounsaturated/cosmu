@@ -27,11 +27,12 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_faber_gtaa as gtaa
 from cosmu.spine.venue import default_catalog
+from cosmu.config.settings import get_settings
 
 STRATEGY_NAME = "Faber GTAA (5-asset 10mo SMA timing)"  # UNIQUE — does not collide with GEM or siblings
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strategy track, labeled honestly
 VENUE = "ibkr"
-TRACK_CAPITAL = Decimal("10000")  # per-strategy standalone capital (matches RiskSettings.per_strategy_cap)
+TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size (settings.sim_track_capital)
 IBKR_ETF_BPS_PER_SIDE = gtaa.IBKR_ETF_BPS_PER_SIDE
 # GTAA is positive net-of-fee across all three trend regimes on our data (it holds the trending sleeves and steps each
 # sleeve to cash when it rolls below its 10m SMA — the 2008 subperiod shows +5% while SPY lost 48%). Full proven set so

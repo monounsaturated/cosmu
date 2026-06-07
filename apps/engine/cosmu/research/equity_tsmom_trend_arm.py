@@ -28,11 +28,12 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_tsmom_trend as tsm
 from cosmu.spine.venue import default_catalog
+from cosmu.config.settings import get_settings
 
 STRATEGY_NAME = "Diversified Time-Series Momentum (TSMOM Trend / 5-ETF)"
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strategy track, labeled honestly
 VENUE = "ibkr"
-TRACK_CAPITAL = Decimal("10000")  # the per-strategy standalone capital (matches RiskSettings.per_strategy_cap)
+TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size (settings.sim_track_capital)
 # TSMOM de-risks each sleeve out of its own deep drawdown via the absolute-momentum filter and diversifies across
 # equities / bonds / gold, so it is positive net-of-fee across bull, bear AND chop (it won 2008 +43pt, COVID +5pt,
 # 2022 +13pt vs SPY on our data while ceding ground in pure bull runs). Its proven-regime passport is the full set.

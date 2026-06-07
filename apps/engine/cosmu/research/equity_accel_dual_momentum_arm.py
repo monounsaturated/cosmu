@@ -33,11 +33,12 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_accel_dual_momentum as adm
 from cosmu.spine.venue import default_catalog
+from cosmu.config.settings import get_settings
 
 STRATEGY_NAME = "Accelerating Dual Momentum (ADM / Engineered Portfolio)"  # UNIQUE — never collides with GEM
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strategy track, labeled honestly
 VENUE = "ibkr"
-TRACK_CAPITAL = Decimal("10000")  # per-strategy standalone capital (matches RiskSettings.per_strategy_cap)
+TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size (settings.sim_track_capital)
 IBKR_ETF_BPS_PER_SIDE = adm.IBKR_ETF_BPS_PER_SIDE
 # ADM is positive net-of-fee across the trend regimes on our data (equities in bull/chop, bonds in bear — the 2008
 # subperiod shows +3.5% while SPY lost 41%). Its proven-regime passport is the full set; this lets master/
