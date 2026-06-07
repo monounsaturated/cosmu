@@ -13,7 +13,7 @@
     "cosmu-engine": {
       "command": "python3",
       "args": ["mcp/engine/server.py"],
-      "description": "Shell-out wrappers for Gate/pipeline CLI commands (run_gate, run_ingest, list_verdicts, list_strategies)"
+      "description": "Cosmu engine MCP: read-only state queries (strategies, tracks, gate_verdicts, leaderboard, overview) + propose-only single-signal Gate eval (evaluate_signal_gate), plus shell-out Gate/pipeline jobs (run_gate, run_ingest). No money-moving tool."
     }
   }
 }
