@@ -42,7 +42,7 @@ from pathlib import Path
 
 CACHE = Path("/Users/device/cosmu/.cosmu/market_data/equities")
 
-# The four series GEM needs. BIL is the risk-free hurdle; AGG the risk-off sleeve; SPY/EFA the two equity sleeves.
+# The four series GEM needs. BIL is the risk-free hurdle; AGG the risk-off leg; SPY/EFA the two equity legs.
 EQUITY_US = "SPY"
 EQUITY_INTL = "EFA"
 BONDS = "AGG"
