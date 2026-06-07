@@ -3,12 +3,19 @@
 //       equity curve, with an honest "$0 · no funded tracks yet" day-0 state.
 //   (2) Does it need me?              → the "Needs you" queue (human-only decisions) beside the recent
 //       machine activity feed.
-// Everything below is supporting context — the candidate pipeline, the Gate's verdicts, the forward-test
-// window, and data coverage — for when the operator wants to look closer.
+//
+// HIERARCHY (premium, lean, intuitive): the page reads top-to-bottom as ANSWER → CONTEXT.
+//   • THE ANSWER  — hero figure, the four glanceable KPIs, then "Needs you" beside "Recent activity".
+//                   Everything the operator needs to decide "leave it running" or "step in" is above the
+//                   fold, at the highest visual weight.
+//   • THE DETAIL  — one labelled section, progressively disclosed via tabs (pipeline · verdicts ·
+//                   simulation · data), so the supporting context is one focused panel at a time instead
+//                   of a long wall of equal-weight cards.
 //
 // HONESTY (the machine that never lies): when the engine is unreachable we render a single "not connected"
 // state and never fabricate. Every number on this page is real engine data passed through {data, connected}.
 
+import type { ReactNode } from "react";
 import { ArrowRight, ClipboardCheck, FlaskConical, LineChart, Users } from "lucide-react";
 import Link from "next/link";
 import {
@@ -22,18 +29,18 @@ import {
   getOverview,
   getRecommendations
 } from "./data";
-import type { ExperimentTheory, ExperimentsResponse } from "./data";
+import type { ExperimentTheory, FunnelStats } from "./data";
 import type { InboxQueueItem, LeaderboardRow } from "@cosmu/contracts-ts";
-import type { FunnelStats } from "./data";
 import { IdeaIntake } from "@/components/overview/idea-intake";
 import { MoneyHero } from "@/components/overview/money-hero";
 import { KpiRow } from "@/components/overview/kpi-row";
 import { NeedsYouCard, RecentActivityCard } from "@/components/overview/control-room";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DataPreview } from "@/components/ui/data-preview";
 import { Tooltip } from "@/components/ui/tooltip";
+import { Tabs } from "@/components/ui/viz";
 import { DataFreshness } from "@/components/overview/data-freshness";
 import { cn, timeAgo } from "@/lib/utils";
 
@@ -92,9 +99,16 @@ export default async function OverviewPage() {
     return s === "forward_test" || s === "forward" || s === "paper";
   });
 
+  // Tab counts — every one a real engine count, so the labels never overstate what is there.
+  const inSimCount = simRows.length;
+  const verdictCount = theories.length;
+  const freshCount = intelligence.data_freshness.length;
+
   return (
-    <div className="mx-auto max-w-[1100px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:px-7">
+    <div className="mx-auto max-w-[1100px] space-y-8 px-4 py-6 sm:px-5 sm:py-7 lg:px-7">
       <Header />
+
+      {/* ── THE ANSWER ─────────────────────────────────────────────────────────────────────────────── */}
 
       {/* (1) IS IT MAKING MONEY — the one hero figure (live sim net P&L, net of fees) + the real equity
           curve + machine-state chip. Honest day-0 / offline states; the single chart on the page. */}
@@ -121,25 +135,68 @@ export default async function OverviewPage() {
         <RecentActivityCard events={events} connected={eventsConnected} />
       </section>
 
-      {/* ── Supporting context ─────────────────────────────────────────────────────────────────────── */}
+      {/* ── THE DETAIL ─────────────────────────────────────────────────────────────────────────────── */}
+      {/* One labelled section, progressively disclosed: the supporting context behind the answer above,
+          one focused panel at a time instead of four equal-weight cards stacked into a wall. */}
+      <section className="space-y-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">the detail</div>
+          <h2 className="mt-1.5 text-lg font-semibold tracking-tight text-foreground">How the machine got here</h2>
+          <p className="mt-1 text-[12.5px] text-muted">
+            The pipeline that produces the figure above — idea to spec to Gate to simulation. Every number real.
+          </p>
+        </div>
 
-      {/* Candidate pipeline — idea → spec → Gate, with cohort context + inline idea intake. */}
-      <CandidatePipeline
-        funnel={intelligence.funnel}
-        inboxItems={inboxItems}
-        inboxConnected={inboxConnected}
-        intelConnected={intelConnected}
-      />
-
-      {/* Theories — every Gate ruling, PASS or FAIL, drawn from the same experiment memory the
-          /verdicts page renders, so "View all" is a true drill-down. */}
-      <TheoriesLedger theories={theories} connected={experimentsConnected} />
-
-      {/* Forward-test window — strategies in simulation with days elapsed. */}
-      <ForwardTestWindow rows={simRows} connected={lbConnected} />
-
-      {/* Data coverage — per-source freshness so the operator knows the feed is alive. */}
-      <DataFreshness sources={intelligence.data_freshness} connected={intelConnected} />
+        <Tabs
+          ariaLabel="Supporting context"
+          tabs={[
+            {
+              id: "pipeline",
+              label: "Pipeline",
+              content: (
+                <Card className="p-5">
+                  <CandidatePipeline
+                    funnel={intelligence.funnel}
+                    inboxItems={inboxItems}
+                    inboxConnected={inboxConnected}
+                    intelConnected={intelConnected}
+                  />
+                </Card>
+              )
+            },
+            {
+              id: "verdicts",
+              label: "Verdicts",
+              count: verdictCount,
+              content: (
+                <Card className="p-5">
+                  <TheoriesLedger theories={theories} connected={experimentsConnected} />
+                </Card>
+              )
+            },
+            {
+              id: "simulation",
+              label: "In simulation",
+              count: inSimCount,
+              content: (
+                <Card className="p-5">
+                  <ForwardTestWindow rows={simRows} connected={lbConnected} />
+                </Card>
+              )
+            },
+            {
+              id: "data",
+              label: "Data",
+              count: freshCount,
+              content: (
+                <Card className="p-5">
+                  <DataFreshness sources={intelligence.data_freshness} connected={intelConnected} />
+                </Card>
+              )
+            }
+          ]}
+        />
+      </section>
     </div>
   );
 }
@@ -152,6 +209,20 @@ function Header() {
       <p className="mt-1 text-[13px] text-muted">
         Is it making money, and does it need you? Everything below is real — nothing fabricated.
       </p>
+    </div>
+  );
+}
+
+// A lightweight panel head used inside the tabbed detail section — gives each panel a title + one-line
+// description without the full Card chrome (the Tabs panel already provides the frame).
+function PanelHead({ icon, title, sub }: { icon: ReactNode; title: ReactNode; sub: ReactNode }) {
+  return (
+    <div className="mb-4">
+      <div className="flex items-center gap-1.5 text-sm font-semibold tracking-tight text-foreground">
+        <span className="text-iris-soft">{icon}</span>
+        {title}
+      </div>
+      <p className="mt-1 text-[12px] text-quiet">{sub}</p>
     </div>
   );
 }
@@ -170,14 +241,13 @@ function CandidatePipeline({
   intelConnected: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-1.5">
-          <FlaskConical className="size-4 text-iris-soft" /> Candidate pipeline
-        </CardTitle>
-        <span className="text-[12px] text-quiet">idea → spec → Gate → simulation</span>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <div>
+      <PanelHead
+        icon={<FlaskConical className="size-4" />}
+        title="Candidate pipeline"
+        sub="idea → spec → Gate → simulation"
+      />
+      <div className="space-y-4">
         {/* Pipeline funnel stats */}
         {intelConnected && (funnel.authored > 0 || funnel.gate_passed > 0) ? (
           <PipelineFunnelBar funnel={funnel} />
@@ -191,8 +261,8 @@ function CandidatePipeline({
 
         {/* Queue snapshot */}
         <IdeaQueuePreview items={inboxItems} connected={inboxConnected} />
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -290,55 +360,56 @@ const PREVIEW_N = 5;
 function TheoriesLedger({ theories, connected }: { theories: ExperimentTheory[]; connected: boolean }) {
   const preview = theories.slice(0, PREVIEW_N);
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-1.5">
-          <ClipboardCheck className="size-4 text-iris-soft" /> Theories
-          {/* Cohort tooltip — in the header so the operator sees it alongside PASS/FAIL counts */}
-          <Tooltip
-            content="Specs are tested as a cohort. The Gate's BH-FDR correction means a PASS isn't just lucky — it survived multiple-testing scrutiny alongside every other spec in the same batch."
-            side="bottom"
-          />
-        </CardTitle>
-        <span className="text-[12px] text-quiet">{theories.length} theor{theories.length === 1 ? "y" : "ies"} ruled on</span>
-      </CardHeader>
-      <CardContent>
-        {theories.length === 0 ? (
-          <EmptyState
-            title={connected ? "No theories yet" : "Theories unavailable"}
-            hint={
-              connected
-                ? "Every theory the Gate rules on appears here — PASS or FAIL, with the stat that decided it."
-                : "The engine did not return the experiment memory. Once it is up, real theories appear here."
-            }
-            icon={<ClipboardCheck className="size-5" />}
-          />
-        ) : (
-          <DataPreview href="/verdicts" viewAllLabel="View all theories" total={theories.length}>
-            <ul className="divide-y divide-border/60">
-              {preview.map((t) => {
-                const pass = t.decision === "PASS";
-                const date = t.ts ? t.ts.slice(0, 10) : null;
-                return (
-                  <li key={t.run_id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1.5 py-3 first:pt-0 last:pb-0">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[13.5px] font-medium text-foreground">{t.hypothesis}</span>
-                        {date ? <span className="text-[11px] text-quiet">{date}</span> : null}
-                      </div>
-                      <TheoryStats theory={t} />
+    <div>
+      <PanelHead
+        icon={<ClipboardCheck className="size-4" />}
+        title={
+          <span className="flex items-center gap-1.5">
+            Theories
+            {/* Cohort tooltip — beside the title so the operator sees it alongside PASS/FAIL counts */}
+            <Tooltip
+              content="Specs are tested as a cohort. The Gate's BH-FDR correction means a PASS isn't just lucky — it survived multiple-testing scrutiny alongside every other spec in the same batch."
+              side="bottom"
+            />
+          </span>
+        }
+        sub={`${theories.length} theor${theories.length === 1 ? "y" : "ies"} ruled on · PASS or FAIL`}
+      />
+      {theories.length === 0 ? (
+        <EmptyState
+          title={connected ? "No theories yet" : "Theories unavailable"}
+          hint={
+            connected
+              ? "Every theory the Gate rules on appears here — PASS or FAIL, with the stat that decided it."
+              : "The engine did not return the experiment memory. Once it is up, real theories appear here."
+          }
+          icon={<ClipboardCheck className="size-5" />}
+        />
+      ) : (
+        <DataPreview href="/verdicts" viewAllLabel="View all theories" total={theories.length}>
+          <ul className="divide-y divide-border/60">
+            {preview.map((t) => {
+              const pass = t.decision === "PASS";
+              const date = t.ts ? t.ts.slice(0, 10) : null;
+              return (
+                <li key={t.run_id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1.5 py-3 first:pt-0 last:pb-0">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13.5px] font-medium text-foreground">{t.hypothesis}</span>
+                      {date ? <span className="text-[11px] text-quiet">{date}</span> : null}
                     </div>
-                    <Badge variant={pass ? "up" : "down"} className={cn("mt-0.5 shrink-0")}>
-                      {pass ? "PASS" : "FAIL"}
-                    </Badge>
-                  </li>
-                );
-              })}
-            </ul>
-          </DataPreview>
-        )}
-      </CardContent>
-    </Card>
+                    <TheoryStats theory={t} />
+                  </div>
+                  <Badge variant={pass ? "up" : "down"} className={cn("mt-0.5 shrink-0")}>
+                    {pass ? "PASS" : "FAIL"}
+                  </Badge>
+                </li>
+              );
+            })}
+          </ul>
+        </DataPreview>
+      )}
+    </div>
   );
 }
 
@@ -368,56 +439,53 @@ function TheoryStats({ theory }: { theory: ExperimentTheory }) {
 // Shows days elapsed so the operator can see which are approaching the ≥30d readiness signal.
 function ForwardTestWindow({ rows, connected }: { rows: LeaderboardRow[]; connected: boolean }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-1.5">
-          <LineChart className="size-4 text-iris-soft" /> In simulation
-        </CardTitle>
-        <span className="text-[12px] text-quiet">Cleared Gate · live bars · no capital</span>
-      </CardHeader>
-      <CardContent>
-        {!connected ? (
-          <EmptyState
-            title="Engine not connected"
-            hint="Simulation status appears here once the engine is connected."
-            icon={<LineChart className="size-5" />}
-          />
-        ) : rows.length === 0 ? (
-          <EmptyState
-            title="No strategies in simulation yet"
-            hint={
-              <>
-                Strategies move here automatically once they clear the Gate. Check the{" "}
-                <Link href="/lab" className="text-iris-soft hover:underline">Lab</Link> to see where the pipeline stands.
-              </>
-            }
-            icon={<LineChart className="size-5" />}
-          />
-        ) : (
-          <DataPreview href="/forward-test" viewAllLabel="View all in simulation" total={rows.length}>
-            <ul className="divide-y divide-border/60">
-              {rows.slice(0, 5).map((r) => {
-                const days = Math.floor(r.forward_age_days ?? 0);
-                const ready = days >= 30;
-                return (
-                  <li key={r.version_id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-                    <div className="min-w-0 flex-1">
-                      <span className="text-[13px] font-medium text-foreground">{r.name}</span>
-                      <span className="ml-2 text-[11px] text-quiet">{r.venue}</span>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {/* Forward CLOCK only — never the backtest % dressed up as forward return. The forward
-                          test is the clock since funding; a forward-return number isn't in the contract yet. */}
-                      <span className="text-[11.5px] tabular text-quiet">{days < 1 ? "day 0" : `${days}d fwd`}</span>
-                      <Badge variant={ready ? "up" : "muted"}>{ready ? "≥30d" : "maturing"}</Badge>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </DataPreview>
-        )}
-      </CardContent>
-    </Card>
+    <div>
+      <PanelHead
+        icon={<LineChart className="size-4" />}
+        title="In simulation"
+        sub="Cleared Gate · live bars · no capital"
+      />
+      {!connected ? (
+        <EmptyState
+          title="Engine not connected"
+          hint="Simulation status appears here once the engine is connected."
+          icon={<LineChart className="size-5" />}
+        />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          title="No strategies in simulation yet"
+          hint={
+            <>
+              Strategies move here automatically once they clear the Gate. Check the{" "}
+              <Link href="/lab" className="text-iris-soft hover:underline">Lab</Link> to see where the pipeline stands.
+            </>
+          }
+          icon={<LineChart className="size-5" />}
+        />
+      ) : (
+        <DataPreview href="/forward-test" viewAllLabel="View all in simulation" total={rows.length}>
+          <ul className="divide-y divide-border/60">
+            {rows.slice(0, 5).map((r) => {
+              const days = Math.floor(r.forward_age_days ?? 0);
+              const ready = days >= 30;
+              return (
+                <li key={r.version_id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[13px] font-medium text-foreground">{r.name}</span>
+                    <span className="ml-2 text-[11px] text-quiet">{r.venue}</span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {/* Forward CLOCK only — never the backtest % dressed up as forward return. The forward
+                        test is the clock since funding; a forward-return number isn't in the contract yet. */}
+                    <span className="text-[11.5px] tabular text-quiet">{days < 1 ? "day 0" : `${days}d fwd`}</span>
+                    <Badge variant={ready ? "up" : "muted"}>{ready ? "≥30d" : "maturing"}</Badge>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </DataPreview>
+      )}
+    </div>
   );
 }
