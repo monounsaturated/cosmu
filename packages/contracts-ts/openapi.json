@@ -6376,6 +6376,27 @@
         "summary": "Research Drift"
       }
     },
+    "/research/experiments": {
+      "get": {
+        "description": "The machine's EXPERIMENT MEMORY, made visible \u2014 every theory it has tested through the honest cohort Gate\n(gate_verdicts, kind='cohort'): plain-language hypothesis, source, verdict, best deflated-Sharpe vs the 0.95\nbar, and the REAL out-of-sample holdout DSR (so OOS-decay is legible: high in-sample dSR + negative holdout =\noverfit, not an edge). Read-only; honest-empty when nothing has been tested. The deterministic record behind\n'the machine that never lies' \u2014 a returned PASS would be a genuine survivor, never fabricated.",
+        "operationId": "experiments_research_experiments_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Experiments Research Experiments Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Experiments"
+      }
+    },
     "/research/gate": {
       "get": {
         "operationId": "gate_status_research_gate_get",
