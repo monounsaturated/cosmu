@@ -3,11 +3,12 @@
 Updated 2026-06-07. The single place tracking active work, open PRs, parked ideas, and known fixes — so nothing
 is lost across the campaign. Pair with `docs/DECISIONS.md` (what we concluded) + `docs/STRATEGIES.md` (what we tested).
 
-## 🔴 ACTIVE (running now)
-- **Fee re-run at REAL IBKR fees** (reversal / BAB) — the potential *survivor unlock* (wave-1 fees were too conservative).
-- **Equities wave 2** — low-turnover reversal · low-vol/BAB · sector-neutral · vol-targeted momentum.
-- **Crypto-ML combinatorial method** — parallel long-shot (ML-found feature combos vs the hand-search).
-- **Frontend strategy-explorer** — TradingView `lightweight-charts`: pick venue/asset, overlay, gross+net curves, explicit stats.
+## 🔴 NEXT — resume here (2 tracks, efficient — search phase is DONE)
+Crypto + equity *factor* search are honestly exhausted (the machine is proven: ~18 audited verdicts, 0 false positives, it audited itself). Forward = TWO tracks, no more exploratory price-factor waves:
+- **🟢 Track 1 — the FLOOR (live pilot):** a documented robust strategy (dual-momentum / trend) armed in LIVE forward-test = the first tradeable output. (Agent a4c4eef was arming it; verify it's live + watchable on `/explorer`.)
+- **🔭 Track 2 — the UPSIDE (LLM-narrative):** machinery built + leak-proof (PR #143). Next = pull a DEEP raw-text corpus (GDELT GKG via BigQuery, or CryptoPanic/news archive, 2-3yr, liquid names) → score on **MODAL** (~$ few, content-hash cached) → materialize to `alt_data` → run the harness unchanged → real verdict.
+- **✅ Merge the wins:** #134 (unify-simulators), #140 (Explorer), #142 (REAL equity holdout), #143 (LLM-narrative machinery).
+- **⚡ Efficiency rule:** Modal for heavy/parallel (corpus scoring, wide sweeps); Claude/parallel agents only for genuinely-new space. Stop re-searching exhausted surfaces.
 
 ## 🟡 OPEN PRs — reconcile, don't leave dangling
 - **#134 unify-simulators** → **MERGE** (profit-critical — makes every verdict trustworthy; low-risk). *Priority.*
