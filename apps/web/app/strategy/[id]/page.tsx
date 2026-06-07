@@ -1,5 +1,4 @@
-import { ArrowLeft, ScrollText, ShieldCheck } from "lucide-react";
-import Link from "next/link";
+import { ScrollText } from "lucide-react";
 import { engineConfigured, getStrategy } from "../../data";
 import type { Backtest, Execution, Point } from "@cosmu/contracts-ts";
 import { LaunchLiveButton } from "@/components/live/launch-live-button";
@@ -12,6 +11,7 @@ import { FoldBars } from "@/components/charts/fold-bars";
 import { ChartEmpty } from "@/components/charts/chart-kit";
 import { SpecView } from "@/components/strategy/spec-view";
 import { StrategyStages } from "@/components/nav/strategy-stages";
+import { StrategyHeader } from "@/components/strategies/strategy-header";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 import { Tabs, type TabItem, InterlockStrip, type Interlock, GaugeBar } from "@/components/ui/viz";
 import { cn, formatUsd } from "@/lib/utils";
@@ -117,7 +117,7 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
         <StrategyStages />
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">version</div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{id}</h1>
+          <h1 className="mt-1 font-mono text-2xl font-semibold tracking-tight text-foreground">{id}</h1>
         </div>
         <NotConnected
           configured={engineConfigured}
@@ -144,41 +144,18 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
   return (
     <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-7 lg:px-7">
       <StrategyStages />
-      <div>
-        <Link href="/strategies" className="mb-2 inline-flex items-center gap-1 text-[12.5px] text-muted transition-colors hover:text-foreground">
-          <ArrowLeft className="size-3.5" /> All Strategies
-        </Link>
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground">{strategy.name}</h1>
-            {/* Verdict + where it trades, glanceable. */}
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <Badge variant={passed ? "up" : "down"}>
-                <ShieldCheck className="size-3" /> Gate {passed ? "passed" : "not passed"}
-              </Badge>
-              {summary.venue ? <Badge variant="muted">{summary.venue}</Badge> : null}
-              {summary.timeframe ? <Badge variant="muted">{summary.timeframe}</Badge> : null}
-              {summary.bestOos !== null ? (
-                <Badge variant={summary.bestOos >= 0 ? "up" : "down"}>
-                  backtest OOS {summary.bestOos >= 0 ? "+" : ""}{summary.bestOos.toFixed(1)}%
-                </Badge>
-              ) : null}
-            </div>
-          </div>
-          {/* Launch live: only offered when the strategy has at least one passed backtest. */}
-          {passed && <LaunchLiveButton versionId={strategy.version_id} strategyName={strategy.name} />}
-        </div>
-        {/* Thesis — the one-line "why", pulled from the spec rationale (the strategy's reason to exist). */}
-        {summary.thesis ? <p className="mt-2.5 max-w-3xl text-[13px] leading-relaxed text-muted">{summary.thesis}</p> : null}
-        <div className="mt-2 flex items-center gap-2 font-mono text-[12px] text-quiet">
-          <span>{strategy.version_id}</span>
-        </div>
-        {/* Honest forward-vs-backtest note so the OOS % above is never misread as forward performance. */}
-        <p className="mt-2 text-[11.5px] text-quiet">
-          The % above is the <span className="text-muted">backtest out-of-sample</span> return — historical, not forward.
-          Forward proof accrues on the standalone Simulation track (see the equity curve below).
-        </p>
-      </div>
+
+      {/* ONE title block — the verdict, the name, the lane, the thesis, and the honest headline number.
+          No back-arrow, no redundant badge stack (the lean bar): the stage strip above IS the nav back. */}
+      <StrategyHeader
+        name={strategy.name}
+        versionId={strategy.version_id}
+        passed={passed}
+        lane={[summary.venue, summary.timeframe]}
+        thesis={summary.thesis}
+        bestOos={summary.bestOos}
+        action={passed ? <LaunchLiveButton versionId={strategy.version_id} strategyName={strategy.name} /> : undefined}
+      />
 
       {/* Gate interlock strip — the verdict as pass/fail chips against the REAL deterministic thresholds,
           not a wall of numbers. Each chip shows the measured value and the bar it cleared (or didn't). */}
@@ -198,7 +175,7 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
       <Tabs
         ariaLabel="Strategy detail sections"
         tabs={[
-          { id: "performance", label: "Performance", content: <PerformanceTab strategy={strategy} simCurve={simCurve} holdout={holdout} /> },
+          { id: "performance", label: "Performance", content: <PerformanceTab strategy={strategy} simCurve={simCurve} trades={strategy.trades} holdout={holdout} /> },
           { id: "gate", label: "Gate", count: strategy.backtests.length, content: <GateTab backtests={strategy.backtests} /> },
           { id: "trades", label: "Trades", count: strategy.trades.length, content: <TradesTab trades={strategy.trades} /> },
           { id: "spec", label: "Spec", content: <SpecTab spec={strategy.spec} params={strategy.params} code={strategy.generated_code} /> },
@@ -209,39 +186,64 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
   );
 }
 
-// ── Performance tab: sim equity from trades + per-fold OOS + untouched holdout (the digestible default). ──
+// Costs, derived ONLY from the real trade fills (Execution.fee) — never fabricated. Total fees paid on
+// this track, the per-trade average, and fees as a share of gross traded notional (the honest cost
+// drag). Returns null when there are no fills, so the page shows an honest "nothing yet" instead.
+function costsFromTrades(trades: Execution[]): { total: number; perTrade: number; pctOfNotional: number | null } | null {
+  if (trades.length === 0) return null;
+  let totalFee = 0;
+  let notional = 0;
+  for (const t of trades) {
+    totalFee += t.fee;
+    notional += Math.abs(t.qty * t.price);
+  }
+  return {
+    total: totalFee,
+    perTrade: totalFee / trades.length,
+    pctOfNotional: notional > 0 ? (totalFee / notional) * 100 : null
+  };
+}
+
+// ── Performance tab: the two faces of proof side by side — the Simulation equity track (forward, built
+// only from real fills) vs the out-of-sample backtest evidence by fold — plus the untouched holdout and
+// an honest costs read. The default, digestible view. ──
 function PerformanceTab({
   strategy,
   simCurve,
+  trades,
   holdout
 }: {
   strategy: { backtests: Backtest[] };
   simCurve: Point[];
+  trades: Execution[];
   holdout: { label: string; value: string; tone?: "up" | "down" }[];
 }) {
+  const costs = costsFromTrades(trades);
   return (
-    <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
-      <Card>
+    <div className="space-y-3">
+      {/* Forward track vs backtest evidence — the two curves the operator weighs, side by side. */}
+      <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
+        <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5">
-              Simulation equity
-              <Tooltip content="Cumulative realized cash flow from this track's simulation trades (sells add, buys and fees subtract). Built only from real trades — not a fabricated curve." />
+              Forward — Simulation track
+              <Tooltip content="Cumulative realized cash flow from this track's real simulation fills (sells add, buys and fees subtract). This is forward proof on live data — built only from real trades, not a fabricated curve." />
             </CardTitle>
-            <Badge variant="info">Simulation</Badge>
+            <Badge variant="info">live data · no money</Badge>
           </CardHeader>
           <CardContent>
             {simCurve.length >= 2 ? (
               <TvChart points={simCurve} mode="sim" height={220} valueKind="usd" />
             ) : (
-              <ChartEmpty title="Not enough trades yet" hint="A sim equity curve renders once this track has at least two fills." height={220} />
+              <ChartEmpty title="No forward track yet" hint="The Simulation equity curve renders once this track has at least two fills on live data." height={220} />
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5">
-              Out-of-sample by fold
-              <Tooltip content="Net return on each backtest fold (WFO, untouched holdout). Green is positive OOS return, red negative." />
+              Backtest — out-of-sample by fold
+              <Tooltip content="Net return on each backtest fold (WFO, untouched holdout) — historical evidence the edge held out-of-sample. Green is positive OOS return, red negative. This is NOT forward performance." />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -269,6 +271,40 @@ function PerformanceTab({
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Costs — the real fee drag on this track, counted off the fills. Honest empty state when none. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            Costs
+            <Tooltip content="The fees this track has actually paid, counted off its real fills (Execution.fee). Net returns above are already after these costs — this card makes the drag explicit, never fabricated." />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {costs ? (
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-[12.5px] sm:grid-cols-3">
+              <CostStat label="Total fees paid" value={formatUsd(costs.total, 2)} />
+              <CostStat label="Avg fee / trade" value={formatUsd(costs.perTrade, 2)} />
+              <CostStat
+                label="Fees vs notional"
+                value={costs.pctOfNotional !== null ? `${costs.pctOfNotional.toFixed(3)}%` : "—"}
+              />
+            </dl>
+          ) : (
+            <p className="text-[12px] text-quiet">No fills yet — costs appear here once this track trades.</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function CostStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <dt className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-quiet">{label}</dt>
+      <dd className="text-lg font-semibold tabular tracking-tight text-foreground">{value}</dd>
     </div>
   );
 }
