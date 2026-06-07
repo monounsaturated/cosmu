@@ -35,6 +35,12 @@ from cosmu.data.providers.macro import (  # noqa: F401
     _parse_cboe_date,
     _points_from_cboe_putcall,
 )
+from cosmu.data.providers.macro_extra import (  # noqa: F401
+    FredInitialClaimsProvider,
+    FredNfciProvider,
+    METRIC_INITIAL_CLAIMS,
+    METRIC_NFCI,
+)
 from cosmu.data.providers.news import (  # noqa: F401
     GdeltNewsProvider,
     GdeltToneProvider,
@@ -101,6 +107,10 @@ __all__ = [
     "FearGreedProvider",
     "XaiTwitterProvider",
     "FredMacroProvider",
+    "FredNfciProvider",
+    "FredInitialClaimsProvider",
+    "METRIC_NFCI",
+    "METRIC_INITIAL_CLAIMS",
     "CboePutCallProvider",
     "PolymarketOddsProvider",
     "PolymarketGammaProvider",

@@ -1,11 +1,10 @@
-import { Activity, ArrowRight, ChevronRight } from "lucide-react";
+import { Activity, ArrowRight, ChevronRight, FlaskConical, Search, Skull } from "lucide-react";
 import Link from "next/link";
 import { getBrain, getEvents, getIntelligence, getPopulation, getInboxQueue, engineConfigured } from "../data";
 import type { FunnelStats } from "../data";
 import type { GraveyardRow } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Stat } from "@/components/ui/stat";
 import { SectionHeader } from "@/components/ui/section";
 import { FarmConsole } from "@/components/research/farm-console";
 import { EdgeGate } from "@/components/research/edge-gate";
@@ -15,9 +14,9 @@ import { GateFunnel, SurvivalDistribution } from "@/components/charts/brain-char
 import { ActivityTimeline } from "@/components/observability/activity-timeline";
 import { Tooltip } from "@/components/ui/tooltip";
 import { StrategyStages } from "@/components/nav/strategy-stages";
-import { EmptyState, NotConnected, NotConnectedBanner } from "@/components/ui/honest-state";
+import { NotConnectedBanner } from "@/components/ui/honest-state";
 import { IdeaInbox } from "@/components/overview/idea-inbox";
-import { ExpandableSection } from "@/components/ui/expandable-section";
+import { MetricCard, Tabs } from "@/components/ui/viz";
 import { DataPreview } from "@/components/ui/data-preview";
 import { cn, formatPct } from "@/lib/utils";
 
@@ -33,7 +32,7 @@ export default async function LabPage() {
   const anyConnected = connected || brainConnected;
 
   return (
-    <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-7 lg:px-7">
+    <div className="mx-auto max-w-[1200px] space-y-7 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-8 lg:px-7">
       <SectionHeader
         eyebrow="lab"
         title="What is the machine discovering?"
@@ -48,41 +47,50 @@ export default async function LabPage() {
       {connected && population.forward_test > 0 && (
         <Link
           href="/strategies"
-          className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-surface-2/30 px-4 py-3 text-[12.5px] text-muted transition-colors hover:bg-surface-2/55 hover:text-foreground"
+          className="flex items-center justify-between gap-3 rounded-lg border border-up/30 bg-up/[0.06] px-4 py-3 text-[12.5px] text-muted transition-colors hover:bg-up/10 hover:text-foreground"
         >
           <span>
-            <span className="font-medium text-foreground">{population.forward_test}</span> version{population.forward_test !== 1 ? "s" : ""} cleared the Gate — review them in Backtest
+            <span className="font-medium text-foreground">{population.forward_test}</span> version
+            {population.forward_test !== 1 ? "s" : ""} cleared the Gate — review them in Backtest
           </span>
-          <ChevronRight className="size-4 shrink-0 text-quiet" />
+          <ChevronRight className="size-4 shrink-0 text-up" />
         </Link>
       )}
 
-      {/* Idea inbox — queue a vibe; the next tick authors a typed spec; the Gate rules.
-          The full vibe loop (queued → authored → Gate verdict) is visible in one place. */}
+      {/* PRIMARY ACTION — the vibe loop: queue a vibe; the next tick authors a typed spec; the Gate rules.
+          The full loop (queued → authored → Gate verdict) is visible in one place. */}
       <section className="space-y-3">
-        <h3 className="text-[13px] font-semibold text-foreground">Vibe loop — idea → spec → verdict</h3>
-        <IdeaInbox
-          initial={inboxItems}
-          connected={inboxConnected}
-          configured={engineConfigured}
+        <SectionHeader
+          eyebrow="start here"
+          title={<span className="text-base">Vibe loop — idea → spec → verdict</span>}
         />
+        <IdeaInbox initial={inboxItems} connected={inboxConnected} configured={engineConfigured} />
       </section>
 
-      {/* KPIs */}
+      {/* KPIs — the population at a glance. */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Versions tested" value={connected ? population.total : "—"} accent="iris" />
-        <Stat label="In simulation" value={connected ? population.forward_test : "—"} accent="up" />
-        <Stat label="In graveyard" value={connected ? population.killed : "—"} accent="down" />
-        <Stat label="Kill rate" value={connected && population.total ? formatPct(population.kill_rate * 100, 1) : "—"} accent="warn" />
+        <MetricCard label="Versions tested" value={connected ? population.total : "—"} tone="iris" />
+        <MetricCard label="In simulation" value={connected ? population.forward_test : "—"} tone="up" />
+        <MetricCard label="In graveyard" value={connected ? population.killed : "—"} tone="down" />
+        <MetricCard
+          label="Kill rate"
+          value={connected && population.total ? formatPct(population.kill_rate * 100, 1) : "—"}
+          tone="warn"
+        />
       </div>
 
       {/* Pipeline funnel — full lifecycle from intelligence data */}
       {intelConnected && intelligence.funnel.authored > 0 && (
         <section className="space-y-3">
-          <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-            Pipeline funnel
-            <Tooltip content="The full lifecycle: authored → Backtest → gate-passed → Simulation → Live, with how many were killed at each stage." />
-          </h3>
+          <SectionHeader
+            eyebrow="pipeline"
+            title={
+              <span className="flex items-center gap-1.5 text-base">
+                Funnel
+                <Tooltip content="The full lifecycle: authored → Backtest → gate-passed → Simulation → Live, with how many were killed at each stage." />
+              </span>
+            }
+          />
           <Card>
             <CardContent className="pt-5">
               <PipelineFunnel funnel={intelligence.funnel} />
@@ -91,137 +99,173 @@ export default async function LabPage() {
         </section>
       )}
 
-      {/* Progressive disclosure — digestible by default. Gate charts, brain detail, finder, activity
-          and graveyard are secondary; show them on demand. */}
-      <ExpandableSection
-        showLabel="Show brain detail, gates, finder & graveyard"
-        hideLabel="Hide detail"
-        summary={null}
-      >
-        {/* Research brain: gate funnel + survivors */}
-        {brainConnected && (
-          <section className="space-y-3">
-            <div className="grid gap-3 lg:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-1.5">
-                    Gate funnel
-                    <Tooltip content="Every generated Version runs the deterministic Gate. Most are killed — the funnel shows how many survive." />
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <GateFunnel gated={brain.gated} />
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-1.5">
-                    Survival distribution
-                    <Tooltip content="Each survivor's score — the model's estimate the edge persists. It only orders the queue; never vetoes." />
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <SurvivalDistribution survivors={brain.survivors} />
-                </CardContent>
-              </Card>
-            </div>
-
-            <ResearchBrain brain={brain} />
-          </section>
-        )}
-
-        {/* Gates */}
-        <section className="space-y-3">
-          <h3 className="text-[13px] font-semibold text-foreground">Is there an edge?</h3>
-          <div className="grid gap-3">
-            <EdgeGate />
-            <CrossAssetGate />
-          </div>
-        </section>
-
-        {/* The machine's memory + what it has learned now lives on the Mind page (one consolidated surface). */}
-
-        {/* Strategy Finder */}
-        <section className="space-y-3">
-          <h3 className="text-[13px] font-semibold text-foreground">Strategy Finder</h3>
-          <FarmConsole />
-        </section>
-
-        {/* Activity */}
-        {evtConnected && events.length > 0 && (
-          <section className="space-y-3">
-            <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
-              <Activity className="size-4 text-iris-soft" /> Recent activity
-            </h3>
-            <Card>
-              <CardContent className="pt-4">
-                <ActivityTimeline events={events} />
-              </CardContent>
-            </Card>
-          </section>
-        )}
-
-        {/* Graveyard */}
-        {connected && population.killed > 0 && (
-          <section className="space-y-3">
-            <h3 className="text-[13px] font-semibold text-foreground">Graveyard</h3>
-            <div className="grid gap-3 lg:grid-cols-[1fr_1.6fr]">
-              <Card>
-                <CardHeader>
-                  <CardTitle>By origin</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {Object.entries(population.by_lane).map(([lane, raw]) => {
-                    const n = Number(raw);
-                    const pct = population.total ? (n / population.total) * 100 : 0;
-                    return (
-                      <div key={lane} className="space-y-1.5">
-                        <div className="flex items-center justify-between text-[12.5px]">
-                          <span className="capitalize text-foreground">{lane}</span>
-                          <span className="tabular text-muted">{n}</span>
-                        </div>
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
-                          <div className="h-full rounded-full bg-iris/75" style={{ width: `${Math.max(pct, 2)}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent deaths</CardTitle>
-                  <Badge variant="down">with kill reasons</Badge>
-                </CardHeader>
-                <CardContent>
-                  <DataPreview href="/strategies" viewAllLabel="View all strategies" total={population.killed}>
-                    <div className="space-y-2">
-                      {population.graveyard.slice(0, 5).map((row: GraveyardRow) => (
-                        <div
-                          key={row.version_id}
-                          className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2"
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate text-[12.5px] font-medium text-foreground">{row.name}</div>
-                            <div className="text-[11px] text-quiet">{row.origin}</div>
-                          </div>
-                          <div className="flex flex-wrap justify-end gap-1">
-                            {row.kill_reason.split(",").map((r) => (
-                              <Badge key={r} variant="down">
-                                {r.replace(/_/g, " ")}
-                              </Badge>
+      {/* SECONDARY DETAIL — brain, the gates, the finder, activity and graveyard. One focused tab at a
+          time (replaces a single mega "show more" that dumped every section at once). */}
+      <section className="space-y-3">
+        <SectionHeader eyebrow="detail" title={<span className="text-base">Brain, gates &amp; graveyard</span>} />
+        <Tabs
+          ariaLabel="Lab detail"
+          defaultTab="gates"
+          tabs={[
+            {
+              id: "gates",
+              label: (
+                <span className="flex items-center gap-1.5">
+                  <FlaskConical className="size-3.5" /> Is there an edge?
+                </span>
+              ),
+              content: (
+                <div className="grid gap-3">
+                  <EdgeGate />
+                  <CrossAssetGate />
+                </div>
+              ),
+            },
+            {
+              id: "brain",
+              label: "Research brain",
+              content: brainConnected ? (
+                <div className="space-y-3">
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-1.5">
+                          Gate funnel
+                          <Tooltip content="Every generated Version runs the deterministic Gate. Most are killed — the funnel shows how many survive." />
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <GateFunnel gated={brain.gated} />
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-1.5">
+                          Survival distribution
+                          <Tooltip content="Each survivor's score — the model's estimate the edge persists. It only orders the queue; never vetoes." />
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <SurvivalDistribution survivors={brain.survivors} />
+                      </CardContent>
+                    </Card>
+                  </div>
+                  <ResearchBrain brain={brain} />
+                </div>
+              ) : (
+                <Card>
+                  <CardContent className="py-10 text-center text-[12.5px] text-muted">
+                    The research brain appears once the engine is connected. No demo data is shown.
+                  </CardContent>
+                </Card>
+              ),
+            },
+            {
+              id: "finder",
+              label: (
+                <span className="flex items-center gap-1.5">
+                  <Search className="size-3.5" /> Strategy finder
+                </span>
+              ),
+              content: <FarmConsole />,
+            },
+            {
+              id: "activity",
+              label: (
+                <span className="flex items-center gap-1.5">
+                  <Activity className="size-3.5" /> Activity
+                </span>
+              ),
+              content:
+                evtConnected && events.length > 0 ? (
+                  <Card>
+                    <CardContent className="pt-4">
+                      <ActivityTimeline events={events} />
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardContent className="py-10 text-center text-[12.5px] text-muted">
+                      No recent activity yet. Events appear here as the machine works.
+                    </CardContent>
+                  </Card>
+                ),
+            },
+            {
+              id: "graveyard",
+              label: (
+                <span className="flex items-center gap-1.5">
+                  <Skull className="size-3.5" /> Graveyard
+                </span>
+              ),
+              count: connected ? population.killed : undefined,
+              content:
+                connected && population.killed > 0 ? (
+                  <div className="grid gap-3 lg:grid-cols-[1fr_1.6fr]">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>By origin</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {Object.entries(population.by_lane).map(([lane, raw]) => {
+                          const n = Number(raw);
+                          const pct = population.total ? (n / population.total) * 100 : 0;
+                          return (
+                            <div key={lane} className="space-y-1.5">
+                              <div className="flex items-center justify-between text-[12.5px]">
+                                <span className="capitalize text-foreground">{lane}</span>
+                                <span className="tabular text-muted">{n}</span>
+                              </div>
+                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+                                <div className="h-full rounded-full bg-iris/75" style={{ width: `${Math.max(pct, 2)}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Recent deaths</CardTitle>
+                        <Badge variant="down">with kill reasons</Badge>
+                      </CardHeader>
+                      <CardContent>
+                        <DataPreview href="/strategies" viewAllLabel="View all strategies" total={population.killed}>
+                          <div className="space-y-2">
+                            {population.graveyard.slice(0, 5).map((row: GraveyardRow) => (
+                              <div
+                                key={row.version_id}
+                                className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2"
+                              >
+                                <div className="min-w-0">
+                                  <div className="truncate text-[12.5px] font-medium text-foreground">{row.name}</div>
+                                  <div className="text-[11px] text-quiet">{row.origin}</div>
+                                </div>
+                                <div className="flex flex-wrap justify-end gap-1">
+                                  {row.kill_reason.split(",").map((r) => (
+                                    <Badge key={r} variant="down">
+                                      {r.replace(/_/g, " ")}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
                             ))}
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </DataPreview>
-                </CardContent>
-              </Card>
-            </div>
-          </section>
-        )}
-      </ExpandableSection>
+                        </DataPreview>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className="py-10 text-center text-[12.5px] text-muted">
+                      Nothing in the graveyard yet — no version has been killed.
+                    </CardContent>
+                  </Card>
+                ),
+            },
+          ]}
+        />
+      </section>
     </div>
   );
 }
@@ -269,14 +313,10 @@ function PipelineFunnel({ funnel }: { funnel: FunnelStats }) {
           <span className="tabular font-semibold">{funnel.killed}</span> killed
         </span>
         {funnel.authored > 0 && (
-          <span className="text-warn">
-            kill rate {formatPct((funnel.killed / funnel.authored) * 100, 1)}
-          </span>
+          <span className="text-warn">kill rate {formatPct((funnel.killed / funnel.authored) * 100, 1)}</span>
         )}
         {funnel.gate_passed > 0 && funnel.authored > 0 && (
-          <span className="text-quiet">
-            gate pass rate {formatPct((funnel.gate_passed / funnel.authored) * 100, 1)}
-          </span>
+          <span className="text-quiet">gate pass rate {formatPct((funnel.gate_passed / funnel.authored) * 100, 1)}</span>
         )}
       </div>
     </div>

@@ -1,10 +1,21 @@
 import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
-export function Card({ className, ...props }: ComponentProps<"div">) {
+// The base surface every panel composes from. Calm by default; pass `interactive` to opt into a
+// 1px hover-lift + brighter border (for cards that are themselves links/buttons). Premium hairline
+// border + low-spread elevation — the Mercury/Linear "floats off the canvas, doesn't shout" feel.
+export function Card({
+  className,
+  interactive = false,
+  ...props
+}: ComponentProps<"div"> & { interactive?: boolean }) {
   return (
     <div
-      className={cn("card-grad rounded-lg border border-border/70 shadow-card", className)}
+      className={cn(
+        "card-grad rounded-lg border border-border/70 shadow-card",
+        interactive && "lift cursor-pointer hover:border-border-strong",
+        className
+      )}
       {...props}
     />
   );

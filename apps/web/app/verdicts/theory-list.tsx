@@ -1,44 +1,36 @@
 "use client";
 
 // The machine's experiment memory, made glanceable. Each row is one theory the Gate ruled on:
-// plain-language hypothesis, source, asset, verdict badge, a deflated-Sharpe gauge against the
-// 0.95 bar, and the holdout dSR — with an honest "decays out-of-sample" tag when an in-sample edge
-// did not survive the holdout, and a plain-language kill-reason for every FAIL. Expand a theory to
-// see its candidate cohort and per-candidate kill-reasons.
+// plain-language hypothesis, source, asset, verdict, a deflated-Sharpe gauge against the 0.95 bar,
+// and the holdout dSR — with an honest "decays out-of-sample" tag when an in-sample edge did not
+// survive the holdout, and a plain-language kill-reason for every FAIL. Expand a theory to see its
+// candidate cohort and per-candidate kill-reasons.
 //
-// Client component: search + source/verdict filters + sort + per-row expand are all local state.
+// Client component: search + verdict/source filters + sort + per-row expand are all local state.
 // Renders only the values it is handed (honesty contract) — never pads a series or invents a number.
+// The numeric visuals are page-local primitives (components/theories/theory-bits) so this list and
+// the summary above it render identical, calm gauges.
 
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import type { ExperimentCandidate, ExperimentTheory } from "@/app/data";
 import { Badge } from "@/components/ui/badge";
-import { GaugeBar } from "@/components/ui/viz";
 import { EmptyState } from "@/components/ui/honest-state";
 import { SearchInput } from "@/components/ui/input";
 import { KillReasonChip, killReasonLabel } from "@/components/theories/kill-reason";
+import {
+  ColumnLabel,
+  DSR_BAR,
+  DsrGauge,
+  HoldoutValue,
+  VerdictPill,
+  decaysOutOfSample,
+  fmtDsr
+} from "@/components/theories/theory-bits";
 import { cn } from "@/lib/utils";
-
-// The Gate's bar for a real, multiple-testing-survived edge.
-const DSR_BAR = 0.95;
 
 type VerdictFilter = "all" | "PASS" | "FAIL" | "decayed";
 type SortKey = "recent" | "best" | "worst";
-
-function fmtDsr(v: number | null | undefined): string {
-  return v !== null && v !== undefined && Number.isFinite(v) ? v.toFixed(2) : "—";
-}
-
-// A theory "decays out-of-sample" when it looked promising in-sample (high dSR) but the holdout
-// turned negative. This is the single most important honesty signal on the page.
-function decaysOutOfSample(t: ExperimentTheory): boolean {
-  return (
-    t.best_holdout_dsr !== null &&
-    Number.isFinite(t.best_holdout_dsr) &&
-    t.best_holdout_dsr < 0 &&
-    t.best_dsr >= 0.5
-  );
-}
 
 // The dominant kill-reason for a FAILed theory: the first reason on its best (highest-dSR) killed
 // candidate, surfaced inline so a glance tells the operator WHY the theory died. Decay is reported
@@ -51,48 +43,6 @@ function topKillReason(t: ExperimentTheory): string | null {
     b.deflated_sharpe_prob > a.deflated_sharpe_prob ? b : a
   );
   return best.reasons[0] ?? null;
-}
-
-// ─── dSR gauge ────────────────────────────────────────────────────────────────
-// In-sample deflated-Sharpe probability against the 0.95 Gate bar. The marker sits at the bar so
-// the operator sees at a glance how far short (or past) the threshold a theory landed.
-function DsrGauge({ value, passed }: { value: number; passed: boolean }) {
-  const clamped = Number.isFinite(value) ? value : 0;
-  return (
-    <div className="flex items-center gap-2">
-      <GaugeBar
-        value={clamped}
-        max={1}
-        marker={DSR_BAR}
-        tone={passed ? "up" : "muted"}
-        height={6}
-        className="w-20"
-      />
-      <span className={cn("tabular text-[12px]", passed ? "text-up" : "text-muted")}>
-        {fmtDsr(clamped)}
-      </span>
-    </div>
-  );
-}
-
-function HoldoutCell({ theory }: { theory: ExperimentTheory }) {
-  const decays = decaysOutOfSample(theory);
-  if (theory.best_holdout_dsr === null) {
-    return <span className="tabular text-[12px] text-quiet">no holdout</span>;
-  }
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <span
-        className={cn(
-          "tabular text-[12px]",
-          theory.best_holdout_dsr < 0 ? "text-down" : "text-foreground"
-        )}
-      >
-        {fmtDsr(theory.best_holdout_dsr)}
-      </span>
-      {decays ? <Badge variant="warn">decays out-of-sample</Badge> : null}
-    </div>
-  );
 }
 
 // ─── Candidate row (expanded) ───────────────────────────────────────────────────
@@ -112,22 +62,22 @@ function CandidateRow({ c }: { c: ExperimentCandidate }) {
           )}
         </div>
         {c.reasons.length > 0 ? (
-          <div className="mt-1 flex flex-wrap gap-1">
+          <div className="mt-1.5 flex flex-wrap gap-1">
             {c.reasons.map((r) => (
               <KillReasonChip key={r} reason={r} />
             ))}
           </div>
         ) : null}
       </div>
-      <div className="flex items-center gap-4 text-[11.5px]">
-        <div className="flex flex-col items-end">
-          <span className="text-[10px] uppercase tracking-wide text-quiet">dSR</span>
+      <div className="flex items-center gap-5 text-[11.5px]">
+        <div className="flex flex-col items-end gap-0.5">
+          <ColumnLabel>dSR</ColumnLabel>
           <span className={cn("tabular", passedBar ? "text-up" : "text-muted")}>
             {fmtDsr(c.deflated_sharpe_prob)}
           </span>
         </div>
-        <div className="flex flex-col items-end">
-          <span className="text-[10px] uppercase tracking-wide text-quiet">holdout</span>
+        <div className="flex flex-col items-end gap-0.5">
+          <ColumnLabel>holdout</ColumnLabel>
           <span
             className={cn(
               "tabular",
@@ -139,8 +89,8 @@ function CandidateRow({ c }: { c: ExperimentCandidate }) {
             {c.holdout_deflated_sharpe === null ? "—" : fmtDsr(c.holdout_deflated_sharpe)}
           </span>
         </div>
-        <div className="flex flex-col items-end">
-          <span className="text-[10px] uppercase tracking-wide text-quiet">FDR</span>
+        <div className="flex flex-col items-end gap-0.5">
+          <ColumnLabel>FDR</ColumnLabel>
           <span className={cn("tabular", c.survived_fdr ? "text-up" : "text-quiet")}>
             {c.survived_fdr ? "survived" : "—"}
           </span>
@@ -159,14 +109,20 @@ function TheoryRow({ theory }: { theory: ExperimentTheory }) {
   const killReason = topKillReason(theory);
 
   return (
-    <li className="py-3 first:pt-0 last:pb-0">
+    <li
+      className={cn(
+        "-mx-2 rounded-lg px-2 py-3 transition-colors first:pt-2.5 last:pb-2.5",
+        hasCandidates && "hover:bg-surface-2/30",
+        open && "bg-surface-2/30"
+      )}
+    >
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2.5">
         <button
           type="button"
           onClick={() => hasCandidates && setOpen((v) => !v)}
           aria-expanded={hasCandidates ? open : undefined}
           className={cn(
-            "flex min-w-0 flex-1 items-start gap-2 text-left",
+            "flex min-w-0 flex-1 items-start gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
             hasCandidates && "cursor-pointer"
           )}
         >
@@ -178,11 +134,9 @@ function TheoryRow({ theory }: { theory: ExperimentTheory }) {
             <span className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           )}
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[13.5px] font-medium leading-snug text-foreground">
-                {theory.hypothesis}
-              </span>
-            </div>
+            <span className="text-[13.5px] font-medium leading-snug text-foreground">
+              {theory.hypothesis}
+            </span>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-quiet">
               <span className="capitalize">{theory.source}</span>
               {theory.asset ? <span className="tabular text-muted">{theory.asset}</span> : null}
@@ -195,7 +149,7 @@ function TheoryRow({ theory }: { theory: ExperimentTheory }) {
             {/* The plain-language reason this theory died, surfaced on the row itself — the failure
                 is the legible product, not something buried behind an expand. */}
             {killReason ? (
-              <div className="mt-1.5 text-[11.5px] leading-snug text-muted">
+              <div className="mt-1.5 text-[11.5px] leading-snug">
                 <span className="text-quiet">Killed: </span>
                 <span className="text-down/90">{killReasonLabel(killReason)}</span>
               </div>
@@ -205,16 +159,14 @@ function TheoryRow({ theory }: { theory: ExperimentTheory }) {
 
         <div className="flex shrink-0 items-center gap-5">
           <div className="flex flex-col items-end gap-1">
-            <span className="text-[10px] uppercase tracking-wide text-quiet">dSR vs 0.95</span>
+            <ColumnLabel>dSR vs {DSR_BAR}</ColumnLabel>
             <DsrGauge value={theory.best_dsr} passed={passed} />
           </div>
           <div className="flex flex-col items-end gap-1">
-            <span className="text-[10px] uppercase tracking-wide text-quiet">holdout</span>
-            <HoldoutCell theory={theory} />
+            <ColumnLabel>holdout</ColumnLabel>
+            <HoldoutValue theory={theory} />
           </div>
-          <Badge variant={passed ? "up" : "muted"} className="mt-0.5">
-            {passed ? "PASS" : "FAIL"}
-          </Badge>
+          <VerdictPill passed={passed} className="mt-0.5" />
         </div>
       </div>
 
@@ -280,7 +232,7 @@ export function TheoryList({
       sorted.sort((a, b) => (b.ts ?? "").localeCompare(a.ts ?? ""));
     }
     return sorted;
-  }, [theories, query, verdict, source, sort]);
+  }, [theories, query, verdict, source, sort, decayedTotal]);
 
   if (theories.length === 0) {
     return (
@@ -308,9 +260,7 @@ export function TheoryList({
             { value: "all", label: "All" },
             { value: "PASS", label: "Passed" },
             { value: "FAIL", label: "Failed" },
-            ...(decayedTotal > 0
-              ? [{ value: "decayed", label: "Decayed OOS" }]
-              : [])
+            ...(decayedTotal > 0 ? [{ value: "decayed", label: "Decayed OOS" }] : [])
           ]}
           value={verdict}
           onChange={(v) => setVerdict(v as VerdictFilter)}
@@ -376,7 +326,7 @@ function FilterGroup({
             onClick={() => onChange(o.value)}
             aria-pressed={active}
             className={cn(
-              "shrink-0 rounded-md px-2.5 py-1 text-[12px] font-medium capitalize transition-colors",
+              "shrink-0 rounded-md px-2.5 py-1 text-[12px] font-medium capitalize outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/40",
               active
                 ? "bg-surface text-foreground shadow-card"
                 : "text-muted hover:bg-surface-2/60 hover:text-foreground"

@@ -2,8 +2,9 @@
 
 // module: app navigation. Nine surfaces covering the full vibe loop (idea → spec → verdict), the
 // machine's experiment memory (Theories), the lifecycle stages (Backtest → Simulation → Live), and
-// the operator's main decisions. Desktop = persistent icon-rail sidebar; mobile = a bottom tab bar
-// (4 primary tabs + a More sheet with the rest).
+// the operator's main decisions. Desktop = a persistent rail grouped into a clear IA — Operate /
+// Pipeline / Knowledge (+ a More section) — so the column reads as sections, not one long list.
+// Mobile = a bottom tab bar (4 primary tabs + a More sheet with the rest).
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -28,17 +29,19 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; desc?: string; icon: typeof LayoutDashboard; gated?: boolean };
 
-// Primary surfaces — the full vibe loop + main operator decisions.
+// Primary surfaces — the full vibe loop + main operator decisions. Flat list is the canonical order
+// (mobile dock + overflow consume it directly); the desktop rail groups it into labeled sections via
+// NAV_GROUPS below, so the IA reads as Operate / Pipeline / Knowledge instead of one long column.
 export const navItems: NavItem[] = [
   { href: "/", label: "Overview", desc: "Status · theories · ideas", icon: LayoutDashboard },
+  { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal },
   { href: "/lab", label: "Lab", desc: "Idea → spec → verdict", icon: FlaskConical },
-  { href: "/verdicts", label: "Theories", desc: "Every theory tested · Gate verdict", icon: ClipboardCheck },
   { href: "/strategies", label: "Strategies", desc: "Backtest · ranked & faceted", icon: ListChecks },
   { href: "/forward-test", label: "Simulation", desc: "Live data · no money", icon: LineChart },
+  { href: "/verdicts", label: "Theories", desc: "Every theory tested · Gate verdict", icon: ClipboardCheck },
   { href: "/explorer", label: "Explorer", desc: "Pick · chart · compare", icon: Telescope },
   { href: "/mind", label: "Mind", desc: "What the agent knows & learned", icon: Brain },
-  { href: "/costs", label: "Costs", desc: "What is it costing?", icon: DollarSign },
-  { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal }
+  { href: "/costs", label: "Costs", desc: "What is it costing?", icon: DollarSign }
 ];
 
 // Secondary deep-link utilities, tucked under "More" (desktop sidebar footer + mobile sheet).
@@ -47,6 +50,17 @@ export const moreItems: NavItem[] = [
   { href: "/settings", label: "Settings", desc: "Keys · universe · data", icon: SlidersHorizontal },
   { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal }
 ];
+
+// Desktop rail grouping — a clear information architecture instead of a single undifferentiated
+// column. Each entry references navItems by href so the source of truth stays the flat list above.
+type NavGroup = { label: string; hrefs: string[] };
+const NAV_GROUPS: NavGroup[] = [
+  { label: "Operate", hrefs: ["/", "/console"] },
+  { label: "Pipeline", hrefs: ["/lab", "/strategies", "/forward-test"] },
+  { label: "Knowledge", hrefs: ["/verdicts", "/explorer", "/mind", "/costs"] }
+];
+
+const ITEM_BY_HREF = new Map(navItems.map((i) => [i.href, i]));
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
@@ -66,19 +80,22 @@ function NavLink({ item, onNavigate, collapsed }: { item: NavItem; onNavigate?: 
       aria-current={active ? "page" : undefined}
       title={collapsed ? item.label : undefined}
       className={cn(
-        "group flex items-center gap-3 rounded-md border text-[13px] transition-colors",
-        collapsed ? "justify-center px-0 py-2.5" : "px-3 py-2",
+        // Linear-style row: a left active-accent bar (via ::before), calm hover, tight type. The
+        // accent bar replaces the boxed-border active state for a quieter, more premium read.
+        "group relative flex items-center gap-3 rounded-md text-[13px] outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring/45",
+        "before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[2.5px] before:-translate-y-1/2 before:rounded-full before:bg-iris before:transition-opacity before:duration-150",
+        collapsed ? "justify-center px-0 py-2.5 before:left-0.5" : "px-3 py-2",
         active
-          ? "border-border bg-surface-2/70 text-foreground"
-          : "border-transparent text-muted hover:border-border hover:bg-surface-2/60 hover:text-foreground",
+          ? "bg-surface-2/70 text-foreground before:opacity-100"
+          : "text-muted hover:bg-surface-2/55 hover:text-foreground before:opacity-0",
         item.gated && !active && "text-quiet opacity-70 hover:opacity-100"
       )}
     >
-      <item.icon className={cn("size-[17px] shrink-0 transition-colors", active ? "text-iris-soft" : "text-quiet group-hover:text-iris-soft")} />
+      <item.icon className={cn("size-[17px] shrink-0 transition-colors", active ? "text-iris-soft" : "text-quiet group-hover:text-foreground")} />
       {!collapsed && (
         <span className="flex min-w-0 flex-col leading-tight">
-          <span>{item.label}</span>
-          {item.desc && <span className="text-[10.5px] text-quiet">{item.desc}</span>}
+          <span className="font-medium">{item.label}</span>
+          {item.desc && <span className="truncate text-[10.5px] text-quiet">{item.desc}</span>}
         </span>
       )}
     </Link>
@@ -87,17 +104,31 @@ function NavLink({ item, onNavigate, collapsed }: { item: NavItem; onNavigate?: 
 
 export function SideNavLinks({ onNavigate, collapsed = false }: { onNavigate?: () => void; collapsed?: boolean }) {
   return (
-    <nav className="flex flex-col gap-1" aria-label="Main navigation">
-      {navItems.map((item) => (
-        <NavLink key={item.href} item={item} onNavigate={onNavigate} collapsed={collapsed} />
+    <nav className="flex flex-col gap-3" aria-label="Main navigation">
+      {NAV_GROUPS.map((group) => (
+        <div key={group.label} className="flex flex-col gap-0.5">
+          {collapsed ? (
+            <div className="mx-auto mb-0.5 h-px w-6 bg-hairline" aria-hidden />
+          ) : (
+            <div className="label-eyebrow px-3 pb-1">{group.label}</div>
+          )}
+          {group.hrefs.map((href) => {
+            const item = ITEM_BY_HREF.get(href);
+            return item ? <NavLink key={href} item={item} onNavigate={onNavigate} collapsed={collapsed} /> : null;
+          })}
+        </div>
       ))}
 
-      <div className={cn("mt-3 mb-1", collapsed ? "mx-auto h-px w-6 bg-border/70" : "px-3")}>
-        {!collapsed && <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-quiet">More</span>}
+      <div className="flex flex-col gap-0.5">
+        {collapsed ? (
+          <div className="mx-auto mb-0.5 h-px w-6 bg-hairline" aria-hidden />
+        ) : (
+          <div className="label-eyebrow px-3 pb-1">More</div>
+        )}
+        {moreItems.map((item) => (
+          <NavLink key={item.href} item={item} onNavigate={onNavigate} collapsed={collapsed} />
+        ))}
       </div>
-      {moreItems.map((item) => (
-        <NavLink key={item.href} item={item} onNavigate={onNavigate} collapsed={collapsed} />
-      ))}
     </nav>
   );
 }
@@ -118,7 +149,7 @@ function DockTab({
       <span
         className={cn(
           "flex h-7 w-12 items-center justify-center rounded-full transition-colors duration-200",
-          active ? "bg-iris/15" : "bg-transparent"
+          active ? "bg-iris/12" : "bg-transparent"
         )}
       >
         <Icon className={cn("size-[20px] shrink-0 transition-colors", active ? "text-iris-soft" : "text-quiet")} />
@@ -265,7 +296,7 @@ function MoreSheet({
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex min-h-[56px] items-center gap-3 rounded-xl border px-4 transition-colors",
-                  active ? "border-border bg-surface-2/70 text-foreground" : "border-border/60 bg-surface-2/30 text-muted hover:bg-surface-2/55 hover:text-foreground"
+                  active ? "border-border-strong bg-surface-3 text-foreground" : "border-border/60 bg-surface-2/30 text-muted hover:bg-surface-2/55 hover:text-foreground"
                 )}
               >
                 <Icon className={cn("size-[19px] shrink-0", active ? "text-iris-soft" : "text-quiet")} />

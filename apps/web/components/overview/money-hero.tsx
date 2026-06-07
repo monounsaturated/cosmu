@@ -9,7 +9,7 @@
 // for live money. Net of fees is stated, because that is the only number that matters.
 
 import Link from "next/link";
-import { ArrowRight, Pause, Play, TrendingUp } from "lucide-react";
+import { ArrowRight, Pause, Play } from "lucide-react";
 import type { OverviewResponse } from "@cosmu/contracts-ts";
 import type { AutonomyStatus } from "@/app/autonomy-contracts";
 import { Card } from "@/components/ui/card";
@@ -50,6 +50,12 @@ export function MoneyHero({
       ? "Net of fees, across every funded simulation track."
       : "No funded tracks yet — the figure starts moving when a strategy clears the Gate.";
 
+  // Operating-cost-vs-alpha ratio — a real /overview field. Honest: 0 reads as "—" (not yet measurable),
+  // never a fabricated efficiency. Green when the machine spends little to earn, red when it's underwater.
+  const opex = overview.opex_vs_alpha;
+  const opexLabel = !overviewConnected || opex === 0 ? "—" : `${(opex * 100).toFixed(1)}%`;
+  const opexTone = opex === 0 ? "text-muted" : opex <= 0.1 ? "text-up" : opex <= 0.25 ? "text-warn" : "text-down";
+
   return (
     <Card className="relative overflow-hidden">
       {/* A whisper-thin accent rail keyed to the sign of the money — green up, red down, neutral at zero. */}
@@ -60,48 +66,69 @@ export function MoneyHero({
         )}
         aria-hidden
       />
-      <div className="flex flex-col gap-5 p-5 sm:p-6 lg:flex-row lg:items-center lg:justify-between">
+      <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[1fr_360px] lg:gap-8">
         {/* The money. */}
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="size-4 text-iris-soft" />
-            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-quiet">
+          {/* One calm row: what this number is, then the machine's state + mode. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-quiet">
               Simulation net P&amp;L
             </span>
-            <Badge variant={stateVariant} className="ml-1">
-              {running ? <Play className="size-3" /> : status.paused ? <Pause className="size-3" /> : null}
-              {stateLabel}
-            </Badge>
-            <Badge variant={status.live_enabled ? "info" : "muted"}>{modeLabel}</Badge>
+            <span className="ml-auto flex items-center gap-1.5">
+              <Badge variant={stateVariant}>
+                {running ? <Play className="size-3" /> : status.paused ? <Pause className="size-3" /> : null}
+                {stateLabel}
+              </Badge>
+              <Badge variant={status.live_enabled ? "info" : "muted"}>{modeLabel}</Badge>
+            </span>
           </div>
-          <div className={cn("mt-2 text-[40px] font-semibold leading-none tracking-tight tabular sm:text-[52px]", valueColor)}>
+
+          {/* The hero figure — the single largest number on the page. */}
+          <div className={cn("mt-3 text-[44px] font-semibold leading-none tracking-tight tabular sm:text-[56px]", valueColor)}>
             {overviewConnected ? formatUsd(pnl) : "—"}
           </div>
-          <p className="mt-2.5 max-w-md text-[12.5px] leading-relaxed text-muted">{subline}</p>
-          <div className="mt-1 flex items-center gap-2 text-[11px] text-quiet">
-            {statusConnected && lastTick ? (
-              <span>
-                Last cycle {lastTick} · {status.cycles_run} run
-              </span>
-            ) : (
-              <span>Machine status unknown — the Gate ledger below is read from disk.</span>
-            )}
-          </div>
+          <p className="mt-3 max-w-md text-[12.5px] leading-relaxed text-muted">{subline}</p>
+
+          {/* A thin truth-rail under the figure: the running cadence + the operating-cost ratio. */}
+          <dl className="mt-5 flex flex-wrap items-center gap-x-7 gap-y-2 border-t border-border/50 pt-4">
+            <div className="min-w-0">
+              <dt className="text-[10.5px] font-medium uppercase tracking-[0.1em] text-quiet">Last cycle</dt>
+              <dd className="mt-1 text-[13px] text-foreground">
+                {statusConnected && lastTick ? (
+                  <>
+                    {lastTick} <span className="text-quiet">· {status.cycles_run} run</span>
+                  </>
+                ) : (
+                  <span className="text-quiet">status unknown</span>
+                )}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-[10.5px] font-medium uppercase tracking-[0.1em] text-quiet">Cost vs alpha</dt>
+              <dd className={cn("mt-1 text-[13px] tabular", opexTone)}>{opexLabel}</dd>
+            </div>
+          </dl>
         </div>
 
         {/* The ONE chart — the real equity curve at hero scale. Renders nothing on day 0 (honest). */}
-        <div className="flex shrink-0 flex-col items-stretch gap-3 lg:w-[340px]">
+        <div className="flex shrink-0 flex-col items-stretch gap-3">
           {hasCurve ? (
-            <Sparkline
-              values={equityValues}
-              width={340}
-              height={96}
-              strokeWidth={2}
-              ariaLabel="simulation equity curve, net of fees"
-              className="w-full"
-            />
+            <div className="rounded-lg border border-border/50 bg-surface-2/20 p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10.5px] font-medium uppercase tracking-[0.1em] text-quiet">Equity curve</span>
+                <span className="text-[10.5px] text-quiet">net of fees</span>
+              </div>
+              <Sparkline
+                values={equityValues}
+                width={336}
+                height={92}
+                strokeWidth={2}
+                ariaLabel="simulation equity curve, net of fees"
+                className="w-full"
+              />
+            </div>
           ) : (
-            <div className="flex h-[96px] items-center justify-center rounded-md border border-dashed border-border/60 bg-surface-2/20 text-[11.5px] text-quiet">
+            <div className="flex h-[126px] items-center justify-center rounded-lg border border-dashed border-border/60 bg-surface-2/20 px-4 text-center text-[11.5px] leading-relaxed text-quiet">
               {overviewConnected ? "Equity curve appears once a track is funded" : "Engine offline"}
             </div>
           )}

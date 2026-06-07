@@ -182,6 +182,108 @@ def _fetch_venue_fees(store: Any, symbols: list[str], providers: Any) -> int:
     return _ingest_venue_fees(store, providers.venue_fees, symbols)
 
 
+# --------------------------------------------------------------------------- the 10 new alt sources
+
+# Extended FRED macro (NFCI financial conditions + initial jobless claims) — each its own ALFRED
+# initial-release provider so available_at == realtime_start (no look-ahead). Market-wide.
+def _fetch_macro_extra(store: Any, symbols: list[str], providers: Any) -> int:
+    from cosmu.data.providers.macro_extra import METRIC_INITIAL_CLAIMS, METRIC_NFCI
+
+    total = 0
+    total += ingest_market_wide_numeric(
+        store, providers.nfci, source_metric=METRIC_NFCI, stored_metric="nfci", provider_name="fred",
+    )
+    total += ingest_market_wide_numeric(
+        store, providers.initial_claims, source_metric=METRIC_INITIAL_CLAIMS, stored_metric="initial_claims", provider_name="fred",
+    )
+    return total
+
+
+# Wikipedia pageviews — per-symbol (raw + log + 30d z-score), one bridge provider per derived metric.
+_WIKI_METRICS = ("wiki_pageviews", "wiki_pageviews_log", "wiki_pageviews_zscore")
+
+
+def _fetch_wikipedia(store: Any, symbols: list[str], providers: Any) -> int:
+    total = 0
+    for metric in _WIKI_METRICS:
+        total += ingest_numeric(store, providers.wiki_pageviews, symbols, metric, provider_name="wikimedia")
+    return total
+
+
+# Reddit daily post + comment volume — market-wide attention proxy (key-gated → [] offline).
+def _fetch_reddit_volume(store: Any, symbols: list[str], providers: Any) -> int:
+    total = 0
+    for metric in ("reddit_post_volume", "reddit_comment_volume"):
+        total += ingest_market_wide_numeric(
+            store, providers.reddit_volume, source_metric=metric, stored_metric=metric, provider_name="reddit_volume",
+        )
+    return total
+
+
+# CryptoPanic news votes — per-symbol bullish/bearish (key-gated → [] offline).
+def _fetch_cryptopanic(store: Any, symbols: list[str], providers: Any) -> int:
+    total = 0
+    for metric in ("cryptopanic_bullish_votes", "cryptopanic_bearish_votes"):
+        total += ingest_numeric(store, providers.cryptopanic, symbols, metric, provider_name="cryptopanic")
+    return total
+
+
+def _fetch_rss_news(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_market_wide_numeric(
+        store, providers.rss_news, source_metric="rss_news_count", stored_metric="rss_news_count", provider_name="rss",
+    )
+
+
+def _fetch_gtrends(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_market_wide_numeric(
+        store, providers.gtrends, source_metric="gtrends_search_interest", stored_metric="gtrends_search_interest", provider_name="gtrends",
+    )
+
+
+def _fetch_opensky_daily(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_market_wide_numeric(
+        store, providers.opensky_daily, source_metric="opensky_daily_flights", stored_metric="opensky_daily_flights", provider_name="opensky_daily",
+    )
+
+
+def _fetch_weather(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_market_wide_numeric(
+        store, providers.weather, source_metric="weather_hub_stress", stored_metric="weather_hub_stress", provider_name="openmeteo",
+    )
+
+
+# Deterministic astro ephemeris — source-native metric → semantic feature name. NON-CAUSAL controls.
+_ASTRO_METRIC_MAP = {
+    "lunar_phase_fraction": "astro_lunar_phase",
+    "sun_longitude_deg": "astro_sun_longitude",
+    "jupiter_longitude_deg": "astro_jupiter_longitude",
+    "saturn_longitude_deg": "astro_saturn_longitude",
+    "sun_jupiter_aspect": "astro_sun_jupiter_aspect",
+}
+
+
+def _fetch_astro(store: Any, symbols: list[str], providers: Any) -> int:
+    total = 0
+    for native, stored in _ASTRO_METRIC_MAP.items():
+        total += ingest_market_wide_numeric(
+            store, providers.astro, source_metric=native, stored_metric=stored, provider_name="astro",
+        )
+    return total
+
+
+# Exotic orthogonality controls — split across two store providers (USGS earthquakes, NOAA Kp).
+def _fetch_exotic_controls(store: Any, symbols: list[str], providers: Any) -> int:
+    total = 0
+    for metric in ("usgs_earthquake_count", "usgs_max_magnitude"):
+        total += ingest_market_wide_numeric(
+            store, providers.exotic_controls, source_metric=metric, stored_metric=metric, provider_name="usgs",
+        )
+    total += ingest_market_wide_numeric(
+        store, providers.exotic_controls, source_metric="noaa_kp_index", stored_metric="noaa_kp_index", provider_name="noaa",
+    )
+    return total
+
+
 # --------------------------------------------------------------------------- the catalog
 
 
@@ -215,6 +317,17 @@ def managed_sources() -> dict[str, SourceSpec]:
         SourceSpec("gdelt_tone", "alt", ("gdelt_tone",), _fetch_gdelt_tone, market_wide=True, per_symbol=False, note="GDELT geopolitical news tone (keyless, EU-accessible, market-wide daily)."),
         SourceSpec("dvol", "alt", ("dvol",), _fetch_dvol, note="Deribit DVOL implied vol (keyless, EU-native, BTC/ETH only)."),
         SourceSpec("llm_index", "alt", tuple(_index_metrics()), _fetch_llm_index, market_wide=True, per_symbol=False, note="LLM qualitative→quantitative index scores (key-gated; market-wide)."),
+        # --- 10 new alt-data sources (registered additively; non-causal ones flagged in feature_registry) ---
+        SourceSpec("macro_extra", "alt", ("nfci", "initial_claims"), _fetch_macro_extra, market_wide=True, per_symbol=False, note="Extended FRED macro: NFCI financial conditions + initial jobless claims (ALFRED initial-release vintages)."),
+        SourceSpec("wikipedia", "alt", _WIKI_METRICS, _fetch_wikipedia, note="Wikipedia pageviews per entity (raw + log + 30d z-score); free, no key, immutable counts (T+1)."),
+        SourceSpec("reddit_volume", "alt", ("reddit_post_volume", "reddit_comment_volume"), _fetch_reddit_volume, market_wide=True, per_symbol=False, note="Reddit daily post + comment volume (key-gated: REDDIT_CLIENT_ID/SECRET → empty offline)."),
+        SourceSpec("cryptopanic", "alt", ("cryptopanic_bullish_votes", "cryptopanic_bearish_votes"), _fetch_cryptopanic, note="CryptoPanic per-coin bullish/bearish vote counts, 24h window (key-gated: CRYPTOPANIC_API_KEY → empty offline)."),
+        SourceSpec("rss", "alt", ("rss_news_count",), _fetch_rss_news, market_wide=True, per_symbol=False, note="Public RSS headline COUNT (LLM-free, free, no key)."),
+        SourceSpec("gtrends", "alt", ("gtrends_search_interest",), _fetch_gtrends, market_wide=True, per_symbol=False, note="Google Trends search interest (REVISION HAZARD: rescales history — forward-test only until Gate-validated)."),
+        SourceSpec("opensky_daily", "alt", ("opensky_daily_flights",), _fetch_opensky_daily, market_wide=True, per_symbol=False, note="OpenSky daily global flight count (free OSINT, thin history, low-confidence)."),
+        SourceSpec("weather", "alt", ("weather_hub_stress",), _fetch_weather, market_wide=True, per_symbol=False, note="Open-Meteo financial-hub weather stress (NON-CAUSAL control; free, no key)."),
+        SourceSpec("astro", "alt", tuple(_ASTRO_METRIC_MAP.values()), _fetch_astro, market_wide=True, per_symbol=False, note="Deterministic lunar/planetary ephemeris (NON-CAUSAL controls; stdlib-only, no network)."),
+        SourceSpec("exotic_controls", "alt", ("usgs_earthquake_count", "usgs_max_magnitude", "noaa_kp_index"), _fetch_exotic_controls, market_wide=True, per_symbol=False, note="USGS earthquakes + NOAA Kp ORTHOGONALITY CONTROLS (non-causal; Gate must kill them)."),
     ]
     return {s.name: s for s in specs}
 

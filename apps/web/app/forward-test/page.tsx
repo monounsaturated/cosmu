@@ -7,12 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/ui/section";
 import { StrategyStages } from "@/components/nav/strategy-stages";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
+import { ExpandableSection } from "@/components/ui/expandable-section";
 import { StrategiesTable } from "@/components/research/strategies-table";
-import { DivergenceBadge } from "@/components/forward-test/divergence-badge";
+import { SimSummary } from "@/components/forward-test/sim-summary";
+import { TrackCard } from "@/components/forward-test/track-card";
 
 // Simulation is stage 3 in the lifecycle: strategies that have cleared the Gate run here on
-// live data with no real money. Each track is held and marked-to-market across real bars.
-// ≥ 30 forward days of net-of-fee proof is the recommended signal before going Live.
+// live data with no real money. Each track is held and marked-to-market across real bars. The
+// per-track equity-since-funding is the hero; ≥ 30 forward days of net-of-fee proof is the
+// recommended readiness signal before going Live. Every number is real or an honest zero/empty.
 export default async function ForwardTestPage() {
   const { leaderboard, connected } = await getLeaderboard();
   const allRows = leaderboard.rows as LeaderboardRow[];
@@ -23,21 +26,27 @@ export default async function ForwardTestPage() {
     return s === "forward_test" || s === "forward" || s === "paper";
   });
 
+  // Sort the hero list so the most decision-relevant tracks lead: live-ready first, then by forward age,
+  // then by marked forward return. Pure presentation over real fields — no fabricated ordering signal.
+  const ordered = [...simRows].sort((a, b) => {
+    if (a.live_ready !== b.live_ready) return a.live_ready ? -1 : 1;
+    if (b.forward_age_days !== a.forward_age_days) return b.forward_age_days - a.forward_age_days;
+    return (b.forward_return_pct ?? 0) - (a.forward_return_pct ?? 0);
+  });
+
   return (
     <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-7 lg:px-7">
       <SectionHeader
         eyebrow="simulation"
         title="Forward-testing on live data"
         aside={
-          <Badge variant="up">
+          <Badge variant="info">
             <LineChart className="size-3" /> no real money
           </Badge>
         }
       />
 
       <StrategyStages />
-
-      <SimNote />
 
       {!connected ? (
         <NotConnected
@@ -63,52 +72,38 @@ export default async function ForwardTestPage() {
         </Card>
       ) : (
         <>
-          <DivergenceWatch rows={simRows} />
-          <Card>
-            <CardContent className="pt-5">
-              <StrategiesTable rows={simRows} context="simulation" />
-            </CardContent>
-          </Card>
+          <SimSummary rows={simRows} />
+
+          {/* Hero: per-track live equity since funding, forward age toward live-ready, divergence integrated. */}
+          <div className="grid gap-3 md:grid-cols-2">
+            {ordered.map((row) => (
+              <TrackCard key={row.version_id} row={row} />
+            ))}
+          </div>
+
+          {/* Progressive disclosure: the full sortable/filterable table for a denser read. */}
+          <ExpandableSection
+            showLabel="Show full table"
+            hideLabel="Hide full table"
+            summary={null}
+          >
+            <Card>
+              <CardContent className="pt-5">
+                <StrategiesTable rows={simRows} context="simulation" />
+              </CardContent>
+            </Card>
+          </ExpandableSection>
+
+          <SimNote />
         </>
       )}
     </div>
   );
 }
 
-// Calm, per-track SIM-vs-backtest divergence strip: an early warning that a forward test has stopped tracking the
-// backtest it was funded on (alpha-decay / regime-shift). Reads the leaderboard contract's divergence_status (from
-// master/divergence.py) — never a fabricated number. A track with too few marked days shows the honest "not enough
-// data" state. MONITORING ONLY: nothing here gates or moves money; it's a glance for the operator.
-function DivergenceWatch({ rows }: { rows: LeaderboardRow[] }) {
-  return (
-    <Card>
-      <CardContent className="py-4">
-        <div className="mb-3 flex items-start gap-2.5">
-          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-up" />
-          <div className="space-y-1">
-            <p className="text-[12.5px] font-medium text-foreground">Divergence watch</p>
-            <p className="text-[12px] leading-relaxed text-muted">
-              Early warning when a track&apos;s real forward return stops tracking the backtest it was funded on —
-              the gap is forward minus the backtest pro-rated to the same elapsed window. A glance, not a gate.
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-col gap-2">
-          {rows.map((row) => (
-            <div
-              key={row.version_id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-2/40 px-3 py-2"
-            >
-              <span className="truncate text-[12.5px] font-medium text-foreground">{row.name}</span>
-              <DivergenceBadge row={row} />
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
+// Calm footer note on how to READ this surface honestly — demoted below the data, never above it. The
+// machine's deterministic Gate disposes; this restates the one trap the operator flagged (don't read the
+// backtest column as forward performance) and where the readiness signal points.
 function SimNote() {
   return (
     <Card>
@@ -116,24 +111,25 @@ function SimNote() {
         <div className="flex items-start gap-2.5">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-up" />
           <div className="space-y-1.5">
-            <p className="text-[12.5px] font-medium text-foreground">Live data · no capital</p>
+            <p className="text-[12.5px] font-medium text-foreground">How to read this</p>
             <p className="text-[12px] leading-relaxed text-muted">
-              Every strategy here cleared the deterministic Gate. It now runs on real market bars with a
-              standalone $100k paper track — no pooled wallet. The recommended readiness signal is{" "}
-              <span className="font-medium text-foreground">≥ 30 forward days of net-of-fee profit</span>, but you
-              decide when to{" "}
+              Every track here cleared the deterministic Gate and now runs on real market bars with a
+              standalone $100k Simulation track — no pooled wallet.{" "}
+              <span className="font-medium text-foreground">Forward since funding</span> is the REAL
+              net-of-fee return since the Gate funded the track — a just-armed track reads{" "}
+              <span className="tabular text-quiet">day 0 · +0.00%</span> until it accrues history.{" "}
+              <span className="font-medium text-foreground">Backtest OOS</span> is historical and proves
+              nothing forward — don&apos;t read it as forward performance.
+            </p>
+            <p className="text-[12px] leading-relaxed text-muted">
+              The recommended readiness signal is{" "}
+              <span className="font-medium text-foreground">≥ 30 forward days of net-of-fee profit</span>,
+              but you decide when to{" "}
               <Link href="/live" className="text-iris-soft hover:underline">
                 go Live
               </Link>
-              . The Gate&apos;s 5 interlocks are the hard requirement.
-            </p>
-            <p className="text-[12px] leading-relaxed text-muted">
-              Read the table honestly: <span className="font-medium text-foreground">Forward</span> is the REAL
-              net-of-fee return marked to market since the Gate funded this track — a just-armed track reads{" "}
-              <span className="tabular text-quiet">day 0 · +0.00%</span> until it accrues forward history, and a
-              flat or losing track shows its true (0 or negative) number.{" "}
-              <span className="font-medium text-foreground">Backtest OOS</span> is historical and proves nothing
-              forward. Don&apos;t read the backtest column as forward performance.
+              . The Gate&apos;s 5 interlocks are the hard requirement. The divergence badge is a glance,
+              not a gate — it never moves money.
             </p>
           </div>
         </div>

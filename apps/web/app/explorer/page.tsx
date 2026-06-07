@@ -1,4 +1,3 @@
-import { Telescope } from "lucide-react";
 import { engineConfigured, getExplorerList } from "../data";
 import { SectionHeader } from "@/components/ui/section";
 import { Badge } from "@/components/ui/badge";
@@ -20,11 +19,7 @@ export default async function ExplorerPage() {
       <SectionHeader
         eyebrow="explorer"
         title="Strategy Explorer"
-        aside={
-          <Badge variant="iris">
-            <Telescope className="size-3" /> pick · compare · understand
-          </Badge>
-        }
+        aside={<Badge variant="muted">pick · compare · understand</Badge>}
       />
 
       {!connected ? (

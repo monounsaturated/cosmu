@@ -5,27 +5,34 @@
 // pre-registered bar, and an honest data-source badge. Conceptually upstream of the Lab.
 
 import { useEffect, useState, useTransition } from "react";
-import { Check, Database, FlaskConical, Play, X } from "lucide-react";
+import { Database, FlaskConical, Play } from "lucide-react";
 import type { GateStatusResponse, GateVerdictResponse } from "@cosmu/contracts-ts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { InterlockStrip, type Interlock } from "@/components/ui/viz";
 import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
-import { cn } from "@/lib/utils";
 
 function pct(x: number) {
   return `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
 }
 
-function checklist(v: GateVerdictResponse) {
+// The Gate verdict as a row of safety-interlock chips — each carries its REAL measured value and the
+// threshold it was judged against, so the operator sees exactly which interlock held and which broke.
+function interlocks(v: GateVerdictResponse): Interlock[] {
   const bar = v.bar as Record<string, number>;
+  const minDsr = bar.min_deflated_sharpe_prob ?? 0.95;
+  const maxPbo = bar.max_cscv_pbo ?? 0.5;
+  const minRegimes = bar.min_regimes_positive ?? 2;
+  const minTrades = bar.min_trades ?? 30;
+  const maxDd = bar.max_drawdown ?? 0.25;
   return [
-    { label: `Statistically significant edge (deflated Sharpe ≥ ${bar.min_deflated_sharpe_prob ?? 0.95})`, ok: v.deflated_sharpe_prob >= (bar.min_deflated_sharpe_prob ?? 0.95), value: v.deflated_sharpe_prob.toFixed(2) },
-    { label: `Not overfit (CSCV PBO < ${bar.max_cscv_pbo ?? 0.5})`, ok: v.cscv_pbo < (bar.max_cscv_pbo ?? 0.5), value: v.cscv_pbo.toFixed(2) },
-    { label: "Beats buy & hold (net of fees)", ok: v.best_return > v.buy_and_hold_return, value: `${pct(v.best_return)} vs ${pct(v.buy_and_hold_return)}` },
-    { label: `Works in ≥ ${bar.min_regimes_positive ?? 2} market regimes`, ok: v.regimes_positive >= (bar.min_regimes_positive ?? 2), value: `${v.regimes_positive}` },
-    { label: `Enough trades (≥ ${bar.min_trades ?? 30})`, ok: v.num_trades >= (bar.min_trades ?? 30), value: `${v.num_trades}` },
-    { label: `Drawdown under ${Math.round((bar.max_drawdown ?? 0.25) * 100)}%`, ok: v.max_drawdown < (bar.max_drawdown ?? 0.25), value: pct(-v.max_drawdown) }
+    { label: "Significant edge", value: v.deflated_sharpe_prob.toFixed(2), threshold: `dSR ≥ ${minDsr}`, pass: v.deflated_sharpe_prob >= minDsr },
+    { label: "Not overfit", value: v.cscv_pbo.toFixed(2), threshold: `PBO < ${maxPbo}`, pass: v.cscv_pbo < maxPbo },
+    { label: "Beats buy & hold", value: `${pct(v.best_return)} vs ${pct(v.buy_and_hold_return)}`, threshold: "net of fees", pass: v.best_return > v.buy_and_hold_return },
+    { label: "Regimes positive", value: `${v.regimes_positive}`, threshold: `≥ ${minRegimes}`, pass: v.regimes_positive >= minRegimes },
+    { label: "Trades", value: `${v.num_trades}`, threshold: `≥ ${minTrades}`, pass: v.num_trades >= minTrades },
+    { label: "Max drawdown", value: pct(-v.max_drawdown), threshold: `< ${Math.round(maxDd * 100)}%`, pass: v.max_drawdown < maxDd }
   ];
 }
 
@@ -119,19 +126,7 @@ export function EdgeGate() {
               <Badge variant="info">live data</Badge>
             </div>
 
-            <ul className="grid gap-1.5 sm:grid-cols-2">
-              {checklist(verdict).map((c) => (
-                <li key={c.label} className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-surface-2/30 px-3 py-2">
-                  <span className="flex items-center gap-2 text-[12.5px]">
-                    <span className={cn("flex size-4 shrink-0 items-center justify-center rounded-full", c.ok ? "bg-up/20 text-up" : "bg-down/20 text-down")}>
-                      {c.ok ? <Check className="size-3" strokeWidth={3} /> : <X className="size-3" strokeWidth={3} />}
-                    </span>
-                    <span className="text-foreground">{c.label}</span>
-                  </span>
-                  <span className="tabular shrink-0 text-[12px] text-muted">{c.value}</span>
-                </li>
-              ))}
-            </ul>
+            <InterlockStrip interlocks={interlocks(verdict)} />
 
             <p className="text-[11.5px] leading-relaxed text-quiet">
               {passed
