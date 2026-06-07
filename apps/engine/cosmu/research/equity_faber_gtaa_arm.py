@@ -264,6 +264,31 @@ def arm(store: Store | None = None) -> dict:
         marks[instrument.id] = price
         fills.append({"symbol": sym, "qty": str(qty), "price": str(price), "reused": False})
 
+    # Faber's NON-invested sleeves (below their 10m SMA) hold short-Treasury (CASH=SHY), NOT idle cash. Deploy that
+    # portion into SHY so the FULL track capital is represented — a partially-invested GTAA track must NEVER mark its
+    # uninvested sleeves as a loss (that read as a phantom -1/5 ~ -20% before this fix; the held positions summed to
+    # only 4/5 of capital while the mark divided by the full track size). Idempotent (reuse the SHY sleeve if held).
+    n_cash = len(gtaa.SLEEVES) - len(invested)
+    if n_cash > 0:
+        cash_capital = (sleeve_capital * Decimal(n_cash)).quantize(Decimal("0.01"))
+        cash_instr = catalog.instrument(gtaa.CASH, VENUE)
+        held_cash = portfolio.position(cash_instr.id, VENUE, strategy_version_id=version_id)
+        cash_price = _last_equity_close(gtaa.CASH)
+        if held_cash is not None and held_cash.qty != 0:
+            if cash_price > 0:
+                marks[cash_instr.id] = cash_price
+            fills.append({"symbol": gtaa.CASH, "qty": str(held_cash.qty), "price": str(cash_price), "reused": True})
+        elif cash_price > 0:
+            cash_qty = (cash_capital / cash_price).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
+            portfolio.apply_fill(
+                instrument_id=cash_instr.id, symbol=gtaa.CASH, venue=VENUE, side=1, qty=cash_qty, price=cash_price,
+                fee=(cash_capital * Decimal(str(IBKR_ETF_BPS_PER_SIDE)) / Decimal("1e4")), strategy_version_id=version_id,
+            )
+            marks[cash_instr.id] = cash_price
+            fills.append({"symbol": gtaa.CASH, "qty": str(cash_qty), "price": str(cash_price), "reused": False})
+        else:
+            deferred.append(gtaa.CASH)
+
     # FIRST MARK — write the opening portfolio_snapshot (scope=track) so the forward-test trajectory has a t0 point.
     snap = portfolio.mark_to_market(marks)
     store.append_event(
