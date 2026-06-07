@@ -1,30 +1,33 @@
-// Full verdict ledger — every thesis the Gate has ruled on, sortable + filterable.
-// Linked from the Overview's DataPreview "View all" button.
-// Server-fetches the full ledger; client-side sort + search via DataTablePage.
+// Theories — the machine's EXPERIMENT MEMORY. Every trading theory it has ever tested, with the
+// honest Gate's verdict (PASS/FAIL), drawn LIVE from the engine's `gate_verdicts` table via
+// GET /research/experiments. This is the page where the machine proves it has never lied: it shows
+// exactly how many theories were tested, how many survived the Gate, and — for the ones that looked
+// good in-sample — whether the edge decayed out-of-sample.
+//
+// Server component: fetches the real ledger; the searchable/filterable/expandable list is a client
+// island (theory-list.tsx). Honest "not connected" + "nothing yet" states, never fabricated numbers.
 
-import { ArrowLeft, ClipboardCheck } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { getVerdicts, engineConfigured } from "../data";
-import type { VerdictRow } from "../data";
+import { getExperiments, engineConfigured } from "../data";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/ui/section";
+import { Stat } from "@/components/ui/stat";
 import { NotConnected } from "@/components/ui/honest-state";
-import { VerdictTable } from "./verdict-table";
+import { TheoryList } from "./theory-list";
 
-const VERDICT_STYLE: Record<VerdictRow["status"], { label: string; variant: "up" | "down" | "warn" | "muted" }> = {
-  PASS: { label: "PASS", variant: "up" },
-  FAIL: { label: "FAIL", variant: "down" },
-  "INSUFFICIENT-DATA": { label: "Insufficient data", variant: "warn" },
-  "DATA-BLOCKED": { label: "Data-blocked", variant: "muted" }
-};
+export default async function TheoriesPage() {
+  const { experiments, connected } = await getExperiments();
+  const { summary, theories } = experiments;
+  const sources = Array.from(new Set(theories.map((t) => t.source))).sort();
 
-export default async function VerdictsPage() {
-  const { verdicts, connected } = await getVerdicts();
-  const rows: VerdictRow[] = verdicts.rows ?? [];
-
-  const passCount = rows.filter((r) => r.status === "PASS").length;
-  const failCount = rows.filter((r) => r.status === "FAIL").length;
+  // The honest headline. "0 survived" is the truth right now — we say it out loud, never soften it.
+  const headline =
+    summary.total === 0
+      ? "No theories tested yet."
+      : `${summary.total.toLocaleString()} theor${summary.total === 1 ? "y" : "ies"} tested · ` +
+        `${summary.passed.toLocaleString()} survived the Gate · the machine has never lied.`;
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:px-7">
@@ -36,13 +39,15 @@ export default async function VerdictsPage() {
           <ArrowLeft className="size-3.5" /> Overview
         </Link>
         <SectionHeader
-          eyebrow="verdicts · all"
-          title="Verdict ledger"
+          eyebrow="theories · experiment memory"
+          title="Every theory the machine has tested"
           aside={
-            <div className="flex items-center gap-2">
-              <Badge variant="up">{passCount} PASS</Badge>
-              <Badge variant="down">{failCount} FAIL</Badge>
-            </div>
+            connected ? (
+              <div className="flex items-center gap-2">
+                <Badge variant="up">{summary.passed} passed</Badge>
+                <Badge variant="muted">{summary.failed} failed</Badge>
+              </div>
+            ) : null
           }
           className="flex-1"
         />
@@ -51,14 +56,41 @@ export default async function VerdictsPage() {
       {!connected ? (
         <NotConnected
           configured={engineConfigured}
-          what="Every thesis the Gate has ruled on appears here — PASS or FAIL. Connect the engine to see the real ledger."
+          what="The machine remembers every trading theory it has tested and the honest Gate's verdict. Connect the engine to see the live experiment memory."
         />
       ) : (
-        <Card>
-          <CardContent className="pt-5">
-            <VerdictTable rows={rows} verdictStyle={VERDICT_STYLE} />
-          </CardContent>
-        </Card>
+        <>
+          {/* Summary strip — total / passed / failed + the honest headline. */}
+          <section className="space-y-3">
+            <div className="grid grid-cols-3 gap-3">
+              <Stat label="Theories tested" value={summary.total} accent="iris" />
+              <Stat label="Survived the Gate" value={summary.passed} accent="up" />
+              <Stat label="Failed" value={summary.failed} accent="down" />
+            </div>
+            <p className="text-[12.5px] leading-relaxed text-muted">{headline}</p>
+            {summary.by_source.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {summary.by_source.map((s) => (
+                  <span
+                    key={s.source}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-surface-2/30 px-2.5 py-1 text-[11.5px] text-muted"
+                  >
+                    <span className="capitalize text-foreground">{s.source}</span>
+                    <span className="tabular text-quiet">{s.n}</span>
+                    {s.passed > 0 ? <span className="tabular text-up">· {s.passed} passed</span> : null}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </section>
+
+          {/* The list — searchable, filterable, expandable. */}
+          <Card>
+            <CardContent className="pt-5">
+              <TheoryList theories={theories} sources={sources} />
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );
