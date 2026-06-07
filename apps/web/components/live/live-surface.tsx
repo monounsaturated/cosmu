@@ -27,7 +27,7 @@ import { LaunchLiveModal } from "./launch-live-modal";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Stat } from "@/components/ui/stat";
+import { MetricCard, GaugeBar } from "@/components/ui/viz";
 import { MoneyInput } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { MoneyState, moneyMode } from "@/components/ui/money-state";
@@ -299,48 +299,69 @@ export function LiveSurface({
         </div>
       ) : null}
 
-      {/* Caps + live-deployed. The "Deployed" stat is the headline honesty fix: it shows LIVE-deployed
-          capital, which is $0 until armed-and-live — never the SIM aggregate the engine also tracks. */}
+      {/* Caps + live-deployed as gauges. The "Deployed" tile is the headline honesty fix: it shows
+          LIVE-deployed capital, which is $0 until armed-and-live — never the SIM aggregate the engine
+          also tracks. Each gauge reads occupancy vs its cap/limit at a glance. */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat
+        <MetricCard
           label="Live deployed"
+          tone="iris"
           value={
             <span className={liveDeployed > 0 ? "text-foreground" : "text-muted"}>
               {formatUsd(liveDeployed)} <span className="text-[12px] font-normal text-quiet">/ {formatUsd(state.caps.global_cap)}</span>
             </span>
           }
-          hint={isLive ? "real capital at risk now" : "nothing live — disarmed"}
-          accent="iris"
+          hint={
+            <div className="space-y-1.5">
+              <GaugeBar value={liveDeployed} max={state.caps.global_cap} marker={1} tone="iris" />
+              <span className="text-quiet">{isLive ? "real capital at risk now" : "nothing live — disarmed"}</span>
+            </div>
+          }
         />
-        <Stat label="Per-strategy cap" value={formatUsd(state.caps.per_strategy_cap)} accent="iris" />
-        <Stat label="Max daily loss" value={formatUsd(state.caps.max_daily_loss)} accent="warn" />
-        <Stat
+        <MetricCard label="Per-strategy cap" tone="iris" value={formatUsd(state.caps.per_strategy_cap)} hint="max into any one strategy" />
+        <MetricCard label="Max daily loss" tone="warn" value={formatUsd(state.caps.max_daily_loss)} hint="auto-disarm threshold" />
+        <MetricCard
           label="Daily loss so far"
+          tone={dailyLossPct >= 100 ? "down" : "warn"}
           value={<span className={liveDailyLoss > 0 ? "text-down" : "text-muted"}>{formatUsd(liveDailyLoss)}</span>}
-          hint={isLive ? undefined : "no live loss while disarmed"}
-          accent={dailyLossPct >= 100 ? "down" : "warn"}
+          hint={
+            <div className="space-y-1.5">
+              <GaugeBar value={liveDailyLoss} max={state.caps.max_daily_loss} marker={1} tone={dailyLossPct >= 100 ? "down" : "warn"} />
+              <span className="text-quiet">{isLive ? `${dailyLossPct.toFixed(0)}% of cap` : "no live loss while disarmed"}</span>
+            </div>
+          }
         />
       </section>
 
       <VenuesCard venues={venues} connected={connected} isLive={isLive} togglingVenue={togglingVenue} onToggle={toggleVenue} />
 
+      {/* Caps at a glance — two gauges that read the live-risk headroom: deployed vs the global cap, and
+          daily loss vs the auto-disarm limit. Both are $0 / 0% while disarmed (the honest safe state). */}
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Daily loss vs cap</CardTitle>
+            <CardTitle>Caps at a glance</CardTitle>
             <CardDescription>
-              {isLive ? "The engine auto-disarms for the day when this reaches the cap." : "Tracks live losses once armed — at 0% while disarmed."}
+              {isLive ? "The engine auto-disarms for the day when daily loss reaches the cap." : "Live-risk gauges sit at 0 while disarmed — nothing is deployed."}
             </CardDescription>
           </div>
-          <Badge variant={dailyLossPct >= 100 ? "down" : "muted"}>{dailyLossPct.toFixed(0)}% of cap</Badge>
+          <Badge variant={dailyLossPct >= 100 ? "down" : "muted"}>{dailyLossPct.toFixed(0)}% daily-loss cap</Badge>
         </CardHeader>
-        <CardContent>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
-            <div
-              className={cn("h-full rounded-full", dailyLossPct >= 100 ? "bg-down" : "bg-warn/80")}
-              style={{ width: `${Math.max(dailyLossPct, 1)}%` }}
-            />
-          </div>
+        <CardContent className="space-y-4">
+          <CapGauge
+            label="Deployed vs global cap"
+            value={liveDeployed}
+            max={state.caps.global_cap}
+            tone="iris"
+            valueLabel={`${formatUsd(liveDeployed)} / ${formatUsd(state.caps.global_cap)}`}
+          />
+          <CapGauge
+            label="Daily loss vs limit"
+            value={liveDailyLoss}
+            max={state.caps.max_daily_loss}
+            tone={dailyLossPct >= 100 ? "down" : "warn"}
+            valueLabel={`${formatUsd(liveDailyLoss)} / ${formatUsd(state.caps.max_daily_loss)}`}
+          />
         </CardContent>
       </Card>
 
@@ -432,6 +453,32 @@ export function LiveSurface({
           }}
         />
       ) : null}
+    </div>
+  );
+}
+
+// A labelled cap gauge row: title + the real value/limit on the right, and a marker-tipped bar that fills
+// toward 100% of its cap. Pure presentation over real numbers — never a fabricated reading.
+function CapGauge({
+  label,
+  value,
+  max,
+  tone,
+  valueLabel
+}: {
+  label: string;
+  value: number;
+  max: number;
+  tone: "iris" | "warn" | "down";
+  valueLabel: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-[12px]">
+        <span className="text-muted">{label}</span>
+        <span className="tabular font-medium text-foreground">{valueLabel}</span>
+      </div>
+      <GaugeBar value={value} max={max} marker={1} tone={tone} height={8} />
     </div>
   );
 }

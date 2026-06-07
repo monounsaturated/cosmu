@@ -16,7 +16,14 @@ import { Badge } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { GaugeBar, SignedBar } from "@/components/ui/viz";
 import { cn, formatPct } from "@/lib/utils";
+
+// Real maturity threshold (apps/engine FORWARD_TEST_MIN_DAYS): a forward track is live-ready at 30 days.
+const FORWARD_TEST_MIN_DAYS = 30;
+// Reference scalars for the relative gauges — a deflated Sharpe of ~2 is "strong"; clamp the bar there so
+// the visual reads occupancy toward a good score without ever implying a value beyond the real number shown.
+const SHARPE_REF = 2;
 
 // The five signal-families, in a fixed display order (matches the engine taxonomy).
 const FAMILIES: { id: string; label: string }[] = [
@@ -137,6 +144,10 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
     });
     return result.sort((a, b) => b.deflated_sharpe - a.deflated_sharpe);
   }, [searched, family, selected]);
+
+  // Reference magnitude for the net-% signed bars: the largest |net%| in the filtered cohort, so each bar's
+  // length is meaningful RELATIVE to its peers (the digits remain the source of truth).
+  const netRef = useMemo(() => Math.max(1, ...filtered.map((r) => Math.abs(r.net_pct))), [filtered]);
 
   const activeFacetCount = (Object.keys(selected) as FacetKey[]).reduce((n, k) => n + selected[k].size, 0);
 
@@ -300,8 +311,24 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
                   <TD className={cn("text-right tabular", row.track_return_pct >= 0 ? "text-up" : "text-down")}>
                     {formatPct(row.track_return_pct)}
                   </TD>
-                  <TD className={cn("text-right tabular", row.net_pct >= 0 ? "text-up" : "text-down")}>{formatPct(row.net_pct)}</TD>
-                  <TD className="text-right tabular text-foreground">{Number.isFinite(row.deflated_sharpe) ? row.deflated_sharpe.toFixed(2) : "—"}</TD>
+                  {/* Net % — the figure stays the source of truth; the signed bar makes sign + relative size glanceable. */}
+                  <TD className="text-right">
+                    <div className={cn("tabular", row.net_pct >= 0 ? "text-up" : "text-down")}>{formatPct(row.net_pct)}</div>
+                    <SignedBar value={row.net_pct} max={netRef} className="mt-1 ml-auto w-16" />
+                  </TD>
+                  {/* Score (deflated Sharpe) + an occupancy gauge toward a strong (~2) score. */}
+                  <TD className="text-right">
+                    <div className="tabular text-foreground">{Number.isFinite(row.deflated_sharpe) ? row.deflated_sharpe.toFixed(2) : "—"}</div>
+                    {Number.isFinite(row.deflated_sharpe) ? (
+                      <GaugeBar
+                        value={Math.max(0, row.deflated_sharpe)}
+                        max={SHARPE_REF}
+                        tone={row.deflated_sharpe > 0 ? "iris" : "down"}
+                        className="mt-1 ml-auto w-16"
+                        height={4}
+                      />
+                    ) : null}
+                  </TD>
                   <TD className="text-right tabular text-muted">{Number.isFinite(row.pbo) ? row.pbo.toFixed(2) : "—"}</TD>
                 </TR>
               );
@@ -328,18 +355,27 @@ function ForwardCell({ row }: { row: LeaderboardRow }) {
   if (days < 1) {
     // Just funded: day 0, no forward history. The % is the honest 0 — never the backtest number.
     return (
-      <TD className="text-right tabular">
-        <span className="text-quiet">day 0 · {formatPct(fwd)}</span>
+      <TD className="text-right">
+        <div className="tabular text-quiet">day 0 · {formatPct(fwd)}</div>
         <div className="text-[10.5px] uppercase tracking-wide text-quiet">no forward yet</div>
+        <GaugeBar value={0} max={FORWARD_TEST_MIN_DAYS} tone="muted" className="mt-1 ml-auto w-20" height={4} />
       </TD>
     );
   }
   return (
-    <TD className="text-right tabular">
-      <span className={cn(marked ? (fwd >= 0 ? "text-up" : "text-down") : "text-quiet")}>{formatPct(fwd)}</span>
+    <TD className="text-right">
+      <div className={cn("tabular", marked ? (fwd >= 0 ? "text-up" : "text-down") : "text-quiet")}>{formatPct(fwd)}</div>
       <div className={cn("text-[10.5px] uppercase tracking-wide", row.live_ready ? "text-up" : "text-quiet")}>
         {whole}d · {row.live_ready ? "matured" : "maturing"}
       </div>
+      {/* Forward-age progress toward the 30-day live-ready threshold — the bar reads maturity at a glance. */}
+      <GaugeBar
+        value={Math.min(whole, FORWARD_TEST_MIN_DAYS)}
+        max={FORWARD_TEST_MIN_DAYS}
+        tone={row.live_ready ? "up" : "iris"}
+        className="mt-1 ml-auto w-20"
+        height={4}
+      />
     </TD>
   );
 }
