@@ -2,8 +2,9 @@
 
 > Agents: read on session start (after `AGENTS.md` → `docs/MASTER_PLAN.md`). Suggest splitting big items for parallel agents.
 > Tag: (engine|web|config) + (opus|sonnet). **Build on the M2 (local) by default; cloud only for many parallel agents.**
-> Done this session (do NOT re-add): finder significance leaks fixed (P0), forward-test is a hard gate (P1), pre-push verify hook (P3), cost/ROI writers + `/costs` 500 fixed, managed data layer + `/manage-data` (D), all 40 alt-features wired into the backtest (1), control-room overview + idea inbox (2).
-> **Merged 2026-06-04 (7-PR train — do NOT re-add):** evolve flywheel wired into the tick (#47) · experiments registry + soft-labels (#48) · adversarial gate proof (#57) · SIM→live variance-attribution + `/profile-source` (#58) · modular cockpit UI rebuild (#59) · wider perp universe + multi-timeframe + ML-ready PIT panels (#60). LLM-formatting layer (#56) **dropped as duplicate** — see debt note below.
+> Done — do NOT re-add: all pre-2026-06-07 items above plus the following.
+> **Merged 2026-06-07 (5-PR wave — do NOT re-add):** hygiene sweep + deploy-lane fleet (#151) · typed two-lane routing + perp harness + intraday source + control-room overview + Theories surface + arm_fleet (#152) · divergence alert + fleet ETF catalog (#153) · Faber phantom-mark fix (#154) · 10 PIT-honest alt-data sources (21 features) + full frontend overhaul (#155).
+> **Previously merged (do NOT re-add):** finder significance leaks (P0), forward-test hard gate (P1), pre-push verify hook (P3), cost/ROI writers, managed data layer, 40 alt-features wired · 2026-06-04 7-PR train (#47–60) · bar backbone / Binance Vision backfiller (#129) · MCP layer (#128) · honesty harness: fake exchange_netflow disabled, funding annualization, FRED ALFRED vintage, registry⊆routable guard (#132).
 
 ## Now (the honest-edge path — data first, then lift)
 - [ ] Run robust full backfill + activate all FREE sources via `/manage-data` → deep, broad data across the now-wide (~30) perp universe + multi-timeframe (the #1 unblock) (engine, **local/Railway** — needs live data-API network, not a cloud agent)
@@ -28,18 +29,19 @@
 
 ## ⭐ TOP OF QUEUE — 2026-06-06 session (SUPERSEDES the stale "Now" above; detail in docs/HANDOFF_NEXT.md + docs/reports/)
 > Big reframe this session: the "0 edges" verdict was untrustworthy — the harness was broken. P0 now FIXED (#123/#126).
-- [ ] **Bar backbone** — `BinanceVisionBarBackfiller` (bulk OHLCV 2017→now, spot+perp, full universe); the bar cache is
-      EMPTY → every Gate run is starved. THE precondition. Keyless/free; run is LOCAL. (engine, opus)
-- [ ] **Honesty fixes** — fake `exchange_netflow` (rename/disable), funding annualization (per-symbol interval, 2–8× off),
-      FRED ALFRED vintage, + `registry ⊆ routable` guard test. (engine, sonnet) — *serialize after bar backbone*
+- [x] **Bar backbone** — `BinanceVisionBarBackfiller` shipped (#129, 2026-06-06). Run it locally to fill the cache.
+- [x] **Honesty fixes** — all 4 shipped (#132, 2026-06-06): exchange_netflow disabled, funding annualization fixed, FRED ALFRED vintage, registry⊆routable guard.
 - [ ] **Re-run the crypto cohort** on the trustworthy harness — btc-social risk-on OVERLAY first + Polymarket family on
       historical odds (data-only); one BH-FDR family → honest edge verdict. (local)
-- [ ] **MCP layer** — Supabase + Postgres + thin engine/Gate-CLI MCP (Claude Code drives it natively). (infra) — parallel-safe
+- [x] **MCP layer** — Supabase + Postgres + engine read-only MCPs shipped (#128, 2026-06-06).
 - [ ] **P2 integrity** — route/disable the 5 enabled-but-unrouted registry features; harden `ingest/ml_panel.py`. (engine, sonnet)
+- [ ] **Ingest off leaky gate** — remove / quarantine the leaky cross-asset ingest paths (`evaluate_cross_asset_ablation` seam + its `StoreBackedAltProvider`) from the live cron so only PIT-honest features feed Gate runs. (engine, sonnet)
+- [ ] **scan-signals reads the registry** — wire `/scan-signals` to iterate the feature registry so every enabled, routable feature gets a hypothesis generated and submitted to the Gate. Today it works off a fixed brief list. (engine+config, sonnet)
+- [ ] **Run new-source ingest** — after the 10 sources shipped in #155, trigger a real `python3 -m cosmu.ingest.run` pass against Supabase to populate the new features end-to-end (needs live Railway env or Modal). (local/Railway, operator)
 - [ ] **Hot/cold data tiering** — archive full history to parquet on Cloudflare R2 (DuckDB reads), keep hot in PG; build when
       the 8 GB Supabase Pro cap nears (~6 GB now) → infra <$100/mo at scale. (engine+infra) — see docs/reports/scaling-economics.md
-- [ ] **Data-viz overlay charts** — recover stash `data-viz-wip-2026-06-06` or re-run (price+social+funding overlay, event dots). (web)
-- [ ] **"cohort" UI tooltip** — "tested together so a winner isn't just lucky." (web, xs)
+- [x] **Data-viz overlay charts** — shipped in frontend overhaul (#155, 2026-06-07).
+- [x] **"cohort" UI tooltip** — shipped (#155, 2026-06-07).
 - [ ] **Branch graveyard cleanup** — prune stale worktrees/branches WHEN no agents active. (git)
 - [ ] **$15 LunarCrush BUILDER mega-grab** (when wanted): upgrade Builder 1 day (100 req/min) → `scripts/lunarcrush_max_extract.py
       --coins 4000 --stocks 2000 --topics 800 --categories 300 --sleep 0.7` (gated-skip + batched writes already in) → store → CANCEL.
