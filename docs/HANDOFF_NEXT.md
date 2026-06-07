@@ -48,4 +48,16 @@ Autonomous trading research machine. LLM proposes typed `StrategySpec`s; a **det
 3. **Track 2:** the LLM-narrative deep-corpus **Modal** pull → real verdict.
 4. **Keep the fleet iterating** (more TAA + pinescript + variations) — Karpathy throughput, FDR-disciplined, deploy the robust + gate the novel.
 
+## 8. NEXT-PHASE LEVERS (validated by practitioners — r/algotrading + the data)
+The METHOD is validated: WFA + deflated-Sharpe + trial-counting + real-costs + forward-test = exactly what the few profitable retail quants describe (most skip it). The gap is (a) a real edge and (b) **NOT meta-overfitting** — *do not re-mine the same data tweaking until it clears the OFFLINE gate (that contaminates the holdout); trust the LIVE forward-test as the fresh OOS arbiter.* Under-exploited levers:
+- **Explicit regime detection** — the single most-repeated practitioner edge ("EMA in trending, MR in ranging; the binding thing is *which regime*"). A VIX/breadth/trend classifier as a gating layer; revives regime-specific signals. We have it implicitly (VAA/GTAA, proven-regime passport) — make it explicit.
+- **Live-vs-backtest divergence monitoring** — flag when a forward-test stops tracking its backtest (alpha-decay / regime-shift early warning). Step one shipped (forward vs backtest columns on the leaderboard); step two = the divergence alert.
+- **Market-neutral / directionless** — the realest crypto signal was L/S-neutral (spot-only killed it); on a short-capable venue it's the validated direction.
+
+## 9. MINOR CLEANUPS (batch, low-urgency)
+- `/live/positions` + `/live/venues` (`api/routers/live.py`): scope to live-armed server-side (frontend gates it for now).
+- Hardcoded `CACHE = Path("/Users/device/cosmu/…")` in `equity_dual_momentum.py` + sibling arms → make configurable (breaks off this Mac / on Modal-Railway).
+- Verify `schema_postgres.sql` carries the survival columns (the live store got the out-of-band migration 2026-06-07; fresh provisions need them too).
+- **Worktree-isolation footgun keeps recurring** — agents write to main/orchestrator branch via absolute `/Users/device/cosmu/…` paths. Enforce "edit only within your worktree (relative paths)" in every agent prompt.
+
 **The ONE goal:** strategies that survive honestly and compound; the machine that never lies is the asset. Floor + upside. Go.
