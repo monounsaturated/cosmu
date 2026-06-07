@@ -53,9 +53,71 @@ def _gate_to_response(verdict: Any, *, data_source: str) -> GateVerdictResponse:
 def gate_status() -> GateStatusResponse:
     from cosmu.research.gate import PREREGISTERED_BAR
 
-    row = store.row("SELECT payload FROM gate_verdicts ORDER BY id DESC LIMIT 1")
-    verdict = GateVerdictResponse(**_json(row["payload"])) if row else None
+    # gate_verdicts now also stores cohort research verdicts (payload kind='cohort'), whose shape differs from
+    # the single-signal GateVerdictResponse. Walk recent rows newest-first and return the first that parses as a
+    # single-signal verdict, so a cohort row landing as "latest" can't 500 this status card.
+    verdict = None
+    for r in store.rows("SELECT payload FROM gate_verdicts ORDER BY id DESC LIMIT 20"):
+        data = _json(r["payload"])
+        if isinstance(data, dict) and data.get("kind") == "cohort":
+            continue
+        try:
+            verdict = GateVerdictResponse(**data)
+            break
+        except (TypeError, ValueError):
+            continue
     return GateStatusResponse(verdict=verdict, preregistered_bar=dict(PREREGISTERED_BAR))
+
+
+@router.get("/research/experiments")
+def experiments() -> dict[str, Any]:
+    """The machine's EXPERIMENT MEMORY, made visible — every theory it has tested through the honest cohort Gate
+    (gate_verdicts, kind='cohort'): plain-language hypothesis, source, verdict, best deflated-Sharpe vs the 0.95
+    bar, and the REAL out-of-sample holdout DSR (so OOS-decay is legible: high in-sample dSR + negative holdout =
+    overfit, not an edge). Read-only; honest-empty when nothing has been tested. The deterministic record behind
+    'the machine that never lies' — a returned PASS would be a genuine survivor, never fabricated."""
+    theories: list[dict[str, Any]] = []
+    passed = 0
+    by_source: dict[str, dict[str, Any]] = {}
+    for r in store.rows("SELECT ts, decision, payload FROM gate_verdicts ORDER BY id DESC LIMIT 1000"):
+        p = _json(r["payload"])
+        if not isinstance(p, dict) or p.get("kind") != "cohort":
+            continue
+        cands = p.get("candidates") or []
+        holdouts = [c.get("holdout_deflated_sharpe") for c in cands if isinstance(c.get("holdout_deflated_sharpe"), (int, float))]
+        decision = r["decision"]
+        src = p.get("source") or "?"
+        theories.append({
+            "run_id": p.get("run_id"),
+            "ts": r["ts"],
+            "source": src,
+            "hypothesis": p.get("hypothesis") or "",
+            "decision": decision,
+            "kind": p.get("kind"),
+            "asset": p.get("asset") or p.get("symbol"),
+            "n_candidates": p.get("n_candidates", len(cands)),
+            "n_promoted": p.get("n_promoted", 0),
+            "best_dsr": p.get("best_deflated_sharpe_prob", 0.0),
+            "best_holdout_dsr": max(holdouts) if holdouts else None,
+            "candidates": [{
+                "id": c.get("id"), "label": c.get("label"), "promoted": bool(c.get("promoted")),
+                "deflated_sharpe_prob": c.get("deflated_sharpe_prob"),
+                "holdout_deflated_sharpe": c.get("holdout_deflated_sharpe"),
+                "survived_fdr": c.get("survived_fdr"), "reasons": c.get("reasons") or [],
+            } for c in cands],
+        })
+        if decision == "PASS":
+            passed += 1
+        s = by_source.setdefault(src, {"source": src, "n": 0, "passed": 0})
+        s["n"] += 1
+        s["passed"] += 1 if decision == "PASS" else 0
+    return {
+        "summary": {
+            "total": len(theories), "passed": passed, "failed": len(theories) - passed,
+            "by_source": sorted(by_source.values(), key=lambda x: -x["n"]),
+        },
+        "theories": theories,
+    }
 
 
 @router.post("/research/gate", response_model=GateVerdictResponse)

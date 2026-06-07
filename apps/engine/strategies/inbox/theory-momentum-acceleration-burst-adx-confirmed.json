@@ -1,0 +1,84 @@
+{
+  "name": "Momentum acceleration burst (ADX-confirmed)",
+  "rationale": "Acceleration bet: a strong, FRESH short-lookback run-up (ret_Nd over a short window, strictly positive past a floor) tends to CONTINUE for several more days when a directional trend regime is already established (adx above a floor). The short lookback isolates the recent burst rather than slow trend, and the adx gate filters out chop where a sharp move is noise that mean-reverts. Distinct from a vanilla ADX trend-follow by forcing a short window AND a strictly-positive momentum floor: it buys acceleration, not mere trend membership.",
+  "catalyst": "A sharp multi-day acceleration in price while the trend regime is already strong - momentum continuation before the burst is fully priced.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 15
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "accel_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "accel_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    }
+  },
+  "direction": 1,
+  "param_space": {
+    "adx_floor": {
+      "kind": "float",
+      "low": 18,
+      "high": 38
+    },
+    "accel_lb": {
+      "kind": "int",
+      "low": 3,
+      "high": 15
+    },
+    "accel_floor": {
+      "kind": "float",
+      "low": 0.02,
+      "high": 0.18
+    },
+    "stop": {
+      "kind": "float",
+      "low": 0.03,
+      "high": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "low": 0.06,
+      "high": 0.45
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  }
+}

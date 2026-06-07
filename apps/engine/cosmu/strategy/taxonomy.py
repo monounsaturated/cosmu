@@ -102,13 +102,18 @@ def _referenced_features(spec: dict[str, Any]) -> list[str]:
         if isinstance(name, str) and name and name not in names:
             names.append(name)
 
-    for cond in spec.get("entry") or []:
-        feature = (cond or {}).get("feature") or {}
-        _push(feature.get("name"))
-    exit_rules = spec.get("exit") or {}
-    for cond in exit_rules.get("signal_exits") or []:
-        feature = (cond or {}).get("feature") or {}
-        _push(feature.get("name"))
+    def _feat_name(cond: Any) -> None:
+        feature = cond.get("feature") if isinstance(cond, dict) else None
+        if isinstance(feature, dict):
+            _push(feature.get("name"))
+
+    entry = spec.get("entry")
+    for cond in entry if isinstance(entry, list) else []:
+        _feat_name(cond)
+    exit_rules = spec.get("exit") if isinstance(spec.get("exit"), dict) else {}
+    sig_exits = exit_rules.get("signal_exits")
+    for cond in sig_exits if isinstance(sig_exits, list) else []:
+        _feat_name(cond)
     _push(spec.get("funding_feature"))
     return names
 
@@ -169,17 +174,27 @@ def derive_facets(spec: dict[str, Any] | None, origin: str | None) -> Facets:
     (returns honest '—' placeholders) so a malformed row still renders rather than crashing the leaderboard."""
     if not isinstance(spec, dict):
         spec = {}
-    universe = spec.get("universe") or {}
-    horizon = spec.get("horizon") or {}
-    features = _referenced_features(spec)
-    family = _signal_family(features)
-    return Facets(
-        signal_family=family,
-        signal_family_label=SIGNAL_FAMILY_LABELS[family],
-        features=features,
-        asset_class=_primary(universe.get("asset_classes") or []),
-        venue=_primary(universe.get("venues") or []),
-        timeframe=str(horizon.get("bar_size") or "—"),
-        origin=origin or "template",
-        edge_type=_edge_type(spec, features),
-    )
+    try:
+        # Nested fields can be STRINGS on a double-encoded spec row (a prod write-path quirk). Coerce each to its
+        # expected type so a malformed row degrades to honest '—' placeholders rather than 500-ing the leaderboard
+        # (the FLOOR display must never crash on one bad spec).
+        universe = spec.get("universe") if isinstance(spec.get("universe"), dict) else {}
+        horizon = spec.get("horizon") if isinstance(spec.get("horizon"), dict) else {}
+        features = _referenced_features(spec)
+        family = _signal_family(features)
+        return Facets(
+            signal_family=family,
+            signal_family_label=SIGNAL_FAMILY_LABELS[family],
+            features=features,
+            asset_class=_primary(universe.get("asset_classes") or []),
+            venue=_primary(universe.get("venues") or []),
+            timeframe=str(horizon.get("bar_size") or "—"),
+            origin=origin or "template",
+            edge_type=_edge_type(spec, features),
+        )
+    except Exception:  # noqa: BLE001 — never let a malformed spec crash the leaderboard; show honest placeholders.
+        fam = _signal_family([])
+        return Facets(
+            signal_family=fam, signal_family_label=SIGNAL_FAMILY_LABELS[fam], features=[],
+            asset_class="—", venue="—", timeframe="—", origin=origin or "template", edge_type="—",
+        )

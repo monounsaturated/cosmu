@@ -23,6 +23,7 @@ import hashlib
 import json
 import os
 import ssl
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -114,6 +115,10 @@ class CachedNarrativeScorer:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.calls = 0  # live LLM calls made this run (cache hits don't count) — bounds the bill
         self.cost_usd = 0.0
+        # The scorer is content-hash disk-cached, so it is safe to call from a thread pool (the Modal score
+        # stage warms the cache concurrently). This lock keeps the cost/call counters exact under concurrency;
+        # the single-threaded local harness is unaffected.
+        self._lock = threading.Lock()
 
     def _cache_path(self, headline: str) -> Path:
         h = hashlib.sha256(f"{NARRATIVE_TRANSFORM_VERSION}|{self.model}|{headline}".encode()).hexdigest()
@@ -138,7 +143,8 @@ class CachedNarrativeScorer:
         with urllib.request.urlopen(req, timeout=self.timeout, context=_ssl_ctx()) as resp:  # noqa: S310
             payload = json.loads(resp.read().decode("utf-8"))
         usage = payload.get("usage") or {}
-        self.cost_usd += float(usage.get("cost") or 0.0)
+        with self._lock:
+            self.cost_usd += float(usage.get("cost") or 0.0)
         choices = payload.get("choices") or []
         return choices[0].get("message", {}).get("content") if choices else None
 
@@ -160,7 +166,8 @@ class CachedNarrativeScorer:
                 raw = self._chat(prompt)
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
                 return None  # transport failure → deterministic fallback (never a fabricated feature)
-            self.calls += 1
+            with self._lock:
+                self.calls += 1
             if raw is None:
                 return None
             try:

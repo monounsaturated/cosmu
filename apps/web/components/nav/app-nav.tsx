@@ -1,8 +1,8 @@
 "use client";
 
-// module: app navigation. Seven surfaces covering the full vibe loop (idea → spec → verdict) and
-// the operator's main decisions. Desktop = persistent icon-rail sidebar; mobile = a bottom tab bar
-// (4 primary tabs + a More sheet with the rest).
+// module: app navigation. Eight surfaces covering the full vibe loop (idea → spec → verdict), the
+// machine's experiment memory (Theories), and the operator's main decisions. Desktop = persistent
+// icon-rail sidebar; mobile = a bottom tab bar (4 primary tabs + a More sheet with the rest).
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Brain,
+  ClipboardCheck,
   DollarSign,
   FlaskConical,
   LayoutDashboard,
@@ -29,6 +30,7 @@ type NavItem = { href: string; label: string; desc?: string; icon: typeof Layout
 export const navItems: NavItem[] = [
   { href: "/", label: "Overview", desc: "Status · verdicts · ideas", icon: LayoutDashboard },
   { href: "/lab", label: "Lab", desc: "Idea → spec → verdict", icon: FlaskConical },
+  { href: "/verdicts", label: "Theories", desc: "Every theory tested · Gate verdict", icon: ClipboardCheck },
   { href: "/strategies", label: "Strategies", desc: "Backtest · Simulation · Live", icon: ListChecks },
   { href: "/explorer", label: "Explorer", desc: "Pick · chart · compare", icon: Telescope },
   { href: "/mind", label: "Mind", desc: "What the agent knows & learned", icon: Brain },

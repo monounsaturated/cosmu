@@ -1,0 +1,99 @@
+{
+  "name": "Donchian channel-breakout new-high",
+  "rationale": "Classic Donchian/Turtle channel breakout done as a long-lookback new-high proxy on daily bars: when the N-day return over a LONG window (20-80d) clears a high positive threshold, price is at/near a multi-week high (a channel breakout). An ADX floor confirms a real trend (Donchian whipsaws in chop, so we demand directional strength), and a Bollinger z-score ceiling keeps us from chasing an already-parabolic blow-off that is statistically overextended (late-entry/capacity guard). Long-only (spot). Disconfirmer: a stop-loss + take-profit close the trade if the breakout fails or stalls, so a false breakout is bounded.",
+  "catalyst": "price prints a new multi-week high (long-lookback return breakout) in a confirmed uptrend",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 30
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "channel_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "breakout_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    }
+  },
+  "direction": 1,
+  "risk": {
+    "max_concurrent_positions": 3,
+    "max_position_pct": 0.1,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "channel_lb": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 80,
+      "step": 1
+    },
+    "breakout_floor": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.4
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 35
+    },
+    "bbz_ceiling": {
+      "kind": "float",
+      "lo": 1.5,
+      "hi": 3.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.5
+    }
+  }
+}

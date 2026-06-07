@@ -28,7 +28,9 @@ async function relay(req: NextRequest, path: string[]): Promise<Response> {
   const body = hasBody ? await req.text() : undefined;
 
   try {
-    const res = await fetch(target, { method: req.method, headers, body, cache: "no-store" });
+    // Fail fast on a hung/cold engine so a client control-plane call settles (502) instead of hanging the
+    // serverless function until its platform timeout. Mirrors lib/engine.ts#engineFetchTimeout as a backstop.
+    const res = await fetch(target, { method: req.method, headers, body, cache: "no-store", signal: AbortSignal.timeout(9000) });
     // Pass the engine's body + status through untouched so honest empty/offline states survive.
     const text = await res.text();
     return new Response(text, {

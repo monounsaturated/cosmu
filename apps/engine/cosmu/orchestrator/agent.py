@@ -17,6 +17,7 @@ from cosmu.execution.costopt import FeeSchedule, OrderPlan, choose_order
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, Promotion, promote_cohort
 from cosmu.master.execution import IntendedOrder, OrderOutcome, execute_orders
+from cosmu.master.verdict_log import CohortPersist
 from cosmu.master.portfolio import Portfolio
 from cosmu.portfolio.rotation import Track, TrackVerdict, select_tracks
 from cosmu.spine.venue import VenueCatalog, default_catalog
@@ -49,7 +50,15 @@ def gate_stage(store: Store, gates: GateSettings, *, fdr_q: float = 0.10) -> Sta
     ranked by net-of-cost profit. The sole promote authority — out of any generator's reach."""
 
     def stage(ctx: CycleContext) -> CycleContext:
-        ctx.promotions = promote_cohort(store, ctx.candidates, gates, fdr_q=fdr_q)
+        # Persist the cycle's strategy-level verdict to durable experiment-memory (gate_verdicts) so the
+        # autonomous cron accrues a queryable record, not just an in-memory log line. Best-effort.
+        persist = CohortPersist(
+            store=store,
+            run_id=f"cycle-{ctx.as_of.isoformat()}",
+            hypothesis="autonomous cycle: generated candidates judged together",
+            source="orchestrator-cycle",
+        )
+        ctx.promotions = promote_cohort(store, ctx.candidates, gates, fdr_q=fdr_q, persist=persist)
         n = sum(1 for p in ctx.promotions if p.promoted)
         ctx.log.append(f"gate: {n}/{len(ctx.candidates)} promoted")
         return ctx

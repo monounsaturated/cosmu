@@ -1,0 +1,124 @@
+{
+  "name": "Bollinger band-expansion momentum breakout",
+  "rationale": "A high positive Bollinger z-score means price has pushed a statistically unusual distance ABOVE its band mean \u2014 the signature of a volatility-expansion breakout, not a stretched-to-fade extreme. Combined with a strong ADX (an established directional trend, so the band push is real momentum rather than chop noise) and confirming positive N-day return, this rides the expansion long. Distinct from the washout-reversion sibling (which FADES a deeply negative bb_z): this is the continuation/breakout side of the same band feature. Disconfirmer: the take-profit caps the ride, the stop fires if the breakout fails and price falls back inside the band (a failed-breakout reversal), and the signal-exit closes when bb_z collapses back toward the mean.",
+  "catalyst": "volatility-expansion breakout \u2014 price breaks a statistically unusual distance above its Bollinger band mean inside an established trend",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "bbz_breakout"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "direction": 1,
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "bbz_breakout": {
+      "kind": "float",
+      "lo": 1.0,
+      "hi": 2.5
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.75
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 35.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 30,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.1
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 20,
+      "step": 1
+    }
+  }
+}

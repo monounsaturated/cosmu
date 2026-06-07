@@ -1,0 +1,82 @@
+[verdict] BTCUSDT: FAIL — no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.796 (disc-momentum-only-control)
+    window=2023-09-12..2026-06-07 narrative_days=1235 bars=1000
+    [    stop] llm-narrative-pressure-long    net=+0.1322 gross=+0.1593 dsr=0.707 holdoutDSR=-0.026 pbo=0.200 trades=123 b&h=N
+    [    stop] disc-narrative-time-shuffle    net=+0.1367 gross=+0.1667 dsr=0.761 holdoutDSR=-0.063 pbo=0.143 trades=133 b&h=N
+    [    stop] disc-momentum-only-control     net=+0.1725 gross=+0.2022 dsr=0.796 holdoutDSR=+0.245 pbo=0.043 trades=114 b&h=N
+      time_shuffle_placebo: FAIL-reproduces (cand dsr 0.707 vs placebo 0.761)
+      beat_momentum_only: FAIL (cand dsr 0.707 vs momentum 0.796)
+[verdict] QQQ: FAIL — no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.433 (disc-momentum-only-control)
+    window=2022-12-05..2026-06-05 narrative_days=1233 bars=878
+    [    stop] llm-narrative-pressure-long    net=+0.0147 gross=+0.0318 dsr=0.058 holdoutDSR=-0.115 pbo=0.329 trades=79 b&h=N
+    [    stop] disc-narrative-time-shuffle    net=+0.0256 gross=+0.0410 dsr=0.240 holdoutDSR=+0.280 pbo=0.286 trades=71 b&h=N
+    [    stop] disc-momentum-only-control     net=+0.0441 gross=+0.0571 dsr=0.433 holdoutDSR=+0.328 pbo=0.186 trades=51 b&h=N
+      time_shuffle_placebo: FAIL-reproduces (cand dsr 0.058 vs placebo 0.240)
+      beat_momentum_only: FAIL (cand dsr 0.058 vs momentum 0.433)
+[verdict] META: FAIL — no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.889 (llm-narrative-pressure-long)
+    window=2022-12-05..2026-06-05 narrative_days=1237 bars=878
+    [    stop] llm-narrative-pressure-long    net=+0.0911 gross=+0.1091 dsr=0.889 holdoutDSR=-0.475 pbo=0.100 trades=78 b&h=N
+    [    stop] disc-narrative-time-shuffle    net=+0.0894 gross=+0.1061 dsr=0.774 holdoutDSR=-0.206 pbo=0.029 trades=71 b&h=N
+    [    stop] disc-momentum-only-control     net=+0.1067 gross=+0.1261 dsr=0.840 holdoutDSR=+0.242 pbo=0.386 trades=68 b&h=N
+      time_shuffle_placebo: PASS (cand dsr 0.889 vs placebo 0.774)
+      beat_momentum_only: PASS (cand dsr 0.889 vs momentum 0.840)
+[verdict] ETHUSDT: FAIL — no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.878 (disc-momentum-only-control)
+    window=2023-09-12..2026-06-07 narrative_days=1192 bars=1000
+    [    stop] llm-narrative-pressure-long    net=+0.0828 gross=+0.1098 dsr=0.295 holdoutDSR=-0.375 pbo=0.714 trades=128 b&h=N
+    [    stop] disc-narrative-time-shuffle    net=+0.1058 gross=+0.1191 dsr=0.490 holdoutDSR=-0.367 pbo=0.571 trades=59 b&h=N
+    [    stop] disc-momentum-only-control     net=+0.2069 gross=+0.2219 dsr=0.878 holdoutDSR=-0.251 pbo=0.186 trades=53 b&h=N
+      time_shuffle_placebo: FAIL-reproduces (cand dsr 0.295 vs placebo 0.490)
+      beat_momentum_only: FAIL (cand dsr 0.295 vs momentum 0.878)
+[verdict] MSFT: FAIL — no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.693 (disc-narrative-time-shuffle)
+    window=2022-12-05..2026-06-05 narrative_days=1131 bars=878
+    [    stop] llm-narrative-pressure-long    net=+0.0244 gross=+0.0391 dsr=0.311 holdoutDSR=-0.216 pbo=0.243 trades=67 b&h=N
+    [    stop] disc-narrative-time-shuffle    net=+0.0164 gross=+0.0201 dsr=0.693 holdoutDSR=-0.500 pbo=0.771 trades=17 b&h=N
+    [    stop] disc-momentum-only-control     net=+0.0476 gross=+0.0605 dsr=0.611 holdoutDSR=-0.253 pbo=0.514 trades=52 b&h=N
+      time_shuffle_placebo: FAIL-reproduces (cand dsr 0.311 vs placebo 0.693)
+      beat_momentum_only: FAIL (cand dsr 0.311 vs momentum 0.611)
+[verdict] AAPL: FAIL — no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.482 (disc-momentum-only-control)
+    window=2022-12-05..2026-06-05 narrative_days=1084 bars=878
+    [    stop] llm-narrative-pressure-long    net=+0.0189 gross=+0.0352 dsr=0.160 holdoutDSR=-0.275 pbo=0.757 trades=75 b&h=N
+    [    stop] disc-narrative-time-shuffle    net=+0.0109 gross=+0.0139 dsr=0.281 holdoutDSR=+0.488 pbo=0.700 trades=14 b&h=N
+    [    stop] disc-momentum-only-control     net=+0.0441 gross=+0.0563 dsr=0.482 holdoutDSR=-0.020 pbo=0.357 trades=50 b&h=N
+      time_shuffle_placebo: FAIL-reproduces (cand dsr 0.160 vs placebo 0.281)
+      beat_momentum_only: FAIL (cand dsr 0.160 vs momentum 0.482)
+[verdict] TSLA: FAIL — no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.361 (disc-momentum-only-control)
+    window=2022-12-05..2026-06-05 narrative_days=1053 bars=878
+    [    stop] llm-narrative-pressure-long    net=+0.0275 gross=+0.0567 dsr=0.154 holdoutDSR=-0.475 pbo=0.686 trades=86 b&h=N
+    [    stop] disc-narrative-time-shuffle    net=+0.0417 gross=+0.0579 dsr=0.147 holdoutDSR=-0.201 pbo=0.500 trades=74 b&h=N
+    [    stop] disc-momentum-only-control     net=+0.1003 gross=+0.1169 dsr=0.361 holdoutDSR=-0.276 pbo=0.457 trades=67 b&h=N
+      time_shuffle_placebo: PASS (cand dsr 0.154 vs placebo 0.147)
+      beat_momentum_only: FAIL (cand dsr 0.154 vs momentum 0.361)
+[verdict] GOOGL: FAIL — no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.550 (disc-momentum-only-control)
+    window=2022-12-05..2026-06-05 narrative_days=973 bars=878
+    [    stop] llm-narrative-pressure-long    net=+0.0429 gross=+0.0607 dsr=0.423 holdoutDSR=+0.317 pbo=0.186 trades=82 b&h=N
+    [    stop] disc-narrative-time-shuffle    net=+0.0330 gross=+0.0500 dsr=0.263 holdoutDSR=+0.186 pbo=0.500 trades=77 b&h=N
+    [    stop] disc-momentum-only-control     net=+0.0651 gross=+0.0787 dsr=0.550 holdoutDSR=+0.420 pbo=0.100 trades=53 b&h=N
+      time_shuffle_placebo: PASS (cand dsr 0.423 vs placebo 0.263)
+      beat_momentum_only: FAIL (cand dsr 0.423 vs momentum 0.550)
+[verdict] NVDA: FAIL — no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.987 (disc-momentum-only-control)
+    window=2022-12-05..2026-06-05 narrative_days=922 bars=878
+    [    stop] llm-narrative-pressure-long    net=+0.0739 gross=+0.0881 dsr=0.790 holdoutDSR=-0.256 pbo=0.686 trades=66 b&h=N
+    [    stop] disc-narrative-time-shuffle    net=+0.0847 gross=+0.1063 dsr=0.688 holdoutDSR=-0.365 pbo=0.586 trades=94 b&h=N
+    [     fdr] disc-momentum-only-control     net=+0.1706 gross=+0.1905 dsr=0.987 holdoutDSR=-0.226 pbo=0.300 trades=77 b&h=N
+      time_shuffle_placebo: PASS (cand dsr 0.790 vs placebo 0.688)
+      beat_momentum_only: FAIL (cand dsr 0.790 vs momentum 0.987)
+[verdict] AMZN: FAIL — no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.479 (disc-momentum-only-control)
+    window=2023-02-13..2026-06-05 narrative_days=64 bars=831
+    [    stop] llm-narrative-pressure-long    net=+0.0150 gross=+0.0219 dsr=0.152 holdoutDSR=+0.000 pbo=0.800 trades=33 b&h=N
+    [    stop] disc-narrative-time-shuffle    net=+0.0302 gross=+0.0356 dsr=0.415 holdoutDSR=+0.210 pbo=0.386 trades=26 b&h=N
+    [    stop] disc-momentum-only-control     net=+0.0492 gross=+0.0643 dsr=0.479 holdoutDSR=-0.153 pbo=0.600 trades=46 b&h=N
+      time_shuffle_placebo: FAIL-reproduces (cand dsr 0.152 vs placebo 0.415)
+      beat_momentum_only: FAIL (cand dsr 0.152 vs momentum 0.479)
+
+=== SUMMARY ===
+  BTCUSDT  FAIL
+  QQQ      FAIL
+  META     FAIL
+  ETHUSDT  FAIL
+  MSFT     FAIL
+  AAPL     FAIL
+  TSLA     FAIL
+  GOOGL    FAIL
+  NVDA     FAIL
+  AMZN     FAIL
