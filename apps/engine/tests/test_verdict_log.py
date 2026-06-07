@@ -66,6 +66,8 @@ def test_persist_writes_one_queryable_cohort_row_and_event(tmp_path):
     by_id = {c["id"]: c for c in p["candidates"]}
     assert by_id["strong"]["promoted"] is True and by_id["strong"]["label"] == "the winner"
     assert by_id["weak"]["promoted"] is False and "deflated_sharpe" in by_id["weak"]["reasons"]
+    # the REAL holdout DSR is persisted per candidate (OOS-decay visible without a re-run)
+    assert by_id["strong"]["holdout_deflated_sharpe"] == 0.05 and by_id["weak"]["holdout_deflated_sharpe"] == -0.1
     assert p["best_deflated_sharpe_prob"] == max(c["deflated_sharpe_prob"] for c in p["candidates"])
     # the cohort_gate_run event is emitted alongside
     ev = store.rows("SELECT kind, ref_id FROM events WHERE kind = 'cohort_gate_run'")

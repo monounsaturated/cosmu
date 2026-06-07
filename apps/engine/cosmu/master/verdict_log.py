@@ -59,17 +59,25 @@ def durable_persist(*, run_id: str, hypothesis: str, source: str, data_source: s
 def _candidate_rows(candidates: list[Any], promotions: list[Any]) -> list[dict[str, Any]]:
     """Join each Candidate to its Promotion (by id) into one flat, queryable verdict row. Duck-typed so this
     module never imports `cohort` (keeps the dependency one-way)."""
-    label_by_id = {c.id: getattr(c, "label", None) for c in candidates}
+    by_id = {c.id: c for c in candidates}
     rows: list[dict[str, Any]] = []
     for p in promotions:
+        c = by_id.get(p.candidate_id)
+        # the REAL purged+embargoed OOS holdout DSR lives on the candidate's metrics — persist it so the stored
+        # experiment-memory shows OOS decay (positive in-sample dSR + negative holdout = overfit) without a re-run.
+        holdout = None
+        metrics = getattr(c, "metrics", None) if c is not None else None
+        if metrics is not None and getattr(metrics, "holdout_deflated_sharpe", None) is not None:
+            holdout = float(metrics.holdout_deflated_sharpe)
         rows.append(
             {
                 "id": p.candidate_id,
-                "label": label_by_id.get(p.candidate_id),
+                "label": getattr(c, "label", None) if c is not None else None,
                 "promoted": bool(p.promoted),
                 "rank": p.rank,
                 "net_profit": float(p.net_profit),
                 "deflated_sharpe_prob": float(p.deflated_sharpe_prob),
+                "holdout_deflated_sharpe": holdout,
                 "survived_fdr": bool(p.survived_fdr),
                 "reasons": list(p.reasons),
             }
