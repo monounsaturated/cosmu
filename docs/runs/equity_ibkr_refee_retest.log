@@ -1,0 +1,55 @@
+====================================================================================================
+EQUITIES RE-TEST AT REAL IBKR FEES — short-term reversal + betting-against-beta/low-vol
+Gate path: cohort.promote_cohort + Benjamini-Hochberg q=0.10 (BLESSED wave-1 modules, fee re-priced).
+IBKR all-in central est ~2 bps/side (0.5 commission + ~1.5 spread/impact); sweep 1/2/3/5; ref=13.
+====================================================================================================
+
+### TEST 1 — SHORT-TERM (1-week) CROSS-SECTIONAL REVERSAL, dollar-neutral L/S, large-cap single names
+Disconfirmers: momentum control (sign flip) + random-rank placebo. Survivorship: today's survivors (L/S spread cancels both legs).
+
+[A] FULL HISTORY (1970->2026 where available) — includes wide-spread pre-decimalization era:
+  [full] stockFee= 1.0bps       stop  net=+82.297 gross=+123.34 costRatio=0.667 annSR=+1.06 DSR=0.000 maxDD=0.275 pbo=0.00 folds+=0.80 turn=1.36  reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+  [full] stockFee= 2.0bps       stop  net=+54.799 gross=+123.34 costRatio=0.444 annSR=+0.97 DSR=0.000 maxDD=0.302 pbo=0.00 folds+=0.80 turn=1.36  reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+  [full] stockFee= 3.0bps       stop  net=+117.011 gross=+478.06 costRatio=0.245 annSR=+0.88 DSR=0.000 maxDD=0.398 pbo=0.00 folds+=0.80 turn=1.59  reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+  [full] stockFee= 5.0bps       stop  net=+45.357 gross=+478.06 costRatio=0.095 annSR=+0.72 DSR=0.000 maxDD=0.528 pbo=0.03 folds+=0.80 turn=1.59  reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+  [full] stockFee=13.0bps       stop  net=+0.100 gross=+478.06 costRatio=0.0 annSR=+0.07 DSR=0.000 maxDD=0.857 pbo=0.27 folds+=0.60 turn=1.59  reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+      disconfirm@2bps: placebo net=-0.614 DSR=0.000 promoted=False; momentum net=-0.99955 promoted=False
+
+[B] RECENT-ERA window (2004->2026) — decimalized, IBKR-investable, closer to the literature's regime:
+  [rec ] stockFee= 1.0bps       stop  net=+0.563 gross=+0.76 costRatio=0.741 annSR=+0.40 DSR=0.145 maxDD=0.196 pbo=0.47 folds+=0.60 turn=1.01  reasons=['deflated_sharpe', 'fdr']
+  [rec ] stockFee= 2.0bps       stop  net=+0.388 gross=+0.76 costRatio=0.511 annSR=+0.30 DSR=0.060 maxDD=0.225 pbo=0.59 folds+=0.60 turn=1.01  reasons=['pbo', 'deflated_sharpe', 'fdr']
+  [rec ] stockFee= 3.0bps       stop  net=+0.233 gross=+0.76 costRatio=0.306 annSR=+0.20 DSR=0.018 maxDD=0.255 pbo=0.71 folds+=0.60 turn=1.01  reasons=['max_drawdown', 'pbo', 'deflated_sharpe', 'fdr']
+  [rec ] stockFee= 5.0bps       stop  net=-0.028 gross=+0.76 costRatio=-0.037 annSR=+0.00 DSR=0.001 maxDD=0.323 pbo=0.90 folds+=0.60 turn=1.01  reasons=['max_drawdown', 'pbo', 'deflated_sharpe', 'fdr']
+  [rec ] stockFee=13.0bps       stop  net=-0.822 gross=+0.89 costRatio=-0.923 annSR=-0.74 DSR=0.000 maxDD=0.841 pbo=0.09 folds+=0.00 turn=1.55  reasons=['max_drawdown', 'folds_positive', 'deflated_sharpe', 'fdr']
+      disconfirm@2bps: placebo net=-0.047 DSR=0.001 promoted=False; momentum net=-0.70316 promoted=False
+
+### TEST 2 — BETTING-AGAINST-BETA / LOW-VOL, monthly rebalance (low turnover), single names
+Books: lowvol/lowbeta long-only (survivor-biased; judged on alpha-vs-EW), bab_vol/bab_beta market-neutral.
+    stockFee= 1.0bps  lowvol_long_only        stop  net=+345.475 alphaVsEW=-5091.925 DSR=0.000 maxDD=0.474 folds+=1.00 turn=0.143 reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+    stockFee= 1.0bps  lowbeta_long_only       stop  net=+59.930 alphaVsEW=-105.791 DSR=0.072 maxDD=0.407 folds+=1.00 turn=0.169 reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+    stockFee= 1.0bps  bab_vol_neutral         stop  net=-0.998 alphaVsEW=-5438.398 DSR=0.000 maxDD=0.998 folds+=0.00 turn=0.254 reasons=['max_drawdown', 'folds_positive', 'deflated_sharpe', 'fdr']
+    stockFee= 1.0bps  bab_beta_neutral        stop  net=-0.912 alphaVsEW=-166.633 DSR=0.000 maxDD=0.922 folds+=0.00 turn=0.298 reasons=['max_drawdown', 'folds_positive', 'deflated_sharpe', 'fdr']
+    stockFee= 2.0bps  lowvol_long_only        stop  net=+342.187 alphaVsEW=-5095.213 DSR=0.000 maxDD=0.475 folds+=1.00 turn=0.143 reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+    stockFee= 2.0bps  lowbeta_long_only       stop  net=+59.527 alphaVsEW=-106.194 DSR=0.067 maxDD=0.407 folds+=1.00 turn=0.169 reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+    stockFee= 2.0bps  bab_vol_neutral         stop  net=-0.998 alphaVsEW=-5438.398 DSR=0.000 maxDD=0.998 folds+=0.00 turn=0.254 reasons=['max_drawdown', 'folds_positive', 'deflated_sharpe', 'fdr']
+    stockFee= 2.0bps  bab_beta_neutral        stop  net=-0.913 alphaVsEW=-166.634 DSR=0.000 maxDD=0.923 folds+=0.00 turn=0.298 reasons=['max_drawdown', 'folds_positive', 'deflated_sharpe', 'fdr']
+    stockFee= 3.0bps  lowvol_long_only        stop  net=+338.929 alphaVsEW=-5098.471 DSR=0.000 maxDD=0.475 folds+=1.00 turn=0.143 reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+    stockFee= 3.0bps  lowbeta_long_only       stop  net=+59.127 alphaVsEW=-106.595 DSR=0.062 maxDD=0.408 folds+=1.00 turn=0.169 reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+    stockFee= 3.0bps  bab_vol_neutral         stop  net=-0.998 alphaVsEW=-5438.398 DSR=0.000 maxDD=0.998 folds+=0.00 turn=0.254 reasons=['max_drawdown', 'folds_positive', 'deflated_sharpe', 'fdr']
+    stockFee= 3.0bps  bab_beta_neutral        stop  net=-0.914 alphaVsEW=-166.635 DSR=0.000 maxDD=0.923 folds+=0.00 turn=0.298 reasons=['max_drawdown', 'folds_positive', 'deflated_sharpe', 'fdr']
+    stockFee= 5.0bps  lowvol_long_only        stop  net=+332.507 alphaVsEW=-5104.893 DSR=0.000 maxDD=0.475 folds+=1.00 turn=0.143 reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+    stockFee= 5.0bps  lowbeta_long_only       stop  net=+58.333 alphaVsEW=-107.388 DSR=0.052 maxDD=0.408 folds+=1.00 turn=0.169 reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+    stockFee= 5.0bps  bab_vol_neutral         stop  net=-0.998 alphaVsEW=-5438.398 DSR=0.000 maxDD=0.998 folds+=0.00 turn=0.254 reasons=['max_drawdown', 'folds_positive', 'deflated_sharpe', 'fdr']
+    stockFee= 5.0bps  bab_beta_neutral        stop  net=-0.916 alphaVsEW=-166.637 DSR=0.000 maxDD=0.925 folds+=0.00 turn=0.298 reasons=['max_drawdown', 'folds_positive', 'deflated_sharpe', 'fdr']
+    stockFee=13.0bps  lowvol_long_only        stop  net=+308.006 alphaVsEW=-5129.393 DSR=0.000 maxDD=0.476 folds+=1.00 turn=0.143 reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+    stockFee=13.0bps  lowbeta_long_only       stop  net=+55.263 alphaVsEW=-110.458 DSR=0.020 maxDD=0.409 folds+=1.00 turn=0.169 reasons=['max_drawdown', 'deflated_sharpe', 'fdr']
+    stockFee=13.0bps  bab_vol_neutral         stop  net=-0.998 alphaVsEW=-5438.398 DSR=0.000 maxDD=0.998 folds+=0.00 turn=0.254 reasons=['max_drawdown', 'folds_positive', 'deflated_sharpe', 'fdr']
+    stockFee=13.0bps  bab_beta_neutral        stop  net=-0.924 alphaVsEW=-166.645 DSR=0.000 maxDD=0.931 folds+=0.00 turn=0.298 reasons=['max_drawdown', 'folds_positive', 'deflated_sharpe', 'fdr']
+    disconfirm@2bps: placebo net=-0.741 DSR=0.000 promoted=False
+
+====================================================================================================
+VERDICT SUMMARY (does the verdict FLIP between fees?)
+  Reversal FULL-history  promoted@fee: {1.0: False, 2.0: False, 3.0: False, 5.0: False, 13.0: False}
+  Reversal RECENT-era    promoted@fee: {1.0: False, 2.0: False, 3.0: False, 5.0: False, 13.0: False}
+  BAB/low-vol any-book   promoted@fee: {1.0: False, 2.0: False, 3.0: False, 5.0: False, 13.0: False}
+====================================================================================================
