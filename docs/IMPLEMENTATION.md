@@ -232,18 +232,19 @@ Each stage answers a different question. A strategy must clear each to reach the
 
 Every sidebar item is its own route. No `/#section` jumps to a shared page.
 
-Canonical source of truth: `apps/web/components/nav/app-nav.tsx`. Eight primary surfaces + three under "More".
+Canonical source of truth: `apps/web/components/nav/app-nav.tsx`. Nine primary surfaces + three under "More" (as of 2026-06-07).
 
 | Route | Purpose |
 |---|---|
 | `/` Overview | Are we making money, what's running, what needs me. Aggregate read-out (Σ of standalone tracks — NOT a pooled wallet), KPI row, equity chart, "needs you" list, recent activity. |
+| `/console` | Decide · steer · arm (the control surface). |
 | `/lab` | Idea → spec → verdict: auto-running cohorts, funnel, survivors, graveyard, Pine inbox. |
+| `/strategies` | Backtest · ranked & faceted: search/browse any version, detail (`/strategies/{id}`), lineage, why it died. |
+| `/forward-test` Simulation | Live data, no money — per-strategy SIM tracks, forward-return vs backtest. |
 | `/verdicts` Theories | Every theory tested + its honest Gate verdict (served by `GET /research/experiments`). |
-| `/strategies` | Backtest · Simulation · Live: search/browse any version, detail (`/strategies/{id}`), lineage, why it died. |
 | `/explorer` | Pick · chart · compare data sources / strategies. |
 | `/mind` | What the agent knows, thinks, and has learned (the 24/7 committee). |
 | `/costs` | What is it costing? Infra/LLM/data opex vs alpha. |
-| `/console` | Decide · steer · arm (the control surface). |
 | `/live` (More, gated) | Activation modal, caps, real positions, defund controls. Dimmed until armed. |
 | `/settings` (More) | Keys, universe, data sources, model on/off — written through the app (audited), never raw SQL. |
 | `/commands` (More) | Run procedures from Claude Code. |

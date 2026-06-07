@@ -21,12 +21,12 @@ The engine is **~85% real, deterministic, and honest.** Confirmed in code:
 - **DB** (`knowledge/schema_postgres.sql`): 26 tables incl. append-only `events` (money-truth ledger), global `trials` ledger (DSR deflation), `alt_data`, `tracks`, pgvector on `skills`/`sources`.
 
 ## 2. The real remaining gaps (this is the actual work)
-1. **Forward-test maturity isn't surfaced.** `mark_tracks()` marks held positions daily on real closes, but the **≥30-day net-positive proof** isn't computed/shown as a live-readiness signal. Per owner decision it's **advisory** (the human launches via the modal) — so the fix is to **surface it clearly**, not hard-block. **← surface it.**
+1. ~~**Forward-test maturity isn't surfaced.**~~ **SHIPPED**: `/forward-test` (Simulation) route shows per-strategy forward-return vs backtest + `live_ready` flag + `divergence_status` badge (#152/#153, 2026-06-07). The 30d advisory signal is now visible.
 2. **CI is manual-dispatch only.** GitHub Actions (`verify.yml`) is `workflow_dispatch`-only — OFF by default (we are not paying for it). The **local pre-push `pnpm verify` is the gate**; a skipped verify can ship a broken `main` since push = deploy. Re-enable PR-triggered CI only if branch protection is ever added.
 3. **Authoring lacks adversarial disconfirmers.** Only ~6 hard-coded briefs; the gate culls junk but the author isn't structurally pushed to test anti-patterns.
 4. **Self-reinforcement of *logic* — primitive shipped, unproven.** The `/evolve-strategy` skill isolates a gate-passed signal, grafts it onto other assets, and recombines survivors into a new cohort for re-Gating. It can't fire yet because there are **0 honest-Gate survivors** to compound — it activates the moment the first edge clears.
 5. **Breadth not live**: xAI/Grok Twitter signal (key exists, source not wired), IBKR live execution (data-only), event/news *scoring*.
-6. **Cockpit thin**: the Console page (in-app steer/ask — NOT a ⌘K overlay, which was deemed unintuitive) plus source-trust scorecard and news/intel dashboard are still light.
+6. **Cockpit improved but incomplete**: full frontend overhaul shipped (#155, 2026-06-07) — premium design system, grouped nav, all surfaces refreshed, zero emojis. Remaining thin: source-trust scorecard and news/intel dashboard.
 7. **Heavy compute lane shipped** (Modal — `apps/engine/remote/app.py`; `pnpm modal:gate` / `modal:ingest`, scale-to-zero). The remaining gap is wiring more research runners through it on a schedule, not the lane itself.
 
 ## 3. North star & non-negotiables

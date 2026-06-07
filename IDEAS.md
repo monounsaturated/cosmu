@@ -15,46 +15,35 @@
 
 <!-- ↓↓↓ DUMP BELOW THIS LINE ↓↓↓ -->
 
-- [2026-06-05] CrowdIntel (https://crowdintel.xyz) — NO-GO. Their wallet-positioning scores are RETROACTIVELY recomputed as Polymarket markets resolve; using them in a backtest is look-ahead bias — the Gate would pass on phantom edge. Raw on-chain trades are PIT-honest but the scored signal (the only thing they sell) is not. Revisit only if they expose a frozen as-of-event score snapshot.
-
-- [2026-06-05] (NOT priority — park) "ML-for-noobs" product: chat with an AI → it runs deep ML / cross-data analysis / queries on ANY dataset (finance, health, engineering), bias-guarded, for non-technical users. COSMU's anti-bias Gate discipline could be the differentiator. BUT the space is CROWDED — strong existing competitors / buy-not-build APIs: Julius AI, ChatGPT Advanced Data Analysis, Akkio, Obviously AI, AWS SageMaker Canvas, Google Vertex AutoML, DataRobot, H2O Driverless AI, Hex/Deepnote (AI notebooks). Verdict: as a *general* product it fights well-funded players and is hard; the real edge is applying the rigorous-gate discipline to ONE vertical (trading = COSMU). Revisit only as a vertical ("rigorous, bias-guarded analysis for X"), not a general ML-for-everyone tool.
-
 <!-- ↑↑↑ DUMP ABOVE THIS LINE ↑↑↑ -->
 
 ## Inbox (append below)
-- [2026-06-03] Mission-control UI: extend `/mind` into one visual surface (pipeline funnel, data freshness, backlog state, open PRs/agents, ML model status, gate efficiency) — one glance answers "is the machine healthy and earning?"
-- [2026-06-03] Decide ML compute home: VPS worker vs scheduled cloud-session cron for nightly survival-model training — picks where the heavy ML loop runs without OOMing the Air or burning API tokens.
-
-- [2026-06-04] Qual→quant from media: drop a URL / screenshot / YouTube transcript / essay / chat idea → LLM extracts a thesis → quantify it into a tested index-score or StrategySpec on RAW data, so a qualitative hunch becomes a mathematically-checked edge (LLM-idea + LLM-formatting as a creative iteration step; the gate verifies).
-- [2026-06-04] Beautiful lean platform: compact, powerful cockpit — pick data sources (greyed if no key), dashboards, indexes, strategies; integrated, not cluttered.
-- [2026-06-04] LLM-reviewed scores/indexes: per-source + composite index scores (LunarCrush/social/OSINT/…) with a short LLM "what this means" review, all point-in-time and gate-checkable.
-
-- [2026-06-04] SIM→live variance attribution (HIGH, missing): when a live track diverges from its SIM track, decompose realized-vs-expected P&L into fees · slippage · funding · signal-decay · regime — so the auto-defund/Console recommendation has a REASON, not just a number. Serves §5+§9.
-- [2026-06-04] Profile-source data-trust audit (HIGH): before a NEW alt-source becomes a feature (in /add-data-source), auto-profile coverage · gaps · staleness · distribution sanity · look-ahead smell · point-in-time integrity → emit a go/no-go. Garbage-in defense, made mechanical.
-- [2026-06-04] Backtest integrity audit w/ severity framework: flag implausibly-smooth equity, identical cross-fold metrics, leakage smells, too-few-trades as RELEASE-BLOCKING before a strategy earns a track. Sharpens "adversarial validation".
-- [2026-06-04] LLM research-desk for Polymarket ONLY: structured event research (gather → estimate probability → find where the market is least confident) → a gated Polymarket StrategySpec. The one safe home for "LLM research" — never in the money path (avoids v1 "LLM read news and bought" slop).
-- [2026-06-04] Adaptive scraper → PIT feature: a scraper that studies how a site loads + self-handles pagination → continuously-updating alt-data → profile-audit → feature registry → gate. The engine behind "qual→quant from media".
-- [2026-06-04] Pipeline ordering = explore→validate sandwich: /profile-source (BEFORE) → Gate (during) → integrity-audit (AFTER, before a track is funded).
-- [2026-06-04] UI rethink — modular, Notion-vibe, data-rich, less clutter: pick-what-to-display, beautiful data-viz, deep-detail on demand; replace the "$ dollars" KPIs with tool-aligned metrics; logic + buttons + run-command-on-hover modals, not walls of explanatory text. Keep live + research coexisting cleanly.
-- [2026-06-04] Strategy × asset × timeframe matrix (THE core ML feature): test each strategy across assets + timeframes, tailor/decline it per asset — this is why we need big compute + deep data + ML.
-- [2026-06-04] LLM-quality-scores as standardized features: LLM-generated quality/sentiment scores for specific indexes, stored point-in-time WITH HISTORY → train ML on them; the agent can mint new index-scores. Qualitative→quantitative, standardized — the leverage.
-
-- [2026-06-04] External validation (top-firm AI-in-trading writeups): the reusable kernel is "AI = research-throughput compressor + adversarial reviewer + unstructured→typed signal, NOT the money-decision-maker." Keep REJECTING the Bridgewater "AI as primary decision-maker" model — LLM proposes, the deterministic gate disposes (our locked non-negotiable). GPU/datacenter scale-ups are anti-thesis to lean. The one practical nudge already in the plan: every authored hypothesis should ship with a disconfirmer (gate-side proven by #57; author-side still open).
-
-- [2026-06-05] Polymarket smart-money flow as a PIT alt-data feature (news/scoring, NOT copy-trading): index the on-chain Polymarket ledger (top-decile-profitable + insider-flagged wallet net-flow per market) → `/profile-source` audit → feature registry → Gate. Treat like a sentiment/news score: confirm/veto in liquid markets, may *originate* in prediction markets (§7). Passive copy-trading is rejected — latency means you always fill after the whale; any "insider z-score" runs through OUR deflated-Sharpe/PBO gate, not theirs. Powers the reserved "LLM research-desk for Polymarket ONLY" idea above. (Inspired by CrowdIntel's Postgres-MCP-over-ledger writeup.)
-
-- [2026-06-06] **Product vision / user tailoring** (see docs/reports/product-vision-user-profile.md): operator is a
-  trend-spotter who wants to drive a deep quant machine by NATURAL LANGUAGE in Claude Code — "vibe-test a ton of ideas"
-  → typed spec → honest Gate → verdict, conversationally. Wants: clean cross-data, tons of well-behaved skills,
-  learning, no bugs, a clean mobile-first dashboard, easy to drive but deep underneath (Hermes-style: fast/capable/
-  tool-using/well-behaved). Goal: USED + makes money + functional. Build everything toward that UX.
-- [2026-06-06] **Generalization barbell / Lane B** (see docs/reports/generalization-plan-2026-06-06.md): the
-  formatter/source-trust/PIT-store/scan-signals are domain-agnostic → a "domain" = config (sources + taxonomy + its
-  OWN oracle). Finance funds + proves it; engineering/quant facts eligible sooner (reproducible benchmark = oracle);
-  health/habits = correlation surface with disconfirmers + disclaimers, NEVER advice. `/add-domain` skill scaffolds a
-  vertical with a REQUIRED oracle. No oracle → no graduation.
-- [2026-06-06] **NL backtest/stress-test UX polish**: make "describe an idea → stress-tested answer" frictionless in
-  Claude Code (the `strategize` front door + scenario/stress harness). The MCP layer (Backlog) is the enabler.
 
 ## Archived
 <!-- Triaged ideas move here with their disposition: promoted / deferred / dropped. -->
+
+### Shipped (do not re-add)
+- [2026-06-03] Mission-control UI → **SHIPPED** (#152, 2026-06-07): control-room overview + Theories surface. ML compute home → **DECIDED**: Modal (heavy compute, scale-to-zero) + Railway crons; see docs/COMPUTE.md.
+- [2026-06-04] Beautiful lean platform → **SHIPPED** (#155, 2026-06-07): full premium frontend overhaul.
+- [2026-06-04] SIM→live variance attribution → **SHIPPED** (#58, 2026-06-04): `cosmu/research/attribution.py` + `/variance-attribution` skill.
+- [2026-06-04] Profile-source data-trust audit → **SHIPPED** (#58, 2026-06-04): `cosmu/ingest/profile_source.py` + `/profile-source` skill.
+- [2026-06-04] Pipeline ordering = explore→validate sandwich → **SHIPPED**: built into `/add-data-source` step 6.
+- [2026-06-04] UI rethink → **SHIPPED** (#155, 2026-06-07): premium overhaul with data-rich design system, no emojis, grouped nav.
+- [2026-06-04] Backtest integrity audit → **PARTIALLY SHIPPED**: `master/cpcv.py` (combinatorial purged CV) + `master/risk_metrics.py` (Calmar/Recovery Factor) in #148. Severity-framework surface deferred to post-first-survivor.
+
+### Deferred (ripe when the Gate has a survivor)
+- [2026-06-04] Qual→quant from media (URL/screenshot/YouTube → LLM thesis → Gate) → **DEFERRED**: requires the LLM-narrative pipeline (built, honest FAIL so far) + a deep PIT corpus. Re-evaluate when Gate has a survivor. See docs/HANDOFF_NEXT.md Track 2.
+- [2026-06-04] LLM-reviewed scores/indexes (per-source composite index scores + LLM "what this means") → **DEFERRED**: wire after the first Gate survivor (need a proven data surface first).
+- [2026-06-04] LLM research-desk for Polymarket ONLY → **DEFERRED**: the LLM-narrative harness is built; re-run on Polymarket historical odds when data depth warrants.
+- [2026-06-04] Adaptive scraper → PIT feature → **DEFERRED**: too speculative; use existing registered sources first.
+- [2026-06-04] Strategy × asset × timeframe matrix → **PROMOTED to BACKLOG** (in docs/HANDOFF_NEXT.md §8 item 1): highest-leverage search move, runs on Modal.
+- [2026-06-04] LLM-quality-scores as standardized features → **DEFERRED**: wait until a survivor exists to train on.
+- [2026-06-05] Polymarket smart-money flow as PIT alt-data → **DEFERRED**: CrowdIntel retroactive scores = look-ahead NO-GO; raw ledger indexing is viable but low priority until the equity lane has a survivor.
+- [2026-06-06] NL backtest/stress-test UX polish → **DEFERRED**: MCP layer is shipped (#128); full UX polish deferred post-survivor.
+- [2026-06-06] Generalization barbell / Lane B (domain-agnostic COSMU) → **DEFERRED**: see docs/reports/generalization-plan-2026-06-06.md; re-evaluate when finance vertical is proven.
+
+### Dropped / decided
+- [2026-06-05] CrowdIntel → **DROPPED**: retroactively recomputed scores = look-ahead bias. NO-GO. Revisit only if they expose frozen as-of-event snapshots. Banked in memory/buy_vs_build_decisions.md.
+- [2026-06-05] "ML-for-noobs" general product → **DROPPED**: crowded space; COSMU's edge is trading-specific. Not building.
+- [2026-06-04] External validation (AI-in-trading writeups) → **META-NOTE** (not a buildable item): locked rule is "LLM proposes, Gate disposes." Already an invariant in AGENTS.md.
+- [2026-06-06] Product vision / user tailoring → **META-NOTE**: operator profile captured in docs/reports/product-vision-user-profile.md. Informs UX decisions, not a standalone buildable item.
