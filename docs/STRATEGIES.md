@@ -42,7 +42,7 @@ The LLM **proposes**; the Gate **disposes**; profit net of fees is the only scor
 | 12-1 momentum | the canonical equity factor that *survives* | US equities | (running) |
 | Short-term reversal | weekly reversal (the *right* sign in equities) | US equities | (running) |
 | Calendar / turn-of-month | documented equity calendar effects | US equities | (running) |
-Equities fix the two crypto killers: **deep free data** (decades, Stooq) + **~5-10× lower fees**.
+Equities fix the two crypto killers: **deep free data** (decades, **Yahoo v8** — Stooq went paywalled mid-session) + **~5-10× lower fees**.
 
 ## 5. Forward-testing & live (the Kraken question)
 - **Forward-test needs NO exchange account and NO ID.** It paper-marks a strategy's signals against **live free price feeds** for 30 days (the forward-mark clock) — no money, no orders, no KYC. **Already built** (the lifecycle hard-gate). So `kraken-cli` is *not* needed to forward-test.
@@ -54,4 +54,4 @@ Equities fix the two crypto killers: **deep free data** (decades, Stooq) + **~5-
 - **Idea ingestion** — scrape r/algotrading / quant threads → low-confidence hypotheses → typed specs → the Gate (bias-guarded; the Gate kills the noise). *(Banked 2026-06-07.)*
 
 ## 7. Is the DB good / do we store enough?
-Architecture: **good** — Supabase Pro (8 GB), an append-only **point-in-time** store, a declarative feature catalog, a registry⊆routable guard. The **reality is DEPTH**, the recurring wall: Binance funding only to 2024-06, free OI ~30d, Polymarket ~13mo. Fix = deepen the free tier-0 sources + **accrue forward** (OI/funding/intraday). For equities, Stooq removes the depth wall entirely.
+Architecture: **good** — Supabase Pro (8 GB), an append-only **point-in-time** store, a declarative feature catalog, a registry⊆routable guard. The **reality is DEPTH**, the recurring wall: Binance funding only to 2024-06, free OI ~30d, Polymarket ~13mo. Fix = deepen the free tier-0 sources + **accrue forward** (OI/funding/intraday). For equities, **Yahoo v8** removes the *depth* wall — but a **survivorship-free PIT universe** (with delisted names) is the next data need (the 73-name cache is today's survivors).
