@@ -25,7 +25,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from itertools import combinations
 from statistics import NormalDist, fmean
 
@@ -201,12 +201,10 @@ def cpcv(
     # for each path compute logit of OOS Sharpe's rank among all OOS Sharpes — IS-best path below OOS median => overfit.
     if n_paths >= 2:
         is_best_idx = max(range(n_paths), key=lambda i: is_sharpes[i])
-        is_best_oos_sr = oos_sharpes[is_best_idx]
         oos_median = sorted(oos_sharpes)[n_paths // 2]
         # PBO via logit rank: for each path, rank its OOS SR among all paths (1=worst, n_paths=best).
         overfit_count = 0
         for path_idx in range(n_paths):
-            is_sr_path = is_sharpes[path_idx]
             # Consider this path as the "IS-best" and check its OOS rank.
             oos_sr_path = oos_sharpes[path_idx]
             rank = 1 + sum(1 for j in range(n_paths) if oos_sharpes[j] < oos_sr_path)

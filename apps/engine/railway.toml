@@ -16,7 +16,9 @@ healthcheckTimeout = 120
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
-# Bounded, scheduled research pass (NOT a daemon): one free-data ingest + cross-asset gate run, then exits.
+# Bounded, scheduled research pass (NOT a daemon): free-data INGEST ONLY, then exits.
+# The leaky cross-asset gate (no-FDR / trials=5) is DEFAULT OFF on this cron; pass --cross-asset-gate to opt in.
+# Honest BH-FDR gate path (promote_cohort) is untouched and runs via the autonomy cron below.
 [[cron]]
 schedule = "0 */6 * * *"
 command = "python3 -m cosmu.research.loop --ingest"

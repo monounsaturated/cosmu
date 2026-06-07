@@ -27,17 +27,13 @@ from cosmu.data.backtest import (
     sum_funding_per_bar,
 )
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
-from cosmu.data.universe import PERP_UNIVERSE
 from cosmu.knowledge.store import Store
 from cosmu.master.scorer import BacktestMetrics, sample_moments
-from cosmu.master.trials import trial_stats
 from cosmu.research.carry_ablation import (
     _best_variant,
-    _metrics_from_returns,
     _merge_alt,
     _xsec_rank_alt,
 )
-from cosmu.spine.venue import default_catalog
 from cosmu.strategy.spec import StrategySpec
 
 # Pre-registered cost scenarios — FIXED before looking. Changing them after a run is itself a new trial.

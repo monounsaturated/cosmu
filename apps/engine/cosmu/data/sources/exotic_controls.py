@@ -35,7 +35,7 @@ import json
 import ssl
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 
 from cosmu.data.sources.registry import SourceFeature, SourceKind
 

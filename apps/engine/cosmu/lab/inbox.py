@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from cosmu.config.settings import Settings
-from cosmu.data.market import Bar, MarketDataProvider
+from cosmu.data.market import MarketDataProvider
 from cosmu.evolution.loop import CohortSummary, FarmLoop
 from cosmu.knowledge.store import Store
 from cosmu.lab.author import draft_from_brief

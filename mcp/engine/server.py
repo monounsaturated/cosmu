@@ -23,7 +23,14 @@ _ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(_ROOT / ".env.local", override=False)
 load_dotenv(".env.local", override=False)
 
-from mcp.server.fastmcp import FastMCP
+# In-process engine read path: import the real Store + read-only handlers (no subprocess, no SQL strings).
+# These power the read tools below; the propose-only Gate evaluation calls the deterministic gate directly.
+sys.path.insert(0, str(_ROOT / "apps" / "engine"))  # the cosmu.* engine package
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # this dir → `import handlers` works run-as-script
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402 — after the sys.path setup above (script-launch import)
+
+import handlers  # noqa: E402 — sibling module; the directory above is on sys.path
 
 mcp = FastMCP(
     "cosmu-engine",
@@ -74,6 +81,16 @@ def _py(snippet: str) -> Any:
     if not result["ok"]:
         raise RuntimeError(result["stderr"] or result["stdout"])
     return result["stdout"].strip()
+
+
+def _store():  # noqa: ANN202 - returns a cosmu Store bound to the live DB
+    """The engine's own Store, built from settings (process env wins). Read-only callers below only ever issue
+    SELECTs through it; the propose-only Gate evaluation runs against a throwaway temp store so a query can
+    never touch the live trial ledger."""
+    from cosmu.config.settings import get_settings
+    from cosmu.knowledge.store import Store
+
+    return Store(get_settings())
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +237,90 @@ def trial_count() -> dict[str, Any]:
         return json.loads(raw)
     except json.JSONDecodeError:
         return {"raw": raw}
+
+
+# ---------------------------------------------------------------------------
+# In-process READ-ONLY tools (mcp/engine/handlers.py). No subprocess, no SQL
+# string-building, no money path. Each reuses an engine function and only ever
+# issues SELECTs (or, for the Gate, EMITS a propose-only verdict). NONE of these
+# arm an order, fund a track, toggle live, or loosen the Gate.
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(
+    description=(
+        "READ-ONLY. The N most recent strategies, each with its latest version's status. "
+        "status filter: 'funded' | 'killed' | 'active' | None (all). Reads only — never authors or funds."
+    ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
+)
+def strategies(status: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+    return handlers.list_strategies(_store(), status=status, limit=limit)
+
+
+@mcp.tool(
+    description=(
+        "READ-ONLY. The N most recently-updated forward-test tracks (one standalone track per funded survivor; "
+        "there is no pooled wallet). Returns marked equity/return_pct. Reads only — never marks or moves money."
+    ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
+)
+def tracks(limit: int = 20) -> list[dict[str, Any]]:
+    return handlers.list_tracks(_store(), limit=limit)
+
+
+@mcp.tool(
+    description=(
+        "READ-ONLY. The N most recent Gate verdicts (PASS/STOP) from the verdict ledger, newest first. "
+        "Each has ts, decision, data_source, payload. A pure SELECT over gate_verdicts."
+    ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
+)
+def gate_verdicts(limit: int = 10) -> list[dict[str, Any]]:
+    return handlers.read_gate_verdicts(_store(), limit=limit)
+
+
+@mcp.tool(
+    description=(
+        "READ-ONLY. The gate-ranked strategy leaderboard (highest deflated Sharpe first), joined to each "
+        "version's backtest. A pure read-out — no running web server needed, no money path."
+    ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
+)
+def leaderboard(limit: int = 20) -> list[dict[str, Any]]:
+    return handlers.read_leaderboard(_store(), limit=limit)
+
+
+@mcp.tool(
+    description=(
+        "READ-ONLY. The aggregate forward-test overview: Σ-equity curve across all standalone tracks, net PnL, "
+        "spend-by-category, and whether live is enabled. A pure read-out (no pooled wallet)."
+    ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
+)
+def overview() -> dict[str, Any]:
+    return handlers.read_overview(_store())
+
+
+@mcp.tool(
+    description=(
+        "READ-ONLY / PROPOSE-ONLY. Run the deterministic single-signal edge Gate on synthetic point-in-time "
+        "fixtures and return its PASS/STOP verdict. Calls the real cosmu.research.gate.evaluate_gate (never a "
+        "reimplementation, never a relaxed bar). edge=True = edge-bearing fixtures; edge=False = the honest null "
+        "where the Gate MUST STOP. Runs against a throwaway temp store, so it cannot touch the live trial "
+        "ledger and CANNOT fund a track, arm an order, or move any money."
+    ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
+)
+def evaluate_signal_gate(edge: bool = True, seed: int = 7) -> dict[str, Any]:
+    import tempfile
+
+    from cosmu.config.settings import Settings
+    from cosmu.knowledge.store import Store
+
+    tmp = tempfile.mkdtemp(prefix="cosmu-mcp-gate-")
+    store = Store(Settings(database_url=f"sqlite:///{tmp}/gate.sqlite3", openrouter_api_key=None))
+    return handlers.evaluate_signal_gate(store, edge=edge, seed=seed)
 
 
 if __name__ == "__main__":

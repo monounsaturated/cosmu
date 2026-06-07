@@ -32,7 +32,7 @@ import hashlib
 import statistics
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
 
 from cosmu.config.settings import Settings
