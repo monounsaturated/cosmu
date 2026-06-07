@@ -47,6 +47,7 @@ Equities fix the two crypto killers: **deep free data** (decades, **Yahoo v8** �
 ## 5. Forward-testing & live (the Kraken question)
 - **Forward-test needs NO exchange account and NO ID.** It paper-marks a strategy's signals against **live free price feeds** for 30 days (the forward-mark clock) — no money, no orders, no KYC. **Already built** (the lifecycle hard-gate). So `kraken-cli` is *not* needed to forward-test.
 - **LIVE (real money)** needs a KYC'd account (Kraken/Binance/IBKR). Kraken Futures has a no-KYC **demo** env, and `kraken-cli` could become a live-execution adapter — but that's **post-edge**; we don't touch it until a strategy survives the Gate + forward-test.
+- **Floor now: 11 strategies in SIM forward-test** (GEM/Faber/ADM/Risk-Parity/VAA/TSMOM/Sector-Mom/Dual-Mom-QQQ/Donchian + PAA/DAA added overnight-w2). Daily mark via asset-aware clock (Railway cron 22:10 UTC).
 
 ## 6. New ways to SEARCH (not new data) — the backlog
 - **Strategy × asset × timeframe matrix** (FDR-disciplined) — the core ML feature.
@@ -58,9 +59,15 @@ Architecture: **good** — Supabase Pro (8 GB), an append-only **point-in-time**
 
 ## 8. The equity floor — arming the whole deploy-lane fleet
 
-The **8 externally-validated equity strategies** (Faber GTAA, ADM, Risk Parity, VAA, TSMOM,
-Dual-Momentum QQQ, Sector Rotation, GEM) each have a `equity_*_arm.py` module.
+The **10 externally-validated equity strategies** (GEM, Faber GTAA, ADM, Risk Parity, VAA, TSMOM,
+Dual-Momentum QQQ, Sector Rotation, **PAA, DAA**) each have a `equity_*_arm.py` module.
 `arm_fleet.py` is the single entrypoint that arms them all in one command.
+
+PAA (Protective Asset Allocation, Keller & Keuning 2016) and DAA (Defensive Asset Allocation,
+Keller & Keuning 2018) were added in the overnight-w2 pass. Both pass the deploy-lane bar:
+positive OOS net of real IBKR fees + risk-adjusted beat of B&H SPY. PAA full-cycle Sharpe 1.09
+(maxDD 18.9% vs SPY 50.8%); DAA full-cycle Sharpe 1.23 (maxDD 19.6% vs SPY 50.8%). NOT
+honest-Gate survivors (0 Gate survivors remain) — deploy-lane only.
 
 **One-command runbook (idempotent, SIM-only, offline-safe):**
 ```

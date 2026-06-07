@@ -61,7 +61,8 @@ def gate_sweep() -> int:
 
 @app.function(**_HEAVY)
 def ingest() -> int:
-    """One free-data ingest + cross-asset gate pass (mirrors the 6h Railway cron)."""
+    """Free-data INGEST ONLY (mirrors the 6h Railway cron). The leaky cross-asset gate is DEFAULT OFF;
+    pass --cross-asset-gate to opt in. Honest BH-FDR gate path (promote_cohort) runs via gate_sweep."""
     return _run(["cosmu.research.loop", "--ingest"])
 
 
