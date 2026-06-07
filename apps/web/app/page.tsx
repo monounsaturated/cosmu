@@ -20,6 +20,11 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { DataFreshness } from "@/components/overview/data-freshness";
 import { cn, timeAgo } from "@/lib/utils";
 
+// Live operator dashboard: always render on-demand with fresh engine data — never statically pre-render.
+// (Static export hangs fetching the engine at build time; on-demand also lets the honest "not connected"
+// state handle an unreachable engine gracefully instead of failing the build.)
+export const dynamic = "force-dynamic";
+
 export default async function OverviewPage() {
   const [
     { status, connected: statusConnected },
