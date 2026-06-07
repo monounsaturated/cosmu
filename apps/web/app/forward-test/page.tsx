@@ -8,6 +8,7 @@ import { SectionHeader } from "@/components/ui/section";
 import { StrategyStages } from "@/components/nav/strategy-stages";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 import { StrategiesTable } from "@/components/research/strategies-table";
+import { DivergenceBadge } from "@/components/forward-test/divergence-badge";
 
 // Simulation is stage 3 in the lifecycle: strategies that have cleared the Gate run here on
 // live data with no real money. Each track is held and marked-to-market across real bars.
@@ -61,13 +62,50 @@ export default async function ForwardTestPage() {
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="pt-5">
-            <StrategiesTable rows={simRows} context="simulation" />
-          </CardContent>
-        </Card>
+        <>
+          <DivergenceWatch rows={simRows} />
+          <Card>
+            <CardContent className="pt-5">
+              <StrategiesTable rows={simRows} context="simulation" />
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
+  );
+}
+
+// Calm, per-track SIM-vs-backtest divergence strip: an early warning that a forward test has stopped tracking the
+// backtest it was funded on (alpha-decay / regime-shift). Reads the leaderboard contract's divergence_status (from
+// master/divergence.py) — never a fabricated number. A track with too few marked days shows the honest "not enough
+// data" state. MONITORING ONLY: nothing here gates or moves money; it's a glance for the operator.
+function DivergenceWatch({ rows }: { rows: LeaderboardRow[] }) {
+  return (
+    <Card>
+      <CardContent className="py-4">
+        <div className="mb-3 flex items-start gap-2.5">
+          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-up" />
+          <div className="space-y-1">
+            <p className="text-[12.5px] font-medium text-foreground">Divergence watch</p>
+            <p className="text-[12px] leading-relaxed text-muted">
+              Early warning when a track&apos;s real forward return stops tracking the backtest it was funded on —
+              the gap is forward minus the backtest pro-rated to the same elapsed window. A glance, not a gate.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          {rows.map((row) => (
+            <div
+              key={row.version_id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-2/40 px-3 py-2"
+            >
+              <span className="truncate text-[12.5px] font-medium text-foreground">{row.name}</span>
+              <DivergenceBadge row={row} />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

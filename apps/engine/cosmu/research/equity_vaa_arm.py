@@ -24,10 +24,12 @@ from __future__ import annotations
 
 import sys
 from decimal import ROUND_DOWN, Decimal
+from types import SimpleNamespace
 
 from cosmu.config.settings import Settings
 from cosmu.data.market import YahooDailyBarsProvider
 from cosmu.knowledge.store import Store, utcnow
+from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_vaa as vaa
 from cosmu.research.equity_holdout import purged_embargoed_split
@@ -63,6 +65,9 @@ def _minimal_spec(current_signal: str, risk_off: bool) -> dict:
     'momentum' (its true structural bet) — an honest tag, not a fabricated signal."""
     return {
         "name": STRATEGY_NAME,
+        # The TYPED two-lane discriminator: VAA is an externally-documented strategy, so it routes through the DEPLOY
+        # lane (positive-OOS net-of-fees + risk-adjusted beat of B&H), NOT the 0.95 in-sample Gate.
+        "lane": "deploy",
         "rationale": (
             "Keller & Keuning Vigilant Asset Allocation, aggressive (VAA-G4): monthly. Score each asset by "
             "12*1m+4*3m+2*6m+12m trailing total return. CANARIES {EEM, AGG}: if ANY canary score < 0, go fully "
@@ -81,6 +86,14 @@ def _minimal_spec(current_signal: str, risk_off: bool) -> dict:
         "current_holding": current_signal,
         "current_regime": "risk_off" if risk_off else "risk_on",
     }
+
+
+def _routing_spec() -> SimpleNamespace:
+    """The lane carrier the router reads to enforce VAA's DEPLOY lane in code (not by convention). It only needs
+    `.lane` (the typed discriminator) and `.name` (used in the router's error messages); the full persisted spec is
+    `_minimal_spec(current_signal, risk_off)`, built after validation once the signalled asset is known. `lane="deploy"`
+    mirrors the authored spec exactly, so the router dispatches this arm to the documented-strategy deployment bar."""
+    return SimpleNamespace(name=STRATEGY_NAME, lane="deploy")
 
 
 def _backtest_row(version_id: str, v: dict) -> dict:
@@ -138,7 +151,10 @@ def arm(store: Store | None = None) -> dict:
     """Register VAA as a forward-test track and open the held sim position in its current signal. Idempotent.
     Returns a summary dict (version_id, signal, price, qty, forward clock origin)."""
     store = store or Store(Settings())
-    v = vaa.validate()
+    # Route the documented-strategy validation through the TYPED two-lane router: the spec's lane="deploy" forces the
+    # DEPLOY-lane evaluator (vaa.validate — positive-OOS net-of-fees + risk-adjusted beat of B&H), so the lane is
+    # enforced in code, never by which function this runner happens to call. Behaviour is identical to vaa.validate().
+    v = evaluate_by_lane(_routing_spec(), deploy_validate=vaa.validate, validate_kwargs={})
     if not v["deployable"]:
         print("\nABORT: VAA did not clear the deployment bar on this data — NOT arming.")
         return {"armed": False, "reason": "not deployable"}

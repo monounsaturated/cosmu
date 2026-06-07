@@ -20,10 +20,12 @@ from __future__ import annotations
 
 import sys
 from decimal import ROUND_DOWN, Decimal
+from types import SimpleNamespace
 
 from cosmu.config.settings import Settings
 from cosmu.data.market import YahooDailyBarsProvider
 from cosmu.knowledge.store import Store, utcnow
+from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_faber_gtaa as gtaa
 from cosmu.spine.venue import default_catalog
@@ -48,6 +50,9 @@ def _minimal_spec(invested: list[str]) -> dict:
     the rule. The entry references a trend feature so the edge_type derives as trend — its true structural bet."""
     return {
         "name": STRATEGY_NAME,
+        # The TYPED two-lane discriminator: this is an externally-documented strategy, so it routes through the
+        # DEPLOY lane (positive-OOS net-of-fees + risk-adjusted beat of B&H), NOT the 0.95 in-sample Gate.
+        "lane": "deploy",
         "rationale": (
             "Mebane Faber Global Tactical Asset Allocation (GTAA, 2007): monthly, 5 equal-weight sleeves "
             f"{gtaa.SLEEVES} — each held (1/5 of capital) WHEN its month-end price is above its trailing 10-month "
@@ -64,6 +69,14 @@ def _minimal_spec(invested: list[str]) -> dict:
         "direction": 1,
         "current_invested": invested,
     }
+
+
+def _routing_spec() -> SimpleNamespace:
+    """The lane carrier the router reads to enforce this strategy's DEPLOY lane in code (not by convention). It only
+    needs `.lane` (the typed discriminator) and `.name` (used in the router's error messages); the full persisted spec
+    is `_minimal_spec(invested)`, built after validation once the invested sleeves are known. `lane="deploy"` mirrors
+    the authored spec exactly, so the router dispatches this arm to the documented-strategy deployment bar."""
+    return SimpleNamespace(name=STRATEGY_NAME, lane="deploy")
 
 
 def _backtest_row(version_id: str, v: dict) -> dict:
@@ -137,7 +150,10 @@ def arm(store: Store | None = None) -> dict:
     """Register Faber GTAA as a forward-test track and open the held sim positions in its currently-invested sleeves
     (equal-weight 1/5 each). Idempotent. Returns a summary dict (version_id, invested sleeves, fills)."""
     store = store or Store(Settings())
-    v = gtaa.validate()
+    # Route the documented-strategy validation through the TYPED two-lane router: the spec's lane="deploy" forces the
+    # DEPLOY-lane evaluator (gtaa.validate — positive-OOS net-of-fees + risk-adjusted beat of B&H), so the lane is
+    # enforced in code, never by which function this runner happens to call. Behaviour is identical to gtaa.validate().
+    v = evaluate_by_lane(_routing_spec(), deploy_validate=gtaa.validate, validate_kwargs={})
     if not v["deployable"]:
         print("\nABORT: Faber GTAA did not clear the deployment bar on this data — NOT arming.")
         return {"armed": False, "reason": "not deployable"}

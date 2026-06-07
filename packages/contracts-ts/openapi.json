@@ -2676,6 +2676,27 @@
             "title": "Deflated Sharpe",
             "type": "number"
           },
+          "divergence_gap_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Divergence Gap Pct"
+          },
+          "divergence_status": {
+            "default": "insufficient",
+            "enum": [
+              "insufficient",
+              "tracking",
+              "diverging"
+            ],
+            "title": "Divergence Status",
+            "type": "string"
+          },
           "edge_type": {
             "title": "Edge Type",
             "type": "string"

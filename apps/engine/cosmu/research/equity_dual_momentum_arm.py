@@ -21,10 +21,12 @@ from __future__ import annotations
 
 import sys
 from decimal import ROUND_DOWN, Decimal
+from types import SimpleNamespace
 
 from cosmu.config.settings import Settings, get_settings
 from cosmu.data.market import YahooDailyBarsProvider
 from cosmu.knowledge.store import Store, utcnow
+from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_dual_momentum as gem
 from cosmu.spine.venue import default_catalog
@@ -46,6 +48,9 @@ def _minimal_spec(current_signal: str) -> dict:
     'momentum' (its true structural bet) — an honest tag, not a fabricated signal."""
     return {
         "name": STRATEGY_NAME,
+        # The TYPED two-lane discriminator: GEM is an externally-documented strategy, so it routes through the DEPLOY
+        # lane (positive-OOS net-of-fees + risk-adjusted beat of B&H), NOT the 0.95 in-sample Gate.
+        "lane": "deploy",
         "rationale": (
             "Antonacci Global Equities Momentum (GEM): monthly, hold the stronger of US (SPY) / international (EFA) "
             "equity by trailing-12m total return WHEN US equity beats the T-bill hurdle (absolute momentum); else "
@@ -61,6 +66,14 @@ def _minimal_spec(current_signal: str) -> dict:
         "direction": 1,
         "current_holding": current_signal,
     }
+
+
+def _routing_spec() -> SimpleNamespace:
+    """The lane carrier the router reads to enforce GEM's DEPLOY lane in code (not by convention). It only needs
+    `.lane` (the typed discriminator) and `.name` (used in the router's error messages); the full persisted spec is
+    `_minimal_spec(current_signal)`, built after validation once the signalled ETF is known. `lane="deploy"` mirrors
+    the authored spec exactly, so the router dispatches this arm to the documented-strategy deployment bar."""
+    return SimpleNamespace(name=STRATEGY_NAME, lane="deploy")
 
 
 def _backtest_row(version_id: str, v: dict) -> dict:
@@ -118,7 +131,10 @@ def arm(store: Store | None = None) -> dict:
     """Register GEM as a forward-test track and open the held sim position in its current signal. Idempotent.
     Returns a summary dict (version_id, signal, price, qty, forward clock origin)."""
     store = store or Store(Settings())
-    v = gem.validate()
+    # Route the documented-strategy validation through the TYPED two-lane router: the spec's lane="deploy" forces the
+    # DEPLOY-lane evaluator (gem.validate — positive-OOS net-of-fees + risk-adjusted beat of B&H), so the lane is
+    # enforced in code, never by which function this runner happens to call. Behaviour is identical to gem.validate().
+    v = evaluate_by_lane(_routing_spec(), deploy_validate=gem.validate, validate_kwargs={})
     if not v["deployable"]:
         print("\nABORT: GEM did not clear the deployment bar on this data — NOT arming.")
         return {"armed": False, "reason": "not deployable"}

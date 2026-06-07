@@ -22,9 +22,11 @@ import json
 import sys
 from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 from cosmu.config.settings import Settings
 from cosmu.knowledge.store import Store, utcnow
+from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_risk_parity as rp
 from cosmu.spine.venue import default_catalog
@@ -52,6 +54,9 @@ def _minimal_spec(weights: dict[str, float]) -> dict:
     bet — an honest tag, not a fabricated signal."""
     return {
         "name": STRATEGY_NAME,
+        # The TYPED two-lane discriminator: risk parity is an externally-documented heuristic, so it routes through the
+        # DEPLOY lane (positive-OOS net-of-fees + risk-adjusted beat of B&H), NOT the 0.95 in-sample Gate.
+        "lane": "deploy",
         "rationale": (
             "Risk parity: monthly, weight {SPY, AGG, GLD} by inverse realized vol (1/vol_i normalized), estimated from "
             "trailing-60d daily total returns; rebalance monthly. Externally documented heuristic; deployed as a "
@@ -67,6 +72,14 @@ def _minimal_spec(weights: dict[str, float]) -> dict:
         "direction": 1,
         "current_weights": {k: round(v, 6) for k, v in weights.items()},
     }
+
+
+def _routing_spec() -> SimpleNamespace:
+    """The lane carrier the router reads to enforce risk parity's DEPLOY lane in code (not by convention). It only needs
+    `.lane` (the typed discriminator) and `.name` (used in the router's error messages); the full persisted spec is
+    `_minimal_spec(weights)`, built after validation once the inverse-vol weights are known. `lane="deploy"` mirrors the
+    authored spec exactly, so the router dispatches this arm to the documented-strategy deployment bar."""
+    return SimpleNamespace(name=STRATEGY_NAME, lane="deploy")
 
 
 def _backtest_row(version_id: str, v: dict) -> dict:
@@ -131,7 +144,10 @@ def arm(store: Store | None = None) -> dict:
     """Register risk parity as a forward-test track and open the three held SIM legs at their current inverse-vol
     weights. Idempotent. Returns a summary dict (version_id, weights, legs, aggregate equity)."""
     store = store or Store(Settings())
-    v = rp.validate()
+    # Route the documented-strategy validation through the TYPED two-lane router: the spec's lane="deploy" forces the
+    # DEPLOY-lane evaluator (rp.validate — positive-OOS net-of-fees + risk-adjusted beat of B&H), so the lane is
+    # enforced in code, never by which function this runner happens to call. Behaviour is identical to rp.validate().
+    v = evaluate_by_lane(_routing_spec(), deploy_validate=rp.validate, validate_kwargs={})
     if not v["deployable"]:
         print("\nABORT: Risk Parity did not clear the deployment bar on this data — NOT arming.")
         return {"armed": False, "reason": "not deployable"}

@@ -541,6 +541,8 @@ export interface LeaderboardResponse {
 export interface LeaderboardRow {
   asset_class: string;
   deflated_sharpe: number;
+  divergence_gap_pct?: number | null;
+  divergence_status?: "insufficient" | "tracking" | "diverging";
   edge_type: string;
   features: string[];
   forward_age_days: number;
