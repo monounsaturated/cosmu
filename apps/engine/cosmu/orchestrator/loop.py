@@ -168,7 +168,9 @@ def fund_tracks_from_survivors(
     # sized to a fixed per-strategy capital (the standardized track size), not a competed pooled share.
     marks: dict[str, Decimal] = {}
     intents: list[IntendedOrder] = []
-    per_track_capital = store.settings.risk.per_strategy_cap
+    # A standalone track is funded with one per-strategy slice (sim_track_capital), drawn from the SIM pool
+    # (sim_bankroll) — so the pool fits many tracks and the gauntlet's per_strategy_cap/min_cash_reserve pass.
+    per_track_capital = store.settings.sim_track_capital
     for vid in fundable:
         if vid in already_funded:
             continue
