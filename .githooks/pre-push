@@ -6,9 +6,10 @@
 #   1. Naming convention check  (scripts/check_naming.py)
 #   2. Contracts drift check    (regenerate contracts, fail if git diff shows drift)
 #
-# Heavy verification (typecheck, next build, full pytest) runs in GitHub Actions
-# CI automatically on every push — see .github/workflows/verify.yml.
-# CI is the authoritative gate; this hook is a fast local smoke test.
+# Heavy verification (typecheck, next build, full pytest) runs via the LOCAL
+# `pnpm verify` — that is the authoritative gate. GitHub Actions (verify.yml) is
+# workflow_dispatch-only (manual, OFF — we are not paying for it); it does NOT
+# auto-run on push. This hook is a fast local smoke test on top of `pnpm verify`.
 #
 # Enable:      git config core.hooksPath .githooks   (auto-run by `pnpm install`)
 # Bypass once: git push --no-verify
@@ -16,7 +17,7 @@
 set -u
 
 echo "[pre-push] running fast local checks (naming + contracts drift)..."
-echo "[pre-push] heavy verify (typecheck / build / pytest) → CI runs those automatically."
+echo "[pre-push] heavy verify (typecheck / build / pytest) → run 'pnpm verify' locally (the gate; CI is manual-dispatch only)."
 
 # ── 1. Naming check ───────────────────────────────────────────────────────────
 if ! command -v python3 >/dev/null 2>&1; then
@@ -51,5 +52,5 @@ else
   fi
 fi
 
-echo "[pre-push] fast checks passed — allowing push. CI will run the full gate."
+echo "[pre-push] fast checks passed — allowing push. Run 'pnpm verify' locally for the full gate (CI is manual-dispatch only)."
 exit 0

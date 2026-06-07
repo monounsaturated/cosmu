@@ -21,7 +21,7 @@ export default async function StrategiesPage() {
   return (
     <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-7 lg:px-7">
       <SectionHeader
-        eyebrow="strategies"
+        eyebrow="backtest · strategies"
         title="Every Version, ranked & faceted"
         aside={
           <Badge variant="iris">

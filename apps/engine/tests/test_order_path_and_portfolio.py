@@ -38,7 +38,8 @@ def _ok_intent(**kw) -> IntendedOrder:
 
 
 def _run(store, intents, *, live_enabled=False, kill=False, adapter=None):
-    pf = Portfolio(store, daily_loss_cap=Decimal("250"))
+    # explicit bankroll: these tests exercise order routing, not the $1k sim default
+    pf = Portfolio(store, bankroll=Decimal("100000"), daily_loss_cap=Decimal("250"))
     adapter = adapter or BinanceSpotExecutionAdapter(client=None, mode="disabled")
     return pf, execute_orders(
         intents, live_enabled=live_enabled, kill_switch=kill, adapter=adapter,
@@ -122,7 +123,7 @@ def test_kill_switch_blocks_live_route(tmp_path):
 
 def test_idempotent_no_double_fill(tmp_path):
     store = _store(tmp_path)
-    pf = Portfolio(store)
+    pf = Portfolio(store, bankroll=Decimal("100000"))
     adapter = BinanceSpotExecutionAdapter(client=None, mode="disabled")
     intent = _ok_intent(client_order_id="cosmu-fixed")
     for _ in range(2):

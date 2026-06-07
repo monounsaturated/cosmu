@@ -36,6 +36,7 @@ from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.scorer import BacktestMetrics, cscv_pbo, score
 from cosmu.master.trials import register_trial, trial_stats
+from cosmu.master.verdict_log import durable_persist
 from cosmu.research.equity_holdout import metrics_with_holdout, purged_embargoed_split
 
 CACHE = Path("/Users/device/cosmu/.cosmu/market_data/equities")
@@ -363,7 +364,10 @@ def _grid() -> list[tuple[str, str, str, int]]:
     ]
 
 
-def run(universe_name: str, symbols: list[str], fracs: list[float], market: str = "SPY") -> Verdict:
+def run(universe_name: str, symbols: list[str], fracs: list[float], market: str = "SPY", *, persist: bool = False) -> Verdict:
+    """`persist=True` records the cohort verdict to durable experiment-memory (gate_verdicts) via the REAL
+    configured store (separate from the tempfile trial-ledger below) — main() sets it on real runs; tests leave
+    it False so they never touch the durable store."""
     universe = load_universe()
     symbols = [s for s in symbols if s in universe]
     panel = build_daily_panel(universe, symbols, market=market)
@@ -461,7 +465,12 @@ def run(universe_name: str, symbols: list[str], fracs: list[float], market: str 
         add_candidate(aname, gate_best(vs), None)
     add_candidate("random_placebo", gate_best(placebo_variants), None)
 
-    promotions = promote_cohort(store, candidates, gates, fdr_q=0.10, register=False, trials=trials)
+    persist_spec = durable_persist(
+        run_id=f"equity-lowvol-bab-{universe_name}",
+        hypothesis=f"an equity low-vol / betting-against-beta book carries a gate-clearing edge after realistic fees on {universe_name}",
+        source="research/equity_lowvol_bab", data_source="equities-offline", universe=universe_name,
+    ) if persist else None
+    promotions = promote_cohort(store, candidates, gates, fdr_q=0.10, register=False, trials=trials, persist=persist_spec)
     by_id = {p.candidate_id: p for p in promotions}
 
     rows: list[dict] = []
@@ -546,7 +555,7 @@ def main() -> int:
     for name, syms in [("SINGLE-STOCKS (survivors-biased)", stocks),
                        ("SECTOR+BROAD ETFs", etfs),
                        ("ALL NAMES", all_syms)]:
-        v = run(name, syms, fracs)
+        v = run(name, syms, fracs, persist=True)
         _print(v)
     return 0
 

@@ -40,6 +40,7 @@ from cosmu.lab.finder import build_grid
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.scorer import cscv_pbo, score
 from cosmu.master.trials import record_trial, trial_stats
+from cosmu.master.verdict_log import durable_persist
 from cosmu.research.carry_ablation import _resolve_params
 from cosmu.research.rerun_cohort import load_spec
 
@@ -224,7 +225,10 @@ def run_cohort(
     *,
     data_source: str = "live-db",
     fdr_q: float = _FDR_Q,
+    persist: bool = False,
 ) -> CohortReport:
+    """`persist=True` records the cohort verdict to durable experiment-memory (gate_verdicts) via the real
+    configured store — _main sets it on real runs; tests leave it False so they never touch the durable store."""
     gates = store.settings.gates
     fee_bps = default_catalog_taker()
 
@@ -285,7 +289,12 @@ def run_cohort(
 
     # COHORT BH-FDR across the whole family — register=False + the shared trial_stats so deflation/FDR see the
     # true (grid-inflated) count. THIS is the verdict (NEVER gate.evaluate_cross_asset_ablation).
-    promotions = promote_cohort(store, candidates, gates, fdr_q=fdr_q, register=False, trials=trial_stats(store))
+    persist_spec = durable_persist(
+        run_id=f"social-dominance-{data_source}",
+        hypothesis="social_dominance share-leadership carries a gate-clearing edge on Binance spot (vs momentum, leak-controlled)",
+        source="research/social_dominance", data_source=data_source, fdr_q=fdr_q,
+    ) if persist else None
+    promotions = promote_cohort(store, candidates, gates, fdr_q=fdr_q, register=False, trials=trial_stats(store), persist=persist_spec)
     by_id = {p.candidate_id: p for p in promotions}
     for r in reports:
         p = by_id.get(r.name)
@@ -351,7 +360,7 @@ def _main() -> int:
         except Exception:  # noqa: BLE001
             continue
 
-    report = run_cohort(market, provider, store)
+    report = run_cohort(market, provider, store, persist=True)
 
     print(f"SOCIAL-DOMINANCE SHARE-LEADERSHIP COHORT — {report.verdict}")
     print(f"  data_source={report.data_source}  window={report.window}  symbols={len(market)}")

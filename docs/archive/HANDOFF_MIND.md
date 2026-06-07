@@ -1,3 +1,5 @@
+> **HISTORICAL — superseded by `docs/HANDOFF_NEXT.md`.** The Mind work described here has shipped (see `cosmu/mind/` + `docs/GLOSSARY.md` → "The Mind"). Kept for reference only; facts here may be stale. The canonical entry doc is `AGENTS.md`.
+
 # Cosmu v2 — Build Handoff: the Mind (paste to start a new local session)
 
 You are continuing **Cosmu v2** — a solo-built, internal, autonomous quant money machine (Binance spot,

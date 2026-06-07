@@ -48,7 +48,11 @@ def _main() -> int:
 
     # NORMALIZED alt-join (the only seam that differs from social_signal_cohort): scale-stable, PIT.
     norm_alt = derive_social_alt(market, provider)
-    report = run_cohort(specs, market, provider, store, override_alt=norm_alt)
+    report = run_cohort(
+        specs, market, provider, store, override_alt=norm_alt,
+        persist=True, persist_source="research/social_nonobvious",
+        persist_hypothesis="a NON-OBVIOUS normalized-social spec carries a gate-clearing edge on Binance spot",
+    )
 
     print(f"PHASE-0 SOCIAL NON-OBVIOUS COHORT — {report.verdict}")
     print(f"  data_source={report.data_source}  window={report.window}  regimes={report.regimes_covered}")

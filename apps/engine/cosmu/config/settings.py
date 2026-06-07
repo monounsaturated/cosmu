@@ -135,6 +135,12 @@ class Settings(BaseSettings):
     # Operating jurisdiction (ISO-3166 alpha-2). Live-legality is a venue+country fact (e.g. Binance is not
     # legal for US live), so this PICKS which venues can move real money. Override with LIVE_JURISDICTION.
     live_jurisdiction: str = "FR"
+    # Per-strategy STANDALONE track size — the capital one forward-test/SIM track is funded with (the funder
+    # deploys exactly this per survivor; finder/arms stamp it as the track's starting_capital). Override with
+    # SIM_TRACK_CAPITAL. Default $1k: small enough to be credible, above Binance-spot min-notional.
+    sim_track_capital: Decimal = Decimal("1000")
+    # SIM POOL bankroll — the shared paper account the tick funds many standalone tracks FROM (distinct from
+    # the per-track slice above). Must stay >> sim_track_capital so multiple tracks fit. Override SIM_BANKROLL.
     sim_bankroll: Decimal = Decimal("100000")
     openrouter_api_key: str | None = Field(default=None, repr=False)
     # LLM author: xAI (Grok) is preferred when XAI_API_KEY is set (already on Railway) — most efficient,

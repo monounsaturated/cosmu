@@ -1,3 +1,5 @@
+> **HISTORICAL — superseded by `docs/HANDOFF_NEXT.md` (the current master handoff).** Kept for reference only; facts here may be stale. The canonical entry doc is `AGENTS.md`.
+
 # COSMU — Master / Orchestrator Brief
 
 > The canonical handoff. Read this first, then `AGENTS.md`. You own `main`, design
@@ -38,8 +40,9 @@ You may **edit and operate everything**, smartly and securely:
 ## 🎯 Mission / success
 Autonomous risk-adjusted **PROFIT, net of every cost**. Success = the FIRST strategy
 that clears the deterministic **Gate** AND proves net-of-fee edge on its own track
-(today: 127 authored → 0 passed → **no edge yet**). Then decorrelated survivors →
-operator arms one Live small → it keeps edge live. The human drives in plain language.
+(today: **0 honest-Gate survivors** — authored = the `apps/engine/strategies/inbox/` dir,
+tested + verdicts = `gate_verdicts` / `/verdicts`; don't trust hand-written counts).
+Then decorrelated survivors → operator arms one Live small → it keeps edge live. The human drives in plain language.
 
 ## 🧑‍🚀 The only loop the human touches
 They dump ANYTHING — idea, trade hunch, feature, gripe — into `IDEAS.md` 🗑️ **DUMP ZONE**.
@@ -106,7 +109,7 @@ milestone that matters. Give the exact command/URL each time.
 Deterministic **MASTER** (money/schedule/caps/live-gate/**SCORER**) + LLM **LAB AGENT**
 (authors/mutates/ML in sandbox). **LLM proposes, Gate disposes — no LLM in money.**
 Flow: author → screen → walk-forward (real fees) → **GATE** (deflated Sharpe · CSCV-PBO ·
-holdout · regime folds · cohort BH-FDR) → $100k SIM track → forward-test → Live (armed).
+holdout · regime folds · cohort BH-FDR) → SIM track (default $1,000, `sim_track_capital`) → forward-test → Live (armed).
 **THE MIND:** analyst panel (Technical · Macro · Sentiment · Social · OSINT · Positioning
 + ML-survival + Memory) → consensus; reasons only, never funds, abstains w/o data.
 No pooled wallet. Live OFF behind 5 interlocks.
