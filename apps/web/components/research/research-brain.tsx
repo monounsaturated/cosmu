@@ -1,7 +1,8 @@
 // module: Research brain panel. The single, scannable answer to "what is the machine doing right now?"
-// Reads GET /research/brain (server-fetched via data.ts, with the clearly-labelled offline-demo fallback)
-// and lays it out with progressive disclosure: a summary row (LLM state, regime, gate funnel) up top,
-// then survivors, the survival-model ranking, the graveyard, and the active sources + bus tools.
+// Reads GET /research/brain (server-fetched via data.ts; renders an honest empty state when the engine
+// is unreachable — no demo fallback, no synthetic numbers) and lays it out with progressive disclosure:
+// a summary row (LLM state, regime, gate funnel) up top, then survivors, the survival-model ranking,
+// the graveyard, and the active sources + bus tools.
 //
 // PRINCIPLE surfaced honestly in the copy: the deterministic SCORER/gate decides survival; the ML
 // survival model NEVER vetoes — it only ORDERS the validation queue (which candidate to compute first)
