@@ -2,7 +2,8 @@
 
 // module: Cross-asset gate. The four-arm verdict — price-only vs single-alt vs full cross-asset
 // vs buy-and-hold — surfaced as a one-click stop-or-go with the per-source and per-asset-class
-// drop-one ablations. POSTs to /research/cross-asset-gate; falls back to a demo verdict offline.
+// drop-one ablations. POSTs to /research/cross-asset-gate; renders an honest "engine not connected"
+// empty state when offline — no demo verdict is ever shown.
 //
 // Types come from the generated contracts-ts (Pydantic -> OpenAPI -> TS); never hand-typed here.
 //   POST /research/cross-asset-gate  (body: {})  -> CrossAssetVerdict (snake_case)

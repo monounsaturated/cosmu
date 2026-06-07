@@ -54,18 +54,17 @@ export const engineConfigured = Boolean(baseUrl);
 // Honest engine reachability. Server-rendered surfaces fetch the REAL engine; when it is
 // unreachable we return the structurally-empty fallback and `connected:false` so the UI can say
 // "not connected" out loud. We never invent numbers.
-// Server-render must never HANG on a cold/slow engine (Railway cold-start can take many seconds). Two guards:
-//   - revalidate 30s: most requests serve from the Next data cache → the page paints instantly without an
-//     engine round-trip (the forward-test marks update at most daily, so 30s is plenty fresh).
-//   - AbortSignal.timeout(SSR_TIMEOUT_MS): a hung engine fails FAST → we render the honest empty/not-connected
-//     state in ≤5s instead of blocking the whole SSR until the platform's function timeout.
+// Server-render must never HANG on a cold/slow engine (Railway cold-start can take many seconds).
+// Guard: AbortSignal.timeout(SSR_TIMEOUT_MS) — a hung engine fails FAST → we render the honest
+// empty/not-connected state in ≤5s instead of blocking the whole SSR until the platform timeout.
+// Note: `next.revalidate` is intentionally omitted. layout.tsx sets `dynamic = "force-dynamic"`,
+// which opts every route out of the Next.js data cache; a per-fetch revalidate would have no effect.
 const SSR_TIMEOUT_MS = 5000;
 
 export async function getJson<T>(path: string, empty: T): Promise<{ data: T; connected: boolean }> {
   if (!baseUrl) return { data: empty, connected: false };
   try {
     const response = await fetch(`${baseUrl}${path}`, {
-      next: { revalidate: 30 },
       signal: AbortSignal.timeout(SSR_TIMEOUT_MS),
       headers: apiSecret ? { "x-api-key": apiSecret } : undefined
     });

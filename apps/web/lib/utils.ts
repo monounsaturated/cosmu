@@ -14,10 +14,11 @@ export function formatUsd(value: number, fractionDigits = 0) {
 }
 
 export function formatPct(value: number | null | undefined, digits = 2) {
-  // The engine contract types these as `number`, but a degraded/empty row can carry null at runtime
-  // (and this renders during static prerender, where a single bad row would fail the whole build).
-  const v = typeof value === "number" && Number.isFinite(value) ? value : 0;
-  return `${v >= 0 ? "+" : ""}${v.toFixed(digits)}%`;
+  // The engine contract types these as `number`, but a degraded/empty row can carry null at runtime.
+  // Return "—" (em-dash) for null/NaN/non-finite — mirrors timeAgo's null handling; callers render
+  // it as text so a non-numeric string is fine.
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
 }
 
 export function formatSigned(value: number) {
