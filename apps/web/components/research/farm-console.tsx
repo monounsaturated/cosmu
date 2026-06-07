@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
+import { Tooltip } from "@/components/ui/tooltip";
 import { formatPct } from "@/lib/utils";
 
 const laneStyle: Record<string, "iris" | "up" | "warn" | "info"> = {
@@ -123,7 +124,10 @@ export function FarmConsole() {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Run a cohort</CardTitle>
+            <div className="flex items-center gap-1.5">
+              <CardTitle>Run a cohort</CardTitle>
+              <Tooltip content="Tested together so a winner isn't just lucky — the Gate's BH-FDR correction controls for trying many strategies at once." />
+            </div>
             <CardDescription>
               A cohort is one batch of machine-invented strategies. Each is backtested on real bars and judged by
               the deterministic Gate — only survivors move on. (Or drive this from Claude Code — see Commands.)
@@ -182,7 +186,10 @@ export function FarmConsole() {
         <Card>
           <CardHeader>
             <div>
-              <CardTitle>Cohort funnel</CardTitle>
+              <div className="flex items-center gap-1.5">
+                <CardTitle>Cohort funnel</CardTitle>
+                <Tooltip content="Tested together so a winner isn't just lucky — the Gate's BH-FDR correction controls for trying many strategies at once." />
+              </div>
               <CardDescription>
                 {result ? (
                   <>
