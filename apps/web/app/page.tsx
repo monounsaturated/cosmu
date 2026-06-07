@@ -1,25 +1,41 @@
-// Overview — the operator's command centre. Answers four questions in one glance:
-//   (a) Is the machine running and in what mode?
-//   (b) What candidates are in the pipeline, and how has the Gate ruled?
-//   (c) Which strategies are in forward test, and how many days have elapsed?
-//   (d) Is the data feed fresh?
-// HONEST: when the engine is unreachable we render a single "not connected" state and never fabricate.
+// Overview — the operator's CONTROL ROOM. Answers the only two questions that matter, in five seconds:
+//   (1) Is the machine making money?  → the hero figure (live simulation net P&L, net of fees) + the real
+//       equity curve, with an honest "$0 · no funded tracks yet" day-0 state.
+//   (2) Does it need me?              → the "Needs you" queue (human-only decisions) beside the recent
+//       machine activity feed.
+// Everything below is supporting context — the candidate pipeline, the Gate's verdicts, the forward-test
+// window, and data coverage — for when the operator wants to look closer.
+//
+// HONESTY (the machine that never lies): when the engine is unreachable we render a single "not connected"
+// state and never fabricate. Every number on this page is real engine data passed through {data, connected}.
 
-import { Activity, ArrowRight, ClipboardCheck, FlaskConical, LineChart, Pause, Play, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, ClipboardCheck, FlaskConical, LineChart, Users } from "lucide-react";
 import Link from "next/link";
-import { engineConfigured, getAutonomyStatus, getExperiments, getInboxQueue, getLeaderboard, getIntelligence, getOverview } from "./data";
+import {
+  engineConfigured,
+  getAutonomyStatus,
+  getEvents,
+  getExperiments,
+  getInboxQueue,
+  getLeaderboard,
+  getIntelligence,
+  getOverview,
+  getRecommendations
+} from "./data";
 import type { ExperimentTheory, ExperimentsResponse } from "./data";
-import type { InboxQueueItem, LeaderboardRow, OverviewResponse } from "@cosmu/contracts-ts";
+import type { InboxQueueItem, LeaderboardRow } from "@cosmu/contracts-ts";
 import type { FunnelStats } from "./data";
 import { IdeaIntake } from "@/components/overview/idea-intake";
+import { MoneyHero } from "@/components/overview/money-hero";
+import { KpiRow } from "@/components/overview/kpi-row";
+import { NeedsYouCard, RecentActivityCard } from "@/components/overview/control-room";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DataPreview } from "@/components/ui/data-preview";
 import { Tooltip } from "@/components/ui/tooltip";
-import { MetricCard, Sparkline } from "@/components/ui/viz";
 import { DataFreshness } from "@/components/overview/data-freshness";
-import { cn, formatUsd, timeAgo } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
 
 // Live operator dashboard: always render on-demand with fresh engine data — never statically pre-render.
 // (Static export hangs fetching the engine at build time; on-demand also lets the honest "not connected"
@@ -33,17 +49,29 @@ export default async function OverviewPage() {
     { items: inboxItems, connected: inboxConnected },
     { leaderboard, connected: lbConnected },
     { intelligence, connected: intelConnected },
-    { overview, connected: overviewConnected }
+    { overview, connected: overviewConnected },
+    { items: recommendations, connected: recConnected },
+    { events, connected: eventsConnected }
   ] = await Promise.all([
     getAutonomyStatus(),
     getExperiments(),
     getInboxQueue(),
     getLeaderboard(),
     getIntelligence(),
-    getOverview()
+    getOverview(),
+    getRecommendations(),
+    getEvents()
   ]);
 
-  const connected = statusConnected || experimentsConnected || lbConnected || intelConnected || inboxConnected || overviewConnected;
+  const connected =
+    statusConnected ||
+    experimentsConnected ||
+    lbConnected ||
+    intelConnected ||
+    inboxConnected ||
+    overviewConnected ||
+    recConnected ||
+    eventsConnected;
 
   if (!connected) {
     return (
@@ -51,7 +79,7 @@ export default async function OverviewPage() {
         <Header />
         <NotConnected
           configured={engineConfigured}
-          what="The Overview shows the machine's status, the candidate pipeline, Gate-ruled theories, forward-test progress, and data freshness. Connect the engine to see real data; nothing is fabricated."
+          what="The Overview shows whether the machine is making money and whether it needs you — the live simulation P&L, what's waiting for your call, the candidate pipeline, the Gate's verdicts, and data freshness. Connect the engine to see real data; nothing is fabricated."
         />
       </div>
     );
@@ -68,20 +96,34 @@ export default async function OverviewPage() {
     <div className="mx-auto max-w-[1100px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:px-7">
       <Header />
 
-      {/* Command-center metric strip — the four glanceable headline numbers, with the REAL sim equity
-          sparkline. Honest day-0 states when the engine has produced no curve / verdicts yet. */}
-      <CommandStrip
+      {/* (1) IS IT MAKING MONEY — the one hero figure (live sim net P&L, net of fees) + the real equity
+          curve + machine-state chip. Honest day-0 / offline states; the single chart on the page. */}
+      <MoneyHero
         overview={overview}
         overviewConnected={overviewConnected}
+        status={status}
+        statusConnected={statusConnected}
+      />
+
+      {/* The four glanceable KPIs — survivors, tracks in simulation, days to live-ready, Gate verdicts. */}
+      <KpiRow
         funnel={intelligence.funnel}
         intelConnected={intelConnected}
+        simRows={simRows}
+        lbConnected={lbConnected}
         summary={experiments.summary}
         experimentsConnected={experimentsConnected}
       />
 
-      <MachineStatus status={status} connected={statusConnected} />
+      {/* (2) DOES IT NEED ME — the human-only decision queue beside the live activity feed. */}
+      <section className="grid gap-6 lg:grid-cols-2">
+        <NeedsYouCard recommendations={recommendations} connected={recConnected} configured={engineConfigured} />
+        <RecentActivityCard events={events} connected={eventsConnected} />
+      </section>
 
-      {/* Candidate pipeline — idea → spec → Gate, with cohort context. */}
+      {/* ── Supporting context ─────────────────────────────────────────────────────────────────────── */}
+
+      {/* Candidate pipeline — idea → spec → Gate, with cohort context + inline idea intake. */}
       <CandidatePipeline
         funnel={intelligence.funnel}
         inboxItems={inboxItems}
@@ -107,127 +149,9 @@ function Header() {
     <div>
       <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">overview</div>
       <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">The machine</h1>
-      <p className="mt-1 text-[13px] text-muted">Pipeline status, Gate verdicts, forward-test progress, and data coverage — all real, nothing fabricated.</p>
-    </div>
-  );
-}
-
-// Command-center metric strip — four dense KPI tiles. Every number is REAL engine data; the sim-equity
-// sparkline is the actual /overview equity_curve (renders nothing, with an honest "day 0" hint, until the
-// engine has produced ≥2 points). The Gate pass-rate is computed from the same experiment memory the
-// Theories card and /verdicts page render, so the headline and the drill-down never disagree.
-function CommandStrip({
-  overview,
-  overviewConnected,
-  funnel,
-  intelConnected,
-  summary,
-  experimentsConnected
-}: {
-  overview: OverviewResponse;
-  overviewConnected: boolean;
-  funnel: FunnelStats;
-  intelConnected: boolean;
-  summary: ExperimentsResponse["summary"];
-  experimentsConnected: boolean;
-}) {
-  const curve = overview.equity_curve ?? [];
-  const equityValues = curve.map((p) => p.value);
-  const hasCurve = equityValues.length >= 2;
-  const pnl = overview.pnl_net;
-
-  // Gate pass-rate over the real ruled theories (passed ÷ total). Honest "—" when nothing has been ruled.
-  const ruled = summary.total;
-  const passes = summary.passed;
-  const passRate = ruled > 0 ? Math.round((passes / ruled) * 100) : null;
-
-  return (
-    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <MetricCard
-        label="Sim net P&L"
-        tone={pnl > 0 ? "up" : pnl < 0 ? "down" : "iris"}
-        icon={<TrendingUp className="size-4" />}
-        value={overviewConnected ? <span className={pnl >= 0 ? "text-up" : "text-down"}>{formatUsd(pnl)}</span> : "—"}
-        hint={overviewConnected ? (hasCurve ? "across all sim tracks" : "day 0 — no curve yet") : "engine offline"}
-        visual={hasCurve ? <Sparkline values={equityValues} ariaLabel="simulation equity trend" /> : undefined}
-      />
-      <MetricCard
-        label="Passed Gate"
-        tone="up"
-        icon={<ClipboardCheck className="size-4" />}
-        value={intelConnected ? funnel.gate_passed : "—"}
-        hint={intelConnected ? `${funnel.authored} authored · ${funnel.killed} killed` : "engine offline"}
-      />
-      <MetricCard
-        label="In simulation"
-        tone="iris"
-        icon={<FlaskConical className="size-4" />}
-        value={intelConnected ? funnel.funded : "—"}
-        hint={intelConnected ? `${funnel.live} live` : "engine offline"}
-      />
-      <MetricCard
-        label="Gate pass-rate"
-        tone={passRate === null ? "muted" : passRate >= 20 ? "up" : "warn"}
-        icon={<Users className="size-4" />}
-        value={experimentsConnected && passRate !== null ? `${passRate}%` : "—"}
-        hint={experimentsConnected ? (ruled > 0 ? `${passes}/${ruled} theories passed` : "none ruled yet") : "ledger offline"}
-      />
-    </section>
-  );
-}
-
-function MachineStatus({
-  status,
-  connected
-}: {
-  status: Awaited<ReturnType<typeof getAutonomyStatus>>["status"];
-  connected: boolean;
-}) {
-  const running = connected && status.running && !status.paused;
-  const stateLabel = !connected ? "Unknown" : status.paused ? "Paused" : status.running ? "Running" : "Idle";
-  const stateVariant = running ? "up" : status.paused ? "warn" : "muted";
-  const modeLabel = status.live_enabled ? "Live" : "Simulation";
-  const lastTick = timeAgo(status.last_tick_at);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-1.5">
-          <Activity className="size-4 text-iris-soft" /> Machine status
-        </CardTitle>
-        <div className="flex items-center gap-1.5">
-          <Badge variant={stateVariant}>
-            {running ? <Play className="size-3" /> : status.paused ? <Pause className="size-3" /> : null}
-            {stateLabel}
-          </Badge>
-          <Badge variant={status.live_enabled ? "info" : "muted"}>{modeLabel}</Badge>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-          <Field label="Mode" value={modeLabel} />
-          <Field label="Last tick" value={lastTick ?? "—"} />
-          <Field label="Cycles run" value={connected ? String(status.cycles_run) : "—"} />
-        </div>
-        {connected && status.next_action ? (
-          <p className="mt-4 text-[12px] text-muted">
-            <span className="text-quiet">Next: </span>
-            {status.next_action}
-          </p>
-        ) : null}
-        {!connected ? (
-          <p className="mt-4 text-[12px] text-quiet">Status unknown — the engine did not report. The verdict ledger below is read from disk.</p>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-[11px] font-medium uppercase tracking-[0.07em] text-quiet">{label}</div>
-      <div className="mt-1 text-[15px] font-semibold tabular text-foreground">{value}</div>
+      <p className="mt-1 text-[13px] text-muted">
+        Is it making money, and does it need you? Everything below is real — nothing fabricated.
+      </p>
     </div>
   );
 }

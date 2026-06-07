@@ -3,10 +3,11 @@
 // The machine's experiment memory, made glanceable. Each row is one theory the Gate ruled on:
 // plain-language hypothesis, source, asset, verdict badge, a deflated-Sharpe gauge against the
 // 0.95 bar, and the holdout dSR — with an honest "decays out-of-sample" tag when an in-sample edge
-// did not survive the holdout. Expand a theory to see its candidate cohort and kill-reasons.
+// did not survive the holdout, and a plain-language kill-reason for every FAIL. Expand a theory to
+// see its candidate cohort and per-candidate kill-reasons.
 //
-// Client component: search + source/verdict filters + per-row expand are all local state. Renders
-// only the values it is handed (honesty contract) — never pads a series or invents a number.
+// Client component: search + source/verdict filters + sort + per-row expand are all local state.
+// Renders only the values it is handed (honesty contract) — never pads a series or invents a number.
 
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
@@ -15,12 +16,14 @@ import { Badge } from "@/components/ui/badge";
 import { GaugeBar } from "@/components/ui/viz";
 import { EmptyState } from "@/components/ui/honest-state";
 import { SearchInput } from "@/components/ui/input";
+import { KillReasonChip, killReasonLabel } from "@/components/theories/kill-reason";
 import { cn } from "@/lib/utils";
 
 // The Gate's bar for a real, multiple-testing-survived edge.
 const DSR_BAR = 0.95;
 
-type VerdictFilter = "all" | "PASS" | "FAIL";
+type VerdictFilter = "all" | "PASS" | "FAIL" | "decayed";
+type SortKey = "recent" | "best" | "worst";
 
 function fmtDsr(v: number | null | undefined): string {
   return v !== null && v !== undefined && Number.isFinite(v) ? v.toFixed(2) : "—";
@@ -35,6 +38,19 @@ function decaysOutOfSample(t: ExperimentTheory): boolean {
     t.best_holdout_dsr < 0 &&
     t.best_dsr >= 0.5
   );
+}
+
+// The dominant kill-reason for a FAILed theory: the first reason on its best (highest-dSR) killed
+// candidate, surfaced inline so a glance tells the operator WHY the theory died. Decay is reported
+// separately by its own tag, so we don't double-count it here.
+function topKillReason(t: ExperimentTheory): string | null {
+  if (t.decision === "PASS") return null;
+  const killed = t.candidates.filter((c) => !c.promoted && c.reasons.length > 0);
+  if (killed.length === 0) return null;
+  const best = killed.reduce((a, b) =>
+    b.deflated_sharpe_prob > a.deflated_sharpe_prob ? b : a
+  );
+  return best.reasons[0] ?? null;
 }
 
 // ─── dSR gauge ────────────────────────────────────────────────────────────────
@@ -98,9 +114,7 @@ function CandidateRow({ c }: { c: ExperimentCandidate }) {
         {c.reasons.length > 0 ? (
           <div className="mt-1 flex flex-wrap gap-1">
             {c.reasons.map((r) => (
-              <Badge key={r} variant="down">
-                {r.replace(/_/g, " ")}
-              </Badge>
+              <KillReasonChip key={r} reason={r} />
             ))}
           </div>
         ) : null}
@@ -142,6 +156,7 @@ function TheoryRow({ theory }: { theory: ExperimentTheory }) {
   const passed = theory.decision === "PASS";
   const date = theory.ts ? theory.ts.slice(0, 10) : "";
   const hasCandidates = theory.candidates.length > 0;
+  const killReason = topKillReason(theory);
 
   return (
     <li className="py-3 first:pt-0 last:pb-0">
@@ -177,6 +192,14 @@ function TheoryRow({ theory }: { theory: ExperimentTheory }) {
                 {theory.n_promoted}/{theory.n_candidates} promoted
               </span>
             </div>
+            {/* The plain-language reason this theory died, surfaced on the row itself — the failure
+                is the legible product, not something buried behind an expand. */}
+            {killReason ? (
+              <div className="mt-1.5 text-[11.5px] leading-snug text-muted">
+                <span className="text-quiet">Killed: </span>
+                <span className="text-down/90">{killReasonLabel(killReason)}</span>
+              </div>
+            ) : null}
           </div>
         </button>
 
@@ -220,21 +243,44 @@ export function TheoryList({
   const [query, setQuery] = useState("");
   const [verdict, setVerdict] = useState<VerdictFilter>("all");
   const [source, setSource] = useState<string>("all");
+  const [sort, setSort] = useState<SortKey>("recent");
+
+  const decayedTotal = useMemo(
+    () => theories.filter(decaysOutOfSample).length,
+    [theories]
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return theories.filter((t) => {
-      if (verdict !== "all" && t.decision !== verdict) return false;
+    const rows = theories.filter((t) => {
+      if (verdict === "decayed") {
+        if (!decaysOutOfSample(t)) return false;
+      } else if (verdict !== "all" && t.decision !== verdict) {
+        return false;
+      }
       if (source !== "all" && t.source !== source) return false;
       if (!q) return true;
+      const reason = topKillReason(t);
       return (
         t.hypothesis.toLowerCase().includes(q) ||
         t.source.toLowerCase().includes(q) ||
         (t.asset?.toLowerCase().includes(q) ?? false) ||
-        t.kind.toLowerCase().includes(q)
+        t.kind.toLowerCase().includes(q) ||
+        (reason ? killReasonLabel(reason).toLowerCase().includes(q) : false)
       );
     });
-  }, [theories, query, verdict, source]);
+
+    const sorted = [...rows];
+    if (sort === "best") {
+      sorted.sort((a, b) => (b.best_dsr ?? 0) - (a.best_dsr ?? 0));
+    } else if (sort === "worst") {
+      sorted.sort((a, b) => (a.best_dsr ?? 0) - (b.best_dsr ?? 0));
+    } else {
+      // recent: ISO timestamps sort lexicographically, newest first.
+      sorted.sort((a, b) => (b.ts ?? "").localeCompare(a.ts ?? ""));
+    }
+    return sorted;
+  }, [theories, query, verdict, source, sort]);
 
   if (theories.length === 0) {
     return (
@@ -248,20 +294,23 @@ export function TheoryList({
 
   return (
     <div className="space-y-4">
-      {/* Controls — search + verdict + source. Kept on one calm strip. */}
+      {/* Controls — search + verdict + source + sort. Kept on one calm strip. */}
       <div className="flex flex-wrap items-center gap-2">
         <SearchInput
           className="flex-1 sm:flex-none sm:w-64"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onClear={() => setQuery("")}
-          placeholder="Search hypothesis, asset…"
+          placeholder="Search hypothesis, asset, reason…"
         />
         <FilterGroup
           options={[
             { value: "all", label: "All" },
             { value: "PASS", label: "Passed" },
-            { value: "FAIL", label: "Failed" }
+            { value: "FAIL", label: "Failed" },
+            ...(decayedTotal > 0
+              ? [{ value: "decayed", label: "Decayed OOS" }]
+              : [])
           ]}
           value={verdict}
           onChange={(v) => setVerdict(v as VerdictFilter)}
@@ -276,6 +325,15 @@ export function TheoryList({
             onChange={setSource}
           />
         ) : null}
+        <FilterGroup
+          options={[
+            { value: "recent", label: "Recent" },
+            { value: "best", label: "Best dSR" },
+            { value: "worst", label: "Worst dSR" }
+          ]}
+          value={sort}
+          onChange={(v) => setSort(v as SortKey)}
+        />
         <span className="ml-auto text-[11.5px] tabular text-quiet">
           {filtered.length.toLocaleString()} theor{filtered.length === 1 ? "y" : "ies"}
           {filtered.length !== theories.length ? ` · of ${theories.length.toLocaleString()}` : ""}

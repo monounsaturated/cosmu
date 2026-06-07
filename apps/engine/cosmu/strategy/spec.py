@@ -143,6 +143,13 @@ class MetaLabel(BaseModel):
 class StrategySpec(BaseModel):
     name: str
     rationale: str
+    # Evaluation lane — the TYPED discriminator the master uses to pick the correct evaluator path, so routing is
+    # explicit on the spec instead of an accident of which function a runner happens to call (the silent mis-routing
+    # that killed long-only equity in the gate-lane). "gate" = a NOVEL in-sample-mined hypothesis: judged by the
+    # honest 0.95 deflated-Sharpe bar + BH-FDR cohort gate (promote_cohort). "deploy" = an externally-documented
+    # strategy with decades of OOS/live evidence: judged by the positive-OOS deployment bar (taa.validate-style),
+    # NOT the 0.95 in-sample Gate. Default "gate" preserves ALL current behaviour — every existing spec is gate-lane.
+    lane: Literal["gate", "deploy"] = "gate"
     universe: UniverseSelector
     horizon: Horizon
     catalyst: str | None = None
