@@ -159,6 +159,14 @@ from cosmu.api.models.verdicts import (  # noqa: F401
     VerdictRow,
     VerdictsResponse,
 )
+from cosmu.api.models.explorer import (  # noqa: F401
+    ExplorerDetailResponse,
+    ExplorerListResponse,
+    ExplorerPoint,
+    ExplorerStats,
+    ExplorerTrade,
+    ExplorerVersion,
+)
 
 __all__ = [
     # core
@@ -302,4 +310,11 @@ __all__ = [
     # verdicts
     "VerdictRow",
     "VerdictsResponse",
+    # explorer
+    "ExplorerDetailResponse",
+    "ExplorerListResponse",
+    "ExplorerPoint",
+    "ExplorerStats",
+    "ExplorerTrade",
+    "ExplorerVersion",
 ]

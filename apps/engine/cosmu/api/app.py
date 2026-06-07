@@ -25,6 +25,7 @@ from cosmu.api.routers import (
     costs,
     events,
     evolution,
+    explorer,
     health,
     intelligence,
     lab,
@@ -76,6 +77,7 @@ for _module in (
     overview,
     leaderboard,
     strategies,
+    explorer,
     console,
     recommendations,
     autonomy,
@@ -110,7 +112,7 @@ for _module in (
 # Every module that did `from cosmu.api._shared import store, settings` (plus the
 # canonical _shared) — a write to app.store/app.settings must update all of them.
 _INJECTABLE_MODULES = (
-    _shared_mod, autonomy, console, costs, events, evolution, health,
+    _shared_mod, autonomy, console, costs, events, evolution, explorer, health,
     intelligence, lab, leaderboard, live, memory, mind, overview, population,
     recommendations, research, scores, settings_router, skills, spine,
     strategies, strategy, toggle, universe, verdicts,

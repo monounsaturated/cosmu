@@ -17,6 +17,7 @@ import {
   MoreHorizontal,
   Radio,
   SlidersHorizontal,
+  Telescope,
   Terminal,
   X
 } from "lucide-react";
@@ -29,6 +30,7 @@ export const navItems: NavItem[] = [
   { href: "/", label: "Overview", desc: "Status · verdicts · ideas", icon: LayoutDashboard },
   { href: "/lab", label: "Lab", desc: "Idea → spec → verdict", icon: FlaskConical },
   { href: "/strategies", label: "Strategies", desc: "Backtest · Simulation · Live", icon: ListChecks },
+  { href: "/explorer", label: "Explorer", desc: "Pick · chart · compare", icon: Telescope },
   { href: "/mind", label: "Mind", desc: "What the agent knows & learned", icon: Brain },
   { href: "/costs", label: "Costs", desc: "What is it costing?", icon: DollarSign },
   { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal }

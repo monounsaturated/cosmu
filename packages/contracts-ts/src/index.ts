@@ -997,6 +997,66 @@ export interface VerdictsResponse {
   rows: VerdictRow[];
 }
 
+export interface ExplorerPoint {
+  ts: string;
+  gross: number;
+  net: number;
+}
+
+export interface ExplorerTrade {
+  ts: string;
+  side: string;
+  price: number;
+  qty: number;
+  fee: number;
+}
+
+export interface ExplorerStats {
+  thesis: string | null;
+  asset: string | null;
+  venue: string | null;
+  fee_assumed_bps: number | null;
+  data_span_days: number | null;
+  num_bars: number | null;
+  gross_return_pct: number | null;
+  net_return_pct: number | null;
+  cost_ratio: number | null;
+  num_trades: number | null;
+  deflated_sharpe: number | null;
+  max_dd: number | null;
+  oos_holdout_pct: number | null;
+  gate_decision: string | null;
+  gate_reason: string | null;
+}
+
+export interface ExplorerVersion {
+  version_id: string;
+  name: string;
+  status: string;
+  venue: string;
+  asset_class: string;
+  timeframe: string;
+  signal_family_label: string;
+  deflated_sharpe: number;
+  net_pct: number;
+}
+
+export interface ExplorerListResponse {
+  versions: ExplorerVersion[];
+  venues: string[];
+  assets: string[];
+}
+
+export interface ExplorerDetailResponse {
+  version_id: string;
+  name: string;
+  spec: Record<string, unknown>;
+  available: boolean;
+  equity_curve: ExplorerPoint[];
+  trades: ExplorerTrade[];
+  stats: ExplorerStats;
+}
+
 export type ApiRoutes = {
   overview: OverviewResponse;
   leaderboard: LeaderboardResponse;
