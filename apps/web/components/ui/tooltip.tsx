@@ -30,7 +30,7 @@ export function Tooltip({
       <span
         role="tooltip"
         className={cn(
-          "tooltip-bubble pointer-events-none absolute left-1/2 z-40 w-[min(78vw,250px)] -translate-x-1/2 rounded-lg border border-border bg-surface px-3 py-2 text-[11.5px] leading-relaxed text-muted opacity-0 shadow-card transition-opacity duration-150 group-hover/tt:opacity-100 group-focus-within/tt:opacity-100",
+          "tooltip-bubble pointer-events-none absolute left-1/2 z-40 w-[min(78vw,250px)] -translate-x-1/2 rounded-lg border border-border-strong/70 bg-surface-3 px-3 py-2 text-[11.5px] leading-relaxed text-muted opacity-0 shadow-pop transition-opacity duration-150 group-hover/tt:opacity-100 group-focus-within/tt:opacity-100",
           side === "bottom" ? "top-full mt-2" : "bottom-full mb-2"
         )}
       >

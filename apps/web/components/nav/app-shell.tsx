@@ -6,7 +6,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Activity, Lock, PanelLeft, PanelLeftClose, ShieldCheck } from "lucide-react";
+import { Lock, PanelLeft, PanelLeftClose, ShieldCheck } from "lucide-react";
 import { CosmuMark, CosmuWordmark } from "@/components/brand/logo";
 import { Badge } from "@/components/ui/badge";
 import { BottomNav, SideNavLinks } from "@/components/nav/app-nav";
@@ -88,6 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     ? engine.live ? "Live armed" : engine.state === "running" ? "Running · Simulation" : "Connected · Simulation"
     : engine.checked ? "Offline" : "Connecting…";
   const statusColor = engine.live ? "text-info" : engine.connected ? "text-up" : "text-quiet";
+  const dotColor = engine.live ? "bg-info" : engine.connected ? "bg-up" : "bg-quiet";
 
   return (
     <div
@@ -103,8 +104,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <SideNavLinks collapsed={collapsed} />
 
-        <div className="mt-auto">
-          {!collapsed && (
+        <div className="mt-auto pt-3">
+          {collapsed ? (
+            <div
+              className="mx-auto flex size-9 items-center justify-center rounded-lg border border-border/70 bg-surface-2/40 text-iris-soft"
+              title="Safety: live trading is off until you arm it. The Gate decides what gets money — never the model."
+            >
+              <ShieldCheck className="size-4" />
+            </div>
+          ) : (
             <div className="rounded-lg border border-border/70 bg-surface-2/40 p-3">
               <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
                 <ShieldCheck className="size-3.5 text-iris-soft" />
@@ -119,8 +127,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <main className="min-w-0 pb-[calc(64px+env(safe-area-inset-bottom))] lg:pb-0">
-        <header className="glass sticky top-0 z-20 flex min-h-[52px] items-center justify-between gap-4 border-b border-border/70 px-4 py-2.5 sm:px-5 sm:py-3 lg:px-7">
-          <div className="flex items-center gap-2.5 text-[13px] text-muted">
+        <header className="header-safe glass sticky top-0 z-20 flex min-h-[52px] items-center justify-between gap-4 border-b border-border/70 px-4 py-2.5 sm:px-5 sm:py-3 lg:px-7">
+          <div className="flex items-center gap-2.5">
             <span className="lg:hidden">
               <CosmuMark size={26} />
             </span>
@@ -129,21 +137,24 @@ export function AppShell({ children }: { children: ReactNode }) {
               onClick={toggle}
               title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              className="hidden size-9 items-center justify-center rounded-md border border-border/70 text-muted transition-colors hover:bg-surface-2/60 hover:text-foreground lg:inline-flex"
+              className="hidden size-9 items-center justify-center rounded-md border border-border/70 text-quiet transition-colors hover:bg-surface-2/60 hover:text-foreground lg:inline-flex"
             >
               {collapsed ? <PanelLeft className="size-[18px]" /> : <PanelLeftClose className="size-[18px]" />}
             </button>
-            <span className="relative flex size-2">
-              <span className={cn("animate-pulse-dot absolute inline-flex size-2 rounded-full", engine.connected ? "bg-up/70" : "bg-quiet/50")} />
-              <span className={cn("relative inline-flex size-2 rounded-full", engine.connected ? "bg-up" : "bg-quiet")} />
+            {/* Connectivity — a single, contained status pill. The dot is the live truth; the label
+                enriches it. Calm by default, never alarmist. */}
+            <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-surface-2/40 px-2.5 py-1 text-[12.5px]">
+              <span className="relative flex size-2">
+                <span className={cn("animate-pulse-dot absolute inline-flex size-2 rounded-full", engine.connected ? "opacity-70" : "opacity-50", dotColor)} />
+                <span className={cn("relative inline-flex size-2 rounded-full", dotColor)} />
+              </span>
+              <span className={cn("hidden font-medium sm:inline", statusColor)}>{statusLabel}</span>
+              <span className={cn("font-medium sm:hidden", statusColor)}>{engine.connected ? (engine.live ? "Live" : "Sim") : engine.checked ? "Off" : "…"}</span>
             </span>
-            <Activity className={cn("size-4", statusColor)} />
-            <span className={cn("hidden sm:inline", statusColor)}>{statusLabel}</span>
-            <span className={cn("sm:hidden", statusColor)}>{engine.connected ? (engine.live ? "Live" : "Simulation") : engine.checked ? "Off" : "…"}</span>
           </div>
           <div className="flex items-center gap-2">
             {engine.live ? (
-              <Badge variant="info"><Activity className="size-3" /> Live</Badge>
+              <Badge variant="info" dot>Live</Badge>
             ) : (
               <Badge variant="muted"><Lock className="size-3" /> Simulation only</Badge>
             )}

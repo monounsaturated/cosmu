@@ -27,6 +27,9 @@ function isStageActive(pathname: string, href: string): boolean {
 
 export function StrategyStages() {
   const pathname = usePathname();
+  // Index of the current stage drives the "how far along" read: stages at or before the active one
+  // are treated as reached (calm iris numbers); later stages stay quiet. Honest progress, no faking.
+  const activeIndex = STAGES.findIndex((s) => isStageActive(pathname, s.href));
   return (
     <nav
       aria-label="Strategy lifecycle"
@@ -34,6 +37,7 @@ export function StrategyStages() {
     >
       {STAGES.map((stage, i) => {
         const active = isStageActive(pathname, stage.href);
+        const reached = activeIndex >= 0 && i <= activeIndex;
         const Icon = stage.icon;
         return (
           <div key={stage.href} className="flex min-w-0 flex-1 items-center">
@@ -41,16 +45,32 @@ export function StrategyStages() {
               href={stage.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-[12.5px] transition-colors",
+                "group flex min-w-0 flex-1 items-center justify-center gap-2.5 rounded-md px-3 py-2 text-[12.5px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/45",
                 active
                   ? "bg-surface-2/80 text-foreground"
                   : "text-muted hover:bg-surface-2/50 hover:text-foreground",
                 stage.gated && !active && "text-quiet"
               )}
             >
-              <Icon className={cn("size-4 shrink-0", active ? "text-iris-soft" : "text-quiet")} />
+              {/* Numbered node — a calm step marker. Reached steps carry the iris tint; later steps stay quiet. */}
+              <span
+                className={cn(
+                  "flex size-5 shrink-0 items-center justify-center rounded-full border text-[10.5px] font-semibold tabular transition-colors",
+                  active
+                    ? "border-iris/45 bg-iris/12 text-iris-soft"
+                    : reached
+                      ? "border-border-strong text-muted"
+                      : "border-border text-quiet"
+                )}
+                aria-hidden
+              >
+                {stage.step}
+              </span>
               <span className="flex min-w-0 flex-col leading-tight">
-                <span className="truncate font-medium">{stage.label}</span>
+                <span className="flex items-center gap-1.5 truncate font-medium">
+                  <Icon className={cn("size-3.5 shrink-0", active ? "text-iris-soft" : "text-quiet")} />
+                  {stage.label}
+                </span>
                 <span className="hidden truncate text-[10px] text-quiet sm:block">{stage.desc}</span>
               </span>
             </Link>

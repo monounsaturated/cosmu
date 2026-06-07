@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 // Base field. The class string is the single source of truth for "what a Cosmu input looks like".
 const inputBase =
-  "h-8 w-full rounded-md border border-border bg-background/60 px-2.5 text-[12.5px] text-foreground outline-none transition-colors placeholder:text-quiet focus-visible:border-iris/60 focus-visible:ring-2 focus-visible:ring-ring/40";
+  "h-8 w-full rounded-md border border-border bg-background/60 px-2.5 text-[12.5px] text-foreground outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-quiet hover:border-border-strong focus-visible:border-iris/60 focus-visible:ring-2 focus-visible:ring-ring/40";
 
 export function Input({ className, ...props }: ComponentProps<"input">) {
   return <input className={cn(inputBase, className)} {...props} />;

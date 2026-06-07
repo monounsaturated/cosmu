@@ -95,7 +95,8 @@ export function Sparkline({
         </>
       ) : null}
       <path d={line} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" strokeLinecap="round" />
-      {/* End-dot marks the latest value — the "now" of the series. */}
+      {/* End-dot marks the latest value — the "now" of the series. A faint halo lifts it off the line. */}
+      <circle cx={x(n - 1)} cy={y(values[n - 1])} r={strokeWidth + 2} fill={color} opacity={0.18} />
       <circle cx={x(n - 1)} cy={y(values[n - 1])} r={strokeWidth + 0.6} fill={color} />
     </svg>
   );
@@ -200,12 +201,12 @@ export function MetricCard({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-medium uppercase tracking-[0.07em] text-quiet">{label}</span>
-        {icon ? <span className="text-muted">{icon}</span> : null}
+        <span className="label-eyebrow">{label}</span>
+        {icon ? <span className="text-quiet">{icon}</span> : null}
       </div>
       <div className="mt-2 flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-2xl font-semibold tracking-tight tabular text-foreground">{value}</div>
+          <div className="num-hero text-2xl tabular text-foreground">{value}</div>
           {delta ? (
             <div className={cn("mt-1 text-[12px] font-medium tabular", deltaText[delta.tone])}>{delta.value}</div>
           ) : null}
@@ -259,9 +260,9 @@ export function Tabs({
               aria-selected={isActive}
               onClick={() => setActive(t.id)}
               className={cn(
-                "inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-medium transition-colors",
+                "inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
                 isActive
-                  ? "bg-surface text-foreground shadow-card"
+                  ? "bg-surface-3 text-foreground shadow-card"
                   : "text-muted hover:bg-surface-2/60 hover:text-foreground"
               )}
             >

@@ -2,18 +2,23 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "./card";
 
+// A single KPI tile — the number is the hero (tabular, optically tight). A thin accent rail on the
+// left carries semantic tone without coloring the figure itself. Optional `visual` slot for a
+// sparkline/gauge on the right keeps it dense without clutter.
 export function Stat({
   label,
   value,
   hint,
   accent,
-  icon
+  icon,
+  visual
 }: {
   label: string;
   value: ReactNode;
   hint?: ReactNode;
   accent?: "iris" | "up" | "down" | "warn";
   icon?: ReactNode;
+  visual?: ReactNode;
 }) {
   const bar = {
     iris: "before:bg-iris",
@@ -29,10 +34,13 @@ export function Stat({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-medium uppercase tracking-[0.07em] text-quiet">{label}</span>
-        {icon ? <span className="text-muted">{icon}</span> : null}
+        <span className="label-eyebrow">{label}</span>
+        {icon ? <span className="text-quiet">{icon}</span> : null}
       </div>
-      <div className="mt-2 text-2xl font-semibold tracking-tight tabular text-foreground">{value}</div>
+      <div className="mt-2 flex items-end justify-between gap-3">
+        <div className="num-hero min-w-0 text-2xl tabular text-foreground">{value}</div>
+        {visual ? <div className="shrink-0 pb-0.5">{visual}</div> : null}
+      </div>
       {hint ? <div className="mt-1.5 text-[12px] text-muted">{hint}</div> : null}
     </Card>
   );

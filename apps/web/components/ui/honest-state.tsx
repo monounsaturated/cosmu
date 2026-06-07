@@ -14,7 +14,7 @@ export function NotConnected({ configured = false, what }: { configured?: boolea
   return (
     <Card>
       <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-        <div className="flex size-11 items-center justify-center rounded-full border border-border/70 bg-surface-2/50 text-quiet">
+        <div className="ring-etch flex size-11 items-center justify-center rounded-full border border-border/70 bg-surface-2/50 text-quiet">
           <PlugZap className="size-5" />
         </div>
         <div className="space-y-1">
