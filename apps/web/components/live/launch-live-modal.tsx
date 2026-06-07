@@ -20,6 +20,7 @@ import type {
 } from "./contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MoneyInput } from "@/components/ui/input";
 import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn } from "@/lib/utils";
 
@@ -218,10 +219,10 @@ export function LaunchLiveModal({ versionId, strategyName, onClose, onArmed }: P
             <div>
               <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-quiet">Budget & risk</div>
               <div className="grid grid-cols-2 gap-2">
-                <AmountInput label="Budget (default $100)" value={budget} onChange={(v) => setBudget(v)} />
-                <AmountInput label="Max daily loss" value={maxDailyLoss} onChange={setMaxDailyLoss} />
-                <AmountInput label="Per-strategy cap" value={perStrategyCap} onChange={setPerStrategyCap} />
-                <AmountInput label="Global cap" value={globalCap} onChange={setGlobalCap} />
+                <MoneyInput label="Budget (default $100)" value={budget} onChange={(v) => setBudget(v)} />
+                <MoneyInput label="Max daily loss" value={maxDailyLoss} onChange={setMaxDailyLoss} />
+                <MoneyInput label="Per-strategy cap" value={perStrategyCap} onChange={setPerStrategyCap} />
+                <MoneyInput label="Global cap" value={globalCap} onChange={setGlobalCap} />
               </div>
             </div>
 
@@ -402,28 +403,3 @@ function LaunchOutcome({ result, strategyName }: { result: LaunchActivateRespons
   );
 }
 
-function AmountInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-quiet">{label}</span>
-      <div className="mt-1 flex items-center rounded-md border border-border bg-surface-2/40 px-2.5">
-        <span className="text-[12px] text-quiet">$</span>
-        <input
-          type="number"
-          min={0}
-          value={value}
-          onChange={(e) => onChange(Math.max(0, Number(e.target.value)))}
-          className="w-full bg-transparent py-2 pl-1 text-[13px] tabular text-foreground outline-none"
-        />
-      </div>
-    </label>
-  );
-}

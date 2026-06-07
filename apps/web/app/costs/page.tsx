@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stat } from "@/components/ui/stat";
 import { SectionHeader } from "@/components/ui/section";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 import { DataPreview } from "@/components/ui/data-preview";
 import { formatUsd, timeAgo } from "@/lib/utils";
@@ -128,31 +129,31 @@ function SupplierTable({
       <DataPreview href="/costs/ledger" viewAllLabel="View full ledger" total={fullCount}>
         <Card>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-[12.5px]">
-                <thead>
-                  <tr className="border-b border-border/60 text-[11px] uppercase tracking-wide text-quiet">
-                    <th className="px-4 py-2.5 text-left font-medium">Supplier</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Role</th>
-                    <th className="px-4 py-2.5 text-right font-medium">$/mo</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Source</th>
-                    <th className="px-4 py-2.5 text-right font-medium">Fetched</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <SupplierRow key={row.name} row={row} />
-                  ))}
-                  <tr className="border-t border-border/60 bg-surface-2/30 font-semibold">
-                    <td className="px-4 py-2.5 text-foreground" colSpan={2}>Total</td>
-                    <td className="px-4 py-2.5 text-right text-foreground">{formatUsd(total)}</td>
-                    <td className="px-4 py-2.5 text-quiet text-[11px]" colSpan={2}>
-                      mix of live + est — see source column
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <Table>
+              <THead>
+                <TR>
+                  <TH className="pl-4 sticky-col">Supplier</TH>
+                  <TH>Role</TH>
+                  <TH className="text-right">$/mo</TH>
+                  <TH>Source</TH>
+                  <TH className="pr-4 text-right">Fetched</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {rows.map((row) => (
+                  <SupplierRow key={row.name} row={row} />
+                ))}
+                <TR className="bg-surface-2/30 font-semibold hover:bg-surface-2/30">
+                  <TD className="pl-4 text-foreground sticky-col" colSpan={2}>
+                    Total
+                  </TD>
+                  <TD className="text-right tabular text-foreground">{formatUsd(total)}</TD>
+                  <TD className="pr-4 text-[11px] text-quiet" colSpan={2}>
+                    mix of live + est — see source column
+                  </TD>
+                </TR>
+              </TBody>
+            </Table>
           </CardContent>
         </Card>
       </DataPreview>
@@ -165,24 +166,20 @@ function SupplierRow({ row }: { row: SupplierRow }) {
   const isFree = row.amount_usd === 0;
   const ago = timeAgo(row.fetched_at);
   return (
-    <tr className="border-b border-border/40 last:border-0 transition-colors hover:bg-surface-2/20">
-      <td className="px-4 py-2.5 font-medium text-foreground">
+    <TR>
+      <TD className="pl-4 font-medium text-foreground sticky-col">
         <div className="flex items-center gap-2">
           {row.name}
-          <Badge variant={row.category === "llm" ? "iris" : row.category === "data" ? "info" : row.category === "ci" ? "muted" : "muted"} className="text-[10px]">
+          <Badge variant={row.category === "llm" ? "iris" : row.category === "data" ? "info" : "muted"} className="text-[10px]">
             {row.category}
           </Badge>
         </div>
-      </td>
-      <td className="px-4 py-2.5 text-quiet max-w-[260px] truncate">{row.role}</td>
-      <td className="px-4 py-2.5 text-right tabular text-foreground">
-        {isFree ? (
-          <span className="text-up text-[11px]">free / $0</span>
-        ) : (
-          formatUsd(row.amount_usd)
-        )}
-      </td>
-      <td className="px-4 py-2.5">
+      </TD>
+      <TD className="max-w-[260px] truncate text-quiet">{row.role}</TD>
+      <TD className="text-right tabular text-foreground">
+        {isFree ? <span className="text-[11px] text-up">free / $0</span> : formatUsd(row.amount_usd)}
+      </TD>
+      <TD>
         {isLive ? (
           <span className="inline-flex items-center gap-1 text-[11px] text-up">
             <Wifi className="size-3" /> live
@@ -192,11 +189,9 @@ function SupplierRow({ row }: { row: SupplierRow }) {
             <WifiOff className="size-3" /> est.
           </span>
         )}
-      </td>
-      <td className="px-4 py-2.5 text-right text-[11px] text-quiet tabular">
-        {ago ? `${ago} ago` : "—"}
-      </td>
-    </tr>
+      </TD>
+      <TD className="pr-4 text-right text-[11px] tabular text-quiet">{ago ? `${ago} ago` : "—"}</TD>
+    </TR>
   );
 }
 

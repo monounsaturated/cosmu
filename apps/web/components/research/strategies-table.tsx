@@ -10,9 +10,10 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Filter, Search, X } from "lucide-react";
+import { Filter, X } from "lucide-react";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
 import { Badge } from "@/components/ui/badge";
+import { SearchInput } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { cn, formatPct } from "@/lib/utils";
@@ -164,15 +165,12 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
     <div className="space-y-4">
       {/* Search + filter toggle */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative w-full max-w-xs">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-quiet" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name, feature, edge…"
-            className="h-8 w-full rounded-md border border-border bg-background/60 pl-8 pr-2 text-[12.5px] text-foreground outline-none transition-colors placeholder:text-quiet focus-visible:border-iris/60 focus-visible:ring-2 focus-visible:ring-ring/40"
-          />
-        </div>
+        <SearchInput
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onClear={() => setQuery("")}
+          placeholder="Search name, feature, edge…"
+        />
         <button
           type="button"
           onClick={() => setShowFilters((v) => !v)}
