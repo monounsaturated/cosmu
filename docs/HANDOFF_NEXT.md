@@ -62,7 +62,8 @@ The METHOD is validated: WFA + deflated-Sharpe + trial-counting + real-costs + f
 - **Prune ~19 accumulated worktrees** — `git worktree list` → remove stale agent dirs (KEEP `agent-add72795` = gkg pipeline code, + any still-active).
 
 ## ⏳ IN FLIGHT (a fresh session inherits — check these FIRST; they will NOT auto-notify a new session)
-- 🔭 **LLM-narrative verdict (the ONLY thing still in flight)** — score+verdict on Modal (`cosmu-gkg-narrative` app + worktree `agent-af43d48`). The corpus is DONE (115k items); the LLM-score is the tail. Check the Modal app status; **log the verdict to `docs/DECISIONS.md`** when it completes (does narrative carry a Gate-clearing edge on deep data?).
-- **Merged this session:** #140 (Explorer) · #142 (real holdout) · #143 (LLM-narrative machine) · #144 (GEM pilot) · #145 (UI honesty) · #146 (UI cohesion primitives) · leaderboard forward-return. Survival migration applied. 9 strategies live at honest 0%. *(UI is NOT vibe-coded — a disciplined OKLch design system already near the Supabase/Vercel bar.)*
+- 🎨 **Data-viz frontend upgrade** (worktree `agent-a6eae04`) — sparklines per strategy / gauge bars / compact tabs / pipeline-funnel viz; a data-viz-platform display (not data-dumps). Review branch + `pnpm --filter @cosmu/web typecheck`, then merge.
+- 🔭 **LLM-narrative verdict** — score+verdict on Modal (`cosmu-gkg-narrative` app + worktree `agent-af43d48`). Corpus DONE (115k items); the LLM-score is the tail. Check the Modal app; **log the verdict to `docs/DECISIONS.md`** when it completes (does narrative carry a Gate-clearing edge on deep data?).
+- **Merged this session:** #140 (Explorer) · #142 (real holdout) · #143 (LLM-narrative machine) · #144 (GEM pilot) · #145 (UI honesty) · #146 (UI cohesion) · leaderboard forward-return · Overview force-dynamic build fix (`08a94ab` — was hanging the static build). Survival migration applied. 9 strategies live at honest 0%. *(UI is a disciplined OKLch design system, not vibe-coded; data-viz upgrade in flight.)*
 
 **The ONE goal:** strategies that survive honestly and compound; the machine that never lies is the asset. Floor + upside. Go.
