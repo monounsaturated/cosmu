@@ -284,6 +284,231 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         prior="Deribit DVOL is the crypto-native options implied volatility index (30-day annualized), the VIX equivalent for BTC/ETH options; elevated DVOL marks stress or opportunity and conditions position sizing and regime filters.",
         transform_version="dvol-v1",
     ),
+    # =====================================================================================================
+    # THE 10 NEW ALT-DATA SOURCES (wired additively; PIT-honest). Honest-by-design:
+    #   * Genuine attention/macro signals (Wikipedia, Reddit, RSS, CryptoPanic, NFCI, jobless claims) are
+    #     tier1 + low-confidence — they MUST earn their place OOS; the gate down-weights until they pay.
+    #   * NON-CAUSAL CONTROLS (weather, astro ephemeris, exotic earthquakes/Kp, daily flight counts) are
+    #     wired honestly so the Gate has a known-false baseline to KILL — they are NEVER expected to survive.
+    #   * google_trends carries an explicit REVISION-HAZARD note: it rescales history on every re-fetch
+    #     (look-ahead contamination) — REVIEW/NO-GO for backtest, forward-test alerting only until validated.
+    # =====================================================================================================
+    # --- Extended FRED macro (free, key optional; ALFRED initial-release vintages → available_at == realtime_start) ---
+    FeatureDefinition(
+        name="nfci",
+        source="fred",
+        tier="tier0",
+        asof_semantics="FRED/ALFRED initial-release time (realtime_start = the actual Wednesday release; no look-ahead)",
+        asset_classes=["crypto", "equity"],
+        prior="Chicago Fed National Financial Conditions Index (weekly): a negative NFCI = looser-than-average financial conditions (risk-on tailwind); a sharp tightening marks stress that conditions risk premia across every asset class.",
+        transform_version="nfci-alfred-v1",
+    ),
+    FeatureDefinition(
+        name="initial_claims",
+        source="fred",
+        tier="tier0",
+        asof_semantics="FRED/ALFRED initial-release time (realtime_start = the actual Thursday release; ~8-day ref lag; no look-ahead)",
+        asset_classes=["crypto", "equity"],
+        prior="US weekly initial jobless claims: a rising trend = labour-market deterioration (bearish macro), a falling trend = strength; a shared growth-regime read that conditions cross-asset risk appetite.",
+        transform_version="initial-claims-alfred-v1",
+    ),
+    # --- Wikipedia pageviews (free, no key, immutable counts; per-symbol via entity map; available_at = T+1) ---
+    FeatureDefinition(
+        name="wiki_pageviews",
+        source="wikimedia",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="daily count, available_at = obs_date + 1 day midnight UTC (Wikimedia publishes day-T on day T+1; immutable, no revision)",
+        prior="Wikipedia article page-view count is a clean, free, causal crowd-attention signal (knowable T+1, never revised). An attention surge often leads price at narrative onset — low-confidence until validated OOS.",
+        transform_version="wiki-pageviews-v1",
+    ),
+    FeatureDefinition(
+        name="wiki_pageviews_log",
+        source="wikimedia",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="daily count, available_at = obs_date + 1 day midnight UTC (immutable, no revision)",
+        prior="Natural log of Wikipedia page-views — stabilizes variance across articles of vastly different scale so a fitted threshold is comparable cross-asset. Low-confidence until validated OOS.",
+        transform_version="wiki-pageviews-v1",
+    ),
+    FeatureDefinition(
+        name="wiki_pageviews_zscore",
+        source="wikimedia",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="daily count, available_at = obs_date + 1 day midnight UTC; trailing 30d within-article z of log views (strictly causal)",
+        prior="30-day trailing z-score of log Wikipedia views surfaces an attention SPIKE relative to the article's own recent baseline — a within-asset, scale-free crowd-attention shock that may precede price. Low-confidence until validated OOS.",
+        transform_version="wiki-pageviews-v1",
+    ),
+    # --- Reddit daily volume (key-gated: REDDIT_CLIENT_ID/SECRET → empty offline; market-wide; available_at = day+1) ---
+    FeatureDefinition(
+        name="reddit_post_volume",
+        source="reddit_volume",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="daily count, available_at = day AFTER the observation date (full closed day; no look-ahead)",
+        prior="Daily post count across key crypto/finance subreddits (r/cryptocurrency, r/bitcoin, r/ethfinance, r/wallstreetbets, r/investing) — a crude crowd-attention BREADTH proxy; a spike may precede or lag a move (direction unknown a priori). Low-confidence; requires REDDIT_CLIENT_ID/SECRET; must earn its place OOS.",
+        transform_version="reddit-volume-v1",
+    ),
+    FeatureDefinition(
+        name="reddit_comment_volume",
+        source="reddit_volume",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="daily count, available_at = day AFTER the observation date (full closed day; no look-ahead)",
+        prior="Daily comment count across the same subreddits — an engagement-DEPTH proxy (distinct from post breadth); elevated discussion may reflect uncertainty or a catalyst. Low-confidence; requires REDDIT_CLIENT_ID/SECRET; must earn its place OOS.",
+        transform_version="reddit-volume-v1",
+    ),
+    # --- CryptoPanic news votes (key-gated: CRYPTOPANIC_API_KEY → empty offline; per-symbol; 24h window) ---
+    FeatureDefinition(
+        name="cryptopanic_bullish_votes",
+        source="cryptopanic",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="24h rolling window snapshot, available_at = fetch time (vote counts are mutable — captured at fetch, never rewritten)",
+        prior="Positive CryptoPanic vote count on news posts mentioning the coin (24h window) — a crowd attention/optimism proxy; a bullish-vote spike may mark crowd attention preceding momentum. Low-confidence (crowd noise); requires CRYPTOPANIC_API_KEY; must earn its place OOS.",
+        transform_version="cryptopanic-votes-v1",
+    ),
+    FeatureDefinition(
+        name="cryptopanic_bearish_votes",
+        source="cryptopanic",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="24h rolling window snapshot, available_at = fetch time (vote counts are mutable — captured at fetch, never rewritten)",
+        prior="Negative CryptoPanic vote count on news posts mentioning the coin (24h window) — a crowd pessimism proxy; a bearish spike may anticipate a downturn. Low-confidence (crowd noise); requires CRYPTOPANIC_API_KEY; must earn its place OOS.",
+        transform_version="cryptopanic-votes-v1",
+    ),
+    # --- RSS headline count (free, no key, LLM-free counts only; market-wide; available_at = fetch time) ---
+    FeatureDefinition(
+        name="rss_news_count",
+        source="rss",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="trailing 24h headline count from public RSS feeds; available_at == fetch time (each item's pubDate is its own PIT marker; no look-ahead)",
+        prior="Raw daily headline COUNT from public crypto/finance RSS feeds (CoinTelegraph, Decrypt, CoinDesk, news.bitcoin.com) — a news-VOLUME attention proxy (counts ≠ sentiment, LLM-free). A surge may precede or coincide with major moves. Low-confidence; must earn its place OOS.",
+        transform_version="rss-news-count-v1",
+    ),
+    # --- Google Trends (REVISION HAZARD — rescales history; market-wide; available_at = fetch time) ---
+    FeatureDefinition(
+        name="gtrends_search_interest",
+        source="gtrends",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="weekly Trends bucket; available_at = ACTUAL fetch time (NOT the week-end) — see revision hazard",
+        prior=(
+            "Google Trends retail search interest (0-100) for crypto keywords — a speculative-attention proxy. "
+            "REVISION HAZARD: Trends RESCALES all historical values whenever the query window changes, so a past "
+            "week's value re-fetched today differs from what was knowable then — this is silent look-ahead "
+            "contamination. We stamp available_at = the actual fetch time so the store surfaces (never hides) the "
+            "revision. REVIEW / likely NO-GO for backtest; acceptable only for forward-test alerting (each bar is a "
+            "fresh current snapshot). Low-confidence — must earn OOS evidence before any live strategy."
+        ),
+        transform_version="gtrends-weekly-v1",
+    ),
+    # --- OpenSky daily flight count (free OSINT, thin history; market-wide; available_at = day+1) ---
+    FeatureDefinition(
+        name="opensky_daily_flights",
+        source="opensky_daily",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="daily unique-aircraft count, available_at = flight_date + 1 day midnight UTC (≥1-day publication lag; no look-ahead)",
+        prior=(
+            "Global daily flight count (unique ICAO-24 aircraft on the free OpenSky Network) — a crude, "
+            "LOW-CONFIDENCE, largely NON-CAUSAL macro economic-activity proxy ('are people flying?'). Coverage is "
+            "thin (≤30-day free-tier history, rate-limited, pre-2019 unreliable). Wired honestly so the Gate can "
+            "falsify it; must earn its place OOS — flag low-confidence always."
+        ),
+        transform_version="opensky-daily-flights-v1",
+    ),
+    # --- Open-Meteo weather hub stress (NON-CAUSAL control; free, no key; market-wide; available_at = obs+1) ---
+    FeatureDefinition(
+        name="weather_hub_stress",
+        source="openmeteo",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="daily cross-hub stress score, available_at = obs_date + 1 day 06:00 UTC (Open-Meteo reanalysis finishes next day; no look-ahead)",
+        prior=(
+            "NON-CAUSAL CONTROL FEATURE — cross-hub (NYC/London/Tokyo/Shanghai) cold+wet+windy 'disruption stress' "
+            "score [0,1] from the free Open-Meteo archive. Any economic-activity effect is tiny and almost certainly "
+            "swamped by market structure. Wired honestly so the Gate can falsify it — VERY low confidence, never "
+            "expected to survive."
+        ),
+        transform_version="weather-openmeteo-v1",
+    ),
+    # --- Deterministic astro ephemeris (NON-CAUSAL controls; stdlib-only; market-wide; available_at = day midnight UTC) ---
+    FeatureDefinition(
+        name="astro_lunar_phase",
+        source="astro",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="deterministic per-day geometry, available_at = midnight UTC of the day (knowable at day-start; no look-ahead, no revision)",
+        prior="NON-CAUSAL CONTROL FEATURE — lunar illuminated fraction [0,1] (0 = new, 1 = full). The Moon does not cause price moves; wired honestly as a known-false baseline the Gate is expected to reject.",
+        transform_version="astro-ephemeris-v1",
+    ),
+    FeatureDefinition(
+        name="astro_sun_longitude",
+        source="astro",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="deterministic per-day geometry, available_at = midnight UTC of the day (no look-ahead, no revision)",
+        prior="NON-CAUSAL CONTROL FEATURE — Sun ecliptic longitude [0,360) (a calendar-season proxy). Wired honestly as a known-false baseline; the Gate is expected to reject it.",
+        transform_version="astro-ephemeris-v1",
+    ),
+    FeatureDefinition(
+        name="astro_jupiter_longitude",
+        source="astro",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="deterministic per-day geometry, available_at = midnight UTC of the day (no look-ahead, no revision)",
+        prior="NON-CAUSAL CONTROL FEATURE — Jupiter ecliptic longitude [0,360) (~12-year cycle). Wired honestly as a known-false baseline; the Gate is expected to reject it.",
+        transform_version="astro-ephemeris-v1",
+    ),
+    FeatureDefinition(
+        name="astro_saturn_longitude",
+        source="astro",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="deterministic per-day geometry, available_at = midnight UTC of the day (no look-ahead, no revision)",
+        prior="NON-CAUSAL CONTROL FEATURE — Saturn ecliptic longitude [0,360) (~29-year cycle). Wired honestly as a known-false baseline; the Gate is expected to reject it.",
+        transform_version="astro-ephemeris-v1",
+    ),
+    FeatureDefinition(
+        name="astro_sun_jupiter_aspect",
+        source="astro",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="deterministic per-day geometry, available_at = midnight UTC of the day (no look-ahead, no revision)",
+        prior="NON-CAUSAL CONTROL FEATURE — Sun-Jupiter angular separation [0,180] (0 = conjunction, 180 = opposition). Wired honestly as a known-false baseline; the Gate is expected to reject it.",
+        transform_version="astro-ephemeris-v1",
+    ),
+    # --- Exotic ORTHOGONALITY CONTROLS (USGS earthquakes + NOAA Kp; non-causal; market-wide; Gate must kill them) ---
+    FeatureDefinition(
+        name="usgs_earthquake_count",
+        source="usgs",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="past-24h global count; live-query available_at = as_of (snapshot); daily-batch floor = obs_day + 1 (no look-ahead)",
+        prior="ORTHOGONALITY CONTROL — global earthquake event count (USGS free feed). No plausible causal path to crypto prices; a known-false baseline so the Gate has a noise floor to kill. If it ever drives a signal that is a data-snooping red flag, not an edge. Must be killed by the Gate.",
+        transform_version="exotic-usgs-eq-v1",
+    ),
+    FeatureDefinition(
+        name="usgs_max_magnitude",
+        source="usgs",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="past-24h global max magnitude; live-query available_at = as_of (snapshot); gap = None, never 0",
+        prior="ORTHOGONALITY CONTROL — daily maximum earthquake magnitude (USGS free feed). No plausible causal path to crypto prices; a known-false baseline. Must be killed by the Gate.",
+        transform_version="exotic-usgs-eq-v1",
+    ),
+    FeatureDefinition(
+        name="noaa_kp_index",
+        source="noaa",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="daily-max Kp; live-query available_at = as_of (snapshot); daily-batch floor = obs_day + 1; gap = None, never 0",
+        prior="ORTHOGONALITY CONTROL — NOAA planetary Kp geomagnetic index (daily max [0-9]). Geomagnetic activity has no plausible causal path to crypto prices; a known-false baseline. Must be killed by the Gate.",
+        transform_version="exotic-noaa-kp-v1",
+    ),
 )
 
 

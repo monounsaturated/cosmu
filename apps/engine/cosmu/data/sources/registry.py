@@ -201,6 +201,52 @@ def default_source_registry(
 
         reg.register(AdsbDataSource())
 
+    # The 10 new alt-data sources, registered by name so any agent can discover + PIT-query them. Each is
+    # self-contained, offline-safe (network/key failure → None value, never a crash), and carries its own
+    # declared prior + transform_version + confidence. Non-causal controls (weather/astro/exotic/flights)
+    # are flagged low-confidence so the gate down-weights / kills them. Additive — existing registrations
+    # are untouched.
+    from cosmu.data.sources.astro_ephemeris import make_astro_sources
+    from cosmu.data.sources.cryptopanic import (
+        CryptoPanicBearishVotesSource,
+        CryptoPanicBullishVotesSource,
+    )
+    from cosmu.data.sources.exotic_controls import (
+        NoaaKpIndexSource,
+        UsgsEarthquakeSource,
+        UsgsMaxMagnitudeSource,
+    )
+    from cosmu.data.sources.google_trends import GoogleTrendsSource
+    from cosmu.data.sources.osint_opensky_daily import OpenSkyDailyFlightsSource
+    from cosmu.data.sources.reddit_volume import (
+        RedditCommentVolumeDataSource,
+        RedditVolumeDataSource,
+    )
+    from cosmu.data.sources.rss_news import RssNewsCountSource
+    from cosmu.data.sources.weather_openmeteo import WeatherOpenMeteoSource
+    from cosmu.data.sources.wikipedia_pageviews import WikipediaPageviewsSource
+
+    reg.register(WeatherOpenMeteoSource())
+    reg.register(OpenSkyDailyFlightsSource())
+    reg.register(RssNewsCountSource())
+    reg.register(GoogleTrendsSource())
+    reg.register(RedditVolumeDataSource())
+    reg.register(RedditCommentVolumeDataSource())
+    reg.register(CryptoPanicBullishVotesSource())
+    reg.register(CryptoPanicBearishVotesSource())
+    for metric in ("wiki_pageviews", "wiki_pageviews_log", "wiki_pageviews_zscore"):
+        wiki = WikipediaPageviewsSource(metric=metric)
+        # The class hard-codes name="wiki_pageviews"; the metric is what distinguishes the derived series.
+        # Register each under its metric so the three are discoverable as distinct named features (the
+        # SourceFeature it returns also carries this name — consistent with the feature_registry keys).
+        wiki.name = metric
+        reg.register(wiki)
+    for src in make_astro_sources():
+        reg.register(src)
+    reg.register(UsgsEarthquakeSource())
+    reg.register(UsgsMaxMagnitudeSource())
+    reg.register(NoaaKpIndexSource())
+
     return reg
 
 

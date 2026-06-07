@@ -34,7 +34,19 @@ from cosmu.data.altdata import (
     RedditSentimentProvider,
     VenueFeesProvider,
 )
+from cosmu.data.providers.macro_extra import FredInitialClaimsProvider, FredNfciProvider
+from cosmu.data.sources.altdata_bridges import (
+    CryptoPanicIngestProvider,
+    ExoticControlsIngestProvider,
+    GoogleTrendsIngestProvider,
+    OpenSkyDailyIngestProvider,
+    RssNewsIngestProvider,
+    WeatherOpenMeteoIngestProvider,
+    WikipediaPageviewsIngestProvider,
+)
+from cosmu.data.sources.astro_ephemeris import AstroEphemerisProvider
 from cosmu.data.sources.multiasset import MULTIASSET_METRICS, YahooDailyProvider
+from cosmu.data.sources.reddit_volume import RedditVolumeProvider
 from cosmu.data.sources.xai_twitter import XaiTwitterProvider
 from cosmu.ingest.llm_formatter import build_event_formatter_from_settings
 from cosmu.ingest.pipeline import (
@@ -126,6 +138,21 @@ class Providers:
     # EU-accessible, keyless: GDELT geopolitical news tone (market-wide) + Deribit DVOL (per-symbol BTC/ETH).
     gdelt_tone: AltDataProvider = field(default_factory=GdeltToneProvider)
     dvol: AltDataProvider = field(default_factory=DeribitDvolProvider)
+    # --- 10 new alt-data sources. Free/keyless ones default to live; key-gated ones (reddit_volume,
+    # cryptopanic) and revision-hazard / network ones (gtrends) degrade to [] offline (one dead source
+    # never aborts the pass). Non-causal controls (weather, astro, exotic_controls) wired honestly so the
+    # Gate can falsify them. See feature_registry.py for the per-feature priors + flags. ---
+    nfci: AltDataProvider = field(default_factory=FredNfciProvider)
+    initial_claims: AltDataProvider = field(default_factory=FredInitialClaimsProvider)
+    wiki_pageviews: AltDataProvider = field(default_factory=WikipediaPageviewsIngestProvider)
+    reddit_volume: AltDataProvider = field(default_factory=RedditVolumeProvider)
+    cryptopanic: AltDataProvider = field(default_factory=CryptoPanicIngestProvider)
+    rss_news: AltDataProvider = field(default_factory=RssNewsIngestProvider)
+    gtrends: AltDataProvider = field(default_factory=GoogleTrendsIngestProvider)
+    opensky_daily: AltDataProvider = field(default_factory=OpenSkyDailyIngestProvider)
+    weather: AltDataProvider = field(default_factory=WeatherOpenMeteoIngestProvider)
+    astro: AltDataProvider = field(default_factory=AstroEphemerisProvider)
+    exotic_controls: AltDataProvider = field(default_factory=ExoticControlsIngestProvider)
     llm: Callable[[str], StandardizedNews] | None = None
     # Typed event/news scorer LLM (the cheap-OpenRouter formatter). Key-gated → None without a key, so the
     # event scorer uses the deterministic lexicon. The LLM only standardizes text at ingest, never the money path.
@@ -152,6 +179,8 @@ class Providers:
             event_llm=build_event_formatter_from_settings(settings),
             # LLM index scorer — xAI preferred, OpenRouter fallback; no key → ingests nothing (honest).
             llm_index=build_index_provider_from_settings(settings),
+            # CryptoPanic only connects when CRYPTOPANIC_API_KEY is set; no key → the provider returns [] (honest).
+            cryptopanic=CryptoPanicIngestProvider(api_key=settings.cryptopanic_api_key or ""),
             polymarket_token="risk_on",
         )
 

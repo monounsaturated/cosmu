@@ -147,6 +147,9 @@ class Settings(BaseSettings):
     # no new key; OpenRouter is the fallback. Both are OpenAI-compatible (same request shape).
     xai_api_key: str | None = Field(default=None, repr=False)
     lunarcrush_api_key: str | None = Field(default=None, repr=False)
+    # CryptoPanic news-vote source: key-gated (free tier). No key → the provider returns [] (honest
+    # degradation, never fabricates). Reddit-volume uses REDDIT_CLIENT_ID/SECRET read directly from env.
+    cryptopanic_api_key: str | None = Field(default=None, repr=False)
     # Ops toggles (match the existing Railway variable names): the in-process scheduler/autonomy loop
     # and the deterministic risk guardian. Default on; flip to false to freeze the machine.
     scheduler_enabled: bool = True

@@ -180,6 +180,38 @@ _STORE_PROVIDER_OF = {
     "ndx_index": "stooq",
     "eurusd": "stooq",
     "usdjpy": "stooq",
+    # --- 10 new alt-data sources (PIT-honest; non-causal ones flagged in feature_registry priors) ---
+    # Extended FRED macro (ALFRED initial-release vintages — available_at == realtime_start, no look-ahead).
+    "nfci": "fred",
+    "initial_claims": "fred",
+    # Wikipedia pageviews (free, no key, immutable counts; per-symbol via entity map; available_at = T+1).
+    "wiki_pageviews": "wikimedia",
+    "wiki_pageviews_log": "wikimedia",
+    "wiki_pageviews_zscore": "wikimedia",
+    # Reddit post/comment volume (key-gated: REDDIT_CLIENT_ID/SECRET → [] offline; market-wide; available_at = day+1).
+    "reddit_post_volume": "reddit_volume",
+    "reddit_comment_volume": "reddit_volume",
+    # CryptoPanic news-vote counts (key-gated: CRYPTOPANIC_API_KEY → [] offline; per-symbol; 24h window).
+    "cryptopanic_bullish_votes": "cryptopanic",
+    "cryptopanic_bearish_votes": "cryptopanic",
+    # RSS headline count (free, no key, LLM-free; market-wide; available_at = fetch time).
+    "rss_news_count": "rss",
+    # Google Trends search interest (REVISION HAZARD — rescales history; market-wide; available_at = fetch time).
+    "gtrends_search_interest": "gtrends",
+    # OpenSky daily flight count (free OSINT, thin history; market-wide; available_at = day+1).
+    "opensky_daily_flights": "opensky_daily",
+    # Open-Meteo weather hub-stress (NON-CAUSAL control; market-wide; available_at = obs+1).
+    "weather_hub_stress": "openmeteo",
+    # Deterministic astro ephemeris (NON-CAUSAL controls; market-wide; available_at = day midnight UTC).
+    "astro_lunar_phase": "astro",
+    "astro_sun_longitude": "astro",
+    "astro_jupiter_longitude": "astro",
+    "astro_saturn_longitude": "astro",
+    "astro_sun_jupiter_aspect": "astro",
+    # Exotic ORTHOGONALITY CONTROLS (USGS earthquakes + NOAA Kp — non-causal; market-wide; Gate must kill them).
+    "usgs_earthquake_count": "usgs",
+    "usgs_max_magnitude": "usgs",
+    "noaa_kp_index": "noaa",
 }
 _STORE_MARKET_WIDE = frozenset({
     "fear_greed", "pm_risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",
@@ -188,6 +220,13 @@ _STORE_MARKET_WIDE = frozenset({
     "reddit_sentiment", "twitter_sentiment", "twitter_influencer_sentiment",
     "gdelt_tone", "reg_risk_crypto", "risk_on_off",
     "gold_xau", "silver_xag", "wti_crude", "spx_index", "ndx_index", "eurusd", "usdjpy",
+    # New market-wide alt sources (the per-symbol ones — wiki_pageviews*, cryptopanic_* — are NOT here).
+    "nfci", "initial_claims",
+    "reddit_post_volume", "reddit_comment_volume",
+    "rss_news_count", "gtrends_search_interest", "opensky_daily_flights", "weather_hub_stress",
+    "astro_lunar_phase", "astro_sun_longitude", "astro_jupiter_longitude",
+    "astro_saturn_longitude", "astro_sun_jupiter_aspect",
+    "usgs_earthquake_count", "usgs_max_magnitude", "noaa_kp_index",
 })
 # Registry name → stored metric name, for features renamed after their first ingest.
 # StoreBackedAltProvider tries the registry name first; if the store returns nothing it falls back here
