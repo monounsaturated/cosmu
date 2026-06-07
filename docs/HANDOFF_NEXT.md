@@ -62,7 +62,7 @@ The METHOD is validated: WFA + deflated-Sharpe + trial-counting + real-costs + f
 - **Prune ~19 accumulated worktrees** — `git worktree list` → remove stale agent dirs (KEEP `agent-add72795` = gkg pipeline code, + any still-active).
 
 ## ⏳ IN FLIGHT (a fresh session inherits — check these FIRST; they will NOT auto-notify a new session)
-- 🔭 **LLM-narrative verdict (the ONLY thing still in flight)** — corpus DONE (115k items) + **score DONE** ($4.77, 10 assets, ~1200 daily PIT signals each). The **verdict cohort is running** in worktree `agent-aa771aa` → it appends the answer to `docs/DECISIONS.md` + commits its branch. **Merge that branch + read the verdict** (does narrative carry a Gate-clearing edge on deep data?).
+- ✅ **LLM-narrative verdict: DONE — HONEST FAIL** (0/10 assets clear; momentum-in-disguise + partial look-ahead; best dSR 0.889 vs 0.95). The upside axis is honestly closed. Harness + DECISIONS entry + evidence on branch `worktree-agent-aa771aa` (1ceed88) — **merge it** (DECISIONS may conflict; keep both entries). Latent bug flagged there: Yahoo `range=max` silently returns MONTHLY bars — fix.
 - **Merged this session:** #140 (Explorer) · #142 (real holdout) · #143 (LLM-narrative machine) · #144 (GEM pilot) · #145 (UI honesty) · #146 (UI cohesion) · **#147 (data-viz: sparklines/gauges/interlock-strip/tabs)** · leaderboard forward-return · Overview force-dynamic build fix. Survival migration applied. 9 strategies live at honest 0%. *(UI = a disciplined OKLch design system with a real data-viz layer — not vibe-coded.)*
 
 **The ONE goal:** strategies that survive honestly and compound; the machine that never lies is the asset. Floor + upside. Go.
