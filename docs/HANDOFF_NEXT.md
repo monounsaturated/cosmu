@@ -35,6 +35,13 @@ Autonomous trading research machine. LLM proposes typed `StrategySpec`s; a **det
 - **Data:** `.cosmu/market_data/equities/` (Yahoo v8, ~135 names + `_tr.json` total-return) + `binanceperp/` (deep perps). **Stooq is dead** (paywalled) — use Yahoo v8 + certifi.
 - **Modal:** `apps/engine/remote/app.py` (jobs: gate_sweep/ingest/forward_mark/...).
 
+## 6b. DATA — the lever (TOP priority; smart data > model cleverness)
+- **FREE / pulling now (no operator action):** GDELT GKG deep news (2015+, free download → Modal scoring → LLM-narrative verdict); existing Yahoo equities (135 + TR), deep perps, LunarCrush social (1.3M rows), funding/OI.
+- **FREE / worth adding (cheap, agent-doable):** SEC EDGAR filings, CryptoPanic crypto news, Reddit/X social (idea-ingestion).
+- **BUY (optional — the ONE thing worth paying for):** a **PIT survivorship-free equity dataset** (Norgate Data, or Sharadar SEP/SF1 via Nasdaq Data Link, ~$30-50/mo) → unblocks honest equity factor tests (BAB, sector-neutral momentum) + fundamentals on a clean universe (the cap that killed equity factors). Add the vendor key to `.env.local` → sync to Modal.
+- **DB:** KEEP Supabase Pro (8GB) — we store only small numeric PIT scores; raw text is scored on Modal + discarded. No swap/supplement needed (huge corpora → object storage/BigQuery, not a DB change).
+- **Stack is right + modern:** Modal (compute) · Railway (crons) · Supabase (store). No new infra.
+
 ## 7. RESUME — next actions (priority order)
 1. **Read the strategy-fleet report** (run `wf_f7bb544d`) — how many strategies armed live; then **iterate variations of the winners** (FDR-counted) + add more TAA.
 2. **Make the forward-mark clock asset-aware** + schedule the equity `--mark` Railway cron → the floor monitors hands-off.
