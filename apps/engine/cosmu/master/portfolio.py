@@ -11,9 +11,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from cosmu.config.settings import get_settings
 from cosmu.knowledge.store import Store, utcnow
-
-_SIM_BANKROLL = Decimal("100000")
 
 
 @dataclass(frozen=True)
@@ -43,7 +42,9 @@ class Portfolio:
     does not. Positions live in the `positions` table; equity/drawdown/daily-loss are derived from snapshots so
     GET /overview reflects truth. `daily_loss_cap` is the auto-disarm threshold the order path checks."""
 
-    def __init__(self, store: Store, *, bankroll: Decimal = _SIM_BANKROLL, daily_loss_cap: Decimal = Decimal("250")) -> None:
+    def __init__(self, store: Store, *, bankroll: Decimal | None = None, daily_loss_cap: Decimal = Decimal("250")) -> None:
+        if bankroll is None:
+            bankroll = get_settings().sim_track_capital
         self.store = store
         self.bankroll = bankroll
         self.daily_loss_cap = daily_loss_cap

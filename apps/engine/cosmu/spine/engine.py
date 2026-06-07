@@ -93,7 +93,7 @@ class EngineFacade:
         self.store.append_event(actor="master", kind="run_started", ref_type="run", ref_id=run_id, payload={"mode": mode, "seed": seed})
 
         fills = 0
-        cash = Decimal("100000")
+        cash = self.settings.sim_track_capital
         equity = cash
         high_water = equity
         prices = self._synthetic_prices(rng)
@@ -147,12 +147,12 @@ class EngineFacade:
                     "equity": str(equity.quantize(Decimal("0.01"))),
                     "cash": str(cash.quantize(Decimal("0.01"))),
                     "positions_value": str((position * price).quantize(Decimal("0.01"))),
-                    "pnl": str((equity - Decimal("100000")).quantize(Decimal("0.01"))),
+                    "pnl": str((equity - self.settings.sim_track_capital).quantize(Decimal("0.01"))),
                     "drawdown": str(drawdown.quantize(Decimal("0.0001"))),
                 },
             )
 
-        net_return = (equity - Decimal("100000")) / Decimal("100000")
+        net_return = (equity - self.settings.sim_track_capital) / self.settings.sim_track_capital
         metrics = BacktestMetrics(
             oos_return=net_return,
             sharpe=Decimal("1.35") + Decimal(str(rng.random() / 5)),
@@ -196,7 +196,7 @@ class EngineFacade:
                 "tracks",
                 {
                     "strategy_version_id": version_id,
-                    "starting_capital": "100000",
+                    "starting_capital": str(self.settings.sim_track_capital),
                     "equity": str(equity.quantize(Decimal("0.01"))),
                     "return_pct": str((net_return * Decimal("100")).quantize(Decimal("0.01"))),
                     "updated_at": utcnow(),
