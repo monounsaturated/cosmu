@@ -110,7 +110,37 @@ def run_matrix_cell(asset: str, timeframe: str, *, persist: bool = True) -> Matr
     )
 
 
+# A sensible default universe for a one-command sweep (deep cached majors + a few mid-caps + equity ETFs).
+_SWEEP_UNIVERSE = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT", "SPY", "QQQ"]
+
+
+def run_sweep(assets: list[str] | None = None, timeframes: list[str] | None = None, *, persist: bool = True) -> list[MatrixResult]:
+    """One-shot: gate EVERY inbox spec across a universe × timeframes, persist each verdict to the experiment
+    memory, and return the results ranked by best dSR. The simple front door — `python -m cosmu.research.matrix_search --sweep`."""
+    assets = assets or _SWEEP_UNIVERSE
+    timeframes = timeframes or ["1d"]
+    out: list[MatrixResult] = []
+    for a in assets:
+        for tf in timeframes:
+            out.append(run_matrix_cell(a, tf, persist=persist))
+    return sorted(out, key=lambda r: r.best_dsr, reverse=True)
+
+
 def _main() -> int:
+    import sys
+
+    if "--sweep" in sys.argv or os.environ.get("MATRIX_SWEEP") == "1":
+        results = run_sweep(persist=os.environ.get("MATRIX_PERSIST", "1") == "1")
+        survivors = [r for r in results if r.n_promoted]
+        print(f"MATRIX SWEEP — {len(results)} cells · {sum(r.n_promoted for r in results)} survivors · "
+              f"{'⚠️ SURVIVOR FOUND' if survivors else 'no honest edge (the machine refused all)'}")
+        print(f"{'asset@tf':14s} {'verdict':12s} {'traded':>6s} {'promoted':>8s}  best (dsr / holdoutDSR)")
+        for r in results:
+            v = "SURVIVOR" if r.n_promoted else ("no-survivor" if r.n_traded else "no-data")
+            print(f"  {r.asset+'@'+r.timeframe:12s} {v:12s} {r.n_traded:>6d} {r.n_promoted:>8d}  "
+                  f"{r.best_spec[:34]:34s} {r.best_dsr:.3f} / {r.best_holdout_dsr:+.3f}")
+        return 0
+
     asset = os.environ.get("MATRIX_ASSET", "BTCUSDT")
     tf = os.environ.get("MATRIX_TF", "1d")
     r = run_matrix_cell(asset, tf, persist=os.environ.get("MATRIX_PERSIST", "1") == "1")
