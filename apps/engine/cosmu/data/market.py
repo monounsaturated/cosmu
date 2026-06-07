@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import ssl
+import tempfile
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -43,8 +45,12 @@ class BinanceSpotOHLCVProvider:
         bars = self._fetch_with_ccxt(symbol, timeframe, limit)
         if not bars:
             bars = self._fetch_with_rest(symbol, timeframe, limit)
-        self._write_cache(symbol, timeframe, bars)
-        return bars
+        if not bars:
+            return cached[-limit:]  # network empty → never shrink; serve what we have
+        # A single REST/ccxt page caps at 1000 bars; merge into (never overwrite) the cache so a
+        # limit>cache fetch can only EXTEND a deep cache, never truncate it (see _write_cache).
+        merged = self._write_cache(symbol, timeframe, bars)
+        return merged[-limit:]
 
     def _fetch_with_ccxt(self, symbol: str, timeframe: str, limit: int) -> list[Bar]:
         try:
@@ -76,20 +82,15 @@ class BinanceSpotOHLCVProvider:
         rows = json.loads(path.read_text())
         return [_bar_from_json(row) for row in rows]
 
-    def _write_cache(self, symbol: str, timeframe: str, bars: list[Bar]) -> None:
+    def _write_cache(self, symbol: str, timeframe: str, bars: list[Bar]) -> list[Bar]:
+        """Append-merge `bars` into the on-disk cache, deduped on ts — NEVER shrinks the cache.
+        Re-reads the current file right before writing (and writes atomically), so a single 1000-bar
+        page can't truncate a deep 2000-bar cache, and a concurrent writer's bars survive. Returns
+        the merged, ascending bars so callers can serve the up-to-date window."""
         path = self._cache_path(symbol, timeframe)
-        rows = [
-            {
-                "ts": int(bar.ts.timestamp() * 1000),
-                "open": str(bar.open),
-                "high": str(bar.high),
-                "low": str(bar.low),
-                "close": str(bar.close),
-                "volume": str(bar.volume),
-            }
-            for bar in bars
-        ]
-        path.write_text(json.dumps(rows, separators=(",", ":")))
+        merged = _merge_bars(self._read_cache(symbol, timeframe), bars)
+        _atomic_write_text(path, json.dumps(_bars_to_rows(merged), separators=(",", ":")))
+        return merged
 
 
 class StooqDailyBarsProvider:
@@ -143,12 +144,7 @@ class StooqDailyBarsProvider:
         return [_bar_from_json(r) for r in json.loads(path.read_text())]
 
     def _write_cache(self, symbol: str, bars: list[Bar]) -> None:
-        rows = [
-            {"ts": int(b.ts.timestamp() * 1000), "open": str(b.open), "high": str(b.high),
-             "low": str(b.low), "close": str(b.close), "volume": str(b.volume)}
-            for b in bars
-        ]
-        self._cache_path(symbol).write_text(json.dumps(rows, separators=(",", ":")))
+        _atomic_write_text(self._cache_path(symbol), json.dumps(_bars_to_rows(bars), separators=(",", ":")))
 
 
 class KrakenSpotOHLCVProvider:
@@ -167,9 +163,9 @@ class KrakenSpotOHLCVProvider:
         if len(cached) >= limit:
             return cached[-limit:]
         bars = self._fetch_rest(symbol, timeframe)
-        if bars:
-            self._write_cache(symbol, timeframe, bars)
-        return bars[-limit:]
+        if not bars:
+            return cached[-limit:]  # network empty → never shrink; serve what we have
+        return self._write_cache(symbol, timeframe, bars)[-limit:]
 
     def _fetch_rest(self, symbol: str, timeframe: str) -> list[Bar]:
         interval = self._INTERVAL_MINUTES.get(timeframe, 1440)
@@ -191,13 +187,11 @@ class KrakenSpotOHLCVProvider:
             return []
         return [_bar_from_json(r) for r in json.loads(path.read_text())]
 
-    def _write_cache(self, symbol: str, timeframe: str, bars: list[Bar]) -> None:
-        rows = [
-            {"ts": int(b.ts.timestamp() * 1000), "open": str(b.open), "high": str(b.high),
-             "low": str(b.low), "close": str(b.close), "volume": str(b.volume)}
-            for b in bars
-        ]
-        self._cache_path(symbol, timeframe).write_text(json.dumps(rows, separators=(",", ":")))
+    def _write_cache(self, symbol: str, timeframe: str, bars: list[Bar]) -> list[Bar]:
+        """Append-merge into the cache (never shrinks; atomic write); returns the merged bars."""
+        merged = _merge_bars(self._read_cache(symbol, timeframe), bars)
+        _atomic_write_text(self._cache_path(symbol, timeframe), json.dumps(_bars_to_rows(merged), separators=(",", ":")))
+        return merged
 
 
 class BybitSpotOHLCVProvider:
@@ -216,9 +210,9 @@ class BybitSpotOHLCVProvider:
         if len(cached) >= limit:
             return cached[-limit:]
         bars = self._fetch_rest(symbol, timeframe, limit)
-        if bars:
-            self._write_cache(symbol, timeframe, bars)
-        return bars[-limit:]
+        if not bars:
+            return cached[-limit:]  # network empty → never shrink; serve what we have
+        return self._write_cache(symbol, timeframe, bars)[-limit:]
 
     def _fetch_rest(self, symbol: str, timeframe: str, limit: int) -> list[Bar]:
         interval = self._INTERVAL.get(timeframe, "D")
@@ -239,13 +233,11 @@ class BybitSpotOHLCVProvider:
             return []
         return [_bar_from_json(r) for r in json.loads(path.read_text())]
 
-    def _write_cache(self, symbol: str, timeframe: str, bars: list[Bar]) -> None:
-        rows = [
-            {"ts": int(b.ts.timestamp() * 1000), "open": str(b.open), "high": str(b.high),
-             "low": str(b.low), "close": str(b.close), "volume": str(b.volume)}
-            for b in bars
-        ]
-        self._cache_path(symbol, timeframe).write_text(json.dumps(rows, separators=(",", ":")))
+    def _write_cache(self, symbol: str, timeframe: str, bars: list[Bar]) -> list[Bar]:
+        """Append-merge into the cache (never shrinks; atomic write); returns the merged bars."""
+        merged = _merge_bars(self._read_cache(symbol, timeframe), bars)
+        _atomic_write_text(self._cache_path(symbol, timeframe), json.dumps(_bars_to_rows(merged), separators=(",", ":")))
+        return merged
 
 
 class YahooDailyBarsProvider:
@@ -287,12 +279,7 @@ class YahooDailyBarsProvider:
         return [_bar_from_json(r) for r in json.loads(path.read_text())]
 
     def _write_cache(self, symbol: str, bars: list[Bar]) -> None:
-        rows = [
-            {"ts": int(b.ts.timestamp() * 1000), "open": str(b.open), "high": str(b.high),
-             "low": str(b.low), "close": str(b.close), "volume": str(b.volume)}
-            for b in bars
-        ]
-        self._cache_path(symbol).write_text(json.dumps(rows, separators=(",", ":")))
+        _atomic_write_text(self._cache_path(symbol), json.dumps(_bars_to_rows(bars), separators=(",", ":")))
 
 
 def _ccxt_symbol(symbol: str) -> str:
@@ -309,6 +296,41 @@ def _ssl_context() -> ssl.SSLContext:
     except ImportError:
         return ssl.create_default_context()
     return ssl.create_default_context(cafile=certifi.where())
+
+
+def _merge_bars(existing: list[Bar], fetched: list[Bar]) -> list[Bar]:
+    """Union two bar lists deduped on ts, ascending. `existing` wins on a ts collision (a closed bar is
+    immutable, so the on-disk value is authoritative and merging stays idempotent). This is the core
+    never-shrink invariant: merging a short fetched page with a deep cache can only ADD bars."""
+    merged: dict[datetime, Bar] = {b.ts: b for b in fetched}
+    merged.update({b.ts: b for b in existing})
+    return sorted(merged.values(), key=lambda b: b.ts)
+
+
+def _bars_to_rows(bars: list[Bar]) -> list[dict[str, int | str]]:
+    """Serialize Bars to the on-disk cache row shape (ts in ms; OHLCV as strings to preserve Decimals)."""
+    return [
+        {"ts": int(b.ts.timestamp() * 1000), "open": str(b.open), "high": str(b.high),
+         "low": str(b.low), "close": str(b.close), "volume": str(b.volume)}
+        for b in bars
+    ]
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write `text` to `path` atomically (unique temp file in the same dir + os.replace) so a concurrent
+    reader never observes a half-written/truncated cache — the torn-write race that let parallel harness
+    runs across worktrees corrupt the shared bar cache."""
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _bar_from_ccxt(row: list[float | int]) -> Bar:
