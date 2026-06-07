@@ -21,10 +21,12 @@ from __future__ import annotations
 
 import sys
 from decimal import ROUND_DOWN, Decimal
+from types import SimpleNamespace
 
 from cosmu.config.settings import Settings
 from cosmu.data.market import YahooDailyBarsProvider
 from cosmu.knowledge.store import Store, utcnow
+from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_tsmom_trend as tsm
 from cosmu.spine.venue import default_catalog
@@ -49,6 +51,9 @@ def _minimal_spec(longs_now: list[str]) -> dict:
     edge_type derives as 'momentum' (its true structural bet) — an honest tag, not a fabricated signal."""
     return {
         "name": STRATEGY_NAME,
+        # The TYPED two-lane discriminator: TSMOM is an externally-documented strategy, so it routes through the DEPLOY
+        # lane (positive-OOS net-of-fees + risk-adjusted beat of B&H), NOT the 0.95 in-sample Gate.
+        "lane": "deploy",
         "rationale": (
             "Diversified time-series momentum (TSMOM / absolute trend-following): monthly, for the ETF set "
             f"{tsm.ASSETS} hold each LONG when its trailing-12m total return > 0 (trend up) else move that sleeve to "
@@ -66,6 +71,14 @@ def _minimal_spec(longs_now: list[str]) -> dict:
         "direction": 1,
         "current_longs": longs_now,
     }
+
+
+def _routing_spec() -> SimpleNamespace:
+    """The lane carrier the router reads to enforce TSMOM's DEPLOY lane in code (not by convention). It only needs
+    `.lane` (the typed discriminator) and `.name` (used in the router's error messages); the full persisted spec is
+    `_minimal_spec(longs_now)`, built after validation once the current longs are known. `lane="deploy"` mirrors the
+    authored spec exactly, so the router dispatches this arm to the documented-strategy deployment bar."""
+    return SimpleNamespace(name=STRATEGY_NAME, lane="deploy")
 
 
 def _backtest_row(version_id: str, v: dict) -> dict:
@@ -122,7 +135,10 @@ def arm(store: Store | None = None) -> dict:
     """Register TSMOM as a forward-test track and open the held sim basket (1/N per currently-longed ETF). Idempotent.
     Returns a summary dict (version_id, longs, fills, forward clock origin)."""
     store = store or Store(Settings())
-    v = tsm.validate()
+    # Route the documented-strategy validation through the TYPED two-lane router: the spec's lane="deploy" forces the
+    # DEPLOY-lane evaluator (tsm.validate — positive-OOS net-of-fees + risk-adjusted beat of B&H), so the lane is
+    # enforced in code, never by which function this runner happens to call. Behaviour is identical to tsm.validate().
+    v = evaluate_by_lane(_routing_spec(), deploy_validate=tsm.validate, validate_kwargs={})
     if not v["deployable"]:
         print("\nABORT: TSMOM did not clear the deployment bar on this data — NOT arming.")
         return {"armed": False, "reason": "not deployable"}
