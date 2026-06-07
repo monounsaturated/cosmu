@@ -8,7 +8,7 @@
 
 import { Badge } from "@/components/ui/badge";
 
-// Known Gate kill-reason codes → plain language. Keys are matched case-insensitively against the
+// Known Gate kill-reason codes to plain language. Keys are matched case-insensitively against the
 // engine's reason strings; anything unmapped degrades gracefully to a spaced-out version of the code.
 const KILL_REASON_LABELS: Record<string, string> = {
   deflated_sharpe_below_bar: "deflated Sharpe below the 0.95 bar",
