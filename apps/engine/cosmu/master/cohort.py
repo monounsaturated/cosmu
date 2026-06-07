@@ -13,6 +13,7 @@ from cosmu.knowledge.store import Store
 from cosmu.master.fdr import benjamini_hochberg, dsr_pvalue
 from cosmu.master.scorer import BacktestMetrics, TrialStats, score
 from cosmu.master.trials import register_trial, trial_stats
+from cosmu.master.verdict_log import CohortPersist, persist_cohort_verdict
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,7 @@ def promote_cohort(
     fdr_q: float = 0.10,
     register: bool = True,
     trials: TrialStats | None = None,
+    persist: CohortPersist | None = None,
 ) -> list[Promotion]:
     """Judge a cohort of DISTINCT candidates together. Steps: (1) register every candidate as a trial — the
     deflation/FDR math is invalid if any bypasses this; (2) score each on stats vs the trial-inflated benchmark;
@@ -57,7 +59,13 @@ def promote_cohort(
     correlated) trial population own the ledger itself — e.g. the finder registers EVERY grid variant as a
     trial (so deflation sees the true count) but then dedupes the correlated grid down to DISTINCT cluster
     representatives before handing them here, honoring this gate's "distinct candidates, not correlated
-    param-variants" contract. Defaults reproduce the prior behaviour exactly (the deployed FarmLoop path)."""
+    param-variants" contract. Defaults reproduce the prior behaviour exactly (the deployed FarmLoop path).
+
+    `persist=CohortPersist(...)` opts the caller into durable experiment-memory: after the verdict is computed
+    it is written to `gate_verdicts` (one row per cohort run, payload kind='cohort') so every run is queryable,
+    not just logged to DECISIONS.md. The persist store is a SEPARATE durable handle from the (possibly tempfile)
+    trial-ledger `store`, so persisting NEVER touches the deflation math; it is best-effort (a DB failure logs +
+    is swallowed, never breaking the run). Default None = pure, side-effect-free (the math is unchanged)."""
     if not candidates:
         return []
 
@@ -88,7 +96,7 @@ def promote_cohort(
     )
     rank_of = {p[0].id: i + 1 for i, p in enumerate(promoted_sorted)}
 
-    return [
+    promotions = [
         Promotion(
             candidate_id=c.id,
             promoted=ok,
@@ -100,3 +108,9 @@ def promote_cohort(
         )
         for c, v, ok, reasons in prelim
     ]
+
+    # 6. (opt-in) persist the full cohort verdict to durable experiment-memory — best-effort, never raises.
+    if persist is not None:
+        persist_cohort_verdict(persist, candidates, promotions)
+
+    return promotions

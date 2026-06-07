@@ -41,6 +41,7 @@ from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
 from cosmu.knowledge.store import Store
 from cosmu.lab.finder import build_grid
 from cosmu.master.cohort import Candidate, promote_cohort
+from cosmu.master.verdict_log import CohortPersist
 from cosmu.master.scorer import cscv_pbo, score
 from cosmu.master.trials import record_trial, trial_stats
 from cosmu.research.carry_ablation import _resolve_params
@@ -209,6 +210,7 @@ def run_cohort(
     headlines_scored: int = 0,
     llm_calls: int = 0,
     llm_cost_usd: float = 0.0,
+    persist_store: Store | None = None,
 ) -> CohortReport:
     gates = store.settings.gates
     fee_bps = default_catalog().venue("binance").taker_fee_bps
@@ -263,7 +265,19 @@ def run_cohort(
 
     # COHORT BH-FDR across the whole family — register=False + the shared trial_stats so deflation/FDR see the
     # true (grid-inflated) count. THIS is the verdict (NEVER gate.evaluate_cross_asset_ablation).
-    promotions = promote_cohort(store, candidates, gates, fdr_q=fdr_q, register=False, trials=trial_stats(store))
+    persist = (
+        CohortPersist(
+            store=persist_store,
+            run_id=f"llm-narrative-{symbol}-{data_source}",
+            hypothesis=f"LLM-quantified news narrative carries a gate-clearing edge on {symbol} (vs momentum, leak-controlled)",
+            source="research/llm_narrative",
+            data_source=data_source,
+            extra={"symbol": symbol, "headlines_scored": headlines_scored, "fdr_q": fdr_q},
+        )
+        if persist_store is not None
+        else None
+    )
+    promotions = promote_cohort(store, candidates, gates, fdr_q=fdr_q, register=False, trials=trial_stats(store), persist=persist)
     by_id = {p.candidate_id: p for p in promotions}
     for r in reports:
         p = by_id.get(r.name)
@@ -318,9 +332,13 @@ def _main() -> int:
 
     tmp = tempfile.mkdtemp(prefix="cosmu-llmnarr-")
     store = Store(Settings(database_url=f"sqlite:///{tmp}/llmnarr.sqlite3", openrouter_api_key=None))
+    # Persist the verdict to durable experiment-memory (gate_verdicts) on real runs; the tempfile store above
+    # stays isolated for the trial-ledger/FDR math.
+    from cosmu.config.settings import get_settings
     report = run_cohort(
         market, points, store, symbol=symbol,
         headlines_scored=len(items), llm_calls=scorer.calls, llm_cost_usd=scorer.cost_usd,
+        persist_store=Store(get_settings()),
     )
 
     print(f"LLM-NARRATIVE FIRST-CUT COHORT — {report.verdict}")

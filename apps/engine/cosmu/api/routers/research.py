@@ -53,8 +53,19 @@ def _gate_to_response(verdict: Any, *, data_source: str) -> GateVerdictResponse:
 def gate_status() -> GateStatusResponse:
     from cosmu.research.gate import PREREGISTERED_BAR
 
-    row = store.row("SELECT payload FROM gate_verdicts ORDER BY id DESC LIMIT 1")
-    verdict = GateVerdictResponse(**_json(row["payload"])) if row else None
+    # gate_verdicts now also stores cohort research verdicts (payload kind='cohort'), whose shape differs from
+    # the single-signal GateVerdictResponse. Walk recent rows newest-first and return the first that parses as a
+    # single-signal verdict, so a cohort row landing as "latest" can't 500 this status card.
+    verdict = None
+    for r in store.rows("SELECT payload FROM gate_verdicts ORDER BY id DESC LIMIT 20"):
+        data = _json(r["payload"])
+        if isinstance(data, dict) and data.get("kind") == "cohort":
+            continue
+        try:
+            verdict = GateVerdictResponse(**data)
+            break
+        except (TypeError, ValueError):
+            continue
     return GateStatusResponse(verdict=verdict, preregistered_bar=dict(PREREGISTERED_BAR))
 
 
