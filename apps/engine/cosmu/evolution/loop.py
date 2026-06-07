@@ -444,12 +444,13 @@ class FarmLoop:
             },
         )
         if passed:
-            equity = Decimal("100000") * (Decimal("1") + metrics.oos_return)
+            _capital = self.settings.sim_track_capital
+            equity = _capital * (Decimal("1") + metrics.oos_return)
             b.insert(
                 "tracks",
                 {
                     "strategy_version_id": version_id,
-                    "starting_capital": "100000",
+                    "starting_capital": str(_capital),
                     "equity": str(equity.quantize(Decimal("0.01"))),
                     "return_pct": str((metrics.oos_return * Decimal("100")).quantize(Decimal("0.01"))),
                     "updated_at": utcnow(),

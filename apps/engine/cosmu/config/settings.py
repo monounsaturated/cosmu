@@ -135,7 +135,14 @@ class Settings(BaseSettings):
     # Operating jurisdiction (ISO-3166 alpha-2). Live-legality is a venue+country fact (e.g. Binance is not
     # legal for US live), so this PICKS which venues can move real money. Override with LIVE_JURISDICTION.
     live_jurisdiction: str = "FR"
-    sim_bankroll: Decimal = Decimal("100000")
+    # SIM/forward-test track starting capital. Override with SIM_TRACK_CAPITAL. Default $1k so a single
+    # track is small enough to be credible but large enough for min-notional compliance on Binance spot.
+    sim_track_capital: Decimal = Decimal("1000")
+
+    @property
+    def sim_bankroll(self) -> Decimal:
+        """Backward-compat alias for sim_track_capital. Use sim_track_capital in new code."""
+        return self.sim_track_capital
     openrouter_api_key: str | None = Field(default=None, repr=False)
     # LLM author: xAI (Grok) is preferred when XAI_API_KEY is set (already on Railway) — most efficient,
     # no new key; OpenRouter is the fallback. Both are OpenAI-compatible (same request shape).
