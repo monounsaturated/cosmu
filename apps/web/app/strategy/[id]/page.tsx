@@ -13,8 +13,45 @@ import { ChartEmpty } from "@/components/charts/chart-kit";
 import { SpecView } from "@/components/strategy/spec-view";
 import { StrategyStages } from "@/components/nav/strategy-stages";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
-import { ExpandableSection } from "@/components/ui/expandable-section";
+import { Tabs, type TabItem, InterlockStrip, type Interlock, GaugeBar } from "@/components/ui/viz";
 import { cn, formatUsd } from "@/lib/utils";
+
+// The REAL deterministic Gate thresholds (apps/engine/cosmu/config/settings.py). Surfaced here so the
+// verdict reads as a set of pass/fail interlocks against the SAME numbers the engine gates on — never
+// hand-picked display thresholds.
+const GATE = { minTrades: 30, maxDrawdownPct: 0.25, maxPbo: 0.5, minDeflatedSharpe: 0 } as const;
+
+// Turn a backtest into the four measurable Gate interlocks (the deterministic criteria the engine
+// applies). Each chip carries the REAL measured value and the threshold it was judged against, so the
+// operator sees exactly which gate held and which broke. Honest by construction — pure data, no fabrication.
+function interlocksOf(bt: Backtest): Interlock[] {
+  return [
+    {
+      label: "Deflated Sharpe",
+      value: bt.deflated_sharpe.toFixed(2),
+      threshold: `> ${GATE.minDeflatedSharpe.toFixed(0)}`,
+      pass: bt.deflated_sharpe > GATE.minDeflatedSharpe
+    },
+    {
+      label: "PBO",
+      value: bt.pbo.toFixed(2),
+      threshold: `< ${GATE.maxPbo.toFixed(2)}`,
+      pass: bt.pbo < GATE.maxPbo
+    },
+    {
+      label: "Max DD",
+      value: `${(bt.max_dd * 100).toFixed(1)}%`,
+      threshold: `< ${(GATE.maxDrawdownPct * 100).toFixed(0)}%`,
+      pass: bt.max_dd < GATE.maxDrawdownPct
+    },
+    {
+      label: "Trades",
+      value: String(bt.num_trades),
+      threshold: `≥ ${GATE.minTrades}`,
+      pass: bt.num_trades >= GATE.minTrades
+    }
+  ];
+}
 
 // Derive a sim equity curve from the strategy's trade log: cumulative realized cash flow
 // (sells add, buys subtract, fees always subtract), seeded at 0. Honest — built only from the
@@ -97,6 +134,12 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
   // detail header answers "is this proven, where does it trade, and on what edge?" at a glance.
   const passed = strategy.backtests.some((bt: Backtest) => bt.passed_gates);
   const summary = strategySummary(strategy.spec, strategy.backtests);
+  // The representative backtest for the headline interlock strip: prefer a passed one, else the strongest
+  // by deflated Sharpe (so the strip reflects the best honest evidence this Version has produced).
+  const headlineBt =
+    strategy.backtests.find((bt) => bt.passed_gates) ??
+    [...strategy.backtests].sort((a, b) => b.deflated_sharpe - a.deflated_sharpe)[0] ??
+    null;
 
   return (
     <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-7 lg:px-7">
@@ -137,9 +180,48 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
         </p>
       </div>
 
-      {/* Evidence visuals: sim equity from trades + per-fold OOS returns + untouched holdout. */}
-      <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
-        <Card>
+      {/* Gate interlock strip — the verdict as pass/fail chips against the REAL deterministic thresholds,
+          not a wall of numbers. Each chip shows the measured value and the bar it cleared (or didn't). */}
+      {headlineBt ? (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-quiet">
+            Gate interlocks
+            <Tooltip content="The deterministic Gate's pass/fail criteria, evaluated on the strongest backtest: deflated Sharpe > 0, PBO < 0.50, max drawdown < 25%, and at least 30 trades. Green = cleared, red = blocked." />
+          </div>
+          <InterlockStrip interlocks={interlocksOf(headlineBt)} />
+        </div>
+      ) : null}
+
+      {/* Tabbed progressive disclosure — the digestible default (Performance) opens first; Gate, Trades,
+          Spec, and Notes are a tap away. Only the active panel is mounted in the DOM, so the page reads
+          as one focused view instead of the old "expand to dump every section at once" wall. */}
+      <Tabs
+        ariaLabel="Strategy detail sections"
+        tabs={[
+          { id: "performance", label: "Performance", content: <PerformanceTab strategy={strategy} simCurve={simCurve} holdout={holdout} /> },
+          { id: "gate", label: "Gate", count: strategy.backtests.length, content: <GateTab backtests={strategy.backtests} /> },
+          { id: "trades", label: "Trades", count: strategy.trades.length, content: <TradesTab trades={strategy.trades} /> },
+          { id: "spec", label: "Spec", content: <SpecTab spec={strategy.spec} params={strategy.params} code={strategy.generated_code} /> },
+          { id: "notes", label: "Notes", content: <NotesTab notes={strategy.notes_md} /> }
+        ] satisfies TabItem[]}
+      />
+    </div>
+  );
+}
+
+// ── Performance tab: sim equity from trades + per-fold OOS + untouched holdout (the digestible default). ──
+function PerformanceTab({
+  strategy,
+  simCurve,
+  holdout
+}: {
+  strategy: { backtests: Backtest[] };
+  simCurve: Point[];
+  holdout: { label: string; value: string; tone?: "up" | "down" }[];
+}) {
+  return (
+    <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
+      <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5">
               Simulation equity
@@ -187,9 +269,128 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
             </div>
           </CardContent>
         </Card>
-      </div>
+    </div>
+  );
+}
 
-      {/* The spec — named features, composable modules, and fitted params. */}
+// ── Gate tab: every backtest's deterministic verdict, with a max-DD-vs-25%-limit gauge per card. ──
+function GateTab({ backtests }: { backtests: Backtest[] }) {
+  if (backtests.length === 0) {
+    return (
+      <Card>
+        <CardContent className="pt-5">
+          <EmptyState title="No backtests yet." hint="Gate verdicts appear here once this Version has been backtested." />
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {backtests.map((bt) => {
+        const ddFrac = Math.min(1, bt.max_dd / GATE.maxDrawdownPct);
+        const ddOk = bt.max_dd < GATE.maxDrawdownPct;
+        return (
+          <Card key={bt.id}>
+            <CardHeader>
+              <CardTitle className="uppercase tracking-wide">{bt.kind}</CardTitle>
+              <Badge variant={bt.passed_gates ? "up" : "down"}>{bt.passed_gates ? "passed" : "blocked"}</Badge>
+            </CardHeader>
+            <CardContent className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
+                <Metric label="deflated Sharpe" value={bt.deflated_sharpe.toFixed(2)} ok={bt.deflated_sharpe > GATE.minDeflatedSharpe} />
+                <Metric label="PBO" value={bt.pbo.toFixed(2)} ok={bt.pbo < GATE.maxPbo} />
+                <Metric label="OOS return" value={`${(bt.oos_return * 100).toFixed(1)}%`} tone={bt.oos_return >= 0 ? "up" : "down"} />
+                <Metric label="win rate" value={`${(bt.win_rate * 100).toFixed(0)}%`} />
+                <Metric label="trades" value={String(bt.num_trades)} ok={bt.num_trades >= GATE.minTrades} />
+                <Metric label="max DD" value={`${(bt.max_dd * 100).toFixed(1)}%`} tone="down" />
+              </div>
+              {/* Max-DD vs the 25% kill limit — the bar reads the headroom faster than the digits. */}
+              <div className="space-y-1 border-t border-border/50 pt-3">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-quiet">Drawdown vs 25% limit</span>
+                  <span className={cn("tabular font-medium", ddOk ? "text-foreground" : "text-down")}>
+                    {(ddFrac * 100).toFixed(0)}% of limit
+                  </span>
+                </div>
+                <GaugeBar value={bt.max_dd} max={GATE.maxDrawdownPct} marker={1} tone={ddOk ? "warn" : "down"} />
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function Metric({ label, value, ok, tone }: { label: string; value: string; ok?: boolean; tone?: "up" | "down" }) {
+  const color = ok === false ? "text-down" : tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-foreground";
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-muted">{label}</span>
+      <span className={cn("tabular", color)}>{value}</span>
+    </div>
+  );
+}
+
+// ── Trades tab: the full fill log. Mounts only when opened (no cost on the default view). ──
+function TradesTab({ trades }: { trades: Execution[] }) {
+  if (trades.length === 0) {
+    return (
+      <Card>
+        <CardContent className="pt-5">
+          <EmptyState title="No trades yet." hint="Fills appear here as this track trades in Simulation. Nothing is fabricated." />
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <Table>
+          <THead>
+            <TR>
+              <TH className="pl-4 sticky-col">Side</TH>
+              <TH className="text-right">Qty</TH>
+              <TH className="text-right">Price</TH>
+              <TH className="text-right">Fee</TH>
+              <TH>Venue</TH>
+              <TH className="pr-4">Time</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {trades.map((trade) => (
+              <TR key={trade.id}>
+                <TD className="pl-4 sticky-col">
+                  <Badge variant={trade.side === "buy" ? "up" : "down"}>{trade.side}</Badge>
+                </TD>
+                <TD className="text-right tabular text-foreground">{trade.qty}</TD>
+                <TD className="text-right tabular text-foreground">{formatUsd(trade.price)}</TD>
+                <TD className="text-right tabular text-muted">{formatUsd(trade.fee)}</TD>
+                <TD className="text-quiet">{trade.venue ?? "—"}</TD>
+                <TD className="pr-4 text-quiet">
+                  <time dateTime={trade.ts}>{new Date(trade.ts).toLocaleString("en-US")}</time>
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Spec tab: the typed hypothesis + the compiled artifact it produced. ──
+function SpecTab({
+  spec,
+  params,
+  code
+}: {
+  spec: Record<string, unknown>;
+  params: Record<string, unknown>;
+  code: string;
+}) {
+  return (
+    <div className="space-y-3">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-1.5">
@@ -198,145 +399,47 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <SpecView spec={strategy.spec} params={strategy.params} />
+          <SpecView spec={spec} params={params} />
         </CardContent>
       </Card>
-
-      {/* Progressive disclosure — digestible default: equity curve + OOS folds + spec above.
-          Gate history, agent notes, trade blotter, and compiled code are detail; reveal on demand. */}
-      <ExpandableSection
-        showLabel={`Show gate history, notes, trade blotter (${strategy.trades.length} fills) & compiled code`}
-        hideLabel="Hide detail"
-        summary={null}
-      >
-        <div className="grid gap-3 lg:grid-cols-2">
-          {/* Gate history — every backtest's deterministic verdict. */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Gate history</CardTitle>
-              <Tooltip content="Each backtest's deterministic Gate verdict — deflated Sharpe, PBO, OOS return, win rate, and pass/block. The Gate decides promotion." />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {strategy.backtests.length === 0 ? (
-                <EmptyState title="No backtests yet." hint="Gate verdicts appear here once this Version has been backtested." />
-              ) : (
-                strategy.backtests.map((bt: Backtest) => (
-                  <div key={bt.id} className="rounded-md border border-border/60 bg-surface-2/40 p-3.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[13px] font-medium uppercase tracking-wide text-foreground">{bt.kind}</span>
-                      <Badge variant={bt.passed_gates ? "up" : "down"}>{bt.passed_gates ? "passed" : "blocked"}</Badge>
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-[12.5px]">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted">deflated Sharpe</span>
-                        <span className="tabular text-foreground">{bt.deflated_sharpe.toFixed(2)}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted">PBO</span>
-                        <span className="tabular text-foreground">{bt.pbo.toFixed(2)}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted">OOS return</span>
-                        <span className={cn("tabular", bt.oos_return >= 0 ? "text-up" : "text-down")}>{(bt.oos_return * 100).toFixed(1)}%</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted">win rate</span>
-                        <span className="tabular text-foreground">{(bt.win_rate * 100).toFixed(0)}%</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted">trades</span>
-                        <span className="tabular text-foreground">{bt.num_trades}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted">max DD</span>
-                        <span className="tabular text-down">{(bt.max_dd * 100).toFixed(1)}%</span>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Agent post-mortem / notes. */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-1.5">
-                <ScrollText className="size-4 text-iris-soft" /> Agent notes
-                <Tooltip content="The authoring/post-mortem notes the agent recorded for this Version — why it was tried, and what was learned." />
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {strategy.notes_md ? (
-                <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-muted">{strategy.notes_md}</div>
-              ) : (
-                <EmptyState title="No notes recorded." hint="The agent's rationale and post-mortem for this Version appear here when present." />
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Trade blotter — the full fill log. */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Trade blotter</CardTitle>
-            <Badge variant="muted">{strategy.trades.length} fills</Badge>
-          </CardHeader>
-          <CardContent>
-            {strategy.trades.length === 0 ? (
-              <EmptyState title="No trades yet." hint="Fills appear here as this track trades in Simulation. Nothing is fabricated." />
-            ) : (
-              <Table>
-                <THead>
-                  <TR>
-                    <TH className="sticky-col">Side</TH>
-                    <TH className="text-right">Qty</TH>
-                    <TH className="text-right">Price</TH>
-                    <TH className="text-right">Fee</TH>
-                    <TH>Venue</TH>
-                    <TH>Time</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {strategy.trades.map((trade: Execution) => (
-                    <TR key={trade.id}>
-                      <TD className="sticky-col">
-                        <Badge variant={trade.side === "buy" ? "up" : "down"}>{trade.side}</Badge>
-                      </TD>
-                      <TD className="text-right tabular text-foreground">{trade.qty}</TD>
-                      <TD className="text-right tabular text-foreground">{formatUsd(trade.price)}</TD>
-                      <TD className="text-right tabular text-muted">{formatUsd(trade.fee)}</TD>
-                      <TD className="text-quiet">{trade.venue ?? "—"}</TD>
-                      <TD className="text-quiet">
-                        <time dateTime={trade.ts}>{new Date(trade.ts).toLocaleString("en-US")}</time>
-                      </TD>
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Compiled code — the deterministic artifact the spec compiled to. */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-1.5">
-              Compiled code
-              <Tooltip content="The deterministic code this Version's spec compiled to — what actually runs in the backtest and track." />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {strategy.generated_code ? (
-              <pre className="max-h-[420px] overflow-auto rounded-md border border-border/60 bg-background/60 p-3 font-mono text-[12px] leading-relaxed text-iris-soft">
-                {strategy.generated_code}
-              </pre>
-            ) : (
-              <EmptyState title="No compiled code." hint="The compiled artifact appears here once this Version's spec has been compiled." />
-            )}
-          </CardContent>
-        </Card>
-      </ExpandableSection>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            Compiled code
+            <Tooltip content="The deterministic code this Version's spec compiled to — what actually runs in the backtest and track." />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {code ? (
+            <pre className="max-h-[420px] overflow-auto rounded-md border border-border/60 bg-background/60 p-3 font-mono text-[12px] leading-relaxed text-iris-soft">
+              {code}
+            </pre>
+          ) : (
+            <EmptyState title="No compiled code." hint="The compiled artifact appears here once this Version's spec has been compiled." />
+          )}
+        </CardContent>
+      </Card>
     </div>
+  );
+}
+
+// ── Notes tab: the agent's authoring / post-mortem rationale. ──
+function NotesTab({ notes }: { notes: string }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-1.5">
+          <ScrollText className="size-4 text-iris-soft" /> Agent notes
+          <Tooltip content="The authoring/post-mortem notes the agent recorded for this Version — why it was tried, and what was learned." />
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {notes ? (
+          <div className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-muted">{notes}</div>
+        ) : (
+          <EmptyState title="No notes recorded." hint="The agent's rationale and post-mortem for this Version appear here when present." />
+        )}
+      </CardContent>
+    </Card>
   );
 }

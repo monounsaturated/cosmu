@@ -5,11 +5,11 @@
 //   (d) Is the data feed fresh?
 // HONEST: when the engine is unreachable we render a single "not connected" state and never fabricate.
 
-import { Activity, ArrowRight, ClipboardCheck, FlaskConical, LineChart, Pause, Play, Users } from "lucide-react";
+import { Activity, ArrowRight, ClipboardCheck, FlaskConical, LineChart, Pause, Play, TrendingUp, Users } from "lucide-react";
 import Link from "next/link";
-import { engineConfigured, getAutonomyStatus, getVerdicts, getInboxQueue, getLeaderboard, getIntelligence } from "./data";
+import { engineConfigured, getAutonomyStatus, getVerdicts, getInboxQueue, getLeaderboard, getIntelligence, getOverview } from "./data";
 import type { VerdictRow } from "./data";
-import type { InboxQueueItem, LeaderboardRow } from "@cosmu/contracts-ts";
+import type { InboxQueueItem, LeaderboardRow, OverviewResponse } from "@cosmu/contracts-ts";
 import type { FunnelStats } from "./data";
 import { IdeaDumpBox } from "./idea-dump-box";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
@@ -17,8 +17,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DataPreview } from "@/components/ui/data-preview";
 import { Tooltip } from "@/components/ui/tooltip";
+import { MetricCard, Sparkline } from "@/components/ui/viz";
 import { DataFreshness } from "@/components/overview/data-freshness";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn, formatUsd, timeAgo } from "@/lib/utils";
 
 // Live operator dashboard: always render on-demand with fresh engine data — never statically pre-render.
 // (Static export hangs fetching the engine at build time; on-demand also lets the honest "not connected"
@@ -31,16 +32,18 @@ export default async function OverviewPage() {
     { verdicts, connected: verdictsConnected },
     { items: inboxItems, connected: inboxConnected },
     { leaderboard, connected: lbConnected },
-    { intelligence, connected: intelConnected }
+    { intelligence, connected: intelConnected },
+    { overview, connected: overviewConnected }
   ] = await Promise.all([
     getAutonomyStatus(),
     getVerdicts(),
     getInboxQueue(),
     getLeaderboard(),
-    getIntelligence()
+    getIntelligence(),
+    getOverview()
   ]);
 
-  const connected = statusConnected || verdictsConnected || lbConnected || intelConnected || inboxConnected;
+  const connected = statusConnected || verdictsConnected || lbConnected || intelConnected || inboxConnected || overviewConnected;
 
   if (!connected) {
     return (
@@ -64,6 +67,17 @@ export default async function OverviewPage() {
   return (
     <div className="mx-auto max-w-[1100px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:px-7">
       <Header />
+
+      {/* Command-center metric strip — the four glanceable headline numbers, with the REAL sim equity
+          sparkline. Honest day-0 states when the engine has produced no curve / verdicts yet. */}
+      <CommandStrip
+        overview={overview}
+        overviewConnected={overviewConnected}
+        funnel={intelligence.funnel}
+        intelConnected={intelConnected}
+        verdictRows={verdicts.rows ?? []}
+        verdictsConnected={verdictsConnected}
+      />
 
       <MachineStatus status={status} connected={statusConnected} />
 
@@ -94,6 +108,69 @@ function Header() {
       <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">The machine</h1>
       <p className="mt-1 text-[13px] text-muted">Pipeline status, Gate verdicts, forward-test progress, and data coverage — all real, nothing fabricated.</p>
     </div>
+  );
+}
+
+// Command-center metric strip — four dense KPI tiles. Every number is REAL engine data; the sim-equity
+// sparkline is the actual /overview equity_curve (renders nothing, with an honest "day 0" hint, until the
+// engine has produced ≥2 points). The Gate pass-rate is computed from the real verdict ledger.
+function CommandStrip({
+  overview,
+  overviewConnected,
+  funnel,
+  intelConnected,
+  verdictRows,
+  verdictsConnected
+}: {
+  overview: OverviewResponse;
+  overviewConnected: boolean;
+  funnel: FunnelStats;
+  intelConnected: boolean;
+  verdictRows: VerdictRow[];
+  verdictsConnected: boolean;
+}) {
+  const curve = overview.equity_curve ?? [];
+  const equityValues = curve.map((p) => p.value);
+  const hasCurve = equityValues.length >= 2;
+  const pnl = overview.pnl_net;
+
+  // Gate pass-rate over the real ruled verdicts (PASS ÷ ruled). Honest "—" when nothing has been ruled.
+  const ruled = verdictRows.filter((r) => r.status === "PASS" || r.status === "FAIL");
+  const passes = ruled.filter((r) => r.status === "PASS").length;
+  const passRate = ruled.length > 0 ? Math.round((passes / ruled.length) * 100) : null;
+
+  return (
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <MetricCard
+        label="Sim net P&L"
+        tone={pnl > 0 ? "up" : pnl < 0 ? "down" : "iris"}
+        icon={<TrendingUp className="size-4" />}
+        value={overviewConnected ? <span className={pnl >= 0 ? "text-up" : "text-down"}>{formatUsd(pnl)}</span> : "—"}
+        hint={overviewConnected ? (hasCurve ? "across all sim tracks" : "day 0 — no curve yet") : "engine offline"}
+        visual={hasCurve ? <Sparkline values={equityValues} ariaLabel="simulation equity trend" /> : undefined}
+      />
+      <MetricCard
+        label="Passed Gate"
+        tone="up"
+        icon={<ClipboardCheck className="size-4" />}
+        value={intelConnected ? funnel.gate_passed : "—"}
+        hint={intelConnected ? `${funnel.authored} authored · ${funnel.killed} killed` : "engine offline"}
+      />
+      <MetricCard
+        label="In simulation"
+        tone="iris"
+        icon={<FlaskConical className="size-4" />}
+        value={intelConnected ? funnel.funded : "—"}
+        hint={intelConnected ? `${funnel.live} live` : "engine offline"}
+      />
+      <MetricCard
+        label="Gate pass-rate"
+        tone={passRate === null ? "muted" : passRate >= 20 ? "up" : "warn"}
+        icon={<Users className="size-4" />}
+        value={verdictsConnected && passRate !== null ? `${passRate}%` : "—"}
+        hint={verdictsConnected ? (ruled.length > 0 ? `${passes}/${ruled.length} theses passed` : "none ruled yet") : "ledger offline"}
+      />
+    </section>
   );
 }
 
@@ -193,41 +270,55 @@ function CandidatePipeline({
   );
 }
 
-// Compact funnel bar: authored → gate_passed → in simulation, with cohort tooltip.
-function PipelineFunnelBar({ funnel }: { funnel: FunnelStats }) {
-  const steps = [
-    { label: "Specs authored", value: funnel.authored, accent: "text-muted" },
-    { label: "Passed Gate", value: funnel.gate_passed, accent: "text-up" },
-    { label: "In simulation", value: funnel.funded, accent: "text-iris-soft" }
-  ];
+// Pipeline funnel viz: the candidate population narrowing through the lifecycle (authored → screened →
+// passed Gate → funded → live), drawn as proportional bars so the survivorship narrows visibly. Each
+// stage's bar width is RELATIVE to the widest stage (authored) — the real counts are the source of truth.
+// The killed count is shown as the attrition tail. Honest: zero-width bars when a stage is empty.
+const FUNNEL_STAGES: { key: keyof FunnelStats; label: string; tone: string }[] = [
+  { key: "authored", label: "Specs authored", tone: "bg-border-strong" },
+  { key: "screened", label: "Screened", tone: "bg-info/70" },
+  { key: "gate_passed", label: "Passed Gate", tone: "bg-up/80" },
+  { key: "funded", label: "In simulation", tone: "bg-iris/80" },
+  { key: "live", label: "Live", tone: "bg-iris" }
+];
 
+function PipelineFunnelBar({ funnel }: { funnel: FunnelStats }) {
+  const top = Math.max(funnel.authored, funnel.screened, funnel.gate_passed, funnel.funded, funnel.live, 1);
   return (
-    <div className="rounded-md border border-border/50 bg-surface-2/30 px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-x-1 gap-y-2 sm:gap-x-0">
-        {steps.map((step, i) => (
-          <span key={step.label} className="flex items-center gap-1.5">
-            {i > 0 ? <span className="text-[11px] text-quiet">→</span> : null}
-            <span className="flex items-center gap-1">
-              <span className={cn("text-[15px] font-semibold tabular", step.accent)}>{step.value}</span>
-              <span className="text-[11px] text-quiet">{step.label}</span>
-              {/* Cohort tooltip appears on the Gate step — explains BH-FDR multiple-testing context */}
-              {step.label === "Passed Gate" ? (
-                <Tooltip
-                  content="Specs are gated as a cohort — tested together — so the Gate's multiple-testing correction (BH-FDR) ensures a winner isn't just lucky from many tries."
-                  side="bottom"
-                >
-                  <Users className="size-3 text-quiet" />
-                </Tooltip>
-              ) : null}
-            </span>
-          </span>
-        ))}
-        {funnel.killed > 0 ? (
-          <span className="ml-auto text-[11px] text-quiet">
-            <span className="text-down">{funnel.killed}</span> killed
-          </span>
-        ) : null}
+    <div className="rounded-md border border-border/50 bg-surface-2/30 px-3.5 py-3">
+      <div className="space-y-1.5">
+        {FUNNEL_STAGES.map((stage) => {
+          const value = funnel[stage.key];
+          const pct = (value / top) * 100;
+          return (
+            <div key={stage.key} className="flex items-center gap-2.5">
+              <div className="flex w-28 shrink-0 items-center gap-1 text-[11px] text-quiet">
+                {stage.label}
+                {stage.key === "gate_passed" ? (
+                  <Tooltip
+                    content="Specs are gated as a cohort — tested together — so the Gate's multiple-testing correction (BH-FDR) ensures a winner isn't just lucky from many tries."
+                    side="bottom"
+                  >
+                    <Users className="size-3 text-quiet" />
+                  </Tooltip>
+                ) : null}
+              </div>
+              <div className="h-4 flex-1 overflow-hidden rounded bg-surface-2">
+                <div
+                  className={cn("h-full rounded transition-[width] duration-500", stage.tone)}
+                  style={{ width: `${Math.max(pct, value > 0 ? 3 : 0)}%` }}
+                />
+              </div>
+              <span className="w-8 shrink-0 text-right text-[13px] font-semibold tabular text-foreground">{value}</span>
+            </div>
+          );
+        })}
       </div>
+      {funnel.killed > 0 ? (
+        <div className="mt-2 border-t border-border/40 pt-2 text-[11px] text-quiet">
+          <span className="text-down tabular font-medium">{funnel.killed}</span> killed / graveyarded along the way
+        </div>
+      ) : null}
     </div>
   );
 }
