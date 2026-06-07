@@ -10,7 +10,7 @@ import { KeysPanel } from "@/components/settings/keys-panel";
 export default async function SettingsPage() {
   const { keys, connected } = await getSettingsKeys();
   return (
-    <div className="mx-auto max-w-[900px] space-y-8 px-5 py-7 lg:px-7">
+    <div className="mx-auto max-w-[900px] space-y-8 px-4 py-6 sm:px-5 sm:py-7 lg:px-7">
       <SectionHeader
         eyebrow="settings"
         title="Operator controls"

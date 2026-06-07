@@ -1,4 +1,4 @@
-import { ArrowLeft, ScrollText } from "lucide-react";
+import { ArrowLeft, ScrollText, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { engineConfigured, getStrategy } from "../../data";
 import type { Backtest, Execution, Point } from "@cosmu/contracts-ts";
@@ -40,6 +40,31 @@ function holdoutRows(holdout: Record<string, unknown>): { label: string; value: 
   });
 }
 
+// Pull the glanceable summary off the REAL detail fields: thesis (spec.rationale), venue + timeframe
+// (spec.universe / spec.horizon), and the best OOS return across passed backtests (else any backtest).
+// Everything is defensive — the spec is typed Record<string, unknown>, so unknown shapes yield null and
+// the header simply omits that chip rather than fabricating a value.
+function strategySummary(
+  spec: Record<string, unknown>,
+  backtests: Backtest[]
+): { thesis: string | null; venue: string | null; timeframe: string | null; bestOos: number | null } {
+  const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+  const universe = isRecord(spec.universe) ? spec.universe : null;
+  const horizon = isRecord(spec.horizon) ? spec.horizon : null;
+  const venues = universe && Array.isArray(universe.venues) ? (universe.venues as unknown[]).filter((x): x is string => typeof x === "string") : [];
+  const tfRaw = horizon && (typeof horizon.timeframe === "string" ? horizon.timeframe : null);
+  // Prefer a passed backtest's OOS return; otherwise the highest OOS across all backtests. null when none.
+  const passedBts = backtests.filter((b) => b.passed_gates);
+  const pool = passedBts.length ? passedBts : backtests;
+  const bestOos = pool.length ? Math.max(...pool.map((b) => b.oos_return)) * 100 : null;
+  return {
+    thesis: typeof spec.rationale === "string" && spec.rationale ? spec.rationale : null,
+    venue: venues.length ? venues.join(" · ") : null,
+    timeframe: tfRaw,
+    bestOos: bestOos !== null && Number.isFinite(bestOos) ? bestOos : null
+  };
+}
+
 // Strategy detail is the DEFINITIVE inspect view for one Version: the spec (named features, params,
 // composable modules), the compiled code, the full trade blotter, the OOS/holdout + per-fold
 // evidence, and the agent post-mortem/notes. All from the existing strategy detail endpoint —
@@ -51,7 +76,7 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
 
   if (!connected || !strategy.version_id) {
     return (
-      <div className="mx-auto max-w-[1200px] space-y-6 px-5 py-7 lg:px-7">
+      <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-7 lg:px-7">
         <StrategyStages />
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">version</div>
@@ -67,23 +92,49 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
 
   const holdout = holdoutRows(strategy.holdout as Record<string, unknown>);
 
+  // Glanceable summary, derived from REAL detail fields (no fabrication): the gate verdict from the
+  // backtests, venue/timeframe/thesis from the spec, and an honest forward-vs-backtest read so the
+  // detail header answers "is this proven, where does it trade, and on what edge?" at a glance.
+  const passed = strategy.backtests.some((bt: Backtest) => bt.passed_gates);
+  const summary = strategySummary(strategy.spec, strategy.backtests);
+
   return (
-    <div className="mx-auto max-w-[1200px] space-y-6 px-5 py-7 lg:px-7">
+    <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-7 lg:px-7">
       <StrategyStages />
       <div>
         <Link href="/strategies" className="mb-2 inline-flex items-center gap-1 text-[12.5px] text-muted transition-colors hover:text-foreground">
           <ArrowLeft className="size-3.5" /> All Strategies
         </Link>
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">{strategy.name}</h1>
+          <div className="min-w-0">
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground">{strategy.name}</h1>
+            {/* Verdict + where it trades, glanceable. */}
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <Badge variant={passed ? "up" : "down"}>
+                <ShieldCheck className="size-3" /> Gate {passed ? "passed" : "not passed"}
+              </Badge>
+              {summary.venue ? <Badge variant="muted">{summary.venue}</Badge> : null}
+              {summary.timeframe ? <Badge variant="muted">{summary.timeframe}</Badge> : null}
+              {summary.bestOos !== null ? (
+                <Badge variant={summary.bestOos >= 0 ? "up" : "down"}>
+                  backtest OOS {summary.bestOos >= 0 ? "+" : ""}{summary.bestOos.toFixed(1)}%
+                </Badge>
+              ) : null}
+            </div>
+          </div>
           {/* Launch live: only offered when the strategy has at least one passed backtest. */}
-          {strategy.backtests.some((bt: Backtest) => bt.passed_gates) && (
-            <LaunchLiveButton versionId={strategy.version_id} strategyName={strategy.name} />
-          )}
+          {passed && <LaunchLiveButton versionId={strategy.version_id} strategyName={strategy.name} />}
         </div>
-        <div className="mt-1.5 flex items-center gap-2 font-mono text-[12px] text-quiet">
+        {/* Thesis — the one-line "why", pulled from the spec rationale (the strategy's reason to exist). */}
+        {summary.thesis ? <p className="mt-2.5 max-w-3xl text-[13px] leading-relaxed text-muted">{summary.thesis}</p> : null}
+        <div className="mt-2 flex items-center gap-2 font-mono text-[12px] text-quiet">
           <span>{strategy.version_id}</span>
         </div>
+        {/* Honest forward-vs-backtest note so the OOS % above is never misread as forward performance. */}
+        <p className="mt-2 text-[11.5px] text-quiet">
+          The % above is the <span className="text-muted">backtest out-of-sample</span> return — historical, not forward.
+          Forward proof accrues on the standalone Simulation track (see the equity curve below).
+        </p>
       </div>
 
       {/* Evidence visuals: sim equity from trades + per-fold OOS returns + untouched holdout. */}

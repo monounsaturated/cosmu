@@ -23,7 +23,7 @@ export default async function ForwardTestPage() {
   });
 
   return (
-    <div className="mx-auto max-w-[1200px] space-y-6 px-5 py-7 lg:px-7">
+    <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-7 lg:px-7">
       <SectionHeader
         eyebrow="simulation"
         title="Forward-testing on live data"
@@ -63,7 +63,7 @@ export default async function ForwardTestPage() {
       ) : (
         <Card>
           <CardContent className="pt-5">
-            <StrategiesTable rows={simRows} />
+            <StrategiesTable rows={simRows} context="simulation" />
           </CardContent>
         </Card>
       )}
@@ -88,6 +88,13 @@ function SimNote() {
                 go Live
               </Link>
               . The Gate&apos;s 5 interlocks are the hard requirement.
+            </p>
+            <p className="text-[12px] leading-relaxed text-muted">
+              Read the table honestly: <span className="font-medium text-foreground">Forward</span> is the clock since
+              the Gate funded this track — a just-armed track reads <span className="tabular text-quiet">day 0</span>,
+              not a number.{" "}
+              <span className="font-medium text-foreground">Backtest OOS</span> is historical and proves nothing
+              forward. Don&apos;t read the backtest column as forward performance.
             </p>
           </div>
         </div>
