@@ -115,3 +115,126 @@ def test_empty_state_is_honest_not_fabricated(tmp_path):
     assert funding.survivors == 0 and funding.funded == 0
     # no positions invented; equity falls back to bankroll honestly
     assert store.rows("SELECT COUNT(*) AS n FROM positions WHERE CAST(qty AS REAL) != 0")[0]["n"] == 0
+
+
+# --- ASSET-AWARE FUNDING ----------------------------------------------------------------------------------------
+# The funder must route each gate-passed survivor to ITS OWN asset class's venue/symbol (read from the spec), not
+# hardcode binance/crypto. An equity survivor must NEVER get a Binance crypto position (mislabeled + mispriced); a
+# survivor whose asset class has no funding venue wired must be SKIPPED, not forced onto crypto.
+
+class _FlatBars:
+    """Deterministic, offline price provider keyed by symbol — one flat close per symbol, no network. Serves BOTH
+    the crypto leg (Binance) and the equity leg (Yahoo) of a PricingRouter so the funder resolves real prices for
+    every asset class without touching the wire."""
+
+    def __init__(self, prices: dict[str, float]) -> None:
+        self._prices = prices
+
+    def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        px = self._prices.get(symbol)
+        if px is None:
+            return []
+        p = Decimal(str(px))
+        return [Bar(ts=dt.datetime(2024, 1, 1, tzinfo=dt.UTC), open=p, high=p, low=p, close=p, volume=Decimal("1"))]
+
+
+def _persist_survivor(store: Store, *, name: str, asset_classes: list[str], venues: list[str]) -> str:
+    """Persist a gate-passed forward-test survivor (strategies + strategy_versions + screen backtest + track) whose
+    spec declares the given asset class/venues — the exact rows fund_tracks_from_survivors reads. Returns the
+    version_id."""
+    now = "2024-01-01T00:00:00Z"
+    strategy_id = store.insert("strategies", {"name": name, "thesis": "t", "origin": "finder", "created_at": now})
+    version_id = store.insert(
+        "strategy_versions",
+        {
+            "strategy_id": strategy_id,
+            "parent_id": None,
+            "spec": {
+                "name": name,
+                "rationale": "r",
+                "universe": {"venues": venues, "asset_classes": asset_classes, "min_instruments": 1},
+                "horizon": {"bar_size": "1d", "min_hold_days": 1, "max_hold_days": 10},
+                "entry": [], "exit": {"stop_loss": {"param": "sl"}, "take_profit": {"param": "tp"}},
+                "risk": {}, "param_space": {}, "direction": 1,
+            },
+            "generated_code": "# test", "code_hash": f"hash-{name}", "params": {},
+            "mutation_operator": None, "mutation_rationale": None, "origin": "finder",
+            "status": "forward_test", "created_at": now, "killed_at": None, "kill_reason": None,
+        },
+    )
+    store.insert(
+        "tracks",
+        {"strategy_version_id": version_id, "starting_capital": "10000", "equity": "10000",
+         "return_pct": "0", "updated_at": now},
+    )
+    store.insert(
+        "backtests",
+        {"strategy_version_id": version_id, "kind": "screen", "oos_return": "0.2", "sharpe": "1.5",
+         "sortino": "1.5", "deflated_sharpe": "1.5", "max_dd": "0.1", "win_rate": "0.6", "num_trades": 30,
+         "pbo": "0.0", "trials_counted": 1, "regime_label": "mixed", "folds_positive": 5,
+         "passed_gates": 1, "holdout_passed": 1, "created_at": now},
+    )
+    return version_id
+
+
+def test_equity_survivor_never_gets_a_binance_crypto_position(tmp_path):
+    # BUG GUARD: a gate-passed EQUITY survivor must NOT be forced onto a Binance crypto symbol (mislabeled +
+    # mispriced). It must route to its OWN asset class's venue (equity → IBKR) and an equity instrument.
+    store = _store(tmp_path)
+    equity_vid = _persist_survivor(store, name="EquityMomo", asset_classes=["equity"], venues=["ibkr"])
+
+    from cosmu.orchestrator.loop import PricingRouter
+    from cosmu.spine.venue import default_catalog
+
+    cat = default_catalog()
+    # One flat provider serving both legs: any IBKR equity instrument (SPY/QQQ/...) + the Binance crypto symbols.
+    prices = {i.symbol: 400.0 for i in cat.instruments if i.venue_id == "ibkr" and i.asset_class == "equity"}
+    prices.update({i.symbol: 30000.0 for i in cat.instruments if i.venue_id == "binance" and i.asset_class == "crypto"})
+    bars = _FlatBars(prices)
+    router = PricingRouter(cat, crypto=bars, equity=bars)
+
+    funding = fund_tracks_from_survivors(store, catalog=cat, router=router)
+    assert funding.survivors == 1 and funding.funded == 1
+
+    rows = store.rows(
+        "SELECT symbol, venue, instrument_id FROM positions WHERE strategy_version_id = ? AND CAST(qty AS REAL) != 0",
+        (equity_vid,),
+    )
+    assert len(rows) == 1
+    pos = rows[0]
+    # routed to the EQUITY venue/instrument, NOT a Binance crypto symbol
+    crypto_symbols = {i.symbol for i in cat.instruments if i.venue_id == "binance" and i.asset_class == "crypto"}
+    equity_symbols = {i.symbol for i in cat.instruments if i.venue_id == "ibkr" and i.asset_class == "equity"}
+    assert pos["symbol"] not in crypto_symbols, f"equity survivor mislabeled onto a Binance crypto symbol: {pos['symbol']}"
+    assert pos["symbol"] in equity_symbols
+    assert pos["instrument_id"].endswith("-ibkr")
+
+
+def test_survivor_with_no_funding_venue_is_skipped_not_forced_onto_crypto(tmp_path):
+    # A survivor whose asset class has NO funding venue wired (prediction markets have no execution path) must be
+    # SKIPPED rather than mislabeled onto a Binance crypto symbol.
+    store = _store(tmp_path)
+    pred_vid = _persist_survivor(store, name="PredMarket", asset_classes=["prediction"], venues=["polymarket"])
+
+    funding = fund_tracks_from_survivors(store, market_data=_FixtureBars())
+    assert funding.survivors == 0   # not routable → not counted as a fundable survivor
+    assert funding.funded == 0
+    assert store.rows(
+        "SELECT COUNT(*) AS n FROM positions WHERE strategy_version_id = ? AND CAST(qty AS REAL) != 0", (pred_vid,)
+    )[0]["n"] == 0
+
+
+def test_crypto_survivor_still_routes_to_binance(tmp_path):
+    # NO REGRESSION: a crypto survivor must still fund a Binance crypto position exactly as before.
+    store = _store(tmp_path)
+    crypto_vid = _persist_survivor(store, name="CryptoMomo", asset_classes=["crypto"], venues=["binance"])
+
+    funding = fund_tracks_from_survivors(store, market_data=_FixtureBars())
+    assert funding.survivors == 1 and funding.funded == 1
+
+    rows = store.rows(
+        "SELECT venue, instrument_id FROM positions WHERE strategy_version_id = ? AND CAST(qty AS REAL) != 0",
+        (crypto_vid,),
+    )
+    assert len(rows) == 1
+    assert rows[0]["instrument_id"].endswith("-binance")
