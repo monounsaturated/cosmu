@@ -11,12 +11,21 @@
 from __future__ import annotations
 
 import json
+import logging
+import ssl
 import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 
+import certifi
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+_LOG = logging.getLogger(__name__)
+# macOS stdlib urllib does not trust CAs without an explicit bundle → SSLError → the LLM call
+# would SILENTLY fall back to the deterministic/lexicon path. Pin certifi's CA bundle so real
+# OpenRouter calls verify and succeed on macOS as well as Linux/Modal.
+_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 XAI_URL = "https://api.x.ai/v1/chat/completions"  # xAI (Grok) — OpenAI-compatible, same request shape
@@ -176,9 +185,12 @@ def openrouter_chat(api_key: str | None, *, url: str = OPENROUTER_URL, timeout: 
             },
         )
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — fixed OpenRouter host
+            with urllib.request.urlopen(  # noqa: S310 — fixed OpenRouter host
+                req, timeout=timeout, context=_SSL_CONTEXT
+            ) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            _LOG.warning("openrouter_chat call failed (%s) — falling back to deterministic path", exc)
             return None
         choices = payload.get("choices") or []
         if not choices:
