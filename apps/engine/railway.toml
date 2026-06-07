@@ -29,8 +29,11 @@ command = "python3 -m cosmu.research.loop --ingest"
 schedule = "0 */4 * * *"
 command = "python3 -m cosmu.master.scheduler"
 
-# FORWARD-TEST CLOCK: re-mark held paper positions against the latest real close (no orders, paper-only) so
-# funded sleeves accrue honest net-of-fee P&L over calendar time. Hourly is plenty for daily-bar strategies.
+# FORWARD-TEST CLOCK: re-mark EVERY held SIM position against the latest REAL close, routed by asset class
+# (crypto -> Binance spot, equity/ETF -> Yahoo total-return), so crypto AND equity tracks (GEM dual-momentum,
+# the TAA fleet) accrue honest net-of-fee P&L over calendar time instead of sitting flat. No orders (SIM only).
+# Daily at 22:10 UTC (after the US equity cash close) is enough for daily-bar strategies; bump to hourly if a
+# faster-bar crypto track needs it. This is the hands-off floor: it drives tracks.return_pct off real closes.
 [[cron]]
-schedule = "0 * * * *"
+schedule = "10 22 * * *"
 command = "python3 -m cosmu.orchestrator.loop"

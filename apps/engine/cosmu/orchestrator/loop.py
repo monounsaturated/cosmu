@@ -12,8 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from decimal import ROUND_DOWN, Decimal
 
-from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
-from cosmu.knowledge.store import Store
+from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider, YahooDailyBarsProvider
+from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.drift import monitor_drift
 from cosmu.master.execution import IntendedOrder, execute_orders
 from cosmu.master.neutral import accrue_funding, neutral_tracks
@@ -179,25 +179,80 @@ def fund_tracks_from_survivors(
     return report
 
 
+class PricingRouter:
+    """ASSET-AWARE mark source for the forward-test clock. One router routes each held position to the REAL
+    pricing source for its asset class — crypto → Binance spot, equity/ETF → Yahoo v8 total-return — so an
+    equity (GEM, the TAA fleet) accrues honest P&L instead of marking to 0 against a Binance symbol that does
+    not exist. The asset class is read from the instrument the position references in the catalog (looked up by
+    (symbol, venue)); an unknown instrument falls back to the venue's declared kind. NO synthetic/zero-fill: a
+    genuinely unavailable close (offline, gap day, unknown symbol) returns 0 and the caller SKIPS that position,
+    leaving it at its last basis. Deterministic for a fixed catalog + provider responses; offline-safe.
+
+    The crypto and equity providers are constructed lazily and reused across every position in one run (one cache
+    each), and either can be injected for tests/alternate venues — there is no per-call-site provider, this is the
+    single pricing-router for the clock."""
+
+    def __init__(
+        self,
+        catalog: VenueCatalog,
+        *,
+        crypto: MarketDataProvider | None = None,
+        equity: MarketDataProvider | None = None,
+    ) -> None:
+        self.catalog = catalog
+        self._crypto = crypto or BinanceSpotOHLCVProvider()
+        # Yahoo v8 prices on TOTAL-RETURN closes — the same source the working equity_dual_momentum_arm mark uses
+        # (keyless, certifi SSL). Reused so a multi-leg equity track shares one cache per run.
+        self._equity = equity or YahooDailyBarsProvider()
+
+    def _asset_class(self, symbol: str, venue: str) -> str:
+        """The asset class to price `symbol`@`venue` against. Prefer the instrument's own asset_class; if the
+        instrument is not in the catalog, fall back to the venue's declared kind; if neither resolves, treat it
+        as crypto (the historical default for this clock — never crash on an unknown row)."""
+        try:
+            return self.catalog.instrument(symbol, venue).asset_class
+        except KeyError:
+            pass
+        try:
+            return self.catalog.venue(venue).kind
+        except KeyError:
+            return "crypto"
+
+    def provider_for(self, symbol: str, venue: str) -> MarketDataProvider:
+        """The REAL pricing source for this position's asset class. equity/ETF → Yahoo total-return; everything
+        else (crypto, the default) → Binance spot."""
+        return self._equity if self._asset_class(symbol, venue) == "equity" else self._crypto
+
+    def last_price(self, symbol: str, venue: str) -> Decimal:
+        """Latest REAL daily close for a held position via its asset-class provider. 0 on any failure
+        (offline / gap / unknown symbol) — never a synthetic fill; the caller skips the position."""
+        return _last_price(self.provider_for(symbol, venue), symbol, self.catalog)
+
+
 def mark_tracks(
     store: Store,
     *,
     market_data: MarketDataProvider | None = None,
     catalog: VenueCatalog | None = None,
+    router: PricingRouter | None = None,
 ) -> dict[str, Decimal]:
     """THE FORWARD-TEST CLOCK. Re-mark every HELD sim position against the latest REAL close — without opening,
     re-funding, or averaging anything — and write a portfolio_snapshot. This is what makes a track a genuine
     forward test: a funded track lives across bars and reveals honest net-of-fee P&L over calendar time, instead
     of the same-bar entry==mark snapshot the funding step produces. Cron-able (run on a schedule independent of
     the 4h author/fund tick); offline-safe (a missing mark just leaves that position at its last basis); live
-    stays OFF (no orders — marks only)."""
+    stays OFF (no orders — marks only).
+
+    ASSET-AWARE: each held position is priced via a PricingRouter that routes by asset class — crypto → Binance,
+    equity/ETF → Yahoo total-return — so equity tracks (GEM, the TAA fleet) accrue P&L instead of sitting flat.
+    `market_data` (kept for back-compat) overrides ONLY the crypto leg; pass `router` to control both legs."""
     cat = catalog or default_catalog()
-    provider = market_data or BinanceSpotOHLCVProvider()
+    pricer = router or PricingRouter(cat, crypto=market_data)
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
     positions = [p for p in portfolio.positions() if p.qty != 0]
     marks: dict[str, Decimal] = {}
     for p in positions:
-        price = _last_price(provider, p.symbol, cat)
+        price = pricer.last_price(p.symbol, p.venue)
         if price > 0:
             marks[p.instrument_id] = price
     # TWO-LEG NEUTRAL tracks (DERIVATIVES_PLAN P0.3): pair a held long-spot leg with its short-perp leg, accrue one
@@ -206,6 +261,12 @@ def mark_tracks(
     # unchanged spot mark path below. Offline-safe: no funding data for a perp leg accrues nothing this tick.
     funding_by_track = _accrue_neutral_funding(store, positions, marks)
     snapshot = portfolio.mark_to_market(marks, funding_by_track=funding_by_track)
+    # Drive each held track's tracks.return_pct from the LIVE marked trajectory (the per-track snapshot
+    # mark_to_market just wrote), so the forward-test net P&L — not a stale seed — is what the leaderboard +
+    # master/live_eligibility read for live_ready. This generalizes the per-arm equity mark (it used to be the
+    # ONLY thing updating return_pct, and only for GEM) to EVERY asset class. A flat/negative forward test can
+    # therefore never reach live_ready on a stale seed.
+    updated = _update_track_returns(store, {p.strategy_version_id for p in positions if p.strategy_version_id})
     store.append_event(
         actor="master",
         kind="tracks_marked",
@@ -215,11 +276,42 @@ def mark_tracks(
             "positions": len(positions),
             "marked": len(marks),
             "neutral_tracks": len(funding_by_track),
+            "tracks_updated": updated,
             "equity": float(snapshot["equity"]),
             "pnl": float(snapshot["pnl"]),
         },
     )
     return snapshot
+
+
+def _update_track_returns(store: Store, version_ids: set[str]) -> int:
+    """Refresh tracks.return_pct + tracks.equity for each held track from its latest per-track marked value
+    (portfolio_snapshots scope='track'), vs the track's own starting_capital. Mirrors what the per-arm equity
+    mark did for GEM, generalized to every track the clock just marked. Returns the count updated. A track with
+    no marked snapshot or no starting_capital is left untouched (offline-safe — never zero/synthetic-fill)."""
+    updated = 0
+    for vid in version_ids:
+        track = store.row(
+            "SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (vid,)
+        )
+        snap = store.row(
+            "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1",
+            (vid,),
+        )
+        if track is None or track.get("starting_capital") is None or snap is None or snap.get("equity") is None:
+            continue
+        starting = Decimal(str(track["starting_capital"]))
+        if starting <= 0:
+            continue
+        marked_value = Decimal(str(snap["equity"]))
+        return_pct = (marked_value / starting - Decimal("1")) * Decimal("100")
+        store.rows(
+            "UPDATE tracks SET return_pct = ?, equity = ?, updated_at = ? WHERE strategy_version_id = ?",
+            (str(return_pct.quantize(Decimal("0.01"))), str(marked_value.quantize(Decimal("0.01"))),
+             utcnow(), vid),
+        )
+        updated += 1
+    return updated
 
 
 def _accrue_neutral_funding(
@@ -256,13 +348,14 @@ def _funding_rate_asof(store: Store, symbol: str) -> Decimal | None:
 
 
 def _main(argv: list[str] | None = None) -> int:
-    """Railway cron entrypoint for the FORWARD-TEST CLOCK: re-mark held sim positions on the real prod store
-    against the latest Binance closes. `python3 -m cosmu.orchestrator.loop`."""
+    """Railway cron entrypoint for the FORWARD-TEST CLOCK: re-mark EVERY held sim position on the real prod store
+    against the latest REAL close, routed by asset class (crypto → Binance, equity/ETF → Yahoo total-return) so
+    crypto AND equity tracks (GEM, the TAA fleet) accrue P&L. `python3 -m cosmu.orchestrator.loop`."""
     import argparse
 
     from cosmu.config.settings import Settings
 
-    argparse.ArgumentParser(description="Mark held sim positions to the latest real close (forward-test clock; sim-only, no orders).").parse_args(argv)
+    argparse.ArgumentParser(description="Mark held sim positions to the latest real close, asset-aware (forward-test clock; sim-only, no orders).").parse_args(argv)
     store = Store(Settings())
     snap = mark_tracks(store)
     print(f"SIM MARK-TO-MARKET — equity={float(snap['equity']):.2f} pnl={float(snap['pnl']):+.2f} drawdown={float(snap['drawdown']):.4f}")
