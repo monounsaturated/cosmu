@@ -1,7 +1,7 @@
 // Full source-trust scoreboard — the data-source catalog: every registered feed, sortable + filterable,
 // with a coverage rollup up top (trusted · fresh · contributing). Linked from the Mind page.
 
-import { ArrowLeft, CheckCircle, ShieldCheck, Zap } from "lucide-react";
+import { ArrowLeft, CheckCircle, Database, ShieldCheck, Zap } from "lucide-react";
 import Link from "next/link";
 import { getSourceTrust, engineConfigured } from "../../data";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { SectionHeader } from "@/components/ui/section";
 import { NotConnected } from "@/components/ui/honest-state";
 import { MetricCard } from "@/components/ui/viz";
 import { SourceTrustTable } from "./source-trust-table";
+import { SourceCatalog } from "@/components/mind/source-catalog";
 
 export default async function SourcesPage() {
   const { trust, connected } = await getSourceTrust();
@@ -88,6 +89,29 @@ export default async function SourcesPage() {
           </Card>
         </>
       )}
+
+      {/* Declarative source catalog — static, always shown regardless of engine connection.
+          Shows what each source IS, its PIT contract, coverage, key requirements, and
+          whether it is a non-causal control. Not live data — see trust scoreboard above. */}
+      <section className="space-y-3 pt-2">
+        <SectionHeader
+          eyebrow="source catalog"
+          title={
+            <span className="flex items-center gap-2 text-base">
+              <Database className="size-4 text-iris-soft" /> All registered sources
+            </span>
+          }
+          aside={
+            <Badge variant="muted">static registry</Badge>
+          }
+        />
+        <p className="text-[12px] text-muted">
+          Every source the engine knows about — what it is, PIT contract, coverage, and key requirements.
+          Live freshness and trust scores are in the scoreboard above. Non-causal controls are shown
+          honestly: they are wired so the Gate can falsify them, not because they are expected to contribute.
+        </p>
+        <SourceCatalog />
+      </section>
     </div>
   );
 }

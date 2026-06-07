@@ -14,7 +14,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import Settings, get_settings
 from cosmu.data.backtest import run_strategy_backtest_detailed
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
 from cosmu.knowledge.store import Store
@@ -111,15 +111,41 @@ def run_matrix_cell(asset: str, timeframe: str, *, persist: bool = True) -> Matr
     )
 
 
-# A sensible default universe for a one-command sweep (deep cached majors + a few mid-caps + equity ETFs).
-_SWEEP_UNIVERSE = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT", "SPY", "QQQ"]
+def _default_assets(settings: Settings | None = None) -> list[str]:
+    """Return the sweep asset universe from config (MATRIX_SWEEP_ASSETS env fallback) or the built-in default."""
+    try:
+        cfg = settings or get_settings()
+        if cfg.matrix_sweep_assets:
+            return cfg.matrix_sweep_assets
+    except Exception:  # noqa: BLE001 — offline/test context: fall through to built-in
+        pass
+    return ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT", "SPY", "QQQ"]
 
 
-def run_sweep(assets: list[str] | None = None, timeframes: list[str] | None = None, *, persist: bool = True) -> list[MatrixResult]:
+def _default_timeframes(settings: Settings | None = None) -> list[str]:
+    """Return the sweep timeframe list from config (MATRIX_SWEEP_TIMEFRAMES env fallback) or ["1d"]."""
+    try:
+        cfg = settings or get_settings()
+        if cfg.matrix_sweep_timeframes:
+            return cfg.matrix_sweep_timeframes
+    except Exception:  # noqa: BLE001
+        pass
+    return ["1d"]
+
+
+def run_sweep(
+    assets: list[str] | None = None,
+    timeframes: list[str] | None = None,
+    *,
+    persist: bool = True,
+    settings: Settings | None = None,
+) -> list[MatrixResult]:
     """One-shot: gate EVERY inbox spec across a universe × timeframes, persist each verdict to the experiment
-    memory, and return the results ranked by best dSR. The simple front door — `python -m cosmu.research.matrix_search --sweep`."""
-    assets = assets or _SWEEP_UNIVERSE
-    timeframes = timeframes or ["1d"]
+    memory, and return the results ranked by best dSR. Asset/timeframe universe defaults come from config
+    (MATRIX_SWEEP_ASSETS / MATRIX_SWEEP_TIMEFRAMES) so the operator can widen the grid without code changes.
+    The simple front door — `python -m cosmu.research.matrix_search --sweep`."""
+    assets = assets or _default_assets(settings)
+    timeframes = timeframes or _default_timeframes(settings)
     out: list[MatrixResult] = []
     for a in assets:
         for tf in timeframes:
@@ -130,11 +156,23 @@ def run_sweep(assets: list[str] | None = None, timeframes: list[str] | None = No
 def _main() -> int:
     import sys
 
-    if "--sweep" in sys.argv or os.environ.get("MATRIX_SWEEP") == "1":
-        results = run_sweep(persist=os.environ.get("MATRIX_PERSIST", "1") == "1")
+    do_sweep = "--sweep" in sys.argv or os.environ.get("MATRIX_SWEEP") == "1"
+    persist = os.environ.get("MATRIX_PERSIST", "1") == "1"
+
+    # Optional CLI overrides: --assets BTC,ETH --timeframes 1d,4h
+    cli_assets: list[str] | None = None
+    cli_tfs: list[str] | None = None
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if arg == "--assets" and i < len(sys.argv):
+            cli_assets = [a.strip() for a in sys.argv[i + 1].split(",") if a.strip()]
+        if arg == "--timeframes" and i < len(sys.argv):
+            cli_tfs = [t.strip() for t in sys.argv[i + 1].split(",") if t.strip()]
+
+    if do_sweep:
+        results = run_sweep(assets=cli_assets, timeframes=cli_tfs, persist=persist)
         survivors = [r for r in results if r.n_promoted]
         print(f"MATRIX SWEEP — {len(results)} cells · {sum(r.n_promoted for r in results)} survivors · "
-              f"{'⚠️ SURVIVOR FOUND' if survivors else 'no honest edge (the machine refused all)'}")
+              f"{'SURVIVOR FOUND' if survivors else 'no honest edge (the machine refused all)'}")
         print(f"{'asset@tf':14s} {'verdict':12s} {'traded':>6s} {'promoted':>8s}  best (dsr / holdoutDSR)")
         for r in results:
             v = "SURVIVOR" if r.n_promoted else ("no-survivor" if r.n_traded else "no-data")
@@ -142,9 +180,9 @@ def _main() -> int:
                   f"{r.best_spec[:34]:34s} {r.best_dsr:.3f} / {r.best_holdout_dsr:+.3f}")
         return 0
 
-    asset = os.environ.get("MATRIX_ASSET", "BTCUSDT")
-    tf = os.environ.get("MATRIX_TF", "1d")
-    r = run_matrix_cell(asset, tf, persist=os.environ.get("MATRIX_PERSIST", "1") == "1")
+    asset = cli_assets[0] if cli_assets else os.environ.get("MATRIX_ASSET", "BTCUSDT")
+    tf = cli_tfs[0] if cli_tfs else os.environ.get("MATRIX_TF", "1d")
+    r = run_matrix_cell(asset, tf, persist=persist)
     verdict = "SURVIVOR" if r.n_promoted else ("no-survivor" if r.n_traded else "no-data/no-trades")
     print(f"MATRIX {asset}@{tf} — {verdict}")
     print(f"  specs={r.n_specs} traded={r.n_traded} promoted={r.n_promoted} survivors={r.survivors}")

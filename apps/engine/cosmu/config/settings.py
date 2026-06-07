@@ -175,6 +175,13 @@ class Settings(BaseSettings):
     risk: RiskSettings = Field(default_factory=RiskSettings)
     evolution: EvolutionSettings = Field(default_factory=EvolutionSettings)
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
+    # Matrix sweep universe — the assets and timeframes the overnight strategy × asset × timeframe
+    # hunt visits. Override via MATRIX_SWEEP_ASSETS (comma-separated) and MATRIX_SWEEP_TIMEFRAMES.
+    # Defaults are deep-cached majors (crypto spot + equity ETFs) and daily bars only.
+    matrix_sweep_assets: list[str] = Field(
+        default=["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT", "SPY", "QQQ"],
+    )
+    matrix_sweep_timeframes: list[str] = Field(default=["1d"])
 
     @property
     def llm_provider(self) -> str | None:
