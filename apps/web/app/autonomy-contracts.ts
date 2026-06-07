@@ -1,6 +1,11 @@
 // module: autonomy command-center contracts. The shared engine<->web contract for the autonomous
-// machine the human OVERSEES. snake_case to mirror the engine exactly. These are LOCALLY typed
-// (not yet emitted by @cosmu/contracts-ts) and will be reconciled with the generated types later.
+// machine the human OVERSEES. snake_case to mirror the engine exactly.
+//
+// DELIBERATE LOCAL MIRROR — not re-exported from @cosmu/contracts-ts because the generated types
+// use different names (AutonomyStatusResponse, TickSummary, AutonomyTickResponse,
+// AutonomyPauseResponse, RecommendationActionResponse) that would require renaming every call-site.
+// When the generator is updated to emit these exact names, delete this file and re-point consumers.
+// Until then, keep this file in sync manually with the engine's /autonomy routes.
 //
 // PRINCIPLE: nothing here decides money. The deterministic scorer/Gate disposes (out of any LLM
 // path) and alone decides survival + funding. The autonomy loop only PROPOSES; the human arms live.
