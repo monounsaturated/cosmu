@@ -1,0 +1,492 @@
+{
+  "BTCUSDT": {
+    "verdict": "FAIL",
+    "headline": "no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.796 (disc-momentum-only-control)",
+    "window": "2023-09-12..2026-06-07",
+    "narrative_days": 1235,
+    "disconfirmers": {
+      "time_shuffle_placebo": "FAIL-reproduces (cand dsr 0.707 vs placebo 0.761)",
+      "beat_momentum_only": "FAIL (cand dsr 0.707 vs momentum 0.796)"
+    },
+    "members": [
+      {
+        "name": "llm-narrative-pressure-long",
+        "net": 0.132168,
+        "gross": 0.15934,
+        "dsr": 0.706897,
+        "holdout_dsr": -0.02555,
+        "pbo": 0.2,
+        "trades": 123,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-narrative-time-shuffle",
+        "net": 0.13672,
+        "gross": 0.166734,
+        "dsr": 0.760808,
+        "holdout_dsr": -0.062996,
+        "pbo": 0.142857,
+        "trades": 133,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-momentum-only-control",
+        "net": 0.172549,
+        "gross": 0.202151,
+        "dsr": 0.795643,
+        "holdout_dsr": 0.245323,
+        "pbo": 0.042857,
+        "trades": 114,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      }
+    ],
+    "notes": []
+  },
+  "QQQ": {
+    "verdict": "FAIL",
+    "headline": "no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.433 (disc-momentum-only-control)",
+    "window": "2022-12-05..2026-06-05",
+    "narrative_days": 1233,
+    "disconfirmers": {
+      "time_shuffle_placebo": "FAIL-reproduces (cand dsr 0.058 vs placebo 0.240)",
+      "beat_momentum_only": "FAIL (cand dsr 0.058 vs momentum 0.433)"
+    },
+    "members": [
+      {
+        "name": "llm-narrative-pressure-long",
+        "net": 0.014682,
+        "gross": 0.031763,
+        "dsr": 0.057897,
+        "holdout_dsr": -0.115484,
+        "pbo": 0.328571,
+        "trades": 79,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-narrative-time-shuffle",
+        "net": 0.025586,
+        "gross": 0.040979,
+        "dsr": 0.239571,
+        "holdout_dsr": 0.279587,
+        "pbo": 0.285714,
+        "trades": 71,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-momentum-only-control",
+        "net": 0.044099,
+        "gross": 0.057094,
+        "dsr": 0.433148,
+        "holdout_dsr": 0.327781,
+        "pbo": 0.185714,
+        "trades": 51,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      }
+    ],
+    "notes": []
+  },
+  "META": {
+    "verdict": "FAIL",
+    "headline": "no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.889 (llm-narrative-pressure-long)",
+    "window": "2022-12-05..2026-06-05",
+    "narrative_days": 1237,
+    "disconfirmers": {
+      "time_shuffle_placebo": "PASS (cand dsr 0.889 vs placebo 0.774)",
+      "beat_momentum_only": "PASS (cand dsr 0.889 vs momentum 0.840)"
+    },
+    "members": [
+      {
+        "name": "llm-narrative-pressure-long",
+        "net": 0.09112,
+        "gross": 0.109148,
+        "dsr": 0.88852,
+        "holdout_dsr": -0.475296,
+        "pbo": 0.1,
+        "trades": 78,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-narrative-time-shuffle",
+        "net": 0.089375,
+        "gross": 0.10609,
+        "dsr": 0.773585,
+        "holdout_dsr": -0.205991,
+        "pbo": 0.028571,
+        "trades": 71,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-momentum-only-control",
+        "net": 0.106658,
+        "gross": 0.126138,
+        "dsr": 0.840262,
+        "holdout_dsr": 0.242344,
+        "pbo": 0.385714,
+        "trades": 68,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      }
+    ],
+    "notes": []
+  },
+  "ETHUSDT": {
+    "verdict": "FAIL",
+    "headline": "no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.878 (disc-momentum-only-control)",
+    "window": "2023-09-12..2026-06-07",
+    "narrative_days": 1192,
+    "disconfirmers": {
+      "time_shuffle_placebo": "FAIL-reproduces (cand dsr 0.295 vs placebo 0.490)",
+      "beat_momentum_only": "FAIL (cand dsr 0.295 vs momentum 0.878)"
+    },
+    "members": [
+      {
+        "name": "llm-narrative-pressure-long",
+        "net": 0.082777,
+        "gross": 0.109784,
+        "dsr": 0.294648,
+        "holdout_dsr": -0.374692,
+        "pbo": 0.714286,
+        "trades": 128,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-narrative-time-shuffle",
+        "net": 0.105788,
+        "gross": 0.119106,
+        "dsr": 0.489801,
+        "holdout_dsr": -0.366596,
+        "pbo": 0.571429,
+        "trades": 59,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-momentum-only-control",
+        "net": 0.206854,
+        "gross": 0.221887,
+        "dsr": 0.878071,
+        "holdout_dsr": -0.250958,
+        "pbo": 0.185714,
+        "trades": 53,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      }
+    ],
+    "notes": []
+  },
+  "MSFT": {
+    "verdict": "FAIL",
+    "headline": "no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.693 (disc-narrative-time-shuffle)",
+    "window": "2022-12-05..2026-06-05",
+    "narrative_days": 1131,
+    "disconfirmers": {
+      "time_shuffle_placebo": "FAIL-reproduces (cand dsr 0.311 vs placebo 0.693)",
+      "beat_momentum_only": "FAIL (cand dsr 0.311 vs momentum 0.611)"
+    },
+    "members": [
+      {
+        "name": "llm-narrative-pressure-long",
+        "net": 0.02445,
+        "gross": 0.039073,
+        "dsr": 0.310565,
+        "holdout_dsr": -0.216332,
+        "pbo": 0.242857,
+        "trades": 67,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-narrative-time-shuffle",
+        "net": 0.016369,
+        "gross": 0.020067,
+        "dsr": 0.693026,
+        "holdout_dsr": -0.499998,
+        "pbo": 0.771429,
+        "trades": 17,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-momentum-only-control",
+        "net": 0.047644,
+        "gross": 0.060503,
+        "dsr": 0.611295,
+        "holdout_dsr": -0.253195,
+        "pbo": 0.514286,
+        "trades": 52,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      }
+    ],
+    "notes": []
+  },
+  "AAPL": {
+    "verdict": "FAIL",
+    "headline": "no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.482 (disc-momentum-only-control)",
+    "window": "2022-12-05..2026-06-05",
+    "narrative_days": 1084,
+    "disconfirmers": {
+      "time_shuffle_placebo": "FAIL-reproduces (cand dsr 0.160 vs placebo 0.281)",
+      "beat_momentum_only": "FAIL (cand dsr 0.160 vs momentum 0.482)"
+    },
+    "members": [
+      {
+        "name": "llm-narrative-pressure-long",
+        "net": 0.018948,
+        "gross": 0.03525,
+        "dsr": 0.160238,
+        "holdout_dsr": -0.275432,
+        "pbo": 0.757143,
+        "trades": 75,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-narrative-time-shuffle",
+        "net": 0.010913,
+        "gross": 0.013933,
+        "dsr": 0.280797,
+        "holdout_dsr": 0.488422,
+        "pbo": 0.7,
+        "trades": 14,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-momentum-only-control",
+        "net": 0.04408,
+        "gross": 0.056282,
+        "dsr": 0.481776,
+        "holdout_dsr": -0.019904,
+        "pbo": 0.357143,
+        "trades": 50,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      }
+    ],
+    "notes": []
+  },
+  "TSLA": {
+    "verdict": "FAIL",
+    "headline": "no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.361 (disc-momentum-only-control)",
+    "window": "2022-12-05..2026-06-05",
+    "narrative_days": 1053,
+    "disconfirmers": {
+      "time_shuffle_placebo": "PASS (cand dsr 0.154 vs placebo 0.147)",
+      "beat_momentum_only": "FAIL (cand dsr 0.154 vs momentum 0.361)"
+    },
+    "members": [
+      {
+        "name": "llm-narrative-pressure-long",
+        "net": 0.027496,
+        "gross": 0.056735,
+        "dsr": 0.153679,
+        "holdout_dsr": -0.47469,
+        "pbo": 0.685714,
+        "trades": 86,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-narrative-time-shuffle",
+        "net": 0.041655,
+        "gross": 0.057941,
+        "dsr": 0.146744,
+        "holdout_dsr": -0.200851,
+        "pbo": 0.5,
+        "trades": 74,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-momentum-only-control",
+        "net": 0.100291,
+        "gross": 0.116886,
+        "dsr": 0.360684,
+        "holdout_dsr": -0.275839,
+        "pbo": 0.457143,
+        "trades": 67,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      }
+    ],
+    "notes": []
+  },
+  "GOOGL": {
+    "verdict": "FAIL",
+    "headline": "no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.550 (disc-momentum-only-control)",
+    "window": "2022-12-05..2026-06-05",
+    "narrative_days": 973,
+    "disconfirmers": {
+      "time_shuffle_placebo": "PASS (cand dsr 0.423 vs placebo 0.263)",
+      "beat_momentum_only": "FAIL (cand dsr 0.423 vs momentum 0.550)"
+    },
+    "members": [
+      {
+        "name": "llm-narrative-pressure-long",
+        "net": 0.042942,
+        "gross": 0.060734,
+        "dsr": 0.423369,
+        "holdout_dsr": 0.317249,
+        "pbo": 0.185714,
+        "trades": 82,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-narrative-time-shuffle",
+        "net": 0.03298,
+        "gross": 0.050014,
+        "dsr": 0.263406,
+        "holdout_dsr": 0.186101,
+        "pbo": 0.5,
+        "trades": 77,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-momentum-only-control",
+        "net": 0.065094,
+        "gross": 0.078738,
+        "dsr": 0.549898,
+        "holdout_dsr": 0.419584,
+        "pbo": 0.1,
+        "trades": 53,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      }
+    ],
+    "notes": []
+  },
+  "NVDA": {
+    "verdict": "FAIL",
+    "headline": "no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.987 (disc-momentum-only-control)",
+    "window": "2022-12-05..2026-06-05",
+    "narrative_days": 922,
+    "disconfirmers": {
+      "time_shuffle_placebo": "PASS (cand dsr 0.790 vs placebo 0.688)",
+      "beat_momentum_only": "FAIL (cand dsr 0.790 vs momentum 0.987)"
+    },
+    "members": [
+      {
+        "name": "llm-narrative-pressure-long",
+        "net": 0.073857,
+        "gross": 0.088129,
+        "dsr": 0.789719,
+        "holdout_dsr": -0.255866,
+        "pbo": 0.685714,
+        "trades": 66,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-narrative-time-shuffle",
+        "net": 0.084713,
+        "gross": 0.106331,
+        "dsr": 0.687793,
+        "holdout_dsr": -0.364671,
+        "pbo": 0.585714,
+        "trades": 94,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-momentum-only-control",
+        "net": 0.170635,
+        "gross": 0.190452,
+        "dsr": 0.98734,
+        "holdout_dsr": -0.225648,
+        "pbo": 0.3,
+        "trades": 77,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": true
+      }
+    ],
+    "notes": []
+  },
+  "AMZN": {
+    "verdict": "FAIL",
+    "headline": "no member survived the cohort gate + BH-FDR (q=0.1); best DSR 0.479 (disc-momentum-only-control)",
+    "window": "2023-02-13..2026-06-05",
+    "narrative_days": 64,
+    "disconfirmers": {
+      "time_shuffle_placebo": "FAIL-reproduces (cand dsr 0.152 vs placebo 0.415)",
+      "beat_momentum_only": "FAIL (cand dsr 0.152 vs momentum 0.479)"
+    },
+    "members": [
+      {
+        "name": "llm-narrative-pressure-long",
+        "net": 0.015041,
+        "gross": 0.021879,
+        "dsr": 0.152332,
+        "holdout_dsr": 0.0,
+        "pbo": 0.8,
+        "trades": 33,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-narrative-time-shuffle",
+        "net": 0.030207,
+        "gross": 0.03558,
+        "dsr": 0.415454,
+        "holdout_dsr": 0.210409,
+        "pbo": 0.385714,
+        "trades": 26,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      },
+      {
+        "name": "disc-momentum-only-control",
+        "net": 0.049178,
+        "gross": 0.064293,
+        "dsr": 0.478764,
+        "holdout_dsr": -0.153163,
+        "pbo": 0.6,
+        "trades": 46,
+        "beat_bh": false,
+        "promoted": false,
+        "survived_fdr": false
+      }
+    ],
+    "notes": []
+  }
+}
