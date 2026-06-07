@@ -1,8 +1,9 @@
 "use client";
 
-// module: app navigation. Eight surfaces covering the full vibe loop (idea → spec → verdict), the
-// machine's experiment memory (Theories), and the operator's main decisions. Desktop = persistent
-// icon-rail sidebar; mobile = a bottom tab bar (4 primary tabs + a More sheet with the rest).
+// module: app navigation. Nine surfaces covering the full vibe loop (idea → spec → verdict), the
+// machine's experiment memory (Theories), the lifecycle stages (Backtest → Simulation → Live), and
+// the operator's main decisions. Desktop = persistent icon-rail sidebar; mobile = a bottom tab bar
+// (4 primary tabs + a More sheet with the rest).
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -14,6 +15,7 @@ import {
   DollarSign,
   FlaskConical,
   LayoutDashboard,
+  LineChart,
   ListChecks,
   MoreHorizontal,
   Radio,
@@ -28,10 +30,11 @@ type NavItem = { href: string; label: string; desc?: string; icon: typeof Layout
 
 // Primary surfaces — the full vibe loop + main operator decisions.
 export const navItems: NavItem[] = [
-  { href: "/", label: "Overview", desc: "Status · verdicts · ideas", icon: LayoutDashboard },
+  { href: "/", label: "Overview", desc: "Status · theories · ideas", icon: LayoutDashboard },
   { href: "/lab", label: "Lab", desc: "Idea → spec → verdict", icon: FlaskConical },
   { href: "/verdicts", label: "Theories", desc: "Every theory tested · Gate verdict", icon: ClipboardCheck },
-  { href: "/strategies", label: "Strategies", desc: "Backtest · Simulation · Live", icon: ListChecks },
+  { href: "/strategies", label: "Strategies", desc: "Backtest · ranked & faceted", icon: ListChecks },
+  { href: "/forward-test", label: "Simulation", desc: "Live data · no money", icon: LineChart },
   { href: "/explorer", label: "Explorer", desc: "Pick · chart · compare", icon: Telescope },
   { href: "/mind", label: "Mind", desc: "What the agent knows & learned", icon: Brain },
   { href: "/costs", label: "Costs", desc: "What is it costing?", icon: DollarSign },
