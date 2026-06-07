@@ -1,4 +1,4 @@
-> Historical/aspirational. Operational truth = AGENTS.md + docs/IMPLEMENTATION.md (Built sections). Hosting/runtime details here may be stale.
+> **HISTORICAL — superseded by `docs/MASTER_PLAN.md` (operating plan) + `docs/IMPLEMENTATION.md` (built state).** Kept for reference only; facts/hosting/runtime details here may be stale. The canonical entry doc is `AGENTS.md`.
 
 # Cosmu v2 — V1 Build Plan (definitive)
 
@@ -107,7 +107,7 @@
 
 ## 3. Repo, toolchain, layout, conventions
 
-**New home: `apps/engine/` (Python 3.12).** v1 (`apps/api` Node, current `apps/web`) keeps running, untouched, until v2 reaches parity; then retire `apps/api` and rebuild `apps/web`.
+**Home: `apps/engine/` (Python 3.12) + `apps/web/` (Next.js).** The old v1 Node API is **gone** — `apps/` holds only `engine` + `web`. Stack: Railway (engine) · Vercel (web) · Supabase (Postgres) · Modal (heavy compute).
 
 ```
 apps/engine/cosmu/

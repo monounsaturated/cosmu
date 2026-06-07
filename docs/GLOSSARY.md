@@ -10,7 +10,7 @@ The single source of truth for product terms. **DB tables, API fields, UI labels
 |------|---------------------|
 | **Strategy** | The idea / thesis — the economic *why* (e.g. "fade crowded perp funding"). One Strategy, many Versions. |
 | **Version** | A parameterized variant of a Strategy — a concrete `StrategySpec` with a fitted `param_space`. What actually gets scored. |
-| **Track** | A Version's **standalone** $100k SIM forward-test, judged in **net-of-fee %**. Each Version runs its **own** track — there is no shared pool and no cross-strategy allocation. Every track uses the same standardized size so results compare apples-to-apples. |
+| **Track** | A Version's **standalone** SIM forward-test (default **$1,000** — a single adjustable setting `sim_track_capital`), judged in **net-of-fee %**. Each Version runs its **own** track — there is no shared pool and no cross-strategy allocation. Every track uses the same standardized size so results compare apples-to-apples. |
 | **Aggregate read-out** | The Σ of all standalone Tracks, shown on the Overview ("are we making money?"). A pure read-out — **not** an account you trade from, and **not** a pooled wallet. |
 
 ## Stages (where a Strategy lives)
@@ -18,7 +18,7 @@ The single source of truth for product terms. **DB tables, API fields, UI labels
 | Term | One-line definition |
 |------|---------------------|
 | **Backtest** | Discovery + screening. The research brain, Strategy Finder, and the Gate run Walk-Forward OOS + holdout on historical data — no real money, no live prices. Formerly called "Lab". |
-| **Simulation** | Validation on live data. Each gate-passed Version gets its own standalone $100k SIM track that marks-to-market on real closes 24/7. A **≥ 30 forward-day net-of-fee proof** is the recommended live-readiness signal (advisory — the operator decides; the 5 interlocks are the hard gate). Formerly called "Forward-test" and (earlier) "Paper". |
+| **Simulation** | Validation on live data. Each gate-passed Version gets its own standalone SIM track (default **$1,000**, `sim_track_capital`) that marks-to-market on real closes 24/7. A **≥ 30 forward-day net-of-fee proof** is the recommended live-readiness signal (advisory — the operator decides; the 5 interlocks are the hard gate). Formerly called "Forward-test" and (earlier) "Paper". |
 | **Live** | Real money. Off by default; only gate-passing Versions promote, and only when the live toggle is armed. Live bots are launched manually with dedicated capital (1-button + confirm). |
 
 ## Judging
@@ -33,7 +33,7 @@ The single source of truth for product terms. **DB tables, API fields, UI labels
 
 | Term | One-line definition |
 |------|---------------------|
-| **SIM** | Simulated money, no real funds. The badge shown next to every figure in Forward-test. |
+| **SIM** | Simulated money, no real funds. The badge shown next to every figure in **Simulation**. |
 | **LIVE** | Real capital, off until armed via the live toggle. |
 
 > There is **no "demo"** and **no "paper"** money state in the product. When there is no engine or no data, show an honest **empty / connect** state — never fabricated numbers.

@@ -5,9 +5,10 @@
 >
 > **Rules for every agent (baked in):**
 > - **One branch per agent.** Never two agents in one tree.
-> - **Targeted tests only while building** (`pytest -k <area>` + `python3 scripts/check_naming.py`). Do **NOT**
->   run the full `pnpm verify` / `next build` / full `engine:test` locally — the **full suite runs once in CI at merge**.
-> - **PR to main, don't merge.** The orchestrator runs the CI-gated merge train.
+> - **Targeted tests only while building** (`pytest -k <area>` + `python3 scripts/check_naming.py`). Run the
+>   full `pnpm verify` (the gate) before opening the PR; the orchestrator re-runs it before merge. CI
+>   (GitHub Actions `verify.yml`) is **`workflow_dispatch`-only** — manual, OFF, it does NOT auto-run on push/PR.
+> - **PR to main, don't merge.** The orchestrator runs the merge train, gated by the local `pnpm verify`.
 > - **Non-negotiables:** LLM proposes / deterministic gate disposes (LLM never in scoring/money path); no magic
 >   numbers (params fit); point-in-time, no look-ahead; live OFF; never display synthetic data; generated TS from
 >   OpenAPI only; lean pure-Python (no numpy/scipy/sklearn).

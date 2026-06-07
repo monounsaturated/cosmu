@@ -5,9 +5,28 @@
 > code disagree, fix one of them on purpose.
 
 **The rule that governs every page:** *if a page doesn't help you decide or earn, it doesn't ship.*
-Four surfaces only (§11) — Dashboard · Strategies (Leaderboard) · Strategy detail · Console — plus the
-**Mind** monitoring surface (the 24/7 committee). Heavy/rare operations (authoring, migrations, research
-spelunking) live in Claude Code + `docs/`, never as new pages. Customization is config, not clutter.
+Heavy/rare operations (authoring, migrations, research spelunking) live in Claude Code + `docs/`,
+never as new pages. Customization is config, not clutter.
+
+**Canonical shipped nav** (source of truth: `apps/web/components/nav/app-nav.tsx` — desktop icon-rail
+sidebar + mobile bottom-tab bar). Eight primary surfaces + three secondary under "More":
+
+| | Route | Label | Decision it serves |
+|---|---|---|---|
+| 1 | `/` | **Overview** | Are we making money / is the machine healthy? |
+| 2 | `/lab` | **Lab** | Idea → spec → verdict (authoring + screening) |
+| 3 | `/verdicts` | **Theories** | Every theory tested + its honest Gate verdict |
+| 4 | `/strategies` | **Strategies** | Backtest · Simulation · Live (the faceted leaderboard + detail) |
+| 5 | `/explorer` | **Explorer** | Pick · chart · compare |
+| 6 | `/mind` | **Mind** | What the agent knows, thinks, and has learned (the committee) |
+| 7 | `/costs` | **Costs** | What is it costing? |
+| 8 | `/console` | **Console** | Decide · steer · arm |
+| More | `/live` | **Live** (gated) | Positions · caps (dimmed until armed) |
+| More | `/settings` | **Settings** | Keys · universe · data |
+| More | `/commands` | **Commands** | Run from Claude Code |
+
+There is **no `/paper` "wallet" route** — the Overview is a read-out (Σ of standalone tracks), not a pooled
+wallet. Strategy detail lives under `/strategies/{id}` (and `/strategy/{id}`), not as a separate nav item.
 
 ---
 
@@ -29,15 +48,19 @@ no UI ever fires a live order — the UI only *reports* and *proposes* (VISION �
 
 ---
 
-## 2. The four-plus-one surfaces, and the single decision each serves
+## 2. The core surfaces, and the single decision each serves
+
+(See the canonical nav table above for the full shipped route list. The epics below detail the surfaces
+that carry the primary decisions; the others — Lab, Theories, Explorer, Costs, Settings, Commands — are
+authoring/inspection surfaces that compose the same endpoints.)
 
 | Surface | The one decision it serves | Source of truth |
 |---|---|---|
-| **Dashboard** | *Are we making money — should I keep the machine running / spending as is?* | `/overview`, `/costs`, `/mind`, `/intelligence`, `/autonomy/status` |
-| **Strategies** (Leaderboard) | *Which strategies deserve my attention / capital, on what edge?* | `/leaderboard` (faceted, real fields) |
-| **Strategy detail** | *Is this one strategy's edge real and live-ready?* | `/strategies/{id}` |
-| **Console** | *What needs my call right now, and how do I steer / arm?* | `/recommendations`, `/console/command`, `/toggle/live`, `/autonomy/*` |
-| **Mind** (monitoring) | *What does the committee believe, what does it know, what has it learned?* | `/mind`, `/scores`, `/mind/source-trust` |
+| **Overview** (`/`) | *Are we making money — should I keep the machine running / spending as is?* | `/overview`, `/costs`, `/mind`, `/intelligence`, `/autonomy/status` |
+| **Strategies** (`/strategies`, Leaderboard) | *Which strategies deserve my attention / capital, on what edge?* | `/leaderboard` (faceted, real fields) |
+| **Strategy detail** (`/strategies/{id}`) | *Is this one strategy's edge real and live-ready?* | `/strategies/{id}` |
+| **Console** (`/console`) | *What needs my call right now, and how do I steer / arm?* | `/recommendations`, `/console/command`, `/toggle/live`, `/autonomy/*` |
+| **Mind** (`/mind`, monitoring) | *What does the committee believe, what does it know, what has it learned?* | `/mind`, `/scores`, `/mind/source-trust` |
 
 Every number on every surface carries a **money-state** (SIM / LIVE) and an **honest empty/offline state**:
 when the engine is unreachable we say so; when it is connected but empty we say *that*. **Synthetic numbers
@@ -64,7 +87,7 @@ never ship** — the product has no demo money state.
 ### Epic B — Strategies: the unified, faceted leaderboard
 *Goal: rank every strategy-version honestly and slice the population by how it makes money.*
 
-- **B1.** *I see every version on its own $100k track, ranked by risk-adjusted % (deflated OOS Sharpe), with net %.*
+- **B1.** *I see every version on its own standalone track (default $1,000, `sim_track_capital`), ranked by risk-adjusted % (deflated OOS Sharpe), with net %.*
   - **Accept:** rows from `/leaderboard`, default sort = `deflated_sharpe` desc; net % shown prominently; no pooled-wallet framing.
 - **B2.** *I filter by signal-family as the primary lens — {Social · News/Events · Math/Price · Macro/Positioning · On-chain/Flow}.*
   - **Accept:** `signal_family` is **derived from the features the spec references** (`cosmu/strategy/taxonomy.py`), never hand-tagged; selecting a family filters the table and the counts update.

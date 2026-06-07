@@ -26,7 +26,7 @@ Everything you drop flows through the **same Gate** — no shortcut to Live. The
 - **All ready-to-paste prompts live in `docs/AGENT_TASKS.md`.**
 - **Cloud agents** (parallel) = pure code + offline tests + `next build`.
 - **Local (your Mac)** = anything touching `.env.local`, Railway, live data, or `modal run`.
-- One branch per agent. CI (GitHub Actions) is the gate. **Push = deploy.**
+- One branch per agent. The **local `pnpm verify` (pre-push hook) is the gate** — CI (GitHub Actions) is manual-dispatch only, OFF by default. **Push = deploy.**
 
 ## 4. Where things live
 - **Ideas (features/infra)** → `IDEAS.md` → `/triage-ideas` → `BACKLOG.md`
@@ -36,6 +36,8 @@ Everything you drop flows through the **same Gate** — no shortcut to Live. The
 - **Full picture** → `AGENTS.md` (the canonical entry doc)
 
 ## 5. The one thing that matters right now
-The machine runs but has **0 surviving strategies** (127 authored → all killed by the honest Gate).
+The machine runs but has **0 honest-Gate survivors** — every theory tested has been killed by the honest Gate.
+(Authored = whatever is in `apps/engine/strategies/inbox/`; tested + verdicts = the `gate_verdicts` table,
+surfaced at `/verdicts`. Don't trust any hand-written count — read those.)
 **Priority #1 = find the first real edge** — author funding-carry on the deep funding data and run a tick.
 Everything else (UI, venues, data) is plumbing until one strategy proves net-of-fee profit.

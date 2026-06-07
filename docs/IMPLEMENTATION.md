@@ -1,6 +1,6 @@
 # Cosmu v2 — Implementation Log
 
-> Tracks what is actually built and the decisions taken, so `VISION.md` (contract) and `BUILD_PLAN.md` (how) stay honest. When code and the big docs diverge, reconcile here on purpose.
+> Tracks what is actually built and the decisions taken, so `VISION.md` (contract) and `docs/archive/BUILD_PLAN.md` (historical how) stay honest. When code and the big docs diverge, reconcile here on purpose.
 
 ## Built
 
@@ -74,7 +74,7 @@ LLMs may help narrate, but the **deterministic Gate alone disposes of money** �
 - `master/scorer.py` + `master/risk.py` — deterministic scorer (deflated Sharpe, PBO, gates) and risk gauntlet. **Out of the agent's reach.**
 
 ### Autonomous evolution loop (`evolution/`) — the differentiator
-- `loop.py` `FarmLoop.run_cohort(...)` — generates a wide population (seeds + chat briefs + Pine imports → exploit mutations + explore wildcards), compiles + static-checks each, runs a cheap deterministic real-bar Binance spot screen, scores through the out-of-reach scorer, keeps gate-passers as `$100k` standalone SIM tracks, sends the rest to the graveyard **with kill reasons**. Seeded/reproducible for a fixed bar cache/provider.
+- `loop.py` `FarmLoop.run_cohort(...)` — generates a wide population (seeds + chat briefs + Pine imports → exploit mutations + explore wildcards), compiles + static-checks each, runs a cheap deterministic real-bar Binance spot screen, scores through the out-of-reach scorer, keeps gate-passers as standalone SIM tracks (default `$1,000`, `sim_track_capital`), sends the rest to the graveyard **with kill reasons**. Seeded/reproducible for a fixed bar cache/provider.
 - `mutator.py` — §F operator catalog (`swap_feature`, `widen/narrow_param`, `tighten/loosen_risk`, `change_horizon`, `add_condition`, `crossover`) + wildcard generators. Two lanes (exploit single-operator for clean attribution; explore unrestricted).
 - `seeder.py` — diverse seed templates (breakout, mean-reversion, carry, momentum) so the population never starts collapsed.
 
@@ -214,7 +214,7 @@ NautilusTrader event-driven validation · vectorbt fast screen · Optuna param f
 
 # Product architecture (decided 2026-06-01)
 
-This is the canonical product shape. It refines `BUILD_PLAN.md §10/§15` — when they disagree, this wins until promoted into the contract.
+This is the canonical product shape. It refines `docs/archive/BUILD_PLAN.md §10/§15` (historical) — when they disagree, this wins until promoted into the contract.
 
 ## Three engines (the funnel)
 
@@ -223,7 +223,7 @@ Each stage answers a different question. A strategy must clear each to reach the
 | Engine | Capital | Question it answers | Notes |
 |---|---|---|---|
 | **Lab** | None — fixed notional per strategy, scored as **net-of-fee %** | "Does this edge exist on its own?" | Cheap, wide, no portfolio effects. Must still charge real per-venue fees or the % is fake. This is the evolution loop. |
-| **Forward-test** | Its **own** standalone $100k SIM track (no pooled wallet) | "Does this edge hold up on real prices, net of costs, over time?" | Each survivor proves itself on its own track — no shared capital, no cross-strategy competition. Held + marked-to-market across bars. Runs 24/7. |
+| **Simulation** | Its **own** standalone SIM track (default $1,000, `sim_track_capital`; no pooled wallet) | "Does this edge hold up on real prices, net of costs, over time?" | Each survivor proves itself on its own track — no shared capital, no cross-strategy competition. Held + marked-to-market across bars. Runs 24/7. |
 | **Live** | Real money, small caps | "Does the SIM edge survive real fills / latency / slippage?" | Same strategy code path, launched manually with dedicated capital. Auto-defund on edge decay. Starts at smallest caps, top survivors only. |
 
 **Live activation = 2 clicks.** (1) "Go live" opens a modal showing exactly what will trade: strategies, per-strategy cap, global cap, max daily loss. (2) "Confirm" arms it. Auto-disarms if the daily-loss cap is hit. The modal is the second factor.
@@ -232,16 +232,24 @@ Each stage answers a different question. A strategy must clear each to reach the
 
 Every sidebar item is its own route. No `/#section` jumps to a shared page.
 
+Canonical source of truth: `apps/web/components/nav/app-nav.tsx`. Eight primary surfaces + three under "More".
+
 | Route | Purpose |
 |---|---|
-| `/` Dashboard | Are we making money, what's running, what needs me. One headline number, KPI row, one interactive equity chart, "needs you" list, recent activity. |
-| `/lab` | The research farm: auto-running cohorts, funnel, survivors, graveyard, Pine inbox. |
-| `/paper` | The wallet: equity curve, open positions, allocations, costs, P&L. |
-| `/live` | Gated. Activation modal, caps, real positions, defund controls. Dimmed until armed. |
-| `/strategies` | Search/browse any version, detail, lineage, why it died. (Replaces the old "Leaderboard" anchor.) |
-| `/settings` | Keys, caps, spend limits, data sources, model on/off — written through the app (audited), never raw SQL. |
+| `/` Overview | Are we making money, what's running, what needs me. Aggregate read-out (Σ of standalone tracks — NOT a pooled wallet), KPI row, equity chart, "needs you" list, recent activity. |
+| `/lab` | Idea → spec → verdict: auto-running cohorts, funnel, survivors, graveyard, Pine inbox. |
+| `/verdicts` Theories | Every theory tested + its honest Gate verdict (served by `GET /research/experiments`). |
+| `/strategies` | Backtest · Simulation · Live: search/browse any version, detail (`/strategies/{id}`), lineage, why it died. |
+| `/explorer` | Pick · chart · compare data sources / strategies. |
+| `/mind` | What the agent knows, thinks, and has learned (the 24/7 committee). |
+| `/costs` | What is it costing? Infra/LLM/data opex vs alpha. |
+| `/console` | Decide · steer · arm (the control surface). |
+| `/live` (More, gated) | Activation modal, caps, real positions, defund controls. Dimmed until armed. |
+| `/settings` (More) | Keys, universe, data sources, model on/off — written through the app (audited), never raw SQL. |
+| `/commands` (More) | Run procedures from Claude Code. |
 
-**DONE (2026-06-02):** the 6-route nav is live. `/costs` merged into `/paper`; `/steer` stays as a route (accessible from Overview) but is out of the nav. Header status is dynamic (engine probe). Sidebar "Capital valve" replaced with plain-language "Safety" card. Events use human-readable labels. Inbox shows 3 items + expand.
+There is **no `/paper` "wallet" route** — the Overview is a read-out, not a pooled wallet. Costs is its own
+surface (`/costs`), not folded into a wallet page.
 
 ## Sidebar component (shadcn)
 

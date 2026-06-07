@@ -1,4 +1,4 @@
-> Historical/aspirational. Operational truth = AGENTS.md + docs/IMPLEMENTATION.md (Built sections). Hosting/runtime details here may be stale.
+> **HISTORICAL — superseded by `docs/MASTER_PLAN.md` (operating plan) + `docs/IMPLEMENTATION.md` (built state).** Kept for reference only; facts/hosting/runtime details here may be stale. The canonical entry doc is `AGENTS.md`.
 
 # Cosmu v2 — Master Plan
 
@@ -45,7 +45,7 @@ LLMs are excellent at #1 and #2 (structure from messy text, hypothesis generatio
 | **Quant researcher** | LLM detects patterns, writes typed `StrategySpec`s | proposes; never scores |
 | **Risk & validation (the wall)** | **Deterministic scorer/gates** | LLM *cannot* touch this |
 | **Execution trader** | NautilusTrader, gated | LLM *cannot* fire a live order |
-| **Portfolio manager** | deterministic per-track funding — each survivor on its own standalone $100k SIM track (no pooled wallet, no cross-strategy allocation) | deterministic |
+| **Portfolio manager** | deterministic per-track funding — each survivor on its own standalone SIM track (default $1,000, `sim_track_capital`; no pooled wallet, no cross-strategy allocation) | deterministic |
 | **CIO** | **You** — chat + the live toggle | the only human in the money loop |
 
 ## 1. Core principle
