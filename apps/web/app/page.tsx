@@ -7,11 +7,11 @@
 
 import { Activity, ArrowRight, ClipboardCheck, FlaskConical, LineChart, Pause, Play, TrendingUp, Users } from "lucide-react";
 import Link from "next/link";
-import { engineConfigured, getAutonomyStatus, getVerdicts, getInboxQueue, getLeaderboard, getIntelligence, getOverview } from "./data";
-import type { VerdictRow } from "./data";
+import { engineConfigured, getAutonomyStatus, getExperiments, getInboxQueue, getLeaderboard, getIntelligence, getOverview } from "./data";
+import type { ExperimentTheory, ExperimentsResponse } from "./data";
 import type { InboxQueueItem, LeaderboardRow, OverviewResponse } from "@cosmu/contracts-ts";
 import type { FunnelStats } from "./data";
-import { IdeaDumpBox } from "./idea-dump-box";
+import { IdeaIntake } from "@/components/overview/idea-intake";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,21 +29,21 @@ export const dynamic = "force-dynamic";
 export default async function OverviewPage() {
   const [
     { status, connected: statusConnected },
-    { verdicts, connected: verdictsConnected },
+    { experiments, connected: experimentsConnected },
     { items: inboxItems, connected: inboxConnected },
     { leaderboard, connected: lbConnected },
     { intelligence, connected: intelConnected },
     { overview, connected: overviewConnected }
   ] = await Promise.all([
     getAutonomyStatus(),
-    getVerdicts(),
+    getExperiments(),
     getInboxQueue(),
     getLeaderboard(),
     getIntelligence(),
     getOverview()
   ]);
 
-  const connected = statusConnected || verdictsConnected || lbConnected || intelConnected || inboxConnected || overviewConnected;
+  const connected = statusConnected || experimentsConnected || lbConnected || intelConnected || inboxConnected || overviewConnected;
 
   if (!connected) {
     return (
@@ -51,13 +51,13 @@ export default async function OverviewPage() {
         <Header />
         <NotConnected
           configured={engineConfigured}
-          what="The Overview shows the machine's status, the candidate pipeline, Gate verdicts, forward-test progress, and data freshness. Connect the engine to see real data; nothing is fabricated."
+          what="The Overview shows the machine's status, the candidate pipeline, Gate-ruled theories, forward-test progress, and data freshness. Connect the engine to see real data; nothing is fabricated."
         />
       </div>
     );
   }
 
-  const rows: VerdictRow[] = verdicts.rows ?? [];
+  const theories: ExperimentTheory[] = experiments.theories ?? [];
   const allLbRows = leaderboard.rows as LeaderboardRow[];
   const simRows = allLbRows.filter((r) => {
     const s = (r.status ?? "").toLowerCase();
@@ -75,8 +75,8 @@ export default async function OverviewPage() {
         overviewConnected={overviewConnected}
         funnel={intelligence.funnel}
         intelConnected={intelConnected}
-        verdictRows={verdicts.rows ?? []}
-        verdictsConnected={verdictsConnected}
+        summary={experiments.summary}
+        experimentsConnected={experimentsConnected}
       />
 
       <MachineStatus status={status} connected={statusConnected} />
@@ -89,8 +89,9 @@ export default async function OverviewPage() {
         intelConnected={intelConnected}
       />
 
-      {/* Verdict ledger — every Gate ruling, PASS or FAIL, with the stat that decided it. */}
-      <VerdictLedger rows={rows} connected={verdictsConnected} />
+      {/* Theories — every Gate ruling, PASS or FAIL, drawn from the same experiment memory the
+          /verdicts page renders, so "View all" is a true drill-down. */}
+      <TheoriesLedger theories={theories} connected={experimentsConnected} />
 
       {/* Forward-test window — strategies in simulation with days elapsed. */}
       <ForwardTestWindow rows={simRows} connected={lbConnected} />
@@ -113,31 +114,32 @@ function Header() {
 
 // Command-center metric strip — four dense KPI tiles. Every number is REAL engine data; the sim-equity
 // sparkline is the actual /overview equity_curve (renders nothing, with an honest "day 0" hint, until the
-// engine has produced ≥2 points). The Gate pass-rate is computed from the real verdict ledger.
+// engine has produced ≥2 points). The Gate pass-rate is computed from the same experiment memory the
+// Theories card and /verdicts page render, so the headline and the drill-down never disagree.
 function CommandStrip({
   overview,
   overviewConnected,
   funnel,
   intelConnected,
-  verdictRows,
-  verdictsConnected
+  summary,
+  experimentsConnected
 }: {
   overview: OverviewResponse;
   overviewConnected: boolean;
   funnel: FunnelStats;
   intelConnected: boolean;
-  verdictRows: VerdictRow[];
-  verdictsConnected: boolean;
+  summary: ExperimentsResponse["summary"];
+  experimentsConnected: boolean;
 }) {
   const curve = overview.equity_curve ?? [];
   const equityValues = curve.map((p) => p.value);
   const hasCurve = equityValues.length >= 2;
   const pnl = overview.pnl_net;
 
-  // Gate pass-rate over the real ruled verdicts (PASS ÷ ruled). Honest "—" when nothing has been ruled.
-  const ruled = verdictRows.filter((r) => r.status === "PASS" || r.status === "FAIL");
-  const passes = ruled.filter((r) => r.status === "PASS").length;
-  const passRate = ruled.length > 0 ? Math.round((passes / ruled.length) * 100) : null;
+  // Gate pass-rate over the real ruled theories (passed ÷ total). Honest "—" when nothing has been ruled.
+  const ruled = summary.total;
+  const passes = summary.passed;
+  const passRate = ruled > 0 ? Math.round((passes / ruled) * 100) : null;
 
   return (
     <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -167,8 +169,8 @@ function CommandStrip({
         label="Gate pass-rate"
         tone={passRate === null ? "muted" : passRate >= 20 ? "up" : "warn"}
         icon={<Users className="size-4" />}
-        value={verdictsConnected && passRate !== null ? `${passRate}%` : "—"}
-        hint={verdictsConnected ? (ruled.length > 0 ? `${passes}/${ruled.length} theses passed` : "none ruled yet") : "ledger offline"}
+        value={experimentsConnected && passRate !== null ? `${passRate}%` : "—"}
+        hint={experimentsConnected ? (ruled > 0 ? `${passes}/${ruled} theories passed` : "none ruled yet") : "ledger offline"}
       />
     </section>
   );
@@ -257,10 +259,10 @@ function CandidatePipeline({
           <PipelineFunnelBar funnel={funnel} />
         ) : null}
 
-        {/* Dump box — queue a new idea inline */}
+        {/* Idea intake — queue a new idea inline (bare variant; the queue is shown below). */}
         <div>
           <div className="mb-2 text-[11.5px] font-medium text-quiet">Queue a new idea</div>
-          <IdeaDumpBox />
+          <IdeaIntake variant="bare" />
         </div>
 
         {/* Queue snapshot */}
@@ -356,60 +358,54 @@ function IdeaQueuePreview({ items, connected }: { items: InboxQueueItem[]; conne
   );
 }
 
-const VERDICT_STYLE: Record<VerdictRow["status"], { label: string; variant: "up" | "down" | "warn" | "muted" }> = {
-  PASS: { label: "PASS", variant: "up" },
-  FAIL: { label: "FAIL", variant: "down" },
-  "INSUFFICIENT-DATA": { label: "Insufficient data", variant: "warn" },
-  "DATA-BLOCKED": { label: "Data-blocked", variant: "muted" }
-};
-
 const PREVIEW_N = 5;
 
-// Verdict ledger — every Gate ruling. For FAIL rows, the killing stat (Sharpe, trade count, cost
-// ratio) is shown so the operator knows exactly what the Gate rejected and why.
-function VerdictLedger({ rows, connected }: { rows: VerdictRow[]; connected: boolean }) {
-  const preview = rows.slice(0, PREVIEW_N);
+// Theories — every Gate ruling, drawn from the SAME experiment memory the /verdicts page renders
+// (GET /research/experiments) so "View all" is a true drill-down. PASS or FAIL, with the deflated-Sharpe
+// the Gate measured so the operator knows exactly what decided each ruling.
+function TheoriesLedger({ theories, connected }: { theories: ExperimentTheory[]; connected: boolean }) {
+  const preview = theories.slice(0, PREVIEW_N);
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-1.5">
-          <ClipboardCheck className="size-4 text-iris-soft" /> Gate verdicts
+          <ClipboardCheck className="size-4 text-iris-soft" /> Theories
           {/* Cohort tooltip — in the header so the operator sees it alongside PASS/FAIL counts */}
           <Tooltip
             content="Specs are tested as a cohort. The Gate's BH-FDR correction means a PASS isn't just lucky — it survived multiple-testing scrutiny alongside every other spec in the same batch."
             side="bottom"
           />
         </CardTitle>
-        <span className="text-[12px] text-quiet">{rows.length} thesis{rows.length === 1 ? "" : "es"} ruled on</span>
+        <span className="text-[12px] text-quiet">{theories.length} theor{theories.length === 1 ? "y" : "ies"} ruled on</span>
       </CardHeader>
       <CardContent>
-        {rows.length === 0 ? (
+        {theories.length === 0 ? (
           <EmptyState
-            title={connected ? "No verdicts yet" : "Verdicts unavailable"}
+            title={connected ? "No theories yet" : "Theories unavailable"}
             hint={
               connected
-                ? "Every spec the Gate rules on appears here — PASS or FAIL, with the stat that decided it."
-                : "The engine did not return the ledger. Once it is up, real verdicts appear here."
+                ? "Every theory the Gate rules on appears here — PASS or FAIL, with the stat that decided it."
+                : "The engine did not return the experiment memory. Once it is up, real theories appear here."
             }
             icon={<ClipboardCheck className="size-5" />}
           />
         ) : (
-          <DataPreview href="/verdicts" viewAllLabel="View all verdicts" total={rows.length}>
+          <DataPreview href="/verdicts" viewAllLabel="View all theories" total={theories.length}>
             <ul className="divide-y divide-border/60">
-              {preview.map((r) => {
-                const style = VERDICT_STYLE[r.status] ?? VERDICT_STYLE.FAIL;
+              {preview.map((t) => {
+                const pass = t.decision === "PASS";
+                const date = t.ts ? t.ts.slice(0, 10) : null;
                 return (
-                  <li key={r.slug} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1.5 py-3 first:pt-0 last:pb-0">
+                  <li key={t.run_id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1.5 py-3 first:pt-0 last:pb-0">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-[13.5px] font-medium text-foreground">{r.thesis}</span>
-                        {r.date ? <span className="text-[11px] text-quiet">{r.date}</span> : null}
+                        <span className="text-[13.5px] font-medium text-foreground">{t.hypothesis}</span>
+                        {date ? <span className="text-[11px] text-quiet">{date}</span> : null}
                       </div>
-                      {r.reason ? <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{r.reason}</p> : null}
-                      {r.status === "FAIL" ? <VerdictKillStats row={r} /> : null}
+                      <TheoryStats theory={t} />
                     </div>
-                    <Badge variant={style.variant} className={cn("mt-0.5 shrink-0")}>
-                      {style.label}
+                    <Badge variant={pass ? "up" : "down"} className={cn("mt-0.5 shrink-0")}>
+                      {pass ? "PASS" : "FAIL"}
                     </Badge>
                   </li>
                 );
@@ -422,17 +418,19 @@ function VerdictLedger({ rows, connected }: { rows: VerdictRow[]; connected: boo
   );
 }
 
-// For FAIL verdicts, surface the key stats so the operator knows what the Gate measured.
-function VerdictKillStats({ row }: { row: VerdictRow }) {
+// Surface the key stats so the operator knows what the Gate measured for a theory: the best in-sample
+// deflated-Sharpe probability (the Gate's 0.95 bar), how many candidates were tested, and how many were
+// promoted. Honest — only renders the numbers the engine actually returned.
+function TheoryStats({ theory }: { theory: ExperimentTheory }) {
   const bits: string[] = [];
-  if (row.deflated_sharpe !== null && row.deflated_sharpe !== undefined) {
-    bits.push(`Sharpe ${row.deflated_sharpe.toFixed(2)}`);
+  if (theory.best_dsr !== null && theory.best_dsr !== undefined) {
+    bits.push(`DSR-prob ${theory.best_dsr.toFixed(2)}`);
   }
-  if (row.trades !== null && row.trades !== undefined) {
-    bits.push(`${row.trades} trade${row.trades === 1 ? "" : "s"}`);
+  if (theory.n_candidates > 0) {
+    bits.push(`${theory.n_candidates} candidate${theory.n_candidates === 1 ? "" : "s"}`);
   }
-  if (row.cost_ratio !== null && row.cost_ratio !== undefined && row.cost_ratio > 0) {
-    bits.push(`cost ${(row.cost_ratio * 100).toFixed(0)}%`);
+  if (theory.n_promoted > 0) {
+    bits.push(`${theory.n_promoted} promoted`);
   }
   if (bits.length === 0) return null;
   return (
