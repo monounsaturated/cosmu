@@ -16,7 +16,7 @@ export default async function ExplorerPage() {
   const { list, connected } = await getExplorerList();
 
   return (
-    <div className="mx-auto max-w-[1200px] space-y-6 px-5 py-7 lg:px-7">
+    <div className="mx-auto max-w-[1200px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-7 lg:px-7">
       <SectionHeader
         eyebrow="explorer"
         title="Strategy Explorer"

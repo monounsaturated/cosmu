@@ -67,8 +67,12 @@ function facetDisplay(key: FacetKey, value: string): string {
   return value;
 }
 
-export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
+export function StrategiesTable({ rows, context = "leaderboard" }: { rows: LeaderboardRow[]; context?: "leaderboard" | "simulation" }) {
   const router = useRouter();
+  // On the Simulation surface we surface the FORWARD clock as its own column, so a day-0 track's
+  // BACKTEST number can never be misread as forward performance (the operator's flag). The leaderboard
+  // keeps its dense ranked view. Either way, the % columns are labelled "Backtest OOS" — never bare "Return".
+  const showForward = context === "simulation";
   const [query, setQuery] = useState("");
   const [family, setFamily] = useState<string | "all">("all");
   // Each orthogonal facet holds a set of selected values (empty = no constraint).
@@ -247,7 +251,20 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
               <TH>Family · edge</TH>
               <TH>Status</TH>
               <TH>Class · venue · tf</TH>
-              <TH className="text-right">Return</TH>
+              {showForward ? (
+                <TH className="text-right">
+                  <span className="inline-flex items-center gap-1">
+                    Forward
+                    <Tooltip content="Live-data forward test SINCE the Gate funded this track (net of fees). This is the only number that proves the edge holds out-of-sample in real time. A just-funded track reads day 0 / — until it accrues forward history." />
+                  </span>
+                </TH>
+              ) : null}
+              <TH className="text-right">
+                <span className="inline-flex items-center gap-1">
+                  Backtest OOS
+                  <Tooltip content="Out-of-sample backtest return (gross). This is HISTORICAL — it is NOT forward performance. A day-0 forward track still shows its backtest number here." />
+                </span>
+              </TH>
               <TH className="text-right">Net</TH>
               <TH className="text-right">Score</TH>
               <TH className="text-right">PBO</TH>
@@ -281,6 +298,7 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
                   <TD className="text-[11.5px] text-muted">
                     {row.asset_class} · {row.venue} · {row.timeframe}
                   </TD>
+                  {showForward ? <ForwardCell row={row} /> : null}
                   <TD className={cn("text-right tabular", row.track_return_pct >= 0 ? "text-up" : "text-down")}>
                     {formatPct(row.track_return_pct)}
                   </TD>
@@ -294,6 +312,31 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
         </Table>
       )}
     </div>
+  );
+}
+
+// The Forward cell on the Simulation surface. HONEST by construction: the leaderboard contract carries the
+// forward-test CLOCK (forward_age_days / live_ready) but NOT yet a forward-return number, so we surface the
+// clock + readiness and never borrow the backtest % to stand in for forward performance. A just-funded track
+// reads "day 0 · —" so a fresh forward test can never display its backtest number as a forward result.
+function ForwardCell({ row }: { row: LeaderboardRow }) {
+  const days = Number.isFinite(row.forward_age_days) ? row.forward_age_days : 0;
+  if (days < 1) {
+    return (
+      <TD className="text-right tabular">
+        <span className="text-quiet">day 0</span>
+        <div className="text-[10.5px] uppercase tracking-wide text-quiet">no forward yet</div>
+      </TD>
+    );
+  }
+  const whole = Math.floor(days);
+  return (
+    <TD className="text-right tabular">
+      <span className="text-foreground">{whole}d</span>
+      <div className={cn("text-[10.5px] uppercase tracking-wide", row.live_ready ? "text-up" : "text-quiet")}>
+        {row.live_ready ? "matured" : "maturing"}
+      </div>
+    </TD>
   );
 }
 

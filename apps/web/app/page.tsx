@@ -379,7 +379,7 @@ function ForwardTestWindow({ rows, connected }: { rows: LeaderboardRow[]; connec
           <DataPreview href="/forward-test" viewAllLabel="View all in simulation" total={rows.length}>
             <ul className="divide-y divide-border/60">
               {rows.slice(0, 5).map((r) => {
-                const days = r.forward_age_days ?? 0;
+                const days = Math.floor(r.forward_age_days ?? 0);
                 const ready = days >= 30;
                 return (
                   <li key={r.version_id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
@@ -388,16 +388,10 @@ function ForwardTestWindow({ rows, connected }: { rows: LeaderboardRow[]; connec
                       <span className="ml-2 text-[11px] text-quiet">{r.venue}</span>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      {/* Forward return */}
-                      {r.track_return_pct !== undefined && r.track_return_pct !== null ? (
-                        <span className={cn("text-[12.5px] font-medium tabular", r.track_return_pct >= 0 ? "text-up" : "text-down")}>
-                          {r.track_return_pct >= 0 ? "+" : ""}{r.track_return_pct.toFixed(1)}%
-                        </span>
-                      ) : null}
-                      {/* Days elapsed badge */}
-                      <Badge variant={ready ? "up" : "muted"}>
-                        {ready ? `≥30d` : `day ${days}`}
-                      </Badge>
+                      {/* Forward CLOCK only — never the backtest % dressed up as forward return. The forward
+                          test is the clock since funding; a forward-return number isn't in the contract yet. */}
+                      <span className="text-[11.5px] tabular text-quiet">{days < 1 ? "day 0" : `${days}d fwd`}</span>
+                      <Badge variant={ready ? "up" : "muted"}>{ready ? "≥30d" : "maturing"}</Badge>
                     </div>
                   </li>
                 );

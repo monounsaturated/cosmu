@@ -73,10 +73,19 @@ export function LiveSurface({
 
   const armed = state.armed;
   const mode = modeBadge(state.mode);
+  // The ONE truth gate for this whole surface: real money is at risk only when armed AND on the live
+  // venue. Everything else the engine reports (positions, per-venue deployed totals) is SIMULATION
+  // capital and must NEVER be presented as live-deployed money — that's the bug the operator caught.
+  const isLive = armed && state.mode === "live";
   // The single money-state label for every $ on this surface: LIVE only when armed on the live
-  // venue, otherwise PAPER. There is no demo money state — offline shows an honest not-connected note.
-  const money = moneyMode({ live: armed && state.mode === "live" });
-  const dailyLossPct = state.caps.max_daily_loss > 0 ? Math.min(100, (state.daily_loss / state.caps.max_daily_loss) * 100) : 0;
+  // venue, otherwise Simulation. There is no demo money state — offline shows an honest not-connected note.
+  const money = moneyMode({ live: isLive });
+  // LIVE-only money figures. The engine's /live/positions + /live/venues report SIM capital too (it has no
+  // live/sim split today — flagged as a backend gap), so the UI gates them: $0 deployed / $0 daily loss
+  // until truly armed-and-live. This is the fix for "$10,000 / $5,000 deployed" reading the SIM aggregate.
+  const liveDeployed = isLive ? venues.total_deployed_usd : 0;
+  const liveDailyLoss = isLive ? state.daily_loss : 0;
+  const dailyLossPct = isLive && state.caps.max_daily_loss > 0 ? Math.min(100, (state.daily_loss / state.caps.max_daily_loss) * 100) : 0;
 
   async function refreshVenues() {
     if (!ENGINE_CONFIGURED) return;
@@ -248,7 +257,8 @@ export function LiveSurface({
   }
 
   return (
-    <div className="mx-auto max-w-[1100px] space-y-7 px-5 py-7 lg:px-7">
+    // The page owns the max-width column + responsive padding; the surface only owns its own vertical rhythm.
+    <div className="space-y-6 lg:space-y-7">
       {/* Header: armed state + mode + the always-on "off by default" reassurance */}
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -287,25 +297,38 @@ export function LiveSurface({
         </div>
       ) : null}
 
-      {/* Caps + daily loss */}
+      {/* Caps + live-deployed. The "Deployed" stat is the headline honesty fix: it shows LIVE-deployed
+          capital, which is $0 until armed-and-live — never the SIM aggregate the engine also tracks. */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat
+          label="Live deployed"
+          value={
+            <span className={liveDeployed > 0 ? "text-foreground" : "text-muted"}>
+              {formatUsd(liveDeployed)} <span className="text-[12px] font-normal text-quiet">/ {formatUsd(state.caps.global_cap)}</span>
+            </span>
+          }
+          hint={isLive ? "real capital at risk now" : "nothing live — disarmed"}
+          accent="iris"
+        />
         <Stat label="Per-strategy cap" value={formatUsd(state.caps.per_strategy_cap)} accent="iris" />
-        <Stat label="Global cap" value={formatUsd(state.caps.global_cap)} accent="iris" />
         <Stat label="Max daily loss" value={formatUsd(state.caps.max_daily_loss)} accent="warn" />
         <Stat
           label="Daily loss so far"
-          value={<span className={state.daily_loss > 0 ? "text-down" : "text-muted"}>{formatUsd(state.daily_loss)}</span>}
+          value={<span className={liveDailyLoss > 0 ? "text-down" : "text-muted"}>{formatUsd(liveDailyLoss)}</span>}
+          hint={isLive ? undefined : "no live loss while disarmed"}
           accent={dailyLossPct >= 100 ? "down" : "warn"}
         />
       </section>
 
-      <VenuesCard venues={venues} connected={connected} togglingVenue={togglingVenue} onToggle={toggleVenue} />
+      <VenuesCard venues={venues} connected={connected} isLive={isLive} togglingVenue={togglingVenue} onToggle={toggleVenue} />
 
       <Card>
         <CardHeader>
           <div>
             <CardTitle>Daily loss vs cap</CardTitle>
-            <CardDescription>The engine auto-disarms for the day when this reaches the cap.</CardDescription>
+            <CardDescription>
+              {isLive ? "The engine auto-disarms for the day when this reaches the cap." : "Tracks live losses once armed — at 0% while disarmed."}
+            </CardDescription>
           </div>
           <Badge variant={dailyLossPct >= 100 ? "down" : "muted"}>{dailyLossPct.toFixed(0)}% of cap</Badge>
         </CardHeader>
@@ -319,12 +342,20 @@ export function LiveSurface({
         </CardContent>
       </Card>
 
-      {/* Positions */}
+      {/* Positions — SCOPED + LABELLED by money state. When NOT live, the engine still returns the SIM
+          tracks' open positions; we label them Simulation so a paper position is never read as live capital. */}
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Open positions</CardTitle>
-            <CardDescription>Real positions from the engine. Defund returns capital to the reserve.</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              Open positions
+              <Badge variant={isLive ? "up" : "info"}>{isLive ? "Live" : "Simulation"}</Badge>
+            </CardTitle>
+            <CardDescription>
+              {isLive
+                ? "Real capital at risk now. Defund returns capital to the reserve."
+                : "Simulation tracks — paper positions on live data, no real money. They do not count as live-deployed capital."}
+            </CardDescription>
           </div>
           <Badge variant="muted">{state.positions.length} open</Badge>
         </CardHeader>
@@ -334,9 +365,9 @@ export function LiveSurface({
               <Lock className="size-5 text-quiet" />
               <div className="text-[13px] text-muted">No open positions</div>
               <div className="max-w-sm text-[11.5px] text-quiet">
-                {armed
+                {isLive
                   ? "Armed, but nothing is filled yet. Positions appear here as the engine trades within its caps."
-                  : "Nothing is at risk while disarmed. This is the honest empty state — no fabricated positions."}
+                  : "Nothing is at risk live while disarmed. This is the honest empty state — no fabricated positions."}
               </div>
             </div>
           ) : (
@@ -407,19 +438,24 @@ export function LiveSurface({
 
 // Lean venue overview: the TOTAL live budget up top, then the jurisdiction-legal venues as tick-to-include
 // rows. Each shows its deployed amount when connected, or an honest "not connected" when legal-but-unwired.
+// `isLive` gates the deployed totals: until armed-and-live, LIVE-deployed is $0 (the engine's per-venue
+// numbers include SIM capital, which must never read as live money here).
 function VenuesCard({
   venues,
   connected,
+  isLive,
   togglingVenue,
   onToggle
 }: {
   venues: LiveVenuesResponse;
   connected: boolean;
+  isLive: boolean;
   togglingVenue: string | null;
   onToggle: (id: string, enabled: boolean) => void;
 }) {
   const rows = venues.venues;
   const connectedCount = rows.filter((v) => v.connected).length;
+  const deployedTotal = isLive ? venues.total_deployed_usd : 0;
   return (
     <Card>
       <CardHeader>
@@ -431,7 +467,7 @@ function VenuesCard({
           </CardDescription>
         </div>
         <Badge variant="muted">
-          {formatUsd(venues.total_deployed_usd)} / {formatUsd(venues.global_cap)} deployed
+          {formatUsd(deployedTotal)} / {formatUsd(venues.global_cap)} live
         </Badge>
       </CardHeader>
       <CardContent>
@@ -465,7 +501,7 @@ function VenuesCard({
                 </div>
                 {v.connected ? (
                   <div className="text-right">
-                    <div className="tabular text-[13px] font-medium text-foreground">{formatUsd(v.deployed_usd)}</div>
+                    <div className="tabular text-[13px] font-medium text-foreground">{formatUsd(isLive ? v.deployed_usd : 0)}</div>
                     <div className="text-[10.5px] uppercase tracking-wide text-up">connected</div>
                   </div>
                 ) : (
