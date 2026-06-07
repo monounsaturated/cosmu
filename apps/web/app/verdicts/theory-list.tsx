@@ -27,6 +27,7 @@ import {
   decaysOutOfSample,
   fmtDsr
 } from "@/components/theories/theory-bits";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type VerdictFilter = "all" | "PASS" | "FAIL" | "decayed";
@@ -172,8 +173,9 @@ function TheoryRow({ theory }: { theory: ExperimentTheory }) {
 
       {open && hasCandidates ? (
         <div className="mt-3 space-y-2 pl-[22px]">
-          <div className="text-[10.5px] font-semibold uppercase tracking-wide text-quiet">
+          <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-quiet">
             Cohort · {theory.candidates.length} candidate{theory.candidates.length === 1 ? "" : "s"}
+            <Tooltip content="Tested together so a winner isn't just lucky — BH-FDR corrects for multiple comparisons across the whole batch." side="top" />
           </div>
           {theory.candidates.map((c) => (
             <CandidateRow key={c.id} c={c} />

@@ -173,3 +173,51 @@ def test_auto_research_pass_calls_no_llm_in_the_gate_path(tmp_path, monkeypatch)
     verdict = auto_research_pass(store, alt_store=astore)
     assert verdict.data_source == "live"
     assert isinstance(verdict, CrossAssetVerdict)
+
+
+# --- (c) ingest is ROBUST + routed OFF the leaky cross-asset gate -------------------------------
+
+
+def test_ingest_cron_does_not_run_the_leaky_cross_asset_gate(tmp_path, monkeypatch):
+    """The ingest cron path (cross_asset_gate=False) must ingest + persist WITHOUT touching the no-FDR/trials=5
+    cross-asset ablation the audit flagged as leaky. If the gate ran, this would explode."""
+    import cosmu.research.loop as loop_mod
+
+    store = _store(tmp_path, "ingestonly")
+    astore = AltDataStore(root=tmp_path / "alt")
+
+    def _boom(*_a, **_k):  # noqa: ANN002, ANN003
+        raise AssertionError("the leaky cross-asset gate must NOT run on the ingest cron path")
+
+    monkeypatch.setattr(loop_mod, "evaluate_cross_asset_ablation", _boom)
+
+    verdict = auto_research_pass(store, ingest=True, cross_asset_gate=False, alt_store=astore, providers=_fixture_providers())
+    assert verdict is None  # ingest-only → no verdict, and the gate was never reached
+    # ingest still completed + persisted the transfer series into the store
+    assert astore.read_all("polymarket", "MARKET", "pm_risk_on")
+    assert astore.read_all("fred", "MARKET", "macro_regime")
+    # no leaky gate_verdicts row was written by this ingest-only pass
+    assert not store.rows("SELECT 1 FROM gate_verdicts")
+
+
+def test_ingest_completes_and_persists_even_if_cross_asset_gate_raises(tmp_path, monkeypatch):
+    """The cross-asset gate step is best-effort: a Supabase-hiccup-style failure during the gate must be caught
+    + logged and must NEVER abort the ingest step, which has already persisted independently."""
+    import cosmu.research.loop as loop_mod
+
+    store = _store(tmp_path, "gateboom")
+    astore = AltDataStore(root=tmp_path / "alt")
+
+    def _boom(*_a, **_k):  # noqa: ANN002, ANN003 - mimic a transient connect/fee-read hiccup mid-gate
+        raise RuntimeError("supabase connect() hiccup during a fee-read")
+
+    monkeypatch.setattr(loop_mod, "evaluate_cross_asset_ablation", _boom)
+
+    # gate enabled, but it raises → the pass still returns (None) instead of aborting the ingest work
+    verdict = auto_research_pass(store, ingest=True, cross_asset_gate=True, alt_store=astore, providers=_fixture_providers())
+    assert verdict is None  # the leaky gate failed best-effort; the pass did not crash
+    # the ingest step persisted independently of the failing gate step
+    assert astore.read_all("polymarket", "MARKET", "pm_risk_on")
+    assert astore.read_all("fred", "MARKET", "macro_regime")
+    # the failed gate persisted no verdict row
+    assert not store.rows("SELECT 1 FROM gate_verdicts")
