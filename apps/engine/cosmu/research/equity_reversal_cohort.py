@@ -28,6 +28,7 @@ from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.scorer import BacktestMetrics, cscv_pbo, score
 from cosmu.master.trials import register_trial, trial_stats
+from cosmu.master.verdict_log import durable_persist
 from cosmu.research.equity_holdout import metrics_with_holdout, purged_embargoed_split
 
 CACHE = Path("/Users/device/cosmu/.cosmu/market_data/equities")
@@ -233,7 +234,10 @@ class Verdict:
     notes: list[str] = field(default_factory=list)
 
 
-def run(universe_name: str, symbols: list[str], fracs: list[float]) -> Verdict:
+def run(universe_name: str, symbols: list[str], fracs: list[float], *, persist: bool = False) -> Verdict:
+    """`persist=True` records the cohort verdict to durable experiment-memory (gate_verdicts) via the REAL
+    configured store (separate from the tempfile trial-ledger below) — main() sets it on real runs; tests leave
+    it False so they never touch the durable store."""
     universe = load_universe()
     symbols = [s for s in symbols if s in universe]
     panel = build_panel(universe, symbols)
@@ -314,7 +318,12 @@ def run(universe_name: str, symbols: list[str], fracs: list[float]) -> Verdict:
     if plc_best:
         pf, pres, pm = make_candidate("random_placebo", plc_best)
 
-    promotions = promote_cohort(store, candidates, gates, fdr_q=0.10, register=False, trials=trials)
+    persist_spec = durable_persist(
+        run_id=f"equity-reversal-{universe_name}",
+        hypothesis=f"equity 1-week cross-sectional reversal carries a gate-clearing edge after realistic fees on {universe_name}",
+        source="research/equity_reversal", data_source="equities-offline", universe=universe_name,
+    ) if persist else None
+    promotions = promote_cohort(store, candidates, gates, fdr_q=0.10, register=False, trials=trials, persist=persist_spec)
     by_id = {p.candidate_id: p for p in promotions}
 
     for c in candidates:
@@ -387,7 +396,7 @@ def main() -> int:
     for name, syms in [(f"SINGLE-STOCKS ({len(stocks)} names)", stocks),
                        (f"SECTOR+BROAD ETFs ({len(etfs)})", etfs),
                        (f"ALL NAMES ({len(all_syms)})", all_syms)]:
-        v = run(name, syms, fracs)
+        v = run(name, syms, fracs, persist=True)
         _print(v)
     return 0
 

@@ -25,6 +25,7 @@ from cosmu.api.models import (
     GateVerdictResponse,
 )
 from cosmu.knowledge.store import utcnow
+from cosmu.master.verdict_log import METHOD_COHORT_BHFDR, METHOD_CROSS_ASSET_NOFDR
 
 router = APIRouter()
 
@@ -59,7 +60,9 @@ def gate_status() -> GateStatusResponse:
     verdict = None
     for r in store.rows("SELECT payload FROM gate_verdicts ORDER BY id DESC LIMIT 20"):
         data = _json(r["payload"])
-        if isinstance(data, dict) and data.get("kind") == "cohort":
+        # Skip cohort rows AND the no-FDR cross-asset ablation rows — the single-signal status card only ever
+        # reflects an honest single-signal GateVerdictResponse, never a leaky cross-asset verdict.
+        if isinstance(data, dict) and (data.get("kind") == "cohort" or data.get("method") == METHOD_CROSS_ASSET_NOFDR):
             continue
         try:
             verdict = GateVerdictResponse(**data)
@@ -72,16 +75,25 @@ def gate_status() -> GateStatusResponse:
 @router.get("/research/experiments")
 def experiments() -> dict[str, Any]:
     """The machine's EXPERIMENT MEMORY, made visible — every theory it has tested through the honest cohort Gate
-    (gate_verdicts, kind='cohort'): plain-language hypothesis, source, verdict, best deflated-Sharpe vs the 0.95
-    bar, and the REAL out-of-sample holdout DSR (so OOS-decay is legible: high in-sample dSR + negative holdout =
-    overfit, not an edge). Read-only; honest-empty when nothing has been tested. The deterministic record behind
-    'the machine that never lies' — a returned PASS would be a genuine survivor, never fabricated."""
+    (gate_verdicts, kind='cohort', method='cohort_bhfdr'): plain-language hypothesis, source, verdict, best
+    deflated-Sharpe vs the 0.95 bar, and the REAL out-of-sample holdout DSR (so OOS-decay is legible: high
+    in-sample dSR + negative holdout = overfit, not an edge). Read-only; honest-empty when nothing has been
+    tested. This view shows ONLY BH-FDR-corrected cohort verdicts: the no-FDR/trials=5 cross-asset ablation
+    rows (method='cross_asset_ablation_nofdr') are explicitly EXCLUDED so a leaky verdict can never masquerade
+    as an FDR-gated survivor. The deterministic record behind 'the machine that never lies' — a returned PASS is
+    a genuine survivor, never fabricated."""
     theories: list[dict[str, Any]] = []
     passed = 0
     by_source: dict[str, dict[str, Any]] = {}
     for r in store.rows("SELECT ts, decision, payload FROM gate_verdicts ORDER BY id DESC LIMIT 1000"):
         p = _json(r["payload"])
-        if not isinstance(p, dict) or p.get("kind") != "cohort":
+        if not isinstance(p, dict):
+            continue
+        # ONLY honest, BH-FDR-corrected cohort verdicts are experiment-memory. Drop the leaky cross-asset
+        # ablation rows (and any other non-cohort shape) explicitly on the method marker so they can never
+        # be counted as FDR-gated survivors. Legacy cohort rows pre-dating the marker carry kind='cohort'
+        # with no method → still honest, so the kind check keeps them.
+        if p.get("method") == METHOD_CROSS_ASSET_NOFDR or p.get("kind") != "cohort":
             continue
         cands = p.get("candidates") or []
         holdouts = [c.get("holdout_deflated_sharpe") for c in cands if isinstance(c.get("holdout_deflated_sharpe"), (int, float))]
@@ -94,6 +106,7 @@ def experiments() -> dict[str, Any]:
             "hypothesis": p.get("hypothesis") or "",
             "decision": decision,
             "kind": p.get("kind"),
+            "method": p.get("method") or METHOD_COHORT_BHFDR,  # legacy cohort rows w/o the marker are FDR-honest
             "asset": p.get("asset") or p.get("symbol"),
             "n_candidates": p.get("n_candidates", len(cands)),
             "n_promoted": p.get("n_promoted", 0),
@@ -199,9 +212,12 @@ def run_cross_asset_gate() -> CrossAssetVerdict:
         bar=verdict.bar,
         data_source=data_source,
     )
+    # Tag the persisted row as the no-FDR/trials=5 cross-asset ablation path so the experiments read path can
+    # never let it masquerade as a BH-FDR-gated survivor (mirrors cosmu/research/loop._persist_verdict).
+    persisted = {"method": METHOD_CROSS_ASSET_NOFDR, **response.model_dump()}
     store.rows(
         "INSERT INTO gate_verdicts(ts, decision, data_source, payload) VALUES (?, ?, ?, ?)",
-        (utcnow(), response.decision, data_source, json.dumps(response.model_dump(), sort_keys=True)),
+        (utcnow(), response.decision, data_source, json.dumps(persisted, sort_keys=True)),
     )
     store.append_event(actor="master", kind="cross_asset_gate_run", ref_type="gate", payload={"decision": verdict.decision, "data_source": data_source})
     return response

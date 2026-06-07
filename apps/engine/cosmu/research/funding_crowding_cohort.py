@@ -25,6 +25,7 @@ from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.scorer import BacktestMetrics, cscv_pbo, score
 from cosmu.master.trials import record_trial, trial_stats
+from cosmu.master.verdict_log import durable_persist
 from cosmu.spine.venue import default_catalog
 from cosmu.strategy.spec import StrategySpec
 from cosmu.research.carry_ablation import (
@@ -136,7 +137,10 @@ def run_cohort(
     *,
     data_source: str = "live-cached",
     fdr_q: float = 0.10,
+    persist: bool = False,
 ) -> CohortReport:
+    """`persist=True` records the cohort verdict to durable experiment-memory (gate_verdicts) via the real
+    configured store — _main sets it on real runs; tests leave it False so they never touch the durable store."""
     gates = store.settings.gates
     fee_bps = default_catalog().venue("binance").taker_fee_bps
     btc_returns = _btc_daily_returns(market)
@@ -201,7 +205,12 @@ def run_cohort(
 
     # COHORT BH-FDR across the family — ledger already holds every grid variant, so register=False + the shared
     # trial_stats so deflation/FDR see the true (grid-inflated) count, not just the 5 representatives.
-    promotions = promote_cohort(store, candidates, gates, fdr_q=fdr_q, register=False, trials=trial_stats(store))
+    persist_spec = durable_persist(
+        run_id=f"funding-crowding-{data_source}",
+        hypothesis="a funding-as-crowding/positioning signal carries a gate-clearing edge on Binance spot (vs momentum)",
+        source="research/funding_crowding", data_source=data_source, fdr_q=fdr_q,
+    ) if persist else None
+    promotions = promote_cohort(store, candidates, gates, fdr_q=fdr_q, register=False, trials=trial_stats(store), persist=persist_spec)
     by_id = {p.candidate_id: p for p in promotions}
     for r in reports:
         p = by_id.get(r.name)
@@ -234,7 +243,7 @@ def _main() -> int:
     specs = load_specs()
     funding = CachedFundingRateProvider()
     market = _clip_to_funding_window(_real_market(BinanceSpotOHLCVProvider()), funding)
-    report = run_cohort(specs, market, funding, store)
+    report = run_cohort(specs, market, funding, store, persist=True)
 
     print(f"PHASE-0 FUNDING-CROWDING COHORT — {report.verdict}")
     print(f"  data_source={report.data_source}  window={report.window}  regimes={report.regimes_covered}")

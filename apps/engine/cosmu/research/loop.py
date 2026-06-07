@@ -8,6 +8,7 @@ from cosmu.config.settings import get_settings
 from cosmu.data.altdata import StoreBackedAltProvider
 from cosmu.data.sources.multiasset import MULTIASSET_METRICS
 from cosmu.knowledge.store import Store, utcnow
+from cosmu.master.verdict_log import METHOD_CROSS_ASSET_NOFDR
 from cosmu.research.fixtures import synthetic_cross_asset_inputs
 from cosmu.research.gate import CrossAssetVerdict, evaluate_cross_asset_ablation
 
@@ -35,8 +36,11 @@ def _has_cross_asset_data(alt_store) -> bool:  # noqa: ANN001
 
 def _persist_verdict(store: Store, verdict: CrossAssetVerdict, data_source: str) -> None:
     """Persist the gate verdict to gate_verdicts + emit a cross_asset_gate_run event — mirrors the API's
-    POST /research/cross-asset-gate handler so the cron loop and the UI write the SAME rows/events."""
+    POST /research/cross-asset-gate handler so the cron loop and the UI write the SAME rows/events. The
+    `method` marker tags this as the no-FDR/trials=5 cross-asset ablation path so the experiments read path
+    can never let it masquerade as a BH-FDR-gated survivor."""
     payload = {
+        "method": METHOD_CROSS_ASSET_NOFDR,
         "decision": verdict.decision,
         "passed": verdict.passed,
         "price_only_return": verdict.price_only_return,
