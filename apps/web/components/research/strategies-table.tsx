@@ -6,11 +6,13 @@
 // Math/Price · Macro/Positioning · On-chain/Flow} — DERIVED from the features the spec references (engine
 // taxonomy.py), never hand-tagged. Orthogonal facets refine it: asset class · venue · timeframe · status
 // (lifecycle) · origin · edge-type. Facets compose (AND across facets, OR within a facet) and read REAL
-// fields off the leaderboard row. Nothing fabricated; the honest empty/offline states live on the page.
+// fields off the leaderboard row. The numeric columns are click-to-sort (the operator picks the lens —
+// risk-adjusted score, net %, OOS, PBO, trades-derived); the default is deflated Sharpe, the honest
+// house ranking. Nothing fabricated; the honest empty/offline states live on the page.
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Filter, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Filter, X } from "lucide-react";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
 import { Badge } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
@@ -75,6 +77,18 @@ function facetDisplay(key: FacetKey, value: string): string {
   return value;
 }
 
+// Sortable numeric columns — each maps the operator's chosen lens onto a real row scalar. The default is
+// `score` (deflated Sharpe), the honest house ranking. `desc` is the natural reading for every column
+// here (biggest score / return / most trades first), so a fresh click on a column starts descending.
+type SortKey = "score" | "net" | "oos" | "pbo" | "forward";
+const SORT_VALUE: Record<SortKey, (r: LeaderboardRow) => number> = {
+  score: (r) => (Number.isFinite(r.deflated_sharpe) ? r.deflated_sharpe : -Infinity),
+  net: (r) => r.net_pct,
+  oos: (r) => r.track_return_pct,
+  pbo: (r) => (Number.isFinite(r.pbo) ? r.pbo : Infinity),
+  forward: (r) => r.forward_age_days
+};
+
 export function StrategiesTable({ rows, context = "leaderboard" }: { rows: LeaderboardRow[]; context?: "leaderboard" | "simulation" }) {
   const router = useRouter();
   // On the Simulation surface we surface the FORWARD clock as its own column, so a day-0 track's
@@ -93,6 +107,9 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
     edge_type: new Set()
   }));
   const [showFilters, setShowFilters] = useState(false);
+  // Sort state — default to the house ranking (deflated Sharpe, descending). Clicking a sortable header
+  // selects it descending; clicking the active one flips to ascending; a third click restores the default.
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "score", dir: "desc" });
 
   // Per-family counts (over the search-filtered rows) for the primary chip row.
   const searched = useMemo(() => {
@@ -131,8 +148,8 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
     return out;
   }, [searched, family]);
 
-  // Final filtered + ranked rows: family (single) AND each facet (OR within). Ranked by deflated Sharpe
-  // (risk-adjusted), the same honest ranking everywhere.
+  // Final filtered + sorted rows: family (single) AND each facet (OR within). Sorted by the operator's
+  // chosen column; ties (and the default) fall back to deflated Sharpe so the order is always stable.
   const filtered = useMemo(() => {
     const result = searched.filter((r) => {
       if (family !== "all" && r.signal_family !== family) return false;
@@ -142,8 +159,14 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
       }
       return true;
     });
-    return result.sort((a, b) => b.deflated_sharpe - a.deflated_sharpe);
-  }, [searched, family, selected]);
+    const value = SORT_VALUE[sort.key];
+    const sign = sort.dir === "asc" ? 1 : -1;
+    return result.sort((a, b) => {
+      const d = value(a) - value(b);
+      if (d !== 0) return sign * d;
+      return b.deflated_sharpe - a.deflated_sharpe;
+    });
+  }, [searched, family, selected, sort]);
 
   // Reference magnitude for the net-% signed bars: the largest |net%| in the filtered cohort, so each bar's
   // length is meaningful RELATIVE to its peers (the digits remain the source of truth).
@@ -157,6 +180,15 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
       if (next.has(value)) next.delete(value);
       else next.add(value);
       return { ...prev, [key]: next };
+    });
+  }
+
+  // Cycle a sortable header: inactive → desc → asc → back to the default (score, desc).
+  function toggleSort(key: SortKey) {
+    setSort((prev) => {
+      if (prev.key !== key) return { key, dir: "desc" };
+      if (prev.dir === "desc") return { key, dir: "asc" };
+      return { key: "score", dir: "desc" };
     });
   }
 
@@ -261,22 +293,24 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
               <TH>Status</TH>
               <TH>Class · venue · tf</TH>
               {showForward ? (
-                <TH className="text-right">
-                  <span className="inline-flex items-center gap-1">
-                    Forward
-                    <Tooltip content="Live-data forward test SINCE the Gate funded this track (net of fees). This is the only number that proves the edge holds out-of-sample in real time. A just-funded track reads day 0 / — until it accrues forward history." />
-                  </span>
-                </TH>
+                <SortableTH
+                  label="Forward"
+                  sortKey="forward"
+                  sort={sort}
+                  onToggle={toggleSort}
+                  tip="Live-data forward test SINCE the Gate funded this track (net of fees). This is the only number that proves the edge holds out-of-sample in real time. A just-funded track reads day 0 / — until it accrues forward history."
+                />
               ) : null}
-              <TH className="text-right">
-                <span className="inline-flex items-center gap-1">
-                  Backtest OOS
-                  <Tooltip content="Out-of-sample backtest return (gross). This is HISTORICAL — it is NOT forward performance. A day-0 forward track still shows its backtest number here." />
-                </span>
-              </TH>
-              <TH className="text-right">Net</TH>
-              <TH className="text-right">Score</TH>
-              <TH className="text-right">PBO</TH>
+              <SortableTH
+                label="Backtest OOS"
+                sortKey="oos"
+                sort={sort}
+                onToggle={toggleSort}
+                tip="Out-of-sample backtest return (gross). This is HISTORICAL — it is NOT forward performance. A day-0 forward track still shows its backtest number here."
+              />
+              <SortableTH label="Net" sortKey="net" sort={sort} onToggle={toggleSort} tip="Net-of-fee return on this Version's standalone track. The signed bar reads sign + size relative to the cohort; the digits are the source of truth." />
+              <SortableTH label="Score" sortKey="score" sort={sort} onToggle={toggleSort} tip="Deflated out-of-sample Sharpe — the risk-adjusted house ranking. The gauge fills toward a strong (~2) score." />
+              <SortableTH label="PBO" sortKey="pbo" sort={sort} onToggle={toggleSort} tip="Probability of backtest overfitting. Lower is better; the Gate blocks above 0.50." />
             </TR>
           </THead>
           <TBody>
@@ -337,6 +371,49 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
         </Table>
       )}
     </div>
+  );
+}
+
+// A right-aligned, click-to-sort numeric header. Shows a neutral two-way arrow when inactive and a
+// directional arrow (in brand iris) when this column is the active sort — the Linear/Stripe table feel.
+function SortableTH({
+  label,
+  sortKey,
+  sort,
+  onToggle,
+  tip
+}: {
+  label: string;
+  sortKey: SortKey;
+  sort: { key: SortKey; dir: "asc" | "desc" };
+  onToggle: (key: SortKey) => void;
+  tip: string;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <TH className="text-right">
+      <button
+        type="button"
+        onClick={() => onToggle(sortKey)}
+        className={cn(
+          "ml-auto inline-flex items-center gap-1 transition-colors hover:text-foreground",
+          active ? "text-foreground" : ""
+        )}
+        aria-label={`Sort by ${label}`}
+      >
+        {label}
+        {active ? (
+          sort.dir === "asc" ? (
+            <ArrowUp className="size-3 text-iris-soft" />
+          ) : (
+            <ArrowDown className="size-3 text-iris-soft" />
+          )
+        ) : (
+          <ArrowUpDown className="size-3 opacity-40" />
+        )}
+      </button>
+      <Tooltip content={tip} />
+    </TH>
   );
 }
 
