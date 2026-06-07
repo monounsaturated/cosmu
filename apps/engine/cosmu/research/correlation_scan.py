@@ -100,7 +100,11 @@ def scan_feature_asset(provider: StoreBackedAltProvider, feature: str, source: s
     results: list[ICResult] = []
     for h in horizons:
         fwd = _forward_returns(bars, h)
-        keys = [k for k in joined if k in fwd]
+        keys = [k for k in joined if k in fwd]  # chronological (align_asof preserves bar order)
+        # STRIDE-SAMPLE by the horizon so the forward windows DON'T OVERLAP — overlapping h-day returns make
+        # adjacent obs massively autocorrelated, shrinking the EFFECTIVE n far below the raw count and making the
+        # p-value (and any FDR built on it) wildly over-optimistic. Non-overlapping sampling = honest n, honest p.
+        keys = keys[::h] if h > 1 else keys
         if len(keys) < 20:
             continue
         ic, p, n = spearman_ic([joined[k] for k in keys], [fwd[k] for k in keys])
