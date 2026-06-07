@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import statistics
 import sys
 from dataclasses import dataclass
@@ -43,7 +44,8 @@ from pathlib import Path
 
 from cosmu.research.equity_holdout import purged_embargoed_split
 
-CACHE = Path("/Users/device/cosmu/.cosmu/market_data/equities")
+# Equity-cache default; env-overridable so it works off this Mac / on Modal-Railway (the §9 hardcoded-path fix).
+CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/market_data/equities"))
 
 SECTOR_ETFS = ["XLK", "XLF", "XLE", "XLV", "XLY", "XLP", "XLI", "XLU", "XLB"]
 MARKET = "SPY"          # regime-filter instrument

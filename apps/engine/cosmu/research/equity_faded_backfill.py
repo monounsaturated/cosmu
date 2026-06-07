@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import json
+import os
 import ssl
 import time
 import urllib.error
@@ -28,7 +29,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CACHE = Path("/Users/device/cosmu/.cosmu/market_data/equities")
+# Equity-cache default; env-overridable so it works off this Mac / on Modal-Railway (the §9 hardcoded-path fix).
+CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/market_data/equities"))
 
 # Faded / declined large-caps to add, grouped by GICS sector bucket (the same 9-SPDR scheme the sector-neutral
 # book uses). Every name here is a large-cap that was a market leader at some point and then materially

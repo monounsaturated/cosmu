@@ -21,7 +21,7 @@ from __future__ import annotations
 import sys
 from decimal import ROUND_DOWN, Decimal
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import Settings, get_settings
 from cosmu.data.market import YahooDailyBarsProvider
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.portfolio import Portfolio
@@ -31,7 +31,6 @@ from cosmu.spine.venue import default_catalog
 STRATEGY_NAME = "Sector-Momentum Rotation (TAA / Top-3 SPDR + SPY-200SMA)"  # UNIQUE name (no GEM/sibling collision)
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strategy track, labeled honestly
 VENUE = "ibkr"
-TRACK_CAPITAL = Decimal("10000")  # per-strategy standalone capital (matches RiskSettings.per_strategy_cap)
 ETF_BPS_PER_SIDE = taa.ETF_BPS_PER_SIDE
 # The rule de-risks into bonds in bear markets (trend filter) and tilts to the strongest sectors in bulls. It is
 # net-positive across regimes on our data (it gives ground in uninterrupted bulls, wins decisively in the crashes it
@@ -177,12 +176,13 @@ def arm(store: Store | None = None) -> dict:
         print("  + backtest(screen) row written")
     # track — insert if absent
     if store.row("SELECT id FROM tracks WHERE strategy_version_id=?", (version_id,)) is None:
-        equity0 = TRACK_CAPITAL * (Decimal("1") + Decimal(str(round(v["holdout"].total_return, 6))))
+        _track_capital = get_settings().sim_track_capital
+        equity0 = _track_capital * (Decimal("1") + Decimal(str(round(v["holdout"].total_return, 6))))
         store.insert(
             "tracks",
             {
                 "strategy_version_id": version_id,
-                "starting_capital": str(TRACK_CAPITAL),
+                "starting_capital": str(_track_capital),
                 "equity": str(equity0.quantize(Decimal("0.01"))),
                 "return_pct": str((Decimal(str(round(v["holdout"].total_return, 6))) * Decimal("100"))
                                   .quantize(Decimal("0.01"))),
@@ -210,7 +210,7 @@ def arm(store: Store | None = None) -> dict:
 
     # Open / confirm the held SIM positions in the current basket, equal-weight, each at the latest REAL close.
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
-    per_leg_capital = (TRACK_CAPITAL / Decimal(len(basket))).quantize(Decimal("0.01"))
+    per_leg_capital = (get_settings().sim_track_capital / Decimal(len(basket))).quantize(Decimal("0.01"))
     legs: list[dict] = []
     marks: dict[str, Decimal] = {}
     any_opened = False
@@ -245,7 +245,7 @@ def arm(store: Store | None = None) -> dict:
     )
     if any_opened:
         print(f"OPENED held sim basket + FIRST MARK: {basket} (equal-weight, ${per_leg_capital}/leg, "
-              f"capital ${TRACK_CAPITAL}). Aggregate equity now ${float(snap['equity']):,.2f}.")
+              f"capital ${get_settings().sim_track_capital}). Aggregate equity now ${float(snap['equity']):,.2f}.")
     else:
         print(f"Held sim basket already open / deferred: {basket}. Aggregate equity ${float(snap['equity']):,.2f}.")
     print("\nThe forward-test is ARMED. The forward-test clock will re-mark this basket against the latest equity")
@@ -278,7 +278,7 @@ def mark(store: Store | None = None) -> dict:
     )
     if track_snap is not None and track_snap.get("equity") is not None:
         marked_value = Decimal(str(track_snap["equity"]))
-        fwd_return_pct = (marked_value / TRACK_CAPITAL - Decimal("1")) * Decimal("100")
+        fwd_return_pct = (marked_value / get_settings().sim_track_capital - Decimal("1")) * Decimal("100")
         store.rows(
             "UPDATE tracks SET return_pct = ?, equity = ?, updated_at = ? WHERE strategy_version_id = ?",
             (str(fwd_return_pct.quantize(Decimal("0.01"))), str(marked_value.quantize(Decimal("0.01"))),
