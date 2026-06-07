@@ -55,8 +55,9 @@ def load_specs() -> list[StrategySpec]:
 def load_bars(asset: str, timeframe: str) -> list[Bar]:
     if asset.endswith("USDT"):
         # spot cache first, perp cache fallback (deeper mid-cap coverage)
+        _binance_base = os.environ.get("COSMU_BINANCE_CACHE", "/Users/device/cosmu/.cosmu/market_data")
         for cache in (".cosmu/market_data/binance", ".cosmu/market_data/binanceperp",
-                      "/Users/device/cosmu/.cosmu/market_data/binance", "/Users/device/cosmu/.cosmu/market_data/binanceperp"):
+                      f"{_binance_base}/binance", f"{_binance_base}/binanceperp"):
             try:
                 bars = BinanceSpotOHLCVProvider(cache_dir=cache).fetch_bars(asset, timeframe, limit=5000)
                 if bars:

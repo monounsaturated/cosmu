@@ -22,7 +22,7 @@ from __future__ import annotations
 import sys
 from decimal import ROUND_DOWN, Decimal
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import Settings, get_settings
 from cosmu.data.market import YahooDailyBarsProvider
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.portfolio import Portfolio
@@ -32,7 +32,6 @@ from cosmu.spine.venue import default_catalog
 STRATEGY_NAME = "Global Equities Momentum (GEM / Dual Momentum)"
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — this is the deploy-a-documented-strategy track, labeled honestly
 VENUE = "ibkr"
-TRACK_CAPITAL = Decimal("10000")  # the per-strategy standalone capital (matches RiskSettings.per_strategy_cap)
 # GEM is positive net-of-fee across ALL three trend regimes on our data (it holds equities in bull/chop and rotates to
 # bonds in bear — the 2008 subperiod shows +3.5% while SPY lost 41%). So its proven-regime passport is the full set;
 # this lets master/live_eligibility clear the regime gate once the 30-day forward test matures (a human still clicks).
@@ -164,12 +163,13 @@ def arm(store: Store | None = None) -> dict:
         store.insert("backtests", _backtest_row(version_id, v))
         print("  + backfilled screen backtest row")
     if store.row("SELECT strategy_version_id FROM tracks WHERE strategy_version_id = ?", (version_id,)) is None:
-        equity0 = TRACK_CAPITAL * (Decimal("1") + Decimal(str(round(v["oos"].total_return, 6))))
+        _track_capital = get_settings().sim_track_capital
+        equity0 = _track_capital * (Decimal("1") + Decimal(str(round(v["oos"].total_return, 6))))
         store.insert(
             "tracks",
             {
                 "strategy_version_id": version_id,
-                "starting_capital": str(TRACK_CAPITAL),
+                "starting_capital": str(_track_capital),
                 "equity": str(equity0.quantize(Decimal("0.01"))),
                 "return_pct": str((Decimal(str(round(v["oos"].total_return, 6))) * Decimal("100")).quantize(Decimal("0.01"))),
                 "updated_at": now,
@@ -208,10 +208,11 @@ def arm(store: Store | None = None) -> dict:
               f"mark_tracks run will open + price the position.")
         return {"armed": True, "version_id": version_id, "signal": signal, "qty": "0", "price": "0", "position_deferred": True}
 
-    qty = (TRACK_CAPITAL / price).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
+    _track_capital = get_settings().sim_track_capital
+    qty = (_track_capital / price).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
     portfolio.apply_fill(
         instrument_id=instrument.id, symbol=signal, venue=VENUE, side=1, qty=qty, price=price,
-        fee=(TRACK_CAPITAL * Decimal(str(gem.IBKR_ETF_BPS_PER_SIDE)) / Decimal("1e4")), strategy_version_id=version_id,
+        fee=(_track_capital * Decimal(str(gem.IBKR_ETF_BPS_PER_SIDE)) / Decimal("1e4")), strategy_version_id=version_id,
     )
     # FIRST MARK — write the opening portfolio_snapshot (scope=track) so the forward-test trajectory has a t0 point.
     snap = portfolio.mark_to_market({instrument.id: price})
@@ -219,7 +220,7 @@ def arm(store: Store | None = None) -> dict:
         actor="research", kind="tracks_marked", ref_type="strategy_version", ref_id=version_id,
         payload={"signal": signal, "price": str(price), "qty": str(qty), "first_mark": True},
     )
-    print(f"OPENED held sim position + FIRST MARK: {qty} {signal} @ {price} (capital ${TRACK_CAPITAL}). "
+    print(f"OPENED held sim position + FIRST MARK: {qty} {signal} @ {price} (capital ${_track_capital}). "
           f"Aggregate equity now ${float(snap['equity']):,.2f}.")
     print("\nThe forward-test is ARMED. The forward-test clock (orchestrator.mark_tracks) will re-mark this position")
     print("against the latest equity close on every run; watch it accrue on GET /leaderboard (forward_age_days,")
@@ -256,7 +257,7 @@ def mark(store: Store | None = None) -> dict:
     )
     if track_snap is not None and track_snap.get("equity") is not None:
         marked_value = Decimal(str(track_snap["equity"]))
-        fwd_return_pct = (marked_value / TRACK_CAPITAL - Decimal("1")) * Decimal("100")
+        fwd_return_pct = (marked_value / get_settings().sim_track_capital - Decimal("1")) * Decimal("100")
         store.rows(
             "UPDATE tracks SET return_pct = ?, equity = ?, updated_at = ? WHERE strategy_version_id = ?",
             (str(fwd_return_pct.quantize(Decimal("0.01"))), str(marked_value.quantize(Decimal("0.01"))),

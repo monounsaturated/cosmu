@@ -12,13 +12,15 @@
 from __future__ import annotations
 
 import json
+import os
 import ssl
 import sys
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CACHE = Path("/Users/device/cosmu/.cosmu/market_data/equities")
+# Equity-cache default; env-overridable so it works off this Mac / on Modal-Railway (the §9 hardcoded-path fix).
+CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/market_data/equities"))
 
 # The GEM universe + benchmarks. EFA/AGG/BIL are the ones missing from the price-return cache; SPY/TLT/GLD/QQQ are
 # present as price-return but we ALSO want their total-return series so the whole backtest is apples-to-apples.
