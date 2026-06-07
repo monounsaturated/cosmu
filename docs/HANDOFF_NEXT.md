@@ -11,16 +11,16 @@ Autonomous trading research machine. LLM proposes typed `StrategySpec`s; a **det
 - **THE REFRAME (the unlock):** the 0.95 Gate is a *novel-exceptional-edge* detector. Making money needs **positive + robust**, not exceptional. → **TWO LANES:**
   - **DEPLOY-LANE** — documented, externally-validated strategies (TAA). Bar = positive OOS net-of-fees + beat B&H risk-adjusted + the REAL holdout → **ARM forward-test.** (NOT the 0.95 Gate — that's an overfitting guard for *mined* edges.)
   - **GATE-LANE** — novel / mined / popular-pinescript → the 0.95 `promote_cohort` BH-FDR Gate.
-- **LIVE NOW:** **GEM** (dual-momentum) forward-test ARMED in prod (`version 4695617d`, SPY SIM position, $10k) — the FLOOR. The **strategy-fleet** (run `wf_f7bb544d`) is arming more TAA strategies alongside it.
+- **LIVE NOW:** **9 strategies forward-testing in Simulation** (all honest **0% forward**, $10k SIM each) — 8 documented-TAA (GEM, Faber GTAA, ADM, Risk Parity, Keller VAA, TSMOM, Sector-Mom, Dual-Mom-QQQ) + 1 gate-survivor (Donchian, caveated/short-window). Marking daily via the asset-aware clock. **The floor is real.**
 
 ## 3. THE TWO TRACKS (the plan — no more circling)
 - **TRACK 1 · FLOOR:** deploy documented-robust strategies live (GEM + fleet) → modest-but-real compounding (~0.6-0.8 Sharpe, crash protection). Iterate: more TAA models, **variations of winners (FDR-counted)**, pinescript imports (honestly gated).
-- **TRACK 2 · UPSIDE:** LLM-narrative (machinery merged, PR #143). Next = pull a **DEEP raw-text corpus** (GDELT GKG via BigQuery, or CryptoPanic/news archive; 2-3yr, liquid names) → score on **MODAL** (embarrassingly parallel, content-hash cached, ~$ few) → materialize daily PIT scores to `alt_data` → run `research/llm_narrative_cohort` unchanged → real verdict.
+- **TRACK 2 · UPSIDE:** LLM-narrative. **Corpus DONE** — 115,006 GKG news items, 10 assets (BTC/ETH + AAPL/MSFT/GOOGL/AMZN/META/NVDA/TSLA/QQQ), span **2023-01→2026-06**, on the Modal volume (built via `apps/engine/remote/gkg_narrative.py`, in worktree `agent-add72795`). **Score+verdict running on Modal** (LLM-score content-only + cached → `research/llm_narrative_cohort` gate, real holdout + shuffle-placebo) → **verdict PENDING.** *Fresh session: check the Modal `cosmu-gkg-narrative` app + worktree `agent-af43d48`; if the score stalled, re-run the score+verdict stage. The question: does narrative carry a Gate-clearing edge on deep data?*
 
 ## 4. MONITOR LIVE STRATEGIES (do this — "monitor heavy")
 - **Watch:** `GET /leaderboard` (Strategies page) + `GET /overview` — `forward_age_days`, `live_ready` (crosses True at +31d), `return_pct`.
-- ⚠️ **The generic forward-mark clock (`cosmu.orchestrator.loop` / `mark_tracks`) prices via Binance → CANNOT mark EQUITY tracks** (leaves them flat). **PRIORITY TASK: make the forward-mark clock ASSET-AWARE** (price equity tracks via Yahoo total-return) so ALL equity forward-tests accrue hands-off.
-- Until then, the equity clock: `python3 -m cosmu.research.equity_dual_momentum_arm --mark` (marks GEM). **Schedule it as a daily Railway cron.** Fleet-armed strategies need their marking folded into the generalized clock.
+- ✅ **The forward-mark clock is now ASSET-AWARE** (`cosmu.orchestrator.loop` / `mark_tracks` → `PricingRouter`: crypto→Binance, equity→Yahoo total-return). Marks all 9 tracks (973 tests green). Run `python3 -m cosmu.orchestrator.loop`.
+- **ACTION: deploy the daily Railway cron** (already in `apps/engine/railway.toml`, `10 22 * * *` after US close) so the floor accrues hands-off. The leaderboard now serves `forward_return_pct` (real marked forward, null at day-0) distinct from backtest OOS.
 
 ## 5. OPERATING RULES (locked — `memory/compute_placement.md`)
 - **Local default; heavy/long compute → MODAL by reflex** (`modal run apps/engine/remote/app.py --job ...`); always-on/crons → **Railway**; orchestration + ultracode/Workflow → **this local session**.
@@ -59,5 +59,11 @@ The METHOD is validated: WFA + deflated-Sharpe + trial-counting + real-costs + f
 - Hardcoded `CACHE = Path("/Users/device/cosmu/…")` in `equity_dual_momentum.py` + sibling arms → make configurable (breaks off this Mac / on Modal-Railway).
 - Verify `schema_postgres.sql` carries the survival columns (the live store got the out-of-band migration 2026-06-07; fresh provisions need them too).
 - **Worktree-isolation footgun keeps recurring** — agents write to main/orchestrator branch via absolute `/Users/device/cosmu/…` paths. Enforce "edit only within your worktree (relative paths)" in every agent prompt.
+- **Prune ~19 accumulated worktrees** — `git worktree list` → remove stale agent dirs (KEEP `agent-add72795` = gkg pipeline code, + any still-active).
+
+## ⏳ IN FLIGHT (a fresh session inherits — check these FIRST; they will NOT auto-notify a new session)
+- **UI upgrade** (Supabase/Vercel-grade design pass) — worktree `agent-af2bb75`; review its branch + merge when it lands (`pnpm --filter @cosmu/web typecheck` first).
+- **LLM-narrative verdict** — score+verdict on Modal (`cosmu-gkg-narrative` app + worktree `agent-af43d48`). The corpus is DONE (115k items); the LLM-score is the tail. Check the Modal app status; **log the verdict to `docs/DECISIONS.md`** when it completes (does narrative carry a Gate-clearing edge on deep data?).
+- **Merged this session:** #140 (Explorer) · #142 (real holdout) · #143 (LLM-narrative machine) · #144 (GEM pilot) · #145 (UI honesty) · leaderboard forward-return (cherry-picked). Survival migration applied to the live store. 9 strategies live at honest 0%.
 
 **The ONE goal:** strategies that survive honestly and compound; the machine that never lies is the asset. Floor + upside. Go.
