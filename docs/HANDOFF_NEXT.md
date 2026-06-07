@@ -55,6 +55,15 @@ The METHOD is validated: WFA + deflated-Sharpe + trial-counting + real-costs + f
 - **Live-vs-backtest divergence monitoring** — flag when a forward-test stops tracking its backtest (alpha-decay / regime-shift early warning). Step one shipped (forward vs backtest columns on the leaderboard); step two = the divergence alert.
 - **Market-neutral / directionless** — the realest crypto signal was L/S-neutral (spot-only killed it); on a short-capable venue it's the validated direction.
 
+**TRIAGED IDEA BACKLOG (2026-06-07 review — ranked profit-impact ÷ effort; all built from parts we own, no new data):**
+1. **Strategy × asset × timeframe matrix (FDR) on Modal** — widen honest search to surface the first survivor (search is "exhausted" only on the *current* grid). MEDIUM, reuses Modal + FDR. *Highest-leverage search move.*
+2. **CPCV (combinatorial purged CV + embargo)** — stronger OOS than single-path WFA; hardens any survivor against overfit. MEDIUM, extends purged-holdout.
+3. ✅ **Recovery Factor + Calmar (drawdown-aware ranking)** — DONE this session (`master/risk_metrics.py` + `BacktestMetrics.recovery_factor`).
+4. **Slippage VARIANCE** — model slippage as a distribution not flat bps; kills fragile flat-bps-only edges before a forward-test slot. MEDIUM.
+5. **Live-vs-backtest reconciliation alert** — finish the half-shipped divergence columns into an alert; closes the SIM→live trust loop. QUICK (~1hr).
+- **Next BIG bet after the above:** **intraday data (equity+crypto)** — the binding daily-thinness unlock; hard prerequisite for order-flow/volume-profile (a genuinely orthogonal microstructure axis) + maker-rebate/prediction-market surfaces.
+- **DEFERRED (premature while the Gate has 0 survivors):** ensemble-weak-signals (do after the matrix widens the pool), idea-ingestion engine, MCP-over-our-data (read-only investigation; NOT execution), LLM-quantified alt-data beyond news (day-of-week is the one cheap slice). **SKIP (regime axis is FAILed-subsumed — stop polishing it):** symbolic-regression regime discovery, cycle-position, matrix-power decay, multi-domain conviction. **POST-EDGE:** France live adapter (Kraken Futures/IBKR).
+
 ## 9. MINOR CLEANUPS (batch, low-urgency)
 - `/live/positions` + `/live/venues` (`api/routers/live.py`): scope to live-armed server-side (frontend gates it for now).
 - Hardcoded `CACHE = Path("/Users/device/cosmu/…")` in `equity_dual_momentum.py` + sibling arms → make configurable (breaks off this Mac / on Modal-Railway). *(The new `regime_cohort.py` already does this right — `COSMU_EQUITY_CACHE` env override; mirror that pattern.)*
