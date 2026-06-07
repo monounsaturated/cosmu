@@ -1,0 +1,56 @@
+{
+  "name": "LLM-narrative pressure long — bullish news-text narrative confirmed by price momentum",
+  "rationale": "FIRST-CUT test of the LLM-NARRATIVE axis. Our own OpenRouter LLM scores each raw GDELT news headline CONTENT-ONLY and as-of its publish timestamp (no outcome reasoning, no dates, no price) into a typed signed-magnitude in [-1,1]; the day's headlines are aggregated (confidence-weighted) into a point-in-time daily 'net narrative pressure' series exposed under the feature name news_event_score. The hypothesis: when the day's news narrative is net-bullish (news_event_score > floor) AND price momentum confirms the move is already underway, the crowd narrative is corroborating a real trend rather than fading it; enter the intersection and hold until the narrative itself turns net-negative (cross_down exit) or risk limits hit. The momentum-confirmation leg guards against buying a one-day headline pop with no follow-through. Disconfirmers (in the cohort harness, ALL counted as trials in the SAME BH-FDR family): (a) a TIME-SHUFFLE placebo of the LLM scores — same marginal distribution, scrambled timing — MUST destroy the edge (if it reproduces, the LLM leaked the future or the timing is noise); (b) a momentum-only control — if it matches the candidate's deflated Sharpe, the LLM narrative adds no orthogonal information. tier1 + low-confidence until it clears the honest Gate OOS on a real holdout.",
+  "catalyst": "LLM-scored daily news narrative is net-bullish (news_event_score > floor) while price momentum is positive",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 1
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": { "name": "news_event_score" },
+      "op": "gt",
+      "threshold": { "param": "narr_floor" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } },
+      "op": "gt",
+      "threshold": { "param": "mom_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "news_event_score" },
+        "op": "cross_down",
+        "threshold": { "param": "narr_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.35
+  },
+  "param_space": {
+    "narr_floor": { "kind": "float", "lo": 0.05,  "hi": 0.50 },
+    "narr_exit":  { "kind": "float", "lo": -0.20, "hi": 0.05 },
+    "mom_lb":     { "kind": "int",   "lo": 3,     "hi": 20,   "step": 1 },
+    "mom_floor":  { "kind": "float", "lo": -0.02, "hi": 0.04 },
+    "stop":       { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":         { "kind": "float", "lo": 0.06,  "hi": 0.25 },
+    "time_stop":  { "kind": "int",   "lo": 3,     "hi": 10,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
