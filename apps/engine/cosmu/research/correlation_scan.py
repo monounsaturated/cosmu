@@ -119,6 +119,15 @@ class ScanReport:
     results: list[ICResult]  # ALL, sorted by |ic| desc; survived_fdr flagged
 
 
+def scan_universe(features: list[str] | None = None) -> list[tuple[str, str]]:
+    """The scan's feature universe as (name, source) pairs, READ FROM THE FEATURE REGISTRY — the single source of
+    truth — so EVERY enabled feature is scanned the moment it is registered (a newly-wired alt-data source is picked
+    up automatically; no hardcoded list to drift out of date). Every enabled FeatureDefinition qualifies; a missing
+    store series is an honest skip downstream (scan_feature_asset), never fabricated. `features`, when given,
+    restricts to that subset (still gated on enabled), for targeted re-scans."""
+    return [(f.name, f.source) for f in FEATURE_REGISTRY if f.enabled and (features is None or f.name in features)]
+
+
 def run_correlation_scan(store: Store, market: dict[str, list[Bar]], *,
                          horizons: tuple[int, ...] = (1, 5, 20), fdr_q: float = 0.10,
                          features: list[str] | None = None) -> ScanReport:
@@ -126,7 +135,7 @@ def run_correlation_scan(store: Store, market: dict[str, list[Bar]], *,
     grid. Returns ranked results with survived_fdr flagged. PROPOSE-ONLY — survivors are candidate hypotheses for
     the Gate, not edges. Deterministic for a fixed store + bars."""
     provider = StoreBackedAltProvider(PgAltDataStore(store))
-    feats = [(f.name, f.source) for f in FEATURE_REGISTRY if f.enabled and (features is None or f.name in features)]
+    feats = scan_universe(features)
     all_results: list[ICResult] = []
     for asset, bars in market.items():
         if len(bars) < 40:
