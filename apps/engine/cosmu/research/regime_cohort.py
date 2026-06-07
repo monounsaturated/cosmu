@@ -22,12 +22,11 @@ from __future__ import annotations
 import json
 import os
 import random
-import statistics
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 
-from cosmu.config.settings import Settings, get_settings
+from cosmu.config.settings import Settings
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort

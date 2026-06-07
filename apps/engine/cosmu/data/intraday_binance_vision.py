@@ -4,16 +4,15 @@
 # zero-filled), caches never shrink (atomic writes, append-merge on ts), a bar is available only AFTER
 # its close_time (point-in-time seam), no API key required, offline-testable via an injected _fetcher.
 # Composes cosmu.ingest.bars (BinanceVisionBarBackfiller, bar_cache_path, read_cached_bars, write_bars_cache)
-# and cosmu.data.market (Bar, _atomic_write_text) — never re-implements what those modules already own.
+# and cosmu.data.market (Bar) — never re-implements what those modules already own.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
 
-from cosmu.data.market import Bar, _atomic_write_text
+from cosmu.data.market import Bar
 from cosmu.ingest.bars import (
     BinanceVisionBarBackfiller,
     bar_cache_path,
