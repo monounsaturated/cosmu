@@ -1541,6 +1541,390 @@
         "title": "Execution",
         "type": "object"
       },
+      "ExplorerDetailResponse": {
+        "description": "Full explorer data for one (version, venue, asset) combination.\n\n`equity_curve` is built from stored backtests + trades \u2014 NEVER re-run.\nIf no data is available for a field, that field is None and the UI shows\n\"not available\" rather than a fabricated number.\n`available` flags whether any data at all was found for this version.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "equity_curve": {
+            "items": {
+              "$ref": "#/components/schemas/ExplorerPoint"
+            },
+            "title": "Equity Curve",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "spec": {
+            "additionalProperties": true,
+            "title": "Spec",
+            "type": "object"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ExplorerStats"
+          },
+          "trades": {
+            "items": {
+              "$ref": "#/components/schemas/ExplorerTrade"
+            },
+            "title": "Trades",
+            "type": "array"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "spec",
+          "available",
+          "equity_curve",
+          "trades",
+          "stats"
+        ],
+        "title": "ExplorerDetailResponse",
+        "type": "object"
+      },
+      "ExplorerListResponse": {
+        "description": "All strategy-versions, lean, for the selector dropdowns.",
+        "properties": {
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Assets",
+            "type": "array"
+          },
+          "venues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Venues",
+            "type": "array"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/ExplorerVersion"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions",
+          "venues",
+          "assets"
+        ],
+        "title": "ExplorerListResponse",
+        "type": "object"
+      },
+      "ExplorerPoint": {
+        "description": "A single (ts, gross_value, net_value) equity curve point.",
+        "properties": {
+          "gross": {
+            "title": "Gross",
+            "type": "number"
+          },
+          "net": {
+            "title": "Net",
+            "type": "number"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts",
+          "gross",
+          "net"
+        ],
+        "title": "ExplorerPoint",
+        "type": "object"
+      },
+      "ExplorerStats": {
+        "description": "Glanceable stats panel \u2014 explicit, never fabricated.  Fields are None when data\nis not yet stored; the UI renders \"not available\" for None values.",
+        "properties": {
+          "asset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset"
+          },
+          "cost_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Ratio"
+          },
+          "data_span_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Span Days"
+          },
+          "deflated_sharpe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deflated Sharpe"
+          },
+          "fee_assumed_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Assumed Bps"
+          },
+          "gate_decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate Decision"
+          },
+          "gate_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate Reason"
+          },
+          "gross_return_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Return Pct"
+          },
+          "max_dd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Dd"
+          },
+          "net_return_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Return Pct"
+          },
+          "num_bars": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Num Bars"
+          },
+          "num_trades": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Num Trades"
+          },
+          "oos_holdout_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oos Holdout Pct"
+          },
+          "thesis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thesis"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue"
+          }
+        },
+        "required": [
+          "thesis",
+          "asset",
+          "venue",
+          "fee_assumed_bps",
+          "data_span_days",
+          "num_bars",
+          "gross_return_pct",
+          "net_return_pct",
+          "cost_ratio",
+          "num_trades",
+          "deflated_sharpe",
+          "max_dd",
+          "oos_holdout_pct",
+          "gate_decision",
+          "gate_reason"
+        ],
+        "title": "ExplorerStats",
+        "type": "object"
+      },
+      "ExplorerTrade": {
+        "description": "A single fill with an entry/exit marker type.",
+        "properties": {
+          "fee": {
+            "title": "Fee",
+            "type": "number"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "number"
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts",
+          "side",
+          "price",
+          "qty",
+          "fee"
+        ],
+        "title": "ExplorerTrade",
+        "type": "object"
+      },
+      "ExplorerVersion": {
+        "description": "One strategy-version for the explorer selector.",
+        "properties": {
+          "asset_class": {
+            "title": "Asset Class",
+            "type": "string"
+          },
+          "deflated_sharpe": {
+            "title": "Deflated Sharpe",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "net_pct": {
+            "title": "Net Pct",
+            "type": "number"
+          },
+          "signal_family_label": {
+            "title": "Signal Family Label",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "timeframe": {
+            "title": "Timeframe",
+            "type": "string"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "status",
+          "venue",
+          "asset_class",
+          "timeframe",
+          "signal_family_label",
+          "deflated_sharpe",
+          "net_pct"
+        ],
+        "title": "ExplorerVersion",
+        "type": "object"
+      },
       "FinderResponse": {
         "properties": {
           "gate_passed": {
@@ -5125,6 +5509,65 @@
           }
         },
         "summary": "Evolution Run"
+      }
+    },
+    "/explorer": {
+      "get": {
+        "description": "All strategy versions (lean) for the selector dropdowns.",
+        "operationId": "explorer_list_explorer_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplorerListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Explorer List"
+      }
+    },
+    "/explorer/{version_id}": {
+      "get": {
+        "description": "Full explorer snapshot for one version \u2014 from stored records only, never re-run.",
+        "operationId": "explorer_detail_explorer__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplorerDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Explorer Detail"
       }
     },
     "/health": {

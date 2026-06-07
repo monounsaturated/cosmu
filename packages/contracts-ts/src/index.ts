@@ -316,6 +316,66 @@ export interface Execution {
   venue: string | null;
 }
 
+export interface ExplorerDetailResponse {
+  available: boolean;
+  equity_curve: ExplorerPoint[];
+  name: string;
+  spec: Record<string, unknown>;
+  stats: ExplorerStats;
+  trades: ExplorerTrade[];
+  version_id: string;
+}
+
+export interface ExplorerListResponse {
+  assets: string[];
+  venues: string[];
+  versions: ExplorerVersion[];
+}
+
+export interface ExplorerPoint {
+  gross: number;
+  net: number;
+  ts: string;
+}
+
+export interface ExplorerStats {
+  asset: string | null;
+  cost_ratio: number | null;
+  data_span_days: number | null;
+  deflated_sharpe: number | null;
+  fee_assumed_bps: number | null;
+  gate_decision: string | null;
+  gate_reason: string | null;
+  gross_return_pct: number | null;
+  max_dd: number | null;
+  net_return_pct: number | null;
+  num_bars: number | null;
+  num_trades: number | null;
+  oos_holdout_pct: number | null;
+  thesis: string | null;
+  venue: string | null;
+}
+
+export interface ExplorerTrade {
+  fee: number;
+  price: number;
+  qty: number;
+  side: string;
+  ts: string;
+}
+
+export interface ExplorerVersion {
+  asset_class: string;
+  deflated_sharpe: number;
+  name: string;
+  net_pct: number;
+  signal_family_label: string;
+  status: string;
+  timeframe: string;
+  venue: string;
+  version_id: string;
+}
+
 export interface FinderResponse {
   gate_passed: number;
   grid_size: number;
@@ -995,66 +1055,6 @@ export interface VerdictRow {
 
 export interface VerdictsResponse {
   rows: VerdictRow[];
-}
-
-export interface ExplorerPoint {
-  ts: string;
-  gross: number;
-  net: number;
-}
-
-export interface ExplorerTrade {
-  ts: string;
-  side: string;
-  price: number;
-  qty: number;
-  fee: number;
-}
-
-export interface ExplorerStats {
-  thesis: string | null;
-  asset: string | null;
-  venue: string | null;
-  fee_assumed_bps: number | null;
-  data_span_days: number | null;
-  num_bars: number | null;
-  gross_return_pct: number | null;
-  net_return_pct: number | null;
-  cost_ratio: number | null;
-  num_trades: number | null;
-  deflated_sharpe: number | null;
-  max_dd: number | null;
-  oos_holdout_pct: number | null;
-  gate_decision: string | null;
-  gate_reason: string | null;
-}
-
-export interface ExplorerVersion {
-  version_id: string;
-  name: string;
-  status: string;
-  venue: string;
-  asset_class: string;
-  timeframe: string;
-  signal_family_label: string;
-  deflated_sharpe: number;
-  net_pct: number;
-}
-
-export interface ExplorerListResponse {
-  versions: ExplorerVersion[];
-  venues: string[];
-  assets: string[];
-}
-
-export interface ExplorerDetailResponse {
-  version_id: string;
-  name: string;
-  spec: Record<string, unknown>;
-  available: boolean;
-  equity_curve: ExplorerPoint[];
-  trades: ExplorerTrade[];
-  stats: ExplorerStats;
 }
 
 export type ApiRoutes = {
