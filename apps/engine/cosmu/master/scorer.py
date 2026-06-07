@@ -47,6 +47,14 @@ class BacktestMetrics(BaseModel):
     # DISPLAYED and used for routing/fragility flagging — never enters the gate's pass/fail thresholds.
     cost_ratio: Decimal = Decimal("0")
 
+    @property
+    def recovery_factor(self) -> float:
+        """Total net (in-sample) return per unit of max drawdown — a drawdown-aware quality number the Sharpe
+        is blind to. DISPLAYED only (never a gate threshold). inf when there was no drawdown and it's up."""
+        from cosmu.master.risk_metrics import recovery_factor
+
+        return recovery_factor(float(self.oos_return), float(self.max_drawdown))
+
 
 class TrialStats(BaseModel):
     """Cumulative multiple-testing context across every hypothesis ever run."""

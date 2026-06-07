@@ -56,6 +56,7 @@ class MemberReport:
     deflated_sharpe_prob: float
     sharpe_ann: float
     max_drawdown: float
+    recovery_factor: float  # net return / max drawdown — drawdown-aware quality the Sharpe is blind to
     holdout_dsr: float
     n_obs: int
     promoted: bool = False
@@ -272,7 +273,7 @@ def run_regime_cohort(asset: str, bars: list[Bar], store: Store, *, fee_bps: flo
             name=name, net_return=round(float(m.oos_return), 6),
             deflated_sharpe_prob=round(promotions[name].deflated_sharpe_prob, 6),
             sharpe_ann=round(float(m.sharpe), 4), max_drawdown=round(float(m.max_drawdown), 6),
-            holdout_dsr=round(float(m.holdout_deflated_sharpe), 6), n_obs=int(m.n_obs),
+            recovery_factor=round(m.recovery_factor, 3), holdout_dsr=round(float(m.holdout_deflated_sharpe), 6), n_obs=int(m.n_obs),
             promoted=promotions[name].promoted, survived_fdr=promotions[name].survived_fdr,
             reasons=promotions[name].reasons,
         )
@@ -323,7 +324,7 @@ def _main() -> int:
     for m in rep.members:
         flag = "PROMOTED" if m.promoted else ("fdr-cut" if not m.survived_fdr else "rejected")
         print(f"    {m.name:26s} dsr={m.deflated_sharpe_prob:.4f} annSR={m.sharpe_ann:+.3f} "
-              f"holdoutDSR={m.holdout_dsr:+.4f} maxDD={m.max_drawdown:.3f} n={m.n_obs} [{flag}] {m.reasons}")
+              f"recovery={m.recovery_factor:.2f} holdoutDSR={m.holdout_dsr:+.4f} maxDD={m.max_drawdown:.3f} n={m.n_obs} [{flag}] {m.reasons}")
     print("  disconfirmers:")
     for k, v in rep.disconfirmers.items():
         print(f"    {k}: {v}")
