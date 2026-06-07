@@ -128,11 +128,10 @@ def seed_infra_costs(store: Any) -> int:
     month = _month_key()
     import json
 
-    seed_meta = json.dumps({"seed": "infra", "month": month}, sort_keys=True)
     try:
         # Idempotency check: is this month's infra seed already present? The inserted rows carry extra
         # keys (note/amount_min/amount_max), so match on the stable seed+month substrings, NOT exact meta
-        # equality (the old `meta = seed_meta` check never matched its own rows → re-seeded every call).
+        # equality (an exact meta match never matched because inserted rows carry additional keys).
         existing = store.row(
             "SELECT id FROM costs WHERE meta LIKE ? AND meta LIKE ? LIMIT 1",
             ('%"seed": "infra"%', f'%"month": "{month}"%'),

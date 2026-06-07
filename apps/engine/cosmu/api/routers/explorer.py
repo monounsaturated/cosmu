@@ -235,7 +235,7 @@ def explorer_detail(version_id: str) -> ExplorerDetailResponse:
     num_bars: int | None = None
     if exec_rows:
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
             ts_list = [datetime.fromisoformat(fill["ts"].replace("Z", "+00:00")) for fill in exec_rows]
             ts_list = [t for t in ts_list if t]
             if len(ts_list) >= 2:

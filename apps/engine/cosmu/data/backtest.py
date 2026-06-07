@@ -11,9 +11,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     # Type-only: the runtime import is deferred inside `_build_meta_gate` to break the cosmu.ml ↔ backtest cycle
-    # (see the note on the deferred import below). These names are used solely in annotations (strings under
-    # `from __future__ import annotations`), so importing them here costs nothing at runtime.
-    from cosmu.ml.metalabel import MetaEvent, MetaGate
+    # (see the note on the deferred import below). MetaGate is used in the return annotation of _build_meta_gate.
+    from cosmu.ml.metalabel import MetaGate
 
 from cosmu.data.altdata import AltDataPoint
 from cosmu.data.market import Bar
