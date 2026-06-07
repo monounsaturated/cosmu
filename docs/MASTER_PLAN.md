@@ -1,6 +1,6 @@
 # Cosmu — Master Plan
 
-> **The single operating plan.** What Cosmu *is now* (verified against code), the real gaps, the target, and the ordered roadmap with copy-paste agent prompts. Integrates rather than duplicates: the strategic contract is [VISION.md](VISION.md), deep specs are [BUILD_PLAN.md](BUILD_PLAN.md), current built-state is [IMPLEMENTATION.md](IMPLEMENTATION.md), invariants/skills are [../AGENTS.md](../AGENTS.md). Operator/deploy detail that used to live in HOW_TO_USE & DEPLOYMENT is folded in here (those docs retired); first-time setup stays in [OWNER_SETUP.md](OWNER_SETUP.md).
+> **The single operating plan.** What Cosmu *is now* (verified against code), the real gaps, the target, and the ordered roadmap with copy-paste agent prompts. Integrates rather than duplicates: the strategic contract is [VISION.md](VISION.md), deep specs are [archive/BUILD_PLAN.md](archive/BUILD_PLAN.md) (historical reference), current built-state is [IMPLEMENTATION.md](IMPLEMENTATION.md), invariants/skills are [../AGENTS.md](../AGENTS.md). Operator/deploy detail that used to live in HOW_TO_USE & DEPLOYMENT is folded in here (those docs retired); first-time setup stays in [OWNER_SETUP.md](OWNER_SETUP.md).
 >
 > **⭐ The lucrative track is [DERIVATIVES_PLAN.md](DERIVATIVES_PLAN.md)** — re-points the engine from spot-long-only (beta, uncompoundable) to **market-neutral perp-carry + long/short** (the funding-carry edge, ~3× faster forward-test). Phase 0 (prove carry/neutral in SIM on real data, kill-or-keep) is the current priority and the empirical answer to "is there an edge?". Read it before building strategy/venue/cost work.
 
@@ -22,19 +22,19 @@ The engine is **~85% real, deterministic, and honest.** Confirmed in code:
 
 ## 2. The real remaining gaps (this is the actual work)
 1. **Forward-test maturity isn't surfaced.** `mark_tracks()` marks held positions daily on real closes, but the **≥30-day net-positive proof** isn't computed/shown as a live-readiness signal. Per owner decision it's **advisory** (the human launches via the modal) — so the fix is to **surface it clearly**, not hard-block. **← surface it.**
-2. **No automated CI.** `pnpm verify` is manual; push = deploy. A skipped verify can ship a broken `main`. **← cheapest high-ROI fix.**
+2. **CI is manual-dispatch only.** GitHub Actions (`verify.yml`) is `workflow_dispatch`-only — OFF by default (we are not paying for it). The **local pre-push `pnpm verify` is the gate**; a skipped verify can ship a broken `main` since push = deploy. Re-enable PR-triggered CI only if branch protection is ever added.
 3. **Authoring lacks adversarial disconfirmers.** Only ~6 hard-coded briefs; the gate culls junk but the author isn't structurally pushed to test anti-patterns.
-4. **No self-reinforcement of *logic*.** Evolution mutates params; it does not yet *isolate a winning signal and graft it onto other assets/strategies* (the "thinking machine" you want).
+4. **Self-reinforcement of *logic* — primitive shipped, unproven.** The `/evolve-strategy` skill isolates a gate-passed signal, grafts it onto other assets, and recombines survivors into a new cohort for re-Gating. It can't fire yet because there are **0 honest-Gate survivors** to compound — it activates the moment the first edge clears.
 5. **Breadth not live**: xAI/Grok Twitter signal (key exists, source not wired), IBKR live execution (data-only), event/news *scoring*.
-6. **Cockpit thin**: no NL command palette / chatbot, no source-trust scorecard, no news/intel dashboard.
-7. **Heavy compute is manual** (cloud Claude sessions); no on-demand worker for big sims / burst scraping.
+6. **Cockpit thin**: the Console page (in-app steer/ask — NOT a ⌘K overlay, which was deemed unintuitive) plus source-trust scorecard and news/intel dashboard are still light.
+7. **Heavy compute lane shipped** (Modal — `apps/engine/remote/app.py`; `pnpm modal:gate` / `modal:ingest`, scale-to-zero). The remaining gap is wiring more research runners through it on a schedule, not the lane itself.
 
 ## 3. North star & non-negotiables
 Autonomous, honest, self-reinforcing money machine — profit net of every fee. **Non-negotiables (never violate):** gate + money path stay deterministic, out of any LLM reach · LLM proposes, never disposes · no magic numbers (params fit) · point-in-time, no look-ahead · live OFF behind 5 interlocks · never display synthetic data · generated TS from OpenAPI only · ask first on schema/spend/live/broad-rename.
 
 ## 4. Target architecture
 ```
-WEB (Vercel)  ── ⌘K NL palette + chatbot · source scoreboard · news/intel · mission-control
+WEB (Vercel)  ── Console page (steer/ask, NOT a ⌘K overlay) · source scoreboard · news/intel · mission-control
    │ same API                                   ▲ same API
 ENGINE API (Railway, always-on) ── Gate · tick · mark-to-market · POST /lab/experiment ─┐
    │                                                                                     │
@@ -56,7 +56,7 @@ Keep ML **classical and explainable** (survival model + meta-labeling + regime).
 `scan-signals` / `import-pine` / `evolve-strategy` → **COHORT GATE (FDR)** → forward-test proof (≥30d net-positive, **advisory**) → **human launch via modal** → LIVE (5 interlocks, tiny size). Volume of candidates can't manufacture a winner — FDR is the brake. `evolve-strategy` = isolate a gate-passed signal's logic, graft onto other assets, mix survivors → new cohort → re-Gate.
 
 ## 8. Live + SIM together (human launches; LLM only suggests)
-SIM always runs (everything proves itself on its own $100k track). **Going live is a deliberate human action — no time gate.** Clicking a strategy → **Launch-live modal**: pick asset + venue, see **fees fetched live & shown** (per-venue, refreshed daily), set **budget (default $100, editable)** + risk settings, confirm. The **5 interlocks remain the hard safety**; the **30-day forward-test is now ADVISORY** — surfaced as an LLM/UI recommendation ("eligible / not yet proven"), the human may launch anyway. **Venue key-gating:** a venue is greyed-out / cannot arm unless its API keys are present in the engine env (Railway server-side; the UI reads a `configured: bool` flag, never the keys). Prep both crypto (Binance) and equities (IBKR) this way; each stays inert until its keys are plugged.
+SIM always runs (everything proves itself on its own standalone track — default **$1,000**, `sim_track_capital`). **Going live is a deliberate human action — no time gate.** Clicking a strategy → **Launch-live modal**: pick asset + venue, see **fees fetched live & shown** (per-venue, refreshed daily), set **budget (default $100, editable)** + risk settings, confirm. The **5 interlocks remain the hard safety**; the **30-day forward-test is now ADVISORY** — surfaced as an LLM/UI recommendation ("eligible / not yet proven"), the human may launch anyway. **Venue key-gating:** a venue is greyed-out / cannot arm unless its API keys are present in the engine env (Railway server-side; the UI reads a `configured: bool` flag, never the keys). Prep both crypto (Binance) and equities (IBKR) this way; each stays inert until its keys are plugged.
 
 ## 9. Infra
 Keep **Railway** (light always-on API + cron). Heavy bursty compute (big sims, sweeps, ML train, burst scraping) runs on **Modal** (scale-to-zero, ~$0 idle, billed per-second — see `docs/COMPUTE.md`). ML runs on Modal, **not inside Claude Code** (Claude authors/orchestrates; Modal computes).
@@ -83,12 +83,12 @@ This table is the **source of truth for infra/cost**; an in-app **cost/infra vie
 **Decompose → model-tier → one branch/worktree per agent → build → `pnpm verify` → open PR → Opus merge-train → deploy-check → cleanup.** See [/fan-out](../.claude/skills/fan-out/SKILL.md).
 - **Model tiers:** Haiku = scrape/read/summarize (emit a summary `.md`, not raw dumps) · Sonnet = implementation (UI, wiring, tests) · **Opus = master + deep reasoning / money-path / gate logic.**
 - **Disposable handoffs:** gitignored `.claude/scratch/*.md` for large/cross-agent artifacts; master reads summaries only.
-- **Push policy:** agents **commit + push + open PR — never push to `main` directly.** Only the orchestrator merges (squash, `--delete-branch`). Tiny docs/config still go via PR (cheap, and CI gates it).
+- **Push policy:** agents **commit + push + open PR — never push to `main` directly.** Only the orchestrator merges (squash, `--delete-branch`). The **local `pnpm verify` is the gate** (CI is manual-dispatch only); run it before merging.
 - **Worktree:** required for any parallel code agents on one machine (prevents branch-stomping). Solo sequential agent doesn't need one.
 
 ## 12. Roadmap (waves)
 **Wave 1 — foundations + highest integrity/ROI**
-- W1.1 CI GitHub Action (`pnpm verify` on PRs to main) — *config · local · sonnet · PR*
+- W1.1 ~~CI GitHub Action on PRs~~ **SUPERSEDED** — CI is now `workflow_dispatch`-only (OFF, not paying for Actions); the **local pre-push `pnpm verify` is the gate**. Re-enable PR-triggered CI only if branch protection is added.
 - W1.2 Forward-test **maturity signal** (compute + surface ≥30d net-positive as *advisory* live-readiness; do NOT hard-block — human decides) — *engine · cloud · opus · PR*
 - W1.3 xAI/Grok **Twitter source + influencer scoring** (follow `/add-data-source`) — *engine · cloud · sonnet · worktree · PR*
 - W1.4 **Launch-live modal + dynamic fees + venue key-gating** (pick asset/venue, live fees, budget default $100, grey-out venues with no keys; prep crypto+equities) — *web+engine · cloud · sonnet · PR*

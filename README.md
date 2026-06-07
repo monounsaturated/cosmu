@@ -45,14 +45,17 @@ With no engine configured, every surface renders its honest "not connected" stat
 ```bash
 pnpm verify         # full: naming:check · contracts:generate · engine:test · typecheck · next build
 pnpm verify:fast    # skip next build — lint + typecheck + engine tests only (fast local loop)
-pnpm verify:remote  # push current branch → tail the GitHub Actions 'verify' run in CI
+pnpm verify:remote  # manually dispatch the GitHub Actions 'verify' run → tail it
 ```
 
-`verify:remote` is the CI-offload path: push once, watch the real `next build` run on GitHub
-Actions without burning local RAM. Requires `gh` CLI authenticated (`gh auth login`).
+**The local `pnpm verify` (run by the pre-push hook) is the gate.** CI is `workflow_dispatch`-only —
+it does NOT auto-run on PRs or pushes (we are not paying for GitHub Actions). `verify:remote` is an
+optional CI-offload path that **manually** dispatches the run (`gh workflow run`) so the heavy
+`next build` runs on GitHub Actions instead of your RAM; it does not fire on push. Requires `gh`
+CLI authenticated (`gh auth login`).
 
 `verify:fast` is the tight feedback loop — skips the slow Next.js production build.
-Use it during active development; let CI handle the full build.
+Use it during active development; run the full `pnpm verify` before pushing.
 
 ## Deploy
 
@@ -66,7 +69,7 @@ That's the only trigger — never also run `railway up` / `vercel deploy` (doubl
 - **Contracts** — `@cosmu/contracts-ts`, generated from the engine OpenAPI (never hand-typed)
 - **Data** — Postgres / Supabase · **Heavy compute** — Modal (scale-to-zero backtests/ML/sweeps)
 - **LLM** — OpenRouter (free `:free` tier by default; xAI fallback) · proposals only, gate is deterministic
-- **CI** — GitHub Actions (`verify.yml`; path-filtered, runs on PRs to main + pushes to main)
+- **CI** — GitHub Actions (`verify.yml`) is **`workflow_dispatch`-only** (manual, OFF by default — we are not paying for it); the **local pre-push `pnpm verify` is the gate**
 
 ## Docs
 
