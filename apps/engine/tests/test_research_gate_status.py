@@ -51,3 +51,29 @@ def test_gate_status_null_when_only_cohort_rows(tmp_path, monkeypatch):
 
     resp = TestClient(app_mod.app).get("/research/gate")
     assert resp.status_code == 200 and resp.json()["verdict"] is None   # honest: no single-signal verdict yet
+
+
+def test_experiments_serves_the_cohort_memory(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import cosmu.api.app as app_mod
+
+    store = Store(Settings(database_url=f"sqlite:///{tmp_path}/exp.sqlite3", openrouter_api_key=None))
+    monkeypatch.setattr(research_mod, "store", store)
+    _insert(store, "FAIL", "live", {
+        "kind": "cohort", "run_id": "r1", "source": "research/matrix", "hypothesis": "does X survive on BTC",
+        "n_candidates": 2, "n_promoted": 0, "best_deflated_sharpe_prob": 0.76, "asset": "BTCUSDT",
+        "candidates": [
+            {"id": "adx", "promoted": False, "deflated_sharpe_prob": 0.76, "holdout_deflated_sharpe": -0.43, "survived_fdr": False, "reasons": ["holdout"]},
+            {"id": "bb", "promoted": False, "deflated_sharpe_prob": 0.40, "holdout_deflated_sharpe": 0.01, "survived_fdr": False, "reasons": ["deflated_sharpe"]},
+        ],
+    })
+    _insert(store, "STOP", "synthetic", _EDGE_PAYLOAD)  # a single-signal row must be EXCLUDED (not kind=cohort)
+
+    body = TestClient(app_mod.app).get("/research/experiments").json()
+    assert body["summary"]["total"] == 1 and body["summary"]["passed"] == 0 and body["summary"]["failed"] == 1
+    assert body["summary"]["by_source"][0] == {"source": "research/matrix", "n": 1, "passed": 0}
+    t = body["theories"][0]
+    assert t["source"] == "research/matrix" and t["asset"] == "BTCUSDT" and t["decision"] == "FAIL"
+    assert t["best_dsr"] == 0.76 and t["best_holdout_dsr"] == 0.01  # max holdout across candidates
+    assert len(t["candidates"]) == 2 and t["candidates"][0]["reasons"] == ["holdout"]
