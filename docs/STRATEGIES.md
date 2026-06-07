@@ -55,3 +55,35 @@ Equities fix the two crypto killers: **deep free data** (decades, **Yahoo v8** �
 
 ## 7. Is the DB good / do we store enough?
 Architecture: **good** — Supabase Pro (8 GB), an append-only **point-in-time** store, a declarative feature catalog, a registry⊆routable guard. The **reality is DEPTH**, the recurring wall: Binance funding only to 2024-06, free OI ~30d, Polymarket ~13mo. Fix = deepen the free tier-0 sources + **accrue forward** (OI/funding/intraday). For equities, **Yahoo v8** removes the *depth* wall — but a **survivorship-free PIT universe** (with delisted names) is the next data need (the 73-name cache is today's survivors).
+
+## 8. The equity floor — arming the whole deploy-lane fleet
+
+The **8 externally-validated equity strategies** (Faber GTAA, ADM, Risk Parity, VAA, TSMOM,
+Dual-Momentum QQQ, Sector Rotation, GEM) each have a `equity_*_arm.py` module.
+`arm_fleet.py` is the single entrypoint that arms them all in one command.
+
+**One-command runbook (idempotent, SIM-only, offline-safe):**
+```
+PYTHONPATH=apps/engine python3 -m cosmu.research.arm_fleet
+```
+- Already-armed tracks are **skipped** (the forward-clock origin is never reset).
+- Offline (Yahoo unreachable): the track registers and the position is deferred to the next mark run.
+- No live-mode flags are touched; no real orders; no money moved.
+
+**Dry-run (CI / preflight — no DB writes):**
+```
+PYTHONPATH=apps/engine python3 -m cosmu.research.arm_fleet --dry-run
+```
+
+**Arm a subset:**
+```
+PYTHONPATH=apps/engine python3 -m cosmu.research.arm_fleet --only faber_gtaa,vaa
+```
+
+**Railway / Modal deploy:**
+```
+PYTHONPATH=apps/engine python3 -m cosmu.research.arm_fleet
+```
+(no `pnpm` or `node_modules` needed — pure Python)
+
+Exit code 0 = all armed or skipped; exit code 1 = at least one strategy failed its deployment bar.
