@@ -12,6 +12,10 @@ export const metadata = {
   description: "Autonomous, self-learning swing-trading money machine. Scorer and money out of the agent's reach."
 };
 
+// Cosmu is a LIVE operator dashboard — every route renders on-demand with fresh engine data; nothing is
+// statically pre-rendered (static export hangs fetching the engine at build time). Applies to all routes.
+export const dynamic = "force-dynamic";
+
 // Apply the saved theme before paint to avoid a flash of the wrong palette.
 const themeScript = `try{if(localStorage.getItem('cosmu.theme')==='light')document.documentElement.classList.add('light')}catch(e){}`;
 
