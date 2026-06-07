@@ -1,0 +1,90 @@
+{
+  "name": "ADX-BBz confluence trend-not-overextended",
+  "rationale": "Bets on the confluence of two orthogonal reads: ADX confirms a real trend (not chop), while a MODERATELY positive Bollinger z-score confirms price is pushed above its mean but is NOT yet statistically over-extended (a blow-off). Entering inside this bounded band rides confirmed trend continuation while avoiding the over-extended top where reversion risk dominates. This is structurally distinct from plain ADX+momentum trend-follow (which uses ret_Nd, no location ceiling) and from pure bb_z washout reversion (which buys negative z): here bb_z is gated to a positive WINDOW (floor AND ceiling) and combined with a trend filter. Disconfirmer: if the bb_z floor never coincides with high ADX (trend without moderate stretch, or stretch without trend), the confluence produces few trades and no edge; the stop fires if the 'not over-extended' read was wrong and price was actually topping.",
+  "catalyst": "confirmed trend coinciding with a moderate, non-over-extended upside stretch from the mean",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "bbz_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    }
+  },
+  "direction": 1,
+  "param_space": {
+    "adx_floor": {
+      "kind": "float",
+      "low": 18,
+      "high": 35
+    },
+    "bbz_floor": {
+      "kind": "float",
+      "low": 0.0,
+      "high": 1.2
+    },
+    "bbz_ceiling": {
+      "kind": "float",
+      "low": 1.5,
+      "high": 3.0
+    },
+    "stop": {
+      "kind": "float",
+      "low": 0.03,
+      "high": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "low": 0.05,
+      "high": 0.4
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  }
+}

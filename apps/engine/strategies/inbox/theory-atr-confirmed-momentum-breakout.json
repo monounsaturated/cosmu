@@ -1,0 +1,92 @@
+{
+  "name": "ATR-confirmed momentum breakout",
+  "rationale": "A strong N-day advance that occurs while daily true range is ELEVATED is a real, conviction-backed breakout with participation behind it; the same return on a quiet, low-ATR tape is usually a thin drift that mean-reverts. Requiring both a positive momentum leg (ret_Nd) AND elevated volatility (atr, measured as ATR/close) selects volatility-confirmed moves and filters the dead-tape false breakouts.",
+  "catalyst": "Range expansion: a momentum thrust coinciding with a jump in average true range marks a genuine breakout from compression, where the expanding daily range signals new information / fresh participation driving continuation rather than noise.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 15
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "atr",
+        "lookback": {
+          "param": "atr_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "atr_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    }
+  },
+  "direction": 1,
+  "param_space": {
+    "mom_lb": {
+      "kind": "int",
+      "low": 3,
+      "high": 20
+    },
+    "mom_floor": {
+      "kind": "float",
+      "low": 0.0,
+      "high": 0.15
+    },
+    "atr_lb": {
+      "kind": "int",
+      "low": 7,
+      "high": 30
+    },
+    "atr_floor": {
+      "kind": "float",
+      "low": 0.02,
+      "high": 0.08
+    },
+    "stop": {
+      "kind": "float",
+      "low": 0.03,
+      "high": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "low": 0.05,
+      "high": 0.4
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  }
+}

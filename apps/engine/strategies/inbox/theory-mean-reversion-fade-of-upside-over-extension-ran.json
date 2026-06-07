@@ -1,0 +1,84 @@
+{
+  "name": "Mean-reversion fade of upside over-extension (range-gated short)",
+  "rationale": "The reversion-after-extension edge from the SHORT side: when bb_z is statistically stretched far above the band (an over-extended, exhausted up-move), price tends to snap back toward the mean at the swing horizon. We take the downside snap-back as a short (direction -1: stop sits ABOVE entry, take-profit BELOW). This is the deliberate MIRROR of the oversold-dip long that already exists in the family, so it is genuinely distinct, not a re-skin. A low-ADX gate (adx lt adx_ceiling) is the key guard: we only fade an extension in a CHOPPY/range regime where mean-reversion pays, and stand aside when ADX is high and the same high bb_z is a trend breakout that keeps running. The Bollinger window (bb_lb) is fitted, not magic, so the z-score is consistent with the regime. HONEST PRIOR: spot-only fade-the-rip on daily bars has shown no robust edge after costs and shorting spot is not even executable on Binance spot, so a powered FAIL is the expected, useful outcome; the value is a clean, leak-free test of the short-extension leg of the family.",
+  "catalyst": "upside over-extension exhausts in a non-trending regime and mean-reverts down",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "bb_z",
+        "lookback": {
+          "param": "bb_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "bb_z_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "adx_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    }
+  },
+  "direction": -1,
+  "param_space": {
+    "bb_lb": {
+      "kind": "int",
+      "low": 10,
+      "high": 40
+    },
+    "bb_z_ceiling": {
+      "kind": "float",
+      "low": 1.5,
+      "high": 3.0
+    },
+    "adx_ceiling": {
+      "kind": "float",
+      "low": 15,
+      "high": 30
+    },
+    "stop": {
+      "kind": "float",
+      "low": 0.03,
+      "high": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "low": 0.05,
+      "high": 0.4
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  }
+}

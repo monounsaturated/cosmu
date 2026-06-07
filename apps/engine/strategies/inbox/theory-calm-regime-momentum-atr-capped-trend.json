@@ -1,0 +1,84 @@
+{
+  "name": "Calm-regime momentum (ATR-capped trend)",
+  "rationale": "Low-vol-trend edge: ride established medium-term momentum ONLY while daily volatility is contained. ret_Nd>0 confirms an up-trend is already in force; the ATR ceiling (normalized true range, a fraction of price) gates entries to calm regimes, sidestepping both directionless chop and late-stage blowoff/euphoria tops where vol explodes and trends mean-revert. The bet: trends that persist quietly compound; trends that get loud are about to break.",
+  "catalyst": "Persistent low-volatility uptrends (steady accumulation / orderly markup) keep grinding higher, while high-ATR spikes mark exhaustion or whipsaw that erodes trend-following P&L.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "atr"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "atr_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    }
+  },
+  "direction": 1,
+  "param_space": {
+    "mom_lb": {
+      "kind": "int",
+      "low": 5,
+      "high": 40
+    },
+    "mom_floor": {
+      "kind": "float",
+      "low": -0.02,
+      "high": 0.15
+    },
+    "atr_ceiling": {
+      "kind": "float",
+      "low": 0.015,
+      "high": 0.09
+    },
+    "stop": {
+      "kind": "float",
+      "low": 0.03,
+      "high": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "low": 0.05,
+      "high": 0.4
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  }
+}

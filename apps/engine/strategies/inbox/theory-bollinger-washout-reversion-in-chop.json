@@ -1,0 +1,101 @@
+{
+  "name": "Bollinger washout reversion in chop",
+  "rationale": "A deeply negative Bollinger z-score (bb_z) flags a statistically unusual downside dislocation. Conditioning that washout on a LOW-ADX (non-trending, choppy) regime is the crux: in chop, an extreme band excursion is noise that snaps back to the mean, whereas in a strong downtrend the same excursion is a falling knife. So this fades stretched price ONLY when ADX confirms there is no dominant trend driving it. Structurally distinct from the vol-gated washout spec (ADX regime filter, not realized-vol) and from RSI momentum reversion (band-relative, not momentum-relative). Disconfirmer: exit when bb_z reverts back toward zero (the snap-back played out), or the stop fires if the washout was the first leg of a real breakdown.",
+  "catalyst": "statistically unusual downside band excursion in a non-trending regime",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "adx_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "bbz_floor": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -1.5
+    },
+    "adx_ceiling": {
+      "kind": "float",
+      "lo": 15.0,
+      "hi": 30.0
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.25
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 12,
+      "step": 1
+    }
+  },
+  "direction": 1
+}
