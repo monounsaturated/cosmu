@@ -261,10 +261,14 @@ class YahooDailyBarsProvider:
         return bars[-limit:]
 
     def _fetch_chart(self, symbol: str) -> list[Bar]:
-        # range=max gives full daily history; interval fixed at 1d (this is a daily-bars provider).
-        query = urllib.parse.urlencode({"range": "max", "interval": "1d"})
+        # Use an EXPLICIT epoch window (period1/period2), NOT range=max: Yahoo SILENTLY downgrades
+        # range=max to MONTHLY bars (e.g. AAPL → ~168 month-start points) despite interval=1d, which
+        # corrupts every "daily" backtest. A wide explicit window forces TRUE daily granularity. A real
+        # browser User-Agent is also more reliable than a custom one.
+        period2 = int(datetime.now(UTC).timestamp()) + 86_400  # now + 1d buffer
+        query = urllib.parse.urlencode({"period1": 0, "period2": period2, "interval": "1d"})
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?{query}"
-        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
         return _bars_from_yahoo(payload)
@@ -276,10 +280,25 @@ class YahooDailyBarsProvider:
         path = self._cache_path(symbol)
         if not path.exists():
             return []
-        return [_bar_from_json(r) for r in json.loads(path.read_text())]
+        bars = [_bar_from_json(r) for r in json.loads(path.read_text())]
+        if bars and not _is_daily_spaced(bars):
+            # poisoned cache: MONTHLY bars from the old `range=max` downgrade. Drop it so fetch_bars
+            # re-fetches true daily history (the file is overwritten on the next successful fetch).
+            return []
+        return bars
 
     def _write_cache(self, symbol: str, bars: list[Bar]) -> None:
         _atomic_write_text(self._cache_path(symbol), json.dumps(_bars_to_rows(bars), separators=(",", ":")))
+
+
+def _is_daily_spaced(bars: list[Bar]) -> bool:
+    """True DAILY bars have consecutive-trading-day gaps (1-4 calendar days incl. weekends/holidays);
+    MONTHLY bars (from the old Yahoo `range=max` downgrade) have ~28-31 day gaps. Median-gap test —
+    used to detect + invalidate poisoned daily caches."""
+    if len(bars) < 5:
+        return True
+    gaps = sorted((bars[i].ts - bars[i - 1].ts).days for i in range(1, len(bars)))
+    return gaps[len(gaps) // 2] <= 7
 
 
 def _ccxt_symbol(symbol: str) -> str:
