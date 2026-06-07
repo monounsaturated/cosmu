@@ -544,6 +544,7 @@ export interface LeaderboardRow {
   edge_type: string;
   features: string[];
   forward_age_days: number;
+  forward_return_pct?: number | null;
   lineage: string;
   live_ready: boolean;
   name: string;

@@ -232,6 +232,80 @@ def test_leaderboard_live_ready_false_without_a_funded_clock(tmp_path, monkeypat
     assert row["live_ready"] is False
 
 
+def _open_seeded_track(store: Store, vid: str) -> None:
+    """Open a track the way the funder does: seed tracks.return_pct/equity with the BACKTEST number (oos 0.04 ->
+    +4%) at funding time. NO marked snapshot yet => this is the day-0 state where the rosy backtest must NOT leak
+    into forward_return_pct."""
+    store.insert(
+        "tracks",
+        {
+            "strategy_version_id": vid, "starting_capital": "100000", "equity": "104000.00",
+            "return_pct": "4.00", "updated_at": utcnow(),
+        },
+    )
+
+
+def test_leaderboard_forward_return_is_null_without_a_track(tmp_path, monkeypatch):
+    # No track row at all => no forward trajectory => forward_return_pct is honest null (not 0, not the backtest).
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "No-track momentum"
+    vid = _persist_version(store, spec, passed=True)
+    row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
+    assert row["forward_return_pct"] is None
+    # the BACKTEST OOS is still surfaced (relabeled), distinct from the (absent) forward number
+    assert math.isclose(row["track_return_pct"], 4.0, abs_tol=1e-6)
+
+
+def test_leaderboard_forward_return_null_at_day0_never_the_backtest(tmp_path, monkeypatch):
+    # The track is OPENED with the backtest number seeded into tracks.return_pct, but it has NOT been marked yet
+    # (no scope='track' portfolio_snapshot). forward_return_pct MUST be null — the rosy +4% backtest can NEVER
+    # leak in as a day-0 forward result.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Just-funded momentum"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)
+    row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
+    assert row["forward_return_pct"] is None, "day-0 forward must be null, never the seeded backtest number"
+
+
+def test_leaderboard_forward_return_is_the_marked_trajectory(tmp_path, monkeypatch):
+    # Once the mark clock writes a scope='track' snapshot, forward_return_pct is the REAL net-of-fee return:
+    # (marked_equity / starting_capital - 1) * 100. A marked equity of 101_500 on 100k => +1.50% forward —
+    # the marked number, NOT the +4% backtest.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Marked-up momentum"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)
+    store.insert(
+        "portfolio_snapshots",
+        {
+            "scope": "track", "ref_id": vid, "ts": utcnow(), "equity": "101500.00", "cash": "0",
+            "positions_value": "101500.00", "pnl": "1500.00", "drawdown": "0",
+        },
+    )
+    row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
+    assert math.isclose(row["forward_return_pct"], 1.5, abs_tol=1e-6)
+    # backtest OOS stays distinct at +4%
+    assert math.isclose(row["track_return_pct"], 4.0, abs_tol=1e-6)
+
+
+def test_leaderboard_forward_return_shows_true_negative(tmp_path, monkeypatch):
+    # HONESTY: a losing forward test shows its TRUE negative number — never the rosy backtest, never floored at 0.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Losing momentum"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)
+    store.insert(
+        "portfolio_snapshots",
+        {
+            "scope": "track", "ref_id": vid, "ts": utcnow(), "equity": "97000.00", "cash": "0",
+            "positions_value": "97000.00", "pnl": "-3000.00", "drawdown": "0.03",
+        },
+    )
+    row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
+    assert math.isclose(row["forward_return_pct"], -3.0, abs_tol=1e-6)
+
+
 def test_leaderboard_metric_coercion_handles_nan_and_none():
     # Unit-level guard on the coercion helper itself: NULL, NaN, inf and junk all
     # collapse to the documented 0.0 sentinel (plain `x or 0` would let NaN through).

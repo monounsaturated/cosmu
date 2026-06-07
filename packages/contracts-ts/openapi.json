@@ -2691,6 +2691,17 @@
             "title": "Forward Age Days",
             "type": "number"
           },
+          "forward_return_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forward Return Pct"
+          },
           "lineage": {
             "title": "Lineage",
             "type": "string"

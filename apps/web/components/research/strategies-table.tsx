@@ -316,25 +316,31 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
 }
 
 // The Forward cell on the Simulation surface. HONEST by construction: the leaderboard contract carries the
-// forward-test CLOCK (forward_age_days / live_ready) but NOT yet a forward-return number, so we surface the
-// clock + readiness and never borrow the backtest % to stand in for forward performance. A just-funded track
-// reads "day 0 · —" so a fresh forward test can never display its backtest number as a forward result.
+// forward-test CLOCK (forward_age_days / live_ready) AND the REAL marked forward return (forward_return_pct —
+// net of fees, since funding). We show the live forward % over the day clock; we NEVER borrow the backtest %
+// to stand in for forward performance. A just-funded / un-marked track has `forward_return_pct == null`, so it
+// reads "day 0 · 0%" (the honest day-0 truth) — never the rosy backtest. A flat/negative marked track shows
+// its TRUE (0 / negative) number.
 function ForwardCell({ row }: { row: LeaderboardRow }) {
   const days = Number.isFinite(row.forward_age_days) ? row.forward_age_days : 0;
+  const whole = Math.floor(days);
+  // null/undefined = NO marked trajectory yet (day-0 / never marked). Show an honest 0%, NOT the backtest.
+  const marked = typeof row.forward_return_pct === "number" && Number.isFinite(row.forward_return_pct);
+  const fwd = marked ? (row.forward_return_pct as number) : 0;
   if (days < 1) {
+    // Just funded: day 0, no forward history. The % is the honest 0 — never the backtest number.
     return (
       <TD className="text-right tabular">
-        <span className="text-quiet">day 0</span>
+        <span className="text-quiet">day 0 · {formatPct(fwd)}</span>
         <div className="text-[10.5px] uppercase tracking-wide text-quiet">no forward yet</div>
       </TD>
     );
   }
-  const whole = Math.floor(days);
   return (
     <TD className="text-right tabular">
-      <span className="text-foreground">{whole}d</span>
+      <span className={cn(marked ? (fwd >= 0 ? "text-up" : "text-down") : "text-quiet")}>{formatPct(fwd)}</span>
       <div className={cn("text-[10.5px] uppercase tracking-wide", row.live_ready ? "text-up" : "text-quiet")}>
-        {row.live_ready ? "matured" : "maturing"}
+        {whole}d · {row.live_ready ? "matured" : "maturing"}
       </div>
     </TD>
   );

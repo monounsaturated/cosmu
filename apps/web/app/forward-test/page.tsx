@@ -90,9 +90,10 @@ function SimNote() {
               . The Gate&apos;s 5 interlocks are the hard requirement.
             </p>
             <p className="text-[12px] leading-relaxed text-muted">
-              Read the table honestly: <span className="font-medium text-foreground">Forward</span> is the clock since
-              the Gate funded this track — a just-armed track reads <span className="tabular text-quiet">day 0</span>,
-              not a number.{" "}
+              Read the table honestly: <span className="font-medium text-foreground">Forward</span> is the REAL
+              net-of-fee return marked to market since the Gate funded this track — a just-armed track reads{" "}
+              <span className="tabular text-quiet">day 0 · +0.00%</span> until it accrues forward history, and a
+              flat or losing track shows its true (0 or negative) number.{" "}
               <span className="font-medium text-foreground">Backtest OOS</span> is historical and proves nothing
               forward. Don&apos;t read the backtest column as forward performance.
             </p>

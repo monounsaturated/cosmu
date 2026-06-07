@@ -35,6 +35,11 @@ class LeaderboardRow(BaseModel):
     pbo: float
     status: str
     lineage: str
+    # The REAL forward-test return: net-of-fee % from the LIVE marked trajectory (`tracks.return_pct`), marked
+    # to market since the track's first `track_opened` for every asset class. This is the only number that
+    # proves the edge forward — NOT the backtest. `null` when no track exists yet; a just-funded/un-marked
+    # track reads 0.00 (day-0 truth), NEVER the rosy backtest (track_return_pct / net_pct = BACKTEST OOS).
+    forward_return_pct: float | None = None
     # ADVISORY forward-test maturity signal (master/forward_maturity.py) — SURFACED, NOT ENFORCED. `forward_age_days`
     # is calendar time the track's forward-test clock has run since its first mark; `live_ready` recommends a track
     # that has both matured (>= FORWARD_TEST_MIN_DAYS) and is net-of-fee positive. The operator launches via the
