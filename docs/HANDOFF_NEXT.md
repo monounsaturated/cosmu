@@ -1,141 +1,44 @@
-# COSMU — Handoff (definitive · 2026-06-06)
+# COSMU — MASTER HANDOFF (local orchestrator) · updated 2026-06-07
 
-Single source of truth. Detail lives in `docs/reports/*`. Memory auto-loads the summary.
+> Paste-ready context for a fresh **local** master session on `main`. Pair with `docs/DECISIONS.md` (verdict log),
+> `docs/OPEN_THREADS.md` (registry), `docs/STRATEGIES.md` (what's tested). You are the LOCAL orchestrator on the Mac.
 
-## ⚠️ STEERING (from the outgoing master, 2026-06-06) — strong progress, one correction
-You've nailed the declutter + bar backbone (#129) + MCP (#128) + overview (#127). **Before you re-run the cohort, the
-HONESTY FIXES must land — they haven't yet:**
-- **Fake `exchange_netflow` is still tier0** (`feature_registry.py:46`): it's `globalLongShortAccountRatio` with a
-  fabricated "net inflows" prior + only 30 days of history → it WILL manufacture false positives at high weight.
-  Kill/relabel it (or set enabled=False). This is the #1 must-fix.
-- **Funding annualization** (`carry_ablation.py` / `altdata.py`): per-symbol settlement interval, not a hardcoded
-  ×3/day → currently understates carry 2–8×. + **FRED ALFRED vintage** + the **`registry ⊆ routable` guard test**.
-- **Bar backfill universe:** `.cosmu/market_data/binance/` shows ~42 symbols — fine for a 20–50-name xsec test, but
-  confirm it's deliberate (not a truncated run); the cohort needs bars for every coin it ranks. Bars are LOCAL
-  (`.cosmu/market_data/`) → fine for the LOCAL re-run; don't deploy-gate on them (Railway won't see local files).
-**Then** re-run the cohort (btc-social overlay + Polymarket-on-history) for the honest edge verdict. Everything else: keep driving.
+## 1. WHAT COSMU IS (+ inviolable rules)
+Autonomous trading research machine. LLM proposes typed `StrategySpec`s; a **deterministic Gate** disposes — deflated-Sharpe ≥ 0.95 · CSCV-PBO · BH-FDR (q=0.10) · **purged+embargoed OOS holdout** · beat-buy&hold, **net of REAL fees**. **THE LLM NEVER TOUCHES MONEY. NEVER tune the Gate to pass. No synthetic/zero-fill/look-ahead. An honest FAIL is valid.** North star: profit net of fees.
 
-## ⚙️ OPERATING MODE — READ FIRST
-You are the new **master orchestrator** (taking over from the previous chat). Be strong + fast, but in ORDER:
-1. **Transfer context + orient** — read this + `docs/reports/product-vision-user-profile.md` + `BACKLOG.md` (⭐ TOP OF
-   QUEUE) + memory; give the operator a short plain-language state summary.
-2. **Clean the codebase FIRST** — STEP 0 below: remove the stale `train/web` worktree + `branch -D train/web` + prune
-   the ~25 stale worktrees. Do NOT merge train/web (superseded — would regress the UI). Keep main green.
-3. **ASK the operator your clarifying questions BEFORE building** — surface any priorities/forks/assumptions so you're aligned.
-4. **THEN drive the critical path** — either hand the operator ready-to-paste cloud-agent prompts AND/OR dispatch the
-   agents yourself, SEQUENCED for collisions (one ENGINE agent at a time — they collide; web/infra/docs run in parallel):
-   **bar backbone → honesty fixes → re-run the cohort** (= the honest edge verdict). Merge each as CI passes; keep main
-   green. MCP layer in parallel.
-5. **Keep local compute LEAN** — prefer cloud agents (off the Mac) for parallel code; don't clutter local compute.
-   Strong + fast, but uncluttered. Lean overall: free Binance Vision data, GitHub CI (PR-only), no VPS, no R2 yet.
-   QA any UI fix with `.env.local` before claiming done.
+## 2. WHERE WE ARE (honest)
+- **Search phase DONE.** Crypto (5 waves / ~16 spaces) + equity *factor* search are honestly exhausted — 0 novel survivors, ALL audited, the machine has **0 false positives and audited itself**. That trustworthy machine is the durable asset.
+- **THE REFRAME (the unlock):** the 0.95 Gate is a *novel-exceptional-edge* detector. Making money needs **positive + robust**, not exceptional. → **TWO LANES:**
+  - **DEPLOY-LANE** — documented, externally-validated strategies (TAA). Bar = positive OOS net-of-fees + beat B&H risk-adjusted + the REAL holdout → **ARM forward-test.** (NOT the 0.95 Gate — that's an overfitting guard for *mined* edges.)
+  - **GATE-LANE** — novel / mined / popular-pinescript → the 0.95 `promote_cohort` BH-FDR Gate.
+- **LIVE NOW:** **GEM** (dual-momentum) forward-test ARMED in prod (`version 4695617d`, SPY SIM position, $10k) — the FLOOR. The **strategy-fleet** (run `wf_f7bb544d`) is arming more TAA strategies alongside it.
 
-## What COSMU is
-An autonomous machine that **finds a real trading edge and trades its OWN money** (small, gated).
-LLM proposes typed StrategySpecs → **deterministic Gate disposes** → LLM never touches money. North star:
-**its own profit, net of fees.** It generalizes to a research engine, but **finance is the proving ground and the
-only domain with an incorruptible oracle** (profit net of fees). Rule: *no oracle → no graduation* (never build
-LLM-grades-its-own-homework advice). See `docs/reports/generalization-plan-2026-06-06.md`.
+## 3. THE TWO TRACKS (the plan — no more circling)
+- **TRACK 1 · FLOOR:** deploy documented-robust strategies live (GEM + fleet) → modest-but-real compounding (~0.6-0.8 Sharpe, crash protection). Iterate: more TAA models, **variations of winners (FDR-counted)**, pinescript imports (honestly gated).
+- **TRACK 2 · UPSIDE:** LLM-narrative (machinery merged, PR #143). Next = pull a **DEEP raw-text corpus** (GDELT GKG via BigQuery, or CryptoPanic/news archive; 2-3yr, liquid names) → score on **MODAL** (embarrassingly parallel, content-hash cached, ~$ few) → materialize daily PIT scores to `alt_data` → run `research/llm_narrative_cohort` unchanged → real verdict.
 
-## 🧭 The big reframe this session (the most important thing to understand)
-The old "**0 edges / 7 powered fails**" verdict is **NOT trustworthy** — the backtest harness was broken/starved.
-Two adversarial workflows + audits proved it:
-- ✅ **FIXED & HARDENED (#123 + #126):** the P0 `risk_on→pm_risk_on` split is fully resolved — gate queries the
-  canonical name, fixtures/API router reconciled, AND `StoreBackedAltProvider.fetch_series` now RAISES on an
-  unrouted metric (silent-miss class can't recur). 924 tests pass. **Harness P0 = DONE.** Remaining harness work:
-  bar backbone (empty cache) + honesty fixes (netflow/funding/FRED) → then re-run. *(Original detail below.)*
-- ✅ **FIXED (#123):** the P0 `risk_on→pm_risk_on` split — the live Gate's cross-asset feature was a **silent no-op**,
-  production **scored synthetic**, the API router had the same bug. Now bridged + 5 social fields wired + a
-  regression test that proves the feature is non-zero. **The Gate is now honest on live data.**
-- ⚪ **STILL BROKEN (next):** the **price-bar cache is empty** (Gate runs starved), `exchange_netflow` is a **fake
-  feature** (mislabeled long/short ratio), funding annualization is **2–8× off**, the fill model is a **flat-5bps
-  fantasy**, and **xsec was only tested on 3–5 names**.
-- ➡️ **Therefore: we genuinely do NOT know if an edge exists.** Finish the harness, RE-RUN, *then* judge. The binding
-  constraint was never "no edge" or "wrong market" — it was **"we couldn't measure."**
+## 4. MONITOR LIVE STRATEGIES (do this — "monitor heavy")
+- **Watch:** `GET /leaderboard` (Strategies page) + `GET /overview` — `forward_age_days`, `live_ready` (crosses True at +31d), `return_pct`.
+- ⚠️ **The generic forward-mark clock (`cosmu.orchestrator.loop` / `mark_tracks`) prices via Binance → CANNOT mark EQUITY tracks** (leaves them flat). **PRIORITY TASK: make the forward-mark clock ASSET-AWARE** (price equity tracks via Yahoo total-return) so ALL equity forward-tests accrue hands-off.
+- Until then, the equity clock: `python3 -m cosmu.research.equity_dual_momentum_arm --mark` (marks GEM). **Schedule it as a daily Railway cron.** Fleet-armed strategies need their marking folded into the generalized clock.
 
-## ⚠️ DO FIRST — the prerequisite (USER action, ~now)
-**Upgrade Supabase to Pro ($25/mo).** The DB is **3.3 GB on a 500 MB free cap (6.5× over)** → over-quota free
-projects get restricted/paused → the **irreplaceable 10.5M-row social hoard is at risk**, and it's likely why the
-grab keeps dropping its connection. $25 protects the data + stabilizes the grab + gives the 8 GB the full universe
-needs. Cheapest, highest-ROI spend in the project. **Then cancel LunarCrush once the grab finishes** (re-sub a slim
-tier later only if a social edge screens).
+## 5. OPERATING RULES (locked — `memory/compute_placement.md`)
+- **Local default; heavy/long compute → MODAL by reflex** (`modal run apps/engine/remote/app.py --job ...`); always-on/crons → **Railway**; orchestration + ultracode/Workflow → **this local session**.
+- **Git hygiene:** EVERY workflow/Agent uses `isolation:'worktree'` (a non-isolated agent drifted `main` once). Orchestrator: `git pull --rebase` before committing `main`; watch for stray untracked files left in the main checkout.
+- **Efficiency:** never re-search an exhausted surface; parallel agents only for genuinely-new space; Modal for scale; Sonnet for mechanical, Opus for judgment.
+- **PRs:** small disjoint branches; operator merges (this session merged the wins #140/#142/#143/#144). GitHub Actions CI is OFF — verify locally/in-worktree.
 
-## ✅ The plan (ordered — the confirmed best decision: fix measurement, then re-run, before any new surface)
-1. **Supabase → Pro** (protect data). [USER, now]
-2. **Finish the harness** (cloud agents, serialize — all touch engine):
-   - **Bar backbone** — Binance Vision bulk OHLCV (2017→now, full universe) — the cache is EMPTY (the precondition).
-   - **Honesty fixes** — kill/relabel fake `exchange_netflow`; fix funding annualization; FRED point-in-time vintage.
-   - Add the routability guard test (`enabled features ⊆ routable`) from the integrity report.
-3. **RE-RUN the crypto cohort** on the honest harness — the real moment of truth. Start with the **btc-social
-   risk-on OVERLAY** (the only non-overfit signal; needs a low-turnover overlay harness shape). [LOCAL]
-4. **WIN = ONE strategy survives the honest Gate + a 30-day forward-test** → arm live, small. (The POC. Unchanged.)
-5. **Only after step 3 proves the Gate works:** Lane A2 (LlamaParse SEC filings, Firecrawl/GDELT/Quiver, Cohere
-   Rerank), then Lane B (cross-domain, oracle-gated). **EXCEPT MCP over engine+Supabase — cheap, independent, do
-   early** (the biggest "Claude Code drives it" lever).
+## 6. KEY FILES
+- **Gate:** `master/cohort.py::promote_cohort` + `master/fdr.py::benjamini_hochberg` + `research/equity_holdout.py` (REAL purged+embargoed holdout). **NEVER** `gate.evaluate_cross_asset_ablation` (leaky).
+- **Deploy-lane + ARMING pattern:** `research/equity_dual_momentum.py` + `equity_dual_momentum_arm.py` — mirror these to validate+arm a new documented strategy (idempotent, SIM-only).
+- **LLM:** `lab/llm.py::openrouter_chat` (SSL-fixed — certifi); `research/llm_narrative_pipeline.py` + `llm_narrative_cohort.py`.
+- **Data:** `.cosmu/market_data/equities/` (Yahoo v8, ~135 names + `_tr.json` total-return) + `binanceperp/` (deep perps). **Stooq is dead** (paywalled) — use Yahoo v8 + certifi.
+- **Modal:** `apps/engine/remote/app.py` (jobs: gate_sweep/ingest/forward_mark/...).
 
-## 🔒 Confirmed decisions (locked)
-- **Naming:** Backtest → Simulation → Live (shipped #114/#122). Lifecycle: Lab→Backtest→Simulation→Live, per-strategy,
-  NO pooled wallet, "Paper" killed.
-- **Data:** hoard WIDE for backtest (Pro holds it), run SLIM for live. Social = **SCREEN + forward-test only** (single
-  backfill, vendor-revision unprovable → look-ahead risk; see edge-plan + PIT audit). Next free data: Binance Vision
-  OHLCV/OI/funding, DefiLlama, Deribit DVOL.
-- **Generalization:** barbell, finance funds it, oracle-gated. MLflow NO · MCP YES (early) · NautilusTrader only once a
-  forward-survivor exists · LlamaParse for filings (Lane A2).
-- **UI:** mobile-first nav on every page + lifecycle stage-strip + progressive disclosure (shipped #121/#122);
-  top-N preview → dedicated sortable data pages (in flight). Keep it digestible.
-- **Compute:** LOCAL default · Modal heavy · cloud agents for parallel CODE · NO VPS.
-- **CI (decided):** KEEP GitHub-hosted Actions — it's off-Mac, parallel, and lean (path-filtered + PR-only + $10 cap
-  ≈ $1–5/mo steady-state). Do NOT self-host on the Mac (funnels all CI onto it → slows the Mac, esp. with cloud-agent
-  PRs) and NOT Codespaces (paid dev VM, not CI). The big spend was a 13-PR/day spike, not the rate.
-- **Polymarket:** BACKTEST it (data-only — ingest historical odds, test pm_implied_prob / pm_prob_velocity strategies
-  through the Gate; no live needed, cheap). LIVE is PARKED — US Railway regions (Virginia/California) are BLOCKED
-  (Polymarket blocks the US), Singapore (current) may reach it but geo-circumvention is ToS-risky. So: test the edge
-  on history; only wire live (with compliance) IF it survives the Gate + we decide it's worth it.
-- **Scaling (cheap if tiered):** keep Postgres for HOT data only (~$25 forever); archive full history to parquet on
-  Cloudflare R2 (~$0.015/GB, $0 egress) read by DuckDB/polars; Modal pay-per-use for compute; free data sources first.
-  Infra stays <$100/mo even at scale; Claude (dev) + trading capital are the only real scaling costs. See
-  `docs/reports/scaling-economics.md`. Build the hot/cold tiering when the 8 GB Pro cap nears (we're at ~6 GB).
-- **Agent rule:** one branch = DISJOINT files. Web vs engine = safe parallel; **two engine agents collide — serialize.**
+## 7. RESUME — next actions (priority order)
+1. **Read the strategy-fleet report** (run `wf_f7bb544d`) — how many strategies armed live; then **iterate variations of the winners** (FDR-counted) + add more TAA.
+2. **Make the forward-mark clock asset-aware** + schedule the equity `--mark` Railway cron → the floor monitors hands-off.
+3. **Track 2:** the LLM-narrative deep-corpus **Modal** pull → real verdict.
+4. **Keep the fleet iterating** (more TAA + pinescript + variations) — Karpathy throughput, FDR-disciplined, deploy the robust + gate the novel.
 
-## ▶️ Next parallel cloud agents (prompts ready in `.claude/tasks/` + below)
-- **Bar backbone** (engine) — `BinanceVisionBarBackfiller` on the `fetch_history`→`write_bars_cache` seam; fixture-test; PR. *(Run is LOCAL.)*
-- **Honesty fixes** (engine) — `altdata.py` netflow + `carry_ablation.py` funding annualization + FRED vintage. *(Serialize after bar-backbone — both engine.)*
-- **MCP layer** (infra) — Supabase MCP + Postgres MCP + thin MCP over the engine/Gate CLIs. Independent, do early.
-- **Re-run cohort** (LOCAL) — once harness fixed; btc-social overlay first; one BH-FDR family.
-- **Declutter** (git, when no agents active) — branch graveyard.
-- `.claude/tasks/lane-a-filings-llamaparse.md` — SEC filings (Lane A2, after the Gate is proven trustworthy).
-
-## 📄 Reports (read these — the detail)
-- `integrity-bugs-2026-06-06.md` — P0 (fixed in #123) + the routability/registry P2 gaps.
-- `poc-acceleration-plan.md` — fix-the-harness path, TOP-5 moves, free-data backfill order.
-- `edge-plan-2026-06-06.md` — the 3 hypotheses to Gate (+ PIT-trust verdict on the social hoard).
-- `generalization-plan-2026-06-06.md` — the barbell + the oracle doctrine.
-
-## STEP 0 for the next session — declutter (do FIRST, ~1 min)
-The previous session ran in a worktree on the **stale `train/web` branch** (an old superseded redesign — its work is
-already on main via #59/#113/#116/#119/#122/#124; the cockpit it deletes is already gone, PRODUCT.md already on main).
-**Do NOT merge it — it would regress the current mobile-first UI.** Just drop it + prune the worktree clutter:
-```
-git -C /Users/device/cosmu worktree remove /Users/device/cosmu/.claude/worktrees/peaceful-edison-656718 --force
-git -C /Users/device/cosmu branch -D train/web
-git -C /Users/device/cosmu worktree prune && git -C /Users/device/cosmu fetch -p
-# then remove any remaining stale agent-* worktrees whose PRs merged (there are ~25): worktree remove + branch -D
-```
-
-## Where the master runs
-Fresh Claude Code chat in **`/Users/device/cosmu` on `main`** (NOT a worktree — worktree sandboxes can't open
-main-repo files). It dispatches; real work goes to cloud (code) / local (keys+data) / Modal (heavy).
-
-## QA discipline (NEW — the live-checkbox lesson)
-**Build-green ≠ a click works.** #113 passed CI but the operator says the Live-page controls still break. So for any
-UI/interaction fix, an agent MUST run the app with `.env.local` (engine connected) and exercise the ACTUAL control
-before claiming it's fixed — and include a **manual QA checklist** in the PR (control · click · expected result).
-Typecheck/build/naming are necessary, not sufficient, for interactive behavior.
-
-## Lessons (banked, so we stop repeating)
-- A metric rename must be verified **end-to-end** (ingest→store→provider→gate→fixtures→tests); tests must assert a
-  feature is **non-empty**, not just a label. Run the **full engine suite** on any engine change (path-filters hid a
-  latent red for weeks). · Bulk DB writes must be **batched**. · Don't churn plan-gated endpoints. · **Refactors/engine
-  agents merge ALONE** (parallel = collisions); web vs engine is safe. · Targeted tests while iterating, full suite once.
-  · Building is a CI job. · Hoard wide, run slim. · A rate-limited API can't be parallelized faster. · **Fix the
-  measurement before trusting any verdict.**
+**The ONE goal:** strategies that survive honestly and compound; the machine that never lies is the asset. Floor + upside. Go.
