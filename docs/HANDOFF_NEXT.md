@@ -26,6 +26,7 @@ Autonomous trading research machine. LLM proposes typed `StrategySpec`s; a **det
 - **Local default; heavy/long compute → MODAL by reflex** (`modal run apps/engine/remote/app.py --job ...`); always-on/crons → **Railway**; orchestration + ultracode/Workflow → **this local session**.
 - **Git hygiene:** EVERY workflow/Agent uses `isolation:'worktree'` (a non-isolated agent drifted `main` once). Orchestrator: `git pull --rebase` before committing `main`; watch for stray untracked files left in the main checkout.
 - **Efficiency:** never re-search an exhausted surface; parallel agents only for genuinely-new space; Modal for scale; Sonnet for mechanical, Opus for judgment.
+- **⚡ Operator preference (locked):** clear, well-scoped fixes — suggested-task chips, obvious bugs — **DO them immediately, don't suggest or ask.** (e.g. the Yahoo monthly-bars fix `eb2915c`.)
 - **PRs:** small disjoint branches; operator merges (this session merged the wins #140/#142/#143/#144). GitHub Actions CI is OFF — verify locally/in-worktree.
 
 ## 6. KEY FILES
