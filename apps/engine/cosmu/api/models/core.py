@@ -46,6 +46,14 @@ class LeaderboardRow(BaseModel):
     # modal at their discretion; the 5 interlocks remain the only hard gate. Never consulted by the gate/money path.
     forward_age_days: float
     live_ready: bool
+    # ADVISORY SIM-vs-backtest divergence read-out (master/divergence.py) — SURFACED, NEVER ENFORCED. An early
+    # warning that this track's REAL marked forward return has stopped tracking the backtest it was funded on
+    # (alpha-decay / regime-shift). `divergence_status` is "tracking" / "diverging" / "insufficient" (the honest
+    # empty state when the marked window is too short); `divergence_gap_pct` is the signed percentage-point gap
+    # between the marked forward return and the backtest pro-rated to the SAME elapsed window (negative = the live
+    # track is under-performing the backtest). MONITORING ONLY — never on the Gate/scorer/FDR/money path.
+    divergence_status: Literal["insufficient", "tracking", "diverging"] = "insufficient"
+    divergence_gap_pct: float | None = None
     # Faceted taxonomy (cosmu/strategy/taxonomy.py), all DERIVED from the spec — never hand-tagged. The
     # Strategies surface filters on these real fields. `signal_family` is the primary filter (from the
     # named features the spec references); the rest are orthogonal facets.
