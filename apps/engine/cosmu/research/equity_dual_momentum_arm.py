@@ -89,12 +89,9 @@ def _backtest_row(version_id: str, v: dict) -> dict:
         "folds_positive": 6,  # positive across the regimes tested (2008 bear, bulls, chop)
         "passed_gates": 1,    # cleared the DEPLOYMENT bar (positive OOS net of fees + ~half drawdown), not the 0.95 Gate
         "holdout_passed": 1,  # OOS leg positive net of fees
-        "sharpe_per_obs": str(round(full.ann_sharpe / (12 ** 0.5), 6)),
-        "skew": "0.0",
-        "kurtosis": "3.0",
-        "n_obs": full.n_months,
-        "regime_spread": 3,
         "created_at": utcnow(),
+        # NB: only REAL `backtests` columns — sharpe_per_obs/skew/kurtosis/n_obs/regime_spread do NOT exist in the
+        # Postgres schema; inserting them raises AFTER the version commits → half-armed (no track → invisible in Sim).
     }
 
 
@@ -155,7 +152,18 @@ def arm(store: Store | None = None) -> dict:
                 "kill_reason": None,
             },
         )
+        print(f"\nREGISTERED forward-test version: version_id={version_id} (status=forward_test, origin=documented)")
+    else:
+        version_id = existing
+        print(f"\nForward-test version exists: version_id={version_id} (idempotent — clock NOT reset)")
+
+    # IDEMPOTENT BACKFILL of the downstream control-plane rows — insert-if-missing. Each Store.insert is its own
+    # transaction, so a prior arm that raised on the backtests insert AFTER the version committed leaves a HALF-ARMED
+    # state (version, but no backtest/track/track_opened → invisible in Simulation). This heals it on re-arm.
+    if store.row("SELECT id FROM backtests WHERE strategy_version_id = ? AND kind = 'screen'", (version_id,)) is None:
         store.insert("backtests", _backtest_row(version_id, v))
+        print("  + backfilled screen backtest row")
+    if store.row("SELECT strategy_version_id FROM tracks WHERE strategy_version_id = ?", (version_id,)) is None:
         equity0 = TRACK_CAPITAL * (Decimal("1") + Decimal(str(round(v["oos"].total_return, 6))))
         store.insert(
             "tracks",
@@ -167,9 +175,8 @@ def arm(store: Store | None = None) -> dict:
                 "updated_at": now,
             },
         )
-        # The forward-test clock origin + proven-regime passport (read by master/live_eligibility). MIN(ts) of this
-        # event is when the forward test started ticking; live-arming is HARD-gated on >= FORWARD_TEST_MIN_DAYS of
-        # net-positive forward evidence FROM HERE, plus the current regime being in the proven set.
+        # forward-test clock origin + proven-regime passport (read by master/live_eligibility); MIN(ts) = clock start;
+        # live-arming is HARD-gated on >= FORWARD_TEST_MIN_DAYS of net-positive forward evidence FROM HERE.
         store.append_event(
             actor="research",
             kind="track_opened",
@@ -183,10 +190,7 @@ def arm(store: Store | None = None) -> dict:
                 "deployment_bar": "positive OOS net of IBKR fees + ~half SPY drawdown (NOT the 0.95 in-sample Gate)",
             },
         )
-        print(f"\nREGISTERED forward-test track: version_id={version_id}  (status=forward_test, origin=documented)")
-    else:
-        version_id = existing
-        print(f"\nForward-test track already registered: version_id={version_id} (idempotent — clock NOT reset)")
+        print("  + backfilled track + track_opened (forward clock started)")
 
     # Open / confirm the held SIM position in the current signal at the latest REAL close. SIM only — live stays OFF.
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
