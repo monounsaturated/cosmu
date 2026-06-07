@@ -67,6 +67,9 @@ def leaderboard() -> LeaderboardResponse:
         return LeaderboardResponse(rows=[])
     out: list[LeaderboardRow] = []
     for row in rows:
+      # Defense-in-depth: one malformed row must NEVER 500 the whole floor leaderboard. A row that can't be
+      # built is skipped (logged), so the rest of the floor still renders. (derive_facets is also bulletproof.)
+      try:
         # net_pct is the net-of-fee return the maturity signal reads — same field surfaced on the row.
         net_pct = _metric(row["oos_return"]) * 100 - 0.18
         # ADVISORY ONLY (master/forward_maturity.py): surfaced, never a gate. The forward-test clock runs from the
@@ -105,4 +108,8 @@ def leaderboard() -> LeaderboardResponse:
                 edge_type=facets.edge_type,
             )
         )
+      except Exception:  # noqa: BLE001 — skip a single broken row, never 500 the floor.
+        import logging
+        logging.getLogger(__name__).warning("leaderboard: skipped a malformed row", exc_info=True)
+        continue
     return LeaderboardResponse(rows=out)
