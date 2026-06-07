@@ -20,6 +20,13 @@ from cosmu.knowledge.store import Store, utcnow
 
 log = logging.getLogger(__name__)
 
+# Gate-path markers persisted on every `gate_verdicts` row so the read path can tell an HONEST,
+# BH-FDR-corrected cohort verdict apart from the codebase's own no-FDR/trials=5 leaky cross-asset
+# ablation path. A row carrying METHOD_COHORT_BHFDR is a genuine FDR-gated survivor; a row carrying
+# METHOD_CROSS_ASSET_NOFDR must NEVER be allowed to masquerade as one in the UI.
+METHOD_COHORT_BHFDR = "cohort_bhfdr"
+METHOD_CROSS_ASSET_NOFDR = "cross_asset_ablation_nofdr"
+
 
 @dataclass(frozen=True)
 class CohortPersist:
@@ -96,6 +103,7 @@ def persist_cohort_verdict(persist: CohortPersist, candidates: list[Any], promot
         decision = "PASS" if promoted else "FAIL"
         payload: dict[str, Any] = {
             "kind": "cohort",
+            "method": METHOD_COHORT_BHFDR,  # honest, BH-FDR-corrected — a genuine FDR-gated survivor row.
             "run_id": persist.run_id,
             "hypothesis": persist.hypothesis,
             "source": persist.source,

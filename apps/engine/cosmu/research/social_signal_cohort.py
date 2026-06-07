@@ -27,6 +27,7 @@ from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.scorer import score
 from cosmu.master.trials import record_trial, trial_stats
+from cosmu.master.verdict_log import durable_persist
 from cosmu.research.carry_ablation import (
     _btc_daily_returns,
     _merge_alt,
@@ -196,7 +197,14 @@ def run_cohort(
     data_source: str = "live-cached",
     fdr_q: float = 0.10,
     override_alt: dict[str, dict[str, dict[str, float]]] | None = None,
+    persist: bool = False,
+    persist_source: str = "research/social_signal",
+    persist_hypothesis: str = "a LunarCrush social-signal spec carries a gate-clearing edge on Binance spot",
 ) -> CohortReport:
+    """`persist=True` records the cohort verdict to durable experiment-memory (gate_verdicts) via the real
+    configured store — the _main entry points set it on real runs; tests leave it False so they never touch the
+    durable store. `persist_source`/`persist_hypothesis` let a reusing caller (e.g. the non-obvious cohort) tag
+    its own honest verdict under a distinct source."""
     from cosmu.master.scorer import cscv_pbo
 
     gates = store.settings.gates
@@ -261,7 +269,11 @@ def run_cohort(
 
     # COHORT BH-FDR across the family — ledger already holds every grid variant, so register=False + the shared
     # trial_stats so deflation/FDR see the true (grid-inflated) count, not just the 5 representatives.
-    promotions = promote_cohort(store, candidates, gates, fdr_q=fdr_q, register=False, trials=trial_stats(store))
+    persist_spec = durable_persist(
+        run_id=f"{persist_source.replace('/', '-')}-{data_source}",
+        hypothesis=persist_hypothesis, source=persist_source, data_source=data_source, fdr_q=fdr_q,
+    ) if persist else None
+    promotions = promote_cohort(store, candidates, gates, fdr_q=fdr_q, register=False, trials=trial_stats(store), persist=persist_spec)
     by_id = {p.candidate_id: p for p in promotions}
     for r in reports:
         p = by_id.get(r.name)
@@ -294,7 +306,7 @@ def _main() -> int:
     specs = load_specs()
     provider = StoreBackedAltProvider(AltDataStore(".cosmu/altdata"))
     market = _clip_to_social_window(_real_market(BinanceSpotOHLCVProvider()), provider)
-    report = run_cohort(specs, market, provider, store)
+    report = run_cohort(specs, market, provider, store, persist=True)
 
     print(f"PHASE-0 SOCIAL-SIGNAL COHORT — {report.verdict}")
     print(f"  data_source={report.data_source}  window={report.window}  regimes={report.regimes_covered}")

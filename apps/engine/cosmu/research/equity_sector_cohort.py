@@ -39,6 +39,7 @@ from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.scorer import BacktestMetrics, cscv_pbo, score
 from cosmu.master.trials import register_trial, trial_stats
+from cosmu.master.verdict_log import durable_persist
 from cosmu.research.equity_holdout import metrics_with_holdout, purged_embargoed_split
 
 CACHE = Path("/Users/device/cosmu/.cosmu/market_data/equities")
@@ -391,7 +392,10 @@ class Verdict:
     notes: list[str] = field(default_factory=list)
 
 
-def run() -> Verdict:
+def run(*, persist: bool = False) -> Verdict:
+    """`persist=True` records the cohort verdict to durable experiment-memory (gate_verdicts) via the REAL
+    configured store (separate from the tempfile trial-ledger below) — main() sets it on real runs; tests leave
+    it False so they never touch the durable store."""
     universe = load_universe()
     all_syms = sorted(universe)
     single_names = [s for s in all_syms if s not in SECTOR_ETFS and s not in BROAD_ETFS]
@@ -517,7 +521,12 @@ def run() -> Verdict:
     # promote_cohort scores each candidate with ONE gates object; the long-only beat-bh hurdle is enforced via the
     # candidate's buy_and_hold_return (set only on long-only metrics; 0 elsewhere) under require_beat_buy_and_hold.
     # We route with the hurdle ON; neutral candidates carry bh=0 so oos<=0 is the only way they trip it.
-    promotions = promote_cohort(store, candidates, gates_longonly, fdr_q=0.10, register=False, trials=trials)
+    persist_spec = durable_persist(
+        run_id="equity-sector-overlay",
+        hypothesis="an equity sector-rotation / sector-neutral overlay carries a gate-clearing edge after realistic fees",
+        source="research/equity_sector", data_source="equities-offline",
+    ) if persist else None
+    promotions = promote_cohort(store, candidates, gates_longonly, fdr_q=0.10, register=False, trials=trials, persist=persist_spec)
     by_id = {p.candidate_id: p for p in promotions}
 
     rows: list[dict] = []
@@ -591,7 +600,7 @@ def _print(v: Verdict) -> None:
 
 
 def main() -> int:
-    _print(run())
+    _print(run(persist=True))
     return 0
 
 
