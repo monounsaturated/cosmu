@@ -47,6 +47,13 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
+def _short(exc: Exception) -> str:
+    """One-line exception digest for the deep-update summary — type + first 80 chars of message, no traceback."""
+    msg = str(exc)
+    short = msg[:80] + "..." if len(msg) > 80 else msg
+    return f"{type(exc).__name__}: {short}"
+
+
 def _default_bar_backfiller(venue: str):  # noqa: ANN202 — Bulk/Ccxt/Stooq backfiller, one fetch_history seam
     """Pick the bar backfiller for a venue, all behind the same `fetch_history` seam:
       • `binance`     → Binance Vision archives (keyless BULK history) + ccxt/REST recent-tail gap-fill — the
@@ -145,6 +152,37 @@ class DataManager:
         from cosmu.ingest.run import run_once
 
         return run_once(self._get_store(), symbols=symbols, providers=self._providers)
+
+    def update_deep(self, symbols: list[str], *, days: int = 400, timeframes: tuple[str, ...] = catalog.DEFAULT_BAR_TIMEFRAMES) -> dict[str, str]:
+        """One-command full backfill of ALL catalog sources with history (the 'few commands' pillar). Best-effort:
+        a dead source never aborts the run — it logs the exception and records FAIL in the summary. Returns a
+        dict {source_name: 'OK' | 'SKIP' | 'FAIL:<short-reason>'}. Idempotent (re-run writes 0 for already-full
+        sources). The canonical order is: bars first (the backtest spine), then alt sources alphabetically."""
+        summary: dict[str, str] = {}
+        # --- bars first (bulk history, the most data-intensive) ---
+        try:
+            result = self.backfill("bars", days=days, symbols=symbols, timeframes=timeframes)
+            written = sum(r.written for r in result["results"].values())
+            summary["bars"] = f"OK ({written} new rows)"
+        except Exception as exc:  # noqa: BLE001
+            summary["bars"] = f"FAIL:{_short(exc)}"
+        # --- funding (paginated history endpoint) ---
+        try:
+            result = self.backfill("funding", days=days, symbols=symbols)
+            written = sum(r.written for r in result["results"].values())
+            summary["funding"] = f"OK ({written} new rows)"
+        except Exception as exc:  # noqa: BLE001
+            summary["funding"] = f"FAIL:{_short(exc)}"
+        # --- remaining alt sources (one incremental fetch each — the deepest honest pull available) ---
+        for name, spec in sorted(catalog.managed_sources().items()):
+            if name in summary:
+                continue  # already handled above (funding)
+            try:
+                n = spec.fetch(self._get_store(), symbols, self._get_providers())
+                summary[name] = f"OK ({n} new points)"
+            except Exception as exc:  # noqa: BLE001
+                summary[name] = f"FAIL:{_short(exc)}"
+        return summary
 
     def backfill(self, source: str, *, days: int, symbols: list[str], timeframes: tuple[str, ...] = (catalog.DEFAULT_BAR_TIMEFRAME,)) -> dict[str, Any]:
         """Walk deep history for one source. `funding` → the paginated Binance funding history; `bars` (or
@@ -253,6 +291,33 @@ def _report_bars(results: dict[tuple[str, str, str], BarBackfillResult]) -> None
         print(f"  {venue:<10}{sym:<12}{tf:<5}{r.written:>8}{r.total:>8}{r.span_days:>8.0f}  {span}")
 
 
+def _print_sources() -> None:
+    """Print every catalog source with key-gated / non-causal flags and a one-line description."""
+    sources = catalog.managed_sources()
+    print(f"  {'source':<20}{'key-gated':<11}{'non-causal':<12}metrics / note")
+    print(f"  {'-'*20}{'-'*11}{'-'*12}{'-'*40}")
+    for name, spec in sorted(sources.items()):
+        flags = ("KEY" if spec.key_gated else "   ") + "  " + ("NON-CAUSAL" if spec.non_causal else "")
+        metrics = ", ".join(spec.metrics[:3]) + (f"  (+{len(spec.metrics)-3} more)" if len(spec.metrics) > 3 else "")
+        note = spec.note
+        print(f"  {name:<20}{('yes' if spec.key_gated else 'no'):<11}{('yes' if spec.non_causal else 'no'):<12}{metrics}")
+        if note:
+            print(f"  {'':20}{'':11}{'':12}  -> {note}")
+    print(f"\n  {len(sources)} sources total  ({sum(1 for s in sources.values() if s.key_gated)} key-gated, {sum(1 for s in sources.values() if s.non_causal)} non-causal controls)")
+
+
+def _report_deep_update(summary: dict[str, str]) -> None:
+    """Print the per-source OK/FAIL summary from update_deep."""
+    ok = sum(1 for v in summary.values() if v.startswith("OK"))
+    fail = sum(1 for v in summary.values() if v.startswith("FAIL"))
+    skip = sum(1 for v in summary.values() if v.startswith("SKIP"))
+    print(f"DEEP UPDATE — full history backfill ({ok} OK · {fail} FAIL · {skip} SKIP)")
+    print(f"  {'source':<22}result")
+    for name, result in sorted(summary.items()):
+        tag = "OK  " if result.startswith("OK") else ("FAIL" if result.startswith("FAIL") else "SKIP")
+        print(f"  {name:<22}{tag}  {result}")
+
+
 def _symbols(arg: str) -> list[str]:
     """The widened liquid perp universe by default (carry-verdict next action: 5 → ~30 symbols), or the
     operator's explicit comma list. Deduped/normalized so a hand-typed list can never double-fetch a symbol."""
@@ -283,6 +348,8 @@ def _main(argv: list[str] | None = None) -> int:
 
     p_list = sub.add_parser("list", help="list the managed sources")  # noqa: F841
 
+    sub.add_parser("sources", help="list every source with key-gated / non-causal flags")
+
     _SYM_HELP = "comma-separated symbols (default = the ~30-symbol liquid perp universe)"
     _TF_HELP = "comma-separated timeframes (default 1d,4h,1h); a single value pulls just that resolution"
 
@@ -303,8 +370,11 @@ def _main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("--panels", action="store_true", help="also report ML-panel coverage")
     p_verify.add_argument("--json", action="store_true", help="emit the report as JSON")
 
-    p_update = sub.add_parser("update", help="incremental pass over ALL sources (the cron tick)")
+    p_update = sub.add_parser("update", help="incremental or deep pass over ALL sources")
     p_update.add_argument("--symbols", default="", help=_SYM_HELP)
+    p_update.add_argument("--deep", action="store_true", help="full history backfill for ALL sources (best-effort; prints per-source OK/FAIL/SKIP summary)")
+    p_update.add_argument("--days", type=int, default=400, help="lookback window for --deep (default 400 → ≥1yr)")
+    p_update.add_argument("--timeframe", default="", help=_TF_HELP + " (--deep only)")
 
     p_panels = sub.add_parser("panels", help="build the ML-ready standardized point-in-time panels")
     p_panels.add_argument("--symbols", default="", help=_SYM_HELP)
@@ -315,6 +385,10 @@ def _main(argv: list[str] | None = None) -> int:
     if args.cmd == "list":
         for name, spec in sorted(catalog.managed_sources().items()):
             print(f"  {name:<16}{','.join(spec.metrics)}")
+        return 0
+
+    if args.cmd == "sources":
+        _print_sources()
         return 0
 
     mgr = DataManager()
@@ -344,11 +418,15 @@ def _main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "update":
-        counts = mgr.update(symbols)
-        print("DATA UPDATE — one incremental pass complete")
-        for source, n in counts.items():
-            print(f"  {source:<18}{n:>6} points")
-        print(f"  {'TOTAL':<18}{sum(counts.values()):>6} points")
+        if args.deep:
+            summary = mgr.update_deep(symbols, days=args.days, timeframes=_timeframes(args.timeframe))
+            _report_deep_update(summary)
+        else:
+            counts = mgr.update(symbols)
+            print("DATA UPDATE — one incremental pass complete")
+            for source, n in counts.items():
+                print(f"  {source:<18}{n:>6} points")
+            print(f"  {'TOTAL':<18}{sum(counts.values()):>6} points")
         return 0
 
     if args.cmd == "panels":
