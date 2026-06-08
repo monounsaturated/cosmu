@@ -294,6 +294,9 @@ create table if not exists alt_data (
   ingested_at text not null default (now()::text)
 );
 create index if not exists idx_alt_data_lookup on alt_data (provider, symbol, metric, available_at);
+-- Covering index for the /scores freshness query: MAX(available_at) per metric across all symbols.
+-- Without this the query does a seqscan over millions of rows (LunarCrush per-symbol backfill).
+create index if not exists idx_alt_data_metric_avail on alt_data (metric, available_at desc);
 
 -- Experiments registry: every finder/gate run logs config + seed + data_version + metrics so results are
 -- comparable across runs and exactly regenerable; soft_label carries the continuous forward-P&L so the ML

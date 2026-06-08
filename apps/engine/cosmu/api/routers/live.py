@@ -128,22 +128,25 @@ def live_defund(request: DefundRequest) -> DefundResponse:
 
 @router.get("/live/positions", response_model=LivePositionsResponse)
 def live_positions() -> LivePositionsResponse:
-    pf = _portfolio()
-    live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
-    armed = bool(live_row and live_row["enabled"]) and resolve_mode(settings) != "disabled"
-    caps = LiveCaps(**_live_caps_row())
-    daily = pf.daily_loss()
-    positions = [
-        LivePosition(
-            instrument_id=p.instrument_id,
-            symbol=p.symbol,
-            qty=float(p.qty),
-            avg_price=float(p.avg_price),
-            unrealized_pnl=float(p.unrealized_pnl(p.avg_price)),  # mark==basis without a fresh tick; honest 0
-            venue=p.venue,
-        )
-        for p in pf.positions()
-    ]
+    # All reads share ONE connection (store.reading()); opening one per query is slow on remote Postgres
+    # because each store.row/rows() call otherwise opens+closes a new network connection.
+    with store.reading():
+        pf = _portfolio()
+        live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
+        armed = bool(live_row and live_row["enabled"]) and resolve_mode(settings) != "disabled"
+        caps = LiveCaps(**_live_caps_row())
+        daily = pf.daily_loss()
+        positions = [
+            LivePosition(
+                instrument_id=p.instrument_id,
+                symbol=p.symbol,
+                qty=float(p.qty),
+                avg_price=float(p.avg_price),
+                unrealized_pnl=float(p.unrealized_pnl(p.avg_price)),  # mark==basis without a fresh tick; honest 0
+                venue=p.venue,
+            )
+            for p in pf.positions()
+        ]
     return LivePositionsResponse(armed=armed, mode=_live_mode(), daily_loss=float(daily.daily_loss), caps=caps, positions=positions)
 
 
@@ -196,12 +199,16 @@ def set_live_jurisdiction(request: SetJurisdictionRequest) -> JurisdictionsRespo
 def live_venues() -> LiveVenuesResponse:
     """The honest LIVE venue picture: the venues legal to trade from our jurisdiction, whether each is wired
     (connected) or not, whether it's ticked into the universe, and the real capital deployed at each now."""
+    # All reads share ONE connection (store.reading()); opening one per query is slow on remote Postgres
+    # because each store.row/rows() call otherwise opens+closes a new network connection.
     catalog = default_catalog()
-    country = _current_jurisdiction()
-    enabled_ids = {r["id"] for r in venue_rows(store) if r["enabled"]}
-    deployed: dict[str, float] = {}
-    for p in _portfolio().positions():  # real capital at risk per venue: |qty| * avg_price
-        deployed[p.venue] = deployed.get(p.venue, 0.0) + abs(_metric(p.qty)) * _metric(p.avg_price)
+    with store.reading():
+        country = _current_jurisdiction()
+        enabled_ids = {r["id"] for r in venue_rows(store) if r["enabled"]}
+        deployed: dict[str, float] = {}
+        for p in _portfolio().positions():  # real capital at risk per venue: |qty| * avg_price
+            deployed[p.venue] = deployed.get(p.venue, 0.0) + abs(_metric(p.qty)) * _metric(p.avg_price)
+        caps = LiveCaps(**_live_caps_row())
     venues = [
         LiveVenue(
             id=v.id,
@@ -214,7 +221,6 @@ def live_venues() -> LiveVenuesResponse:
         )
         for v in catalog.live_legal_venues(country)
     ]
-    caps = LiveCaps(**_live_caps_row())
     total = round(sum(v.deployed_usd for v in venues), 2)
     return LiveVenuesResponse(jurisdiction=country, global_cap=caps.global_cap, total_deployed_usd=total, venues=venues)
 

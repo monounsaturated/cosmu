@@ -6,15 +6,53 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from typing import Any
 
 from cosmu.knowledge.store import Store
 
+# The snapshot is a slow cross-source aggregation: ~15 queries, two of them full-table scans of the
+# highest-volume tables (alt_data COUNT/MAX-per-provider, and the unbounded strategy_versions⨯backtests
+# lineage join). On prod Postgres that recompute took ~24s and timed out the 5s SSR fetch ("Engine not
+# connected"). It only changes when an autonomy tick runs (minutes-to-hours cadence), so we serve a
+# process-local TTL cache: the first request pays the cost, the rest are instant and honest (we cache
+# whatever was really computed — never a fabricated value, and an honest-empty result is cached too).
+_CACHE_TTL_SECONDS = 60.0
+_cache_lock = threading.Lock()
+_cache: dict[str, Any] | None = None
+_cache_at: float = 0.0
 
-def compute_intelligence(store: Store) -> dict[str, Any]:
+
+def compute_intelligence(store: Store, *, use_cache: bool = True) -> dict[str, Any]:
     """The system intelligence snapshot — everything the overview needs to show the machine's brain.
+    Cached for `_CACHE_TTL_SECONDS` to keep the heavy aggregation off the request path (see module note).
     All reads run on ONE shared connection (store.reading()); opening one per query made this ~26s on
     remote Postgres and timed out the web."""
+    global _cache, _cache_at
+    if use_cache:
+        with _cache_lock:
+            if _cache is not None and (time.monotonic() - _cache_at) < _CACHE_TTL_SECONDS:
+                return _cache
+
+    snapshot = _compute(store)
+
+    if use_cache:
+        with _cache_lock:
+            _cache = snapshot
+            _cache_at = time.monotonic()
+    return snapshot
+
+
+def reset_cache() -> None:
+    """Drop the cached snapshot (used by tests, and safe to call to force a recompute next request)."""
+    global _cache, _cache_at
+    with _cache_lock:
+        _cache = None
+        _cache_at = 0.0
+
+
+def _compute(store: Store) -> dict[str, Any]:
     with store.reading():
         return {
             "funnel": _funnel(store),

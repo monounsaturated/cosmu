@@ -43,8 +43,12 @@ def _autonomy_status_response() -> AutonomyStatusResponse:
 @router.get("/autonomy/status", response_model=AutonomyStatusResponse)
 def autonomy_status_route() -> AutonomyStatusResponse:
     """The human-overview snapshot of the autonomous master tick — running/paused, live on/off (reported, never
-    armed here), cycles run, and the last tick's headline counts. Read entirely off the persisted ledger."""
-    return _autonomy_status_response()
+    armed here), cycles run, and the last tick's headline counts. Read entirely off the persisted ledger.
+
+    All four reads share ONE autocommit Postgres connection (store.reading()) — without this each store.row()
+    opens + closes a separate psycopg2 connection (~1s RTT × 4 ≈ 6–7s, over the 5s frontend budget)."""
+    with store.reading():
+        return _autonomy_status_response()
 
 
 @router.post("/autonomy/pause", response_model=AutonomyPauseResponse)
