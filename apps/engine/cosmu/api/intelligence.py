@@ -133,15 +133,16 @@ def _regime_coverage(store: Store) -> dict[str, Any]:
 
 
 def _data_freshness(store: Store) -> list[dict[str, Any]]:
-    """When was the last successful ingest per source?"""
-    rows = _safe_rows(store,
-        "SELECT provider, MAX(available_at) AS last_at, COUNT(*) AS points "
-        "FROM alt_data GROUP BY provider ORDER BY provider"
-    )
-    return [
-        {"source": r["provider"], "last_at": r["last_at"], "points": int(r["points"])}
-        for r in rows
-    ]
+    """When was the last successful ingest per source?
+
+    Reads the tiny per-(provider, metric) alt_data_provider_summary rollup (kept fresh incrementally by the
+    ingest path) and aggregates it to one row per provider — instant, instead of a GROUP BY over the ~17M-row
+    alt_data table (that full seq-scan is what made this panel ~24s and timed out the SSR fetch). The answer
+    is identical: {source, last_at = MAX(available_at), points = COUNT(*)} per provider. Honest-empty: an empty
+    summary → [] (never a fabricated freshness row)."""
+    from cosmu.ingest.alt_summary import latest_per_provider
+
+    return latest_per_provider(store)
 
 
 def _tick_stats(store: Store) -> dict[str, Any]:

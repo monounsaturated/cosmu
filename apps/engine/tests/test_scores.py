@@ -19,12 +19,19 @@ def _store(tmp_path) -> Store:
 
 
 def _seed(store: Store, metric: str, value: float, *, provider: str = "test", hours_ago: float = 1.0) -> None:
+    """Seed one alt_data row AND its incremental summary rollup, exactly as the real ingest path does
+    (PgAltDataStore.append writes both). source_trust reads freshness from alt_data_provider_summary, so
+    a faithful seed has to keep the rollup in sync."""
+    from cosmu.ingest.alt_summary import record_ingest
+
     ts = datetime.now(UTC) - timedelta(hours=hours_ago)
     store.rows(
         "INSERT INTO alt_data(provider, symbol, metric, ts, available_at, value, ingested_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (provider, "BTCUSDT", metric, ts.isoformat(), ts.isoformat(), value, utcnow()),
     )
+    with store.batch() as w:
+        record_ingest(w, provider, metric, n_rows=1, latest_available_at=ts.isoformat())
 
 
 def test_empty_store_is_honest_offline(tmp_path):
