@@ -16,3 +16,4 @@ export * from "./settings";
 export * from "./verdicts";
 export * from "./experiments";
 export * from "./explorer";
+export * from "./correlations";
