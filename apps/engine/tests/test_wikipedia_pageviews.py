@@ -306,3 +306,53 @@ def test_api_failure_returns_none_not_raises():
     src = WikipediaPageviewsSource(metric="wiki_pageviews", _fetcher=_bad_fetcher)
     f = src.query("BTCUSDT", _BASE + timedelta(days=10))
     assert f.value is None  # graceful degradation
+
+
+# ---------------------------------------------------------------------------
+# Historical backfill — full date-range series (retro-testable depth)
+# ---------------------------------------------------------------------------
+
+def test_backfill_returns_full_series_not_one_point():
+    """A backfill returns the WHOLE derived series over the window, not just the latest point."""
+    n = 120
+    src = _source("wiki_pageviews", days=n)
+    as_of = _BASE + timedelta(days=n + 5)
+    pts = src.backfill("BTCUSDT", days=400, as_of=as_of)
+    assert len(pts) == n  # one per fixture day (all knowable by as_of)
+    assert len(pts) > 1
+
+
+def test_backfill_is_point_in_time_no_lookahead():
+    """Every backfilled point's available_at <= as_of (Wikimedia ~1d lag honoured)."""
+    src = _source("wiki_pageviews", days=30)
+    as_of = _BASE + timedelta(days=10, hours=12)
+    pts = src.backfill("BTCUSDT", days=400, as_of=as_of)
+    assert pts
+    for p in pts:
+        assert p.available_at <= as_of, f"look-ahead: {p.available_at} > {as_of}"
+        assert p.available_at == p.ts + timedelta(days=1)
+
+
+def test_backfill_zscore_metric_is_causal_and_deep():
+    """The z-score backfill produces a deep series, each value using only prior history (causal)."""
+    n = 90
+    src = _source("wiki_pageviews_zscore", days=n)
+    as_of = _BASE + timedelta(days=n + 5)
+    pts = src.backfill("BTCUSDT", days=400, as_of=as_of)
+    # zscore needs >=2 prior points so the first one or two days are absent — but the bulk survives.
+    assert len(pts) > n // 2
+    tss = [p.ts for p in pts]
+    assert tss == sorted(tss)
+
+
+def test_backfill_unknown_symbol_returns_empty():
+    src = _source("wiki_pageviews", days=10)
+    assert src.backfill("NOT_A_TICKER", days=400, as_of=_BASE + timedelta(days=20)) == []
+
+
+def test_backfill_fetch_failure_returns_empty_not_raises():
+    def _bad_fetcher(_url: str) -> dict:
+        raise RuntimeError("network down")
+
+    src = WikipediaPageviewsSource(metric="wiki_pageviews", _fetcher=_bad_fetcher)
+    assert src.backfill("BTCUSDT", days=400, as_of=_BASE + timedelta(days=20)) == []

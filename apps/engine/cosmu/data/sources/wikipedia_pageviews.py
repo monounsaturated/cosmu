@@ -271,6 +271,38 @@ class WikipediaPageviewsSource:
 
         return []  # unknown metric → absent
 
+    def backfill(self, symbol: str, days: int, *, as_of: datetime | None = None, limit: int = 4096) -> list[AltDataPoint]:
+        """Pull `days` of derived-metric history for `symbol` as point-in-time AltDataPoints.
+
+        The Wikimedia REST API serves a [start, end] daily date range per article in ONE request, so a
+        400-day backfill is a single network call (not 400). The returned series is the FULL derived
+        metric (raw / log / 30d-zscore) over the window — every day whose available_at <= as_of —
+        not just the latest point.
+
+        PIT honesty (identical to query):
+          - available_at = ts + 1 day (Wikimedia publishes day-T counts on day T+1).
+          - Only points with available_at <= as_of are returned (no look-ahead).
+          - A gap (missing day) is ABSENT from the series — never zero-filled. The z-score variant
+            additionally drops any day with < 2 prior points of history (insufficient window).
+        Unknown symbol or fetch failure → [] (never raises, never fabricates).
+        """
+        now = as_of or datetime.now(tz=UTC)
+        article = _article_for_symbol(symbol)
+        if article is None:
+            return []
+        end_day = now - _AVAILABILITY_LAG  # last day knowable at now
+        start_day = end_day - timedelta(days=max(0, days - 1))
+        start_str = start_day.strftime("%Y%m%d")
+        end_str = end_day.strftime("%Y%m%d")
+        url = _url_for_article(article, start_str, end_str)
+        try:
+            payload = self._fetcher(url)
+        except Exception:  # noqa: BLE001 — network / 404 → absent series, never crash a backfill
+            return []
+        raw = [p for p in _parse_response(payload) if p.available_at <= now]
+        derived = self._derive_metric(raw, self.metric)
+        return [p for p in derived if p.available_at <= now][-limit:]
+
     def query(self, scope: str, as_of: datetime, *, limit: int = 4096) -> SourceFeature:
         """Latest derived metric value for `scope` whose available_at <= as_of (point-in-time, no look-ahead).
 

@@ -33,10 +33,12 @@ from __future__ import annotations
 
 import json
 import ssl
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, date, datetime, timedelta
 
+from cosmu.data.providers._types import AltDataPoint
 from cosmu.data.sources.registry import SourceFeature, SourceKind
 
 # Pinned transform versions — bump if the aggregation logic changes.
@@ -70,6 +72,23 @@ _NOAA_KP_FIXTURE: list = [
     ["2023-11-14 18:00:00", "4.33", "0", "-1", "7", "4"],
     ["2023-11-14 21:00:00", "2.00", "0", "-1", "7", "4"],
 ]
+
+
+# Historical endpoints (date-range, for backfill — distinct from the live "all_day" snapshot feeds):
+#   USGS FDSN event query — returns every event in [starttime, endtime] as GeoJSON features, each with a
+#     properties.time (epoch ms) and properties.mag.  We bin by UTC day → daily count + daily max-mag.
+#   NOAA Kp — the products JSON already carries ~30+ days of 3-hourly rows; we bin by UTC day → daily-max Kp.
+_USGS_QUERY_URL = "https://earthquake.usgs.gov/fdsnws/event/1/query"
+_NOAA_KP_HISTORY_URL = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
+
+# Daily-batch PIT convention (documented in every prior): a day's catalog/series is substantially
+# complete by 00:00 UTC the NEXT day, so the earliest a calendar day D is honestly knowable is D+1.
+_BACKFILL_PIT_LAG = timedelta(days=1)
+
+
+def _backfill_available_at(obs_date: date) -> datetime:
+    """Daily-batch PIT stamp: a calendar day's reading is knowable at 00:00 UTC the next day."""
+    return datetime(obs_date.year, obs_date.month, obs_date.day, tzinfo=UTC) + _BACKFILL_PIT_LAG
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -126,6 +145,97 @@ def _parse_kp(rows: list) -> float | None:
 
 
 # ---------------------------------------------------------------------------
+# Historical (date-range) parse helpers — daily binning for backfill
+# ---------------------------------------------------------------------------
+
+def _parse_usgs_daily(payload: dict) -> dict[date, tuple[int, float | None]]:
+    """Bin a USGS FDSN query GeoJSON into {utc_day: (event_count, max_magnitude)}.
+
+    Each feature carries properties.time (epoch MILLISECONDS) and properties.mag.  A day with events
+    but all-None magnitudes yields max_magnitude=None (honest gap, not 0).  Days with no events are
+    simply ABSENT from the dict — never fabricated as 0-count (an unobserved day is unknown, not zero).
+    """
+    features = payload.get("features") or []
+    counts: dict[date, int] = {}
+    mags: dict[date, list[float]] = {}
+    for f in features:
+        props = f.get("properties") or {}
+        t_ms = props.get("time")
+        if not isinstance(t_ms, int | float):
+            continue
+        day = datetime.fromtimestamp(t_ms / 1000.0, tz=UTC).date()
+        counts[day] = counts.get(day, 0) + 1
+        mag = props.get("mag")
+        if isinstance(mag, int | float):
+            mags.setdefault(day, []).append(float(mag))
+    out: dict[date, tuple[int, float | None]] = {}
+    for day, count in counts.items():
+        day_mags = mags.get(day)
+        out[day] = (count, max(day_mags) if day_mags else None)
+    return out
+
+
+def _parse_kp_daily(rows: list) -> dict[date, float]:
+    """Bin NOAA Kp 3-hourly rows [[time_tag, kp_str, ...], ...] into {utc_day: daily_max_kp}.
+
+    A header row (non-numeric kp) or any unparseable value is skipped.  Days with no parseable value
+    are ABSENT (honest gap — never 0-filled).
+    """
+    by_day: dict[date, float] = {}
+    for row in rows:
+        if not row or len(row) < 2:
+            continue
+        tag = row[0]
+        try:
+            kp = float(row[1])
+        except (ValueError, TypeError):
+            continue  # header ("Kp") or junk
+        try:
+            obs = datetime.fromisoformat(str(tag).replace("Z", "")).date()
+        except ValueError:
+            continue
+        prev = by_day.get(obs)
+        if prev is None or kp > prev:
+            by_day[obs] = kp
+    return by_day
+
+
+def _fetch_json_seam(url: str, fetcher, timeout: float) -> object | None:
+    """Fetch JSON via an injected `_fetcher(url)` seam if present, else the live `_fetch_json`.
+
+    Returns None on any error so a backfill degrades to the fixture instead of crashing.
+    """
+    try:
+        if fetcher is not None:
+            return fetcher(url)
+        return _fetch_json(url, timeout)
+    except Exception:  # noqa: BLE001 — degrade gracefully, never crash a backfill pass
+        return None
+
+
+def _usgs_query_url(start: date, end: date) -> str:
+    """FDSN event query URL for all events in [start, end] (inclusive end, GeoJSON)."""
+    params = urllib.parse.urlencode({
+        "format": "geojson",
+        "starttime": start.isoformat(),
+        "endtime": (end + timedelta(days=1)).isoformat(),  # endtime exclusive at FDSN → +1 day for inclusive
+        "orderby": "time-asc",
+    })
+    return f"{_USGS_QUERY_URL}?{params}"
+
+
+def _usgs_daily_window(start: date, end: date, *, fetcher, offline: bool, fixture: dict, timeout: float) -> dict[date, tuple[int, float | None]]:
+    """Fetch + bin USGS events over [start, end] → {day: (count, max_mag)}. Degrades to fixture binning."""
+    if offline:
+        payload: object | None = fixture
+    else:
+        payload = _fetch_json_seam(_usgs_query_url(start, end), fetcher, timeout)
+        if not isinstance(payload, dict):
+            payload = fixture
+    return _parse_usgs_daily(payload if isinstance(payload, dict) else {})
+
+
+# ---------------------------------------------------------------------------
 # UsgsEarthquakeSource
 # ---------------------------------------------------------------------------
 
@@ -168,6 +278,7 @@ class UsgsEarthquakeSource:
     offline: bool = False
     timeout: float = 15.0
     _fixture: dict = field(default_factory=lambda: dict(_USGS_FIXTURE))
+    _history_fetcher: object = None  # optional injected fetcher(url)->dict for the FDSN query (tests)
 
     @property
     def low_confidence(self) -> bool:
@@ -184,6 +295,35 @@ class UsgsEarthquakeSource:
             return self._fixture
         except Exception:  # noqa: BLE001 — degrade gracefully, never crash the research pass
             return self._fixture
+
+    def backfill(self, days: int, *, as_of: datetime | None = None) -> list[AltDataPoint]:
+        """Pull `days` of daily earthquake-COUNT history as point-in-time AltDataPoints.
+
+        Uses the USGS FDSN event query (starttime/endtime) — ONE request for the whole window,
+        binned by UTC day → daily event count.  PIT stamp: available_at = obs_day + 1 (the daily
+        catalog is substantially complete the next UTC midnight), so no look-ahead.  A day with no
+        observed events is ABSENT (an unobserved day is unknown, not a fabricated 0).  Offline / error
+        degrades to fixture binning so tests are deterministic with no network.
+        """
+        now = as_of or datetime.now(tz=UTC)
+        end_date = now.date() - timedelta(days=1)
+        start_date = end_date - timedelta(days=max(0, days - 1))
+        if end_date < start_date:
+            return []
+        daily = _usgs_daily_window(
+            start_date, end_date, fetcher=self._history_fetcher,
+            offline=self.offline, fixture=self._fixture, timeout=self.timeout,
+        )
+        out: list[AltDataPoint] = []
+        for obs_date in sorted(daily):
+            if not (start_date <= obs_date <= end_date):
+                continue
+            count, _max_mag = daily[obs_date]
+            available_at = _backfill_available_at(obs_date)
+            if available_at > now:
+                continue
+            out.append(AltDataPoint(ts=available_at, available_at=available_at, value=float(count)))
+        return out
 
     def query(self, scope: str, as_of: datetime, *, limit: int = 4096) -> SourceFeature:
         """Point-in-time earthquake count snapshot.
@@ -245,6 +385,7 @@ class UsgsMaxMagnitudeSource:
     offline: bool = False
     timeout: float = 15.0
     _fixture: dict = field(default_factory=lambda: dict(_USGS_FIXTURE))
+    _history_fetcher: object = None  # optional injected fetcher(url)->dict for the FDSN query (tests)
 
     @property
     def low_confidence(self) -> bool:
@@ -260,6 +401,36 @@ class UsgsMaxMagnitudeSource:
             return self._fixture
         except Exception:  # noqa: BLE001
             return self._fixture
+
+    def backfill(self, days: int, *, as_of: datetime | None = None) -> list[AltDataPoint]:
+        """Pull `days` of daily MAX-MAGNITUDE history as point-in-time AltDataPoints.
+
+        Same FDSN window fetch as the count source (one request, binned by UTC day).  A day whose
+        events all lack a magnitude yields NO point (max_magnitude is an honest gap, never a fabricated
+        0 — and a day with no events is likewise absent).  PIT stamp: available_at = obs_day + 1.
+        Offline / error degrades to fixture binning.
+        """
+        now = as_of or datetime.now(tz=UTC)
+        end_date = now.date() - timedelta(days=1)
+        start_date = end_date - timedelta(days=max(0, days - 1))
+        if end_date < start_date:
+            return []
+        daily = _usgs_daily_window(
+            start_date, end_date, fetcher=self._history_fetcher,
+            offline=self.offline, fixture=self._fixture, timeout=self.timeout,
+        )
+        out: list[AltDataPoint] = []
+        for obs_date in sorted(daily):
+            if not (start_date <= obs_date <= end_date):
+                continue
+            _count, max_mag = daily[obs_date]
+            if max_mag is None:
+                continue  # honest gap — no magnitude data that day, never fabricate 0
+            available_at = _backfill_available_at(obs_date)
+            if available_at > now:
+                continue
+            out.append(AltDataPoint(ts=available_at, available_at=available_at, value=float(max_mag)))
+        return out
 
     def query(self, scope: str, as_of: datetime, *, limit: int = 4096) -> SourceFeature:
         """Point-in-time max magnitude snapshot.  value=None if no magnitude-bearing events
@@ -327,6 +498,10 @@ class NoaaKpIndexSource:
     offline: bool = False
     timeout: float = 15.0
     _fixture: list = field(default_factory=lambda: list(_NOAA_KP_FIXTURE))
+    # The NOAA products JSON already carries ~30+ days of 3-hourly rows, so the live feed IS the
+    # history source — no separate endpoint needed. An optional injected fetcher seam for tests.
+    history_url: str = _NOAA_KP_HISTORY_URL
+    _history_fetcher: object = None
 
     @property
     def low_confidence(self) -> bool:
@@ -343,6 +518,37 @@ class NoaaKpIndexSource:
             return self._fixture
         except Exception:  # noqa: BLE001
             return self._fixture
+
+    def backfill(self, days: int, *, as_of: datetime | None = None) -> list[AltDataPoint]:
+        """Pull `days` of daily-max Kp history as point-in-time AltDataPoints.
+
+        The NOAA products JSON ships ~30+ days of 3-hourly rows in ONE response, so the whole window
+        comes from a single request; we bin by UTC day → daily-max Kp.  PIT stamp: available_at =
+        obs_day + 1 (NOAA Kp is 'estimated' at publication; the definitive daily value is honestly
+        knowable the next UTC midnight).  Days with no parseable row are ABSENT (gap, never 0-filled).
+        Offline / error degrades to fixture binning.
+        """
+        now = as_of or datetime.now(tz=UTC)
+        end_date = now.date() - timedelta(days=1)
+        start_date = end_date - timedelta(days=max(0, days - 1))
+        if end_date < start_date:
+            return []
+        if self.offline:
+            rows: object | None = self._fixture
+        else:
+            rows = _fetch_json_seam(self.history_url, self._history_fetcher, self.timeout)
+            if not isinstance(rows, list):
+                rows = self._fixture
+        by_day = _parse_kp_daily(rows if isinstance(rows, list) else [])
+        out: list[AltDataPoint] = []
+        for obs_date in sorted(by_day):
+            if not (start_date <= obs_date <= end_date):
+                continue
+            available_at = _backfill_available_at(obs_date)
+            if available_at > now:
+                continue
+            out.append(AltDataPoint(ts=available_at, available_at=available_at, value=float(by_day[obs_date])))
+        return out
 
     def query(self, scope: str, as_of: datetime, *, limit: int = 4096) -> SourceFeature:
         """Point-in-time daily-max Kp snapshot.  value=None if no parseable rows (gap, not 0).
@@ -374,5 +580,7 @@ __all__ = [
     "UsgsEarthquakeSource",
     "UsgsMaxMagnitudeSource",
     "_parse_kp",
+    "_parse_kp_daily",
     "_parse_usgs",
+    "_parse_usgs_daily",
 ]
