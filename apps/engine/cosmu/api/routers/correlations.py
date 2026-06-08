@@ -165,30 +165,34 @@ def correlations() -> CorrelationsResponse:
     the correlation_ledger — PIT-honest. HONEST EMPTY STATE: no findings yet → empty arrays + a null heatmap
     horizon, never fabricated. Read-only, propose-only — the deterministic Gate is the disposal layer; this NEVER
     gates or moves money."""
-    recent = latest_findings(store, limit=_LATEST_LIMIT)
-    if not recent:
+    # One held connection for all reads (latest + survivors + the stability scan). Each store.rows() otherwise
+    # opens a fresh Supabase connection (~2s of Railway→Supabase latency each) — the same N+1-connection trap
+    # fixed across the other routers; here it kept /correlations over the 5s SSR budget.
+    with store.reading():
+        recent = latest_findings(store, limit=_LATEST_LIMIT)
+        if not recent:
+            return CorrelationsResponse(
+                latest_run_id=None,
+                latest=[],
+                survivors=[],
+                heatmap=CorrelationHeatmap(horizon=None, features=[], assets=[], cells=[]),
+                stability=[],
+            )
+        # latest_findings is newest-first → the first row's run_id IS the latest run. Show ONE coherent run, not a
+        # smear across runs (a heatmap mixing runs would silently compare ICs from different scans).
+        latest_run_id = str(recent[0]["run_id"])
+        latest_rows = [r for r in recent if str(r["run_id"]) == latest_run_id]
+        latest = [_finding(r) for r in latest_rows]
+        # Survivors are the SIGNAL — query them directly (survived_only) rather than subsetting the ts-limited
+        # `latest`: the FDR-survivors are spread through a big run and would otherwise fall outside the top-N window
+        # (a full sweep can persist >1k findings; the survivors are the few that matter).
+        survivor_rows = [r for r in latest_findings(store, limit=_LATEST_LIMIT, survived_only=True)
+                         if str(r["run_id"]) == latest_run_id]
+        survivors = [_finding(r) for r in survivor_rows]
         return CorrelationsResponse(
-            latest_run_id=None,
-            latest=[],
-            survivors=[],
-            heatmap=CorrelationHeatmap(horizon=None, features=[], assets=[], cells=[]),
-            stability=[],
+            latest_run_id=latest_run_id,
+            latest=latest,
+            survivors=survivors,
+            heatmap=_heatmap(latest_rows),
+            stability=_stability(latest_rows),
         )
-    # latest_findings is newest-first → the first row's run_id IS the latest run. Show ONE coherent run, not a
-    # smear across runs (a heatmap mixing runs would silently compare ICs from different scans).
-    latest_run_id = str(recent[0]["run_id"])
-    latest_rows = [r for r in recent if str(r["run_id"]) == latest_run_id]
-    latest = [_finding(r) for r in latest_rows]
-    # Survivors are the SIGNAL — query them directly (survived_only) rather than subsetting the ts-limited
-    # `latest`: the FDR-survivors are spread through a big run and would otherwise fall outside the top-N window
-    # (a full sweep can persist >1k findings; the survivors are the few that matter).
-    survivor_rows = [r for r in latest_findings(store, limit=_LATEST_LIMIT, survived_only=True)
-                     if str(r["run_id"]) == latest_run_id]
-    survivors = [_finding(r) for r in survivor_rows]
-    return CorrelationsResponse(
-        latest_run_id=latest_run_id,
-        latest=latest,
-        survivors=survivors,
-        heatmap=_heatmap(latest_rows),
-        stability=_stability(latest_rows),
-    )
