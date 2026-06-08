@@ -47,7 +47,9 @@ Equities fix the two crypto killers: **deep free data** (decades, **Yahoo v8** �
 ## 5. Forward-testing & live (the Kraken question)
 - **Forward-test needs NO exchange account and NO ID.** It paper-marks a strategy's signals against **live free price feeds** for 30 days (the forward-mark clock) — no money, no orders, no KYC. **Already built** (the lifecycle hard-gate). So `kraken-cli` is *not* needed to forward-test.
 - **LIVE (real money)** needs a KYC'd account (Kraken/Binance/IBKR). Kraken Futures has a no-KYC **demo** env, and `kraken-cli` could become a live-execution adapter — but that's **post-edge**; we don't touch it until a strategy survives the Gate + forward-test.
-- **Floor now: 11 strategies in SIM forward-test** (GEM/Faber/ADM/Risk-Parity/VAA/TSMOM/Sector-Mom/Dual-Mom-QQQ/Donchian + PAA/DAA added overnight-w2). Daily mark via asset-aware clock (Railway cron 22:10 UTC).
+- **Floor now: 11 strategies in SIM forward-test** (10 deploy-lane TAA arms: GEM/Faber/ADM/Risk-Parity/VAA/TSMOM/Sector-Mom/Dual-Mom-QQQ/PAA/DAA + Donchian as a gate-lane SIM candidate). Daily mark via asset-aware clock (Railway cron 22:10 UTC).
+  - **deploy-lane (`arm_fleet.py`):** 10 externally-validated TAA strategies — `--dry-run` lists all 10.
+  - **gate-lane SIM candidate:** Donchian has NO `equity_*_arm.py` module and is NOT managed by `arm_fleet`; it runs as a bespoke SIM track and is caveated/short-window (not an honest-Gate survivor).
 
 ## 6. New ways to SEARCH (not new data) — the backlog
 - **Strategy × asset × timeframe matrix** (FDR-disciplined) — the core ML feature.
