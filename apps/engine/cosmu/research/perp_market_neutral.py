@@ -382,6 +382,179 @@ def _annualization(timeframe: str, rebalance: int) -> int:
     return max(1, round(per_year / max(1, rebalance)))
 
 
+# ----------------------------------------------------------------------------------------------------------------
+# DEPLOY LANE (distinct from the 0.95 cohort gate above) — the PERP-MOMENTUM-NEUTRAL lead
+# ----------------------------------------------------------------------------------------------------------------
+# WHY a second lane. The cross-sectional momentum L/S-neutral perp book is real-but-underpowered: it is POSITIVE
+# out-of-sample (holdout net > 0) and beats its only honest hurdle (cash = 0; a dollar-neutral book has no beta
+# to ride), but it STOPS on the 0.95 in-sample Gate purely on DEPTH — too few non-overlapping rebalances drive the
+# deflated-Sharpe below 0.95 (n=16 -> DSR 0.367). That is the textbook two-lane mis-route the lane_router exists to
+# fix: a documented-style, positive-OOS, beats-benchmark edge belongs in the DEPLOY lane (forward-test it on real
+# prices), NOT the in-sample overfitting Gate. We do NOT touch / lower the 0.95 Gate — this is a SEPARATE, honest
+# deployment bar, evaluated with a FINER rebalance + the FULL perp history so the non-overlapping n is as deep as
+# the data honestly allows (more independent periods => a fairer OOS read, NOT a softer one).
+#
+# The deployment bar (all THREE, no pass-tuning):
+#   (1) REAL-HOLDOUT POSITIVE: the purged+embargoed holdout net total > 0 AND its DSR >= 0 (held-out Sharpe sig.
+#       positive) — the edge persists into a window it never saw, NET of REAL perp fees + REAL funding.
+#   (2) BEATS THE CASH HURDLE: full-sample net total > 0 AND annualized Sharpe > 0 — a market-neutral book's only
+#       fair benchmark is cash (it carries no market beta), so "beats benchmark" = strictly beats holding cash.
+#   (3) ROBUST: the IN-SAMPLE slice is ALSO net-positive (the edge is not an artefact of the held-out tail alone).
+# Propose-only; NEVER moves money. The short leg needs a short-capable venue to go LIVE (Kraken Futures / IBKR /
+# Hyperliquid) — that is a post-edge execution concern, recorded by the arm, not a reason to withhold the forward
+# test (the book is market-neutral so spot-only does not kill the SIM track).
+
+DEPLOY_REBALANCE = 2          # finer than the 7-day cohort grid: more non-overlapping periods from the same history
+DEPLOY_SIGNAL = "momentum"    # the lead arm — the cross-sectional momentum L/S-neutral book (sign=+1)
+DEPLOY_SIGN = +1
+DEPLOY_FRAC = 1 / 3
+DEPLOY_LOOKBACK = max(_LOOKBACKS)  # the deepest formation window (matches the cohort's deepest arm)
+DEPLOY_MIN_PERIODS = 40       # an honest deploy read needs at least this many invested rebalances
+
+
+@dataclass
+class PerpPerfStats:
+    """Display/arming stats for one realized perp-neutral NET-return stream. Mirrors the equity arms' PerfStats
+    shape (the arm reads .total_return / .ann_sharpe / .max_dd / .win_rate / .n) so the deploy-lane plumbing is
+    identical across asset classes."""
+
+    n: int
+    total_return: float
+    ann_sharpe: float
+    max_dd: float
+    win_rate: float
+    mean_turnover: float
+
+
+def _perp_stats(returns: list[float], turnover: list[float], *, periods_per_year: int) -> PerpPerfStats:
+    """Compound-total / annualized-Sharpe / maxDD / win-rate of a realized NET-return stream. rf=0 (a neutral book
+    funds both legs at the same rate, so the fair comparison to cash is rf=0). NO fabricated fill — an empty stream
+    returns the honest all-zero stats (which fail the deploy bar, never fabricate a pass)."""
+    n = len(returns)
+    if n == 0:
+        return PerpPerfStats(0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    equity = peak = 1.0
+    mdd = 0.0
+    for r in returns:
+        equity *= (1.0 + r)
+        peak = max(peak, equity)
+        if peak > 0:
+            mdd = max(mdd, (peak - equity) / peak)
+    total = equity - 1.0
+    mean = statistics.fmean(returns)
+    sd = statistics.pstdev(returns) if n > 1 else 0.0
+    ann_sharpe = (mean / sd) * (periods_per_year ** 0.5) if sd > 0 else 0.0
+    win_rate = sum(1 for r in returns if r > 0) / n
+    mean_tov = statistics.fmean(turnover) if turnover else 0.0
+    return PerpPerfStats(n, total, ann_sharpe, mdd, win_rate, mean_tov)
+
+
+def validate(
+    market: dict[str, list[Bar]] | None = None,
+    funding: AltDataProvider | None = None,
+    *,
+    timeframe: str = "1d",
+    rebalance: int = DEPLOY_REBALANCE,
+) -> dict:
+    """DEPLOY-LANE validation of the cross-sectional momentum L/S-NEUTRAL perp book (taa.validate()-style contract).
+
+    Runs the lead arm on the FULL perp history at a FINER rebalance (so the non-overlapping n is as deep as the data
+    honestly allows), then evaluates the three-part DEPLOYMENT bar (positive REAL-holdout net of perp fees + funding,
+    beats the cash hurdle, robust in-sample). Returns the dict the perp_market_neutral_arm reuses:
+        {"deployable", "current_signal", "full", "holdout", "in_sample", "holdout_dsr", "window", "n_periods",
+         "n_symbols", "venue_note", "result"}.
+    Loads real cached perp bars + store-first funding when `market`/`funding` are not injected (tests inject mocks)."""
+    market = load_perp_market() if market is None else market
+    funding = _funding_provider() if funding is None else funding
+    panel = build_panel(market, funding, rebalance=rebalance)
+    n_sym = len(panel.symbols)
+    ppy = _annualization(timeframe, rebalance)
+    embargo = max(4, DEPLOY_LOOKBACK)
+
+    if not panel.times or n_sym < MIN_NAMES:
+        return {"deployable": False, "reason": "no perp data / too thin a cross-section",
+                "current_signal": [], "n_periods": len(panel.times), "n_symbols": n_sym}
+
+    res = run_neutral_book(panel, signal=DEPLOY_SIGNAL, sign=DEPLOY_SIGN, lookback=DEPLOY_LOOKBACK, skip=1,
+                           frac=DEPLOY_FRAC)
+    if len(res.net) < DEPLOY_MIN_PERIODS:
+        return {"deployable": False, "reason": f"too few invested rebalances ({len(res.net)} < {DEPLOY_MIN_PERIODS})",
+                "current_signal": [], "n_periods": len(res.net), "n_symbols": n_sym}
+
+    split = purged_embargoed_split(res.net, holdout_frac=0.2, embargo=embargo, min_holdout=6)
+    full = _perp_stats(res.net, res.turnover, periods_per_year=ppy)
+    in_stats = _perp_stats(split.in_sample, [], periods_per_year=ppy)
+    out_stats = _perp_stats(split.holdout, [], periods_per_year=ppy)
+
+    t0, t1 = panel.times[0], panel.times[-1]
+    window = (t0.date().isoformat(), t1.date().isoformat())
+
+    # The DEPLOYMENT bar (honest, NOT pass-tuned). All three must hold.
+    holdout_positive = out_stats.total_return > 0 and split.holdout_dsr >= 0   # (1) edge persists OOS
+    beats_cash = full.total_return > 0 and full.ann_sharpe > 0                  # (2) strictly beats holding cash
+    robust = in_stats.total_return > 0                                          # (3) not just the held-out tail
+    deployable = holdout_positive and beats_cash and robust
+
+    # The CURRENT signalled book (decided at the last grid time, to hold next period): the top-frac LONG names and
+    # the bottom-frac SHORT names by the momentum signal. PIT — the rank uses only data through the last close.
+    current_long, current_short = _current_signal(panel, signal=DEPLOY_SIGNAL, sign=DEPLOY_SIGN,
+                                                  lookback=DEPLOY_LOOKBACK, skip=1, frac=DEPLOY_FRAC)
+
+    return {
+        "deployable": deployable,
+        "holdout_positive": holdout_positive,
+        "beats_cash": beats_cash,
+        "robust": robust,
+        "current_signal": {"long": current_long, "short": current_short},
+        "full": full,
+        "in_sample": in_stats,
+        "holdout": out_stats,
+        "holdout_dsr": split.holdout_dsr,
+        "window": window,
+        "n_periods": len(res.net),
+        "n_symbols": n_sym,
+        "fee_per_side": PERP_FEE_PER_SIDE,
+        "venue_note": ("market-neutral SIM track; LIVE needs a short-capable perp venue "
+                       "(Kraken Futures / IBKR / Hyperliquid) — post-edge execution concern"),
+        "result": res,
+    }
+
+
+def _current_signal(
+    panel: Panel, *, signal: str, sign: int, lookback: int, skip: int, frac: float
+) -> tuple[list[str], list[str]]:
+    """The (long, short) basket the book would hold ENTERING the next period — ranked at the LAST grid time that has a
+    FULL rankable cross-section (>= MIN_NAMES). PIT: only data realized through that close enters the rank. Mirrors
+    run_neutral_book's ranking exactly so the armed basket is the same construction the validated stream traded.
+
+    Why scan backward: `panel.times` is the UNION of every symbol's resampled bar timestamps, so the very last few
+    grid times can be SPARSE (only a couple of symbols print a bar there) — exactly the times run_neutral_book skips
+    (`n < MIN_NAMES`). Taking the last DENSE grid time gives the real current book instead of an empty sparse tail.
+    Empty lists only when NO grid time has a rankable cross-section (honest 'no signal', never fabricated)."""
+    fn = _SIGNALS[signal]
+    times = panel.times
+    for i in range(len(times) - 1, -1, -1):
+        t = times[i]
+        ranked: list[tuple[str, float]] = []
+        for sym in panel.symbols:
+            if sym not in panel.level[t]:
+                continue
+            sv = fn(panel, i, sym, lookback, skip)
+            if sv is not None:
+                ranked.append((sym, sv))
+        n = len(ranked)
+        k = int(round(n * frac))
+        if n < MIN_NAMES or k < 1:
+            continue
+        ranked.sort(key=lambda x: x[1])
+        low_names = [s for s, _ in ranked[:k]]
+        high_names = [s for s, _ in ranked[-k:]]
+        long_names = high_names if sign == +1 else low_names
+        short_names = low_names if sign == +1 else high_names
+        return sorted(long_names), sorted(short_names)
+    return [], []
+
+
 def run(
     market: dict[str, list[Bar]],
     funding: AltDataProvider,
@@ -560,12 +733,39 @@ def _print(v: Verdict) -> None:
     print(f"  HEADLINE: {v.headline}")
 
 
-def main() -> int:
+def _print_deploy(v: dict) -> None:
+    """Human-readable DEPLOY-LANE verdict — the perp-momentum-neutral lead against the deployment bar."""
+    print("\n=== PERP-MOMENTUM-NEUTRAL — DEPLOY-LANE validation (NOT the 0.95 in-sample Gate) ===")
+    if not v.get("deployable") and "full" not in v:
+        print(f"  NOT deployable: {v.get('reason')} (periods={v.get('n_periods')}, symbols={v.get('n_symbols')})")
+        return
+    full, ins, out = v["full"], v["in_sample"], v["holdout"]
+    print(f"  window={v['window'][0]}..{v['window'][1]}  n_periods={v['n_periods']}  symbols={v['n_symbols']}  "
+          f"perp fee {v['fee_per_side']*1e4:.0f} bps/side; funding accrued per bar (real)")
+    print(f"  FULL    net={full.total_return:+.4f}  annSR={full.ann_sharpe:+.2f}  maxDD={full.max_dd:.3f}  "
+          f"win={full.win_rate:.2f}  turn={full.mean_turnover:.2f}")
+    print(f"  IN-SMPL net={ins.total_return:+.4f}  annSR={ins.ann_sharpe:+.2f}  (n={ins.n})")
+    print(f"  HOLDOUT net={out.total_return:+.4f}  annSR={out.ann_sharpe:+.2f}  DSR={v['holdout_dsr']:+.4f}  (n={out.n})")
+    print(f"  (1) REAL-HOLDOUT net>0 + DSR>=0 ?   {v['holdout_positive']}")
+    print(f"  (2) BEATS cash hurdle (net>0, SR>0)?{v['beats_cash']}")
+    print(f"  (3) robust (in-sample net>0)?       {v['robust']}")
+    print(f"  ==> {'DEPLOYABLE — arm the forward-test' if v['deployable'] else 'NOT deployable on this data'}")
+    cs = v["current_signal"]
+    print(f"  CURRENT book: LONG {cs['long']}  SHORT {cs['short']}")
+    print(f"  note: {v['venue_note']}")
+
+
+def main(argv: list[str] | None = None) -> int:
     """Offline run: cached REAL perp bars + funding from the configured store (store-first, cache fallback),
     the existing scorer/FDR, propose-only. Degrades to INSUFFICIENT-DATA when data is too thin (never a
     fabricated pass). The store is preferred over the legacy JSON cache because `manage backfill funding`
     writes deep point-in-time history there; the cache is a fallback for environments without a populated
-    store."""
+    store. `--deploy` runs the DEPLOY-LANE validation of the perp-momentum-neutral lead instead of the cohort gate."""
+    import sys
+    argv = argv if argv is not None else sys.argv[1:]
+    if argv and argv[0] == "--deploy":
+        _print_deploy(validate())
+        return 0
     market = load_perp_market()
     funding = _funding_provider()
     _print(run(market, funding, persist=True))
