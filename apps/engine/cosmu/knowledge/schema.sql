@@ -318,6 +318,22 @@ CREATE TABLE IF NOT EXISTS alt_data (
 );
 CREATE INDEX IF NOT EXISTS idx_alt_data_lookup ON alt_data (provider, symbol, metric, available_at);
 
+-- Per-(provider, metric) rollup of alt_data, refreshed INCREMENTALLY after each ingest pass (an upsert from
+-- the just-written rows, NEVER a full re-aggregate of alt_data). Reads that only need "how fresh / how much"
+-- (the /intelligence data-freshness panel and the /scores source-trust freshness) hit this tiny table
+-- (≤ a few hundred rows) instead of a GROUP BY over the ~17M-row alt_data table — sub-second on prod-scale.
+-- HONEST: a (provider, metric) with no ingested rows simply has no summary row, so an empty summary → empty
+-- answer (never a fabricated freshness). latest_available_at is MAX(available_at) of the rows ingested so far;
+-- n_rows is the running count. updated_at is when this summary row was last touched.
+CREATE TABLE IF NOT EXISTS alt_data_provider_summary (
+  provider TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  n_rows INTEGER NOT NULL DEFAULT 0,
+  latest_available_at TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (provider, metric)
+);
+
 -- Mind reflections: a point-in-time record of the agent's standardized market read (the analyst-panel debate),
 -- so it accrues a memory of HOW IT THOUGHT over time. Append-only. A reasoning record only — never moves money.
 CREATE TABLE IF NOT EXISTS mind_reflections (

@@ -46,7 +46,16 @@ def test_honest_empty_state_on_fresh_store(tmp_path):
 
 
 def test_real_data_flows_through_uncached(tmp_path):
-    """Seed events + alt_data + research_notes and confirm the snapshot reflects them (no cache)."""
+    """Seed events + alt_data + research_notes and confirm the snapshot reflects them (no cache).
+
+    Freshness is ingested through the REAL append path (PgAltDataStore.append), which also keeps the
+    alt_data_provider_summary rollup in sync — so the panel reads the tiny summary, not a GROUP BY over
+    the ~17M-row alt_data table, and the answer is still the honest MAX(available_at) / COUNT(*)."""
+    from datetime import UTC, datetime
+
+    from cosmu.data.providers._types import AltDataPoint
+    from cosmu.data.providers.store import PgAltDataStore
+
     reset_cache()
     store = _store(tmp_path)
     with store.batch() as w:
@@ -58,18 +67,12 @@ def test_real_data_flows_through_uncached(tmp_path):
                                     "created_at": "2026-01-01T00:00:00Z"})
         w.insert("research_notes", {"id": "n2", "kind": "winner", "body_md": "b", "structured": "{}",
                                     "created_at": "2026-01-02T00:00:00Z"})
-        w.execute(
-            "INSERT INTO alt_data(provider, symbol, metric, ts, available_at, value, ingested_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("funding", "BTCUSDT", "rate", "2026-06-01T00:00:00Z", "2026-06-01T00:05:00Z", 0.01,
-             "2026-06-01T00:05:00Z"),
-        )
-        w.execute(
-            "INSERT INTO alt_data(provider, symbol, metric, ts, available_at, value, ingested_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ("funding", "BTCUSDT", "rate", "2026-06-02T00:00:00Z", "2026-06-02T00:05:00Z", 0.02,
-             "2026-06-02T00:05:00Z"),
-        )
+    PgAltDataStore(store).append("funding", "BTCUSDT", "rate", [
+        AltDataPoint(ts=datetime(2026, 6, 1, tzinfo=UTC),
+                     available_at=datetime(2026, 6, 1, 0, 5, tzinfo=UTC), value=0.01),
+        AltDataPoint(ts=datetime(2026, 6, 2, tzinfo=UTC),
+                     available_at=datetime(2026, 6, 2, 0, 5, tzinfo=UTC), value=0.02),
+    ])
 
     body = compute_intelligence(store, use_cache=False)
 
@@ -78,7 +81,7 @@ def test_real_data_flows_through_uncached(tmp_path):
     assert body["memory"]["dead_ends"] == 1 and body["memory"]["winners"] == 1
     fresh = {d["source"]: d for d in body["data_freshness"]}
     assert fresh["funding"]["points"] == 2
-    assert fresh["funding"]["last_at"] == "2026-06-02T00:05:00Z"  # MAX(available_at), honest
+    assert fresh["funding"]["last_at"] == "2026-06-02T00:05:00+00:00"  # MAX(available_at), honest
 
 
 def test_ttl_cache_keeps_heavy_compute_off_the_request_path(tmp_path, monkeypatch):

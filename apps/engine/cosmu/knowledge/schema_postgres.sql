@@ -298,6 +298,22 @@ create index if not exists idx_alt_data_lookup on alt_data (provider, symbol, me
 -- Without this the query does a seqscan over millions of rows (LunarCrush per-symbol backfill).
 create index if not exists idx_alt_data_metric_avail on alt_data (metric, available_at desc);
 
+-- Per-(provider, metric) rollup of alt_data, refreshed INCREMENTALLY after each ingest pass (an upsert from
+-- the just-written rows, NEVER a full re-aggregate). The /intelligence data-freshness panel and the /scores
+-- source-trust freshness read this tiny table (≤ a few hundred rows) instead of a GROUP BY over the ~17M-row
+-- alt_data table — what made those endpoints ~24s/~22s and timed out the SSR fetch. Sub-second on prod-scale.
+-- HONEST: a (provider, metric) with no ingested rows has no summary row, so an empty summary → empty answer
+-- (never a fabricated freshness). latest_available_at = MAX(available_at) of rows ingested so far; n_rows = the
+-- running count; updated_at = when this row was last touched.
+create table if not exists alt_data_provider_summary (
+  provider text not null,
+  metric text not null,
+  n_rows integer not null default 0,
+  latest_available_at text,
+  updated_at text not null,
+  primary key (provider, metric)
+);
+
 -- Experiments registry: every finder/gate run logs config + seed + data_version + metrics so results are
 -- comparable across runs and exactly regenerable; soft_label carries the continuous forward-P&L so the ML
 -- ranker has a gradient before any gate-pass (binary survival label) exists. Append-only, LLM-free record.

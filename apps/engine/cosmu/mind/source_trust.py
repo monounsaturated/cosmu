@@ -93,32 +93,23 @@ def _summary(source: str, features: list[str], freshness_label: str, gate_pass_c
 def _latest_per_source(store: Any) -> dict[str, datetime | None]:
     """Latest `available_at` per metric from the store, mapped to source strings in the registry.
 
-    Performance note: alt_data can be millions of rows (e.g. per-symbol LunarCrush backfill).
-    A bare `GROUP BY metric` forces a full table scan on prod Postgres.  We filter to ONLY the
-    metric names that are actually in the feature registry, so Postgres can skip irrelevant rows
-    (and use a partial index scan if idx_alt_data_metric_avail is present).  The semantics are
-    identical: any metric not in the registry would be ignored downstream anyway."""
+    Performance: alt_data can be millions of rows (e.g. per-symbol LunarCrush backfill), and a bare
+    `GROUP BY metric` over it forced a full table scan on prod Postgres (~22s on /scores). We instead read
+    the tiny per-(provider, metric) alt_data_provider_summary rollup, kept fresh incrementally by the ingest
+    path — an instant lookup of MAX(available_at) per metric. We still filter to ONLY the registry metrics
+    (any metric not in the registry is ignored downstream anyway). The semantics are identical; honest-empty:
+    no summary rows → no freshness (every source falls through to "no data")."""
+    from cosmu.ingest.alt_summary import latest_per_metric
+
     known_metrics = [f.name for f in FEATURE_REGISTRY if f.enabled]
     if not known_metrics:
         return {}
-    placeholders = ", ".join("?" for _ in known_metrics)
-    try:
-        rows = store.rows(
-            f"SELECT a.metric AS metric, MAX(a.available_at) AS last_at "
-            f"FROM alt_data a "
-            f"WHERE a.metric IN ({placeholders}) "
-            f"GROUP BY a.metric",
-            tuple(known_metrics),
-        )
-    except Exception:  # noqa: BLE001 — table may not exist on a fresh store
-        return {}
     metric_to_last: dict[str, datetime] = {}
-    for r in rows:
-        raw = r.get("last_at")
+    for metric, raw in latest_per_metric(store, known_metrics).items():
         if not raw:
             continue
         try:
-            metric_to_last[r["metric"]] = datetime.fromisoformat(str(raw)).replace(tzinfo=UTC)
+            metric_to_last[metric] = datetime.fromisoformat(str(raw)).replace(tzinfo=UTC)
         except (ValueError, AttributeError):
             continue
     # Map metric → source(s) via the feature registry

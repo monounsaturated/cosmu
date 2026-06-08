@@ -87,9 +87,10 @@ class PgAltDataStore:
         if not points:
             return
         now = utcnow()
+        avails = [p.available_at.isoformat() for p in points]
         rows = [
-            (provider, symbol, metric, p.ts.isoformat(), p.available_at.isoformat(), float(p.value), now)
-            for p in points
+            (provider, symbol, metric, p.ts.isoformat(), avail, float(p.value), now)
+            for p, avail in zip(points, avails, strict=True)
         ]
         # Batched multi-row insert: one round-trip per ~1000 rows, not per row. Row-by-row over the
         # Supabase pooler made a 1.3M-row backfill take ~6h; this is the same data in minutes.
@@ -98,6 +99,16 @@ class PgAltDataStore:
                 "alt_data",
                 ["provider", "symbol", "metric", "ts", "available_at", "value", "ingested_at"],
                 rows,
+            )
+            # Roll this just-written batch into the per-(provider, metric) summary IN THE SAME transaction —
+            # an INCREMENTAL upsert (n_rows += len(points), latest_available_at = max), never a full re-aggregate
+            # of alt_data. The UI's freshness reads (/intelligence, /scores) hit that tiny table instead of a
+            # GROUP BY over the ~17M-row alt_data. Best-effort: a summary failure never aborts the ingest.
+            from cosmu.ingest.alt_summary import record_ingest
+
+            record_ingest(
+                writer, provider, metric,
+                n_rows=len(points), latest_available_at=max(avails),
             )
 
     def read_asof(self, provider: str, symbol: str, metric: str, as_of: datetime) -> list[AltDataPoint]:
