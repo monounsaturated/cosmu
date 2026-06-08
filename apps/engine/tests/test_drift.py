@@ -11,6 +11,7 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.drift import (
     aggregate_return_series,
     assess_drift,
+    batch_track_return_series,
     fit_edge_decay,
     funded_track_ids,
     monitor_drift,
@@ -98,6 +99,36 @@ def test_store_readers_derive_returns_and_isolate_scopes(tmp_path):
     sleeve = track_return_series(store, "v1")
     assert len(pool) == 2 and abs(pool[0] - 0.01) < 1e-9       # 100000 → 101000
     assert len(sleeve) == 2 and abs(sleeve[0] - 0.01) < 1e-9   # track scope isolated from aggregate
+
+
+def test_batch_track_return_series_fetches_all_tracks_in_one_call(tmp_path):
+    """batch_track_return_series returns the same series as N individual track_return_series calls;
+    absent ids map to empty list (honest-empty, not an error)."""
+    store = _store(tmp_path)
+    for eq in ("1000", "1010", "1020"):
+        _snap(store, "track", "vA", eq)
+    for eq in ("500", "510"):
+        _snap(store, "track", "vB", eq)
+    # control: aggregate row must not leak into track results
+    _snap(store, "aggregate", "global", "99999")
+
+    result = batch_track_return_series(store, ["vA", "vB", "vMissing"])
+    assert set(result.keys()) == {"vA", "vB", "vMissing"}
+    # vA: 1000→1010→1020 → two returns of +1%
+    assert len(result["vA"]) == 2 and abs(result["vA"][0] - 0.01) < 1e-9
+    # vB: 500→510 → one return of +2%
+    assert len(result["vB"]) == 1 and abs(result["vB"][0] - 0.02) < 1e-9
+    # absent id → honest empty list
+    assert result["vMissing"] == []
+    # matches individual track_return_series for both present ids
+    assert result["vA"] == track_return_series(store, "vA")
+    assert result["vB"] == track_return_series(store, "vB")
+
+
+def test_batch_track_return_series_empty_input(tmp_path):
+    """batch_track_return_series with an empty list returns an empty dict without hitting the DB."""
+    store = _store(tmp_path)
+    assert batch_track_return_series(store, []) == {}
 
 
 # --- audited monitor ------------------------------------------------------------------------------
