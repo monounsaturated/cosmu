@@ -91,12 +91,24 @@ def _summary(source: str, features: list[str], freshness_label: str, gate_pass_c
 
 
 def _latest_per_source(store: Any) -> dict[str, datetime | None]:
-    """Latest `available_at` per metric from the store, mapped to source strings in the registry."""
+    """Latest `available_at` per metric from the store, mapped to source strings in the registry.
+
+    Performance note: alt_data can be millions of rows (e.g. per-symbol LunarCrush backfill).
+    A bare `GROUP BY metric` forces a full table scan on prod Postgres.  We filter to ONLY the
+    metric names that are actually in the feature registry, so Postgres can skip irrelevant rows
+    (and use a partial index scan if idx_alt_data_metric_avail is present).  The semantics are
+    identical: any metric not in the registry would be ignored downstream anyway."""
+    known_metrics = [f.name for f in FEATURE_REGISTRY if f.enabled]
+    if not known_metrics:
+        return {}
+    placeholders = ", ".join("?" for _ in known_metrics)
     try:
         rows = store.rows(
-            "SELECT a.metric AS metric, MAX(a.available_at) AS last_at "
-            "FROM alt_data a "
-            "GROUP BY a.metric"
+            f"SELECT a.metric AS metric, MAX(a.available_at) AS last_at "
+            f"FROM alt_data a "
+            f"WHERE a.metric IN ({placeholders}) "
+            f"GROUP BY a.metric",
+            tuple(known_metrics),
         )
     except Exception:  # noqa: BLE001 — table may not exist on a fresh store
         return {}
