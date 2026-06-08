@@ -415,3 +415,95 @@ class Event(BaseModel):
 
 class EventsResponse(BaseModel):
     events: list[Event]
+
+
+# --- Correlation engine (read-only, propose-only) -------------------------------------------------------------
+# These models carry the correlation_ledger (correlation_findings table) shape to the frontend. The correlation
+# engine FINDS correlations (even non-causal), TRACKS them run-over-run, and DISPLAYS them; it NEVER gates or
+# moves money — the deterministic Gate is the disposal layer ("scan proposes, Gate disposes"). Every field is
+# PIT-honest, sourced from a persisted finding; the empty state is honest empty arrays, never fabricated.
+
+
+class CorrelationFinding(BaseModel):
+    """One persisted correlation_scan finding (one row of correlation_findings): the PIT IC of a feature against
+    a forward return for one asset × horizon, with its sample size, p-value, and BH-FDR survival. `non_causal`
+    is DERIVED from `deflated_note` (a registered non-causal / orthogonality control feature) so the UI never lets
+    a known-false baseline masquerade as an edge — a strong IC there is a data-snooping red flag, not a hypothesis.
+    Propose-only: a finding is a candidate correlation, never an edge."""
+
+    run_id: str
+    ts: str
+    feature: str
+    source: str
+    asset: str
+    horizon: int
+    ic: float
+    n: int
+    p: float
+    fdr_survived: bool
+    non_causal: bool       # derived from deflated_note — a registered non-causal/orthogonality control
+    deflated_note: str     # honest one-line causal-trust note (empty for a plain causal feature)
+    data_source: str       # "live" vs a fixture tag, so a test never reads as live correlation memory
+
+
+class CorrelationHeatmapCell(BaseModel):
+    """One cell of the compact IC heatmap (feature × asset for a single horizon): the IC of `feature` against the
+    forward return of `asset` at the heatmap's pinned horizon, plus its FDR survival + non-causal flag so the UI
+    can shade survivors and grey-out known-false controls."""
+
+    feature: str
+    asset: str
+    ic: float
+    fdr_survived: bool
+    non_causal: bool
+
+
+class CorrelationHeatmap(BaseModel):
+    """A compact IC heatmap for ONE horizon: the axes (sorted feature + asset names) and the populated cells.
+    Sparse — only (feature, asset) pairs the latest run actually measured at this horizon appear in `cells`.
+    `horizon` is None (and the axes/cells empty) in the honest empty state where no findings exist yet."""
+
+    horizon: int | None
+    features: list[str]
+    assets: list[str]
+    cells: list[CorrelationHeatmapCell]
+
+
+class CorrelationStabilityPoint(BaseModel):
+    """One run's IC for a feature×asset×horizon series — a point on the decay curve (oldest-first in the series)."""
+
+    run_id: str
+    ts: str
+    ic: float
+    fdr_survived: bool
+
+
+class CorrelationStability(BaseModel):
+    """Per-feature stability/decay: the IC history of ONE feature (pinned to its strongest-|IC| asset × horizon from
+    the latest run) across runs, oldest-first — the tell a single scan print can't show. `latest_ic` is the most
+    recent point; `delta_ic` is latest minus first (negative = the correlation is decaying run-over-run). A
+    single-run series carries delta_ic = 0.0 (no decay measurable yet)."""
+
+    feature: str
+    asset: str
+    horizon: int
+    non_causal: bool
+    latest_ic: float
+    first_ic: float
+    delta_ic: float        # latest_ic - first_ic; negative = decaying
+    n_runs: int
+    history: list[CorrelationStabilityPoint]
+
+
+class CorrelationsResponse(BaseModel):
+    """The correlation-engine read-out for the frontend, all from the correlation_ledger. `latest` is the most
+    recent run's findings; `survivors` is the BH-FDR-surviving subset (candidate hypotheses); `heatmap` is a
+    compact feature × asset IC grid for one horizon; `stability` tracks each feature's IC across runs (decay).
+    `latest_run_id` ties the latest set together. HONEST EMPTY STATE: no findings yet → empty arrays + a null
+    heatmap horizon, never fabricated. Read-only, propose-only — NEVER a Gate or money action."""
+
+    latest_run_id: str | None
+    latest: list[CorrelationFinding]
+    survivors: list[CorrelationFinding]
+    heatmap: CorrelationHeatmap
+    stability: list[CorrelationStability]
