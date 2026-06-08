@@ -238,6 +238,15 @@ _STORE_PROVIDER_OF = {
     "btc_active_addresses": "blockchain.com",
     # GDELT daily news-VOLUME counts (free, LLM-free; PER-SYMBOL via topic map; distinct from gdelt_tone).
     "gdelt_news_volume": "gdelt_counts",
+    # --- TOOL-WAVE-C: 2 more free, no-key market-wide FLOW sources (PIT-honest; degrade to [] offline) ---
+    # FRED keyless macro-liquidity (WALCL + net-of-TGA). Stored under the SAME "fred" provider bucket as the
+    # other FRED macro metrics — these add the system-liquidity LEVEL/flow, distinct metrics, knowable ~T+8.
+    "fed_balance_sheet_usd": "fred",
+    "net_liquidity_usd": "fred",
+    # DefiLlama stablecoin FLOW (day-over-day mcap CHANGE) + ETH chain-share. Stored under the SAME "defillama"
+    # provider bucket as defi_tvl / stablecoin_mcap — the orthogonal DERIVATIVE of the level, knowable T+1.
+    "stablecoin_net_flow_usd": "defillama",
+    "stablecoin_eth_share": "defillama",
 }
 _STORE_MARKET_WIDE = frozenset({
     "fear_greed", "pm_risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",
@@ -257,6 +266,9 @@ _STORE_MARKET_WIDE = frozenset({
     # gdelt_news_volume — are deliberately NOT here (they live under the symbol key, like wiki_pageviews).
     "stablecoin_mcap", "cg_btc_dominance",
     "btc_hashrate", "btc_tx_count", "btc_mempool_size", "btc_active_addresses",
+    # TOOL-WAVE-C market-wide FLOW metrics — system liquidity + stablecoin flow describe the whole tape.
+    "fed_balance_sheet_usd", "net_liquidity_usd",
+    "stablecoin_net_flow_usd", "stablecoin_eth_share",
 })
 # Registry name → stored metric name, for features renamed after their first ingest.
 # StoreBackedAltProvider tries the registry name first; if the store returns nothing it falls back here

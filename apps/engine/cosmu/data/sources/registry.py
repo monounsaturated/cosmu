@@ -266,6 +266,19 @@ def default_source_registry(
         reg.register(src)
     reg.register(GdeltCountsSource())
 
+    # TOOL-WAVE-C: 2 more free, no-key market-wide FLOW sources (discoverable + PIT-queryable by name). Each
+    # is self-contained + offline-safe (network/shape failure → None value, never a crash), carries its own
+    # declared prior + transform_version + confidence, and degrades to [] offline. FRED keyless macro-liquidity
+    # (fed_balance_sheet_usd / net_liquidity_usd, knowable ~T+8) + DefiLlama stablecoin FLOW (the day-over-day
+    # CHANGE + ETH chain-share, knowable T+1) — both orthogonal to the LEVEL series already registered. Additive.
+    from cosmu.data.sources.etf_flows import make_etf_flow_sources
+    from cosmu.data.sources.stablecoin_flows import make_stablecoin_flow_sources
+
+    for src in make_etf_flow_sources():
+        reg.register(src)
+    for src in make_stablecoin_flow_sources():
+        reg.register(src)
+
     return reg
 
 

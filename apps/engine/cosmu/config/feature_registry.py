@@ -605,6 +605,55 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         prior="GDELT daily news-VOLUME count (number of global articles mentioning a topic) is a cheap, free, LLM-free attention/coverage proxy; a coverage surge often coincides with or slightly leads a narrative-driven move. COUNTS ONLY (tone deliberately closed — see gdelt_tone for tone). Low-confidence until validated OOS.",
         transform_version="gdelt-counts-v1",
     ),
+    # =====================================================================================================
+    # TOOL-WAVE-C: 2 MORE FREE, NO-KEY alt-data FLOW sources (FRED keyless macro-liquidity, DefiLlama
+    # stablecoin flow). Both PIT-honest and degrade to [] offline. tier1 + low-confidence — the Gate is the
+    # disposal layer. Neither is a non-causal control: each is a genuine (if weak) macro/on-chain LIQUIDITY
+    # read that must EARN its place OOS. These add the FLOW (the derivative) where prior waves added the
+    # LEVEL: orthogonal to defi_tvl / stablecoin_mcap and to the FRED macro_regime/rate metrics.
+    # REVISION HONESTY: the FRED keyless fredgraph.csv carries NO vintage column, so available_at is a
+    # CONSERVATIVE ~8-day H.4.1 publication-lag floor (under-claims availability, never over-claims — the
+    # ALFRED initial-release path in macro_extra is the vintage-exact seam). DefiLlama may re-state very
+    # recent days as chains re-sync — the +1d floor + the append-only store surface revisions, never hide them.
+    # =====================================================================================================
+    # --- FRED keyless macro-liquidity (free, no key, market-wide; available_at = obs_day + ~8 days) ---
+    FeatureDefinition(
+        name="fed_balance_sheet_usd",
+        source="fred",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="weekly H.4.1 reference (Wednesday), available_at = ts + 8 days (CONSERVATIVE publication-lag floor; the keyless fredgraph.csv has no vintage column so we under-claim availability rather than risk look-ahead). A missing/'.' value is absent, never zero-fabricated.",
+        prior="Total Federal Reserve assets (WALCL) are the base money supply: balance-sheet EXPANSION (QE) pumps liquidity into the system (risk-on), CONTRACTION (QT) drains it — a first-order macro driver of risk-asset beta. Free, weekly, knowable ~T+8. Low-confidence until validated OOS.",
+        transform_version="macro-liquidity-v1",
+    ),
+    FeatureDefinition(
+        name="net_liquidity_usd",
+        source="fred",
+        tier="tier1",
+        asset_classes=["crypto", "equity"],
+        asof_semantics="weekly H.4.1 reference (Wednesday), available_at = ts + 8 days (CONSERVATIVE publication-lag floor; keyless CSV has no vintage column). A date is absent whenever EITHER WALCL or WTREGEN is missing — no fabricated difference.",
+        prior="Net liquidity = Fed total assets (WALCL) minus the Treasury General Account (WTREGEN, cash drained from the banking system): a rising TGA sterilizes balance-sheet liquidity, a falling TGA releases it. The widely-watched WALCL - TGA proxy has historically tracked risk-asset beta — an orthogonal macro-plumbing read. Free, weekly, knowable ~T+8. Low-confidence until validated OOS.",
+        transform_version="macro-liquidity-v1",
+    ),
+    # --- DefiLlama stablecoin FLOW + chain-split (free, no key, market-wide; available_at = obs_day + 1) ---
+    FeatureDefinition(
+        name="stablecoin_net_flow_usd",
+        source="defillama",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="signed day-over-day mcap delta, available_at = obs_day + 1 day (a daily aggregate is finalized after the UTC day closes; knowable T+1; no look-ahead). A flow point is ABSENT across a missing day — no delta invented across a gap. DefiLlama may re-state recent days — surfaced via the append-only store.",
+        prior="Net daily stablecoin minting (today's total float minus yesterday's) is fresh fiat ENTERING crypto when positive (risk-on fuel) and capital REDEEMING out when negative. The flow leads the level: the derivative flips sign before the slow-moving market-cap level moves. Orthogonal to the level series stablecoin_mcap. Free, daily, knowable T+1. Low-confidence until validated OOS.",
+        transform_version="stablecoin-flows-v1",
+    ),
+    FeatureDefinition(
+        name="stablecoin_eth_share",
+        source="defillama",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="fraction of total float on Ethereum [0,1], available_at = obs_day + 1 day (daily aggregate finalized after day close; knowable T+1; no look-ahead). Absent whenever either the all-chain or Ethereum total is missing for that day — never fabricated.",
+        prior="Share of total stablecoin float that sits on Ethereum: a falling ETH share is float rotating to cheaper / higher-throughput chains (a risk-appetite + chain-rotation read); a rising share is consolidation back onto the settlement layer. Free, daily, knowable T+1. Low-confidence until validated OOS.",
+        transform_version="stablecoin-flows-v1",
+    ),
 )
 
 
