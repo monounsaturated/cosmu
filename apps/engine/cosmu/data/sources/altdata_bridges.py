@@ -137,6 +137,65 @@ class CryptoPanicIngestProvider:
         return _snapshot(src, symbol)
 
 
+class DefiLlamaStablecoinIngestProvider:
+    """fetch_series bridge for DefiLlamaSource(metric=stablecoin_mcap, market-wide). Free, no key.
+
+    The legacy defi_tvl stays on its own provider (data/providers/onchain.DefiLlamaTvlProvider); this bridge
+    ONLY adds the new total-stablecoin-mcap metric the newer DefiLlamaSource owns."""
+
+    def __init__(self, *, offline: bool = False) -> None:
+        self.offline = offline
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "stablecoin_mcap":
+            return []
+        from cosmu.data.sources.defillama import DefiLlamaSource
+
+        return _snapshot(DefiLlamaSource(metric="stablecoin_mcap"), "MARKET")
+
+
+class CoinGeckoIngestProvider:
+    """fetch_series bridge for CoinGeckoSource. Free public tier, no key. Per-coin (cg_market_cap /
+    cg_total_volume — scope is the symbol) + one market-wide read (cg_btc_dominance → scope MARKET)."""
+
+    _PER_COIN = ("cg_market_cap", "cg_total_volume")
+    _MARKET_WIDE = ("cg_btc_dominance",)
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric not in self._PER_COIN and metric not in self._MARKET_WIDE:
+            return []
+        from cosmu.data.sources.coingecko import CoinGeckoSource
+
+        scope = "MARKET" if metric in self._MARKET_WIDE else symbol
+        return _snapshot(CoinGeckoSource(metric=metric), scope)
+
+
+class OnchainBlockchainIngestProvider:
+    """fetch_series bridge for OnchainBlockchainSource (blockchain.com BTC on-chain fundamentals). Free, no
+    key. Market-wide (each metric describes the whole BTC network — scope MARKET)."""
+
+    _METRICS = ("btc_hashrate", "btc_tx_count", "btc_mempool_size", "btc_active_addresses")
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric not in self._METRICS:
+            return []
+        from cosmu.data.sources.onchain_blockchain import OnchainBlockchainSource
+
+        return _snapshot(OnchainBlockchainSource(metric=metric), "MARKET")
+
+
+class GdeltCountsIngestProvider:
+    """fetch_series bridge for GdeltCountsSource (GDELT 2.0 daily news-VOLUME counts). Free, no key.
+    Per-symbol (the topic query is resolved from the symbol — scope is the symbol; counts ≠ tone)."""
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "gdelt_news_volume":
+            return []
+        from cosmu.data.sources.gdelt_counts import GdeltCountsSource
+
+        return _snapshot(GdeltCountsSource(), symbol)
+
+
 class ExoticControlsIngestProvider:
     """fetch_series bridge for the exotic orthogonality-control sources (USGS earthquake count + max
     magnitude, NOAA Kp). Market-wide; metric selects which control. Non-causal — wired honestly so the
@@ -166,9 +225,13 @@ class ExoticControlsIngestProvider:
 
 
 __all__ = [
+    "CoinGeckoIngestProvider",
     "CryptoPanicIngestProvider",
+    "DefiLlamaStablecoinIngestProvider",
     "ExoticControlsIngestProvider",
+    "GdeltCountsIngestProvider",
     "GoogleTrendsIngestProvider",
+    "OnchainBlockchainIngestProvider",
     "OpenSkyDailyIngestProvider",
     "RssNewsIngestProvider",
     "WeatherOpenMeteoIngestProvider",

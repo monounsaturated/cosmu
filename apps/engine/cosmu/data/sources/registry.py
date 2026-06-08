@@ -247,6 +247,25 @@ def default_source_registry(
     reg.register(UsgsMaxMagnitudeSource())
     reg.register(NoaaKpIndexSource())
 
+    # TOOL-WAVE-A: 4 more free, no-key named DataSources (discoverable + PIT-queryable by name). Each is
+    # self-contained + offline-safe (network/shape failure → None value, never a crash), carries its own
+    # declared prior + transform_version + confidence, and degrades to [] offline. All daily aggregates are
+    # knowable only T+1 (no look-ahead); BTC dominance is an honest current snapshot. Additive — existing
+    # registrations are untouched. make_defillama_sources() adds BOTH the legacy-equivalent defi_tvl AND the
+    # new stablecoin_mcap as discoverable named sources (neither was previously registered HERE).
+    from cosmu.data.sources.coingecko import make_coingecko_sources
+    from cosmu.data.sources.defillama import make_defillama_sources
+    from cosmu.data.sources.gdelt_counts import GdeltCountsSource
+    from cosmu.data.sources.onchain_blockchain import make_onchain_blockchain_sources
+
+    for src in make_defillama_sources():
+        reg.register(src)
+    for src in make_coingecko_sources():
+        reg.register(src)
+    for src in make_onchain_blockchain_sources():
+        reg.register(src)
+    reg.register(GdeltCountsSource())
+
     return reg
 
 

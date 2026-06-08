@@ -290,6 +290,45 @@ def _fetch_exotic_controls(store: Any, symbols: list[str], providers: Any) -> in
     return total
 
 
+# --------------------------------------------------------------------------- TOOL-WAVE-A: 4 more free sources
+
+# DefiLlama total stablecoin market cap — market-wide (free, no key). The legacy defi_tvl is its own source
+# above; this only ADDS the orthogonal stablecoin_mcap metric under the same "defillama" store bucket.
+def _fetch_defillama_stablecoin(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_market_wide_numeric(
+        store, providers.defillama_stablecoin, source_metric="stablecoin_mcap", stored_metric="stablecoin_mcap", provider_name="defillama",
+    )
+
+
+# CoinGecko (free public tier) — per-coin mcap + 24h volume (per-symbol), plus market-wide BTC dominance.
+def _fetch_coingecko(store: Any, symbols: list[str], providers: Any) -> int:
+    total = 0
+    for metric in ("cg_market_cap", "cg_total_volume"):
+        total += ingest_numeric(store, providers.coingecko, symbols, metric, provider_name="coingecko")
+    total += ingest_market_wide_numeric(
+        store, providers.coingecko, source_metric="cg_btc_dominance", stored_metric="cg_btc_dominance", provider_name="coingecko",
+    )
+    return total
+
+
+# blockchain.com BTC on-chain fundamentals — all market-wide (describe the whole BTC network), free, no key.
+_ONCHAIN_METRICS = ("btc_hashrate", "btc_tx_count", "btc_mempool_size", "btc_active_addresses")
+
+
+def _fetch_onchain_blockchain(store: Any, symbols: list[str], providers: Any) -> int:
+    total = 0
+    for metric in _ONCHAIN_METRICS:
+        total += ingest_market_wide_numeric(
+            store, providers.onchain_blockchain, source_metric=metric, stored_metric=metric, provider_name="blockchain.com",
+        )
+    return total
+
+
+# GDELT daily news-VOLUME counts — per-symbol (the topic query is resolved from the symbol), free, no key.
+def _fetch_gdelt_counts(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_numeric(store, providers.gdelt_counts, symbols, "gdelt_news_volume", provider_name="gdelt_counts")
+
+
 # --------------------------------------------------------------------------- historical backfill closures
 # These give the CURRENT-ONLY adapters real date-range depth: each source's `backfill(days=N)` pulls a
 # paginated history window (one request per series — the archive APIs serve a [start,end] range natively),
@@ -414,6 +453,11 @@ def managed_sources() -> dict[str, SourceSpec]:
         SourceSpec("weather", "alt", ("weather_hub_stress",), _fetch_weather, backfill=_backfill_weather, market_wide=True, per_symbol=False, non_causal=True, note="Open-Meteo financial-hub weather stress (NON-CAUSAL control; free, no key). Paginated archive date-range backfill."),
         SourceSpec("astro", "alt", tuple(_ASTRO_METRIC_MAP.values()), _fetch_astro, market_wide=True, per_symbol=False, non_causal=True, note="Deterministic lunar/planetary ephemeris (NON-CAUSAL controls; stdlib-only, no network)."),
         SourceSpec("exotic_controls", "alt", ("usgs_earthquake_count", "usgs_max_magnitude", "noaa_kp_index"), _fetch_exotic_controls, backfill=_backfill_exotic_controls, market_wide=True, per_symbol=False, non_causal=True, note="USGS earthquakes + NOAA Kp ORTHOGONALITY CONTROLS (non-causal; Gate must kill them). Paginated date-range backfill (FDSN query + NOAA 3-hourly history)."),
+        # --- TOOL-WAVE-A: 4 more free, no-key sources (PIT-honest; daily aggregates knowable T+1; degrade to [] offline) ---
+        SourceSpec("defillama_stablecoin", "alt", ("stablecoin_mcap",), _fetch_defillama_stablecoin, market_wide=True, per_symbol=False, note="DefiLlama total circulating stablecoin market cap (free, no key, market-wide). Orthogonal to the legacy defi_tvl."),
+        SourceSpec("coingecko", "alt", ("cg_market_cap", "cg_total_volume", "cg_btc_dominance"), _fetch_coingecko, note="CoinGecko free public tier: per-coin market cap + 24h volume, plus market-wide BTC dominance (no key)."),
+        SourceSpec("onchain_blockchain", "alt", _ONCHAIN_METRICS, _fetch_onchain_blockchain, market_wide=True, per_symbol=False, note="blockchain.com BTC on-chain fundamentals: hashrate, tx count, mempool size, active addresses (free, no key, market-wide)."),
+        SourceSpec("gdelt_counts", "alt", ("gdelt_news_volume",), _fetch_gdelt_counts, note="GDELT 2.0 daily per-topic news-VOLUME COUNT (free, no key, LLM-free; per-symbol). Distinct from gdelt_tone."),
     ]
     return {s.name: s for s in specs}
 

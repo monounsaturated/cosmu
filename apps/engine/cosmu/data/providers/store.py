@@ -212,6 +212,21 @@ _STORE_PROVIDER_OF = {
     "usgs_earthquake_count": "usgs",
     "usgs_max_magnitude": "usgs",
     "noaa_kp_index": "noaa",
+    # --- TOOL-WAVE-A: 4 more free, no-key sources (PIT-honest; daily aggregates knowable T+1) ---
+    # DefiLlama total stablecoin market cap (free, market-wide). The legacy defi_tvl keeps its own metric
+    # under the SAME "defillama" provider bucket — this only adds the orthogonal stablecoin_mcap metric.
+    "stablecoin_mcap": "defillama",
+    # CoinGecko (free public tier): per-coin mcap + 24h volume + market-wide BTC dominance.
+    "cg_market_cap": "coingecko",
+    "cg_total_volume": "coingecko",
+    "cg_btc_dominance": "coingecko",
+    # blockchain.com BTC on-chain fundamentals (free, market-wide — they describe the whole BTC network).
+    "btc_hashrate": "blockchain.com",
+    "btc_tx_count": "blockchain.com",
+    "btc_mempool_size": "blockchain.com",
+    "btc_active_addresses": "blockchain.com",
+    # GDELT daily news-VOLUME counts (free, LLM-free; PER-SYMBOL via topic map; distinct from gdelt_tone).
+    "gdelt_news_volume": "gdelt_counts",
 }
 _STORE_MARKET_WIDE = frozenset({
     "fear_greed", "pm_risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",
@@ -227,6 +242,10 @@ _STORE_MARKET_WIDE = frozenset({
     "astro_lunar_phase", "astro_sun_longitude", "astro_jupiter_longitude",
     "astro_saturn_longitude", "astro_sun_jupiter_aspect",
     "usgs_earthquake_count", "usgs_max_magnitude", "noaa_kp_index",
+    # TOOL-WAVE-A market-wide metrics. The per-symbol ones — cg_market_cap, cg_total_volume,
+    # gdelt_news_volume — are deliberately NOT here (they live under the symbol key, like wiki_pageviews).
+    "stablecoin_mcap", "cg_btc_dominance",
+    "btc_hashrate", "btc_tx_count", "btc_mempool_size", "btc_active_addresses",
 })
 # Registry name → stored metric name, for features renamed after their first ingest.
 # StoreBackedAltProvider tries the registry name first; if the store returns nothing it falls back here
