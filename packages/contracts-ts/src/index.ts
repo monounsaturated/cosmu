@@ -182,6 +182,64 @@ export interface CommandResponse {
   reply_md: string;
 }
 
+export interface CorrelationFinding {
+  asset: string;
+  data_source: string;
+  deflated_note: string;
+  fdr_survived: boolean;
+  feature: string;
+  horizon: number;
+  ic: number;
+  n: number;
+  non_causal: boolean;
+  p: number;
+  run_id: string;
+  source: string;
+  ts: string;
+}
+
+export interface CorrelationHeatmap {
+  assets: string[];
+  cells: CorrelationHeatmapCell[];
+  features: string[];
+  horizon: number | null;
+}
+
+export interface CorrelationHeatmapCell {
+  asset: string;
+  fdr_survived: boolean;
+  feature: string;
+  ic: number;
+  non_causal: boolean;
+}
+
+export interface CorrelationStability {
+  asset: string;
+  delta_ic: number;
+  feature: string;
+  first_ic: number;
+  history: CorrelationStabilityPoint[];
+  horizon: number;
+  latest_ic: number;
+  n_runs: number;
+  non_causal: boolean;
+}
+
+export interface CorrelationStabilityPoint {
+  fdr_survived: boolean;
+  ic: number;
+  run_id: string;
+  ts: string;
+}
+
+export interface CorrelationsResponse {
+  heatmap: CorrelationHeatmap;
+  latest: CorrelationFinding[];
+  latest_run_id: string | null;
+  stability: CorrelationStability[];
+  survivors: CorrelationFinding[];
+}
+
 export interface CostByCategory {
   amount: number;
   category: string;

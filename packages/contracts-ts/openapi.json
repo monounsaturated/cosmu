@@ -894,6 +894,294 @@
         "title": "CommandResponse",
         "type": "object"
       },
+      "CorrelationFinding": {
+        "description": "One persisted correlation_scan finding (one row of correlation_findings): the PIT IC of a feature against\na forward return for one asset \u00d7 horizon, with its sample size, p-value, and BH-FDR survival. `non_causal`\nis DERIVED from `deflated_note` (a registered non-causal / orthogonality control feature) so the UI never lets\na known-false baseline masquerade as an edge \u2014 a strong IC there is a data-snooping red flag, not a hypothesis.\nPropose-only: a finding is a candidate correlation, never an edge.",
+        "properties": {
+          "asset": {
+            "title": "Asset",
+            "type": "string"
+          },
+          "data_source": {
+            "title": "Data Source",
+            "type": "string"
+          },
+          "deflated_note": {
+            "title": "Deflated Note",
+            "type": "string"
+          },
+          "fdr_survived": {
+            "title": "Fdr Survived",
+            "type": "boolean"
+          },
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "horizon": {
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "ic": {
+            "title": "Ic",
+            "type": "number"
+          },
+          "n": {
+            "title": "N",
+            "type": "integer"
+          },
+          "non_causal": {
+            "title": "Non Causal",
+            "type": "boolean"
+          },
+          "p": {
+            "title": "P",
+            "type": "number"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "ts",
+          "feature",
+          "source",
+          "asset",
+          "horizon",
+          "ic",
+          "n",
+          "p",
+          "fdr_survived",
+          "non_causal",
+          "deflated_note",
+          "data_source"
+        ],
+        "title": "CorrelationFinding",
+        "type": "object"
+      },
+      "CorrelationHeatmap": {
+        "description": "A compact IC heatmap for ONE horizon: the axes (sorted feature + asset names) and the populated cells.\nSparse \u2014 only (feature, asset) pairs the latest run actually measured at this horizon appear in `cells`.\n`horizon` is None (and the axes/cells empty) in the honest empty state where no findings exist yet.",
+        "properties": {
+          "assets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Assets",
+            "type": "array"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/CorrelationHeatmapCell"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "horizon": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizon"
+          }
+        },
+        "required": [
+          "horizon",
+          "features",
+          "assets",
+          "cells"
+        ],
+        "title": "CorrelationHeatmap",
+        "type": "object"
+      },
+      "CorrelationHeatmapCell": {
+        "description": "One cell of the compact IC heatmap (feature \u00d7 asset for a single horizon): the IC of `feature` against the\nforward return of `asset` at the heatmap's pinned horizon, plus its FDR survival + non-causal flag so the UI\ncan shade survivors and grey-out known-false controls.",
+        "properties": {
+          "asset": {
+            "title": "Asset",
+            "type": "string"
+          },
+          "fdr_survived": {
+            "title": "Fdr Survived",
+            "type": "boolean"
+          },
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "ic": {
+            "title": "Ic",
+            "type": "number"
+          },
+          "non_causal": {
+            "title": "Non Causal",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "feature",
+          "asset",
+          "ic",
+          "fdr_survived",
+          "non_causal"
+        ],
+        "title": "CorrelationHeatmapCell",
+        "type": "object"
+      },
+      "CorrelationStability": {
+        "description": "Per-feature stability/decay: the IC history of ONE feature (pinned to its strongest-|IC| asset \u00d7 horizon from\nthe latest run) across runs, oldest-first \u2014 the tell a single scan print can't show. `latest_ic` is the most\nrecent point; `delta_ic` is latest minus first (negative = the correlation is decaying run-over-run). A\nsingle-run series carries delta_ic = 0.0 (no decay measurable yet).",
+        "properties": {
+          "asset": {
+            "title": "Asset",
+            "type": "string"
+          },
+          "delta_ic": {
+            "title": "Delta Ic",
+            "type": "number"
+          },
+          "feature": {
+            "title": "Feature",
+            "type": "string"
+          },
+          "first_ic": {
+            "title": "First Ic",
+            "type": "number"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/CorrelationStabilityPoint"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "horizon": {
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "latest_ic": {
+            "title": "Latest Ic",
+            "type": "number"
+          },
+          "n_runs": {
+            "title": "N Runs",
+            "type": "integer"
+          },
+          "non_causal": {
+            "title": "Non Causal",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "feature",
+          "asset",
+          "horizon",
+          "non_causal",
+          "latest_ic",
+          "first_ic",
+          "delta_ic",
+          "n_runs",
+          "history"
+        ],
+        "title": "CorrelationStability",
+        "type": "object"
+      },
+      "CorrelationStabilityPoint": {
+        "description": "One run's IC for a feature\u00d7asset\u00d7horizon series \u2014 a point on the decay curve (oldest-first in the series).",
+        "properties": {
+          "fdr_survived": {
+            "title": "Fdr Survived",
+            "type": "boolean"
+          },
+          "ic": {
+            "title": "Ic",
+            "type": "number"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "ts",
+          "ic",
+          "fdr_survived"
+        ],
+        "title": "CorrelationStabilityPoint",
+        "type": "object"
+      },
+      "CorrelationsResponse": {
+        "description": "The correlation-engine read-out for the frontend, all from the correlation_ledger. `latest` is the most\nrecent run's findings; `survivors` is the BH-FDR-surviving subset (candidate hypotheses); `heatmap` is a\ncompact feature \u00d7 asset IC grid for one horizon; `stability` tracks each feature's IC across runs (decay).\n`latest_run_id` ties the latest set together. HONEST EMPTY STATE: no findings yet \u2192 empty arrays + a null\nheatmap horizon, never fabricated. Read-only, propose-only \u2014 NEVER a Gate or money action.",
+        "properties": {
+          "heatmap": {
+            "$ref": "#/components/schemas/CorrelationHeatmap"
+          },
+          "latest": {
+            "items": {
+              "$ref": "#/components/schemas/CorrelationFinding"
+            },
+            "title": "Latest",
+            "type": "array"
+          },
+          "latest_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Run Id"
+          },
+          "stability": {
+            "items": {
+              "$ref": "#/components/schemas/CorrelationStability"
+            },
+            "title": "Stability",
+            "type": "array"
+          },
+          "survivors": {
+            "items": {
+              "$ref": "#/components/schemas/CorrelationFinding"
+            },
+            "title": "Survivors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "latest_run_id",
+          "latest",
+          "survivors",
+          "heatmap",
+          "stability"
+        ],
+        "title": "CorrelationsResponse",
+        "type": "object"
+      },
       "CostByCategory": {
         "properties": {
           "amount": {
@@ -5444,6 +5732,25 @@
           }
         },
         "summary": "Console Command"
+      }
+    },
+    "/correlations": {
+      "get": {
+        "description": "The correlation engine, made visible: (a) the LATEST run's findings (feature, source, asset, horizon, IC,\nn, p, FDR-survival, non-causal flag), (b) the BH-FDR survivors (candidate hypotheses), (c) a compact IC\nheatmap (feature \u00d7 asset for one horizon), (d) per-feature stability/decay (IC history across runs). All from\nthe correlation_ledger \u2014 PIT-honest. HONEST EMPTY STATE: no findings yet \u2192 empty arrays + a null heatmap\nhorizon, never fabricated. Read-only, propose-only \u2014 the deterministic Gate is the disposal layer; this NEVER\ngates or moves money.",
+        "operationId": "correlations_correlations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrelationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Correlations"
       }
     },
     "/costs": {
