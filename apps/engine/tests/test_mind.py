@@ -19,12 +19,18 @@ def _store(tmp_path) -> Store:
 
 
 def _seed_metric(store: Store, metric: str, value: float, *, provider: str = "test", days_ago: int = 0) -> None:
+    # Seed alt_data AND its summary rollup (latest_available_at + latest_value), exactly as the real ingest path
+    # (PgAltDataStore.append) does — the Mind's KNOWS panel now reads the newest value per metric off the rollup.
+    from cosmu.ingest.alt_summary import record_ingest
+
     ts = datetime.now(UTC) - timedelta(days=days_ago)
     store.rows(
         "INSERT INTO alt_data(provider, symbol, metric, ts, available_at, value, ingested_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (provider, "BTCUSDT", metric, ts.isoformat(), ts.isoformat(), value, utcnow()),
     )
+    with store.batch() as w:
+        record_ingest(w, provider, metric, n_rows=1, latest_available_at=ts.isoformat(), latest_value=str(value))
 
 
 def test_empty_store_panel_abstains_honestly(tmp_path):

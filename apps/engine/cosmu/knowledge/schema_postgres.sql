@@ -310,6 +310,7 @@ create table if not exists alt_data_provider_summary (
   metric text not null,
   n_rows integer not null default 0,
   latest_available_at text,
+  latest_value text,
   updated_at text not null,
   primary key (provider, metric)
 );
