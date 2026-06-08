@@ -15,9 +15,26 @@ def verdicts_list() -> VerdictsResponse:
     import re
     from pathlib import Path
 
-    # routers/verdicts.py → parents[5] is the repo root (apps/engine/cosmu/api/routers/verdicts.py).
-    reports_dir = Path(__file__).parents[5] / "docs" / "reports"
+    # routers/verdicts.py lives at:
+    #   dev:  <repo-root>/apps/engine/cosmu/api/routers/verdicts.py  → parents[5] = repo root
+    #   prod: /app/cosmu/api/routers/verdicts.py                     → parents[3] = /app
+    # Try both depths; if neither has docs/reports, return honest empty.
     items: list[VerdictRow] = []
+
+    reports_dir = None
+    try:
+        parents = Path(__file__).parents
+        for depth in (5, 3, 4):
+            if depth < len(parents):
+                candidate = parents[depth] / "docs" / "reports"
+                if candidate.is_dir():
+                    reports_dir = candidate
+                    break
+    except Exception:
+        pass
+
+    if reports_dir is None:
+        return VerdictsResponse(rows=[])
 
     try:
         paths = sorted(reports_dir.glob("phase0-*-verdict.md"))
