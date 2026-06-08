@@ -282,6 +282,27 @@ CREATE TABLE IF NOT EXISTS trials (
   sharpe_per_obs NUMERIC NOT NULL
 );
 
+-- Correlation ledger: every correlation_scan finding, TRACKED over time (one row per run × feature × source ×
+-- asset × horizon). PROPOSE-ONLY — a finding is a candidate hypothesis, never an edge (the Gate disposes). Lets the
+-- UI + decay-tracking read how a PIT IC moves run-over-run; deflated_note honestly flags known non-causal features.
+CREATE TABLE IF NOT EXISTS correlation_findings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL,
+  ts TEXT NOT NULL,
+  feature TEXT NOT NULL,
+  source TEXT NOT NULL,
+  asset TEXT NOT NULL,
+  horizon INTEGER NOT NULL,
+  ic NUMERIC NOT NULL,
+  n INTEGER NOT NULL,
+  p NUMERIC NOT NULL,
+  fdr_survived INTEGER NOT NULL,
+  deflated_note TEXT NOT NULL,
+  data_source TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_correlation_findings_feature ON correlation_findings (feature, ts);
+CREATE INDEX IF NOT EXISTS idx_correlation_findings_run ON correlation_findings (run_id);
+
 -- Central alt-data store (mirrors the Postgres table): append-only, point-in-time. Locally the JSONL
 -- AltDataStore is still used by ingest; this table lets the store-backed point-in-time read (and the Mind's
 -- "what it knows" freshness) work uniformly on SQLite and Postgres.

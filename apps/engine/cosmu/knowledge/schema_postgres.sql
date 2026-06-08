@@ -248,6 +248,27 @@ create table if not exists trials (
   ts text not null, source text not null, label text, sharpe_per_obs numeric not null
 );
 
+-- Correlation ledger: every correlation_scan finding, TRACKED over time (one row per run × feature × source ×
+-- asset × horizon). PROPOSE-ONLY — a finding is a candidate hypothesis, never an edge (the Gate disposes).
+-- deflated_note honestly flags known non-causal features; the read path drives the UI + IC decay-tracking.
+create table if not exists correlation_findings (
+  id bigint generated always as identity primary key,
+  run_id text not null,
+  ts text not null,
+  feature text not null,
+  source text not null,
+  asset text not null,
+  horizon integer not null,
+  ic numeric not null,
+  n integer not null,
+  p numeric not null,
+  fdr_survived integer not null,
+  deflated_note text not null,
+  data_source text not null
+);
+create index if not exists idx_correlation_findings_feature on correlation_findings (feature, ts);
+create index if not exists idx_correlation_findings_run on correlation_findings (run_id);
+
 -- Mind reflections: point-in-time record of the agent's standardized market read (the analyst-panel debate),
 -- so it accrues a memory of how it thought over time. Append-only. A reasoning record only — never moves money.
 create table if not exists mind_reflections (

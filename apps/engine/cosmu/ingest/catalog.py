@@ -47,7 +47,11 @@ _FRED_FIXED: dict[str, str] = {
 class SourceSpec:
     """One managed source. `metrics` are the SEMANTIC names it writes (the keys the coverage report and the
     store routing use). `fetch` pulls the source ONCE for the given symbols and returns the appended count;
-    `backfill` (when present) walks paginated history for `days` back. `kind` is "alt" or "bars"."""
+    `backfill` (when present) walks paginated history for `days` back. `kind` is "alt" or "bars".
+
+    `key_gated`  — True if the source requires an API key (empty [] offline; never an abort).
+    `non_causal` — True if the series has no plausible causal relationship with prices (e.g. astro, weather,
+                   earthquake counts). The Gate should kill these; they are included as orthogonality controls."""
 
     name: str
     kind: str  # "alt" | "bars"
@@ -56,6 +60,8 @@ class SourceSpec:
     backfill: Callable[..., dict[str, Any]] | None = None
     market_wide: bool = False
     per_symbol: bool = True
+    key_gated: bool = False   # requires an API key; degrades to [] without it
+    non_causal: bool = False  # no plausible causal path to price (orthogonality control)
     note: str = ""
 
 
@@ -284,6 +290,125 @@ def _fetch_exotic_controls(store: Any, symbols: list[str], providers: Any) -> in
     return total
 
 
+# --------------------------------------------------------------------------- TOOL-WAVE-A: 4 more free sources
+
+# DefiLlama total stablecoin market cap — market-wide (free, no key). The legacy defi_tvl is its own source
+# above; this only ADDS the orthogonal stablecoin_mcap metric under the same "defillama" store bucket.
+def _fetch_defillama_stablecoin(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_market_wide_numeric(
+        store, providers.defillama_stablecoin, source_metric="stablecoin_mcap", stored_metric="stablecoin_mcap", provider_name="defillama",
+    )
+
+
+# CoinGecko (free public tier) — per-coin mcap + 24h volume (per-symbol), plus market-wide BTC dominance.
+def _fetch_coingecko(store: Any, symbols: list[str], providers: Any) -> int:
+    total = 0
+    for metric in ("cg_market_cap", "cg_total_volume"):
+        total += ingest_numeric(store, providers.coingecko, symbols, metric, provider_name="coingecko")
+    total += ingest_market_wide_numeric(
+        store, providers.coingecko, source_metric="cg_btc_dominance", stored_metric="cg_btc_dominance", provider_name="coingecko",
+    )
+    return total
+
+
+# blockchain.com BTC on-chain fundamentals — all market-wide (describe the whole BTC network), free, no key.
+_ONCHAIN_METRICS = ("btc_hashrate", "btc_tx_count", "btc_mempool_size", "btc_active_addresses")
+
+
+def _fetch_onchain_blockchain(store: Any, symbols: list[str], providers: Any) -> int:
+    total = 0
+    for metric in _ONCHAIN_METRICS:
+        total += ingest_market_wide_numeric(
+            store, providers.onchain_blockchain, source_metric=metric, stored_metric=metric, provider_name="blockchain.com",
+        )
+    return total
+
+
+# GDELT daily news-VOLUME counts — per-symbol (the topic query is resolved from the symbol), free, no key.
+def _fetch_gdelt_counts(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_numeric(store, providers.gdelt_counts, symbols, "gdelt_news_volume", provider_name="gdelt_counts")
+
+
+# --------------------------------------------------------------------------- historical backfill closures
+# These give the CURRENT-ONLY adapters real date-range depth: each source's `backfill(days=N)` pulls a
+# paginated history window (one request per series — the archive APIs serve a [start,end] range natively),
+# returns PIT-stamped AltDataPoints, and is written append-only + deduped on (provider,symbol,metric,ts) so a
+# re-run writes 0.  All remain offline-deterministic (the underlying sources degrade to fixtures). The bridge
+# closures compose `append_dedup` — they never re-implement a fetch primitive.
+
+
+def _provider_offline(provider: Any) -> bool:
+    """Duck-typed: honour an `offline` flag on the bridge provider so a manage test stays network-free."""
+    return bool(getattr(provider, "offline", False))
+
+
+def _backfill_weather(store: Any, symbols: list[str], providers: Any, *, days: int, as_of: Any = None) -> dict[str, Any]:
+    """Open-Meteo financial-hub weather stress: market-wide daily history via the archive date-range API."""
+    from cosmu.data.sources.weather_openmeteo import WeatherOpenMeteoSource
+    from cosmu.ingest.pipeline import append_dedup
+
+    del symbols  # market-wide
+    provider = getattr(providers, "weather", None)
+    offline = _provider_offline(provider)
+    # A bridge provider may carry a wide `backfill_fixture` seam (offline-with-depth tests). DRY: reuse it.
+    fixture = getattr(provider, "backfill_fixture", None)
+    src = (
+        WeatherOpenMeteoSource(offline=offline, _fixture=fixture)
+        if fixture is not None
+        else WeatherOpenMeteoSource(offline=offline)
+    )
+    pts = src.backfill(days, as_of=as_of)
+    written = append_dedup(store, "openmeteo", "MARKET", "weather_hub_stress", pts)
+    return {"weather_hub_stress": {"written": written, "total": len(pts)}}
+
+
+def _backfill_wikipedia(store: Any, symbols: list[str], providers: Any, *, days: int, as_of: Any = None) -> dict[str, Any]:
+    """Wikipedia pageviews: per-symbol raw + log + 30d-zscore daily history via the REST date-range API."""
+    from cosmu.data.sources.wikipedia_pageviews import WikipediaPageviewsSource
+    from cosmu.ingest.pipeline import append_dedup
+
+    # Honour a `_fetcher` injected on the bridge provider so a manage test can drive this offline.
+    fetcher = getattr(getattr(providers, "wiki_pageviews", None), "_fetcher", None)
+    out: dict[str, Any] = {}
+    for metric in _WIKI_METRICS:
+        src = WikipediaPageviewsSource(metric=metric, _fetcher=fetcher) if fetcher else WikipediaPageviewsSource(metric=metric)
+        written = total = 0
+        for symbol in symbols:
+            pts = src.backfill(symbol, days, as_of=as_of)
+            written += append_dedup(store, "wikimedia", symbol, metric, pts)
+            total += len(pts)
+        out[metric] = {"written": written, "total": total}
+    return out
+
+
+def _backfill_exotic_controls(store: Any, symbols: list[str], providers: Any, *, days: int, as_of: Any = None) -> dict[str, Any]:
+    """USGS earthquakes (count + max-mag via FDSN query) + NOAA Kp (3-hourly→daily-max) market-wide history."""
+    from cosmu.data.sources.exotic_controls import (
+        NoaaKpIndexSource,
+        UsgsEarthquakeSource,
+        UsgsMaxMagnitudeSource,
+    )
+    from cosmu.ingest.pipeline import append_dedup
+
+    del symbols
+    provider = getattr(providers, "exotic_controls", None)
+    offline = _provider_offline(provider)
+    # Optional injected history fetchers (offline-with-depth tests): provider may carry
+    # `usgs_history_fetcher` (FDSN query JSON) and `kp_history_fetcher` (NOAA 3-hourly rows).
+    usgs_fetcher = getattr(provider, "usgs_history_fetcher", None)
+    kp_fetcher = getattr(provider, "kp_history_fetcher", None)
+    out: dict[str, Any] = {}
+    for metric, src, store_provider in (
+        ("usgs_earthquake_count", UsgsEarthquakeSource(offline=offline, _history_fetcher=usgs_fetcher), "usgs"),
+        ("usgs_max_magnitude", UsgsMaxMagnitudeSource(offline=offline, _history_fetcher=usgs_fetcher), "usgs"),
+        ("noaa_kp_index", NoaaKpIndexSource(offline=offline, _history_fetcher=kp_fetcher), "noaa"),
+    ):
+        pts = src.backfill(days, as_of=as_of)
+        written = append_dedup(store, store_provider, "MARKET", metric, pts)
+        out[metric] = {"written": written, "total": len(pts)}
+    return out
+
+
 # --------------------------------------------------------------------------- the catalog
 
 
@@ -305,8 +430,8 @@ def managed_sources() -> dict[str, SourceSpec]:
         SourceSpec("osint", "alt", ("osint_air_activity",), _fetch_market_wide("osint_air_activity", "osint_air_activity", "osint", "opensky"), market_wide=True, per_symbol=False),
         SourceSpec("polymarket_clob", "alt", ("pm_implied_prob", "pm_prob_velocity", "pm_book_depth"), _fetch_polymarket_clob, market_wide=True, per_symbol=False),
         SourceSpec("reddit", "alt", ("reddit_sentiment",), _fetch_market_wide("reddit_sentiment", "reddit_sentiment", "reddit", "reddit"), market_wide=True, per_symbol=False),
-        SourceSpec("lunarcrush", "alt", _LUNARCRUSH_METRICS, _fetch_lunarcrush, note="Key-gated: empty without LUNARCRUSH_API_KEY."),
-        SourceSpec("xai", "alt", ("twitter_sentiment", "twitter_influencer_sentiment"), _fetch_xai, market_wide=True, per_symbol=False, note="Key-gated: empty without XAI_API_KEY."),
+        SourceSpec("lunarcrush", "alt", _LUNARCRUSH_METRICS, _fetch_lunarcrush, key_gated=True, note="Key-gated: empty without LUNARCRUSH_API_KEY."),
+        SourceSpec("xai", "alt", ("twitter_sentiment", "twitter_influencer_sentiment"), _fetch_xai, market_wide=True, per_symbol=False, key_gated=True, note="Key-gated: empty without XAI_API_KEY."),
         SourceSpec("venue_fees", "alt", ("venue_fees_maker", "venue_fees_taker"), _fetch_venue_fees, note="Per venue:symbol maker/taker snapshot."),
         SourceSpec(
             "multiasset", "alt",
@@ -316,18 +441,23 @@ def managed_sources() -> dict[str, SourceSpec]:
         ),
         SourceSpec("gdelt_tone", "alt", ("gdelt_tone",), _fetch_gdelt_tone, market_wide=True, per_symbol=False, note="GDELT geopolitical news tone (keyless, EU-accessible, market-wide daily)."),
         SourceSpec("dvol", "alt", ("dvol",), _fetch_dvol, note="Deribit DVOL implied vol (keyless, EU-native, BTC/ETH only)."),
-        SourceSpec("llm_index", "alt", tuple(_index_metrics()), _fetch_llm_index, market_wide=True, per_symbol=False, note="LLM qualitative→quantitative index scores (key-gated; market-wide)."),
+        SourceSpec("llm_index", "alt", tuple(_index_metrics()), _fetch_llm_index, market_wide=True, per_symbol=False, key_gated=True, note="LLM qualitative→quantitative index scores (key-gated; market-wide)."),
         # --- 10 new alt-data sources (registered additively; non-causal ones flagged in feature_registry) ---
         SourceSpec("macro_extra", "alt", ("nfci", "initial_claims"), _fetch_macro_extra, market_wide=True, per_symbol=False, note="Extended FRED macro: NFCI financial conditions + initial jobless claims (ALFRED initial-release vintages)."),
-        SourceSpec("wikipedia", "alt", _WIKI_METRICS, _fetch_wikipedia, note="Wikipedia pageviews per entity (raw + log + 30d z-score); free, no key, immutable counts (T+1)."),
-        SourceSpec("reddit_volume", "alt", ("reddit_post_volume", "reddit_comment_volume"), _fetch_reddit_volume, market_wide=True, per_symbol=False, note="Reddit daily post + comment volume (key-gated: REDDIT_CLIENT_ID/SECRET → empty offline)."),
-        SourceSpec("cryptopanic", "alt", ("cryptopanic_bullish_votes", "cryptopanic_bearish_votes"), _fetch_cryptopanic, note="CryptoPanic per-coin bullish/bearish vote counts, 24h window (key-gated: CRYPTOPANIC_API_KEY → empty offline)."),
+        SourceSpec("wikipedia", "alt", _WIKI_METRICS, _fetch_wikipedia, backfill=_backfill_wikipedia, note="Wikipedia pageviews per entity (raw + log + 30d z-score); free, no key, immutable counts (T+1). Paginated date-range backfill."),
+        SourceSpec("reddit_volume", "alt", ("reddit_post_volume", "reddit_comment_volume"), _fetch_reddit_volume, market_wide=True, per_symbol=False, key_gated=True, note="Reddit daily post + comment volume (key-gated: REDDIT_CLIENT_ID/SECRET → empty offline)."),
+        SourceSpec("cryptopanic", "alt", ("cryptopanic_bullish_votes", "cryptopanic_bearish_votes"), _fetch_cryptopanic, key_gated=True, note="CryptoPanic per-coin bullish/bearish vote counts, 24h window (key-gated: CRYPTOPANIC_API_KEY → empty offline)."),
         SourceSpec("rss", "alt", ("rss_news_count",), _fetch_rss_news, market_wide=True, per_symbol=False, note="Public RSS headline COUNT (LLM-free, free, no key)."),
         SourceSpec("gtrends", "alt", ("gtrends_search_interest",), _fetch_gtrends, market_wide=True, per_symbol=False, note="Google Trends search interest (REVISION HAZARD: rescales history — forward-test only until Gate-validated)."),
         SourceSpec("opensky_daily", "alt", ("opensky_daily_flights",), _fetch_opensky_daily, market_wide=True, per_symbol=False, note="OpenSky daily global flight count (free OSINT, thin history, low-confidence)."),
-        SourceSpec("weather", "alt", ("weather_hub_stress",), _fetch_weather, market_wide=True, per_symbol=False, note="Open-Meteo financial-hub weather stress (NON-CAUSAL control; free, no key)."),
-        SourceSpec("astro", "alt", tuple(_ASTRO_METRIC_MAP.values()), _fetch_astro, market_wide=True, per_symbol=False, note="Deterministic lunar/planetary ephemeris (NON-CAUSAL controls; stdlib-only, no network)."),
-        SourceSpec("exotic_controls", "alt", ("usgs_earthquake_count", "usgs_max_magnitude", "noaa_kp_index"), _fetch_exotic_controls, market_wide=True, per_symbol=False, note="USGS earthquakes + NOAA Kp ORTHOGONALITY CONTROLS (non-causal; Gate must kill them)."),
+        SourceSpec("weather", "alt", ("weather_hub_stress",), _fetch_weather, backfill=_backfill_weather, market_wide=True, per_symbol=False, non_causal=True, note="Open-Meteo financial-hub weather stress (NON-CAUSAL control; free, no key). Paginated archive date-range backfill."),
+        SourceSpec("astro", "alt", tuple(_ASTRO_METRIC_MAP.values()), _fetch_astro, market_wide=True, per_symbol=False, non_causal=True, note="Deterministic lunar/planetary ephemeris (NON-CAUSAL controls; stdlib-only, no network)."),
+        SourceSpec("exotic_controls", "alt", ("usgs_earthquake_count", "usgs_max_magnitude", "noaa_kp_index"), _fetch_exotic_controls, backfill=_backfill_exotic_controls, market_wide=True, per_symbol=False, non_causal=True, note="USGS earthquakes + NOAA Kp ORTHOGONALITY CONTROLS (non-causal; Gate must kill them). Paginated date-range backfill (FDSN query + NOAA 3-hourly history)."),
+        # --- TOOL-WAVE-A: 4 more free, no-key sources (PIT-honest; daily aggregates knowable T+1; degrade to [] offline) ---
+        SourceSpec("defillama_stablecoin", "alt", ("stablecoin_mcap",), _fetch_defillama_stablecoin, market_wide=True, per_symbol=False, note="DefiLlama total circulating stablecoin market cap (free, no key, market-wide). Orthogonal to the legacy defi_tvl."),
+        SourceSpec("coingecko", "alt", ("cg_market_cap", "cg_total_volume", "cg_btc_dominance"), _fetch_coingecko, note="CoinGecko free public tier: per-coin market cap + 24h volume, plus market-wide BTC dominance (no key)."),
+        SourceSpec("onchain_blockchain", "alt", _ONCHAIN_METRICS, _fetch_onchain_blockchain, market_wide=True, per_symbol=False, note="blockchain.com BTC on-chain fundamentals: hashrate, tx count, mempool size, active addresses (free, no key, market-wide)."),
+        SourceSpec("gdelt_counts", "alt", ("gdelt_news_volume",), _fetch_gdelt_counts, note="GDELT 2.0 daily per-topic news-VOLUME COUNT (free, no key, LLM-free; per-symbol). Distinct from gdelt_tone."),
     ]
     return {s.name: s for s in specs}
 

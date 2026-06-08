@@ -16,8 +16,9 @@ from cosmu.data.altdata import (
     FixtureAltDataProvider,
     FixtureNewsProvider,
 )
+from cosmu.ingest import catalog
 from cosmu.ingest.bars import CcxtBarBackfiller, bar_cache_path, read_cached_bars
-from cosmu.ingest.manage import DataManager
+from cosmu.ingest.manage import DataManager, _main
 from cosmu.ingest.run import Providers
 
 _T0 = datetime(2023, 1, 1, tzinfo=UTC)
@@ -213,3 +214,152 @@ def test_build_panels_and_verify_panel_coverage(tmp_path):
     report = mgr.verify(["BTCUSDT"], timeframes=("1d",), include_bars=False, include_panels=True)
     panels = [s for s in report.series if s.kind == "panel"]
     assert panels and panels[0].rows == 60 and panels[0].status != "missing"
+
+
+# ---------------------------------------------------------------------------
+# update_deep — best-effort full backfill of ALL catalog sources
+# ---------------------------------------------------------------------------
+
+
+def test_update_deep_returns_per_source_summary(tmp_path):
+    """update_deep returns a {source: 'OK...' | 'FAIL:...'} dict with an entry for every catalog source
+    plus bars. Best-effort: a provider that always raises never aborts the run."""
+    provider = BinanceFundingHistoryProvider(page_limit=500, _fetcher=_funding_pages(10))
+    rows = _bar_rows(5)
+    mgr = _manager(
+        tmp_path,
+        providers=_all_fixture_providers(funding=_funding_fixture()),
+        funding_history=provider,
+        bar_backfiller_factory=lambda venue: CcxtBarBackfiller(venue, page_limit=300, _fetcher=_bar_fetcher(rows)),
+    )
+    summary = mgr.update_deep(["BTCUSDT"], days=400, timeframes=("1d",))
+    # bars and funding must be present
+    assert "bars" in summary
+    assert "funding" in summary
+    # every catalog source must appear
+    for name in catalog.managed_sources():
+        assert name in summary, f"missing: {name}"
+    # bars succeeded (fixture provides rows)
+    assert summary["bars"].startswith("OK")
+    # funding succeeded
+    assert summary["funding"].startswith("OK")
+
+
+def test_update_deep_best_effort_on_failure(tmp_path):
+    """A provider that always raises must produce FAIL in the summary but NOT abort the whole run."""
+
+    class _BoomProvider:
+        def fetch(self, *a, **kw):
+            raise RuntimeError("network down")
+
+        # Providers checks for attribute existence; add all needed attrs to satisfy Providers(**base).
+        def fetch_numeric(self, *a, **kw):
+            raise RuntimeError("network down")
+
+        def fetch_market_wide(self, *a, **kw):
+            raise RuntimeError("network down")
+
+    # The funding provider raises; all other sources are empty fixtures.
+    class _BoomFundingHistory:
+        def fetch(self, *a, **kw):
+            raise RuntimeError("history down")
+
+    rows = _bar_rows(5)
+    mgr = _manager(
+        tmp_path,
+        providers=_all_fixture_providers(),
+        funding_history=_BoomFundingHistory(),
+        bar_backfiller_factory=lambda venue: CcxtBarBackfiller(venue, page_limit=300, _fetcher=_bar_fetcher(rows)),
+    )
+    summary = mgr.update_deep(["BTCUSDT"], days=400, timeframes=("1d",))
+    # bars OK (fixture backfiller works), funding FAIL (history provider raises)
+    assert summary["bars"].startswith("OK")
+    assert summary["funding"].startswith("FAIL")
+    # rest of the alt sources are present (they might be OK with empty fixture providers)
+    assert len(summary) >= 2
+
+
+def test_update_deep_idempotent(tmp_path):
+    """Running update_deep twice should produce 0 new rows on the second pass."""
+    provider = BinanceFundingHistoryProvider(page_limit=500, _fetcher=_funding_pages(20))
+    rows = _bar_rows(10)
+    mgr = _manager(
+        tmp_path,
+        providers=_all_fixture_providers(funding=_funding_fixture()),
+        funding_history=provider,
+        bar_backfiller_factory=lambda venue: CcxtBarBackfiller(venue, page_limit=300, _fetcher=_bar_fetcher(rows)),
+    )
+    first = mgr.update_deep(["BTCUSDT"], days=400, timeframes=("1d",))
+    second = mgr.update_deep(["BTCUSDT"], days=400, timeframes=("1d",))
+    # bars: second run writes 0 new rows
+    assert "0 new rows" in second["bars"]
+    # funding: second run writes 0 new rows
+    assert "0 new rows" in second["funding"]
+
+
+# ---------------------------------------------------------------------------
+# catalog SourceSpec flags
+# ---------------------------------------------------------------------------
+
+
+def test_source_spec_key_gated_flag():
+    """Sources known to require an API key must have key_gated=True."""
+    sources = catalog.managed_sources()
+    for name in ("lunarcrush", "xai", "llm_index", "reddit_volume", "cryptopanic"):
+        assert sources[name].key_gated, f"{name} should be key_gated=True"
+
+
+def test_source_spec_non_causal_flag():
+    """Non-causal orthogonality controls must be flagged."""
+    sources = catalog.managed_sources()
+    for name in ("astro", "weather", "exotic_controls"):
+        assert sources[name].non_causal, f"{name} should be non_causal=True"
+
+
+def test_source_spec_causal_sources_not_flagged():
+    """High-signal causal sources must NOT be flagged as non-causal."""
+    sources = catalog.managed_sources()
+    for name in ("funding", "news", "macro", "lunarcrush"):
+        assert not sources[name].non_causal, f"{name} should not be non_causal"
+
+
+# ---------------------------------------------------------------------------
+# CLI: manage sources + manage update --deep (via _main)
+# ---------------------------------------------------------------------------
+
+
+def test_cli_sources_prints_table(capsys):
+    """manage sources must print every catalog source with key-gated / non-causal columns."""
+    rc = _main(["sources"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    # Header
+    assert "key-gated" in out
+    assert "non-causal" in out
+    # Every source name appears
+    for name in catalog.managed_sources():
+        assert name in out, f"source {name!r} missing from 'sources' output"
+    # Known flags are present in the output
+    assert "yes" in out  # at least one key-gated / non-causal source
+
+
+def test_cli_update_deep_flag(tmp_path, capsys, monkeypatch):
+    """manage update --deep must complete without error and print OK/FAIL summary header."""
+    rows = _bar_rows(5)
+    provider = BinanceFundingHistoryProvider(page_limit=500, _fetcher=_funding_pages(10))
+
+    def _make_manager(**_kw):
+        return _manager(
+            tmp_path,
+            providers=_all_fixture_providers(funding=_funding_fixture()),
+            funding_history=provider,
+            bar_backfiller_factory=lambda venue: CcxtBarBackfiller(venue, page_limit=300, _fetcher=_bar_fetcher(rows)),
+        )
+
+    monkeypatch.setattr("cosmu.ingest.manage.DataManager", _make_manager)
+    monkeypatch.setattr("cosmu.ingest.manage._symbols", lambda _: ["BTCUSDT"])
+    rc = _main(["update", "--deep", "--symbols", "BTCUSDT", "--timeframe", "1d"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "DEEP UPDATE" in out
+    assert "OK" in out

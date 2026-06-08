@@ -271,3 +271,62 @@ def test_multi_hub_parse_produces_cross_hub_score() -> None:
     score = _weather_stress_score(all_days)
     assert score is not None
     assert 0.0 <= score <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# Historical backfill — paginated date-range depth, PIT-honest
+# ---------------------------------------------------------------------------
+
+def _range_fixture(n_days: int, start: date = date(2024, 1, 1)) -> dict[str, dict]:
+    """Build a multi-hub Open-Meteo archive fixture spanning `n_days` consecutive days (one hub)."""
+    times = [(start + timedelta(days=i)).isoformat() for i in range(n_days)]
+    return {
+        "nyc": {
+            "latitude": 40.71, "longitude": -74.01,
+            "daily": {
+                "time": times,
+                "temperature_2m_mean": [5.0 + (i % 7) for i in range(n_days)],
+                "precipitation_sum": [float(i % 5) for i in range(n_days)],
+                "windspeed_10m_max": [10.0 + (i % 10) for i in range(n_days)],
+            },
+        }
+    }
+
+
+def test_backfill_returns_many_points_not_one() -> None:
+    """A 300-day backfill against a wide fixture yields hundreds of points — the whole reason this exists."""
+    n = 300
+    src = WeatherOpenMeteoSource(offline=True, _fixture=_range_fixture(n), hubs=[("nyc", 40.71, -74.01)])
+    as_of = datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=n + 5)
+    pts = src.backfill(days=400, as_of=as_of)
+    assert len(pts) >= n - 1  # one per covered day (minus any all-None gap day)
+    assert len(pts) > 1
+
+
+def test_backfill_is_point_in_time_no_lookahead() -> None:
+    """Every backfilled point's available_at must be <= as_of (no look-ahead)."""
+    src = WeatherOpenMeteoSource(offline=True, _fixture=_range_fixture(30), hubs=[("nyc", 40.71, -74.01)])
+    as_of = datetime(2024, 1, 15, 12, 0, tzinfo=UTC)
+    pts = src.backfill(days=400, as_of=as_of)
+    assert pts  # some points are knowable by 2024-01-15
+    for p in pts:
+        assert p.available_at <= as_of, f"look-ahead: {p.available_at} > {as_of}"
+        assert p.ts == p.available_at
+        assert 0.0 <= p.value <= 1.0
+
+
+def test_backfill_ascending_and_deduped_days() -> None:
+    """Points are ascending by ts and one-per-day (no duplicate observation days)."""
+    src = WeatherOpenMeteoSource(offline=True, _fixture=_range_fixture(40), hubs=[("nyc", 40.71, -74.01)])
+    as_of = datetime(2024, 3, 1, tzinfo=UTC)
+    pts = src.backfill(days=400, as_of=as_of)
+    tss = [p.ts for p in pts]
+    assert tss == sorted(tss)
+    assert len(tss) == len(set(tss))
+
+
+def test_backfill_empty_fixture_yields_no_fabricated_points() -> None:
+    """An empty fixture (no data) yields [] — never a fabricated 0-valued point."""
+    src = WeatherOpenMeteoSource(offline=True, _fixture={})
+    as_of = datetime(2024, 6, 1, tzinfo=UTC)
+    assert src.backfill(days=400, as_of=as_of) == []

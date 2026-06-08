@@ -509,6 +509,102 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         prior="ORTHOGONALITY CONTROL — NOAA planetary Kp geomagnetic index (daily max [0-9]). Geomagnetic activity has no plausible causal path to crypto prices; a known-false baseline. Must be killed by the Gate.",
         transform_version="exotic-noaa-kp-v1",
     ),
+    # =====================================================================================================
+    # TOOL-WAVE-A: 4 MORE FREE, NO-KEY alt-data sources (DefiLlama stablecoins, CoinGecko, BTC on-chain,
+    # GDELT news-volume). All PIT-honest (daily aggregate finalized after the day closes → available_at =
+    # obs_day + 1; gaps are absent/None, never zero-fabricated; degrade to [] offline). tier1 +
+    # low-confidence — the Gate is the disposal layer. None of these are non-causal controls: each is a
+    # genuine (if weak) liquidity/size/attention/on-chain-activity read that must EARN its place OOS.
+    # NOTE: the legacy market-wide `defi_tvl` (DefiLlamaTvlProvider) is already registered above — this wave
+    # ADDS only the orthogonal total-stablecoin-mcap metric, never re-registers defi_tvl.
+    # =====================================================================================================
+    # --- DefiLlama total stablecoin market cap (free, no key, market-wide; available_at = obs_day + 1) ---
+    FeatureDefinition(
+        name="stablecoin_mcap",
+        source="defillama",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="daily total, available_at = obs_day + 1 day (a daily aggregate is finalized after the day closes; knowable T+1; no look-ahead). DefiLlama may re-state very recent days as chains re-sync — surfaced via the append-only store, never hidden.",
+        prior="Total circulating stablecoin market cap is crypto's dry powder: a growing float is fiat waiting to deploy (risk-on fuel), a shrinking float is capital redeeming out of crypto (risk-off). Free, daily, knowable T+1. Low-confidence until validated OOS.",
+        transform_version="defillama-daily-v1",
+    ),
+    # --- CoinGecko (free public tier, no key): per-coin mcap + 24h volume (T+1) + market-wide BTC dominance ---
+    FeatureDefinition(
+        name="cg_market_cap",
+        source="coingecko",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="daily per-coin market cap, available_at = obs_day + 1 day (daily aggregate finalized after day close; knowable T+1; no look-ahead). CoinGecko may re-state very recent days — surfaced via the append-only store, never hidden.",
+        prior="A coin's market cap is its float-weighted size; large relative moves track capital rotating in/out of the asset. Free, daily, knowable T+1. Low-confidence until validated OOS.",
+        transform_version="coingecko-daily-v1",
+    ),
+    FeatureDefinition(
+        name="cg_total_volume",
+        source="coingecko",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="daily per-coin 24h total volume, available_at = obs_day + 1 day (daily aggregate finalized after day close; knowable T+1; no look-ahead). CoinGecko may re-state very recent days — surfaced via the append-only store, never hidden.",
+        prior="A coin's 24h total traded volume proxies attention / conviction; a volume spike often accompanies the onset of a move. Free, daily, knowable T+1. Low-confidence until validated OOS.",
+        transform_version="coingecko-daily-v1",
+    ),
+    FeatureDefinition(
+        name="cg_btc_dominance",
+        source="coingecko",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="CURRENT snapshot from /global, available_at = fetch time (we only knew it when we pulled it — honest, never back-dated; no look-ahead). A single point per pass.",
+        prior="BTC dominance (BTC's share of total crypto mcap) is a risk-rotation gauge: falling dominance is capital rotating into alts (risk-on within crypto), rising dominance is a flight to BTC. Low-confidence until validated OOS.",
+        transform_version="coingecko-daily-v1",
+    ),
+    # --- blockchain.com BTC on-chain fundamentals (free, no key, market-wide; available_at = obs_day + 1) ---
+    FeatureDefinition(
+        name="btc_hashrate",
+        source="blockchain.com",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="daily on-chain level, available_at = obs_day + 1 day midnight UTC (blockchain.com publishes a full UTC day with ≥~1-day latency; no look-ahead). Recent points may be revised slightly as late blocks settle — the 1-day lag absorbs it.",
+        prior="Estimated Bitcoin network hash rate measures REAL economic activity on the chain (miner commitment) — an orthogonal axis to price/funding/sentiment. Free, daily, knowable T+1. Low-confidence until validated OOS.",
+        transform_version="onchain-blockchain-v1",
+    ),
+    FeatureDefinition(
+        name="btc_tx_count",
+        source="blockchain.com",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="daily on-chain count, available_at = obs_day + 1 day midnight UTC (≥~1-day publication lag; no look-ahead). Recent points may be revised slightly as late blocks settle.",
+        prior="Confirmed Bitcoin transactions per day is a real on-chain economic-activity read; rising transactions can reflect organic demand — orthogonal to price/funding/sentiment. Free, daily, knowable T+1. Low-confidence until validated OOS.",
+        transform_version="onchain-blockchain-v1",
+    ),
+    FeatureDefinition(
+        name="btc_mempool_size",
+        source="blockchain.com",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="daily on-chain level (bytes), available_at = obs_day + 1 day midnight UTC (≥~1-day publication lag; no look-ahead). Recent points may be revised slightly as late blocks settle.",
+        prior="Bitcoin mempool size (bytes of unconfirmed transactions) reflects on-chain fee pressure / congestion — a real-activity read orthogonal to price/funding/sentiment. Free, daily, knowable T+1. Low-confidence until validated OOS.",
+        transform_version="onchain-blockchain-v1",
+    ),
+    FeatureDefinition(
+        name="btc_active_addresses",
+        source="blockchain.com",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="daily on-chain count, available_at = obs_day + 1 day midnight UTC (≥~1-day publication lag; no look-ahead). Recent points may be revised slightly as late blocks settle.",
+        prior="Unique active Bitcoin addresses per day is a network-adoption / organic-demand read on real on-chain activity — orthogonal to price/funding/sentiment. Free, daily, knowable T+1. Low-confidence until validated OOS.",
+        transform_version="onchain-blockchain-v1",
+    ),
+    # --- GDELT 2.0 daily NEWS-VOLUME count (free, no key, LLM-free counts only; per-symbol; available_at = obs_day + 1) ---
+    # Distinct from the existing market-wide `gdelt_tone` (provider "gdelt"): this is per-topic raw article
+    # COUNTS (an attention/coverage axis), stored under the separate "gdelt_counts" provider bucket.
+    FeatureDefinition(
+        name="gdelt_news_volume",
+        source="gdelt_counts",
+        tier="tier1",
+        asset_classes=["crypto"],
+        asof_semantics="daily per-topic article count, available_at = obs_day + 1 day midnight UTC (a full UTC day's count is complete only after the day closes; no look-ahead). A GDELT outage is unknown coverage (None), not zero articles.",
+        prior="GDELT daily news-VOLUME count (number of global articles mentioning a topic) is a cheap, free, LLM-free attention/coverage proxy; a coverage surge often coincides with or slightly leads a narrative-driven move. COUNTS ONLY (tone deliberately closed — see gdelt_tone for tone). Low-confidence until validated OOS.",
+        transform_version="gdelt-counts-v1",
+    ),
 )
 
 

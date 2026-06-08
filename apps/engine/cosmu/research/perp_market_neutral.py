@@ -40,6 +40,8 @@ from cosmu.data.altdata import AltDataProvider, CachedFundingRateProvider
 from cosmu.data.backtest import sum_funding_per_bar
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
 from cosmu.data.universe import PERP_UNIVERSE
+from cosmu.data.providers._types import AltDataPoint
+from cosmu.data.providers.store import AltDataStore
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.scorer import BacktestMetrics, cscv_pbo, score
@@ -74,6 +76,56 @@ def _placebo_key(seed: int, period: int, sym: str) -> float:
     is a weak disconfirmer."""
     h = hashlib.blake2b(f"{seed}|{period}|{sym}".encode(), digest_size=8).digest()
     return (int.from_bytes(h, "big") % 1_000_003) / 1_000_003.0
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# funding reader: store-first (AltDataStore/PgAltDataStore read_all, PIT), cache fallback
+# ----------------------------------------------------------------------------------------------------------------
+class StoreFundingProvider:
+    """AltDataProvider backed by an append-only alt-data store (AltDataStore or PgAltDataStore).
+    Reads via `read_all('binance', symbol, 'funding_rate')` — the full revision history — so the PIT join
+    in `sum_funding_per_bar` (which filters to available_at <= bar.ts) is correct and no look-ahead leaks.
+    A symbol absent from the store returns [] (honest no-data, never a fabricated rate). Offline-safe:
+    the store is local-JSONL by default; inject a PgAltDataStore to read from Postgres."""
+
+    def __init__(self, store: AltDataStore) -> None:
+        self._store = store
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "funding_rate":
+            return []
+        pts = self._store.read_all("binance", symbol, metric)
+        return pts[-limit:] if limit and len(pts) > limit else pts
+
+
+def _funding_provider(
+    *,
+    altdata_root: str | None = None,
+    cache_dir: str = FUNDING_CACHE,
+) -> AltDataProvider:
+    """Pick the funding provider for the main entry-point.
+
+    Priority order:
+      1. AltDataStore at `altdata_root` (the append-only point-in-time store filled by
+         `manage backfill funding`). Used when the store root exists and contains at least
+         one non-empty funding JSONL for a perp symbol — the store is the DEEP, honest source.
+      2. CachedFundingRateProvider at `cache_dir` (the legacy JSON cache) — a fallback for
+         environments where the store has not yet been populated.
+
+    The check is intentionally cheap (one Path.exists probe on the first symbol's file rather than
+    reading all files) so the fast path (store present) has no startup cost.  A store that IS present
+    but has no data for a given symbol degrades to an empty series — the honest 'no data' behaviour
+    inherited from StoreFundingProvider.fetch_series (never a fabricated rate)."""
+    root = altdata_root or ".cosmu/altdata"
+    from pathlib import Path
+    store_obj = AltDataStore(root)
+    # Probe: does the store have ANY funding data for any perp symbol?
+    for sym in PERP_UNIVERSE:
+        probe_path = store_obj.root / f"binance_{sym}_funding_rate.jsonl"
+        if probe_path.exists() and probe_path.stat().st_size > 0:
+            return StoreFundingProvider(store_obj)
+    # Fallback: the legacy JSON cache (populated by manage backfill funding or cache_funding.py).
+    return CachedFundingRateProvider(cache_dir=cache_dir)
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -509,10 +561,13 @@ def _print(v: Verdict) -> None:
 
 
 def main() -> int:
-    """Offline run: cached REAL perp bars + cached REAL funding, the existing scorer/FDR, propose-only. Degrades
-    to INSUFFICIENT-DATA when the cache is too thin (never a fabricated pass)."""
+    """Offline run: cached REAL perp bars + funding from the configured store (store-first, cache fallback),
+    the existing scorer/FDR, propose-only. Degrades to INSUFFICIENT-DATA when data is too thin (never a
+    fabricated pass). The store is preferred over the legacy JSON cache because `manage backfill funding`
+    writes deep point-in-time history there; the cache is a fallback for environments without a populated
+    store."""
     market = load_perp_market()
-    funding = CachedFundingRateProvider(cache_dir=FUNDING_CACHE)
+    funding = _funding_provider()
     _print(run(market, funding, persist=True))
     return 0
 

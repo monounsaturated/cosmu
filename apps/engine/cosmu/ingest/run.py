@@ -34,9 +34,13 @@ from cosmu.data.altdata import (
 )
 from cosmu.data.providers.macro_extra import FredInitialClaimsProvider, FredNfciProvider
 from cosmu.data.sources.altdata_bridges import (
+    CoinGeckoIngestProvider,
     CryptoPanicIngestProvider,
+    DefiLlamaStablecoinIngestProvider,
     ExoticControlsIngestProvider,
+    GdeltCountsIngestProvider,
     GoogleTrendsIngestProvider,
+    OnchainBlockchainIngestProvider,
     OpenSkyDailyIngestProvider,
     RssNewsIngestProvider,
     WeatherOpenMeteoIngestProvider,
@@ -151,6 +155,13 @@ class Providers:
     weather: AltDataProvider = field(default_factory=WeatherOpenMeteoIngestProvider)
     astro: AltDataProvider = field(default_factory=AstroEphemerisProvider)
     exotic_controls: AltDataProvider = field(default_factory=ExoticControlsIngestProvider)
+    # --- TOOL-WAVE-A: 4 more free, no-key sources. All default to live; each degrades to [] offline (one
+    # dead source never aborts the pass). Daily aggregates are knowable only T+1 (no look-ahead). See
+    # feature_registry.py for the per-feature priors. ---
+    defillama_stablecoin: AltDataProvider = field(default_factory=DefiLlamaStablecoinIngestProvider)
+    coingecko: AltDataProvider = field(default_factory=CoinGeckoIngestProvider)
+    onchain_blockchain: AltDataProvider = field(default_factory=OnchainBlockchainIngestProvider)
+    gdelt_counts: AltDataProvider = field(default_factory=GdeltCountsIngestProvider)
     llm: Callable[[str], StandardizedNews] | None = None
     # Typed event/news scorer LLM (the cheap-OpenRouter formatter). Key-gated → None without a key, so the
     # event scorer uses the deterministic lexicon. The LLM only standardizes text at ingest, never the money path.
