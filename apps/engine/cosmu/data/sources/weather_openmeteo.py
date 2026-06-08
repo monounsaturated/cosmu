@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import NamedTuple
 
+from cosmu.data.providers._types import AltDataPoint
 from cosmu.data.sources.registry import SourceFeature, SourceKind
 
 # Bump when the feature derivation logic changes so any cached series is invalidated.
@@ -321,6 +322,66 @@ class WeatherOpenMeteoSource:
             prior=self.prior,
             low_confidence=self.low_confidence,
         )
+
+    # ------------------------------------------------------------------
+    # Historical backfill — paginated date-range pull (retro-testable depth)
+    # ------------------------------------------------------------------
+
+    def backfill(self, days: int, *, as_of: datetime | None = None) -> list[AltDataPoint]:
+        """Pull `days` of daily cross-hub weather-stress history as point-in-time AltDataPoints.
+
+        The Open-Meteo Historical Archive natively serves a [start_date, end_date] window in ONE
+        request per hub, so a 400-day backfill is one call per hub (4 calls total) — never 400.
+        Each calendar day's per-hub readings are folded into one cross-hub stress scalar stamped with
+        the SAME PIT available_at the live query uses (obs_date + 1 day 06:00 UTC).
+
+        PIT honesty (identical to query):
+          - available_at = obs_date + 1 day 06:00 UTC; only points whose available_at <= as_of are
+            returned (no look-ahead).
+          - A day whose hubs all return None yields NO point (honest gap — never a fabricated 0).
+        Returns ascending-by-ts AltDataPoints. Offline (offline=True or any fetch error) degrades to
+        the bundled multi-hub fixture, so tests are deterministic with no network.
+        """
+        now = as_of or datetime.now(tz=UTC)
+        # The last day knowable at `now`: available_at(d) <= now ⟺ d + 1d 06:00 UTC <= now.
+        end_date = now.date() - timedelta(days=1)
+        if as_of is not None and now < _pit_available_at(end_date):
+            end_date -= timedelta(days=1)
+        start_date = end_date - timedelta(days=max(0, days - 1))
+        archive_floor = date(2015, 1, 1)  # Open-Meteo archive begins ~2015
+        if start_date < archive_floor:
+            start_date = archive_floor
+        if end_date < start_date:
+            return []
+
+        # One fetch per hub over the whole window, then group by obs_date.
+        by_date: dict[date, list[WeatherDay]] = {}
+        for hub, lat, lon in self.hubs:
+            for d in self._fetch_hub_range(hub, lat, lon, start_date, end_date):
+                if start_date <= d.obs_date <= end_date:
+                    by_date.setdefault(d.obs_date, []).append(d)
+
+        out: list[AltDataPoint] = []
+        for obs_date in sorted(by_date):
+            stress = _weather_stress_score(by_date[obs_date])
+            if stress is None:
+                continue  # honest gap — never fabricate a 0
+            available_at = _pit_available_at(obs_date)
+            if available_at > now:
+                continue  # look-ahead guard (no future point can be known yet)
+            out.append(AltDataPoint(ts=available_at, available_at=available_at, value=float(stress)))
+        return out
+
+    def _fetch_hub_range(self, hub: str, lat: float, lon: float, start: date, end: date) -> list[WeatherDay]:
+        """Fetch one hub over a [start, end] window. Falls back to the fixture on any error/offline."""
+        if self.offline:
+            return _parse_payload(hub, self._fixture.get(hub, {}))
+        try:
+            return fetch_weather_archive(
+                hub, lat, lon, start, end, base_url=self.base_url, timeout=self.timeout,
+            )
+        except Exception:  # noqa: BLE001 — degrade to fixture, never crash a backfill pass
+            return _parse_payload(hub, self._fixture.get(hub, {}))
 
     # ------------------------------------------------------------------
     # Helpers exposed for tests / inspection

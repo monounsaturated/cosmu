@@ -201,6 +201,12 @@ class DataManager:
         if source == "bars" or source.startswith("bars:"):
             venues = (source.split(":", 1)[1],) if ":" in source else catalog.DEFAULT_BAR_VENUES
             return {"kind": "bars", "results": self.backfill_bars(venues=venues, symbols=symbols, timeframes=timeframes, start_ms=start_ms)}
+        # An alt source that declares a paginated date-range backfill (weather / wikipedia / exotic_controls)
+        # walks deep history through its own `spec.backfill` closure (append-only + dedup → re-run writes 0).
+        spec = catalog.managed_sources().get(source)
+        if spec is not None and spec.backfill is not None:
+            results = spec.backfill(self._get_store(), symbols, self._get_providers(), days=days, as_of=self._clock())
+            return {"kind": "alt_history", "results": results}
         # No paginated endpoint → the deepest honest pull is one incremental fetch.
         logger.info("source %s has no paginated history; backfill falls back to one incremental fetch", source)
         return {"kind": "incremental", "written": self.fetch(source, symbols)}
@@ -405,6 +411,11 @@ def _main(argv: list[str] | None = None) -> int:
             _report_funding(result["results"])
         elif result["kind"] == "bars":
             _report_bars(result["results"])
+        elif result["kind"] == "alt_history":
+            print(f"ALT HISTORY BACKFILL — {args.source} (paginated date-range, free, no key)")
+            print(f"  {'metric':<26}{'new':>8}{'total':>8}")
+            for metric, r in result["results"].items():
+                print(f"  {metric:<26}{r['written']:>8}{r['total']:>8}")
         else:
             print(f"backfilled {args.source} (incremental): {result['written']} points")
         return 0

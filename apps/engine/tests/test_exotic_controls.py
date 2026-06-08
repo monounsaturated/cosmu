@@ -312,3 +312,124 @@ class TestExoticControlsRegistry:
                 f"'{key}' missing from feature_registry.  "
                 "Add the FeatureDefinition entries via the registration snippet in the PR body."
             )
+
+
+# ---------------------------------------------------------------------------
+# Historical backfill — date-range depth (FDSN query + NOAA 3-hourly history)
+# ---------------------------------------------------------------------------
+
+from datetime import date, timedelta  # noqa: E402
+
+from cosmu.data.sources.exotic_controls import (  # noqa: E402
+    _parse_kp_daily,
+    _parse_usgs_daily,
+)
+
+
+def _usgs_window_payload(start: date, n_days: int, per_day: int = 3) -> dict:
+    """Synthesize an FDSN-query GeoJSON: `per_day` events on each of `n_days` days from `start`."""
+    features = []
+    for d in range(n_days):
+        day = datetime(start.year, start.month, start.day, 12, 0, tzinfo=UTC) + timedelta(days=d)
+        for k in range(per_day):
+            features.append({"properties": {"time": int(day.timestamp() * 1000), "mag": 1.0 + k + d % 4}})
+    return {"features": features}
+
+
+def _noaa_window_rows(start: date, n_days: int) -> list:
+    """Synthesize NOAA Kp 3-hourly rows (8/day) across `n_days` days, with a header row."""
+    rows = [["time_tag", "Kp", "a", "b", "c", "d"]]  # header — must be skipped
+    for d in range(n_days):
+        day = datetime(start.year, start.month, start.day, tzinfo=UTC) + timedelta(days=d)
+        for h in range(0, 24, 3):
+            t = day + timedelta(hours=h)
+            rows.append([t.strftime("%Y-%m-%d %H:%M:%S"), f"{(h / 3) % 9:.2f}", "0", "-1", "7", "4"])
+    return rows
+
+
+def test_parse_usgs_daily_bins_by_day():
+    start = date(2024, 1, 1)
+    payload = _usgs_window_payload(start, n_days=4, per_day=3)
+    daily = _parse_usgs_daily(payload)
+    assert len(daily) == 4
+    for day, (count, max_mag) in daily.items():
+        assert count == 3
+        assert max_mag is not None
+
+
+def test_parse_usgs_daily_none_mags_stay_none_not_zero():
+    payload = {"features": [{"properties": {"time": int(datetime(2024, 1, 1, 6, tzinfo=UTC).timestamp() * 1000), "mag": None}}]}
+    daily = _parse_usgs_daily(payload)
+    (count, max_mag), = daily.values()
+    assert count == 1
+    assert max_mag is None  # honest gap, never 0
+
+
+def test_parse_kp_daily_takes_daily_max_and_skips_header():
+    rows = _noaa_window_rows(date(2024, 1, 1), n_days=3)
+    by_day = _parse_kp_daily(rows)
+    assert len(by_day) == 3
+    # each day's 3-hourly values are (h/3)%9 for h in 0,3,...,21 → max is 7.0
+    for v in by_day.values():
+        assert v == pytest.approx(7.0)
+
+
+def test_usgs_count_backfill_returns_many_points():
+    start = date(2024, 1, 1)
+    n = 200
+    payload = _usgs_window_payload(start, n_days=n, per_day=4)
+    src = UsgsEarthquakeSource(_history_fetcher=lambda _url: payload)
+    as_of = datetime(start.year, start.month, start.day, tzinfo=UTC) + timedelta(days=n + 5)
+    pts = src.backfill(days=400, as_of=as_of)
+    assert len(pts) == n
+    assert all(p.value == 4.0 for p in pts)
+
+
+def test_usgs_count_backfill_is_pit_no_lookahead():
+    start = date(2024, 1, 1)
+    payload = _usgs_window_payload(start, n_days=30, per_day=2)
+    src = UsgsEarthquakeSource(_history_fetcher=lambda _url: payload)
+    as_of = datetime(2024, 1, 15, 12, tzinfo=UTC)
+    pts = src.backfill(days=400, as_of=as_of)
+    assert pts
+    for p in pts:
+        assert p.available_at <= as_of
+        assert p.available_at == p.ts
+
+
+def test_usgs_maxmag_backfill_drops_none_days_not_zero():
+    start = date(2024, 1, 1)
+    # day 0 has a mag, day 1 has only None mags
+    payload = {"features": [
+        {"properties": {"time": int(datetime(2024, 1, 1, 6, tzinfo=UTC).timestamp() * 1000), "mag": 4.2}},
+        {"properties": {"time": int(datetime(2024, 1, 2, 6, tzinfo=UTC).timestamp() * 1000), "mag": None}},
+    ]}
+    src = UsgsMaxMagnitudeSource(_history_fetcher=lambda _url: payload)
+    as_of = datetime(2024, 1, 10, tzinfo=UTC)
+    pts = src.backfill(days=400, as_of=as_of)
+    assert len(pts) == 1  # the None-mag day is absent, never 0-filled
+    assert pts[0].value == pytest.approx(4.2)
+
+
+def test_noaa_kp_backfill_returns_daily_max_series():
+    start = date(2024, 1, 1)
+    n = 25
+    rows = _noaa_window_rows(start, n_days=n)
+    src = NoaaKpIndexSource(_history_fetcher=lambda _url: rows)
+    as_of = datetime(start.year, start.month, start.day, tzinfo=UTC) + timedelta(days=n + 5)
+    pts = src.backfill(days=400, as_of=as_of)
+    assert len(pts) == n
+    for p in pts:
+        assert p.value == pytest.approx(7.0)
+        assert p.available_at <= as_of
+
+
+def test_exotic_backfill_offline_uses_fixture_deterministically():
+    """offline=True bins the bundled fixtures with no network and never raises."""
+    as_of = datetime(2024, 1, 10, tzinfo=UTC)
+    # USGS fixture has no per-event timestamps, so daily binning yields no dated points (honest).
+    assert UsgsEarthquakeSource(offline=True).backfill(days=400, as_of=as_of) == []
+    # NOAA fixture is dated 2023-11-14 → one daily-max point if within window.
+    kp = NoaaKpIndexSource(offline=True).backfill(days=400, as_of=datetime(2023, 11, 20, tzinfo=UTC))
+    assert len(kp) == 1
+    assert kp[0].value == pytest.approx(4.33)

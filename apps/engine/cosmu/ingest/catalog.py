@@ -290,6 +290,86 @@ def _fetch_exotic_controls(store: Any, symbols: list[str], providers: Any) -> in
     return total
 
 
+# --------------------------------------------------------------------------- historical backfill closures
+# These give the CURRENT-ONLY adapters real date-range depth: each source's `backfill(days=N)` pulls a
+# paginated history window (one request per series — the archive APIs serve a [start,end] range natively),
+# returns PIT-stamped AltDataPoints, and is written append-only + deduped on (provider,symbol,metric,ts) so a
+# re-run writes 0.  All remain offline-deterministic (the underlying sources degrade to fixtures). The bridge
+# closures compose `append_dedup` — they never re-implement a fetch primitive.
+
+
+def _provider_offline(provider: Any) -> bool:
+    """Duck-typed: honour an `offline` flag on the bridge provider so a manage test stays network-free."""
+    return bool(getattr(provider, "offline", False))
+
+
+def _backfill_weather(store: Any, symbols: list[str], providers: Any, *, days: int, as_of: Any = None) -> dict[str, Any]:
+    """Open-Meteo financial-hub weather stress: market-wide daily history via the archive date-range API."""
+    from cosmu.data.sources.weather_openmeteo import WeatherOpenMeteoSource
+    from cosmu.ingest.pipeline import append_dedup
+
+    del symbols  # market-wide
+    provider = getattr(providers, "weather", None)
+    offline = _provider_offline(provider)
+    # A bridge provider may carry a wide `backfill_fixture` seam (offline-with-depth tests). DRY: reuse it.
+    fixture = getattr(provider, "backfill_fixture", None)
+    src = (
+        WeatherOpenMeteoSource(offline=offline, _fixture=fixture)
+        if fixture is not None
+        else WeatherOpenMeteoSource(offline=offline)
+    )
+    pts = src.backfill(days, as_of=as_of)
+    written = append_dedup(store, "openmeteo", "MARKET", "weather_hub_stress", pts)
+    return {"weather_hub_stress": {"written": written, "total": len(pts)}}
+
+
+def _backfill_wikipedia(store: Any, symbols: list[str], providers: Any, *, days: int, as_of: Any = None) -> dict[str, Any]:
+    """Wikipedia pageviews: per-symbol raw + log + 30d-zscore daily history via the REST date-range API."""
+    from cosmu.data.sources.wikipedia_pageviews import WikipediaPageviewsSource
+    from cosmu.ingest.pipeline import append_dedup
+
+    # Honour a `_fetcher` injected on the bridge provider so a manage test can drive this offline.
+    fetcher = getattr(getattr(providers, "wiki_pageviews", None), "_fetcher", None)
+    out: dict[str, Any] = {}
+    for metric in _WIKI_METRICS:
+        src = WikipediaPageviewsSource(metric=metric, _fetcher=fetcher) if fetcher else WikipediaPageviewsSource(metric=metric)
+        written = total = 0
+        for symbol in symbols:
+            pts = src.backfill(symbol, days, as_of=as_of)
+            written += append_dedup(store, "wikimedia", symbol, metric, pts)
+            total += len(pts)
+        out[metric] = {"written": written, "total": total}
+    return out
+
+
+def _backfill_exotic_controls(store: Any, symbols: list[str], providers: Any, *, days: int, as_of: Any = None) -> dict[str, Any]:
+    """USGS earthquakes (count + max-mag via FDSN query) + NOAA Kp (3-hourly→daily-max) market-wide history."""
+    from cosmu.data.sources.exotic_controls import (
+        NoaaKpIndexSource,
+        UsgsEarthquakeSource,
+        UsgsMaxMagnitudeSource,
+    )
+    from cosmu.ingest.pipeline import append_dedup
+
+    del symbols
+    provider = getattr(providers, "exotic_controls", None)
+    offline = _provider_offline(provider)
+    # Optional injected history fetchers (offline-with-depth tests): provider may carry
+    # `usgs_history_fetcher` (FDSN query JSON) and `kp_history_fetcher` (NOAA 3-hourly rows).
+    usgs_fetcher = getattr(provider, "usgs_history_fetcher", None)
+    kp_fetcher = getattr(provider, "kp_history_fetcher", None)
+    out: dict[str, Any] = {}
+    for metric, src, store_provider in (
+        ("usgs_earthquake_count", UsgsEarthquakeSource(offline=offline, _history_fetcher=usgs_fetcher), "usgs"),
+        ("usgs_max_magnitude", UsgsMaxMagnitudeSource(offline=offline, _history_fetcher=usgs_fetcher), "usgs"),
+        ("noaa_kp_index", NoaaKpIndexSource(offline=offline, _history_fetcher=kp_fetcher), "noaa"),
+    ):
+        pts = src.backfill(days, as_of=as_of)
+        written = append_dedup(store, store_provider, "MARKET", metric, pts)
+        out[metric] = {"written": written, "total": len(pts)}
+    return out
+
+
 # --------------------------------------------------------------------------- the catalog
 
 
@@ -325,15 +405,15 @@ def managed_sources() -> dict[str, SourceSpec]:
         SourceSpec("llm_index", "alt", tuple(_index_metrics()), _fetch_llm_index, market_wide=True, per_symbol=False, key_gated=True, note="LLM qualitative→quantitative index scores (key-gated; market-wide)."),
         # --- 10 new alt-data sources (registered additively; non-causal ones flagged in feature_registry) ---
         SourceSpec("macro_extra", "alt", ("nfci", "initial_claims"), _fetch_macro_extra, market_wide=True, per_symbol=False, note="Extended FRED macro: NFCI financial conditions + initial jobless claims (ALFRED initial-release vintages)."),
-        SourceSpec("wikipedia", "alt", _WIKI_METRICS, _fetch_wikipedia, note="Wikipedia pageviews per entity (raw + log + 30d z-score); free, no key, immutable counts (T+1)."),
+        SourceSpec("wikipedia", "alt", _WIKI_METRICS, _fetch_wikipedia, backfill=_backfill_wikipedia, note="Wikipedia pageviews per entity (raw + log + 30d z-score); free, no key, immutable counts (T+1). Paginated date-range backfill."),
         SourceSpec("reddit_volume", "alt", ("reddit_post_volume", "reddit_comment_volume"), _fetch_reddit_volume, market_wide=True, per_symbol=False, key_gated=True, note="Reddit daily post + comment volume (key-gated: REDDIT_CLIENT_ID/SECRET → empty offline)."),
         SourceSpec("cryptopanic", "alt", ("cryptopanic_bullish_votes", "cryptopanic_bearish_votes"), _fetch_cryptopanic, key_gated=True, note="CryptoPanic per-coin bullish/bearish vote counts, 24h window (key-gated: CRYPTOPANIC_API_KEY → empty offline)."),
         SourceSpec("rss", "alt", ("rss_news_count",), _fetch_rss_news, market_wide=True, per_symbol=False, note="Public RSS headline COUNT (LLM-free, free, no key)."),
         SourceSpec("gtrends", "alt", ("gtrends_search_interest",), _fetch_gtrends, market_wide=True, per_symbol=False, note="Google Trends search interest (REVISION HAZARD: rescales history — forward-test only until Gate-validated)."),
         SourceSpec("opensky_daily", "alt", ("opensky_daily_flights",), _fetch_opensky_daily, market_wide=True, per_symbol=False, note="OpenSky daily global flight count (free OSINT, thin history, low-confidence)."),
-        SourceSpec("weather", "alt", ("weather_hub_stress",), _fetch_weather, market_wide=True, per_symbol=False, non_causal=True, note="Open-Meteo financial-hub weather stress (NON-CAUSAL control; free, no key)."),
+        SourceSpec("weather", "alt", ("weather_hub_stress",), _fetch_weather, backfill=_backfill_weather, market_wide=True, per_symbol=False, non_causal=True, note="Open-Meteo financial-hub weather stress (NON-CAUSAL control; free, no key). Paginated archive date-range backfill."),
         SourceSpec("astro", "alt", tuple(_ASTRO_METRIC_MAP.values()), _fetch_astro, market_wide=True, per_symbol=False, non_causal=True, note="Deterministic lunar/planetary ephemeris (NON-CAUSAL controls; stdlib-only, no network)."),
-        SourceSpec("exotic_controls", "alt", ("usgs_earthquake_count", "usgs_max_magnitude", "noaa_kp_index"), _fetch_exotic_controls, market_wide=True, per_symbol=False, non_causal=True, note="USGS earthquakes + NOAA Kp ORTHOGONALITY CONTROLS (non-causal; Gate must kill them)."),
+        SourceSpec("exotic_controls", "alt", ("usgs_earthquake_count", "usgs_max_magnitude", "noaa_kp_index"), _fetch_exotic_controls, backfill=_backfill_exotic_controls, market_wide=True, per_symbol=False, non_causal=True, note="USGS earthquakes + NOAA Kp ORTHOGONALITY CONTROLS (non-causal; Gate must kill them). Paginated date-range backfill (FDSN query + NOAA 3-hourly history)."),
     ]
     return {s.name: s for s in specs}
 
