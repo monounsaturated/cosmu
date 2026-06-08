@@ -37,12 +37,14 @@ from cosmu.data.sources.altdata_bridges import (
     CoinGeckoIngestProvider,
     CryptoPanicIngestProvider,
     DefiLlamaStablecoinIngestProvider,
+    EtfFlowsIngestProvider,
     ExoticControlsIngestProvider,
     GdeltCountsIngestProvider,
     GoogleTrendsIngestProvider,
     OnchainBlockchainIngestProvider,
     OpenSkyDailyIngestProvider,
     RssNewsIngestProvider,
+    StablecoinFlowsIngestProvider,
     WeatherOpenMeteoIngestProvider,
     WikipediaPageviewsIngestProvider,
 )
@@ -162,6 +164,11 @@ class Providers:
     coingecko: AltDataProvider = field(default_factory=CoinGeckoIngestProvider)
     onchain_blockchain: AltDataProvider = field(default_factory=OnchainBlockchainIngestProvider)
     gdelt_counts: AltDataProvider = field(default_factory=GdeltCountsIngestProvider)
+    # --- TOOL-WAVE-C: 2 more free, no-key market-wide FLOW sources. Both default to live; each degrades to
+    # [] offline (one dead source never aborts the pass). FRED keyless macro-liquidity is knowable ~T+8; the
+    # DefiLlama stablecoin flow is knowable T+1 (no look-ahead). See feature_registry.py for per-feature priors. ---
+    etf_flows: AltDataProvider = field(default_factory=EtfFlowsIngestProvider)
+    stablecoin_flows: AltDataProvider = field(default_factory=StablecoinFlowsIngestProvider)
     llm: Callable[[str], StandardizedNews] | None = None
     # Typed event/news scorer LLM (the cheap-OpenRouter formatter). Key-gated → None without a key, so the
     # event scorer uses the deterministic lexicon. The LLM only standardizes text at ingest, never the money path.

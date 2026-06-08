@@ -21,12 +21,19 @@ def _store(tmp_path, name="mind_api") -> Store:
 
 
 def _seed_metric(store: Store, metric: str, value: float, *, provider: str = "test", days_ago: int = 0) -> None:
+    """Seed one alt_data row AND its incremental summary rollup, exactly as the real ingest path does
+    (PgAltDataStore.append writes both). source_trust freshness reads alt_data_provider_summary, so a faithful
+    seed keeps the rollup in sync; the Mind's KNOWS panel reads alt_data directly and is unaffected either way."""
+    from cosmu.ingest.alt_summary import record_ingest
+
     ts = datetime.now(UTC) - timedelta(days=days_ago)
     store.rows(
         "INSERT INTO alt_data(provider, symbol, metric, ts, available_at, value, ingested_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (provider, "BTCUSDT", metric, ts.isoformat(), ts.isoformat(), value, utcnow()),
     )
+    with store.batch() as w:
+        record_ingest(w, provider, metric, n_rows=1, latest_available_at=ts.isoformat())
 
 
 def _client(monkeypatch, store):

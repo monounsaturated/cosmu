@@ -196,6 +196,36 @@ class GdeltCountsIngestProvider:
         return _snapshot(GdeltCountsSource(), symbol)
 
 
+class EtfFlowsIngestProvider:
+    """fetch_series bridge for EtfFlowsSource (FRED keyless macro-liquidity). Free, no key. Market-wide
+    (each metric describes system-wide liquidity, not one trading pair — scope MARKET). metric selects
+    fed_balance_sheet_usd / net_liquidity_usd."""
+
+    _METRICS = ("fed_balance_sheet_usd", "net_liquidity_usd")
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric not in self._METRICS:
+            return []
+        from cosmu.data.sources.etf_flows import EtfFlowsSource
+
+        return _snapshot(EtfFlowsSource(metric=metric), "MARKET")
+
+
+class StablecoinFlowsIngestProvider:
+    """fetch_series bridge for StablecoinFlowsSource (DefiLlama stablecoin FLOW + chain-split). Free, no
+    key. Market-wide (each metric describes the whole stablecoin float — scope MARKET). metric selects
+    stablecoin_net_flow_usd / stablecoin_eth_share. Orthogonal to the LEVEL series stablecoin_mcap."""
+
+    _METRICS = ("stablecoin_net_flow_usd", "stablecoin_eth_share")
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric not in self._METRICS:
+            return []
+        from cosmu.data.sources.stablecoin_flows import StablecoinFlowsSource
+
+        return _snapshot(StablecoinFlowsSource(metric=metric), "MARKET")
+
+
 class ExoticControlsIngestProvider:
     """fetch_series bridge for the exotic orthogonality-control sources (USGS earthquake count + max
     magnitude, NOAA Kp). Market-wide; metric selects which control. Non-causal — wired honestly so the
@@ -228,12 +258,14 @@ __all__ = [
     "CoinGeckoIngestProvider",
     "CryptoPanicIngestProvider",
     "DefiLlamaStablecoinIngestProvider",
+    "EtfFlowsIngestProvider",
     "ExoticControlsIngestProvider",
     "GdeltCountsIngestProvider",
     "GoogleTrendsIngestProvider",
     "OnchainBlockchainIngestProvider",
     "OpenSkyDailyIngestProvider",
     "RssNewsIngestProvider",
+    "StablecoinFlowsIngestProvider",
     "WeatherOpenMeteoIngestProvider",
     "WikipediaPageviewsIngestProvider",
 ]

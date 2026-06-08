@@ -329,6 +329,36 @@ def _fetch_gdelt_counts(store: Any, symbols: list[str], providers: Any) -> int:
     return ingest_numeric(store, providers.gdelt_counts, symbols, "gdelt_news_volume", provider_name="gdelt_counts")
 
 
+# --------------------------------------------------------------------------- TOOL-WAVE-C: 2 more free sources
+
+# FRED keyless macro-liquidity (Fed balance sheet + net-of-TGA) — both market-wide, free, no key. Stored under
+# the SAME "fred" provider bucket as the other macro metrics; distinct semantic metrics, knowable ~T+8.
+_ETF_FLOW_METRICS = ("fed_balance_sheet_usd", "net_liquidity_usd")
+
+
+def _fetch_etf_flows(store: Any, symbols: list[str], providers: Any) -> int:
+    total = 0
+    for metric in _ETF_FLOW_METRICS:
+        total += ingest_market_wide_numeric(
+            store, providers.etf_flows, source_metric=metric, stored_metric=metric, provider_name="fred",
+        )
+    return total
+
+
+# DefiLlama stablecoin FLOW (day-over-day mcap CHANGE) + ETH chain-share — both market-wide, free, no key.
+# Stored under the SAME "defillama" provider bucket as defi_tvl / stablecoin_mcap; orthogonal flow metrics.
+_STABLECOIN_FLOW_METRICS = ("stablecoin_net_flow_usd", "stablecoin_eth_share")
+
+
+def _fetch_stablecoin_flows(store: Any, symbols: list[str], providers: Any) -> int:
+    total = 0
+    for metric in _STABLECOIN_FLOW_METRICS:
+        total += ingest_market_wide_numeric(
+            store, providers.stablecoin_flows, source_metric=metric, stored_metric=metric, provider_name="defillama",
+        )
+    return total
+
+
 # --------------------------------------------------------------------------- historical backfill closures
 # These give the CURRENT-ONLY adapters real date-range depth: each source's `backfill(days=N)` pulls a
 # paginated history window (one request per series — the archive APIs serve a [start,end] range natively),
@@ -458,6 +488,9 @@ def managed_sources() -> dict[str, SourceSpec]:
         SourceSpec("coingecko", "alt", ("cg_market_cap", "cg_total_volume", "cg_btc_dominance"), _fetch_coingecko, note="CoinGecko free public tier: per-coin market cap + 24h volume, plus market-wide BTC dominance (no key)."),
         SourceSpec("onchain_blockchain", "alt", _ONCHAIN_METRICS, _fetch_onchain_blockchain, market_wide=True, per_symbol=False, note="blockchain.com BTC on-chain fundamentals: hashrate, tx count, mempool size, active addresses (free, no key, market-wide)."),
         SourceSpec("gdelt_counts", "alt", ("gdelt_news_volume",), _fetch_gdelt_counts, note="GDELT 2.0 daily per-topic news-VOLUME COUNT (free, no key, LLM-free; per-symbol). Distinct from gdelt_tone."),
+        # --- TOOL-WAVE-C: 2 more free, no-key market-wide FLOW sources (PIT-honest; degrade to [] offline) ---
+        SourceSpec("etf_flows", "alt", _ETF_FLOW_METRICS, _fetch_etf_flows, market_wide=True, per_symbol=False, note="FRED keyless macro-liquidity: Fed balance sheet (WALCL) + net liquidity (WALCL - TGA); free, no key, market-wide, knowable ~T+8."),
+        SourceSpec("stablecoin_flows", "alt", _STABLECOIN_FLOW_METRICS, _fetch_stablecoin_flows, market_wide=True, per_symbol=False, note="DefiLlama stablecoin FLOW: day-over-day net mint/redeem + Ethereum chain-share; free, no key, market-wide, knowable T+1. Orthogonal to the level series stablecoin_mcap."),
     ]
     return {s.name: s for s in specs}
 

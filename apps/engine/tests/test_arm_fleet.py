@@ -3,7 +3,7 @@
 # These tests NEVER touch the real store or Yahoo (offline-safe) and NEVER call the
 # real arm() implementations (which require market data and a live DB).  The goal is:
 #
-#   1. All 8 fleet modules import cleanly and expose arm(store=None) -> dict.
+#   1. All 10 fleet modules import cleanly and expose arm(store=None) -> dict.
 #   2. --dry-run path works end-to-end without any DB writes.
 #   3. arm_all() correctly tallies armed / skipped / failed from mocked arm() results.
 #   4. --only filtering and the CLI main() exit codes are correct.

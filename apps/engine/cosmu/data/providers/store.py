@@ -87,9 +87,10 @@ class PgAltDataStore:
         if not points:
             return
         now = utcnow()
+        avails = [p.available_at.isoformat() for p in points]
         rows = [
-            (provider, symbol, metric, p.ts.isoformat(), p.available_at.isoformat(), float(p.value), now)
-            for p in points
+            (provider, symbol, metric, p.ts.isoformat(), avail, float(p.value), now)
+            for p, avail in zip(points, avails, strict=True)
         ]
         # Batched multi-row insert: one round-trip per ~1000 rows, not per row. Row-by-row over the
         # Supabase pooler made a 1.3M-row backfill take ~6h; this is the same data in minutes.
@@ -98,6 +99,16 @@ class PgAltDataStore:
                 "alt_data",
                 ["provider", "symbol", "metric", "ts", "available_at", "value", "ingested_at"],
                 rows,
+            )
+            # Roll this just-written batch into the per-(provider, metric) summary IN THE SAME transaction —
+            # an INCREMENTAL upsert (n_rows += len(points), latest_available_at = max), never a full re-aggregate
+            # of alt_data. The UI's freshness reads (/intelligence, /scores) hit that tiny table instead of a
+            # GROUP BY over the ~17M-row alt_data. Best-effort: a summary failure never aborts the ingest.
+            from cosmu.ingest.alt_summary import record_ingest
+
+            record_ingest(
+                writer, provider, metric,
+                n_rows=len(points), latest_available_at=max(avails),
             )
 
     def read_asof(self, provider: str, symbol: str, metric: str, as_of: datetime) -> list[AltDataPoint]:
@@ -227,6 +238,15 @@ _STORE_PROVIDER_OF = {
     "btc_active_addresses": "blockchain.com",
     # GDELT daily news-VOLUME counts (free, LLM-free; PER-SYMBOL via topic map; distinct from gdelt_tone).
     "gdelt_news_volume": "gdelt_counts",
+    # --- TOOL-WAVE-C: 2 more free, no-key market-wide FLOW sources (PIT-honest; degrade to [] offline) ---
+    # FRED keyless macro-liquidity (WALCL + net-of-TGA). Stored under the SAME "fred" provider bucket as the
+    # other FRED macro metrics — these add the system-liquidity LEVEL/flow, distinct metrics, knowable ~T+8.
+    "fed_balance_sheet_usd": "fred",
+    "net_liquidity_usd": "fred",
+    # DefiLlama stablecoin FLOW (day-over-day mcap CHANGE) + ETH chain-share. Stored under the SAME "defillama"
+    # provider bucket as defi_tvl / stablecoin_mcap — the orthogonal DERIVATIVE of the level, knowable T+1.
+    "stablecoin_net_flow_usd": "defillama",
+    "stablecoin_eth_share": "defillama",
 }
 _STORE_MARKET_WIDE = frozenset({
     "fear_greed", "pm_risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",
@@ -246,6 +266,9 @@ _STORE_MARKET_WIDE = frozenset({
     # gdelt_news_volume — are deliberately NOT here (they live under the symbol key, like wiki_pageviews).
     "stablecoin_mcap", "cg_btc_dominance",
     "btc_hashrate", "btc_tx_count", "btc_mempool_size", "btc_active_addresses",
+    # TOOL-WAVE-C market-wide FLOW metrics — system liquidity + stablecoin flow describe the whole tape.
+    "fed_balance_sheet_usd", "net_liquidity_usd",
+    "stablecoin_net_flow_usd", "stablecoin_eth_share",
 })
 # Registry name → stored metric name, for features renamed after their first ingest.
 # StoreBackedAltProvider tries the registry name first; if the store returns nothing it falls back here
