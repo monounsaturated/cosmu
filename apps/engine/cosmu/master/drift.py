@@ -194,6 +194,36 @@ def track_return_series(store: Store, version_id: str, *, limit: int = 500) -> l
     return _returns_from_equity([float(r["equity"]) for r in rows])
 
 
+def batch_track_return_series(store: Store, version_ids: list[str], *, limit: int = 500) -> dict[str, list[float]]:
+    """Fetch portfolio_snapshots for ALL supplied version_ids in ONE query, then split by ref_id in Python.
+    Eliminates the N+1 round-trips that caused /research/drift to take ~18s on prod Postgres (each
+    track_return_series() call was a separate network RTT). Returns a dict mapping version_id → return series;
+    absent ids map to an empty list (honest-empty; assess_drift handles short series gracefully)."""
+    if not version_ids:
+        return {}
+    # Build a single IN clause.  SQLite uses '?' placeholders; the _Conn layer rewrites to '%s' for Postgres.
+    placeholders = ", ".join("?" for _ in version_ids)
+    rows = store.rows(
+        f"SELECT ref_id, equity, ts FROM portfolio_snapshots "
+        f"WHERE scope = 'track' AND ref_id IN ({placeholders}) "
+        f"ORDER BY ref_id, ts ASC",
+        tuple(version_ids),
+    )
+    # Group equity values per ref_id preserving ts-order (ORDER BY above keeps it).
+    from collections import defaultdict
+    grouped: dict[str, list[float]] = defaultdict(list)
+    for r in rows:
+        grouped[r["ref_id"]].append(float(r["equity"]))
+    # Apply per-track limit (rare: most tracks have far fewer than 500 snapshots).
+    result: dict[str, list[float]] = {}
+    for vid in version_ids:
+        equities = grouped.get(vid, [])
+        if limit and len(equities) > limit:
+            equities = equities[-limit:]
+        result[vid] = _returns_from_equity(equities)
+    return result
+
+
 def funded_track_ids(store: Store) -> list[str]:
     """Strategy versions that currently hold a non-zero sim/live position (the tracks capital can be pulled
     from). Read off the positions table so the monitor only judges tracks that are actually funded."""

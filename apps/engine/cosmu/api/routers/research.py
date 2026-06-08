@@ -277,12 +277,17 @@ def research_brain() -> BrainResponse:
 def research_drift() -> DriftResponse:
     """Per-funded-track ALPHA-DECAY snapshot (master/drift): edge half-life + how far live has drifted below the
     edge it was funded on, and whether the anticipatory monitor recommends pulling capital BEFORE P&L turns.
-    Read-only + deterministic — the monitor only recommends; the deterministic lifecycle + live toggle move money."""
-    from cosmu.master.drift import assess_drift, funded_track_ids, track_return_series
+    Read-only + deterministic — the monitor only recommends; the deterministic lifecycle + live toggle move money.
+    All track equity rows are fetched in ONE batched query (batch_track_return_series) to avoid N+1 round-trips
+    on prod Postgres; was ~18s with many funded tracks, now one RTT regardless of track count."""
+    from cosmu.master.drift import assess_drift, batch_track_return_series, funded_track_ids
 
+    version_ids = funded_track_ids(store)
+    # One query for all tracks instead of one per track — eliminates N+1 on prod Postgres.
+    series_by_vid = batch_track_return_series(store, version_ids)
     tracks = []
-    for vid in funded_track_ids(store):
-        v = assess_drift(vid, track_return_series(store, vid))
+    for vid in version_ids:
+        v = assess_drift(vid, series_by_vid.get(vid, []))
         tracks.append(
             DriftTrack(
                 version_id=vid,
