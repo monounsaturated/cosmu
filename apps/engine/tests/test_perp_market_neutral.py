@@ -3,7 +3,8 @@
 # neutral (Sum w = 0) and earns the real per-bar funding with the correct sign; (3) the harness runs the whole
 # cohort through the EXISTING scorer + promote_cohort BH-FDR + the REAL purged+embargoed holdout and emits a
 # verdict; (4) thin data => INSUFFICIENT-DATA (honest abstention, never a fabricated pass); (5) determinism;
-# (6) load_perp_market degrades gracefully on a missing cache (no synthetic fill).
+# (6) load_perp_market degrades gracefully on a missing cache (no synthetic fill);
+# (7) StoreFundingProvider reads funding from the AltDataStore and the carry arm sees it (store-first path).
 
 from __future__ import annotations
 
@@ -13,10 +14,13 @@ from decimal import Decimal
 
 from cosmu.config.settings import Settings
 from cosmu.data.providers._types import AltDataPoint
+from cosmu.data.providers.store import AltDataStore
 from cosmu.data.market import Bar
 from cosmu.knowledge.store import Store
 from cosmu.research.perp_market_neutral import (
     MIN_NAMES,
+    StoreFundingProvider,
+    _funding_provider,
     build_panel,
     carry_signal,
     load_perp_market,
@@ -230,3 +234,85 @@ def test_load_perp_market_degrades_on_missing_cache():
     tmp = tempfile.mkdtemp()  # empty dir => no symbol has a cache file
     out = load_perp_market(symbols=("BTCUSDT", "ETHUSDT"), cache_dir=tmp)
     assert out == {}  # honest 'no data', never synthetic-filled
+
+
+# --------------------------------------------------------------------------- store-first funding path (7)
+
+
+def _seed_store_funding(store: AltDataStore, market: dict[str, list[Bar]]) -> None:
+    """Seed an AltDataStore with deterministic funding data for every symbol in `market`.
+    Rates are monotone in symbol index so the carry rank is non-degenerate. Settlements stamped
+    daily (== bar ts) so sum_funding_per_bar lands exactly one settlement per daily bar."""
+    syms = sorted(market)
+    for j, sym in enumerate(syms):
+        rate = 0.0001 * (j - len(syms) / 2)
+        pts = [AltDataPoint(ts=b.ts, available_at=b.ts, value=rate) for b in market[sym]]
+        store.append("binance", sym, "funding_rate", pts)
+
+
+def test_store_funding_provider_fetch_series():
+    """StoreFundingProvider.fetch_series returns all stored rows for a known symbol and [] for an unknown one.
+    Limit is respected. Deterministic and offline."""
+    market = _synthetic_market(n=40, n_sym=4)
+    tmp = tempfile.mkdtemp(prefix="cosmu-sfp-test-")
+    store = AltDataStore(tmp)
+    _seed_store_funding(store, market)
+
+    provider = StoreFundingProvider(store)
+    sym = sorted(market)[0]
+    pts = provider.fetch_series(sym, "funding_rate", limit=10000)
+    assert len(pts) == 40  # one per bar
+    assert all(p.ts == p.available_at for p in pts)  # PIT: available_at == ts for real funding
+
+    # unknown symbol returns []
+    assert provider.fetch_series("UNKNOWN", "funding_rate", limit=10000) == []
+    # wrong metric returns []
+    assert provider.fetch_series(sym, "other_metric", limit=10000) == []
+
+    # limit is honoured
+    pts_limited = provider.fetch_series(sym, "funding_rate", limit=10)
+    assert len(pts_limited) == 10
+
+
+def test_carry_arm_reads_store_funding_and_produces_trades():
+    """A tmp AltDataStore seeded with deterministic funding data → StoreFundingProvider → build_panel →
+    carry arm → >0 trades. This is the regression guard for the store↔cache gap: if the carry arm falls
+    back to an empty source, n_trades = 0; reading the store makes it positive."""
+    market = _synthetic_market(n=120, n_sym=8)
+    tmp = tempfile.mkdtemp(prefix="cosmu-carry-store-test-")
+    store = AltDataStore(tmp)
+    _seed_store_funding(store, market)
+
+    funding = StoreFundingProvider(store)
+    panel = build_panel(market, funding, rebalance=1)
+
+    # carry arm should find funded symbols and produce trades
+    from cosmu.research.perp_market_neutral import _LOOKBACKS
+    result = run_neutral_book(panel, signal="carry", sign=-1, lookback=_LOOKBACKS[0], skip=1, frac=1 / 3)
+    assert len(result.net) > 0, (
+        "carry arm produced 0 trades even though the store has funding data — the store↔carry path is broken"
+    )
+
+
+def test_funding_provider_prefers_store_over_cache():
+    """_funding_provider: when a populated AltDataStore root is given (with data for at least one
+    PERP_UNIVERSE symbol), it returns a StoreFundingProvider; when the store root is empty, it falls
+    back to CachedFundingRateProvider."""
+    from cosmu.data.altdata import CachedFundingRateProvider
+    from cosmu.data.universe import PERP_UNIVERSE
+
+    bars = _bars([100.0 * (1.001 ** i) for i in range(40)])
+    real_sym = PERP_UNIVERSE[0]  # e.g. "BTCUSDT" — a symbol the probe recognises
+
+    # Populated store (uses a real PERP_UNIVERSE symbol) → StoreFundingProvider
+    tmp_store = tempfile.mkdtemp(prefix="cosmu-fp-store-")
+    store = AltDataStore(tmp_store)
+    pts = [AltDataPoint(ts=b.ts, available_at=b.ts, value=0.0001) for b in bars]
+    store.append("binance", real_sym, "funding_rate", pts)
+    provider = _funding_provider(altdata_root=tmp_store, cache_dir="/nonexistent/cache")
+    assert isinstance(provider, StoreFundingProvider)
+
+    # Empty store root → CachedFundingRateProvider (fallback)
+    tmp_empty = tempfile.mkdtemp(prefix="cosmu-fp-empty-")
+    provider_fallback = _funding_provider(altdata_root=tmp_empty, cache_dir="/nonexistent/cache")
+    assert isinstance(provider_fallback, CachedFundingRateProvider)
