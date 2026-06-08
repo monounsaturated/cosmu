@@ -87,28 +87,14 @@ def gather_context(store: Store, *, reference_bars=None) -> MindContext:
 
 
 def _latest_values(store: Store) -> dict[str, tuple[float, str | None]]:
-    """Latest available value per metric from the append-only alt_data store (point-in-time: newest
-    available_at wins). Returns {} on any error so a store without the table degrades to an abstaining panel."""
-    try:
-        # Only the latest-available row per metric (ISO-8601 strings sort lexically) — not the whole table.
-        rows = store.rows(
-            "SELECT a.metric AS metric, a.value AS value, a.available_at AS available_at "
-            "FROM alt_data a "
-            "JOIN (SELECT metric, MAX(available_at) AS m FROM alt_data GROUP BY metric) b "
-            "ON a.metric = b.metric AND a.available_at = b.m"
-        )
-    except Exception:  # noqa: BLE001 — table may not exist on a fresh store
-        return {}
-    out: dict[str, tuple[float, str | None]] = {}
-    for r in rows:
-        metric = r["metric"]
-        if metric in out:
-            continue  # a tie on available_at — keep the first deterministically
-        try:
-            out[metric] = (float(r["value"]), r.get("available_at"))
-        except (TypeError, ValueError):
-            continue
-    return out
+    """Latest available value per metric (point-in-time: newest available_at wins). Reads the tiny
+    alt_data_provider_summary rollup (one row per provider/metric, value of the newest row carried
+    incrementally on ingest) instead of a JOIN+GROUP-BY over the ~17M-row alt_data table — the same
+    full-scan perf trap fixed for /intelligence and /scores. Returns {} on any error / empty summary so a
+    store without the rollup degrades to an abstaining panel (honest, never fabricated)."""
+    from cosmu.ingest.alt_summary import latest_value_per_metric
+
+    return latest_value_per_metric(store)
 
 
 def _memory_counts(store: Store) -> dict[str, int]:

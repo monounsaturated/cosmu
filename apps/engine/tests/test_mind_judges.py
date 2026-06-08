@@ -33,12 +33,18 @@ def _store(tmp_path) -> Store:
 
 
 def _seed_metric(store: Store, metric: str, value: float, *, provider: str = "test") -> None:
+    # Seed alt_data AND its summary rollup (latest_value) as the real ingest path does — the Mind KNOWS panel
+    # reads the newest value per metric off the rollup, not alt_data directly.
+    from cosmu.ingest.alt_summary import record_ingest
+
     ts = datetime.now(UTC) - timedelta(days=0)
     store.rows(
         "INSERT INTO alt_data(provider, symbol, metric, ts, available_at, value, ingested_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (provider, "BTCUSDT", metric, ts.isoformat(), ts.isoformat(), value, utcnow()),
     )
+    with store.batch() as w:
+        record_ingest(w, provider, metric, n_rows=1, latest_available_at=ts.isoformat(), latest_value=str(value))
 
 
 def _chat_returning(payload: str):

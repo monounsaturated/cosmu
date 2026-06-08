@@ -106,9 +106,13 @@ class PgAltDataStore:
             # GROUP BY over the ~17M-row alt_data. Best-effort: a summary failure never aborts the ingest.
             from cosmu.ingest.alt_summary import record_ingest
 
+            # The VALUE of the newest-available row in this batch (PIT: newest available_at wins) — so the
+            # summary can serve the Mind's "latest value per metric" without a JOIN over the ~17M-row alt_data.
+            latest_pt = max(points, key=lambda p: p.available_at)
             record_ingest(
                 writer, provider, metric,
                 n_rows=len(points), latest_available_at=max(avails),
+                latest_value=str(float(latest_pt.value)),
             )
 
     def read_asof(self, provider: str, symbol: str, metric: str, as_of: datetime) -> list[AltDataPoint]:

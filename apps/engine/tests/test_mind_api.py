@@ -22,8 +22,9 @@ def _store(tmp_path, name="mind_api") -> Store:
 
 def _seed_metric(store: Store, metric: str, value: float, *, provider: str = "test", days_ago: int = 0) -> None:
     """Seed one alt_data row AND its incremental summary rollup, exactly as the real ingest path does
-    (PgAltDataStore.append writes both). source_trust freshness reads alt_data_provider_summary, so a faithful
-    seed keeps the rollup in sync; the Mind's KNOWS panel reads alt_data directly and is unaffected either way."""
+    (PgAltDataStore.append writes both). source_trust freshness AND the Mind's KNOWS panel now both read the
+    alt_data_provider_summary rollup (freshness from latest_available_at, KNOWS from latest_value), so a faithful
+    seed must carry the value into the rollup too — exactly what record_ingest does on a real ingest pass."""
     from cosmu.ingest.alt_summary import record_ingest
 
     ts = datetime.now(UTC) - timedelta(days=days_ago)
@@ -33,7 +34,7 @@ def _seed_metric(store: Store, metric: str, value: float, *, provider: str = "te
         (provider, "BTCUSDT", metric, ts.isoformat(), ts.isoformat(), value, utcnow()),
     )
     with store.batch() as w:
-        record_ingest(w, provider, metric, n_rows=1, latest_available_at=ts.isoformat())
+        record_ingest(w, provider, metric, n_rows=1, latest_available_at=ts.isoformat(), latest_value=str(value))
 
 
 def _client(monkeypatch, store):
