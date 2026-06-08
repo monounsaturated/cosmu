@@ -6,7 +6,12 @@
 # read via align_asof (available_at ≤ bar t) and the return is strictly FUTURE, so ZERO look-ahead; PROPOSE-ONLY —
 # a surviving IC is a *candidate hypothesis*, NEVER an edge (the deterministic Gate + a real purged holdout is what
 # disposes; a raw correlation is not tradeable). This is the unbiased scanner that turns the data lake into ranked,
-# trial-counted hypotheses for `promote_cohort`; it never moves money and runs no LLM.
+# trial-counted hypotheses for `promote_cohort`; it never moves money and runs no LLM. TRACKING: pass a
+# CorrelationPersist (opt-in, default off so tests stay clean) and every ranked finding is written to
+# `correlation_findings` under one stamped run_id — so correlations are remembered + decay-tracked across runs, not
+# just printed. `run_correlation_sweep` / `--sweep` is the "find everything, track everything" front door: the FULL
+# grid (every enabled feature × the configured asset universe × a broad horizon grid), persisted, degrading
+# gracefully (a feature with no store data is an honest skip, never fabricated).
 
 from __future__ import annotations
 
@@ -166,25 +171,116 @@ def run_correlation_scan(store: Store, market: dict[str, list[Bar]], *,
 
 
 _DEFAULT_UNIVERSE = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT"]
+_SWEEP_HORIZONS = (1, 3, 5, 10, 20, 60)  # the broad horizon grid for the "find everything, track everything" run
 
 
-def _main() -> int:
-    """Run the scan against the configured store (prod Postgres on Modal/Railway, where the alt_data lives) and
-    print the strongest forward-return correlations + which survive BH-FDR. PROPOSE-ONLY — survivors feed the Gate."""
-    import os
+def _sweep_universe() -> list[str]:
+    """The full sweep asset universe, READ FROM CONFIG (reuses matrix_sweep_assets — the single configured asset
+    universe, so the operator widens the grid in one place with no scanner edit), falling back to the built-in
+    majors offline. Mirrors matrix_search._default_assets so the two sweeps visit the SAME universe."""
+    try:
+        from cosmu.config.settings import get_settings
 
+        cfg = get_settings()
+        if cfg.matrix_sweep_assets:
+            return list(cfg.matrix_sweep_assets)
+    except Exception:  # noqa: BLE001 — offline/test context: fall through to the built-in majors
+        pass
+    return list(_DEFAULT_UNIVERSE)
+
+
+def new_run_id(prefix: str = "corrscan") -> str:
+    """A unique, sortable run_id stamping every finding of ONE scan together (so a run is queryable as a unit and
+    runs are comparable over time for decay-tracking). UTC timestamp + a short random suffix; deterministic format,
+    not deterministic value (each run is its own row group, exactly like a matrix sweep)."""
+    import secrets
+    from datetime import UTC, datetime
+
+    return f"{prefix}-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(3)}"
+
+
+def run_correlation_sweep(*, assets: list[str] | None = None, horizons: tuple[int, ...] = _SWEEP_HORIZONS,
+                          fdr_q: float = 0.10, persist: bool = True, bars_limit: int = 1500,
+                          run_id: str | None = None) -> ScanReport:
+    """The "find everything, track everything" run: scan the FULL grid — EVERY enabled feature_registry feature ×
+    the configured asset universe × the broad horizon grid — for a PIT forward-return IC, BH-FDR over the whole
+    grid, and (opt-in, default ON for this front door) PERSIST every finding to `correlation_findings` under one
+    stamped run_id so the correlations are TRACKED across runs. PROPOSE-ONLY — survivors are candidate hypotheses
+    for the Gate, never edges. Degrades gracefully: a feature with no store data is an honest skip downstream
+    (scan_feature_asset returns empty), never fabricated; an asset whose bars fail to load is skipped. The same
+    honest non-overlapping stride-sampling + BH-FDR as the single scan."""
     from cosmu.config.settings import get_settings
     from cosmu.data.market import BinanceSpotOHLCVProvider
     from cosmu.knowledge.store import Store
 
     prov = BinanceSpotOHLCVProvider()
-    universe = os.environ.get("SCAN_UNIVERSE", ",".join(_DEFAULT_UNIVERSE)).split(",")
-    market = {s: prov.fetch_bars(s, "1d", limit=1500) for s in universe}
-    rep = run_correlation_scan(Store(get_settings()), market)
-    print(f"CORRELATION SCAN — {rep.n_tests} tests · {rep.n_survived_fdr} survived BH-FDR (q=0.10) · PROPOSE-ONLY (the Gate disposes)")
+    universe = assets or _sweep_universe()
+    market: dict[str, list[Bar]] = {}
+    for sym in universe:
+        try:
+            market[sym] = prov.fetch_bars(sym, "1d", limit=bars_limit)
+        except Exception:  # noqa: BLE001 — an unfetchable asset is an honest skip, never a fabricated series
+            continue
+
+    store = Store(get_settings())
+    persist_spec: "CorrelationPersist | None" = None
+    if persist:
+        from cosmu.master.correlation_ledger import CorrelationPersist
+
+        persist_spec = CorrelationPersist(store=store, run_id=run_id or new_run_id("sweep"), data_source="live")
+    return run_correlation_scan(store, market, horizons=horizons, fdr_q=fdr_q, persist=persist_spec)
+
+
+def _print_report(rep: ScanReport, header: str) -> None:
+    print(f"{header} — {rep.n_tests} tests · {rep.n_survived_fdr} survived BH-FDR (q=0.10) · PROPOSE-ONLY (the Gate disposes)")
     print(f"{'feature':28s} {'source':14s} {'asset':9s} {'h':>3s} {'IC':>8s} {'n':>5s} {'p':>8s}  FDR")
     for r in rep.results[:40]:
         print(f"  {r.feature[:26]:26s} {r.source[:12]:12s} {r.asset:9s} {r.horizon:>3d} {r.ic:>+8.4f} {r.n_obs:>5d} {r.p_value:>8.4f}  {'✓' if r.survived_fdr else ''}")
+
+
+def _main() -> int:
+    """Run the scan against the configured store (prod Postgres on Modal/Railway, where the alt_data lives) and
+    print the strongest forward-return correlations + which survive BH-FDR. PROPOSE-ONLY — survivors feed the Gate.
+
+    `--sweep` runs the FULL grid (every enabled feature × the configured asset universe × the broad horizon grid)
+    and PERSISTS every finding to `correlation_findings` under one stamped run_id — the "find everything, track
+    everything" run, mirroring `matrix_search --sweep`. CLI overrides: `--assets BTC,ETH`, `--horizons 1,5,20`,
+    `--no-persist`. The default (no `--sweep`) is the print-only majors scan and does NOT persist."""
+    import os
+    import sys
+
+    from cosmu.config.settings import get_settings
+    from cosmu.data.market import BinanceSpotOHLCVProvider
+    from cosmu.knowledge.store import Store
+
+    do_sweep = "--sweep" in sys.argv or os.environ.get("CORRELATION_SWEEP") == "1"
+    persist = "--no-persist" not in sys.argv and os.environ.get("CORRELATION_PERSIST", "1") == "1"
+
+    cli_assets: list[str] | None = None
+    cli_horizons: tuple[int, ...] | None = None
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if arg == "--assets" and i < len(sys.argv):
+            cli_assets = [a.strip() for a in sys.argv[i + 1].split(",") if a.strip()]
+        if arg == "--horizons" and i < len(sys.argv):
+            cli_horizons = tuple(int(h) for h in sys.argv[i + 1].split(",") if h.strip())
+
+    if do_sweep:
+        rep = run_correlation_sweep(
+            assets=cli_assets, horizons=cli_horizons or _SWEEP_HORIZONS, persist=persist,
+        )
+        _print_report(rep, "CORRELATION SWEEP (full grid · tracked)")
+        return 0
+
+    prov = BinanceSpotOHLCVProvider()
+    universe = cli_assets or os.environ.get("SCAN_UNIVERSE", ",".join(_DEFAULT_UNIVERSE)).split(",")
+    market = {s: prov.fetch_bars(s, "1d", limit=1500) for s in universe}
+    persist_spec: "CorrelationPersist | None" = None
+    if persist and "--persist" in sys.argv:  # the single scan persists ONLY when explicitly asked (--persist)
+        from cosmu.master.correlation_ledger import CorrelationPersist
+
+        persist_spec = CorrelationPersist(store=Store(get_settings()), run_id=new_run_id(), data_source="live")
+    rep = run_correlation_scan(Store(get_settings()), market, horizons=cli_horizons or (1, 5, 20), persist=persist_spec)
+    _print_report(rep, "CORRELATION SCAN")
     return 0
 
 

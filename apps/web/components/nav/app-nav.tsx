@@ -20,6 +20,7 @@ import {
   ListChecks,
   MoreHorizontal,
   Radio,
+  ScatterChart,
   SlidersHorizontal,
   Telescope,
   Terminal,
@@ -39,6 +40,7 @@ export const navItems: NavItem[] = [
   { href: "/strategies", label: "Strategies", desc: "Backtest · ranked & faceted", icon: ListChecks },
   { href: "/forward-test", label: "Simulation", desc: "Live data · no money", icon: LineChart },
   { href: "/verdicts", label: "Theories", desc: "Every theory tested · Gate verdict", icon: ClipboardCheck },
+  { href: "/correlations", label: "Correlations", desc: "Signal scan · IC · FDR findings", icon: ScatterChart },
   { href: "/explorer", label: "Explorer", desc: "Pick · chart · compare", icon: Telescope },
   { href: "/mind", label: "Mind", desc: "What the agent knows & learned", icon: Brain },
   { href: "/costs", label: "Costs", desc: "What is it costing?", icon: DollarSign }
@@ -57,7 +59,7 @@ type NavGroup = { label: string; hrefs: string[] };
 const NAV_GROUPS: NavGroup[] = [
   { label: "Operate", hrefs: ["/", "/console"] },
   { label: "Pipeline", hrefs: ["/lab", "/strategies", "/forward-test"] },
-  { label: "Knowledge", hrefs: ["/verdicts", "/explorer", "/mind", "/costs"] }
+  { label: "Knowledge", hrefs: ["/verdicts", "/correlations", "/explorer", "/mind", "/costs"] }
 ];
 
 const ITEM_BY_HREF = new Map(navItems.map((i) => [i.href, i]));
