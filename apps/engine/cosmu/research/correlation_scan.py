@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from cosmu.config.feature_registry import FEATURE_REGISTRY
 from cosmu.data.backtest import align_asof
@@ -19,6 +20,9 @@ from cosmu.data.market import Bar
 from cosmu.data.providers.store import PgAltDataStore, StoreBackedAltProvider
 from cosmu.knowledge.store import Store
 from cosmu.master.fdr import benjamini_hochberg
+
+if TYPE_CHECKING:
+    from cosmu.master.correlation_ledger import CorrelationPersist
 
 
 @dataclass(frozen=True)
@@ -130,10 +134,13 @@ def scan_universe(features: list[str] | None = None) -> list[tuple[str, str]]:
 
 def run_correlation_scan(store: Store, market: dict[str, list[Bar]], *,
                          horizons: tuple[int, ...] = (1, 5, 20), fdr_q: float = 0.10,
-                         features: list[str] | None = None) -> ScanReport:
+                         features: list[str] | None = None,
+                         persist: "CorrelationPersist | None" = None) -> ScanReport:
     """Scan EVERY enabled alt feature × asset × horizon for a PIT forward-return IC, then BH-FDR over the whole
     grid. Returns ranked results with survived_fdr flagged. PROPOSE-ONLY — survivors are candidate hypotheses for
-    the Gate, not edges. Deterministic for a fixed store + bars."""
+    the Gate, not edges. Deterministic for a fixed store + bars. When `persist` is given (opt-in, exactly like
+    promote_cohort opts into verdict_log), the ranked findings are TRACKED to `correlation_findings` best-effort —
+    a persist failure NEVER changes the returned report or breaks the scan."""
     provider = StoreBackedAltProvider(PgAltDataStore(store))
     feats = scan_universe(features)
     all_results: list[ICResult] = []
@@ -151,6 +158,10 @@ def run_correlation_scan(store: Store, market: dict[str, list[Bar]], *,
         for r, s in zip(all_results, mask, strict=True)
     ]
     flagged.sort(key=lambda r: abs(r.ic), reverse=True)
+    if persist is not None:
+        from cosmu.master.correlation_ledger import persist_findings  # lazy: keep the scan importable w/o the ledger
+
+        persist_findings(persist, flagged)  # best-effort + offline-safe — never raises, never alters the report
     return ScanReport(n_tests=len(flagged), n_survived_fdr=sum(1 for r in flagged if r.survived_fdr), results=flagged)
 
 
