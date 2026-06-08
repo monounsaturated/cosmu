@@ -28,6 +28,7 @@ import { FDR_Q, isNonCausal } from "@/components/correlations/correlation-bits";
 import { HeatmapLegend, IcHeatmap } from "@/components/correlations/ic-heatmap";
 import { FindingsTable } from "@/components/correlations/findings-table";
 import { DecayRail } from "@/components/correlations/decay-rail";
+import { CrossFeaturePairsPanel } from "@/components/correlations/cross-feature-pairs";
 
 export default async function CorrelationsPage() {
   const { correlations, connected } = await getCorrelations();
@@ -37,7 +38,10 @@ export default async function CorrelationsPage() {
   const survivors = findings.filter((f) => f.fdr_survived).length;
   const nonCausal = findings.filter((f) => isNonCausal(f.deflated_note)).length;
   const assetCount = new Set(findings.map((f) => f.asset)).size;
-  const featureCount = new Set(findings.map((f) => f.feature)).size;
+  // featureCount excludes pair features (A~B) — pairs are shown in their own panel below.
+  const pairFindings = findings.filter((f) => f.feature.includes("~"));
+  const singleFindings = findings.filter((f) => !f.feature.includes("~"));
+  const featureCount = new Set(singleFindings.map((f) => f.feature)).size;
   const scanDate = generated_at ? generated_at.slice(0, 10) : null;
 
   return (
@@ -108,7 +112,7 @@ export default async function CorrelationsPage() {
               label="Findings"
               value={findings.length.toLocaleString()}
               tone="iris"
-              hint={scanDate ? `last scan ${scanDate}` : "across all features"}
+              hint={scanDate ? `last scan ${scanDate}` : `${pairFindings.length > 0 ? `${pairFindings.length} cross-feature pairs · ` : ""}across all features`}
             />
             <MetricCard
               label="FDR survivors"
@@ -131,7 +135,8 @@ export default async function CorrelationsPage() {
           </section>
 
           {/* ── IC heatmap ──────────────────────────────────────────────────────────────────
-              Feature × asset, diverging color for the sign of the strongest-magnitude IC per pair. */}
+              Feature × asset, diverging color for the sign of the strongest-magnitude IC per pair.
+              Uses single-feature findings only (pair findings "A~B" are shown in their own panel). */}
           <Card>
             <CardContent className="space-y-3 p-4 sm:p-5">
               <div className="flex flex-wrap items-end justify-between gap-2">
@@ -143,12 +148,37 @@ export default async function CorrelationsPage() {
                 </div>
                 <HeatmapLegend />
               </div>
-              <IcHeatmap findings={findings} />
+              <IcHeatmap findings={singleFindings} />
+            </CardContent>
+          </Card>
+
+          {/* ── Cross-feature pairs ──────────────────────────────────────────────────────────
+              Which data sources move together — "crossing" findings encoded as "A~B" feature names.
+              Shows lag/lead, IC, FDR survival, and non-causal flags. Always rendered (honest empty
+              state when the crossing engine has not yet run). */}
+          <Card>
+            <CardContent className="space-y-4 p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div className="label-eyebrow text-iris-soft">Cross-feature pairs</div>
+                  <p className="mt-1 text-[12px] text-muted">
+                    Data sources that move together — the IC between feature A and feature B, not a
+                    price return. Lagged/lead shown plainly. Non-causal controls flagged. Propose-only.
+                  </p>
+                </div>
+                {pairFindings.length > 0 ? (
+                  <span className="shrink-0 rounded-full border border-iris/25 bg-iris/[0.08] px-2.5 py-0.5 text-[11px] font-medium text-iris-soft">
+                    {pairFindings.length.toLocaleString()} pair{pairFindings.length === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+              </div>
+              <CrossFeaturePairsPanel findings={findings} />
             </CardContent>
           </Card>
 
           {/* ── Findings table ──────────────────────────────────────────────────────────────
-              The dense, sortable/filterable core. FDR survivors highlighted; non-causal flagged. */}
+              The dense, sortable/filterable core. FDR survivors highlighted; non-causal flagged.
+              Shows all findings (single-feature + pairs) so nothing is hidden from the full ledger. */}
           <Card>
             <CardContent className="space-y-4 p-4 sm:p-5">
               <div>
