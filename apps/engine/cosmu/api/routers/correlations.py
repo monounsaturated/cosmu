@@ -18,7 +18,7 @@ from cosmu.api.models import (
     CorrelationStability,
     CorrelationStabilityPoint,
 )
-from cosmu.master.correlation_ledger import feature_history, latest_findings
+from cosmu.master.correlation_ledger import latest_findings
 
 router = APIRouter()
 
@@ -112,10 +112,20 @@ def _stability(rows: list[dict[str, Any]]) -> list[CorrelationStability]:
         if cur is None or abs(float(r["ic"])) > abs(float(cur["ic"])):
             rep[f] = r
     out: list[CorrelationStability] = []
+    # Batched history: ONE query + group in Python. The per-feature feature_history() loop was an N+1 — fine on
+    # the SQLite test store, but on prod Postgres each call is a network round-trip, so dozens of features hung
+    # the endpoint past its timeout. The bounded LIMIT keeps this cheap as runs accrue (stability is approximate).
+    hist_by_key: dict[tuple[str, str, int], list[dict[str, Any]]] = {}
+    for h in store.rows(
+        "SELECT run_id, ts, feature, asset, horizon, ic, fdr_survived FROM correlation_findings "
+        "ORDER BY ts ASC LIMIT 50000"
+    ):
+        key = (str(h["feature"]), str(h["asset"]), int(h["horizon"]))
+        hist_by_key.setdefault(key, []).append(h)
     for feature, r in rep.items():
         asset = str(r["asset"])
         horizon = int(r["horizon"])
-        hist_rows = feature_history(store, feature, asset=asset, horizon=horizon)
+        hist_rows = hist_by_key.get((feature, asset, horizon))
         if not hist_rows:  # shouldn't happen (the latest row IS in the table) but stay offline-safe.
             hist_rows = [r]
         points = [
@@ -169,7 +179,12 @@ def correlations() -> CorrelationsResponse:
     latest_run_id = str(recent[0]["run_id"])
     latest_rows = [r for r in recent if str(r["run_id"]) == latest_run_id]
     latest = [_finding(r) for r in latest_rows]
-    survivors = [f for f in latest if f.fdr_survived]
+    # Survivors are the SIGNAL — query them directly (survived_only) rather than subsetting the ts-limited
+    # `latest`: the FDR-survivors are spread through a big run and would otherwise fall outside the top-N window
+    # (a full sweep can persist >1k findings; the survivors are the few that matter).
+    survivor_rows = [r for r in latest_findings(store, limit=_LATEST_LIMIT, survived_only=True)
+                     if str(r["run_id"]) == latest_run_id]
+    survivors = [_finding(r) for r in survivor_rows]
     return CorrelationsResponse(
         latest_run_id=latest_run_id,
         latest=latest,
