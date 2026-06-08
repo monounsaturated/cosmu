@@ -7,9 +7,20 @@ from decimal import Decimal
 
 from cosmu.config import feature_registry
 from cosmu.config.feature_registry import FEATURE_REGISTRY, FeatureDefinition, feature_names
+from cosmu.config.settings import Settings
 from cosmu.data.market import Bar
+from cosmu.data.providers.store import AltDataPoint, PgAltDataStore
+from cosmu.knowledge.store import Store
+from cosmu.master.correlation_ledger import CorrelationPersist, feature_history, latest_findings
 from cosmu.research import correlation_scan
-from cosmu.research.correlation_scan import _forward_returns, scan_universe, spearman_ic
+from cosmu.research.correlation_scan import (
+    _forward_returns,
+    _sweep_universe,
+    new_run_id,
+    run_correlation_scan,
+    scan_universe,
+    spearman_ic,
+)
 
 
 def test_spearman_ic_perfect_and_noise():
@@ -78,3 +89,102 @@ def test_forward_returns_are_strictly_future_no_lookahead():
     assert fwd[bars[0].ts.isoformat()] == (102 / 100) - 1.0
     assert bars[-1].ts.isoformat() not in fwd and bars[-2].ts.isoformat() not in fwd
     assert len(fwd) == 8
+
+
+# ── persistence: the scan TRACKS its findings to the correlation ledger (opt-in, offline-safe) ────────────────
+
+def _store(tmp_path, name="cscan") -> Store:
+    return Store(Settings(database_url=f"sqlite:///{tmp_path}/{name}.sqlite3"))
+
+
+def _fixture_market_and_store(tmp_path):
+    """A tiny DETERMINISTIC offline fixture: 200 daily bars whose forward returns are a clean (deterministic)
+    function of a seeded market-wide `fear_greed` series, so the scan finds a strong, FDR-surviving IC with NO
+    network, NO LLM. fear_greed routes to provider 'alternative.me' / key 'MARKET' in the store-backed provider."""
+    store = _store(tmp_path)
+    t0 = datetime(2021, 1, 1, tzinfo=UTC)
+    bars: list[Bar] = []
+    points: list[AltDataPoint] = []
+    px = 100.0
+    for i in range(200):
+        ts = t0 + timedelta(days=i)
+        val = float((i * 37) % 101)  # pseudo-random but fully deterministic feature value
+        points.append(AltDataPoint(ts=ts, available_at=ts, value=val))
+        px *= 1.0 + (val - 50.0) / 5000.0  # next return is a deterministic function of the feature → strong IC
+        bars.append(Bar(ts=ts, open=Decimal("1"), high=Decimal("1"), low=Decimal("1"),
+                        close=Decimal(str(round(px, 6))), volume=Decimal("0")))
+    PgAltDataStore(store).append("alternative.me", "MARKET", "fear_greed", points)
+    return {"BTCUSDT": bars}, store
+
+
+def test_scan_persists_every_finding_to_the_ledger_and_is_re_readable(tmp_path):
+    # SCAN A TINY FIXTURE → assert findings persisted + re-readable (the core "track everything, never lie" path).
+    market, store = _fixture_market_and_store(tmp_path)
+    persist = CorrelationPersist(store=store, run_id="scan-run-1", data_source="fixture")
+    rep = run_correlation_scan(store, market, horizons=(1, 5), features=["fear_greed"], persist=persist)
+
+    assert rep.n_tests == 2 and rep.n_survived_fdr >= 1  # a real, deterministic, FDR-surviving correlation
+
+    # every ranked finding landed in correlation_findings, re-readable under the stamped run_id + fixture tag.
+    rows = latest_findings(store)
+    assert len(rows) == rep.n_tests
+    assert all(r["run_id"] == "scan-run-1" and r["data_source"] == "fixture" for r in rows)
+    assert {r["feature"] for r in rows} == {"fear_greed"}
+    assert {int(r["horizon"]) for r in rows} == {1, 5}
+
+    # the persisted IC matches the report (no fabrication, no rounding drift) — and is queryable as a tracked series.
+    by_h = {int(r.horizon): r.ic for r in rep.results}
+    hist1 = feature_history(store, "fear_greed", asset="BTCUSDT", horizon=1)
+    assert len(hist1) == 1 and abs(float(hist1[0]["ic"]) - by_h[1]) < 1e-9
+
+
+def test_scan_default_path_is_propose_only_and_persists_nothing(tmp_path):
+    # No CorrelationPersist passed → the scan never writes a row (persist is opt-in, so tests stay clean).
+    market, store = _fixture_market_and_store(tmp_path)
+    rep = run_correlation_scan(store, market, horizons=(1, 5), features=["fear_greed"])
+    assert rep.n_tests == 2  # the scan still runs + ranks
+    assert store.rows("SELECT COUNT(*) AS c FROM correlation_findings")[0]["c"] == 0  # but persisted nothing
+
+
+def test_scan_is_deterministic_for_a_fixed_fixture(tmp_path):
+    # The same fixture scanned twice yields identical ICs — the "machine that never lies" must be reproducible.
+    market_a, _ = _fixture_market_and_store(tmp_path)
+    market_b, _ = _fixture_market_and_store(tmp_path)
+    a = run_correlation_scan(_store(tmp_path, "a"), market_a, horizons=(1, 5), features=["fear_greed"])
+    b = run_correlation_scan(_store(tmp_path, "b"), market_b, horizons=(1, 5), features=["fear_greed"])
+    assert [(r.horizon, r.ic, r.n_obs, r.p_value) for r in a.results] == \
+           [(r.horizon, r.ic, r.n_obs, r.p_value) for r in b.results]
+
+
+def test_persist_failure_never_breaks_the_scan(tmp_path):
+    # Best-effort + offline-safe: a broken PERSIST store must NOT crash the scan — the report is returned unchanged.
+    # The scan reads its alt-data from the fixture store; only the (separate) persist store is broken.
+    market, scan_store = _fixture_market_and_store(tmp_path)
+
+    class _Broken(Store):
+        def batch(self):  # type: ignore[override]
+            raise RuntimeError("DB down")
+
+    broken = _Broken(Settings(database_url=f"sqlite:///{tmp_path}/broken.sqlite3"))
+    persist = CorrelationPersist(store=broken, run_id="x", data_source="fixture")
+    rep = run_correlation_scan(scan_store, market, horizons=(1, 5), features=["fear_greed"], persist=persist)
+    assert rep.n_tests == 2  # the scan completed + returned its ranked report despite the persist failure
+
+
+def test_sweep_universe_is_config_driven_with_an_offline_fallback(monkeypatch):
+    # The sweep visits the CONFIGURED asset universe (matrix_sweep_assets — one place to widen the grid).
+    uni = _sweep_universe()
+    assert isinstance(uni, list) and uni and all(isinstance(s, str) for s in uni)
+    # offline (settings unavailable) → built-in majors fallback, never an empty/fabricated universe.
+    import cosmu.research.correlation_scan as cs
+
+    def _boom():
+        raise RuntimeError("no settings offline")
+
+    monkeypatch.setattr("cosmu.config.settings.get_settings", _boom)
+    assert _sweep_universe() == list(cs._DEFAULT_UNIVERSE)
+
+
+def test_new_run_id_is_unique_and_prefixed():
+    a, b = new_run_id("sweep"), new_run_id("sweep")
+    assert a.startswith("sweep-") and b.startswith("sweep-") and a != b  # each run is its own tracked row group
