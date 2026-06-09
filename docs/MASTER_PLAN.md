@@ -22,7 +22,7 @@ The engine is **~85% real, deterministic, and honest.** Confirmed in code:
 
 ## 2. The real remaining gaps (this is the actual work)
 1. ~~**Forward-test maturity isn't surfaced.**~~ **SHIPPED**: `/forward-test` (Simulation) route shows per-strategy forward-return vs backtest + `live_ready` flag + `divergence_status` badge (#152/#153, 2026-06-07). The 30d advisory signal is now visible.
-2. **CI is manual-dispatch only.** GitHub Actions (`verify.yml`) is `workflow_dispatch`-only — OFF by default (we are not paying for it). The **local pre-push `pnpm verify` is the gate**; a skipped verify can ship a broken `main` since push = deploy. Re-enable PR-triggered CI only if branch protection is ever added.
+2. **CI is manual-dispatch only.** GitHub Actions (`verify.yml`) is `workflow_dispatch`-only — OFF by default (we are not paying for it). The **pre-push hook is the gate** (naming + contracts drift + engine tests + typecheck — `.githooks/pre-push`); bypassing it (`--no-verify`) can ship a broken `main` since push = deploy. Re-enable PR-triggered CI only if branch protection is ever added.
 3. **Authoring lacks adversarial disconfirmers.** Only ~6 hard-coded briefs; the gate culls junk but the author isn't structurally pushed to test anti-patterns.
 4. **Self-reinforcement of *logic* — primitive shipped, unproven.** The `/evolve-strategy` skill isolates a gate-passed signal, grafts it onto other assets, and recombines survivors into a new cohort for re-Gating. It can't fire yet because there are **0 honest-Gate survivors** to compound — it activates the moment the first edge clears.
 5. **Breadth not live**: xAI/Grok Twitter signal (key exists, source not wired), IBKR live execution (data-only), event/news *scoring*.
@@ -88,7 +88,7 @@ This table is the **source of truth for infra/cost**; an in-app **cost/infra vie
 
 ## 12. Roadmap (waves)
 **Wave 1 — foundations + highest integrity/ROI**
-- W1.1 ~~CI GitHub Action on PRs~~ **SUPERSEDED** — CI is now `workflow_dispatch`-only (OFF, not paying for Actions); the **local pre-push `pnpm verify` is the gate**. Re-enable PR-triggered CI only if branch protection is added.
+- W1.1 ~~CI GitHub Action on PRs~~ **SUPERSEDED** — CI is now `workflow_dispatch`-only (OFF, not paying for Actions); the **pre-push hook (naming + drift + engine tests + typecheck) is the gate**. Re-enable PR-triggered CI only if branch protection is added.
 - W1.2 Forward-test **maturity signal** (compute + surface ≥30d net-positive as *advisory* live-readiness; do NOT hard-block — human decides) — *engine · cloud · opus · PR*
 - W1.3 xAI/Grok **Twitter source + influencer scoring** (follow `/add-data-source`) — *engine · cloud · sonnet · worktree · PR*
 - W1.4 **Launch-live modal + dynamic fees + venue key-gating** (pick asset/venue, live fees, budget default $100, grey-out venues with no keys; prep crypto+equities) — *web+engine · cloud · sonnet · PR*

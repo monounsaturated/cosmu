@@ -19,6 +19,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# pandas is NOT an engine dependency (pyproject declares none) — it ships alongside pytrends on boxes that
+# ingest Google Trends. These tests only use it to build DataFrame-shaped fixtures, so on a box without it
+# the file SKIPS honestly instead of failing on an undeclared import.
+pytest.importorskip("pandas")
+
 from cosmu.data.sources.google_trends import GoogleTrendsSource, _TrendsPoint
 
 # ---------------------------------------------------------------------------

@@ -1,56 +1,84 @@
 #!/usr/bin/env sh
 #
-# pre-push — fast local gate (seconds, not minutes).
+# pre-push — THE gate. Push = deploy (Railway/Vercel build straight from main), and CI's verify.yml is
+# manual-dispatch only, so this hook is the only thing standing between a broken tree and production.
 #
-# Runs ONLY the two cheap checks that catch the most common local mistakes:
-#   1. Naming convention check  (scripts/check_naming.py)
-#   2. Contracts drift check    (regenerate contracts, fail if git diff shows drift)
+# Runs, in order (fail = push blocked):
+#   1. Naming convention check     (scripts/check_naming.py)            — seconds
+#   2. Contracts drift check       (regenerate, fail on git diff)       — seconds
+#   3. Engine test suite           (pytest, parallel when xdist exists) — minutes
+#   4. Web/contracts typecheck     (pnpm typecheck)                     — ~a minute
 #
-# Heavy verification (typecheck, next build, full pytest) runs via the LOCAL
-# `pnpm verify` — that is the authoritative gate. GitHub Actions (verify.yml) is
-# workflow_dispatch-only (manual, OFF — we are not paying for it); it does NOT
-# auto-run on push. This hook is a fast local smoke test on top of `pnpm verify`.
+# Honest degradation: a missing toolchain (no pytest / no node_modules) SKIPS that step with a loud
+# warning instead of blocking work in minimal environments — but a FAILING step always blocks.
 #
-# Enable:      git config core.hooksPath .githooks   (auto-run by `pnpm install`)
-# Bypass once: git push --no-verify
+# In a hurry (small doc change, deploy watching the build):
+#   COSMU_PREPUSH=fast git push     # steps 1–2 only
+#   git push --no-verify            # skip everything (you own the deploy)
 #
+# Enable: git config core.hooksPath .githooks   (auto-run by `pnpm install`)
+
 set -u
 
-echo "[pre-push] running fast local checks (naming + contracts drift)..."
-echo "[pre-push] heavy verify (typecheck / build / pytest) → run 'pnpm verify' locally (the gate; CI is manual-dispatch only)."
+fast_mode="${COSMU_PREPUSH:-full}"
 
-# ── 1. Naming check ───────────────────────────────────────────────────────────
 if ! command -v python3 >/dev/null 2>&1; then
   echo "[pre-push] ERROR: python3 not found on PATH." >&2
   echo "[pre-push]        install Python 3, or bypass intentionally with: git push --no-verify" >&2
   exit 1
 fi
 
-echo "[pre-push] 1/2 naming check..."
+# ── 1. Naming check ───────────────────────────────────────────────────────────
+echo "[pre-push] 1/4 naming check..."
 if ! python3 scripts/check_naming.py; then
   echo "[pre-push] BLOCKED: naming check failed. Fix naming, then push." >&2
-  echo "[pre-push]          to bypass intentionally: git push --no-verify" >&2
   exit 1
 fi
 
 # ── 2. Contracts drift check ──────────────────────────────────────────────────
-# Regenerate contracts in-place (the script falls back to committed openapi.json
-# if Python deps aren't installed, so this always runs fast with no pip needed).
-# Then check whether the working tree changed — if it did, the committed contracts
-# are stale and we block the push.
-echo "[pre-push] 2/2 contracts drift check..."
+echo "[pre-push] 2/4 contracts drift check..."
 if ! python3 scripts/generate_contracts.py 2>/dev/null; then
   echo "[pre-push] WARNING: generate_contracts.py exited non-zero; skipping drift check." >&2
 else
   if ! git diff --quiet packages/contracts-ts/; then
     echo "[pre-push] BLOCKED: contracts/generated types are out of date." >&2
     echo "[pre-push]          run 'pnpm contracts:generate' and commit the result, then push." >&2
-    echo "[pre-push]          to bypass intentionally: git push --no-verify" >&2
-    # Restore the files so the working tree isn't left dirty
     git checkout -- packages/contracts-ts/ 2>/dev/null || true
     exit 1
   fi
 fi
 
-echo "[pre-push] fast checks passed — allowing push. Run 'pnpm verify' locally for the full gate (CI is manual-dispatch only)."
+if [ "$fast_mode" = "fast" ]; then
+  echo "[pre-push] COSMU_PREPUSH=fast — skipping engine tests + typecheck (you own this deploy)."
+  exit 0
+fi
+
+# ── 3. Engine test suite ──────────────────────────────────────────────────────
+if python3 -c "import pytest" >/dev/null 2>&1; then
+  echo "[pre-push] 3/4 engine tests (pytest)..."
+  if python3 -c "import xdist" >/dev/null 2>&1; then
+    PYTEST_ARGS="-q -n auto"
+  else
+    PYTEST_ARGS="-q"
+  fi
+  if ! PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests $PYTEST_ARGS; then
+    echo "[pre-push] BLOCKED: engine tests failed. Push = deploy — fix them, then push." >&2
+    exit 1
+  fi
+else
+  echo "[pre-push] WARNING: pytest not importable — engine tests SKIPPED (install: pip install -e 'apps/engine[dev]')." >&2
+fi
+
+# ── 4. Typecheck ──────────────────────────────────────────────────────────────
+if command -v pnpm >/dev/null 2>&1 && [ -d node_modules ]; then
+  echo "[pre-push] 4/4 typecheck (contracts-ts + web)..."
+  if ! pnpm typecheck; then
+    echo "[pre-push] BLOCKED: typecheck failed. Push = deploy — fix it, then push." >&2
+    exit 1
+  fi
+else
+  echo "[pre-push] WARNING: pnpm/node_modules missing — typecheck SKIPPED (run 'pnpm install')." >&2
+fi
+
+echo "[pre-push] gate passed — allowing push."
 exit 0

@@ -3,8 +3,9 @@
  * Enable the repo's git hooks by pointing core.hooksPath at ./.githooks.
  *
  * Wired into the `prepare` lifecycle, so a plain `pnpm install` turns on the
- * pre-push `pnpm verify` gate for every developer — no husky, no extra
- * dependency (the lightest hook setup that works with pnpm).
+ * pre-push gate (naming + contracts drift + engine tests + typecheck — see
+ * .githooks/pre-push; push = deploy, so this is THE gate) for every
+ * developer — no husky, no extra dependency.
  *
  * Safe to run anywhere: it no-ops when there is no .git directory (Railway /
  * Vercel build images, CI checkouts, tarball installs), so it can never fail an
@@ -27,7 +28,7 @@ if (!existsSync(path.join(root, ".git"))) {
 
 try {
   execFileSync("git", ["config", "core.hooksPath", hooksPath], { cwd: root, stdio: "inherit" });
-  console.log(`[setup-hooks] core.hooksPath -> ${hooksPath} (pre-push 'pnpm verify' gate enabled).`);
+  console.log(`[setup-hooks] core.hooksPath -> ${hooksPath} (pre-push gate enabled: naming + drift + engine tests + typecheck).`);
 } catch (error) {
   // Never break install/deploy just because hooks couldn't be configured.
   const msg = error instanceof Error ? error.message : String(error);

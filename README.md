@@ -48,14 +48,18 @@ pnpm verify:fast    # skip next build — lint + typecheck + engine tests only (
 pnpm verify:remote  # manually dispatch the GitHub Actions 'verify' run → tail it
 ```
 
-**The local `pnpm verify` (run by the pre-push hook) is the gate.** CI is `workflow_dispatch`-only —
-it does NOT auto-run on PRs or pushes (we are not paying for GitHub Actions). `verify:remote` is an
-optional CI-offload path that **manually** dispatches the run (`gh workflow run`) so the heavy
-`next build` runs on GitHub Actions instead of your RAM; it does not fire on push. Requires `gh`
-CLI authenticated (`gh auth login`).
+**The pre-push hook (`.githooks/pre-push`) is the gate** — it runs naming + contracts-drift +
+the engine test suite + typecheck and BLOCKS the push on any failure (push = deploy, and CI does
+not auto-run). It skips a step honestly (loud warning) only when that toolchain isn't installed.
+Escape hatches when you own the risk: `COSMU_PREPUSH=fast git push` (naming + drift only) or
+`git push --no-verify`. The full `pnpm verify` adds the production `next build` on top — run it
+before pushing anything that touches the web app.
+
+CI (`verify.yml`) is `workflow_dispatch`-only — it does NOT auto-run on PRs or pushes (we are not
+paying for GitHub Actions). `verify:remote` manually dispatches it (`gh` CLI required) so the heavy
+`next build` runs on GitHub instead of your RAM.
 
 `verify:fast` is the tight feedback loop — skips the slow Next.js production build.
-Use it during active development; run the full `pnpm verify` before pushing.
 
 ## Deploy
 
@@ -69,7 +73,7 @@ That's the only trigger — never also run `railway up` / `vercel deploy` (doubl
 - **Contracts** — `@cosmu/contracts-ts`, generated from the engine OpenAPI (never hand-typed)
 - **Data** — Postgres / Supabase · **Heavy compute** — Modal (scale-to-zero backtests/ML/sweeps)
 - **LLM** — OpenRouter (free `:free` tier by default; xAI fallback) · proposals only, gate is deterministic
-- **CI** — GitHub Actions (`verify.yml`) is **`workflow_dispatch`-only** (manual, OFF by default — we are not paying for it); the **local pre-push `pnpm verify` is the gate**
+- **CI** — GitHub Actions (`verify.yml`) is **`workflow_dispatch`-only** (manual, OFF by default — we are not paying for it); the **pre-push hook (naming + drift + engine tests + typecheck) is the gate**
 
 ## Docs
 
