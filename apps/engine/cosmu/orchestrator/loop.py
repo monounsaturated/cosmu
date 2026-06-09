@@ -154,13 +154,15 @@ def fund_tracks_from_survivors(
     track_by_id = {vid: (track, symbol, venue_id) for vid, track, symbol, venue_id in triples}
     fundable = {v.version_id for v in select_tracks([t for _, t, _, _ in triples]) if v.funded}
 
-    # A track already holding an open sim position is NOT re-opened: re-funding it every tick would average a
-    # fresh same-bar entry into the basis (entry==mark → unrealized 0) and reset its forward-test clock. Held
-    # tracks accrue honest P&L via mark_tracks() instead; only NEW survivors open here.
+    # A track that has EVER held a sim position is NOT re-opened here: re-funding a held track every tick would
+    # average a fresh same-bar entry into the basis and reset its forward-test clock, and re-funding a track the
+    # forward-test EXECUTOR closed would overwrite its strategy's own verdict with a static long. The funder
+    # funds each survivor ONCE; from then on the executor (orchestrator/forward_step.py) owns every entry/exit
+    # by the track's own signals, and mark_tracks() accrues the honest P&L.
     already_funded = {
         r["strategy_version_id"]
         for r in store.rows(
-            "SELECT DISTINCT strategy_version_id FROM positions WHERE CAST(qty AS REAL) != 0 AND strategy_version_id IS NOT NULL"
+            "SELECT DISTINCT strategy_version_id FROM positions WHERE strategy_version_id IS NOT NULL"
         )
     }
 
@@ -401,15 +403,21 @@ def _funding_rate_asof(store: Store, symbol: str) -> Decimal | None:
 
 
 def _main(argv: list[str] | None = None) -> int:
-    """Railway cron entrypoint for the FORWARD-TEST CLOCK: re-mark EVERY held sim position on the real prod store
-    against the latest REAL close, routed by asset class (crypto → Binance, equity/ETF → Yahoo total-return) so
-    crypto AND equity tracks (GEM, the TAA fleet) accrue P&L. `python3 -m cosmu.orchestrator.loop`."""
+    """Railway cron entrypoint for the FORWARD-TEST CLOCK: first the EXECUTOR (forward_step.step_tracks — each
+    gate-lane track's OWN spec/params decide exits and re-entries through the one order path, sim-only), then
+    the MARK (re-mark every held sim position against the latest REAL close, routed by asset class — crypto →
+    Binance, equity/ETF → Yahoo total-return). Step-then-mark so the snapshot reflects post-trade state.
+    `python3 -m cosmu.orchestrator.loop`."""
     import argparse
 
     from cosmu.config.settings import Settings
+    from cosmu.orchestrator.forward_step import step_tracks
 
-    argparse.ArgumentParser(description="Mark held sim positions to the latest real close, asset-aware (forward-test clock; sim-only, no orders).").parse_args(argv)
+    argparse.ArgumentParser(description="Run the forward-test executor (each track's own exits/entries, sim-only) then mark held positions to the latest real close, asset-aware.").parse_args(argv)
     store = Store(Settings())
+    step = step_tracks(store)
+    print(f"FORWARD-TEST STEP — managed={step.managed} closed={step.closed} opened={step.opened} "
+          f"skipped(deploy/unmanaged)={step.skipped_deploy}/{step.skipped_unmanaged}")
     snap = mark_tracks(store)
     print(f"SIM MARK-TO-MARKET — equity={float(snap['equity']):.2f} pnl={float(snap['pnl']):+.2f} drawdown={float(snap['drawdown']):.4f}")
     return 0

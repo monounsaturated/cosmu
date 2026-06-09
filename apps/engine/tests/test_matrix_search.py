@@ -217,6 +217,52 @@ def test_persist_true_writes_gate_verdicts_row(monkeypatch, tmp_path):
     assert isinstance(r, MatrixResult)
 
 
+def test_alt_join_is_wired_into_the_matrix_screen(monkeypatch):
+    """REGRESSION (audit 2026-06): run_matrix_cell used to omit alt_by_symbol from the backtest call, so every
+    funding/social/news/dvol spec read None features and silently never traded — the sweep only ever searched
+    bar-TA. The cell must build the SAME per-spec PIT alt join the Finder uses and hand it to the backtest."""
+    import cosmu.research.matrix_search as ms
+
+    _patch(monkeypatch, {"BTCUSDT": _make_bars(300)}, [_make_spec()])
+    sentinel = {"BTCUSDT": {"funding_rate": {"2022-01-01T00:00:00+00:00": 0.0001}}}
+    seen: dict = {}
+    monkeypatch.setattr(ms, "_matrix_alt_store", lambda: object())
+    monkeypatch.setattr(ms, "build_alt_by_symbol", lambda store, spec, market: sentinel)
+    real = ms.run_strategy_backtest_detailed
+
+    def spy(spec, params, market, **kwargs):
+        seen["alt_by_symbol"] = kwargs.get("alt_by_symbol")
+        return real(spec, params, market, **kwargs)
+
+    monkeypatch.setattr(ms, "run_strategy_backtest_detailed", spy)
+
+    ms.run_matrix_cell("BTCUSDT", "1d", persist=False)
+
+    assert seen["alt_by_symbol"] is sentinel
+
+
+def test_alt_join_degrades_to_price_only_when_no_store(monkeypatch):
+    """No reachable alt store (offline) → the screen still runs, price-only (alt_by_symbol=None) — an honest
+    degradation, never a crashed cell."""
+    import cosmu.research.matrix_search as ms
+
+    _patch(monkeypatch, {"BTCUSDT": _make_bars(300)}, [_make_spec()])
+    seen: dict = {}
+    monkeypatch.setattr(ms, "_matrix_alt_store", lambda: None)
+    real = ms.run_strategy_backtest_detailed
+
+    def spy(spec, params, market, **kwargs):
+        seen["alt_by_symbol"] = kwargs.get("alt_by_symbol")
+        return real(spec, params, market, **kwargs)
+
+    monkeypatch.setattr(ms, "run_strategy_backtest_detailed", spy)
+
+    r = ms.run_matrix_cell("BTCUSDT", "1d", persist=False)
+
+    assert seen["alt_by_symbol"] is None
+    assert isinstance(r, MatrixResult)
+
+
 def test_malformed_spec_in_inbox_is_skipped_not_crashed(monkeypatch, tmp_path):
     """A malformed JSON file in the inbox is silently skipped; valid specs still run."""
     import cosmu.research.matrix_search as ms

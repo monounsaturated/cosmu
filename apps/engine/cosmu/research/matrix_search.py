@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from cosmu.config.settings import Settings, get_settings
+from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
 from cosmu.data.backtest import run_strategy_backtest_detailed
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
 from cosmu.knowledge.store import Store
@@ -68,6 +69,20 @@ def load_bars(asset: str, timeframe: str) -> list[Bar]:
     return load_tr_bars(asset)  # equity total-return daily
 
 
+def _matrix_alt_store() -> object | None:
+    """The REAL central alt-data store (Postgres in prod/Modal, JSONL locally) — NOT the throwaway trials store
+    `run_matrix_cell` builds for FDR bookkeeping. Resolved from the live settings the same way the Finder does,
+    so a funding/social/news spec is joined identically wherever it is screened. None when no store is reachable
+    (offline) → those specs honestly never trade on this slice instead of silently screening price-only."""
+    try:
+        cfg = get_settings()
+        if cfg.database_url.startswith(("postgres://", "postgresql://")):
+            return resolve_alt_store(cfg, Store(cfg))
+        return resolve_alt_store(cfg, None)  # JSONL path ignores the store argument
+    except Exception:  # noqa: BLE001 — unreachable store → no alt join this cell, never a crashed sweep
+        return None
+
+
 def run_matrix_cell(asset: str, timeframe: str, *, persist: bool = True) -> MatrixResult:
     bars = load_bars(asset, timeframe)
     market = {asset: bars}
@@ -75,13 +90,20 @@ def run_matrix_cell(asset: str, timeframe: str, *, persist: bool = True) -> Matr
     fee_bps = default_catalog().venue("binance").taker_fee_bps
     tmp = tempfile.mkdtemp(prefix="cosmu-matrix-")
     store = Store(Settings(database_url=f"sqlite:///{tmp}/m.sqlite3", openrouter_api_key=None))
+    alt_store = _matrix_alt_store()
 
     candidates: list[Candidate] = []
     n_traded = 0
     if len(bars) >= 60:
         for spec in specs:
             try:
-                res = run_strategy_backtest_detailed(spec, _resolve_params(spec), market, fee_bps=fee_bps)
+                # The SAME point-in-time alt join the Finder uses (lab/finder.py) — without it every
+                # funding/social/news/dvol spec reads None features and silently never trades, so the
+                # sweep only ever searches bar-TA. None (no alt features / no store) → price-only, unchanged.
+                alt = build_alt_by_symbol(alt_store, spec, market) if alt_store is not None else None
+                res = run_strategy_backtest_detailed(
+                    spec, _resolve_params(spec), market, fee_bps=fee_bps, alt_by_symbol=alt
+                )
             except Exception:  # noqa: BLE001 — a spec that can't run on this slice is an honest skip
                 continue
             m = res.metrics

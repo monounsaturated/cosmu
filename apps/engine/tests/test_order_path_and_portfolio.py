@@ -149,6 +149,55 @@ def test_averaging_down_after_loss_is_rejected(tmp_path):
     assert "averaging_down" in out[0].issues or "martingale_after_loss" in out[0].issues
 
 
+def test_sim_fill_pays_slippage_adverse_both_ways(tmp_path):
+    """A SIM fill crosses the half-spread the ADVERSE way at the same 5 bps base the gate-lane backtest
+    charges: a buy fills ABOVE the mark, a sell BELOW — so forward-test P&L can never be flattered relative
+    to the screen that funded the track. The recorded execution price is the slipped fill, not the mark."""
+    store = _store(tmp_path)
+    pf, _ = _run(store, [_ok_intent()], live_enabled=False)
+    pos = pf.position("btc-usdt-binance", "sim", strategy_version_id="sv1")
+    assert pos.avg_price == Decimal("65000") * Decimal("1.0005")  # buy fills 5 bps ABOVE the 65000 mark
+
+    out = execute_orders(
+        [_ok_intent(side=-1, qty=Decimal("0.05"), stop_loss=None, take_profit=None, reduce_only=True)],
+        live_enabled=False, kill_switch=False, adapter=BinanceSpotExecutionAdapter(client=None, mode="disabled"),
+        store=store, portfolio=pf, risk=RiskSettings(), catalog=CATALOG,
+    )
+    assert out[0].accepted
+    row = store.row("SELECT price FROM executions WHERE side = 'sell'")
+    assert Decimal(str(row["price"])) == Decimal("65000") * Decimal("0.9995")  # sell fills 5 bps BELOW
+    pos = pf.position("btc-usdt-binance", "sim", strategy_version_id="sv1")
+    assert pos.qty == 0
+    # Round trip at a flat mark loses exactly spread + fees — the honest cost floor, never a free flip.
+    assert pos.realized_pnl < 0
+
+
+def test_reduce_only_close_is_exempt_from_entry_checks_but_must_reduce(tmp_path):
+    """A reduce-only exit needs no brackets and must clear even when entry-shaped limits would block it;
+    but an order flagged reduce_only that does NOT genuinely reduce an existing position is rejected."""
+    store = _store(tmp_path)
+    pf, _ = _run(store, [_ok_intent()], live_enabled=False)
+
+    # No position to reduce on ETH → rejected (reduce_only can never OPEN exposure).
+    out = execute_orders(
+        [_ok_intent(symbol="ETHUSDT", side=-1, qty=Decimal("1"), price=Decimal("3000"),
+                    stop_loss=None, take_profit=None, reduce_only=True)],
+        live_enabled=False, kill_switch=False, adapter=BinanceSpotExecutionAdapter(client=None, mode="disabled"),
+        store=store, portfolio=pf, risk=RiskSettings(), catalog=CATALOG,
+    )
+    assert out[0].accepted is False
+    assert "reduce_only_not_reducing" in out[0].issues
+
+    # A genuine close clears WITHOUT brackets (a normal sell without SL/TP would trip missing_sl_tp).
+    out = execute_orders(
+        [_ok_intent(side=-1, qty=Decimal("0.05"), stop_loss=None, take_profit=None, reduce_only=True)],
+        live_enabled=False, kill_switch=False, adapter=BinanceSpotExecutionAdapter(client=None, mode="disabled"),
+        store=store, portfolio=pf, risk=RiskSettings(), catalog=CATALOG,
+    )
+    assert out[0].accepted is True
+    assert pf.position("btc-usdt-binance", "sim", strategy_version_id="sv1").qty == 0
+
+
 def test_portfolio_pnl_drawdown_and_daily_loss_auto_disarm(tmp_path):
     store = _store(tmp_path)
     pf = Portfolio(store, bankroll=Decimal("100000"), daily_loss_cap=Decimal("250"))
