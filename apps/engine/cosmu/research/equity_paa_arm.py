@@ -32,6 +32,7 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_paa as paa
+from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
 
 STRATEGY_NAME = "Protective Asset Allocation (Keller PAA1 top-6)"  # UNIQUE — does not collide with GEM/VAA/GTAA
@@ -239,6 +240,15 @@ def arm(store: Store | None = None) -> dict:
     # capital is deployed — a partially-defensive PAA track must NEVER mark an undeployed remainder as a phantom loss
     # (the same partial-investment fix as Faber GTAA's SHY-cash bucket). Idempotent: an asset already held is left as-is.
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
+    # ROTATION CLOSE — when PAA's monthly target weights change (breadth shifts assets in/out of the top-6, or the
+    # protective fraction moves to/from IEF) any held leg with no positive target weight is stale; close it FIRST
+    # (latest REAL close, same per-side fee as entries) or it stays open under the new book: double capital deployed,
+    # forward P&L polluted. Must run BEFORE the per-asset held-checks below read positions.
+    rotation = close_stale_legs(store, portfolio, version_id=version_id,
+                                keep_symbols={s for s, w in weights.items() if w > 0},
+                                price_fn=_last_equity_close, fee_per_side_bps=IBKR_ETF_BPS_PER_SIDE)
+    if rotation["closed"]:
+        print(f"  ROTATION: closed stale leg(s) {[c['symbol'] for c in rotation['closed']]} — target weights {weights}.")
     fills: list[dict] = []
     deferred: list[str] = []
     marks: dict[str, Decimal] = {}
@@ -279,7 +289,7 @@ def arm(store: Store | None = None) -> dict:
     print("closes on every run; watch it accrue on GET /leaderboard (forward_age_days, live_ready) and GET /overview.")
     print("Run the clock with:  python3 -m cosmu.research.equity_paa_arm --mark")
     return {"armed": True, "version_id": version_id, "weights": weights, "fills": fills,
-            "deferred": deferred, "equity": float(snap["equity"])}
+            "deferred": deferred, "equity": float(snap["equity"]), "rotation": rotation}
 
 
 def mark(store: Store | None = None) -> dict:

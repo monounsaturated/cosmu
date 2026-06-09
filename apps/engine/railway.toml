@@ -41,3 +41,11 @@ command = "python3 -m cosmu.master.scheduler"
 [[cron]]
 schedule = "10 22 * * *"
 command = "python3 -m cosmu.orchestrator.loop"
+
+# ROTATION RE-ARM: re-run the deploy-lane arm fleet daily after the clock. Each arm() is idempotent (a held
+# target leg is reused, the clock origin never resets) and now closes stale legs first (arm_rotation), so this
+# is what makes the documented rotation strategies (GEM, GTAA, VAA, PAA, DAA, ...) actually ROTATE unattended
+# when their monthly signals flip — before this cron, rotation only happened when the operator re-armed by hand.
+[[cron]]
+schedule = "40 22 * * *"
+command = "python3 -m cosmu.research.arm_fleet"
