@@ -141,3 +141,20 @@ def test_router_resolves_asset_class_for_equity_and_crypto():
     assert router.provider_for("BTCUSDT", "binance") is crypto
     # unknown instrument falls back to the venue kind (ibkr is an equity venue) — never crashes.
     assert router.provider_for("NVDA", "ibkr") is equity
+
+
+def test_order_path_equity_position_routes_by_instrument_not_ledger_venue(tmp_path):
+    """REGRESSION: positions opened through the ONE order path persist venue='sim' (a fill-ledger label, not a
+    catalog venue). The clock must route by the INSTRUMENT's real venue — an equity survivor funded by the
+    funder (spy-ibkr @ venue='sim') previously fell through to the crypto leg and never marked."""
+    store = _store(tmp_path)
+    pf = Portfolio(store, bankroll=store.settings.sim_bankroll)
+    # Exactly what fund_tracks_from_survivors leaves behind for an equity survivor: real instrument, venue='sim'.
+    _open(pf, vid="eq", instrument_id="spy-ibkr", symbol="SPY", venue="sim", qty=Decimal("2.5"), price=Decimal("400"))
+
+    crypto = _FakeProvider({})            # crypto leg knows nothing — routing there would skip the mark
+    equity = _FakeProvider({"SPY": 440.0})
+    snap = mark_tracks(store, router=PricingRouter(default_catalog(), crypto=crypto, equity=equity))
+
+    assert "SPY" in equity.asked and "SPY" not in crypto.asked
+    assert float(snap["equity"]) > float(store.settings.sim_bankroll)  # the leg accrued (+10%), not flat

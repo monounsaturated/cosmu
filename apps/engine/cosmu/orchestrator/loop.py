@@ -29,6 +29,17 @@ from cosmu.spine.venue import VenueCatalog, default_catalog
 _FUNDING_VENUE_BY_ASSET_CLASS: dict[str, str] = {"crypto": "binance", "equity": "ibkr"}
 
 
+def _instrument_venue(catalog: VenueCatalog, instrument_id: str) -> str | None:
+    """The catalog venue an instrument trades on, looked up by instrument id. Positions opened through the
+    ONE order path persist venue='sim' — a fill-ledger label, NOT a catalog venue — so pricing/routing must
+    recover the real venue from the instrument (an equity survivor funded via the order path would otherwise
+    route to the crypto leg and never mark). None for an unknown instrument (the caller skips honestly)."""
+    for inst in catalog.instruments:
+        if inst.id == instrument_id:
+            return inst.venue_id
+    return None
+
+
 def _venue_symbols(catalog: VenueCatalog, venue_id: str, asset_class: str) -> list[str]:
     """Symbols that actually exist as instruments at `venue_id` for `asset_class` (so a sim fill can resolve an
     instrument). A track only funds tradable instruments — no fabricated symbols."""
@@ -307,7 +318,11 @@ def mark_tracks(
     positions = [p for p in portfolio.positions() if p.qty != 0]
     marks: dict[str, Decimal] = {}
     for p in positions:
-        price = pricer.last_price(p.symbol, p.venue)
+        # Route by the instrument's REAL catalog venue: order-path fills persist venue='sim' (a ledger label),
+        # which the router can't price — an equity survivor funded via the order path would silently route to
+        # the crypto leg and never mark. Arm-opened positions carry the real venue already; both resolve here.
+        venue = _instrument_venue(cat, p.instrument_id) or p.venue
+        price = pricer.last_price(p.symbol, venue)
         if price > 0:
             marks[p.instrument_id] = price
     # TWO-LEG NEUTRAL tracks (DERIVATIVES_PLAN P0.3): pair a held long-spot leg with its short-perp leg, accrue one

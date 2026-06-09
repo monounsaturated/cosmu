@@ -30,6 +30,7 @@ from cosmu.knowledge.store import Store
 from cosmu.master.drift import monitor_drift
 from cosmu.master.execution import IntendedOrder, execute_orders
 from cosmu.master.portfolio import Portfolio, PositionView
+from cosmu.orchestrator.loop import PricingRouter, _instrument_venue
 from cosmu.spine.venue import VenueCatalog, default_catalog
 from cosmu.strategy.spec import StrategySpec
 
@@ -65,15 +66,6 @@ class _Managed:
     symbol: str
     venue_id: str
     position: PositionView | None  # None ⇒ flat (re-entry candidate)
-
-
-def _real_venue_id(cat: VenueCatalog, instrument_id: str) -> str | None:
-    """The catalog venue a held instrument actually trades on, looked up by instrument id. None when the
-    instrument is unknown — that position can't be priced or ordered honestly, so the caller skips it."""
-    for inst in cat.instruments:
-        if inst.id == instrument_id:
-            return inst.venue_id
-    return None
 
 
 def _load_spec_params(store: Store, version_id: str) -> tuple[StrategySpec, dict[str, float]] | None:
@@ -189,7 +181,7 @@ def _managed_tracks(store: Store, portfolio: Portfolio, cat: VenueCatalog) -> tu
         if getattr(spec, "direction", 1) == -1:
             report.skipped_unmanaged += 1  # funded tracks are long spot; a short spec can't be managed here
             continue
-        venue_id = _real_venue_id(cat, instrument_id)
+        venue_id = _instrument_venue(cat, instrument_id)
         if venue_id is None:
             report.skipped_unmanaged += 1  # unknown instrument → can't price/order it honestly
             continue
@@ -208,8 +200,6 @@ def step_tracks(
     latest real bars and act — close a held position on its stop/take/time/signal exit, open a flat track when
     its entry signal fires (drift-defunded tracks excepted). Every fill goes through the one order path (fees,
     sim slippage, gauntlet, audit). Run BEFORE mark_tracks so the marked snapshot reflects post-trade state."""
-    from cosmu.orchestrator.loop import PricingRouter  # local import — loop imports nothing from here
-
     cat = catalog or default_catalog()
     pricer = router or PricingRouter(cat)
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)

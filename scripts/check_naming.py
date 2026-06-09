@@ -27,8 +27,11 @@ BANNED = [
     r"\bSleeve\(",
     r"\bdef rotate\b",
     r"kelly_fraction",
-    r"\bsleeves\b",          # the dead table name
-    r"\ballocations\b",      # the dead table name
+    # The dead TABLE names — banned in SQL/table contexts only. The bare words stay legal in prose:
+    # Faber GTAA's strategy literally allocates across "sleeves" (comments/prints/docstrings), and a
+    # word-boundary ban on common English made the guard cry wolf on honest domain language.
+    r"(?i:\b(from|join|into|update|table)\s+sleeves\b)",
+    r"(?i:\b(from|join|into|update|table)\s+allocations\b)",
     r"sleeve_opened",
     r"sleeve_defunded",
     r"reset_paper_state",
