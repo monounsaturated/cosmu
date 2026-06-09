@@ -18,7 +18,7 @@ The single source of truth for product terms. **DB tables, API fields, UI labels
 | Term | One-line definition |
 |------|---------------------|
 | **Backtest** | Discovery + screening. The research brain, Strategy Finder, and the Gate run Walk-Forward OOS + holdout on historical data — no real money, no live prices. Formerly called "Lab". |
-| **Simulation** | Validation on live data. Each gate-passed Version gets its own standalone SIM track (default **$1,000**, `sim_track_capital`) that marks-to-market on real closes 24/7. A **≥ 30 forward-day net-of-fee proof** is the recommended live-readiness signal (advisory — the operator decides; the 5 interlocks are the hard gate). Formerly called "Forward-test" and (earlier) "Paper". |
+| **Simulation** | Validation on live data. Each gate-passed Version gets its own standalone SIM track (default **$1,000**, `sim_track_capital`). The daily clock first **EXECUTES** each gate-lane track's own spec/params on the latest real bars — its stop / take / time-stop / signal-exit closes the position, its entry signal re-enters (`orchestrator/forward_step.py`, sim fills with real fees + slippage) — then **marks** every held position to the real close. Deploy-lane rotation arms rotate via their own arm modules (stale legs close first). A **≥ 30 forward-day net-of-fee proof** is the recommended live-readiness signal (advisory — the operator decides; the 5 interlocks are the hard gate). Formerly called "Forward-test" and (earlier) "Paper". |
 | **Live** | Real money. Off by default; only gate-passing Versions promote, and only when the live toggle is armed. Live bots are launched manually with dedicated capital (1-button + confirm). |
 
 ## Judging
