@@ -192,12 +192,17 @@ class EngineFacade:
             },
         )
         if verdict.passed:
+            # The track is seeded at the STANDARDIZED standalone size (sim_track_capital — what the funder will
+            # actually deploy), NOT this run's internal $100k sim bankroll. The forward clock recomputes
+            # return_pct as marked_value / starting_capital, so a $100k denominator under a $1k funded position
+            # would read every spine track as ~-99% forever. Same convention as finder/arms.
+            track_capital = self.store.settings.sim_track_capital
             self.store.insert(
                 "tracks",
                 {
                     "strategy_version_id": version_id,
-                    "starting_capital": "100000",
-                    "equity": str(equity.quantize(Decimal("0.01"))),
+                    "starting_capital": str(track_capital),
+                    "equity": str((track_capital * (Decimal("1") + net_return)).quantize(Decimal("0.01"))),
                     "return_pct": str((net_return * Decimal("100")).quantize(Decimal("0.01"))),
                     "updated_at": utcnow(),
                 },
