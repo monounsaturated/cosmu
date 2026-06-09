@@ -11,8 +11,7 @@
 
 import { useState, useTransition } from "react";
 import { Check, Inbox, PlugZap, X } from "lucide-react";
-import type { Recommendation } from "@cosmu/contracts-ts";
-import type { ApproveResult, DismissResult } from "@/app/autonomy-contracts";
+import type { Recommendation, RecommendationActionResponse } from "@cosmu/contracts-ts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/honest-state";
@@ -50,7 +49,7 @@ export function NeedsYouInbox({
         const res = await engineFetchTimeout(`/recommendations/${rec.id}/${kind}`, { method: "POST" });
         if (!res.ok) throw new Error("engine unavailable");
         if (kind === "approve") {
-          const data = (await res.json()) as ApproveResult;
+          const data = (await res.json()) as RecommendationActionResponse;
           if (!data.ok) {
             setItems(prev);
             setNote(data.reason ?? "The engine could not approve this recommendation.");
@@ -61,7 +60,7 @@ export function NeedsYouInbox({
             ...r
           ]);
         } else {
-          const data = (await res.json()) as DismissResult;
+          const data = (await res.json()) as RecommendationActionResponse;
           if (!data.ok) {
             setItems(prev);
             setNote("The engine could not dismiss this recommendation.");

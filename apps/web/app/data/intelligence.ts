@@ -1,86 +1,12 @@
+import type { DataSource, FunnelStats, IntelligenceResponse } from "@cosmu/contracts-ts";
 import { getJson } from "./client";
 
 // GET /intelligence — system intelligence: "is the machine getting smarter?" Strategy funnel,
 // gate efficiency trend, memory depth, regime coverage, data freshness, tick history, lineage.
-export interface FunnelStats {
-  authored: number;
-  screened: number;
-  gate_passed: number;
-  funded: number;
-  live: number;
-  killed: number;
-}
+// All shapes come from the generated @cosmu/contracts-ts — never hand-typed.
 
-export interface GateEfficiency {
-  current: number;
-  trend: number[];
-  improving: boolean;
-}
-
-export interface MemoryDepth {
-  dead_ends: number;
-  winners: number;
-  skills: number;
-  total: number;
-}
-
-export interface RegimeCell {
-  regime: string;
-  trend: string;
-  vol: string;
-  strategies: number;
-}
-
-export interface RegimeCoverage {
-  grid: RegimeCell[];
-  covered: number;
-  total: number;
-  by_label: Record<string, number>;
-}
-
-export interface DataSource {
-  source: string;
-  last_at: string | null;
-  points: number;
-}
-
-export interface TickDetail {
-  authored: number;
-  passed: number;
-  funded: number;
-}
-
-export interface TickStats {
-  total: number;
-  last_at: string | null;
-  avg_survivors_per_tick: number;
-  total_authored: number;
-  total_survivors: number;
-  recent: TickDetail[];
-}
-
-export interface LineageEntry {
-  origin?: string;
-  operator?: string;
-  total: number;
-  passed: number;
-  rate: number;
-}
-
-export interface LineageStats {
-  by_origin: LineageEntry[];
-  by_operator: LineageEntry[];
-}
-
-export interface IntelligenceResponse {
-  funnel: FunnelStats;
-  gate_efficiency: GateEfficiency;
-  memory: MemoryDepth;
-  regime_coverage: RegimeCoverage;
-  data_freshness: DataSource[];
-  ticks: TickStats;
-  lineage: LineageStats;
-}
+// Re-exported so consumers keep importing these from "@/app/data" like every other surface type.
+export type { DataSource, FunnelStats, IntelligenceResponse };
 
 const emptyIntelligence: IntelligenceResponse = {
   funnel: { authored: 0, screened: 0, gate_passed: 0, funded: 0, live: 0, killed: 0 },

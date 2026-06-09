@@ -2,8 +2,10 @@
 
 // module: Autonomy status panel — the COMMAND CENTER for the autonomous machine the human oversees.
 // Plain language: is it RUNNING or PAUSED, what it last did, what it will do next, cycles run, live
-// on/off. Controls: Pause / Resume (POST /autonomy/pause|resume) and "Run a cycle now" (POST
-// /autonomy/tick) which shows the bounded cycle's result.
+// on/off. Controls: Pause / Resume (POST /autonomy/pause|resume) and "Run a cycle now" — POST
+// /autonomy/tick returns 202 with a job id (the cycle runs in the background on the engine so the
+// gateway never times out); we poll GET /autonomy/tick/{job_id} and show the bounded cycle's result
+// when it lands. All shapes come from the generated @cosmu/contracts-ts — never hand-typed.
 //
 // PRINCIPLES: this panel only REPORTS + sends pause/resume/tick. It never moves money — the
 // deterministic Gate/scorer disposes, out of any LLM path, and the human arms live separately.
@@ -13,12 +15,23 @@
 
 import { useState, useTransition } from "react";
 import { Activity, Pause, Play, PlugZap, Zap } from "lucide-react";
-import type { AutonomyStatus, AutonomyTickResult, PauseResumeResult } from "@/app/autonomy-contracts";
+import type {
+  AutonomyPauseResponse,
+  AutonomyStatusResponse,
+  AutonomyTickAcceptedResponse,
+  AutonomyTickJobResponse,
+  AutonomyTickResponse
+} from "@cosmu/contracts-ts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MoneyState, moneyMode } from "@/components/ui/money-state";
 import { ENGINE_CONFIGURED, engineFetchTimeout } from "@/lib/engine";
+
+// Tick-job polling cadence. A bounded cycle usually lands well inside this window; on timeout we
+// say so honestly (the job keeps running server-side) rather than holding the button forever.
+const TICK_POLL_INTERVAL_MS = 3000;
+const TICK_POLL_MAX_ATTEMPTS = 60; // ≈3 minutes
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "never";
@@ -35,7 +48,7 @@ function relativeTime(iso: string | null): string {
 }
 
 // Plain-language state badge. Honest when not connected: "unknown", never "running".
-function stateBadge(status: AutonomyStatus, connected: boolean) {
+function stateBadge(status: AutonomyStatusResponse, connected: boolean) {
   if (!connected) return { variant: "muted" as const, label: "status unknown" };
   if (status.paused) return { variant: "warn" as const, label: "Paused" };
   if (status.running) return { variant: "up" as const, label: "Running" };
@@ -48,14 +61,14 @@ export function AutonomyPanel({
   configured,
   compact = false
 }: {
-  initial: AutonomyStatus;
+  initial: AutonomyStatusResponse;
   connected: boolean;
   configured: boolean;
   compact?: boolean;
 }) {
-  const [status, setStatus] = useState<AutonomyStatus>(initial);
+  const [status, setStatus] = useState<AutonomyStatusResponse>(initial);
   const [connected, setConnected] = useState(initialConnected);
-  const [tick, setTick] = useState<AutonomyTickResult | null>(null);
+  const [tick, setTick] = useState<AutonomyTickResponse | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pendingToggle, startToggle] = useTransition();
   const [pendingTick, startTick] = useTransition();
@@ -68,7 +81,7 @@ export function AutonomyPanel({
     try {
       const res = await engineFetchTimeout("/autonomy/status");
       if (!res.ok) throw new Error("engine unavailable");
-      setStatus((await res.json()) as AutonomyStatus);
+      setStatus((await res.json()) as AutonomyStatusResponse);
       setConnected(true);
     } catch {
       setConnected(false);
@@ -90,7 +103,7 @@ export function AutonomyPanel({
       try {
         const res = await engineFetchTimeout(`/autonomy/${paused ? "pause" : "resume"}`, { method: "POST" });
         if (!res.ok) throw new Error("engine unavailable");
-        const data = (await res.json()) as PauseResumeResult;
+        const data = (await res.json()) as AutonomyPauseResponse;
         setStatus((s) => ({ ...s, paused: data.paused }));
         setConnected(true);
         await refresh();
@@ -112,10 +125,30 @@ export function AutonomyPanel({
         return;
       }
       try {
+        // POST /autonomy/tick is async on the engine (202 + job id, so the gateway never times
+        // out); poll GET /autonomy/tick/{job_id} until the bounded cycle reports done or error.
         const res = await engineFetchTimeout("/autonomy/tick", { method: "POST" });
         if (!res.ok) throw new Error("engine unavailable");
-        setTick((await res.json()) as AutonomyTickResult);
+        const accepted = (await res.json()) as AutonomyTickAcceptedResponse;
         setConnected(true);
+        for (let attempt = 0; attempt < TICK_POLL_MAX_ATTEMPTS; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, TICK_POLL_INTERVAL_MS));
+          const poll = await engineFetchTimeout(`/autonomy/tick/${accepted.job_id}`);
+          if (!poll.ok) throw new Error("engine unavailable");
+          const job = (await poll.json()) as AutonomyTickJobResponse;
+          if (job.status === "done" && job.result) {
+            setTick(job.result);
+            await refresh();
+            return;
+          }
+          if (job.status === "error") {
+            setNote(job.error ?? "The cycle failed on the engine.");
+            await refresh();
+            return;
+          }
+        }
+        // Honest timeout: the cycle keeps running server-side; the ledger remains the durable record.
+        setNote("The cycle is still running on the engine — its counts will land in the ledger when it finishes.");
         await refresh();
       } catch {
         setConnected(false);
