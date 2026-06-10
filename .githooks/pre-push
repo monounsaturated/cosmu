@@ -54,7 +54,10 @@ if [ "$fast_mode" = "fast" ]; then
 fi
 
 # ── 3. Engine test suite ──────────────────────────────────────────────────────
-if python3 -c "import pytest" >/dev/null 2>&1; then
+# Pre-flight the WHOLE toolchain, not just pytest: an interpreter with pytest but without the engine's deps
+# (pydantic/fastapi/...) would "fail" collection with hundreds of import errors — that's a missing toolchain
+# (skip loudly), not a red suite. A genuinely failing test on a working toolchain still blocks.
+if PYTHONPATH=apps/engine python3 -c "import pytest, cosmu.config.settings" >/dev/null 2>&1; then
   echo "[pre-push] 3/4 engine tests (pytest)..."
   if python3 -c "import xdist" >/dev/null 2>&1; then
     PYTEST_ARGS="-q -n auto"
