@@ -28,6 +28,7 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_faber_gtaa as gtaa
+from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
 from cosmu.config.settings import get_settings
 
@@ -240,6 +241,17 @@ def arm(store: Store | None = None) -> dict:
     # Open / confirm the held SIM positions in each currently-invested sleeve (equal-weight 1/5 each) at the latest
     # REAL closes. SIM only — live stays OFF. Idempotent: a sleeve already held is left as-is.
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
+    # ROTATION CLOSE — when a sleeve rolls below its 10m SMA it leaves the invested set (and vice versa); close every
+    # held leg that is neither currently invested nor the SHY-cash bucket FIRST (latest REAL close, same per-side fee
+    # as entries) or the stale sleeve stays open under the new one: double capital deployed, forward P&L polluted.
+    # The keep-set is the FULL current target: invested sleeves + the cash bucket (deployed only when some sleeve is
+    # out). Must run BEFORE the per-sleeve held-checks below read positions.
+    keep = set(invested) | ({gtaa.CASH} if len(gtaa.SLEEVES) - len(invested) > 0 else set())
+    rotation = close_stale_legs(store, portfolio, version_id=version_id, keep_symbols=keep,
+                                price_fn=_last_equity_close, fee_per_side_bps=IBKR_ETF_BPS_PER_SIDE)
+    if rotation["closed"]:
+        print(f"  ROTATION: closed stale leg(s) {[c['symbol'] for c in rotation['closed']]} — target is now "
+              f"{sorted(keep)}.")
     sleeve_capital = (TRACK_CAPITAL * Decimal(str(gtaa.SLEEVE_WEIGHT))).quantize(Decimal("0.01"))
     fills: list[dict] = []
     deferred: list[str] = []
@@ -305,7 +317,7 @@ def arm(store: Store | None = None) -> dict:
     print("closes on every run; watch it accrue on GET /leaderboard (forward_age_days, live_ready) and GET /overview.")
     print("Run the clock with:  python3 -m cosmu.research.equity_faber_gtaa_arm --mark")
     return {"armed": True, "version_id": version_id, "invested": invested, "fills": fills,
-            "deferred": deferred, "equity": float(snap["equity"])}
+            "deferred": deferred, "equity": float(snap["equity"]), "rotation": rotation}
 
 
 def mark(store: Store | None = None) -> dict:

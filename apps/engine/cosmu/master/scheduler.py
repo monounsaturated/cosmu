@@ -398,18 +398,19 @@ def _main(argv: list[str] | None = None) -> int:
     throwaway temp DB or synthetic fixture. Use --offline for a self-contained demo (temp sqlite, edge-bearing
     fixture, no network/keys) when running locally without a DB.
 
-    SCHEDULE TOGGLE: the Railway cron fires this unconditionally, but the tick only runs when
-    AUTONOMY_CRON_ENABLED=1. Any other value (or absence) → the process exits 0 immediately so the cron
-    entry can stay in railway.toml without spending compute. Flip the Railway var to enable/disable instantly
-    without a deploy. Default: OFF (safe — no surprise live-like behaviour on first deploy).
-    LIVE STAYS OFF regardless: run_tick() never arms live; this guard is purely a cost/cadence knob."""
+    SCHEDULE TOGGLE: the Railway cron fires this unconditionally; set AUTONOMY_CRON_ENABLED=0 on the service
+    to skip instantly without a deploy. Default: ON — the autonomous research loop IS the product (audit
+    2026-06: with this defaulted off, the only things running unattended were ingest and marking). Safe to
+    default on because the tick is SIM-only by invariant (run_tick() never arms live), it is bounded (one
+    cycle per cron fire, never a daemon), authoring degrades to the deterministic template when no LLM key is
+    set, and the ledger's pause flag (`autonomy_paused`) still stops it. This guard is a cost/cadence knob."""
     import argparse
     import os
     import tempfile
 
-    enabled = os.environ.get("AUTONOMY_CRON_ENABLED", "0").strip().lower()
-    if enabled not in ("1", "true", "yes"):
-        print("AUTONOMY_CRON_ENABLED != 1 — scheduled tick skipped (set AUTONOMY_CRON_ENABLED=1 on Railway to enable)")
+    enabled = os.environ.get("AUTONOMY_CRON_ENABLED", "1").strip().lower()
+    if enabled in ("0", "false", "no"):
+        print("AUTONOMY_CRON_ENABLED=0 — scheduled tick skipped (unset it or set 1 on Railway to enable)")
         return 0
 
     parser = argparse.ArgumentParser(description="Run ONE bounded autonomous master tick (cron-able, sim-only, never arms live).")

@@ -24,7 +24,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeader } from "@/components/ui/section";
 import { MetricCard } from "@/components/ui/viz";
 import { NotConnected } from "@/components/ui/honest-state";
-import { FDR_Q, isNonCausal } from "@/components/correlations/correlation-bits";
+import { FDR_Q } from "@/components/correlations/correlation-bits";
 import { HeatmapLegend, IcHeatmap } from "@/components/correlations/ic-heatmap";
 import { FindingsTable } from "@/components/correlations/findings-table";
 import { DecayRail } from "@/components/correlations/decay-rail";
@@ -32,17 +32,21 @@ import { CrossFeaturePairsPanel } from "@/components/correlations/cross-feature-
 
 export default async function CorrelationsPage() {
   const { correlations, connected } = await getCorrelations();
-  const { findings, tracked, generated_at } = correlations;
+  // Generated-contract shape: `latest` is the most-recent run's findings, `survivors` the BH-FDR
+  // subset (queried directly so survivors outside the top-N window still count), `stability` the
+  // per-feature IC-across-runs series the decay rail draws.
+  const { latest: findings, stability } = correlations;
 
   const sources = Array.from(new Set(findings.map((f) => f.source))).sort();
-  const survivors = findings.filter((f) => f.fdr_survived).length;
-  const nonCausal = findings.filter((f) => isNonCausal(f.deflated_note)).length;
+  const survivors = correlations.survivors.length;
+  const nonCausal = findings.filter((f) => f.non_causal).length;
   const assetCount = new Set(findings.map((f) => f.asset)).size;
   // featureCount excludes pair features (A~B) — pairs are shown in their own panel below.
   const pairFindings = findings.filter((f) => f.feature.includes("~"));
   const singleFindings = findings.filter((f) => !f.feature.includes("~"));
   const featureCount = new Set(singleFindings.map((f) => f.feature)).size;
-  const scanDate = generated_at ? generated_at.slice(0, 10) : null;
+  // latest_findings is newest-first, so the first row's ts dates the latest scan.
+  const scanDate = findings[0]?.ts ? findings[0].ts.slice(0, 10) : null;
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-5 px-4 py-6 sm:px-5 sm:py-7 lg:px-7">
@@ -193,7 +197,7 @@ export default async function CorrelationsPage() {
 
           {/* ── Decay rail ──────────────────────────────────────────────────────────────────
               Per-tracked-correlation IC sparklines: stable, strengthening, or decaying over runs. */}
-          {tracked.length > 0 ? (
+          {stability.length > 0 ? (
             <Card>
               <CardContent className="space-y-4 p-4 sm:p-5">
                 <div>
@@ -203,7 +207,7 @@ export default async function CorrelationsPage() {
                     the tell a single scan can&apos;t show — the honest counterweight to a one-shot number.
                   </p>
                 </div>
-                <DecayRail tracked={tracked} />
+                <DecayRail stability={stability} />
               </CardContent>
             </Card>
           ) : null}

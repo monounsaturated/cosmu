@@ -1,6 +1,19 @@
+import type { AutonomyStatusResponse } from "@cosmu/contracts-ts";
 import type { PositionsResponse, LiveVenuesResponse } from "@/components/live/contracts";
-import { EMPTY_AUTONOMY_STATUS, type AutonomyStatus } from "@/app/autonomy-contracts";
 import { getJson } from "./client";
+
+// Structurally-empty, honest default. running:false + paused:false reads correctly as "no machine
+// activity to show", never as a fabricated running state.
+const emptyAutonomyStatus: AutonomyStatusResponse = {
+  running: false,
+  paused: false,
+  live_enabled: false,
+  cycles_run: 0,
+  last_tick_at: null,
+  last_action: "",
+  next_action: "",
+  last_summary: { authored: 0, gated_passed: 0, funded: 0, recommendations: 0 }
+};
 
 const emptyPositions: PositionsResponse = {
   armed: false,
@@ -16,8 +29,8 @@ const emptyVenues: LiveVenuesResponse = { jurisdiction: "", global_cap: 0, total
 // running/paused, live on/off, cycles run, what it last did + will do next, and the last cycle's
 // counts. `connected:false` renders an honest "machine status unknown" state — never a fake running
 // machine. The deterministic Gate/scorer still disposes; this status only reports, never decides.
-export async function getAutonomyStatus(): Promise<{ status: AutonomyStatus; connected: boolean }> {
-  const { data, connected } = await getJson("/autonomy/status", EMPTY_AUTONOMY_STATUS);
+export async function getAutonomyStatus(): Promise<{ status: AutonomyStatusResponse; connected: boolean }> {
+  const { data, connected } = await getJson("/autonomy/status", emptyAutonomyStatus);
   return { status: data, connected };
 }
 

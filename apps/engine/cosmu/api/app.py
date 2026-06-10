@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hmac
 import sys as _sys
 import types as _types
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from cosmu.api import _shared as _shared_mod
 from cosmu.api._lifespan import lifespan
@@ -63,8 +65,23 @@ app.add_middleware(
 )
 
 
-# NOTE: no API auth — this is a single-user INTERNAL tool. The Next.js proxy still routes browser→engine
-# server-side (good for CORS + hiding the engine URL), but the engine enforces no shared secret.
+# API AUTH — the shared-secret gate docs/KEYS.md documents. When API_SECRET_KEY is set (production), every
+# route except /health (the platform healthcheck) requires a matching `x-api-key` header — the Next.js proxy
+# injects it server-side, so the secret never reaches a browser and nobody else can drive the control plane
+# (toggle live, launch, override forward tests). Unset (local dev / tests) → the gate is a no-op, exactly as
+# documented. Reads settings through the _shared seam at REQUEST time so the test-injection path (writes to
+# cosmu.api.app.settings fan out below) governs auth too. OPTIONS passes: CORS preflights carry no headers.
+_AUTH_EXEMPT_PATHS = frozenset({"/health"})
+
+
+@app.middleware("http")
+async def _require_api_key(request: Request, call_next):
+    secret = getattr(_shared_mod.settings, "api_secret_key", None)
+    if secret and request.method != "OPTIONS" and request.url.path not in _AUTH_EXEMPT_PATHS:
+        presented = request.headers.get("x-api-key") or ""
+        if not hmac.compare_digest(presented, secret):
+            return JSONResponse(status_code=401, content={"detail": "missing or invalid x-api-key"})
+    return await call_next(request)
 
 # One APIRouter per URL prefix. Order is irrelevant to behavior (no overlapping paths) and to the generated
 # OpenAPI schema (contracts are emitted with sorted keys), but grouped here for readability.

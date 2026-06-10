@@ -444,12 +444,16 @@ class FarmLoop:
             },
         )
         if passed:
-            equity = Decimal("100000") * (Decimal("1") + metrics.oos_return)
+            # Seed at the STANDARDIZED standalone track size (sim_track_capital — what the funder deploys),
+            # never the $100k pool: the forward clock recomputes return_pct as marked_value / starting_capital,
+            # so a $100k denominator under a $1k funded position reads ~-99% forever. Same as finder/arms.
+            track_capital = self.settings.sim_track_capital
+            equity = track_capital * (Decimal("1") + metrics.oos_return)
             b.insert(
                 "tracks",
                 {
                     "strategy_version_id": version_id,
-                    "starting_capital": "100000",
+                    "starting_capital": str(track_capital),
                     "equity": str(equity.quantize(Decimal("0.01"))),
                     "return_pct": str((metrics.oos_return * Decimal("100")).quantize(Decimal("0.01"))),
                     "updated_at": utcnow(),

@@ -21,6 +21,12 @@ class OrderIntent(BaseModel):
     conviction: Decimal
     sizing_basis: Literal["equity_vol_conviction"]
     data_fresh: bool = True
+    # A reduce-only order CLOSES (part of) an existing position and can never open or grow exposure — the
+    # forward-test executor's exit leg. The gauntlet verifies it genuinely reduces (see validate_order_full)
+    # and then EXEMPTS it from the entry-shaped checks (brackets, caps, kill-switch): risk checks exist to stop
+    # ADDING risk, and an order that strictly reduces exposure must never be trapped behind them (a tripped
+    # kill-switch that also blocked closes would lock in the very losses it exists to stop).
+    reduce_only: bool = False
 
     @property
     def notional(self) -> Decimal:
@@ -53,8 +59,8 @@ def validate_order(order: OrderIntent, venue: Venue, instrument: Instrument, ris
     issues: list[str] = []
     if not order.data_fresh:
         issues.append("stale_data")
-    if order.stop_loss is None or order.take_profit is None:
-        issues.append("missing_sl_tp")
+    if (order.stop_loss is None or order.take_profit is None) and not order.reduce_only:
+        issues.append("missing_sl_tp")  # a close carries no brackets — it IS the bracket firing
     if order.sizing_basis != "equity_vol_conviction":
         issues.append("non_memoryless_sizing")
     if order.notional < instrument.min_notional or order.notional < venue.min_notional:
@@ -85,6 +91,20 @@ def validate_order_full(
     losses — a prior loss can only BLOCK a trade (no averaging down), never enlarge the next one."""
     base = validate_order(order, venue, instrument, risk)
     issues = list(base.issues)
+
+    if order.reduce_only:
+        # A reduce-only order must GENUINELY reduce: an opposite-side fill against an existing position, no
+        # larger than what is held. Verified structurally so the exemptions below can never open exposure.
+        held = state.existing_qty
+        reduces = (
+            (order.side == "sell" and held > 0 and order.qty <= held)
+            or (order.side == "buy" and held < 0 and order.qty <= -held)
+        )
+        if not reduces:
+            issues.append("reduce_only_not_reducing")
+        # Exposure-adding checks are SKIPPED for a genuine close: blocking an exit behind caps, the
+        # kill-switch, or the daily-loss disarm would trap losing positions open — the opposite of safety.
+        return RiskDecision(accepted=not issues, issues=issues)
 
     if state.open_notional + order.notional > risk.global_max_notional:
         issues.append("global_cap")

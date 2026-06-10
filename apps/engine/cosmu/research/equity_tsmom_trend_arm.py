@@ -29,6 +29,7 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_tsmom_trend as tsm
+from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
 from cosmu.config.settings import get_settings
 
@@ -217,6 +218,15 @@ def arm(store: Store | None = None) -> dict:
 
     # Open / confirm the held SIM basket: one position per currently-longed ETF at 1/N of capital, latest REAL close.
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
+    # ROTATION CLOSE — when a sleeve's trailing-12m return flips negative it leaves the long set; close every held leg
+    # not in the CURRENT longs FIRST (latest REAL close, same per-side fee as entries) or the stale sleeve stays open
+    # under the new basket: double capital deployed, forward P&L polluted. This arm deploys NO cash sleeve (the
+    # non-long fraction stays idle), so the keep-set is exactly the current longs. Must run BEFORE the per-sleeve
+    # held-checks below read positions.
+    rotation = close_stale_legs(store, portfolio, version_id=version_id, keep_symbols=set(longs_now),
+                                price_fn=_last_equity_close, fee_per_side_bps=IBKR_ETF_BPS_PER_SIDE)
+    if rotation["closed"]:
+        print(f"ROTATION: closed stale leg(s) {[c['symbol'] for c in rotation['closed']]} — current longs {longs_now}.")
     fills: list[dict] = []
     deferred: list[str] = []
     marks: dict[str, Decimal] = {}
@@ -258,7 +268,7 @@ def arm(store: Store | None = None) -> dict:
     print("on every run; watch it accrue on GET /leaderboard (forward_age_days, live_ready) and GET /overview.")
     print("Run the clock with:  python3 -m cosmu.research.equity_tsmom_trend_arm --mark")
     return {"armed": True, "version_id": version_id, "longs": longs_now, "fills": fills, "deferred": deferred,
-            "equity": float(snap["equity"])}
+            "equity": float(snap["equity"]), "rotation": rotation}
 
 
 def mark(store: Store | None = None) -> dict:

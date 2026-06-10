@@ -32,7 +32,6 @@ import {
   fmtN,
   fmtP,
   IcPill,
-  isNonCausal,
   NonCausalFlag
 } from "./correlation-bits";
 
@@ -70,7 +69,7 @@ function sortValue(f: CorrelationFinding, key: SortKey): number {
 // the FDR/non-causal status. Cards over a grid — scannable, dense, honest.
 function PairCard({ finding }: { finding: CorrelationFinding }) {
   const pair = parsePair(finding.feature)!; // guaranteed by caller
-  const nonCausal = isNonCausal(finding.deflated_note);
+  const nonCausal = finding.non_causal;
   const survived = finding.fdr_survived;
 
   return (
@@ -158,7 +157,7 @@ export function CrossFeaturePairsPanel({ findings }: { findings: CorrelationFind
     [pairFindings]
   );
   const nonCausalCount = useMemo(
-    () => pairFindings.filter((f) => isNonCausal(f.deflated_note)).length,
+    () => pairFindings.filter((f) => f.non_causal).length,
     [pairFindings]
   );
 

@@ -1,6 +1,7 @@
-# API tests for the read-only GET /settings/keys inventory (no API auth — this is an internal tool).
-# No network, no real keys, no lifespan: point the module store at a temp sqlite DB and assert the
-# endpoint reports configured-vs-not honestly and NEVER echoes a secret value.
+# API tests for the read-only GET /settings/keys inventory AND the shared-secret auth gate (the
+# docs/KEYS.md contract: API_SECRET_KEY set → every route except /health requires a matching x-api-key;
+# unset → open, local-dev only). No network, no real keys, no lifespan: point the module store at a temp
+# sqlite DB and assert the endpoint reports configured-vs-not honestly and NEVER echoes a secret value.
 
 from __future__ import annotations
 
@@ -28,10 +29,22 @@ def test_health_ok(tmp_path, monkeypatch):
     assert resp.json()["service"] == "cosmu-engine"
 
 
-def test_settings_keys_open_no_auth(tmp_path, monkeypatch):
-    # No API auth: the keys inventory is reachable without any header.
+def test_settings_keys_open_when_no_secret_configured(tmp_path, monkeypatch):
+    # No API_SECRET_KEY (local dev) → the gate is a no-op, exactly as docs/KEYS.md documents.
     client = _client(tmp_path, monkeypatch)
     assert client.get("/settings/keys").status_code == 200
+
+
+def test_secret_set_requires_matching_header_on_every_route_but_health(tmp_path, monkeypatch):
+    # API_SECRET_KEY set (production) → no header / wrong header = 401 on control-plane routes; the
+    # platform healthcheck stays open; the right header unlocks. This is what stops anyone with the
+    # engine URL from POSTing /toggle/live or /live/launch.
+    client = _client(tmp_path, monkeypatch, secret="s3cret-key-very-long")
+    assert client.get("/settings/keys").status_code == 401
+    assert client.get("/settings/keys", headers={"x-api-key": "wrong"}).status_code == 401
+    assert client.post("/toggle/live").status_code == 401
+    assert client.get("/health").status_code == 200
+    assert client.get("/settings/keys", headers={"x-api-key": "s3cret-key-very-long"}).status_code == 200
 
 
 _KEY_ROW_FIELDS = {"key", "env_var", "configured", "unlocks", "requirement", "cost", "where"}
@@ -39,7 +52,7 @@ _KEY_ROW_FIELDS = {"key", "env_var", "configured", "unlocks", "requirement", "co
 
 def test_settings_keys_shape_and_never_leaks_values(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch, secret="s3cret-key-very-long")
-    body = client.get("/settings/keys").json()
+    body = client.get("/settings/keys", headers={"x-api-key": "s3cret-key-very-long"}).json()
     rows = body["rows"]
     assert rows, "expected a non-empty key inventory"
     for row in rows:

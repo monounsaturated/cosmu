@@ -28,6 +28,7 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_sector_rotation_taa as taa
+from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
 
 STRATEGY_NAME = "Sector-Momentum Rotation (TAA / Top-3 SPDR + SPY-200SMA)"  # UNIQUE name (no GEM/sibling collision)
@@ -226,6 +227,15 @@ def arm(store: Store | None = None) -> dict:
 
     # Open / confirm the held SIM positions in the current basket, equal-weight, each at the latest REAL close.
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
+    # ROTATION CLOSE — when the top-3 sectors change (or the 200d-SMA filter flips the whole book to AGG) any
+    # previously-held leg outside the CURRENT basket is stale; close it FIRST (latest REAL close, same per-side fee as
+    # entries) or it stays open under the new basket: double capital deployed, forward P&L polluted. The risk-off cash
+    # sleeve (AGG) IS the basket when risk-off, so set(basket) is the full target set. Must run BEFORE the per-leg
+    # held-checks below read positions.
+    rotation = close_stale_legs(store, portfolio, version_id=version_id, keep_symbols=set(basket),
+                                price_fn=_last_equity_close, fee_per_side_bps=ETF_BPS_PER_SIDE)
+    if rotation["closed"]:
+        print(f"ROTATION: closed stale leg(s) {[c['symbol'] for c in rotation['closed']]} — current basket {basket}.")
     per_leg_capital = (get_settings().sim_track_capital / Decimal(len(basket))).quantize(Decimal("0.01"))
     legs: list[dict] = []
     marks: dict[str, Decimal] = {}
@@ -268,7 +278,7 @@ def arm(store: Store | None = None) -> dict:
     print("closes on every run; watch it accrue on GET /leaderboard (forward_age_days, live_ready) and GET /overview.")
     print("Run the clock with:  python3 -m cosmu.research.equity_sector_rotation_arm --mark")
     return {"armed": True, "version_id": version_id, "basket": basket, "legs": legs,
-            "equity": float(snap["equity"]), "reused": existing is not None}
+            "equity": float(snap["equity"]), "reused": existing is not None, "rotation": rotation}
 
 
 def mark(store: Store | None = None) -> dict:

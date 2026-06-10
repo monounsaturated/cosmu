@@ -24,7 +24,6 @@ import {
   fmtN,
   fmtP,
   IcPill,
-  isNonCausal,
   NonCausalFlag
 } from "./correlation-bits";
 
@@ -65,7 +64,7 @@ export function FindingsTable({
 
   const survivorCount = useMemo(() => findings.filter((f) => f.fdr_survived).length, [findings]);
   const nonCausalCount = useMemo(
-    () => findings.filter((f) => isNonCausal(f.deflated_note)).length,
+    () => findings.filter((f) => f.non_causal).length,
     [findings]
   );
 
@@ -73,7 +72,7 @@ export function FindingsTable({
     const q = query.trim().toLowerCase();
     const rows = findings.filter((f) => {
       if (survivor === "survived" && !f.fdr_survived) return false;
-      if (survivor === "non-causal" && !isNonCausal(f.deflated_note)) return false;
+      if (survivor === "non-causal" && !f.non_causal) return false;
       if (source !== "all" && f.source !== source) return false;
       if (!q) return true;
       return (
@@ -167,7 +166,7 @@ export function FindingsTable({
           </THead>
           <TBody>
             {filtered.map((f) => {
-              const nonCausal = isNonCausal(f.deflated_note);
+              const nonCausal = f.non_causal;
               return (
                 <TR
                   key={`${f.feature}·${f.source}·${f.asset}·${f.horizon}`}

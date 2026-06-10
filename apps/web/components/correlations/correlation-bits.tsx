@@ -96,17 +96,27 @@ export function FdrPill({ survived }: { survived: boolean }) {
 // The honest causal-trust tell. A non-empty `deflated_note` flags a feature whose IC must be read
 // with suspicion: a known-false / orthogonality control (a strong IC here is data-snooping, not an
 // edge) or a low-confidence prior. Shown PLAINLY — "non-causal control — Gate disposes" — never
-// buried. Empty note => nothing rendered (a plain feature).
-export function isNonCausal(note: string): boolean {
+// buried. Empty note + no flag => nothing rendered (a plain feature). The contract's derived
+// `non_causal` boolean is the source of truth where present (e.g. CorrelationStability carries the
+// flag without the note); the note-sniff is the fallback for note-only call-sites.
+function isNonCausal(note: string): boolean {
   return note.toUpperCase().includes("NON-CAUSAL");
 }
 
-export function NonCausalFlag({ note, className }: { note: string; className?: string }) {
-  if (!note) return null;
-  const nonCausal = isNonCausal(note);
+export function NonCausalFlag({
+  note = "",
+  nonCausal: nonCausalFlag,
+  className
+}: {
+  note?: string;
+  nonCausal?: boolean;
+  className?: string;
+}) {
+  const nonCausal = nonCausalFlag ?? isNonCausal(note);
+  if (!note && !nonCausal) return null;
   return (
     <span
-      title={note}
+      title={note || undefined}
       className={cn(
         "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-medium",
         nonCausal

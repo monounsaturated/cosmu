@@ -50,3 +50,15 @@ def _block_network(request, monkeypatch):
         return
     monkeypatch.setattr(socket.socket, "__init__", _blocked_socket_init)
     yield
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _api_auth_gate_off_by_default():
+    """The API's shared-secret gate (cosmu.api.app) reads the module-level settings, which on a dev box load
+    .env.local — where API_SECRET_KEY is set. Tests that exercise routes without injecting their own settings
+    would then 401 locally while passing in CI (no env file). Neutralize the IMPORT-TIME secret once for the
+    session; auth tests inject their own Settings(api_secret_key=...) objects and are unaffected."""
+    import cosmu.api._shared as shared
+
+    shared.settings.api_secret_key = None
+    yield

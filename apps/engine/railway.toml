@@ -25,17 +25,27 @@ command = "python3 -m cosmu.research.loop --ingest"
 
 # Full autonomous cycle on REAL Binance data: ingest -> author -> gate/screen -> fund SIM survivors ->
 # recommendations. Writes to the production DB (no --offline) and never runs the synthetic fixture.
-# TOGGLE: set AUTONOMY_CRON_ENABLED=1 on the Railway service to enable; any other value (or absent) = skip.
-# Default OFF — flip the var instantly without a redeploy. LIVE STAYS OFF regardless (sim fills only).
+# TOGGLE: ON by default (the autonomous loop IS the product; the tick is SIM-only and bounded). Set
+# AUTONOMY_CRON_ENABLED=0 on the Railway service to skip instantly without a redeploy. LIVE STAYS OFF
+# regardless (sim fills only); the ledger pause flag also stops it.
 [[cron]]
 schedule = "0 */4 * * *"
 command = "python3 -m cosmu.master.scheduler"
 
-# FORWARD-TEST CLOCK: re-mark EVERY held SIM position against the latest REAL close, routed by asset class
-# (crypto -> Binance spot, equity/ETF -> Yahoo total-return), so crypto AND equity tracks (GEM dual-momentum,
-# the TAA fleet) accrue honest net-of-fee P&L over calendar time instead of sitting flat. No orders (SIM only).
-# Daily at 22:10 UTC (after the US equity cash close) is enough for daily-bar strategies; bump to hourly if a
-# faster-bar crypto track needs it. This is the hands-off floor: it drives tracks.return_pct off real closes.
+# FORWARD-TEST CLOCK: STEP then MARK. Step = the executor (orchestrator/forward_step.py) re-evaluates each
+# gate-lane track's OWN spec/params on the latest real bars and closes/re-opens through the one order path
+# (SIM fills only — live stays off); mark = re-mark every held SIM position against the latest REAL close,
+# routed by asset class (crypto -> Binance spot, equity/ETF -> Yahoo total-return). Daily at 22:10 UTC (after
+# the US equity cash close) suits daily-bar strategies; bump to hourly if a faster-bar crypto track needs it.
+# This is the hands-off floor: it makes the forward test a genuine strategy test, not buy-and-hold.
 [[cron]]
 schedule = "10 22 * * *"
 command = "python3 -m cosmu.orchestrator.loop"
+
+# ROTATION RE-ARM: re-run the deploy-lane arm fleet daily after the clock. Each arm() is idempotent (a held
+# target leg is reused, the clock origin never resets) and now closes stale legs first (arm_rotation), so this
+# is what makes the documented rotation strategies (GEM, GTAA, VAA, PAA, DAA, ...) actually ROTATE unattended
+# when their monthly signals flip — before this cron, rotation only happened when the operator re-armed by hand.
+[[cron]]
+schedule = "40 22 * * *"
+command = "python3 -m cosmu.research.arm_fleet"

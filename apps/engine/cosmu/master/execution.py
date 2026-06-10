@@ -20,11 +20,21 @@ from cosmu.master.portfolio import Portfolio
 from cosmu.master.risk import OrderIntent, PortfolioRiskState, validate_order_full
 from cosmu.spine.venue import VenueCatalog
 
+# SIM fills cross the half-spread the ADVERSE way at this fraction — the same 5 bps base the gate-lane backtest
+# charges (run_strategy_backtest's slippage_bps default), so forward-test P&L is never flattered relative to the
+# screen that funded the track. (The backtest's participation-impact term needs bar volume, which the order path
+# doesn't see — the base half-spread is the honest floor.) The executions row has always RECORDED slippage as
+# 0.0005; this constant is what makes the fill price actually pay it. Live fills book the intended price and
+# reconcile to the venue's true fill out-of-band (reconcile_fills).
+_SIM_SLIPPAGE_FRACTION = Decimal("0.0005")
+
 
 @dataclass(frozen=True)
 class IntendedOrder:
     """One order the orchestrator wants placed. `gate_passed` is the strategy's deterministic-gate verdict — a
-    live submit is impossible without it. `client_order_id` is the idempotency key (stable across replays)."""
+    live submit is impossible without it. `client_order_id` is the idempotency key (stable across replays).
+    `reduce_only` marks an exit leg: it may only close (part of) an existing position — the gauntlet verifies
+    it genuinely reduces and exempts it from the entry-shaped checks (brackets/caps/kill-switch)."""
 
     strategy_version_id: str
     symbol: str
@@ -39,6 +49,7 @@ class IntendedOrder:
     order_type: str = "market"
     client_order_id: str | None = None
     data_fresh: bool = True
+    reduce_only: bool = False
 
     def coid(self) -> str:
         if self.client_order_id:
@@ -93,6 +104,15 @@ def execute_orders(
         existing = portfolio.position(instrument.id, "sim", strategy_version_id=intent.strategy_version_id)
         live_pos = portfolio.position(instrument.id, _live_venue(adapter), strategy_version_id=intent.strategy_version_id)
         held = live_pos or existing
+        # A REDUCE-ONLY order must be validated against the book its FILL will land on — `live_pos or existing`
+        # would let a live row vouch for a sim close (or vice versa): the gauntlet would pass against one book
+        # while apply_fill's opening branch minted a phantom short on the other. The fill venue for a close is
+        # exact here because closes are never regime-blocked (see below).
+        if intent.reduce_only:
+            _close_routes_live = bool(live_enabled and not kill_switch and intent.gate_passed and getattr(adapter, "active", False))
+            state_held = live_pos if _close_routes_live else existing
+        else:
+            state_held = held
 
         order_intent = OrderIntent(
             symbol=intent.symbol,
@@ -104,6 +124,7 @@ def execute_orders(
             conviction=intent.conviction,
             sizing_basis="equity_vol_conviction",
             data_fresh=intent.data_fresh,
+            reduce_only=intent.reduce_only,
         )
         state = PortfolioRiskState(
             equity=portfolio.equity(),
@@ -113,9 +134,9 @@ def execute_orders(
             drawdown_pct=portfolio.drawdown(),
             daily_loss=daily.daily_loss,
             daily_loss_cap=daily.cap,
-            last_trade_was_loss=held.last_was_loss if held else False,
-            avg_entry_price=held.avg_price if held and held.qty != 0 else None,
-            existing_qty=held.qty if held else Decimal("0"),
+            last_trade_was_loss=state_held.last_was_loss if state_held else False,
+            avg_entry_price=state_held.avg_price if state_held and state_held.qty != 0 else None,
+            existing_qty=state_held.qty if state_held else Decimal("0"),
         )
         decision = validate_order_full(order_intent, venue, instrument, risk, state)
         if not decision.accepted:
@@ -129,11 +150,11 @@ def execute_orders(
             outcomes.append(OrderOutcome(coid, intent.symbol, accepted=False, routed_live=False, venue="sim", issues=decision.issues))
             continue
 
-        # Regime eligibility gate: a live-routed order must be in a regime the strategy proved in.
-        # If regime data is available (adapter can provide reference bars), check eligibility before
-        # routing live. Failure → sim-fill with an audit event (never silently drops).
+        # Regime eligibility gate: a live-routed ENTRY must be in a regime the strategy proved in. A
+        # reduce-only close is exempt — blocking an exit because the regime moved would trap the very
+        # position the regime change endangers. Failure → sim-fill with an audit event (never silently drops).
         regime_blocked = False
-        if live_enabled and intent.gate_passed and getattr(adapter, "active", False):
+        if live_enabled and intent.gate_passed and getattr(adapter, "active", False) and not intent.reduce_only:
             try:
                 from cosmu.ml.regime import current_regime, proven_regimes, regime_eligible
 
@@ -162,7 +183,15 @@ def execute_orders(
 
         route_live = bool(live_enabled and not kill_switch and intent.gate_passed and getattr(adapter, "active", False) and not regime_blocked)
         venue_label = _live_venue(adapter) if route_live else "sim"
-        fee = _pit_fee_for_order(store, venue, intent.symbol, intent.qty, intent.price)
+        # SIM fills pay the half-spread the adverse way (buy fills above the mark, sell below) at the SAME
+        # 5 bps base the gate-lane backtest charges — see _SIM_SLIPPAGE_FRACTION. Live books the intended
+        # price and reconciles to the venue's actual fill out-of-band. Fees accrue on the true fill notional.
+        fill_price = (
+            intent.price
+            if route_live
+            else intent.price * (Decimal("1") + Decimal(intent.side) * _SIM_SLIPPAGE_FRACTION)
+        )
+        fee = _pit_fee_for_order(store, venue, intent.symbol, intent.qty, fill_price)
 
         if route_live:
             order = Order(
@@ -197,11 +226,11 @@ def execute_orders(
             venue=venue_label,
             side=intent.side,
             qty=intent.qty,
-            price=intent.price,
+            price=fill_price,
             fee=fee,
             strategy_version_id=intent.strategy_version_id,
         )
-        _write_execution(store, run_id, intent, instrument.id, venue.id, fee, is_paper=not route_live, coid=coid)
+        _write_execution(store, run_id, intent, instrument.id, venue.id, fee, fill_price=fill_price, is_paper=not route_live, coid=coid)
         outcomes.append(OrderOutcome(coid, intent.symbol, accepted=True, routed_live=route_live, venue=venue_label, issues=[]))
 
     return outcomes
@@ -261,12 +290,12 @@ def _try_oco_bracket(adapter, intent: IntendedOrder, coid: str, store: Store) ->
     )
 
 
-def _write_execution(store: Store, run_id: str, intent: IntendedOrder, instrument_id: str, venue_id: str, fee: Decimal, *, is_paper: bool, coid: str) -> None:
+def _write_execution(store: Store, run_id: str, intent: IntendedOrder, instrument_id: str, venue_id: str, fee: Decimal, *, fill_price: Decimal, is_paper: bool, coid: str) -> None:
     payload = {
         "side": "buy" if intent.side > 0 else "sell",
         "symbol": intent.symbol,
         "qty": str(intent.qty),
-        "price": str(intent.price),
+        "price": str(fill_price),
         "client_order_id": coid,
         "slippage_model": "deterministic_bps",
         "commission": str(fee.quantize(Decimal("0.00000001"))),
@@ -281,9 +310,11 @@ def _write_execution(store: Store, run_id: str, intent: IntendedOrder, instrumen
             "venue_id": venue_id,
             "side": "buy" if intent.side > 0 else "sell",
             "qty": str(intent.qty),
-            "price": str(intent.price),
+            "price": str(fill_price),
             "fee": str(fee.quantize(Decimal("0.00000001"))),
-            "slippage": "0.0005",
+            # Paper fills genuinely PAY this fraction (see _SIM_SLIPPAGE_FRACTION — it is in fill_price);
+            # a live fill's true slippage is only known at reconciliation, so it is recorded as 0 here.
+            "slippage": str(_SIM_SLIPPAGE_FRACTION) if is_paper else "0",
             "order_type": intent.order_type,
             "is_paper": int(is_paper),
             "ts": utcnow(),

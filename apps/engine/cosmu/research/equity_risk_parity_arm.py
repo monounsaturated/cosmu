@@ -29,6 +29,7 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_risk_parity as rp
+from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
 import os
 from cosmu.config.settings import get_settings
@@ -224,6 +225,14 @@ def arm(store: Store | None = None) -> dict:
 
     # Open / confirm the THREE held SIM legs at their current inverse-vol weights, priced at the latest REAL adj close.
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
+    # ROTATION CLOSE — any held leg whose current inverse-vol weight is zero (rotated out of the target book) is
+    # stale; close it FIRST (latest REAL adj close, same per-side fee as entries) or it stays open under the new legs:
+    # double capital deployed, forward P&L polluted. Must run BEFORE the per-leg held-checks below read positions.
+    rotation = close_stale_legs(store, portfolio, version_id=version_id,
+                                keep_symbols={s for s, w in weights.items() if w > 0},
+                                price_fn=_last_adj_close, fee_per_side_bps=IBKR_ETF_BPS_PER_SIDE)
+    if rotation["closed"]:
+        print(f"ROTATION: closed stale leg(s) {[c['symbol'] for c in rotation['closed']]} — current weights {weights}.")
     legs: list[dict] = []
     marks: dict[str, Decimal] = {}
     any_opened = False
@@ -260,7 +269,8 @@ def arm(store: Store | None = None) -> dict:
     if deferred and not any_opened and not marks:
         print("OFFLINE: could not price any leg — track registered, forward clock started; the next mark will open + "
               "price the legs.")
-        return {"armed": True, "version_id": version_id, "weights": weights, "legs": legs, "position_deferred": True}
+        return {"armed": True, "version_id": version_id, "weights": weights, "legs": legs,
+                "position_deferred": True, "rotation": rotation}
 
     print("OPENED / confirmed held SIM legs + FIRST MARK:")
     for leg in legs:
@@ -271,7 +281,7 @@ def arm(store: Store | None = None) -> dict:
     print("on every run; watch it accrue on GET /leaderboard (forward_age_days, live_ready) and GET /overview.")
     print("Run the clock with:  python3 -m cosmu.research.equity_risk_parity_arm --mark")
     return {"armed": True, "version_id": version_id, "weights": weights, "legs": legs,
-            "equity": float(snap["equity"])}
+            "equity": float(snap["equity"]), "rotation": rotation}
 
 
 def mark(store: Store | None = None) -> dict:

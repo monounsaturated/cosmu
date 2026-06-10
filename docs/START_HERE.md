@@ -26,7 +26,7 @@ Everything you drop flows through the **same Gate** — no shortcut to Live. The
 - **All ready-to-paste prompts live in `docs/AGENT_TASKS.md`.**
 - **Cloud agents** (parallel) = pure code + offline tests + `next build`.
 - **Local (your Mac)** = anything touching `.env.local`, Railway, live data, or `modal run`.
-- One branch per agent. The **local `pnpm verify` (pre-push hook) is the gate** — CI (GitHub Actions) is manual-dispatch only, OFF by default. **Push = deploy.**
+- One branch per agent. The **pre-push hook is the gate** (naming + contracts drift + engine tests + typecheck — see `.githooks/pre-push`); CI (GitHub Actions) is manual-dispatch only, OFF by default. **Push = deploy.**
 
 ## 4. Where things live
 - **Ideas (features/infra)** → `IDEAS.md` → `/triage-ideas` → `BACKLOG.md`

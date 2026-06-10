@@ -27,6 +27,7 @@ from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.research import equity_dual_momentum_qqq as var
+from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import Instrument, default_catalog
 from cosmu.config.settings import get_settings
 
@@ -220,6 +221,13 @@ def arm(store: Store | None = None) -> dict:
 
     # Open / confirm the held SIM position in the current signal at the latest REAL close. SIM only — live stays OFF.
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
+    # ROTATION CLOSE — when the variant's monthly signal moves (e.g. QQQ→AGG) the previously-held leg is stale; close
+    # it FIRST (latest REAL close, same per-side fee as entries) or it stays open under the new leg: double capital
+    # deployed, forward P&L polluted. Must run BEFORE the held-check below reads positions.
+    rotation = close_stale_legs(store, portfolio, version_id=version_id, keep_symbols={signal},
+                                price_fn=_last_equity_close, fee_per_side_bps=IBKR_ETF_BPS_PER_SIDE)
+    if rotation["closed"]:
+        print(f"ROTATION: closed stale leg(s) {[c['symbol'] for c in rotation['closed']]} — current signal is {signal}.")
     instrument = _resolve_instrument(catalog, signal)
     price = _last_equity_close(signal)
     held = portfolio.position(instrument.id, VENUE, strategy_version_id=version_id)
@@ -228,11 +236,12 @@ def arm(store: Store | None = None) -> dict:
         marks = {instrument.id: price} if price > 0 else {}
         snap = portfolio.mark_to_market(marks)
         return {"armed": True, "version_id": version_id, "signal": signal, "qty": str(held.qty),
-                "price": str(price), "equity": float(snap["equity"]), "reused": True}
+                "price": str(price), "equity": float(snap["equity"]), "reused": True, "rotation": rotation}
     if price <= 0:
         print(f"OFFLINE: could not fetch a {signal} close — track registered, forward clock started; the next "
               f"mark_tracks run will open + price the position.")
-        return {"armed": True, "version_id": version_id, "signal": signal, "qty": "0", "price": "0", "position_deferred": True}
+        return {"armed": True, "version_id": version_id, "signal": signal, "qty": "0", "price": "0",
+                "position_deferred": True, "rotation": rotation}
 
     qty = (TRACK_CAPITAL / price).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
     portfolio.apply_fill(
@@ -249,7 +258,7 @@ def arm(store: Store | None = None) -> dict:
     print("\nThe forward-test is ARMED (SIM only). The clock will re-mark this position against the latest equity")
     print("close on every run. Run the clock with:  python3 -m cosmu.research.equity_dual_momentum_qqq_arm --mark")
     return {"armed": True, "version_id": version_id, "signal": signal, "qty": str(qty), "price": str(price),
-            "equity": float(snap["equity"])}
+            "equity": float(snap["equity"]), "rotation": rotation}
 
 
 def mark(store: Store | None = None) -> dict:

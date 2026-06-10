@@ -29,6 +29,17 @@ from cosmu.spine.venue import VenueCatalog, default_catalog
 _FUNDING_VENUE_BY_ASSET_CLASS: dict[str, str] = {"crypto": "binance", "equity": "ibkr"}
 
 
+def _instrument_venue(catalog: VenueCatalog, instrument_id: str) -> str | None:
+    """The catalog venue an instrument trades on, looked up by instrument id. Positions opened through the
+    ONE order path persist venue='sim' — a fill-ledger label, NOT a catalog venue — so pricing/routing must
+    recover the real venue from the instrument (an equity survivor funded via the order path would otherwise
+    route to the crypto leg and never mark). None for an unknown instrument (the caller skips honestly)."""
+    for inst in catalog.instruments:
+        if inst.id == instrument_id:
+            return inst.venue_id
+    return None
+
+
 def _venue_symbols(catalog: VenueCatalog, venue_id: str, asset_class: str) -> list[str]:
     """Symbols that actually exist as instruments at `venue_id` for `asset_class` (so a sim fill can resolve an
     instrument). A track only funds tradable instruments — no fabricated symbols."""
@@ -154,13 +165,15 @@ def fund_tracks_from_survivors(
     track_by_id = {vid: (track, symbol, venue_id) for vid, track, symbol, venue_id in triples}
     fundable = {v.version_id for v in select_tracks([t for _, t, _, _ in triples]) if v.funded}
 
-    # A track already holding an open sim position is NOT re-opened: re-funding it every tick would average a
-    # fresh same-bar entry into the basis (entry==mark → unrealized 0) and reset its forward-test clock. Held
-    # tracks accrue honest P&L via mark_tracks() instead; only NEW survivors open here.
+    # A track that has EVER held a sim position is NOT re-opened here: re-funding a held track every tick would
+    # average a fresh same-bar entry into the basis and reset its forward-test clock, and re-funding a track the
+    # forward-test EXECUTOR closed would overwrite its strategy's own verdict with a static long. The funder
+    # funds each survivor ONCE; from then on the executor (orchestrator/forward_step.py) owns every entry/exit
+    # by the track's own signals, and mark_tracks() accrues the honest P&L.
     already_funded = {
         r["strategy_version_id"]
         for r in store.rows(
-            "SELECT DISTINCT strategy_version_id FROM positions WHERE CAST(qty AS REAL) != 0 AND strategy_version_id IS NOT NULL"
+            "SELECT DISTINCT strategy_version_id FROM positions WHERE strategy_version_id IS NOT NULL"
         )
     }
 
@@ -305,7 +318,11 @@ def mark_tracks(
     positions = [p for p in portfolio.positions() if p.qty != 0]
     marks: dict[str, Decimal] = {}
     for p in positions:
-        price = pricer.last_price(p.symbol, p.venue)
+        # Route by the instrument's REAL catalog venue: order-path fills persist venue='sim' (a ledger label),
+        # which the router can't price — an equity survivor funded via the order path would silently route to
+        # the crypto leg and never mark. Arm-opened positions carry the real venue already; both resolve here.
+        venue = _instrument_venue(cat, p.instrument_id) or p.venue
+        price = pricer.last_price(p.symbol, venue)
         if price > 0:
             marks[p.instrument_id] = price
     # TWO-LEG NEUTRAL tracks (DERIVATIVES_PLAN P0.3): pair a held long-spot leg with its short-perp leg, accrue one
@@ -314,12 +331,16 @@ def mark_tracks(
     # unchanged spot mark path below. Offline-safe: no funding data for a perp leg accrues nothing this tick.
     funding_by_track = _accrue_neutral_funding(store, positions, marks)
     snapshot = portfolio.mark_to_market(marks, funding_by_track=funding_by_track)
-    # Drive each held track's tracks.return_pct from the LIVE marked trajectory (the per-track snapshot
+    # Drive each track's tracks.return_pct from the LIVE marked trajectory (the per-track snapshot
     # mark_to_market just wrote), so the forward-test net P&L — not a stale seed — is what the leaderboard +
-    # master/live_eligibility read for live_ready. This generalizes the per-arm equity mark (it used to be the
-    # ONLY thing updating return_pct, and only for GEM) to EVERY asset class. A flat/negative forward test can
-    # therefore never reach live_ready on a stale seed.
-    updated = _update_track_returns(store, {p.strategy_version_id for p in positions if p.strategy_version_id})
+    # master/live_eligibility read for live_ready. EVERY version with a position row updates, including
+    # FLAT tracks the executor closed (their realized P&L must land in return_pct, not freeze pre-close).
+    # A flat/negative forward test can therefore never reach live_ready on a stale seed.
+    tracked = {
+        r["strategy_version_id"]
+        for r in store.rows("SELECT DISTINCT strategy_version_id FROM positions WHERE strategy_version_id IS NOT NULL")
+    }
+    updated = _update_track_returns(store, tracked)
     store.append_event(
         actor="master",
         kind="tracks_marked",
@@ -401,15 +422,21 @@ def _funding_rate_asof(store: Store, symbol: str) -> Decimal | None:
 
 
 def _main(argv: list[str] | None = None) -> int:
-    """Railway cron entrypoint for the FORWARD-TEST CLOCK: re-mark EVERY held sim position on the real prod store
-    against the latest REAL close, routed by asset class (crypto → Binance, equity/ETF → Yahoo total-return) so
-    crypto AND equity tracks (GEM, the TAA fleet) accrue P&L. `python3 -m cosmu.orchestrator.loop`."""
+    """Railway cron entrypoint for the FORWARD-TEST CLOCK: first the EXECUTOR (forward_step.step_tracks — each
+    gate-lane track's OWN spec/params decide exits and re-entries through the one order path, sim-only), then
+    the MARK (re-mark every held sim position against the latest REAL close, routed by asset class — crypto →
+    Binance, equity/ETF → Yahoo total-return). Step-then-mark so the snapshot reflects post-trade state.
+    `python3 -m cosmu.orchestrator.loop`."""
     import argparse
 
     from cosmu.config.settings import Settings
+    from cosmu.orchestrator.forward_step import step_tracks
 
-    argparse.ArgumentParser(description="Mark held sim positions to the latest real close, asset-aware (forward-test clock; sim-only, no orders).").parse_args(argv)
+    argparse.ArgumentParser(description="Run the forward-test executor (each track's own exits/entries, sim-only) then mark held positions to the latest real close, asset-aware.").parse_args(argv)
     store = Store(Settings())
+    step = step_tracks(store)
+    print(f"FORWARD-TEST STEP — managed={step.managed} closed={step.closed} opened={step.opened} "
+          f"skipped(deploy/unmanaged)={step.skipped_deploy}/{step.skipped_unmanaged}")
     snap = mark_tracks(store)
     print(f"SIM MARK-TO-MARKET — equity={float(snap['equity']):.2f} pnl={float(snap['pnl']):+.2f} drawdown={float(snap['drawdown']):.4f}")
     return 0

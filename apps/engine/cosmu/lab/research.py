@@ -24,8 +24,8 @@ from cosmu.research.fixtures import edge_bearing_screen_market
 from cosmu.strategy.compiler import compile_spec
 from cosmu.strategy.static_check import validate_spec
 
-# The candidate briefs the research brain proposes. Each pairs a plain-language thesis with the NAMED
-# features it should reference (validated to the asset class downstream). The OSINT air-activity source
+# The HAND-WRITTEN candidate briefs the research brain proposes. Each pairs a plain-language thesis with the
+# NAMED features it should reference (validated to the asset class downstream). The OSINT air-activity source
 # appears here so it can earn — or fail to earn — its place via the deterministic gate. This list is the
 # LLM-OPTIONAL seam: with a key, the model rewrites/extends these; offline they are the deterministic corpus.
 _BRIEFS: tuple[tuple[str, list[str]], ...] = (
@@ -36,6 +36,39 @@ _BRIEFS: tuple[tuple[str, list[str]], ...] = (
     ("Buy fear on crypto when the crowd is washed out (fear & greed)", ["fear_greed"]),
     ("OSINT macro proxy: condition crypto entries on aircraft activity (low-confidence, must earn its place)", ["ret_Nd", "osint_air_activity"]),
 )
+
+
+def _registry_briefs() -> tuple[tuple[str, list[str]], ...]:
+    """One falsifiable brief per enabled REGISTRY alt feature the hand-written corpus doesn't already cover —
+    so the brain's hypothesis space is the data layer's whole enabled surface, not 6 frozen ideas (the audit's
+    novelty-starvation finding: `_BRIEFS[i % 6]` re-proposed the same six theses forever). Two structural
+    angles per feature (level condition + confirmation overlay) give the screen distinct shapes to judge.
+    Deterministic (sorted registry read at call time); a newly registered+ingested feature is proposed
+    automatically on the next tick; volume can't manufacture a winner — every extra brief is one more trial
+    the SAME deflation/BH-FDR brake must absorb."""
+    from cosmu.config.feature_registry import feature_names
+    from cosmu.data.backtest import PRICE_FEATURES
+
+    covered = {f for _, feats in _BRIEFS for f in feats}
+    out: list[tuple[str, list[str]]] = []
+    for name in sorted(feature_names() - PRICE_FEATURES - covered):
+        plain = name.replace("_", " ")
+        out.append((f"Condition crypto entries on {plain} extremes (registry-derived; must earn its place)", [name]))
+        out.append((f"Momentum on crypto confirmed by {plain} (registry-derived overlay; must earn its place)", ["ret_Nd", name]))
+    return tuple(out)
+
+
+def _brief_offset(store: Store | None) -> int:
+    """The rotation cursor for the brief corpus: the number of autonomy ticks started so far. Each tick's
+    window therefore ADVANCES through the corpus instead of re-proposing briefs 0..n-1 forever. Deterministic
+    for a fixed store state; no store (bare CLI) → 0 (the hand-written corpus leads, exactly as before)."""
+    if store is None:
+        return 0
+    try:
+        row = store.row("SELECT COUNT(*) AS n FROM events WHERE kind = 'autonomy_tick_started'")
+        return int(row["n"]) if row else 0
+    except Exception:  # noqa: BLE001 — a store without the events table authors from the corpus head
+        return 0
 
 
 @dataclass
@@ -139,7 +172,11 @@ def author_candidates(
     dead structures and lean toward winners. `prior_art` are features the propose-only research bus surfaced —
     the author folds them in (validated + memory-pruned), closing the gather→author loop. Still proposal-only."""
     out: list[tuple[AuthorDraft, CandidateRecord]] = []
-    briefs = [_BRIEFS[i % len(_BRIEFS)] for i in range(max(1, n))]
+    # The corpus = hand-written theses + one brief per enabled registry alt feature; the window rotates by
+    # the tick counter so successive ticks EXPLORE the corpus instead of re-proposing the same first n briefs.
+    corpus = (*_BRIEFS, *_registry_briefs())
+    offset = _brief_offset(store) * max(1, n)
+    briefs = [corpus[(offset + i) % len(corpus)] for i in range(max(1, n))]
     for brief, feats in briefs:
         # When the LLM is enabled the model PROPOSES the structure from the plain-language brief (the named-feature
         # hints become a fallback, not a hard pin); offline the deterministic template matcher uses the hints.

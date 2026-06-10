@@ -10,8 +10,7 @@
 
 import Link from "next/link";
 import { ArrowRight, Pause, Play } from "lucide-react";
-import type { OverviewResponse } from "@cosmu/contracts-ts";
-import type { AutonomyStatus } from "@/app/autonomy-contracts";
+import type { AutonomyStatusResponse, OverviewResponse } from "@cosmu/contracts-ts";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/viz";
@@ -25,7 +24,7 @@ export function MoneyHero({
 }: {
   overview: OverviewResponse;
   overviewConnected: boolean;
-  status: AutonomyStatus;
+  status: AutonomyStatusResponse;
   statusConnected: boolean;
 }) {
   const curve = overview.equity_curve ?? [];
