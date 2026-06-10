@@ -135,7 +135,11 @@ class Portfolio:
         qty — funding is the only carry term the price marks don't already capture."""
         funding_by_track = funding_by_track or {}
         positions = self.positions()
-        realized = sum((p.realized_pnl for p in positions), Decimal("0"))
+        # Realized P&L lives on EVERY position row, including rows the forward-test executor has closed to
+        # qty=0 — reading it off open positions only would make a closed trade's realized P&L vanish from
+        # equity the moment it books (latent while nothing ever closed; live since exits exist).
+        all_rows = [self._to_view(r) for r in self.store.rows("SELECT * FROM positions")]
+        realized = sum((p.realized_pnl for p in all_rows), Decimal("0"))
         deployed = sum((p.avg_price * p.qty for p in positions), Decimal("0"))
         positions_value = sum((marks.get(p.instrument_id, p.avg_price) * p.qty for p in positions), Decimal("0"))
         funding = sum(funding_by_track.values(), Decimal("0"))
@@ -160,13 +164,37 @@ class Portfolio:
         )
         # Also accrue a per-TRACK marked-value trajectory (existing scope/ref_id columns, no schema change) so
         # master/drift has a real per-track realized series to estimate edge half-life + live drift from. A
-        # track's value = its marked positions + its realized P&L; the series across marks IS its edge trajectory.
-        by_track: dict[str, Decimal] = {}
+        # track's value = its starting_capital + unrealized (open legs) + realized (ALL its rows — a closed
+        # leg's P&L must stay in the trajectory, and a fully-flat track is worth its capital ± realized, not
+        # zero). A version with no tracks row (bare positions in tests/tools) falls back to the old
+        # marked-positions + realized sum.
+        unrealized_by_track: dict[str, Decimal] = {}
+        open_value_by_track: dict[str, Decimal] = {}
         for p in positions:
             if p.strategy_version_id is None:
                 continue
-            value = marks.get(p.instrument_id, p.avg_price) * p.qty + p.realized_pnl
-            by_track[p.strategy_version_id] = by_track.get(p.strategy_version_id, Decimal("0")) + value
+            mark = marks.get(p.instrument_id, p.avg_price)
+            unrealized_by_track[p.strategy_version_id] = (
+                unrealized_by_track.get(p.strategy_version_id, Decimal("0")) + (mark - p.avg_price) * p.qty
+            )
+            open_value_by_track[p.strategy_version_id] = (
+                open_value_by_track.get(p.strategy_version_id, Decimal("0")) + mark * p.qty
+            )
+        realized_by_track: dict[str, Decimal] = {}
+        for p in all_rows:
+            if p.strategy_version_id is None:
+                continue
+            realized_by_track[p.strategy_version_id] = (
+                realized_by_track.get(p.strategy_version_id, Decimal("0")) + p.realized_pnl
+            )
+        by_track: dict[str, Decimal] = {}
+        for vid in {*unrealized_by_track, *realized_by_track}:
+            row = self.store.row("SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (vid,))
+            pnl_track = unrealized_by_track.get(vid, Decimal("0")) + realized_by_track.get(vid, Decimal("0"))
+            if row is not None and row.get("starting_capital") is not None:
+                by_track[vid] = Decimal(str(row["starting_capital"])) + pnl_track
+            else:
+                by_track[vid] = open_value_by_track.get(vid, Decimal("0")) + realized_by_track.get(vid, Decimal("0"))
         # Add each neutral track's accrued funding carry to its marked-value series. For a two-leg neutral track
         # the Σ(qty·mark) above already nets the long-spot + short-perp price moves (the direction cancels); the
         # funding carry is the edge the price marks can't show, so it must ride the per-track trajectory too.

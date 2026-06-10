@@ -331,12 +331,16 @@ def mark_tracks(
     # unchanged spot mark path below. Offline-safe: no funding data for a perp leg accrues nothing this tick.
     funding_by_track = _accrue_neutral_funding(store, positions, marks)
     snapshot = portfolio.mark_to_market(marks, funding_by_track=funding_by_track)
-    # Drive each held track's tracks.return_pct from the LIVE marked trajectory (the per-track snapshot
+    # Drive each track's tracks.return_pct from the LIVE marked trajectory (the per-track snapshot
     # mark_to_market just wrote), so the forward-test net P&L — not a stale seed — is what the leaderboard +
-    # master/live_eligibility read for live_ready. This generalizes the per-arm equity mark (it used to be the
-    # ONLY thing updating return_pct, and only for GEM) to EVERY asset class. A flat/negative forward test can
-    # therefore never reach live_ready on a stale seed.
-    updated = _update_track_returns(store, {p.strategy_version_id for p in positions if p.strategy_version_id})
+    # master/live_eligibility read for live_ready. EVERY version with a position row updates, including
+    # FLAT tracks the executor closed (their realized P&L must land in return_pct, not freeze pre-close).
+    # A flat/negative forward test can therefore never reach live_ready on a stale seed.
+    tracked = {
+        r["strategy_version_id"]
+        for r in store.rows("SELECT DISTINCT strategy_version_id FROM positions WHERE strategy_version_id IS NOT NULL")
+    }
+    updated = _update_track_returns(store, tracked)
     store.append_event(
         actor="master",
         kind="tracks_marked",

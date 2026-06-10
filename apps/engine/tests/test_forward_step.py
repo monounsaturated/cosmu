@@ -262,3 +262,29 @@ def test_deploy_lane_tracks_are_skipped(tmp_path):
 
     assert report.skipped_deploy == 1 and report.managed == 0
     assert _held_qty(store, vid) == Decimal("2")  # untouched
+
+
+def test_closed_track_keeps_realized_pnl_in_equity_and_trajectory(tmp_path):
+    """REGRESSION (latent until exits existed): mark_to_market read realized P&L off OPEN positions only, so
+    the moment the executor closed a position its realized loss VANISHED from aggregate equity and the track's
+    trajectory froze at the pre-close mark. A closed trade's P&L must stay booked: aggregate equity = bankroll
+    + realized, the track snapshot = starting_capital + realized, and tracks.return_pct shows the honest loss."""
+    from cosmu.orchestrator.loop import mark_tracks
+
+    store = _store(tmp_path)
+    vid = _persist_survivor(store, params={"mom": 100.0, "sl": 0.05, "tp": 0.50})  # entry never re-fires
+    _fund(store, entry_price=30000.0)
+    router, _ = _router([30000.0] * 25 + [27900.0])  # -7% → beyond the fitted 5% stop
+    assert step_tracks(store, router=router).closed == 1
+
+    snap = mark_tracks(store, router=router)
+
+    realized = Decimal(str(store.row(
+        "SELECT realized_pnl FROM positions WHERE strategy_version_id = ?", (vid,))["realized_pnl"]))
+    assert realized < Decimal("-50")
+    assert abs(float(snap["equity"]) - (float(store.settings.sim_bankroll) + float(realized))) < 0.05
+    tsnap = store.row(
+        "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1", (vid,))
+    assert abs(float(tsnap["equity"]) - (1000.0 + float(realized))) < 0.05
+    tr = store.row("SELECT return_pct FROM tracks WHERE strategy_version_id = ?", (vid,))
+    assert float(tr["return_pct"]) < 0
