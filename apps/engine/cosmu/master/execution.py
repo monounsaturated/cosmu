@@ -104,6 +104,15 @@ def execute_orders(
         existing = portfolio.position(instrument.id, "sim", strategy_version_id=intent.strategy_version_id)
         live_pos = portfolio.position(instrument.id, _live_venue(adapter), strategy_version_id=intent.strategy_version_id)
         held = live_pos or existing
+        # A REDUCE-ONLY order must be validated against the book its FILL will land on — `live_pos or existing`
+        # would let a live row vouch for a sim close (or vice versa): the gauntlet would pass against one book
+        # while apply_fill's opening branch minted a phantom short on the other. The fill venue for a close is
+        # exact here because closes are never regime-blocked (see below).
+        if intent.reduce_only:
+            _close_routes_live = bool(live_enabled and not kill_switch and intent.gate_passed and getattr(adapter, "active", False))
+            state_held = live_pos if _close_routes_live else existing
+        else:
+            state_held = held
 
         order_intent = OrderIntent(
             symbol=intent.symbol,
@@ -125,9 +134,9 @@ def execute_orders(
             drawdown_pct=portfolio.drawdown(),
             daily_loss=daily.daily_loss,
             daily_loss_cap=daily.cap,
-            last_trade_was_loss=held.last_was_loss if held else False,
-            avg_entry_price=held.avg_price if held and held.qty != 0 else None,
-            existing_qty=held.qty if held else Decimal("0"),
+            last_trade_was_loss=state_held.last_was_loss if state_held else False,
+            avg_entry_price=state_held.avg_price if state_held and state_held.qty != 0 else None,
+            existing_qty=state_held.qty if state_held else Decimal("0"),
         )
         decision = validate_order_full(order_intent, venue, instrument, risk, state)
         if not decision.accepted:
@@ -141,11 +150,11 @@ def execute_orders(
             outcomes.append(OrderOutcome(coid, intent.symbol, accepted=False, routed_live=False, venue="sim", issues=decision.issues))
             continue
 
-        # Regime eligibility gate: a live-routed order must be in a regime the strategy proved in.
-        # If regime data is available (adapter can provide reference bars), check eligibility before
-        # routing live. Failure → sim-fill with an audit event (never silently drops).
+        # Regime eligibility gate: a live-routed ENTRY must be in a regime the strategy proved in. A
+        # reduce-only close is exempt — blocking an exit because the regime moved would trap the very
+        # position the regime change endangers. Failure → sim-fill with an audit event (never silently drops).
         regime_blocked = False
-        if live_enabled and intent.gate_passed and getattr(adapter, "active", False):
+        if live_enabled and intent.gate_passed and getattr(adapter, "active", False) and not intent.reduce_only:
             try:
                 from cosmu.ml.regime import current_regime, proven_regimes, regime_eligible
 

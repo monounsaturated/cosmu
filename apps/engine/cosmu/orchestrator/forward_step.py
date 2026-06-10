@@ -28,7 +28,7 @@ from cosmu.data.backtest import (
 )
 from cosmu.knowledge.store import Store
 from cosmu.master.drift import monitor_drift
-from cosmu.master.execution import IntendedOrder, execute_orders
+from cosmu.master.execution import IntendedOrder, _already_filled, execute_orders
 from cosmu.master.portfolio import Portfolio, PositionView
 from cosmu.orchestrator.loop import PricingRouter, _instrument_venue
 from cosmu.spine.venue import VenueCatalog, default_catalog
@@ -231,32 +231,36 @@ def step_tracks(
 
     alt_store = resolve_alt_store(store.settings, store)
     per_track_capital = store.settings.sim_track_capital
-    intents: list[IntendedOrder] = []
+    # Each pending order carries its report metadata. Counts + forward_exit/forward_entry events are emitted
+    # ONLY for fills the order path ACCEPTED — a gauntlet-rejected order must never put a phantom trade in the
+    # ledger (the rejection itself is audited by the order path). The client_order_id is stamped with the
+    # DECISION BAR, so re-running the executor on the same bars is a true no-op (no double fills, no churn).
+    pending: list[tuple[IntendedOrder, str, dict]] = []
 
-    def _close(m: _Managed, mark: Decimal, reason: str) -> None:
-        intents.append(
-            IntendedOrder(
-                strategy_version_id=m.version_id,
-                symbol=m.symbol,
-                venue_id=m.venue_id,
-                side=-1,
-                qty=m.position.qty,
-                price=mark,
-                stop_loss=None,
-                take_profit=None,
-                conviction=Decimal(str(m.spec.risk.conviction)) if m.spec is not None else Decimal("0.5"),
-                gate_passed=True,
-                reduce_only=True,
+    def _close(m: _Managed, fill: Decimal, reason: str, stamp: str) -> None:
+        coid = f"fstep-{m.version_id}-close-{stamp}"
+        if _already_filled(store, coid):
+            return
+        pending.append(
+            (
+                IntendedOrder(
+                    strategy_version_id=m.version_id,
+                    symbol=m.symbol,
+                    venue_id=m.venue_id,
+                    side=-1,
+                    qty=m.position.qty,
+                    price=fill,
+                    stop_loss=None,
+                    take_profit=None,
+                    conviction=Decimal(str(m.spec.risk.conviction)) if m.spec is not None else Decimal("0.5"),
+                    gate_passed=True,
+                    client_order_id=coid,
+                    reduce_only=True,
+                ),
+                "exit",
+                {"version_id": m.version_id, "symbol": m.symbol, "reason": reason,
+                 "price": str(fill), "qty": str(m.position.qty)},
             )
-        )
-        report.closed += 1
-        report.exits.append({"version_id": m.version_id, "symbol": m.symbol, "reason": reason, "price": str(mark)})
-        store.append_event(
-            actor="master",
-            kind="forward_exit",
-            ref_type="strategy_version",
-            ref_id=m.version_id,
-            payload={"symbol": m.symbol, "reason": reason, "qty": str(m.position.qty), "price": str(mark)},
         )
 
     for m in tracks:
@@ -266,7 +270,7 @@ def step_tracks(
             # mark (offline) defers to the next tick rather than inventing an exit price.
             mark = pricer.last_price(m.symbol, m.venue_id)
             if mark > 0:
-                _close(m, mark, m.liquidate_reason)
+                _close(m, mark, m.liquidate_reason, now.date().isoformat())
             continue
         provider = pricer.provider_for(m.symbol, m.venue_id)
         limit = min(max(_warmup_bars(m.spec, m.params) + 10, 60), 500)
@@ -288,10 +292,19 @@ def step_tracks(
             reason = "drift_defund" if m.version_id in defunded else _exit_reason(m, store, bars, features, now)
             if reason is None:
                 continue
-            _close(m, mark, reason)
+            fill = mark
+            if reason == "take_profit":
+                # A real OCO fills AT the take limit, never beyond it — booking the close's overshoot would
+                # flatter the forward test vs the screen that funded it. The stop side stays at the observed
+                # close (worse than the stop level when price gapped through — honestly pessimistic).
+                _, take_f = _bracket_fractions(m.spec, m.params)
+                fill = min(mark, m.position.avg_price * (Decimal("1") + Decimal(str(take_f))))
+            _close(m, fill, reason, bars[-1].ts.isoformat())
         else:
             if m.version_id in defunded:
                 continue
+            if _already_filled(store, f"fstep-{m.version_id}-close-{bars[-1].ts.isoformat()}"):
+                continue  # exited on THIS bar — the screen convention never re-enters the bar it exited
             highs = [float(b.high) for b in bars]
             lows = [float(b.low) for b in bars]
             closes = [float(b.close) for b in bars]
@@ -301,36 +314,35 @@ def step_tracks(
             qty = (per_track_capital / mark).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
             if qty <= 0:
                 continue
+            coid = f"fstep-{m.version_id}-open-{bars[-1].ts.isoformat()}"
+            if _already_filled(store, coid):
+                continue
             stop_f, take_f = _bracket_fractions(m.spec, m.params)
             stop = mark * (Decimal("1") - Decimal(str(stop_f))) if stop_f is not None else mark * _FALLBACK_STOP
             take = mark * (Decimal("1") + Decimal(str(take_f))) if take_f is not None else mark * _FALLBACK_TAKE
-            intents.append(
-                IntendedOrder(
-                    strategy_version_id=m.version_id,
-                    symbol=m.symbol,
-                    venue_id=m.venue_id,
-                    side=1,
-                    qty=qty,
-                    price=mark,
-                    stop_loss=stop.quantize(Decimal("0.01")),
-                    take_profit=take.quantize(Decimal("0.01")),
-                    conviction=Decimal(str(m.spec.risk.conviction)),
-                    gate_passed=True,
+            pending.append(
+                (
+                    IntendedOrder(
+                        strategy_version_id=m.version_id,
+                        symbol=m.symbol,
+                        venue_id=m.venue_id,
+                        side=1,
+                        qty=qty,
+                        price=mark,
+                        stop_loss=stop.quantize(Decimal("0.01")),
+                        take_profit=take.quantize(Decimal("0.01")),
+                        conviction=Decimal(str(m.spec.risk.conviction)),
+                        gate_passed=True,
+                        client_order_id=coid,
+                    ),
+                    "entry",
+                    {"version_id": m.version_id, "symbol": m.symbol, "price": str(mark), "qty": str(qty)},
                 )
             )
-            report.opened += 1
-            report.entries.append({"version_id": m.version_id, "symbol": m.symbol, "price": str(mark)})
-            store.append_event(
-                actor="master",
-                kind="forward_entry",
-                ref_type="strategy_version",
-                ref_id=m.version_id,
-                payload={"symbol": m.symbol, "qty": str(qty), "price": str(mark)},
-            )
 
-    if intents:
-        execute_orders(
-            intents,
+    if pending:
+        outcomes = execute_orders(
+            [p[0] for p in pending],
             live_enabled=False,  # the executor is SIM-only; live exits stay with the live lane
             kill_switch=False,
             adapter=None,
@@ -339,6 +351,21 @@ def step_tracks(
             risk=store.settings.risk,
             catalog=cat,
         )
+        # Counts + events reflect what actually BOOKED. A rejected order was audited by the order path
+        # (order_rejected) — it must not appear in the forward ledger as a trade that happened.
+        for (_intent, kind, payload), outcome in zip(pending, outcomes):
+            if not outcome.accepted:
+                continue
+            if kind == "exit":
+                report.closed += 1
+                report.exits.append({k: payload[k] for k in ("version_id", "symbol", "reason", "price")})
+                store.append_event(actor="master", kind="forward_exit", ref_type="strategy_version",
+                                   ref_id=payload["version_id"], payload=payload)
+            else:
+                report.opened += 1
+                report.entries.append({k: payload[k] for k in ("version_id", "symbol", "price")})
+                store.append_event(actor="master", kind="forward_entry", ref_type="strategy_version",
+                                   ref_id=payload["version_id"], payload=payload)
     store.append_event(
         actor="master",
         kind="forward_stepped",

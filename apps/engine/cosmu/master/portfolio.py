@@ -86,9 +86,13 @@ class Portfolio:
         last_was_loss = existing.last_was_loss if existing else False
 
         if prev_qty == 0 or (prev_qty > 0) == (signed > 0):
-            # opening or adding in the same direction -> weighted-average the basis
+            # opening or adding in the same direction -> weighted-average the basis (pure price), and the
+            # entry-leg fee books to realized NOW (mark-to-market expense). It used to be silently dropped —
+            # only the closing leg's fee was ever charged, flattering every round trip by ~one taker fee,
+            # and that flattery fed tracks.return_pct → live_ready.
             total_cost = prev_avg * abs(prev_qty) + price * qty
             new_avg = (total_cost / abs(new_qty)) if new_qty != 0 else Decimal("0")
+            realized = prev_realized - fee
         else:
             # reducing/closing -> realize P&L on the closed quantity, basis unchanged for the remainder
             closed = min(abs(signed), abs(prev_qty))

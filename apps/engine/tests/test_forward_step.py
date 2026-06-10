@@ -188,8 +188,9 @@ def test_flat_track_reenters_on_its_own_entry_signal(tmp_path):
     router, _ = _router([30000.0] * 25 + [33500.0])
     assert step_tracks(store, router=router).closed == 1  # take-profit closes it
 
-    # Next tick: flat track + entry signal true (ret_Nd > -1 always) → re-enters through the order path.
-    router2, _ = _router([33500.0] * 26)
+    # Next tick, NEXT bar (the screen convention never re-enters the bar it exited): flat track + entry
+    # signal true (ret_Nd > -1 always) → re-enters through the order path.
+    router2, _ = _router([30000.0] * 25 + [33500.0, 33500.0])
     report = step_tracks(store, router=router2)
 
     assert report.opened == 1
@@ -329,3 +330,59 @@ def test_drift_defund_closes_the_held_position_and_blocks_reentry(tmp_path, monk
     # Entry signal is always-true (mom=-1), but the defund verdict blocks re-entry.
     assert step_tracks(store, router=router).opened == 0
     assert _held_qty(store, vid) == 0
+
+
+def test_take_profit_fills_at_the_limit_never_the_overshoot(tmp_path):
+    """A real OCO fills AT the take limit — booking the close's overshoot beyond it would flatter the forward
+    test vs the screen that funded it. Close 33500 >> limit (basis*1.10): the sell books at the limit (minus
+    sim slippage), not at 33500."""
+    store = _store(tmp_path)
+    vid = _persist_survivor(store, params={"mom": 100.0, "sl": 0.50, "tp": 0.10})
+    _fund(store, entry_price=30000.0)
+    basis = Decimal("30000") * Decimal("1.0005")  # entry slippage is in the basis
+    limit = basis * Decimal("1.10")
+
+    router, _ = _router([30000.0] * 25 + [33500.0])
+    report = step_tracks(store, router=router)
+
+    assert report.exits[0]["reason"] == "take_profit"
+    sell = store.row("SELECT price FROM executions WHERE side='sell' AND strategy_version_id = ?", (vid,))
+    assert Decimal(str(sell["price"])) <= limit  # never above the limit (sim slippage takes it slightly under)
+    assert Decimal(str(sell["price"])) > limit * Decimal("0.999")
+
+
+def test_rerun_on_same_bars_is_a_true_noop(tmp_path):
+    """Idempotency: the decision bar is stamped into every executor order id, so re-running on the same bars
+    neither double-closes nor churns an exit→re-entry on the bar it just exited."""
+    store = _store(tmp_path)
+    vid = _persist_survivor(store, params={"mom": -1.0, "sl": 0.50, "tp": 0.10})  # entry always true
+    _fund(store, entry_price=30000.0)
+    router, _ = _router([30000.0] * 25 + [33500.0])
+    first = step_tracks(store, router=router)
+    assert first.closed == 1
+
+    second = step_tracks(store, router=router)   # same bars again
+    third = step_tracks(store, router=router)
+
+    assert second.closed == 0 and second.opened == 0  # no double close, no same-bar re-entry
+    assert third.closed == 0 and third.opened == 0
+    assert _held_qty(store, vid) == 0
+    assert len(store.rows("SELECT id FROM executions WHERE side='sell'")) == 1
+
+    # A NEW bar arrives → the entry signal may genuinely re-enter now.
+    router2, _ = _router([30000.0] * 25 + [33500.0, 33600.0])
+    fourth = step_tracks(store, router=router2)
+    assert fourth.opened == 1
+    assert _held_qty(store, vid) > 0
+
+
+def test_entry_fee_is_charged_not_dropped(tmp_path):
+    """REGRESSION: apply_fill's opening branch used to drop the entry-leg fee entirely — every round trip was
+    flattered by ~one taker fee, and that flattery fed tracks.return_pct → live_ready. The fee books to
+    realized at open."""
+    store = _store(tmp_path)
+    vid = _persist_survivor(store, params={"mom": -1.0, "sl": 0.50, "tp": 0.50})
+    _fund(store, entry_price=30000.0)
+
+    pos = store.row("SELECT realized_pnl FROM positions WHERE strategy_version_id = ?", (vid,))
+    assert Decimal(str(pos["realized_pnl"])) < 0  # the entry fee is real money, booked immediately
