@@ -288,3 +288,44 @@ def test_closed_track_keeps_realized_pnl_in_equity_and_trajectory(tmp_path):
     assert abs(float(tsnap["equity"]) - (1000.0 + float(realized))) < 0.05
     tr = store.row("SELECT return_pct FROM tracks WHERE strategy_version_id = ?", (vid,))
     assert float(tr["return_pct"]) < 0
+
+
+def test_killed_version_position_is_liquidated(tmp_path):
+    """A version killed AFTER funding (FDR demotion, graveyard) must not keep a marching position — the
+    executor liquidates it at the next mark instead of letting a dead strategy accrue P&L forever."""
+    store = _store(tmp_path)
+    vid = _persist_survivor(store, params={"mom": -1.0, "sl": 0.50, "tp": 0.50})
+    _fund(store, entry_price=30000.0)
+    store.rows("UPDATE strategy_versions SET status='killed', kill_reason='fdr' WHERE id = ?", (vid,))
+
+    router, _ = _router([30000.0] * 26)
+    report = step_tracks(store, router=router)
+
+    assert report.closed == 1 and report.exits[0]["reason"] == "version_killed"
+    assert _held_qty(store, vid) == 0
+    # And it never re-enters: the version is dead, not flat-and-waiting.
+    assert step_tracks(store, router=router).opened == 0
+
+
+def test_drift_defund_closes_the_held_position_and_blocks_reentry(tmp_path, monkeypatch):
+    """master/drift's verdict has teeth now: a defunded HELD track closes this tick (reason drift_defund),
+    and a defunded FLAT track is not re-entered by its own signal."""
+    from types import SimpleNamespace
+
+    import cosmu.orchestrator.forward_step as fs
+
+    store = _store(tmp_path)
+    vid = _persist_survivor(store, params={"mom": -1.0, "sl": 0.50, "tp": 0.50})  # entry always true
+    _fund(store, entry_price=30000.0)
+    monkeypatch.setattr(
+        fs, "monitor_drift", lambda s, ids: [SimpleNamespace(ref_id=v, defund=True) for v in ids]
+    )
+
+    router, _ = _router([30000.0] * 26)
+    report = step_tracks(store, router=router)
+
+    assert report.closed == 1 and report.exits[0]["reason"] == "drift_defund"
+    assert _held_qty(store, vid) == 0
+    # Entry signal is always-true (mom=-1), but the defund verdict blocks re-entry.
+    assert step_tracks(store, router=router).opened == 0
+    assert _held_qty(store, vid) == 0

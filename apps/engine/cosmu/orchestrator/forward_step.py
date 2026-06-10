@@ -58,14 +58,16 @@ class StepReport:
 class _Managed:
     """One executor-managed track resolved to everything its evaluation needs. `venue_id` is the REAL catalog
     venue (binance/ibkr/…) recovered from the position's instrument — positions persist venue='sim' for paper
-    fills, which is a fill-ledger label, not a pricing/catalog venue."""
+    fills, which is a fill-ledger label, not a pricing/catalog venue. `liquidate_reason` set ⇒ the position
+    closes unconditionally at the next mark (killed version) — no spec evaluation, just the exit."""
 
     version_id: str
-    spec: StrategySpec
+    spec: StrategySpec | None
     params: dict[str, float]
     symbol: str
     venue_id: str
     position: PositionView | None  # None ⇒ flat (re-entry candidate)
+    liquidate_reason: str | None = None
 
 
 def _load_spec_params(store: Store, version_id: str) -> tuple[StrategySpec, dict[str, float]] | None:
@@ -172,6 +174,17 @@ def _managed_tracks(store: Store, portfolio: Portfolio, cat: VenueCatalog) -> tu
         seen.add(vid)
         loaded = _load_spec_params(store, vid)
         if loaded is None:
+            # Distinguish DEAD (version killed/graveyarded/vanished) from ALIVE-but-unparsable (historical
+            # minimal spec): a dead strategy's HELD position must not march on accruing P&L forever — it
+            # LIQUIDATES at the next mark. An alive track whose spec can't parse stays mark-only (honest
+            # skip — never invent logic for it), and flat dead rows just stay skipped.
+            status_row = store.row("SELECT status FROM strategy_versions WHERE id = ?", (vid,))
+            dead = status_row is None or status_row.get("status") not in ("forward_test", "live")
+            if pos is not None and dead:
+                venue_id = _instrument_venue(cat, instrument_id)
+                if venue_id is not None:
+                    out.append(_Managed(vid, None, {}, symbol, venue_id, pos, liquidate_reason="version_killed"))
+                    continue
             report.skipped_unmanaged += 1
             continue
         spec, params = loaded
@@ -209,17 +222,52 @@ def step_tracks(
     if not tracks:
         return report
 
-    # Drift verdicts gate RE-ENTRY only (an anticipatory defund must not be re-funded by the next signal);
-    # exits are never blocked. Insufficient history ⇒ no defund, same as the funder.
-    flat_ids = [m.version_id for m in tracks if m.position is None]
-    defunded = {v.ref_id for v in monitor_drift(store, flat_ids) if v.defund} if flat_ids else set()
+    # Drift verdicts now have TEETH: a defunded HELD track is closed this tick (master/drift's documented
+    # intent — "capital is pulled BEFORE realized P&L turns" — was only ever a recommendation while nothing
+    # could close a position), and a defunded FLAT track is not re-entered by its next signal. Exits are
+    # never blocked. Insufficient history ⇒ no defund, same as the funder.
+    all_ids = [m.version_id for m in tracks if m.liquidate_reason is None]
+    defunded = {v.ref_id for v in monitor_drift(store, all_ids) if v.defund} if all_ids else set()
 
     alt_store = resolve_alt_store(store.settings, store)
     per_track_capital = store.settings.sim_track_capital
     intents: list[IntendedOrder] = []
 
+    def _close(m: _Managed, mark: Decimal, reason: str) -> None:
+        intents.append(
+            IntendedOrder(
+                strategy_version_id=m.version_id,
+                symbol=m.symbol,
+                venue_id=m.venue_id,
+                side=-1,
+                qty=m.position.qty,
+                price=mark,
+                stop_loss=None,
+                take_profit=None,
+                conviction=Decimal(str(m.spec.risk.conviction)) if m.spec is not None else Decimal("0.5"),
+                gate_passed=True,
+                reduce_only=True,
+            )
+        )
+        report.closed += 1
+        report.exits.append({"version_id": m.version_id, "symbol": m.symbol, "reason": reason, "price": str(mark)})
+        store.append_event(
+            actor="master",
+            kind="forward_exit",
+            ref_type="strategy_version",
+            ref_id=m.version_id,
+            payload={"symbol": m.symbol, "reason": reason, "qty": str(m.position.qty), "price": str(mark)},
+        )
+
     for m in tracks:
         report.managed += 1
+        if m.liquidate_reason is not None:
+            # Dead version, held position: liquidate at the latest real mark — no spec to evaluate. A missing
+            # mark (offline) defers to the next tick rather than inventing an exit price.
+            mark = pricer.last_price(m.symbol, m.venue_id)
+            if mark > 0:
+                _close(m, mark, m.liquidate_reason)
+            continue
         provider = pricer.provider_for(m.symbol, m.venue_id)
         limit = min(max(_warmup_bars(m.spec, m.params) + 10, 60), 500)
         try:
@@ -235,33 +283,12 @@ def step_tracks(
         mark = bars[-1].close
 
         if m.position is not None:
-            reason = _exit_reason(m, store, bars, features, now)
+            # An anticipatory drift defund outranks the spec's own exits — the edge the track was funded on
+            # is measurably gone, so capital is pulled NOW rather than waiting for a bracket to trip.
+            reason = "drift_defund" if m.version_id in defunded else _exit_reason(m, store, bars, features, now)
             if reason is None:
                 continue
-            intents.append(
-                IntendedOrder(
-                    strategy_version_id=m.version_id,
-                    symbol=m.symbol,
-                    venue_id=m.venue_id,
-                    side=-1,
-                    qty=m.position.qty,
-                    price=mark,
-                    stop_loss=None,
-                    take_profit=None,
-                    conviction=Decimal(str(m.spec.risk.conviction)),
-                    gate_passed=True,
-                    reduce_only=True,
-                )
-            )
-            report.closed += 1
-            report.exits.append({"version_id": m.version_id, "symbol": m.symbol, "reason": reason, "price": str(mark)})
-            store.append_event(
-                actor="master",
-                kind="forward_exit",
-                ref_type="strategy_version",
-                ref_id=m.version_id,
-                payload={"symbol": m.symbol, "reason": reason, "qty": str(m.position.qty), "price": str(mark)},
-            )
+            _close(m, mark, reason)
         else:
             if m.version_id in defunded:
                 continue
