@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cosmu · Mix 02 Monolith</title>
+<style>
+/* ── Tokens: Monolith — near-black + acid lime accent ── */
+:root {
+  --bg:        #0b0b0c;
+  --surf:      #111113;
+  --surf2:     #161618;
+  --surf3:     #1c1c1f;
+  --surf4:     #222226;
+  --fg:        #f0f0f2;
+  --muted:     #8a8a92;
+  --quiet:     #5a5a62;
+  --hairline:  #232326;
+  --border:    #2a2a2e;
+  --border-s:  #363640;
+  --acid:      #c8f54e;
+  --acid-dim:  rgba(200,245,78,0.10);
+  --acid-mid:  rgba(200,245,78,0.22);
+  --up:        #4ade80;
+  --up-dim:    rgba(74,222,128,0.10);
+  --down:      #f87171;
+  --down-dim:  rgba(248,113,113,0.10);
+  --gold:      #fbbf24;
+  --sidebar-w: 232px;
+  --header-h:  44px;
+  --panel-w:   640px;
+  --r:         3px;
+  --r-sm:      2px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{color-scheme:dark;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+  background:var(--bg);
+  color:var(--fg);
+  -webkit-font-smoothing:antialiased;
+  font-size:12px;
+  letter-spacing:-0.003em;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+.mono{font-family:"SF Mono","Fira Code","Cascadia Code",ui-monospace,monospace;font-variant-numeric:tabular-nums slashed-zero}
+.tab{font-variant-numeric:tabular-nums slashed-zero}
+.up{color:var(--up)}.dn{color:var(--down)}.gold{color:var(--gold)}.muted{color:var(--muted)}.quiet{color:var(--quiet)}
+.acid{color:var(--acid)}
+
+/* ── Shell ── */
+.shell{display:flex;min-height:100vh}
+
+/* ── Sidebar ── */
+.sidebar{
+  position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;
+  background:var(--surf);border-right:1px solid var(--hairline);
+  display:flex;flex-direction:column;z-index:50;flex-shrink:0;
+}
+.sb-logo{
+  height:var(--header-h);display:flex;align-items:center;gap:10px;
+  padding:0 16px;border-bottom:1px solid var(--hairline);flex-shrink:0;
+}
+.sb-mark{
+  width:24px;height:24px;border-radius:4px;flex-shrink:0;
+  background:var(--acid);
+  display:flex;align-items:center;justify-content:center;
+}
+.sb-mark svg{width:13px;height:13px}
+.sb-name{font-size:13px;font-weight:700;letter-spacing:-0.03em;color:var(--fg)}
+.sb-sub{font-size:9px;color:var(--quiet);font-weight:600;letter-spacing:.09em;text-transform:uppercase;margin-top:1px}
+.sb-nav{flex:1;overflow-y:auto;padding:8px 8px 0}
+.nav-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 10px;border-radius:var(--r);
+  cursor:pointer;color:var(--muted);font-size:12px;font-weight:500;
+  transition:background 80ms,color 80ms;user-select:none;
+  border:none;background:transparent;width:100%;text-align:left;
+}
+.nav-item:hover{background:var(--surf3);color:var(--fg)}
+.nav-item.active{background:var(--acid-dim);color:var(--acid);border:1px solid rgba(200,245,78,0.18)}
+.nav-item.active .nav-count{background:var(--acid-mid);color:var(--acid)}
+.nav-left{display:flex;align-items:center;gap:9px}
+.nav-icon{width:14px;height:14px;flex-shrink:0;opacity:.55}
+.nav-item.active .nav-icon{opacity:1}
+.nav-label{font-size:12.5px}
+.nav-count{
+  font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;
+  background:var(--surf4);color:var(--quiet);
+  border-radius:10px;padding:1px 6px;min-width:20px;text-align:center;
+  border:1px solid var(--hairline);
+}
+.sb-footer{padding:8px;border-top:1px solid var(--hairline);flex-shrink:0}
+.sb-settings{
+  display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:var(--r);
+  color:var(--quiet);font-size:11.5px;cursor:pointer;
+  border:none;background:transparent;width:100%;text-align:left;
+}
+.sb-settings:hover{background:var(--surf3);color:var(--muted)}
+.mockup-badge{
+  margin:8px 8px 0;padding:4px 8px;border-radius:var(--r);
+  background:rgba(200,245,78,0.07);border:1px solid rgba(200,245,78,0.18);
+  color:var(--acid);font-size:9.5px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;text-align:center;
+}
+
+/* ── Main ── */
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-width:0}
+
+/* ── Strip header ── */
+.strip{
+  position:sticky;top:0;z-index:40;
+  height:var(--header-h);
+  background:var(--bg);border-bottom:1px solid var(--hairline);
+  display:flex;align-items:center;gap:0;padding:0 20px;
+  overflow-x:auto;white-space:nowrap;
+}
+.strip-item{
+  display:flex;align-items:baseline;gap:5px;
+  padding:0 14px;border-right:1px solid var(--hairline);font-size:11px;color:var(--quiet);
+}
+.strip-item:first-child{padding-left:0}
+.strip-item:last-child{border-right:none}
+.strip-val{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.03em;color:var(--fg)}
+.strip-val.up{color:var(--up)}
+.strip-val.dn{color:var(--down)}
+
+/* ── Page content ── */
+.page{display:none;padding:20px;flex:1}
+.page.active{display:block}
+
+/* ── Ribbon ── */
+.ribbon{
+  display:flex;gap:1px;margin-bottom:16px;
+  background:var(--hairline);border-radius:var(--r);overflow:hidden;
+  border:1px solid var(--hairline);
+}
+.rib-cell{
+  flex:1;padding:10px 14px;background:var(--surf);
+  display:flex;flex-direction:column;gap:3px;
+}
+.rib-label{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--quiet)}
+.rib-val{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.04em;color:var(--fg)}
+.rib-sub{font-size:10.5px;color:var(--muted)}
+
+/* ── Filter chips ── */
+.chips{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.chip{
+  padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;
+  border:1px solid var(--border);background:transparent;color:var(--muted);
+  transition:all 80ms;user-select:none;
+}
+.chip:hover{border-color:var(--border-s);color:var(--fg)}
+.chip.active{background:var(--acid-dim);border-color:rgba(200,245,78,0.35);color:var(--acid)}
+
+/* ── Column picker ── */
+.col-picker{display:flex;align-items:center;gap:6px;margin-bottom:10px}
+.col-picker-label{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--quiet);margin-right:2px}
+.col-tog{
+  padding:2px 8px;border-radius:2px;font-size:10.5px;font-weight:600;cursor:pointer;
+  border:1px solid var(--border);background:transparent;color:var(--muted);
+  transition:all 80ms;
+}
+.col-tog:hover{color:var(--fg);border-color:var(--border-s)}
+.col-tog.on{background:var(--acid-dim);border-color:rgba(200,245,78,0.28);color:var(--acid)}
+
+/* ── Screener table ── */
+.screener-wrap{overflow-x:auto}
+.screener{width:100%;border-collapse:collapse;font-size:12px}
+.screener th{
+  padding:6px 10px;text-align:left;font-size:10px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--quiet);
+  background:var(--surf);border-bottom:1px solid var(--hairline);
+  white-space:nowrap;cursor:pointer;user-select:none;
+}
+.screener th:hover{color:var(--muted)}
+.screener th.sort-asc::after{content:" ↑";color:var(--acid)}
+.screener th.sort-desc::after{content:" ↓";color:var(--acid)}
+.screener td{
+  padding:8px 10px;border-bottom:1px solid var(--hairline);
+  vertical-align:middle;white-space:nowrap;
+}
+.screener tr.data-row{cursor:pointer;transition:background 60ms}
+.screener tr.data-row:hover td{background:var(--surf2)}
+.screener tr.data-row.selected td{background:var(--acid-dim)}
+.screener tr.data-row.selected td:first-child{border-left:2px solid var(--acid)}
+.screener tr.killed-row td{opacity:.5}
+.screener tr.killed-row td:first-child{opacity:.7}
+
+/* in-cell visuals */
+.dsr-bar{display:flex;align-items:center;gap:6px}
+.dsr-track{width:48px;height:5px;background:var(--surf4);border-radius:2px;position:relative;flex-shrink:0}
+.dsr-fill{height:100%;border-radius:2px;background:var(--acid)}
+.dsr-marker{position:absolute;top:-2px;height:9px;width:1px;background:var(--muted)}
+.dd-gauge{display:flex;align-items:center;gap:5px}
+.dd-track{width:38px;height:5px;background:var(--surf4);border-radius:2px;position:relative;flex-shrink:0;overflow:hidden}
+.dd-fill{height:100%;border-radius:2px;background:var(--down)}
+.dd-limit{position:absolute;top:-2px;height:9px;width:1px;background:var(--muted);right:0}
+
+.stage-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:2px 7px;border-radius:2px;font-size:10px;font-weight:700;
+  letter-spacing:.04em;text-transform:uppercase;
+}
+.stage-live{background:rgba(74,222,128,0.12);color:var(--up);border:1px solid rgba(74,222,128,0.22)}
+.stage-paper{background:rgba(200,245,78,0.08);color:var(--acid);border:1px solid rgba(200,245,78,0.18)}
+.stage-gate{background:rgba(251,191,36,0.10);color:var(--gold);border:1px solid rgba(251,191,36,0.20)}
+.stage-bt{background:var(--surf3);color:var(--muted);border:1px solid var(--border)}
+.stage-killed{background:rgba(248,113,113,0.08);color:var(--down);border:1px solid rgba(248,113,113,0.18)}
+.stage-queued{background:var(--surf3);color:var(--quiet);border:1px solid var(--border)}
+
+.lc-glyph{display:flex;gap:2px;align-items:center}
+.lc-dot{width:6px;height:6px;border-radius:50%;background:var(--surf4);border:1px solid var(--border)}
+.lc-dot.bt{background:var(--surf4);border-color:var(--border-s)}
+.lc-dot.paper{background:var(--acid);opacity:.4}
+.lc-dot.paper.cur{background:var(--acid);opacity:1;box-shadow:0 0 0 2px var(--acid-dim)}
+.lc-dot.live{background:var(--up);opacity:.4}
+.lc-dot.live.cur{background:var(--up);opacity:1;box-shadow:0 0 0 2px var(--up-dim)}
+.lc-dot.killed{background:var(--down);opacity:.7}
+
+/* pnl heat tint */
+.pnl-pos{background:rgba(74,222,128,0.05)}
+.pnl-neg{background:rgba(248,113,113,0.05)}
+
+/* ── Panel overlay ── */
+.panel-overlay{
+  position:fixed;inset:0;z-index:80;
+  background:rgba(0,0,0,0.55);
+  opacity:0;pointer-events:none;transition:opacity 180ms;
+}
+.panel-overlay.open{opacity:1;pointer-events:all}
+.panel{
+  position:fixed;top:0;right:0;width:min(var(--panel-w),50vw);height:100vh;
+  background:var(--surf);border-left:1px solid var(--hairline);
+  z-index:90;overflow-y:auto;
+  transform:translateX(100%);transition:transform 200ms cubic-bezier(0.22,1,0.36,1);
+}
+.panel.open{transform:translateX(0)}
+.panel-head{
+  position:sticky;top:0;background:var(--surf);border-bottom:1px solid var(--hairline);
+  padding:14px 18px 13px;display:flex;align-items:center;justify-content:space-between;
+  z-index:2;flex-shrink:0;
+}
+.panel-title{font-size:13.5px;font-weight:700;letter-spacing:-0.02em}
+.panel-close{
+  width:26px;height:26px;border-radius:var(--r);background:var(--surf3);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted);
+  font-size:15px;line-height:1;flex-shrink:0;
+}
+.panel-close:hover{background:var(--surf4);color:var(--fg)}
+.panel-body{padding:18px}
+.panel-section{margin-bottom:22px}
+.panel-section-title{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--quiet);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--hairline)}
+
+/* panel actions */
+.panel-actions{display:flex;gap:8px;margin-bottom:20px}
+.btn{
+  padding:6px 14px;border-radius:var(--r);font-size:12px;font-weight:600;cursor:pointer;
+  border:1px solid var(--border);background:var(--surf3);color:var(--muted);
+  transition:all 80ms;
+}
+.btn:hover{background:var(--surf4);color:var(--fg);border-color:var(--border-s)}
+.btn-live{background:rgba(74,222,128,0.10);border-color:rgba(74,222,128,0.28);color:var(--up)}
+.btn-live:hover{background:rgba(74,222,128,0.18)}
+.btn-danger{background:rgba(248,113,113,0.10);border-color:rgba(248,113,113,0.28);color:var(--down)}
+.btn-danger:hover{background:rgba(248,113,113,0.18)}
+
+/* equity chart */
+.equity-chart{
+  width:100%;height:140px;background:var(--surf2);border-radius:var(--r);
+  border:1px solid var(--hairline);overflow:hidden;position:relative;margin-bottom:8px;
+}
+.chart-chips{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.chart-chip{padding:2px 8px;border-radius:2px;font-size:10px;font-weight:600;letter-spacing:.04em}
+.chart-chip.bt{background:var(--surf3);color:var(--muted);border:1px solid var(--border)}
+.chart-chip.paper{background:var(--acid-dim);color:var(--acid);border:1px solid rgba(200,245,78,0.22)}
+.chart-chip.live{background:rgba(74,222,128,0.10);color:var(--up);border:1px solid rgba(74,222,128,0.22)}
+
+/* phase table */
+.phase-table{width:100%;border-collapse:collapse;font-size:11.5px}
+.phase-table th{padding:5px 10px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--quiet);border-bottom:1px solid var(--hairline);text-align:right}
+.phase-table th:first-child{text-align:left}
+.phase-table th.cur{color:var(--acid)}
+.phase-table td{padding:6px 10px;border-bottom:1px solid var(--hairline);text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.phase-table td:first-child{text-align:left;color:var(--fg);font-weight:500}
+.phase-table td.cur{color:var(--fg);font-weight:600}
+.phase-table tr.cur-col td.cur{background:rgba(200,245,78,0.04)}
+
+/* gate chips */
+.gate-chips{display:flex;flex-direction:column;gap:8px}
+.gate-chip-row{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;background:var(--surf2);border-radius:var(--r);border:1px solid var(--hairline)}
+.gate-chip-val{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;min-width:40px;flex-shrink:0}
+.gate-chip-meta{display:flex;flex-direction:column;gap:2px}
+.gate-chip-name{font-size:11px;font-weight:600;color:var(--fg)}
+.gate-chip-desc{font-size:10.5px;color:var(--muted);line-height:1.4}
+.gate-pass{color:var(--up)}.gate-warn{color:var(--gold)}.gate-fail{color:var(--down)}
+
+/* blocks */
+.blocks{display:flex;flex-direction:column;gap:6px}
+.block-row{display:flex;gap:8px;padding:7px 10px;background:var(--surf2);border-radius:var(--r);border:1px solid var(--hairline);align-items:baseline}
+.block-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--quiet);min-width:52px;flex-shrink:0}
+.block-val{font-size:11.5px;color:var(--fg)}
+.block-note{font-size:10.5px;color:var(--muted)}
+
+/* data feed */
+.feed-rows{display:flex;flex-direction:column;gap:6px}
+.feed-row{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--surf2);border-radius:var(--r);border:1px solid var(--hairline)}
+.feed-name{font-size:11px;font-weight:600;color:var(--fg)}
+.feed-meta{font-size:10.5px;color:var(--muted)}
+.feed-val{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums}
+
+/* trades */
+.trades-list{display:flex;flex-direction:column;gap:4px}
+.trade-row{display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:var(--surf2);border-radius:var(--r);border:1px solid var(--hairline);font-size:11px}
+.trade-side-buy{color:var(--up);font-weight:700}
+.trade-side-sell{color:var(--down);font-weight:700}
+
+/* timeline */
+.timeline{display:flex;flex-direction:column;gap:0}
+.tl-row{display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--hairline)}
+.tl-row:last-child{border-bottom:none}
+.tl-dot{width:7px;height:7px;border-radius:50%;background:var(--surf4);border:1px solid var(--border-s);flex-shrink:0;margin-top:3px}
+.tl-dot.acid{background:var(--acid);border-color:var(--acid)}
+.tl-dot.up{background:var(--up);border-color:var(--up)}
+.tl-dot.down{background:var(--down);border-color:var(--down)}
+.tl-body{flex:1}
+.tl-text{font-size:11px;color:var(--muted);line-height:1.5}
+.tl-date{font-size:10px;color:var(--quiet);margin-top:1px}
+
+/* ── Liquidate modal ── */
+.modal-overlay{
+  position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.7);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity 150ms;
+}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{
+  width:380px;background:var(--surf);border:1px solid var(--border);
+  border-radius:var(--r);padding:24px;
+}
+.modal-title{font-size:14px;font-weight:700;margin-bottom:8px}
+.modal-body{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:20px}
+.modal-body strong{color:var(--fg)}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+
+/* ── Live / Paper pages ── */
+.hero-equity{
+  width:100%;height:180px;background:var(--surf);border:1px solid var(--hairline);
+  border-radius:var(--r);overflow:hidden;margin-bottom:16px;position:relative;
+}
+.cohort-ribbon{
+  display:flex;gap:1px;margin-bottom:16px;
+  background:var(--hairline);border-radius:var(--r);overflow:hidden;
+  border:1px solid var(--hairline);
+}
+.armed-banner{
+  padding:9px 14px;background:rgba(74,222,128,0.07);border:1px solid rgba(74,222,128,0.20);
+  border-radius:var(--r);margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;
+}
+.armed-left{display:flex;align-items:center;gap:8px}
+.armed-dot{width:8px;height:8px;border-radius:50%;background:var(--up);box-shadow:0 0 6px rgba(74,222,128,0.6);flex-shrink:0}
+.armed-text{font-size:12px;font-weight:600;color:var(--up)}
+.daily-loss-wrap{margin-bottom:16px;padding:12px 14px;background:var(--surf);border:1px solid var(--hairline);border-radius:var(--r)}
+.dl-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.dl-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--quiet)}
+.dl-val{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--down)}
+.dl-track{width:100%;height:6px;background:var(--surf4);border-radius:3px;position:relative}
+.dl-fill{height:100%;border-radius:3px;background:var(--down)}
+.dl-limit{position:absolute;right:25%;top:-3px;height:12px;width:1px;background:var(--gold)}
+
+/* ── Costs / Commands ── */
+.costs-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--hairline);border-radius:var(--r);overflow:hidden;border:1px solid var(--hairline);margin-bottom:20px}
+.cost-cell{background:var(--surf);padding:12px 16px}
+.cost-label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;font-weight:600;color:var(--quiet);margin-bottom:4px}
+.cost-val{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.04em}
+.commands-list{display:flex;flex-direction:column;gap:6px}
+.cmd-row{display:flex;gap:10px;align-items:baseline;padding:8px 10px;background:var(--surf);border:1px solid var(--hairline);border-radius:var(--r)}
+.cmd-name{font-size:11.5px;font-weight:700;color:var(--acid);min-width:130px;flex-shrink:0}
+.cmd-desc{font-size:11px;color:var(--muted)}
+
+/* page headings */
+.page-title{font-size:15px;font-weight:700;letter-spacing:-0.025em;margin-bottom:16px;color:var(--fg)}
+.section-title{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet);margin-bottom:10px}
+
+/* utility */
+.flex-row{display:flex;align-items:center;gap:8px}
+.killed-reason{font-size:10px;color:var(--down);padding:1px 6px;background:rgba(248,113,113,0.08);border-radius:2px;border:1px solid rgba(248,113,113,0.18)}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ── SIDEBAR ── -->
+<aside class="sidebar">
+  <div class="sb-logo">
+    <div class="sb-mark">
+      <svg viewBox="0 0 13 13" fill="none"><path d="M2 2h4v4H2V2zm5 5h4v4H7V7zm0-5h4v2H7V2zm0 2h2v2H7V4zM2 7h4v2H2V7zm0 2h2v2H2V9z" fill="#0b0b0c"/></svg>
+    </div>
+    <div>
+      <div class="sb-name">Cosmu</div>
+      <div class="sb-sub">Quant Engine</div>
+    </div>
+  </div>
+  <nav class="sb-nav">
+    <button class="nav-item active" onclick="navigate('strategies')">
+      <span class="nav-left">
+        <svg class="nav-icon" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="3" width="12" height="9" rx="1"/><path d="M4 1v4M7 1v4M10 1v4"/></svg>
+        <span class="nav-label">Strategies</span>
+      </span>
+      <span class="nav-count">12</span>
+    </button>
+    <button class="nav-item" onclick="navigate('paper')">
+      <span class="nav-left">
+        <svg class="nav-icon" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 11V5l5-4 5 4v6H9V8H5v3H2z"/></svg>
+        <span class="nav-label">Paper</span>
+      </span>
+      <span class="nav-count">4</span>
+    </button>
+    <button class="nav-item" onclick="navigate('live')">
+      <span class="nav-left">
+        <svg class="nav-icon" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="5"/><path d="M7 4v3.5l2 1.5"/></svg>
+        <span class="nav-label">Live</span>
+      </span>
+      <span class="nav-count">1</span>
+    </button>
+    <button class="nav-item" onclick="navigate('costs')">
+      <span class="nav-left">
+        <svg class="nav-icon" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="5"/><path d="M7 4v6M5.5 5.5h2a1 1 0 010 2h-1a1 1 0 010 2h2"/></svg>
+        <span class="nav-label">Costs</span>
+      </span>
+    </button>
+    <button class="nav-item" onclick="navigate('commands')">
+      <span class="nav-left">
+        <svg class="nav-icon" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 4l3 3-3 3M7 10h5"/></svg>
+        <span class="nav-label">Commands</span>
+      </span>
+    </button>
+  </nav>
+  <div class="mockup-badge">MOCKUP · Synthetic data</div>
+  <div class="sb-footer">
+    <button class="sb-settings">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="2"/><path d="M7 1v2M7 11v2M1 7h2M11 7h2M3 3l1.4 1.4M9.6 9.6 11 11M3 11l1.4-1.4M9.6 4.4 11 3"/></svg>
+      Settings
+    </button>
+  </div>
+</aside>
+
+<!-- ── MAIN ── -->
+<div class="main">
+
+  <!-- sticky strip -->
+  <header class="strip">
+    <div class="strip-item">
+      <span>Paper invested</span>
+      <span class="strip-val tab">$18,392</span>
+    </div>
+    <div class="strip-item">
+      <span>Paper P&amp;L</span>
+      <span class="strip-val up tab">+$1,392</span>
+      <span class="strip-val up tab" style="font-size:13px">(+9.27%)</span>
+    </div>
+    <div class="strip-item">
+      <span>Live total</span>
+      <span class="strip-val tab">$9,000</span>
+    </div>
+    <div class="strip-item">
+      <span>Free</span>
+      <span class="strip-val tab">$7,300</span>
+    </div>
+    <div class="strip-item">
+      <span>Invested</span>
+      <span class="strip-val tab">$1,700</span>
+    </div>
+    <div class="strip-item">
+      <span>Live P&amp;L</span>
+      <span class="strip-val up tab">+$419</span>
+      <span class="strip-val up tab" style="font-size:13px">(+21%)</span>
+    </div>
+  </header>
+
+  <!-- ═══════════════════════════════════════════ STRATEGIES PAGE -->
+  <div id="page-strategies" class="page active" style="padding:20px">
+    <div class="ribbon">
+      <div class="rib-cell">
+        <div class="rib-label">Σ Invested</div>
+        <div class="rib-val tab">$18,392</div>
+        <div class="rib-sub">paper + live</div>
+      </div>
+      <div class="rib-cell">
+        <div class="rib-label">Median P&amp;L</div>
+        <div class="rib-val up tab">+3.8%</div>
+        <div class="rib-sub">active strategies</div>
+      </div>
+      <div class="rib-cell">
+        <div class="rib-label">Median DSR</div>
+        <div class="rib-val tab">1.04</div>
+        <div class="rib-sub">deflated sharpe</div>
+      </div>
+      <div class="rib-cell">
+        <div class="rib-label">By Stage</div>
+        <div class="rib-val tab" style="font-size:14px">1L · 4P · 1G</div>
+        <div class="rib-sub">3 killed · 2 BT · 1 Q</div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div class="chips" style="margin-bottom:0">
+        <button class="chip active" onclick="filterChip(this,'all')">All</button>
+        <button class="chip" onclick="filterChip(this,'live')">Live</button>
+        <button class="chip" onclick="filterChip(this,'paper')">Paper</button>
+        <button class="chip" onclick="filterChip(this,'gate')">Gate ✓</button>
+        <button class="chip" onclick="filterChip(this,'killed')">Killed</button>
+        <button class="chip" onclick="filterChip(this,'queued')">Queued</button>
+      </div>
+      <div class="col-picker">
+        <span class="col-picker-label">Columns</span>
+        <button class="col-tog on" onclick="this.classList.toggle('on')">DSR</button>
+        <button class="col-tog on" onclick="this.classList.toggle('on')">PBO</button>
+        <button class="col-tog on" onclick="this.classList.toggle('on')">Max DD</button>
+        <button class="col-tog on" onclick="this.classList.toggle('on')">OOS</button>
+        <button class="col-tog on" onclick="this.classList.toggle('on')">Venue</button>
+        <button class="col-tog on" onclick="this.classList.toggle('on')">Days</button>
+      </div>
+    </div>
+
+    <div class="screener-wrap">
+      <table class="screener" id="screener-table">
+        <thead>
+          <tr>
+            <th style="width:28px"></th>
+            <th>Strategy</th>
+            <th>Stage</th>
+            <th class="sort-desc">DSR</th>
+            <th>PBO</th>
+            <th>Max DD</th>
+            <th>OOS</th>
+            <th>Venue</th>
+            <th>Days</th>
+            <th>P&amp;L</th>
+          </tr>
+        </thead>
+        <tbody id="screener-body">
+        <!-- filled by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ PAPER PAGE -->
+  <div id="page-paper" class="page" style="padding:20px">
+    <div class="page-title">Paper Trading</div>
+    <div class="cohort-ribbon ribbon">
+      <div class="rib-cell"><div class="rib-label">Invested</div><div class="rib-val tab">$18,392</div></div>
+      <div class="rib-cell"><div class="rib-label">Total P&amp;L</div><div class="rib-val up tab">+$1,392</div></div>
+      <div class="rib-cell"><div class="rib-label">Return</div><div class="rib-val up tab">+9.27%</div></div>
+      <div class="rib-cell"><div class="rib-label">Active</div><div class="rib-val tab">4</div></div>
+    </div>
+    <div class="hero-equity" id="paper-hero">
+      <svg width="100%" height="100%" viewBox="0 0 640 180" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="pg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#c8f54e" stop-opacity=".18"/>
+            <stop offset="100%" stop-color="#c8f54e" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="M0 160 C40 155 80 148 120 138 S200 115 240 105 S320 88 380 78 S460 62 520 54 S580 44 640 38 L640 180 L0 180 Z" fill="url(#pg)"/>
+        <path d="M0 160 C40 155 80 148 120 138 S200 115 240 105 S320 88 380 78 S460 62 520 54 S580 44 640 38" fill="none" stroke="#c8f54e" stroke-width="1.5"/>
+        <text x="12" y="18" font-size="10" fill="#5a5a62" font-family="system-ui">Portfolio equity — Paper</text>
+        <text x="12" y="32" font-size="13" fill="#c8f54e" font-weight="700" font-variant-numeric="tabular-nums">+9.27% · $1,392</text>
+      </svg>
+    </div>
+    <div style="margin-bottom:14px">
+      <button class="btn" style="font-size:11.5px;color:var(--muted)">⏸ Pause all paper</button>
+    </div>
+    <div class="section-title">Active paper strategies</div>
+    <div class="screener-wrap">
+      <table class="screener">
+        <thead><tr>
+          <th>Strategy</th><th>Days</th><th>P&amp;L</th><th>DSR</th><th>Max DD</th><th>Venue</th>
+        </tr></thead>
+        <tbody>
+          <tr class="data-row pnl-pos" onclick="openPanel('funding-carry-btc')">
+            <td><strong>Funding Carry BTC</strong></td>
+            <td class="tab muted">47d</td>
+            <td class="tab up">+9.3%</td>
+            <td class="tab">1.12</td>
+            <td class="tab muted">6.2%</td>
+            <td class="muted">Binance</td>
+          </tr>
+          <tr class="data-row pnl-pos" onclick="openPanel('xsect')">
+            <td><strong>Cross-Sectional Momentum Top-5</strong></td>
+            <td class="tab muted">33d</td>
+            <td class="tab up">+4.1%</td>
+            <td class="tab">0.98</td>
+            <td class="tab muted">8.1%</td>
+            <td class="muted">Binance</td>
+          </tr>
+          <tr class="data-row pnl-pos" onclick="openPanel('gtaa')">
+            <td><strong>GTAA Monthly Rotation</strong></td>
+            <td class="tab muted">41d</td>
+            <td class="tab up">+2.9%</td>
+            <td class="tab">0.91</td>
+            <td class="tab muted">5.4%</td>
+            <td class="muted">Binance</td>
+          </tr>
+          <tr class="data-row pnl-neg" onclick="openPanel('fg-eth')">
+            <td><strong>Fear &amp; Greed Contrarian ETH</strong></td>
+            <td class="tab muted">12d</td>
+            <td class="tab dn">−0.8%</td>
+            <td class="tab">0.74</td>
+            <td class="tab muted">3.1%</td>
+            <td class="muted">Binance</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ LIVE PAGE -->
+  <div id="page-live" class="page" style="padding:20px">
+    <div class="page-title">Live Trading</div>
+    <div class="armed-banner">
+      <div class="armed-left">
+        <div class="armed-dot"></div>
+        <span class="armed-text">Live trading armed</span>
+        <span class="muted" style="font-size:11px">· 1 strategy active · last heartbeat 8s ago</span>
+      </div>
+      <button class="btn btn-danger" onclick="openLiquidateModal()">Liquidate all</button>
+    </div>
+    <div class="cohort-ribbon ribbon">
+      <div class="rib-cell"><div class="rib-label">Total capital</div><div class="rib-val tab">$9,000</div></div>
+      <div class="rib-cell"><div class="rib-label">Invested</div><div class="rib-val tab">$1,700</div></div>
+      <div class="rib-cell"><div class="rib-label">Free</div><div class="rib-val tab">$7,300</div></div>
+      <div class="rib-cell"><div class="rib-label">Live P&amp;L</div><div class="rib-val up tab">+$419 (+21%)</div></div>
+    </div>
+    <div class="daily-loss-wrap">
+      <div class="dl-header">
+        <span class="dl-title">Daily Loss Limit</span>
+        <span class="dl-val">−$83 / $450 cap</span>
+      </div>
+      <div class="dl-track">
+        <div class="dl-fill" style="width:18.4%"></div>
+        <div class="dl-limit"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px">
+        <span class="quiet" style="font-size:10px">18.4% of daily cap used</span>
+        <span class="quiet" style="font-size:10px">Hard stop at 25%: $225</span>
+      </div>
+    </div>
+    <div class="hero-equity">
+      <svg width="100%" height="100%" viewBox="0 0 640 180" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#4ade80" stop-opacity=".18"/>
+            <stop offset="100%" stop-color="#4ade80" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="M0 150 C60 145 120 135 180 122 S280 100 340 88 S420 70 490 58 S570 44 640 36 L640 180 L0 180 Z" fill="url(#lg)"/>
+        <path d="M0 150 C60 145 120 135 180 122 S280 100 340 88 S420 70 490 58 S570 44 640 36" fill="none" stroke="#4ade80" stroke-width="1.5"/>
+        <text x="12" y="18" font-size="10" fill="#5a5a62" font-family="system-ui">Portfolio equity — Live</text>
+        <text x="12" y="32" font-size="13" fill="#4ade80" font-weight="700" font-variant-numeric="tabular-nums">+21% · +$419 · 18d</text>
+      </svg>
+    </div>
+    <div class="section-title">Active live strategies</div>
+    <div class="screener-wrap">
+      <table class="screener">
+        <thead><tr><th>Strategy</th><th>Days</th><th>P&amp;L</th><th>DSR</th><th>Max DD</th><th>Venue</th><th></th></tr></thead>
+        <tbody>
+          <tr class="data-row pnl-pos" onclick="openPanel('funding-carry-btc')">
+            <td><strong>Funding Carry BTC</strong></td>
+            <td class="tab muted">18d</td>
+            <td class="tab up">+21% (+$419)</td>
+            <td class="tab">1.18</td>
+            <td class="tab muted">3.1%</td>
+            <td class="muted">Binance</td>
+            <td><button class="btn btn-danger" style="padding:3px 10px;font-size:10.5px" onclick="event.stopPropagation();openLiquidateModal()">Liquidate</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ COSTS PAGE -->
+  <div id="page-costs" class="page" style="padding:20px">
+    <div class="page-title">Costs &amp; Fees</div>
+    <div class="costs-grid">
+      <div class="cost-cell"><div class="cost-label">Trading fees (30d)</div><div class="cost-val tab">$38.20</div></div>
+      <div class="cost-cell"><div class="cost-label">Funding paid (30d)</div><div class="cost-val tab dn">$4.10</div></div>
+      <div class="cost-cell"><div class="cost-label">Funding earned (30d)</div><div class="cost-val tab up">$87.50</div></div>
+      <div class="cost-cell"><div class="cost-label">Net cost (30d)</div><div class="cost-val tab up">−$45.20</div></div>
+      <div class="cost-cell"><div class="cost-label">Slippage est. (30d)</div><div class="cost-val tab">$12.40</div></div>
+      <div class="cost-cell"><div class="cost-label">Total cost (30d)</div><div class="cost-val tab dn">$54.70</div></div>
+    </div>
+    <div class="section-title" style="margin-bottom:10px">Fee assumptions</div>
+    <div class="screener-wrap">
+      <table class="screener">
+        <thead><tr><th>Venue</th><th>Maker</th><th>Taker</th><th>Funding interval</th></tr></thead>
+        <tbody>
+          <tr class="data-row"><td>Binance Perp</td><td class="tab">0.020%</td><td class="tab">0.040%</td><td class="tab">8h</td></tr>
+          <tr class="data-row"><td>Binance Spot</td><td class="tab">0.075%</td><td class="tab">0.075%</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ COMMANDS PAGE -->
+  <div id="page-commands" class="page" style="padding:20px">
+    <div class="page-title">Commands</div>
+    <div class="commands-list">
+      <div class="cmd-row"><span class="cmd-name">/run-gate [id]</span><span class="cmd-desc">Run Gate checks on a strategy spec and print pass/fail for each criterion</span></div>
+      <div class="cmd-row"><span class="cmd-name">/backtest [id]</span><span class="cmd-desc">Re-run walk-forward backtest with current param_space and save equity</span></div>
+      <div class="cmd-row"><span class="cmd-name">/paper-start [id]</span><span class="cmd-desc">Promote a gate-passed strategy to live paper trading on next bar</span></div>
+      <div class="cmd-row"><span class="cmd-name">/paper-stop [id]</span><span class="cmd-desc">Gracefully stop paper trading (completes open trades)</span></div>
+      <div class="cmd-row"><span class="cmd-name">/live-launch [id]</span><span class="cmd-desc">Arm real capital for a paper-graduated strategy (requires 2-step confirm)</span></div>
+      <div class="cmd-row"><span class="cmd-name">/liquidate [id|all]</span><span class="cmd-desc">Market-sell all live positions to USDC and disarm live trading</span></div>
+      <div class="cmd-row"><span class="cmd-name">/kill [id] [reason]</span><span class="cmd-desc">Mark strategy as killed with reason; preserves history</span></div>
+      <div class="cmd-row"><span class="cmd-name">/scan-signals</span><span class="cmd-desc">Run LLM signal scanner across all data feeds and surface new ideas</span></div>
+      <div class="cmd-row"><span class="cmd-name">/evolve [id]</span><span class="cmd-desc">Graft winning signal onto new asset cohort and route through Gate</span></div>
+      <div class="cmd-row"><span class="cmd-name">/manage-data</span><span class="cmd-desc">Backfill, verify coverage, and update market bars + alt sources</span></div>
+    </div>
+  </div>
+
+</div><!-- .main -->
+</div><!-- .shell -->
+
+<!-- ── PANEL OVERLAY ── -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<aside class="panel" id="side-panel">
+  <div class="panel-head">
+    <div>
+      <div id="panel-name" class="panel-title">—</div>
+      <div id="panel-stage-badge" style="margin-top:4px"></div>
+    </div>
+    <button class="panel-close" onclick="closePanel()">✕</button>
+  </div>
+  <div class="panel-body" id="panel-body"><!-- filled by JS --></div>
+</aside>
+
+<!-- ── LIQUIDATE MODAL ── -->
+<div class="modal-overlay" id="liq-overlay">
+  <div class="modal">
+    <div class="modal-title">Liquidate live positions</div>
+    <div class="modal-body">Sell all live positions to USDC and disarm live trading. <strong>$1,700 across 1 strategy</strong> will be market-sold at current prices.<br><br>Paper tracks are not affected.</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeLiqModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmLiquidate()">Confirm liquidate</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Data ──
+const STRATEGIES = [
+  {id:'funding-carry-btc',name:'Funding Carry BTC',stage:'live',dsr:1.12,pbo:0.31,dd:14,oos:'+8.2%',venue:'Binance',days:18,pnl:'+21% (+$419)',pnlSign:1,pnlLive:'+21%',btDays:null,paperDays:47},
+  {id:'xsect',name:'Cross-Sectional Momentum Top-5',stage:'paper',dsr:0.98,pbo:0.38,dd:11,oos:'+5.1%',venue:'Binance',days:33,pnl:'+4.1%',pnlSign:1},
+  {id:'gtaa',name:'GTAA Monthly Rotation',stage:'paper',dsr:0.91,pbo:0.29,dd:8,oos:'+6.8%',venue:'Binance',days:41,pnl:'+2.9%',pnlSign:1,liveReady:true},
+  {id:'fg-eth',name:'Fear & Greed Contrarian ETH',stage:'paper',dsr:0.74,pbo:0.44,dd:9,oos:'+3.2%',venue:'Binance',days:12,pnl:'−0.8%',pnlSign:-1},
+  {id:'stablecoin-lead',name:'Stablecoin Flows Lead ETH',stage:'paper',dsr:0.82,pbo:0.41,dd:7,oos:'+4.0%',venue:'Binance',days:8,pnl:'+1.2%',pnlSign:1},
+  {id:'vol-regime',name:'Vol-Regime Switch BTC',stage:'gate',dsr:1.05,pbo:0.28,dd:13,oos:'+7.1%',venue:'Binance',days:null,pnl:'—',pnlSign:0},
+  {id:'orb-sol',name:'ORB Breakout SOL 4h',stage:'killed',dsr:0.58,pbo:0.52,dd:22,oos:'+1.1%',venue:'Binance',days:null,pnl:'—',pnlSign:0,killedReason:'FDR control',killedDate:'2026-05-28'},
+  {id:'wiki-btc',name:'Wikipedia Pageviews Z-Score BTC',stage:'killed',dsr:0.41,pbo:0.61,dd:19,oos:'−1.2%',venue:'Binance',days:null,pnl:'—',pnlSign:0,killedReason:'PBO 0.61'},
+  {id:'reddit-doge',name:'Reddit Volume Spike DOGE',stage:'killed',dsr:0.33,pbo:0.58,dd:31,oos:'−3.1%',venue:'Binance',days:null,pnl:'—',pnlSign:0,killedReason:'Holdout fail'},
+  {id:'pm-riskon',name:'Polymarket Risk-On Overlay',stage:'bt',dsr:null,pbo:null,dd:null,oos:'—',venue:'Binance',days:null,pnl:'—',pnlSign:0},
+  {id:'fvg-btc',name:'FVG Retrace BTC 1h',stage:'queued',dsr:null,pbo:null,dd:null,oos:'—',venue:'Binance',days:null,pnl:'—',pnlSign:0},
+  {id:'ma-trend-eth',name:'MA Trend Filter ETH 1d',stage:'bt',dsr:null,pbo:null,dd:null,oos:'—',venue:'Binance',days:null,pnl:'—',pnlSign:0},
+];
+
+// ── Navigation ──
+function navigate(page) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  const items = document.querySelectorAll('.nav-item');
+  const map = {strategies:0,paper:1,live:2,costs:3,commands:4};
+  if(map[page]!==undefined) items[map[page]].classList.add('active');
+  history.replaceState(null,'','#/'+page);
+  closePanel();
+}
+
+// ── Filter chip ──
+function filterChip(el, val) {
+  document.querySelectorAll('.chips .chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderScreener(val);
+}
+
+// ── Screener render ──
+function stageBadgeHtml(s, lr) {
+  const map = {
+    live:'<span class="stage-badge stage-live">Live</span>',
+    paper:'<span class="stage-badge stage-paper">'+(lr?'Paper · live-ready':'Paper')+'</span>',
+    gate:'<span class="stage-badge stage-gate">Gate ✓</span>',
+    killed:'<span class="stage-badge stage-killed">Killed</span>',
+    bt:'<span class="stage-badge stage-bt">Backtesting</span>',
+    queued:'<span class="stage-badge stage-queued">Queued</span>',
+  };
+  return map[s]||s;
+}
+function lcGlyph(s) {
+  const isBT = ['bt','queued','gate','killed'].includes(s)||true; // show all
+  // bt paper live dots
+  const btClass = (s==='killed'||s==='bt'||s==='gate'||s==='paper'||s==='live') ? 'bt' : 'bt';
+  const paperClass = s==='paper'?'paper cur': s==='live'?'paper':'paper';
+  const liveClass = s==='live'?'live cur':'live';
+  const showPaper = ['paper','live','killed'].includes(s);
+  const showLive = ['live'].includes(s);
+  const killedClass = s==='killed'?'killed':'';
+  let html = '<div class="lc-glyph">';
+  html += `<div class="lc-dot bt"></div>`;
+  if(showPaper||s==='gate') html += `<div class="lc-dot paper${s==='live'?' ':s==='paper'?' cur':''}" style="${s==='gate'?'opacity:.25':''}"></div>`;
+  if(showLive) html += `<div class="lc-dot live cur"></div>`;
+  if(s==='killed') html += `<div class="lc-dot killed"></div>`;
+  html += '</div>';
+  return html;
+}
+function dsrBar(dsr) {
+  if(dsr==null) return '<span class="quiet">—</span>';
+  const pct = Math.min(dsr/2*100,100);
+  const marker = (0.95/2*100);
+  return `<div class="dsr-bar">
+    <span class="tab" style="min-width:28px;font-size:11.5px">${dsr.toFixed(2)}</span>
+    <div class="dsr-track"><div class="dsr-fill" style="width:${pct}%"></div><div class="dsr-marker" style="left:${marker}%"></div></div>
+  </div>`;
+}
+function ddGauge(dd) {
+  if(dd==null) return '<span class="quiet">—</span>';
+  const pct = Math.min(dd/25*100,100);
+  return `<div class="dd-gauge">
+    <span class="tab dn" style="min-width:28px;font-size:11.5px">${dd}%</span>
+    <div class="dd-track"><div class="dd-fill" style="width:${pct}%"></div><div class="dd-limit"></div></div>
+  </div>`;
+}
+function renderScreener(filter='all') {
+  const tbody = document.getElementById('screener-body');
+  let rows = STRATEGIES;
+  if(filter==='live') rows=rows.filter(r=>r.stage==='live');
+  else if(filter==='paper') rows=rows.filter(r=>r.stage==='paper');
+  else if(filter==='gate') rows=rows.filter(r=>r.stage==='gate');
+  else if(filter==='killed') rows=rows.filter(r=>r.stage==='killed');
+  else if(filter==='queued') rows=rows.filter(r=>r.stage==='queued');
+
+  tbody.innerHTML = rows.map(s => {
+    const pnlClass = s.pnlSign>0?'up':s.pnlSign<0?'dn':'muted';
+    const rowClass = `data-row${s.stage==='killed'?' killed-row':''}${s.pnlSign>0?' pnl-pos':s.pnlSign<0?' pnl-neg':''}`;
+    const killedBadge = s.killedReason ? `<span class="killed-reason">${s.killedReason}</span>` : '';
+    const liveReadyIcon = s.liveReady ? ' <span class="acid" title="live-ready" style="font-size:10px">↑live</span>' : '';
+    return `<tr class="${rowClass}" onclick="openPanel('${s.id}')">
+      <td style="padding-left:10px">${lcGlyph(s.stage)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">
+        <span style="font-weight:600">${s.name}</span>${killedBadge}${liveReadyIcon}
+        ${s.killedDate?`<div style="font-size:10px;color:var(--quiet)">${s.killedDate}</div>`:''}
+      </td>
+      <td>${stageBadgeHtml(s.stage,s.liveReady)}</td>
+      <td>${dsrBar(s.dsr)}</td>
+      <td class="tab ${s.pbo!=null?(s.pbo>0.45?'dn':s.pbo>0.35?'gold':'muted'):'quiet'}">${s.pbo!=null?s.pbo.toFixed(2):'—'}</td>
+      <td>${ddGauge(s.dd)}</td>
+      <td class="tab muted">${s.oos||'—'}</td>
+      <td class="muted">${s.venue||'—'}</td>
+      <td class="tab muted">${s.days!=null?s.days+'d':'—'}</td>
+      <td class="tab ${pnlClass}" style="font-weight:600">${s.pnl}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Panel ──
+function openPanel(id) {
+  const s = STRATEGIES.find(x=>x.id===id);
+  if(!s) return;
+  document.getElementById('panel-name').textContent = s.name;
+  document.getElementById('panel-stage-badge').innerHTML = stageBadgeHtml(s.stage, s.liveReady);
+  document.getElementById('panel-body').innerHTML = buildPanelContent(s);
+  document.getElementById('panel-overlay').classList.add('open');
+  document.getElementById('side-panel').classList.add('open');
+  document.getElementById('screener-body').querySelectorAll('tr').forEach(r=>{
+    r.classList.toggle('selected', r.querySelector('td+td span')?.textContent===s.name || r.querySelector('td+td strong')?.textContent===s.name);
+  });
+}
+function closePanel() {
+  document.getElementById('panel-overlay').classList.remove('open');
+  document.getElementById('side-panel').classList.remove('open');
+  document.querySelectorAll('.screener tr.selected').forEach(r=>r.classList.remove('selected'));
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape') closePanel();});
+
+function buildPanelContent(s) {
+  const isFCB = s.id==='funding-carry-btc';
+  const hasLive = s.stage==='live';
+  const hasPaper = ['live','paper'].includes(s.stage);
+  const hasBT = true;
+
+  // equity chart SVG
+  const chartSvg = buildEquityChart(s);
+
+  // phase chips
+  const chipsBT = '<span class="chart-chip bt">Backtest OOS</span>';
+  const chipsPaper = hasPaper ? '<span class="chart-chip paper">Paper</span>' : '';
+  const chipsLive = hasLive ? '<span class="chart-chip live">Live ←</span>' : '';
+
+  // phase table
+  const phaseTable = buildPhaseTable(s, isFCB);
+
+  // gate chips
+  const gateSection = isFCB ? buildGateChips() : `<div class="quiet" style="font-size:11px">Gate metrics available after backtest completes.</div>`;
+
+  // actions
+  const actions = hasLive
+    ? `<div class="panel-actions"><button class="btn btn-danger" onclick="openLiquidateModal()">Liquidate</button><button class="btn">Details</button></div>`
+    : s.stage==='gate'
+    ? `<div class="panel-actions"><button class="btn btn-live">Launch live</button><button class="btn">Details</button></div>`
+    : s.stage==='paper'&&s.liveReady
+    ? `<div class="panel-actions"><button class="btn btn-live">Launch live</button><button class="btn">Details</button></div>`
+    : `<div class="panel-actions"><button class="btn">Details</button></div>`;
+
+  // building blocks
+  const blocks = isFCB ? buildBlocks() : `<div class="quiet" style="font-size:11px">—</div>`;
+  // data feed
+  const feed = isFCB ? buildFeed() : `<div class="quiet" style="font-size:11px">—</div>`;
+  // trades
+  const trades = isFCB ? buildTrades() : `<div class="quiet" style="font-size:11px">—</div>`;
+  // timeline
+  const timeline = isFCB ? buildTimeline() : `<div class="quiet" style="font-size:11px">—</div>`;
+
+  return `
+    ${actions}
+    <div class="panel-section">
+      <div class="panel-section-title">Equity — phase-continuous</div>
+      ${chartSvg}
+      <div class="chart-chips">${chipsBT}${chipsPaper}${chipsLive}</div>
+    </div>
+    <div class="panel-section">
+      <div class="panel-section-title">Phase comparison</div>
+      ${phaseTable}
+    </div>
+    <div class="panel-section">
+      <div class="panel-section-title">Gate metrics</div>
+      ${gateSection}
+    </div>
+    <div class="panel-section">
+      <div class="panel-section-title">Building blocks</div>
+      ${blocks}
+      ${isFCB?'<div style="font-size:10.5px;color:var(--muted);margin-top:7px">Similar strategies share: MA-trend filter, fixed-fraction sizing.</div>':''}
+    </div>
+    <div class="panel-section">
+      <div class="panel-section-title">Data feeds</div>
+      ${feed}
+    </div>
+    <div class="panel-section">
+      <div class="panel-section-title">Recent trades (6)</div>
+      ${trades}
+    </div>
+    <div class="panel-section">
+      <div class="panel-section-title">Activity</div>
+      ${timeline}
+    </div>
+  `;
+}
+
+function buildEquityChart(s) {
+  const hasLive = s.stage==='live';
+  const hasPaper = ['live','paper'].includes(s.stage);
+  // BT segment: x 0–200, Paper: 200–340, Live: 340–500
+  let paths = '';
+  // BT path (dimmed)
+  paths += `<path d="M0 130 C30 125 60 118 90 110 S140 96 170 90 S190 86 200 84" fill="none" stroke="#5a5a62" stroke-width="1.2"/>`;
+  if(hasPaper) {
+    const saturate = !hasLive;
+    const col = saturate ? '#c8f54e' : '#8fad36';
+    paths += `<path d="M200 84 C220 80 240 76 260 72 S290 66 310 62 S328 59 340 57" fill="none" stroke="${col}" stroke-width="${saturate?'1.8':'1.2'}"/>`;
+    if(saturate) {
+      paths += `<path d="M200 84 C220 80 240 76 260 72 S290 66 310 62 S328 59 340 57 L340 155 L200 155 Z" fill="rgba(200,245,78,0.06)"/>`;
+    }
+  }
+  if(hasLive) {
+    paths += `<path d="M340 57 C360 53 380 49 400 45 S430 40 455 36 S480 32 500 29" fill="none" stroke="#4ade80" stroke-width="1.8"/>`;
+    paths += `<path d="M340 57 C360 53 380 49 400 45 S430 40 455 36 S480 32 500 29 L500 155 L340 155 Z" fill="rgba(74,222,128,0.07)"/>`;
+  }
+  // phase dividers
+  const dividers = hasPaper ? `<line x1="200" y1="20" x2="200" y2="155" stroke="#2a2a2e" stroke-width="1" stroke-dasharray="3,3"/>` : '';
+  const dividers2 = hasLive ? `<line x1="340" y1="20" x2="340" y2="155" stroke="#2a2a2e" stroke-width="1" stroke-dasharray="3,3"/>` : '';
+  const labels = `<text x="5" y="168" font-size="9" fill="#5a5a62" font-family="system-ui">Backtest OOS</text>${hasPaper?`<text x="205" y="168" font-size="9" fill="${hasLive?'#8fad36':'#c8f54e'}" font-family="system-ui">Paper</text>`:''}${hasLive?`<text x="345" y="168" font-size="9" fill="#4ade80" font-family="system-ui">Live</text>`:''}`;
+  return `<div class="equity-chart">
+    <svg width="100%" height="100%" viewBox="0 0 520 175" preserveAspectRatio="none">
+      ${paths}${dividers}${dividers2}${labels}
+    </svg>
+  </div>`;
+}
+
+function buildPhaseTable(s, isFCB) {
+  const hasLive = s.stage==='live';
+  const hasPaper = ['live','paper'].includes(s.stage);
+  if(isFCB) {
+    return `<table class="phase-table">
+      <thead><tr>
+        <th>Metric</th>
+        <th>Backtest</th>
+        <th class="${hasPaper&&!hasLive?'cur':''}">Paper</th>
+        <th class="${hasLive?'cur':''}">Live</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>Return</td><td>+8.2%</td><td class="${hasPaper&&!hasLive?'cur up':' up'}">+9.3%</td><td class="${hasLive?'cur up':' up'}">+21%</td></tr>
+        <tr><td>Sharpe (DSR)</td><td>1.12</td><td class="${hasPaper&&!hasLive?'cur':''}">1.05</td><td class="${hasLive?'cur acid':''}">1.18</td></tr>
+        <tr><td>Max DD</td><td>14%</td><td class="${hasPaper&&!hasLive?'cur':''}">6.2%</td><td class="${hasLive?'cur up':''}">3.1%</td></tr>
+        <tr><td>Trades</td><td>47</td><td class="${hasPaper&&!hasLive?'cur':''}">31</td><td class="${hasLive?'cur':''}">9</td></tr>
+        <tr><td>Duration</td><td class="muted">OOS</td><td class="${hasPaper&&!hasLive?'cur muted':'muted'}">47d</td><td class="${hasLive?'cur muted':'muted'}">18d</td></tr>
+      </tbody>
+    </table>`;
+  }
+  return `<table class="phase-table">
+    <thead><tr><th>Metric</th><th>Backtest</th><th class="${hasPaper?'cur':''}">Paper</th><th>Live</th></tr></thead>
+    <tbody>
+      <tr><td>Return</td><td>—</td><td class="${hasPaper?'cur':''}">—</td><td class="muted">—</td></tr>
+      <tr><td>Sharpe (DSR)</td><td>—</td><td class="${hasPaper?'cur':''}">—</td><td class="muted">—</td></tr>
+      <tr><td>Max DD</td><td>—</td><td class="${hasPaper?'cur':''}">—</td><td class="muted">—</td></tr>
+    </tbody>
+  </table>`;
+}
+
+function buildGateChips() {
+  return `<div class="gate-chips">
+    <div class="gate-chip-row">
+      <div class="gate-chip-val gate-pass">1.12</div>
+      <div class="gate-chip-meta">
+        <div class="gate-chip-name">DSR — Deflated Sharpe Ratio</div>
+        <div class="gate-chip-desc">Edge after correcting for how many variants were tried. Threshold ≥ 0.95. Pass.</div>
+      </div>
+    </div>
+    <div class="gate-chip-row">
+      <div class="gate-chip-val gate-pass">0.31</div>
+      <div class="gate-chip-meta">
+        <div class="gate-chip-name">PBO — Probability of Backtest Overfitting</div>
+        <div class="gate-chip-desc">Probability the backtest result is overfit to in-sample noise. Threshold &lt; 0.45. Pass.</div>
+      </div>
+    </div>
+    <div class="gate-chip-row">
+      <div class="gate-chip-val gate-pass">14%</div>
+      <div class="gate-chip-meta">
+        <div class="gate-chip-name">Max Drawdown</div>
+        <div class="gate-chip-desc">Worst peak-to-trough in backtest. Limit 25%. Pass (14% vs 25%).</div>
+      </div>
+    </div>
+    <div class="gate-chip-row">
+      <div class="gate-chip-val gate-pass">+8.2%</div>
+      <div class="gate-chip-meta">
+        <div class="gate-chip-name">OOS Return</div>
+        <div class="gate-chip-desc">Data the strategy never saw during fitting. Must be positive. Pass.</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function buildBlocks() {
+  return `<div class="blocks">
+    <div class="block-row"><span class="block-type">Signal</span><span class="block-val">funding_rate &lt; fitted threshold</span></div>
+    <div class="block-row"><span class="block-type">Filter</span><span class="block-val">MA-trend (200-bar) must be positive</span></div>
+    <div class="block-row"><span class="block-type">Exit</span><span class="block-val">Stop −4% · Take +12% · Time-stop 14d</span></div>
+    <div class="block-row"><span class="block-type">Sizing</span><span class="block-val">Fixed fraction 0.19</span></div>
+  </div>`;
+}
+
+function buildFeed() {
+  return `<div class="feed-rows">
+    <div class="feed-row">
+      <div><div class="feed-name">funding_rate</div><div class="feed-meta">Binance BTCUSDT-PERP · 2h ago</div></div>
+      <div class="feed-val dn">−0.018%</div>
+    </div>
+    <div class="feed-row">
+      <div><div class="feed-name">fear_greed</div><div class="feed-meta">Alternative.me · 5h ago</div></div>
+      <div class="feed-val gold">71 (Greed)</div>
+    </div>
+  </div>`;
+}
+
+function buildTrades() {
+  const trades = [
+    {date:'2026-06-10',side:'BUY',asset:'BTC-PERP',qty:'0.041',price:'$67,420',pnl:'+$82'},
+    {date:'2026-06-08',side:'SELL',asset:'BTC-PERP',qty:'0.038',price:'$65,100',pnl:'+$61'},
+    {date:'2026-06-05',side:'BUY',asset:'BTC-PERP',qty:'0.040',price:'$63,800',pnl:'+$114'},
+    {date:'2026-06-02',side:'SELL',asset:'BTC-PERP',qty:'0.042',price:'$62,200',pnl:'+$88'},
+    {date:'2026-05-29',side:'BUY',asset:'BTC-PERP',qty:'0.039',price:'$61,500',pnl:'+$49'},
+    {date:'2026-05-25',side:'SELL',asset:'BTC-PERP',qty:'0.041',price:'$60,100',pnl:'+$25'},
+  ];
+  return `<div class="trades-list">${trades.map(t=>`<div class="trade-row">
+    <span class="muted" style="min-width:68px;font-size:10px">${t.date}</span>
+    <span class="trade-side-${t.side.toLowerCase()}">${t.side}</span>
+    <span class="muted">${t.asset}</span>
+    <span class="tab muted">${t.qty}</span>
+    <span class="tab muted">${t.price}</span>
+    <span class="tab up" style="margin-left:auto">${t.pnl}</span>
+  </div>`).join('')}</div>`;
+}
+
+function buildTimeline() {
+  return `<div class="timeline">
+    <div class="tl-row"><div class="tl-dot up"></div><div class="tl-body"><div class="tl-text">Launched live — $1,700 allocated</div><div class="tl-date">2026-05-24</div></div></div>
+    <div class="tl-row"><div class="tl-dot acid"></div><div class="tl-body"><div class="tl-text">Gate passed — DSR 1.12 · PBO 0.31 · OOS +8.2%</div><div class="tl-date">2026-05-22</div></div></div>
+    <div class="tl-row"><div class="tl-dot acid"></div><div class="tl-body"><div class="tl-text">Paper promoted to live-ready after 47d paper</div><div class="tl-date">2026-05-22</div></div></div>
+    <div class="tl-row"><div class="tl-dot"></div><div class="tl-body"><div class="tl-text">Paper started — funding carry signal activated</div><div class="tl-date">2026-04-05</div></div></div>
+    <div class="tl-row"><div class="tl-dot"></div><div class="tl-body"><div class="tl-text">Backtest completed — 3y walk-forward, 47 OOS trades</div><div class="tl-date">2026-04-03</div></div></div>
+    <div class="tl-row"><div class="tl-dot"></div><div class="tl-body"><div class="tl-text">Strategy proposed by LLM scan — funding_rate signal</div><div class="tl-date">2026-04-01</div></div></div>
+  </div>`;
+}
+
+// ── Liquidate modal ──
+function openLiquidateModal() {
+  document.getElementById('liq-overlay').classList.add('open');
+}
+function closeLiqModal() {
+  document.getElementById('liq-overlay').classList.remove('open');
+}
+function confirmLiquidate() {
+  closeLiqModal();
+  closePanel();
+  alert('Liquidation order submitted. Positions will be market-sold to USDC.');
+}
+document.getElementById('liq-overlay').addEventListener('click', function(e){
+  if(e.target===this) closeLiqModal();
+});
+
+// ── Init ──
+renderScreener('all');
+const hash = location.hash.replace('#/','');
+if(['strategies','paper','live','costs','commands'].includes(hash)) navigate(hash);
+</script>
+</body>
+</html>
