@@ -29,8 +29,18 @@ Polymarket) honestly, in event time, on intraday bars.*
   formatter) fills typed event fields content-only with a lexicon fallback that never fabricates a category.
   `research/event_study_run.py` — the runnable pre-registered experiment CLI (corpus → cluster → enrich →
   cached 1m bars → verdict table + JSON report). ~40 offline tests across the five new test files.
-- **Follow-ups staged:** launch-ready session prompts in `docs/epics/tasks/` for P2 (wake the dormant
-  credibility pipeline voices→claims→outcomes→authority) and P3 (the always-on realtime worker).
+- **P2 — credibility pipeline LIVE (same day).** The dormant Phases 0–3 wired end-to-end, cost-capped:
+  `config/voices.py` (PRE-REGISTERED panel, ships empty — registering a voice is a deliberate operator act,
+  the anti-survivorship discipline) → `ingest/voices_pass.py` (hourly cron: key-gated timeline pulls →
+  durable deduped posts in `market_events` → LLM claim extraction on NEW posts only, hard per-pass caps →
+  `voice_claims` → deterministic Brier-skill/primacy/PageRank → the flat human-readable `voice_scoreboard`
+  + the two `social_authority` PIT features accruing in `alt_data`). Surface: `GET /mind/credibility` + a
+  Source-credibility section on `/mind/sources` (nulls = "untested", never 0). Plus the paid-LLM ingest
+  throttle (`llm_source_min_interval_minutes`, default 60): xAI/llm_index spend now scales with data
+  freshness, not cron cadence. Decision recorded (epic §8): NO new gate / lighter lane — revisit only after
+  the first event-study verdict.
+- **Follow-up staged:** launch-ready session prompt in `docs/epics/tasks/` for P3 (the always-on realtime
+  worker); the P2 prompt is superseded by the shipped implementation.
 
 ### Trust workflows — SIM→live variance attribution + a data-trust source audit (2026-06-04)
 *Two review-only "trust" surfaces, both deterministic + offline + out of the gate/money path. They EXPLAIN and
