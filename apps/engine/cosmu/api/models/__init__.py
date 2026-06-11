@@ -90,7 +90,11 @@ from cosmu.api.models.drift import (  # noqa: F401
 )
 from cosmu.api.models.evolution import (  # noqa: F401
     CohortRunRequest,
+    BlockLeaderboardResponse,
+    BlockStat,
     CohortSummaryResponse,
+    SimilarVersion,
+    VersionBlocksResponse,
     EvaluatedStrategy,
     GraveyardRow,
     PineSample,
@@ -229,7 +233,11 @@ __all__ = [
     "VenueToggleRequest",
     # evolution
     "CohortRunRequest",
+    "BlockLeaderboardResponse",
+    "BlockStat",
     "CohortSummaryResponse",
+    "SimilarVersion",
+    "VersionBlocksResponse",
     "EvaluatedStrategy",
     "GraveyardRow",
     "PineSample",

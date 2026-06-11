@@ -114,4 +114,5 @@ def _summary_to_response(summary: CohortSummary) -> CohortSummaryResponse:
         survivors=rows(summary.survivors),
         graveyard=rows(summary.graveyard),
         pine_notes=summary.pine_notes,
+        duplicates=summary.duplicates,
     )

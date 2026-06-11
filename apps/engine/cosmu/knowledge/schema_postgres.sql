@@ -342,3 +342,26 @@ create index if not exists idx_backtests_version_kind on backtests(strategy_vers
 create index if not exists idx_executions_run on executions(run_id);
 create index if not exists idx_executions_ts on executions(ts);
 create index if not exists idx_strategy_versions_status on strategy_versions(status);
+
+-- Building-block registry (2026-06-11): content-hashed reusable blocks + whole-spec combo_hash.
+-- Dedup (multiple-testing budget) + observational block stats. Never consulted by the Gate.
+create table if not exists strategy_blocks (
+  block_hash text primary key,
+  kind text not null,
+  label text not null,
+  payload text not null,
+  first_seen text not null
+);
+create table if not exists version_blocks (
+  strategy_version_id text not null,
+  block_hash text not null,
+  kind text not null,
+  primary key (strategy_version_id, block_hash)
+);
+create table if not exists version_combos (
+  strategy_version_id text primary key,
+  combo_hash text not null,
+  created_at text not null
+);
+create index if not exists idx_version_blocks_hash on version_blocks(block_hash);
+create index if not exists idx_version_combos_hash on version_combos(combo_hash);

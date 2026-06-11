@@ -23,6 +23,7 @@ from cosmu.api._shared import (  # noqa: F401 — re-exported for backwards-comp
 )
 from cosmu.api.routers import (
     autonomy,
+    blocks,
     console,
     correlations,
     costs,
@@ -113,6 +114,7 @@ for _module in (
     intelligence,
     verdicts,
     correlations,
+    blocks,
 ):
     app.include_router(_module.router)
 

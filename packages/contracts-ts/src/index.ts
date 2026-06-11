@@ -96,6 +96,21 @@ export interface Backtest {
   win_rate: number;
 }
 
+export interface BlockLeaderboardResponse {
+  available: boolean;
+  connected?: boolean;
+  rows: BlockStat[];
+}
+
+export interface BlockStat {
+  block_hash: string;
+  funded_rate: number;
+  kind: string;
+  label: string;
+  n_funded: number;
+  n_versions: number;
+}
+
 export interface BrainGated {
   generated: number;
   kill_rate: number;
@@ -159,6 +174,7 @@ export interface CohortRunRequest {
 
 export interface CohortSummaryResponse {
   cohort_id: string;
+  duplicates?: number;
   generated: number;
   graveyard: EvaluatedStrategy[];
   invalid: number;
@@ -571,7 +587,7 @@ export interface LaunchActivateRequest {
   confirm: boolean;
   global_cap?: number;
   max_daily_loss?: number;
-  override_forward_test?: boolean;
+  override_paper?: boolean;
   per_strategy_cap?: number;
   symbol: string;
   venue_id: string;
@@ -583,8 +599,8 @@ export interface LaunchActivateResponse {
   budget: number;
   caps: LiveCaps;
   eligible: EligibleStrategy[];
-  forward_test_days?: number | null;
   overridden?: boolean;
+  paper_days?: number | null;
   readiness?: "proven" | "not yet proven";
   reason?: string | null;
   symbol: string;
@@ -603,13 +619,13 @@ export interface LeaderboardRow {
   divergence_status?: "insufficient" | "tracking" | "diverging";
   edge_type: string;
   features: string[];
-  forward_age_days: number;
-  forward_return_pct?: number | null;
   lineage: string;
   live_ready: boolean;
   name: string;
   net_pct: number;
   origin: string;
+  paper_age_days: number;
+  paper_return_pct?: number | null;
   pbo: number;
   signal_family: string;
   signal_family_label: string;
@@ -862,11 +878,11 @@ export interface Point {
 export interface PopulationResponse {
   by_lane: Record<string, unknown>;
   by_origin: Record<string, unknown>;
-  forward_test: number;
   graveyard: GraveyardRow[];
   kill_rate: number;
   killed: number;
   live: number;
+  paper: number;
   total: number;
 }
 
@@ -960,6 +976,13 @@ export interface SettingsKeysResponse {
   rows: SettingsKeyRow[];
 }
 
+export interface SimilarVersion {
+  name: string;
+  shared_blocks: number;
+  status: string;
+  version_id: string;
+}
+
 export interface Skill {
   created_at: string;
   grade: number;
@@ -1044,6 +1067,8 @@ export interface UniverseResponse {
 }
 
 export interface ValidationError {
+  ctx?: Record<string, unknown>;
+  input?: string;
   loc: string | number[];
   msg: string;
   type: string;
@@ -1116,6 +1141,13 @@ export interface VerdictRow {
 
 export interface VerdictsResponse {
   rows: VerdictRow[];
+}
+
+export interface VersionBlocksResponse {
+  available: boolean;
+  blocks: BlockStat[];
+  similar: SimilarVersion[];
+  version_id: string;
 }
 
 export type ApiRoutes = {

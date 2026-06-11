@@ -1,4 +1,4 @@
-# intent: the autonomous farming loop — generate a wide population (seeds + mutations + wildcards + pine imports), compile + static-check, cheap deterministic screen, score through the out-of-reach scorer, keep gate-passers as forward-test tracks and send the rest to the graveyard with reasons; inputs: seed/cohort config + optional pine scripts; outputs: persisted strategy_versions/backtests/tracks + CohortSummary; invariants: the scorer/gates stay deterministic and out of the agent's reach, every death records a kill_reason, runs are seeded/reproducible.
+# intent: the autonomous farming loop — generate a wide population (seeds + mutations + wildcards + pine imports), compile + static-check, cheap deterministic screen, score through the out-of-reach scorer, keep gate-passers as paper tracks and send the rest to the graveyard with reasons; inputs: seed/cohort config + optional pine scripts; outputs: persisted strategy_versions/backtests/tracks + CohortSummary; invariants: the scorer/gates stay deterministic and out of the agent's reach, every death records a kill_reason, runs are seeded/reproducible.
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from cosmu.data.backtest import run_strategy_backtest
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
+from cosmu.knowledge.block_registry import blocks_available, find_duplicate, record_version_blocks
 from cosmu.knowledge.store import Store, Writer, utcnow
 from cosmu.master.fdr import benjamini_hochberg, dsr_pvalue
 from cosmu.master.scorer import BacktestMetrics, TrialStats, score
@@ -21,6 +22,7 @@ from cosmu.ml.regime import proven_regimes
 from cosmu.ml.survival import features_from_metrics, load_survival_model
 from cosmu.spine.universe import enabled_universe
 from cosmu.spine.venue import default_catalog
+from cosmu.strategy.blocks import combo_hash as strategy_combo_hash
 from cosmu.strategy.compiler import CompiledStrategy, compile_spec
 from cosmu.strategy.pine import translate_pine
 from cosmu.strategy.spec import ParamSpace, StrategySpec
@@ -82,6 +84,10 @@ class CohortSummary:
     survivors: list[Evaluated] = field(default_factory=list)
     graveyard: list[Evaluated] = field(default_factory=list)
     pine_notes: list[str] = field(default_factory=list)
+    # Candidates skipped because their combo_hash matched an already-tested hypothesis (block registry).
+    # A duplicate is NOT a new trial — skipping it protects the multiple-testing budget. 0 when the
+    # registry tables are absent (pre-migration prod) — the loop then behaves exactly as before.
+    duplicates: int = 0
 
 
 def fit_params(spec: StrategySpec) -> dict[str, float]:
@@ -156,6 +162,32 @@ class FarmLoop:
         invalid = 0
         pine_notes: list[str] = []
 
+        # Block registry: probe availability ONCE, outside any write transaction (an absent table inside a
+        # Postgres tx would abort the whole cohort batch). When the 2026-06-11 migration hasn't run yet this
+        # is False and everything below no-ops — the cohort behaves exactly as before.
+        registry_on = blocks_available(self.store)
+        self._cache["blocks_on"] = registry_on
+        duplicates = 0
+        seen_combos: set[str] = set()
+
+        def _is_duplicate(spec: StrategySpec, lane: str) -> bool:
+            """Structural dedup on the spec's combo_hash. NEVER skips the seed lane (seeds are the cohort's
+            baseline parent pool by design — they anchor the in-cohort set instead, so a child identical to a
+            seed IS deduped). A hypothesis already in the registry — even a KILLED one — was already tested:
+            re-screening it re-spends the multiple-testing budget without adding information."""
+            nonlocal duplicates
+            if not registry_on:
+                return False
+            combo = strategy_combo_hash(spec)
+            if lane == "seed":
+                seen_combos.add(combo)
+                return False
+            if combo in seen_combos or find_duplicate(self.store, combo) is not None:
+                duplicates += 1
+                return True
+            seen_combos.add(combo)
+            return False
+
         # Wave 0 — seeds + chat-authored briefs + pine imports (the parent pool for the exploit lane).
         wave0: list[Candidate] = [
             Candidate(spec=spec, origin="seed", lane="seed", rationale="diverse seed template")
@@ -184,6 +216,8 @@ class FarmLoop:
         parents: list[_Screened] = []   # the screened wave-0 candidates = the exploit lane's parent pool
 
         for cand in wave0:
+            if _is_duplicate(cand.spec, cand.lane):
+                continue
             sc = self._screen_and_register(cand, seed, survival)
             if sc is None:
                 invalid += 1
@@ -206,6 +240,8 @@ class FarmLoop:
             if not self._novelty_ok(cand.spec, live_specs):
                 invalid += 1
                 continue
+            if _is_duplicate(cand.spec, cand.lane):
+                continue
             sc = self._screen_and_register(cand, seed, survival)
             if sc is None:
                 invalid += 1
@@ -219,6 +255,8 @@ class FarmLoop:
             cand = Candidate(spec=child.spec, origin="wildcard", lane="explore", operator=child.operator, rationale=child.rationale)
             if not self._novelty_ok(cand.spec, live_specs):
                 invalid += 1
+                continue
+            if _is_duplicate(cand.spec, cand.lane):
                 continue
             sc = self._screen_and_register(cand, seed, survival)
             if sc is None:
@@ -291,6 +329,7 @@ class FarmLoop:
                     "generated": generated,
                     "passed": len(survivors),
                     "killed": killed,
+                    "duplicates": duplicates,
                     "fdr_culled": len(culled),
                     "kill_rate": round(killed / generated, 3) if generated else 0.0,
                     "lanes": lanes,
@@ -318,6 +357,7 @@ class FarmLoop:
             survivors=survivors[:24],
             graveyard=graveyard[:16],
             pine_notes=pine_notes[:12],
+            duplicates=duplicates,
         )
 
     def _record_flywheel(self, evaluated: list[Evaluated], specs_by_vid: dict[str, StrategySpec]) -> None:
@@ -380,7 +420,7 @@ class FarmLoop:
 
     def _persist(self, sc: _Screened, trials: TrialStats, survival, parent_vid: str | None, b: Writer) -> tuple[Evaluated, str]:  # noqa: ANN001
         """Score a screened candidate against the cohort-wide trial snapshot and persist its strategy / version /
-        screen-backtest (and, for a gate-passer, its forward-test track). Returns the Evaluated row + version_id."""
+        screen-backtest (and, for a gate-passer, its paper track). Returns the Evaluated row + version_id."""
         cand = sc.cand
         metrics = sc.metrics
         compiled = sc.compiled
@@ -388,7 +428,7 @@ class FarmLoop:
         # Deflate against the FULL global trial count (this cohort + all history), not ~len(param_space).
         verdict = score(metrics, self.settings.gates, trials=trials)
         passed = verdict.passed
-        status = "forward_test" if passed else "killed"
+        status = "paper" if passed else "killed"
         kill_reason = None if passed else ",".join(verdict.reasons) or "screened_out"
         survival_score = sc.survival_score
         proven = sc.proven
@@ -415,6 +455,10 @@ class FarmLoop:
                 "kill_reason": kill_reason,
             },
         )
+        # Block lineage: content-address the spec's building blocks inside the SAME transaction as the
+        # version row (registry probed once per cohort; absent tables → flag off → no statement runs here).
+        if self._cache.get("blocks_on"):
+            record_version_blocks(b, version_id, cand.spec)
         b.insert(
             "backtests",
             {
