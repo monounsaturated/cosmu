@@ -267,6 +267,29 @@ export interface CostsResponse {
   vendor_actuals: VendorActual[];
 }
 
+export interface CredibilityResponse {
+  as_of?: string | null;
+  panel_size: number;
+  rows: CredibilityRow[];
+}
+
+export interface CredibilityRow {
+  authority?: number | null;
+  base_hit_rate?: number | null;
+  brier_skill_score?: number | null;
+  calibration_error?: number | null;
+  excess_hit_rate?: number | null;
+  handle: string;
+  hit_rate?: number | null;
+  n_claims: number;
+  n_posts: number;
+  n_resolved: number;
+  platform: string;
+  primacy_rate?: number | null;
+  skill?: number | null;
+  updated_at: string;
+}
+
 export interface CrossAssetVerdict {
   attempts: number;
   bar: Record<string, unknown>;
@@ -999,8 +1022,27 @@ export interface StrategyDetailResponse {
   notes_md: string;
   params: Record<string, unknown>;
   spec: Record<string, unknown>;
+  summary_md?: string | null;
+  summary_stale?: boolean | null;
+  summary_updated_at?: string | null;
   trades: Execution[];
   version_id: string;
+}
+
+export interface StrategySummaryPutRequest {
+  body_md: string;
+  facts_hash: string;
+  model: string;
+  prompt_version: string;
+}
+
+export interface StrategySummaryPutResponse {
+  ok: boolean;
+}
+
+export interface SummaryFactsResponse {
+  facts: Record<string, unknown>;
+  facts_hash: string;
 }
 
 export interface TickDetail {
@@ -1044,6 +1086,8 @@ export interface UniverseResponse {
 }
 
 export interface ValidationError {
+  ctx?: Record<string, unknown>;
+  input?: string;
   loc: string | number[];
   msg: string;
   type: string;

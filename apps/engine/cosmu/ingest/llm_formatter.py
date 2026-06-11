@@ -171,3 +171,52 @@ def format_text_records(
     contract. This is a thin pass-through to `score_news_events`; nothing here reaches the money path."""
     llm = make_event_score_llm(formatter) if formatter is not None else None
     return score_news_events(items, llm=llm)
+
+
+# --------------------------------------------------------------------- market_events enrichment (epic §4/§5)
+# The SAME TypedFeature schema fills a MarketEvent's typed fields (event_type ← category, direction ← sign,
+# magnitude, confidence) — one formatter, one taxonomy, no parallel module. The extractor reads ONLY the
+# event's title (content-only — the look-ahead defense), is keyed by content_hash within a batch, and is
+# version-pinned so a downstream event-study verdict stays reproducible. Honest degradation: with no
+# formatter/key the deterministic lexicon fills direction/magnitude and event_type stays None (the lexicon
+# cannot categorize — the event-study cell for it is "all", never a fabricated category).
+
+EVENT_EXTRACTOR_VERSION = f"{LLM_FORMATTER_TRANSFORM_VERSION}-events"
+EVENT_EXTRACTOR_LEXICON_VERSION = "lexicon-v1-events"
+
+
+def enrich_market_events(events: list, *, formatter: OpenRouterFormatter | None = None) -> list:  # noqa: ANN001
+    """Fill the typed extraction fields on raw MarketEvent records (events_store.MarketEvent — typed loosely
+    here to avoid an import cycle at module load). Events already extracted (extractor_version set) pass
+    through untouched, so enrich-then-append re-runs never re-spend. Cross-run caching rides on the event
+    store's (provider, content_hash) dedup — an already-stored event is never re-enriched."""
+    from dataclasses import replace
+
+    from cosmu.ingest.standardize import _score_headline
+
+    cache: dict[str, tuple] = {}
+    out = []
+    for e in events:
+        e = e.hydrated()
+        if e.extractor_version is not None:
+            out.append(e)
+            continue
+        if e.content_hash in cache:
+            event_type, direction, magnitude, confidence, version = cache[e.content_hash]
+        else:
+            tf = formatter(e.title) if formatter is not None else None
+            if tf is not None:
+                event_type, direction, magnitude, confidence = tf.category, tf.sign, tf.magnitude, tf.confidence
+                version = EVENT_EXTRACTOR_VERSION
+            else:
+                lex = _score_headline(e.title)
+                event_type, direction, magnitude, confidence = None, lex.sign, lex.magnitude, lex.confidence
+                version = EVENT_EXTRACTOR_LEXICON_VERSION
+            cache[e.content_hash] = (event_type, direction, magnitude, confidence, version)
+        out.append(
+            replace(
+                e, event_type=event_type, direction=direction, magnitude=magnitude,
+                confidence=confidence, extractor_version=version,
+            )
+        )
+    return out

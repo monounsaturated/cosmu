@@ -4,6 +4,44 @@
 
 ## Built
 
+### Realtime-data-lane P0+P1 — closed-candle guard, Tier-1 cadences, the event-study machine (2026-06-11)
+*Operator-approved epic (`docs/epics/realtime-data-lane.md`): cut reaction latency from ~24h toward minutes AND
+open the orthogonal-data axis the search campaign demanded — backtesting unstructured events (news/tweets/
+Polymarket) honestly, in event time, on intraday bars.*
+- **Closed-candle bar guard (the PRE-LIVE freshness gate, shipped).** All three crypto providers
+  (`data/market.py`) drop the exchange's in-progress candle before caching, refetch a covering-but-stale cache,
+  and let fetched rows repair poisoned cached rows on ts collision; offline behaviour still degrades to the
+  cache. Clock injectable; regression suite `tests/test_market_cache_freshness.py`. (Yahoo equity still serves
+  an in-progress day bar — daily/equity tracks stay on the daily clocks.)
+- **Tier-1 cadences (`railway.toml`).** Ingest 6h → 15 min · a second full forward-test clock at 00:10 UTC
+  (crypto daily tracks act minutes after their close) · an HOURLY lane (`cosmu.orchestrator.loop --intraday`)
+  that steps only sub-daily (1h/4h) tracks (`step_tracks(bar_sizes=…)`) and re-marks every held position —
+  "24h perf" is now at most ~1h stale. Same-closed-bar re-runs stay no-ops (decision-bar client_order_ids).
+- **The event machine (epic §4–5).** `data/events_store.py` — typed `MarketEvent` records with TWO clocks
+  (ts = publish time for event studies; available_at = receipt time, the only honest trading-feature axis;
+  scraped archives are never backdated), JSONL + PG twins, deduped append-only, `market_events` DDL in both
+  schemas (PG applies out-of-band on Supabase — operator action). `research/event_corpus.py` — RavenPack-style
+  root-event clustering (breaker vs echoes, decaying novelty) on the deterministic keyless embedding +
+  honest-availability corpus loaders. `research/event_study.py` — market-model SCARs on intraday bars,
+  pre-registered CAR windows + a PRE-event leakage window, confounder/market-comove exclusion, randomization
+  inference vs weekday×hour×vol-matched placebos, BH-FDR across cells; estimation window ends before the
+  pre-window; thin cells abstain. `enrich_market_events` (folded into `ingest/llm_formatter.py` — the ONE
+  formatter) fills typed event fields content-only with a lexicon fallback that never fabricates a category.
+  `research/event_study_run.py` — the runnable pre-registered experiment CLI (corpus → cluster → enrich →
+  cached 1m bars → verdict table + JSON report). ~40 offline tests across the five new test files.
+- **P2 — credibility pipeline LIVE (same day).** The dormant Phases 0–3 wired end-to-end, cost-capped:
+  `config/voices.py` (PRE-REGISTERED panel, ships empty — registering a voice is a deliberate operator act,
+  the anti-survivorship discipline) → `ingest/voices_pass.py` (hourly cron: key-gated timeline pulls →
+  durable deduped posts in `market_events` → LLM claim extraction on NEW posts only, hard per-pass caps →
+  `voice_claims` → deterministic Brier-skill/primacy/PageRank → the flat human-readable `voice_scoreboard`
+  + the two `social_authority` PIT features accruing in `alt_data`). Surface: `GET /mind/credibility` + a
+  Source-credibility section on `/mind/sources` (nulls = "untested", never 0). Plus the paid-LLM ingest
+  throttle (`llm_source_min_interval_minutes`, default 60): xAI/llm_index spend now scales with data
+  freshness, not cron cadence. Decision recorded (epic §8): NO new gate / lighter lane — revisit only after
+  the first event-study verdict.
+- **Follow-up staged:** launch-ready session prompt in `docs/epics/tasks/` for P3 (the always-on realtime
+  worker); the P2 prompt is superseded by the shipped implementation.
+
 ### Trust workflows — SIM→live variance attribution + a data-trust source audit (2026-06-04)
 *Two review-only "trust" surfaces, both deterministic + offline + out of the gate/money path. They EXPLAIN and
 RECOMMEND; the deterministic lifecycle + live toggle alone dispose of capital, and a human still wires a feature.*

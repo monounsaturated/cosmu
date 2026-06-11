@@ -208,17 +208,27 @@ def step_tracks(
     catalog: VenueCatalog | None = None,
     router=None,  # noqa: ANN001 — orchestrator.loop.PricingRouter (import-cycle-free at runtime)
     now: datetime | None = None,
+    bar_sizes: set[str] | frozenset[str] | None = None,
 ) -> StepReport:
     """ONE executor tick: for every gate-lane funded track, re-evaluate ITS OWN spec + fitted params on the
     latest real bars and act — close a held position on its stop/take/time/signal exit, open a flat track when
     its entry signal fires (drift-defunded tracks excepted). Every fill goes through the one order path (fees,
-    sim slippage, gauntlet, audit). Run BEFORE mark_tracks so the marked snapshot reflects post-trade state."""
+    sim slippage, gauntlet, audit). Run BEFORE mark_tracks so the marked snapshot reflects post-trade state.
+
+    `bar_sizes` scopes the tick to tracks whose spec trades those horizons (the HOURLY intraday lane passes
+    {"1h","4h"}): a sub-daily crypto track reacts within ~an hour of its bar close instead of once a day, while
+    daily/equity tracks — whose Yahoo source serves an in-progress day bar with no closed-candle guard — stay
+    on the daily clock. Liquidations (dead versions, no spec) also stay on the daily clock. None = all tracks
+    (the daily full clock; unchanged behaviour). Re-running on the same closed bar is a no-op either way — the
+    client_order_id is stamped with the decision bar."""
     cat = catalog or default_catalog()
     pricer = router or PricingRouter(cat)
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
     now = now or datetime.now(tz=UTC)
 
     tracks, report = _managed_tracks(store, portfolio, cat)
+    if bar_sizes is not None:
+        tracks = [m for m in tracks if m.spec is not None and m.spec.horizon.bar_size in bar_sizes]
     if not tracks:
         return report
 

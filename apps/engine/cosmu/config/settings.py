@@ -146,6 +146,11 @@ class Settings(BaseSettings):
     # LLM author: xAI (Grok) is preferred when XAI_API_KEY is set (already on Railway) — most efficient,
     # no new key; OpenRouter is the fallback. Both are OpenAI-compatible (same request shape).
     xai_api_key: str | None = Field(default=None, repr=False)
+    # PAID-call throttle for LLM-BACKED ingest sources (xAI LiveSearch, llm_index rubric scoring): a source
+    # whose newest stored point is younger than this many minutes is SKIPPED for the pass. Exists because the
+    # Tier-1 15-min ingest cadence (realtime-data-lane epic) would otherwise multiply paid LLM calls ×24 vs
+    # the old 6h cron — free/numeric sources never throttle (idempotent + $0). 0 disables the throttle.
+    llm_source_min_interval_minutes: int = 60
     lunarcrush_api_key: str | None = Field(default=None, repr=False)
     # CryptoPanic news-vote source: key-gated (free tier). No key → the provider returns [] (honest
     # degradation, never fabricates). Reddit-volume uses REDDIT_CLIENT_ID/SECRET read directly from env.

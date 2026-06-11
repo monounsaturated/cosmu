@@ -1,4 +1,5 @@
 import type {
+  CredibilityResponse,
   MindResponse,
   NewsIntelResponse,
   ScoresResponse,
@@ -40,6 +41,10 @@ const emptyMind: MindResponse = {
 // Honest: sources with no data show trust_score=0, status="no data". Never fabricated.
 const emptySourceTrust: SourceTrustResponse = { as_of: "", rows: [] };
 
+// Source credibility (voice scoreboard): one flat row per pre-registered voice, skill DESC NULLS LAST.
+// Honest: an untested voice carries null metrics (untested ≠ unskilled); empty panel = empty rows.
+const emptyCredibility: CredibilityResponse = { as_of: null, panel_size: 0, rows: [] };
+
 const emptyScores: ScoresResponse = {
   as_of: "",
   composite_index: null,
@@ -63,6 +68,14 @@ export async function getMind(): Promise<{ mind: MindResponse; connected: boolea
 export async function getSourceTrust(): Promise<{ trust: SourceTrustResponse; connected: boolean }> {
   const { data, connected } = await getJson("/mind/source-trust", emptySourceTrust);
   return { trust: data, connected };
+}
+
+// GET /mind/credibility — the SOURCE SCOREBOARD: every followed voice's resolved-call record (Brier skill
+// vs the base rate, calibration, primacy). Honest: null metrics mean UNTESTED — the UI renders an em-dash,
+// never a fabricated zero. Voices are pre-registered in apps/engine/cosmu/config/voices.py.
+export async function getVoiceCredibility(): Promise<{ credibility: CredibilityResponse; connected: boolean }> {
+  const { data, connected } = await getJson("/mind/credibility", emptyCredibility);
+  return { credibility: data, connected };
 }
 
 // GET /scores — the scores cockpit: per-source + composite INDEX scores grouped by category (crypto ·

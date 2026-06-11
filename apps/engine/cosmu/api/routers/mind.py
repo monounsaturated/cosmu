@@ -9,6 +9,8 @@ from fastapi import APIRouter
 
 from cosmu.api._shared import settings, store
 from cosmu.api.models import (
+    CredibilityResponse,
+    CredibilityRow,
     MindResponse,
     NewsEventRow,
     NewsIntelResponse,
@@ -122,6 +124,66 @@ def _source_trust_rows():
     _source_trust_cache["rows"] = rows
     _source_trust_cache["at"] = now
     return rows
+
+
+@router.get("/mind/credibility", response_model=CredibilityResponse)
+def mind_credibility() -> CredibilityResponse:
+    """The SOURCE SCOREBOARD (realtime-data-lane epic P2) — one flat row per pre-registered voice from
+    `voice_scoreboard` (written by the voices pass), ordered skill DESC with NULLs (untested) last.
+
+    Honest: nullable metrics pass through as null — a voice with no resolved claims is UNTESTED, never
+    rendered as zero-skill. Empty panel → rows=[], as_of=null (voices are pre-registered in
+    cosmu/config/voices.py; the hourly pass fills this in). Read-only; no LLM on this path; AUTH is the
+    app-level x-api-key middleware (no per-route check). Cheap flat SELECT — no cache needed."""
+    rows = _credibility_rows()
+    return CredibilityResponse(
+        as_of=max((str(r["updated_at"]) for r in rows), default=None),
+        panel_size=len(rows),
+        rows=[
+            CredibilityRow(
+                handle=str(r["handle"]),
+                platform=str(r["platform"]),
+                n_posts=int(r["n_posts"] or 0),
+                n_claims=int(r["n_claims"] or 0),
+                n_resolved=int(r["n_resolved"] or 0),
+                hit_rate=_opt(r["hit_rate"]),
+                base_hit_rate=_opt(r["base_hit_rate"]),
+                excess_hit_rate=_opt(r["excess_hit_rate"]),
+                brier_skill_score=_opt(r["brier_skill_score"]),
+                calibration_error=_opt(r["calibration_error"]),
+                skill=_opt(r["skill"]),
+                authority=_opt(r["authority"]),
+                primacy_rate=_opt(r["primacy_rate"]),
+                updated_at=str(r["updated_at"]),
+            )
+            for r in rows
+        ],
+    )
+
+
+def _opt(value: object) -> float | None:
+    """NULL-preserving float: an untested metric stays None — never coerced to 0.0."""
+    return None if value is None else float(value)
+
+
+def _credibility_rows() -> list[dict]:
+    """voice_scoreboard rows, skill DESC NULLS LAST (spelled portably — `(skill IS NULL)` sorts false
+    first on both sqlite and Postgres), handle as the deterministic tiebreak. Defensive like
+    `_last_reflection`: a prod DB that has not applied the additive voice_scoreboard migration yields
+    the honest empty panel — never a 500, never fabricated."""
+    try:
+        with store.reading():
+            return store.rows(
+                """
+                SELECT handle, platform, n_posts, n_claims, n_resolved, hit_rate, base_hit_rate,
+                       excess_hit_rate, brier_skill_score, calibration_error, skill, authority,
+                       primacy_rate, updated_at
+                FROM voice_scoreboard
+                ORDER BY (skill IS NULL), skill DESC, handle
+                """
+            )
+    except Exception:  # noqa: BLE001 — table absent on a not-yet-migrated prod DB → honest empty panel
+        return []
 
 
 @router.get("/mind/news-intel", response_model=NewsIntelResponse)

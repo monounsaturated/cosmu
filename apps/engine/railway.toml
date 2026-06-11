@@ -19,8 +19,10 @@ restartPolicyMaxRetries = 3
 # Bounded, scheduled research pass (NOT a daemon): free-data INGEST ONLY, then exits.
 # The leaky cross-asset gate (no-FDR / trials=5) is DEFAULT OFF on this cron; pass --cross-asset-gate to opt in.
 # Honest BH-FDR gate path (promote_cohort) is untouched and runs via the autonomy cron below.
+# TIER-1 (realtime-data-lane epic): every 15 min, was 6h — append-only + content-hash caching make re-runs
+# cheap; a per-symbol key-gated source (LunarCrush) that rate-limits a pass degrades honestly ([] + next pass).
 [[cron]]
-schedule = "0 */6 * * *"
+schedule = "*/15 * * * *"
 command = "python3 -m cosmu.research.loop --ingest"
 
 # Full autonomous cycle on REAL Binance data: ingest -> author -> gate/screen -> fund SIM survivors ->
@@ -36,11 +38,34 @@ command = "python3 -m cosmu.master.scheduler"
 # gate-lane track's OWN spec/params on the latest real bars and closes/re-opens through the one order path
 # (SIM fills only — live stays off); mark = re-mark every held SIM position against the latest REAL close,
 # routed by asset class (crypto -> Binance spot, equity/ETF -> Yahoo total-return). Daily at 22:10 UTC (after
-# the US equity cash close) suits daily-bar strategies; bump to hourly if a faster-bar crypto track needs it.
+# the US equity cash close) suits daily-bar strategies. Re-running on the same closed bar is a no-op
+# (decision-bar client_order_ids), so the three clock crons below can overlap safely.
 # This is the hands-off floor: it makes the forward test a genuine strategy test, not buy-and-hold.
 [[cron]]
 schedule = "10 22 * * *"
 command = "python3 -m cosmu.orchestrator.loop"
+
+# TIER-1: second full clock minutes after the 00:00 UTC crypto daily close — a crypto daily-bar track acts on
+# its just-closed candle ~10 min late instead of ~22h late (the 22:10 run only sees yesterday's candle now that
+# the closed-candle guard landed in data/market.py). Equity bars are final here too (US cash closed 20/21 UTC).
+[[cron]]
+schedule = "10 0 * * *"
+command = "python3 -m cosmu.orchestrator.loop"
+
+# TIER-1: HOURLY lane — step sub-daily (1h/4h) tracks on their own cadence, then mark EVERY held position, so
+# the web's "24h perf" reads from marks at most ~1h stale instead of up to 24h. Minute 5: just after the hour
+# close, giving the closed-candle fetch a fresh 1h bar.
+[[cron]]
+schedule = "5 * * * *"
+command = "python3 -m cosmu.orchestrator.loop --intraday"
+
+# CREDIBILITY PASS (realtime-data-lane P2): hourly tick over the PRE-REGISTERED voice panel — pull timelines
+# (key-gated), store new posts durably, extract typed claims from NEW posts only (hard per-pass caps bound the
+# LLM bill), then deterministically rescore the scoreboard + the two social_authority PIT features. An empty
+# panel (config/voices.py) means the pass honestly does nothing.
+[[cron]]
+schedule = "25 * * * *"
+command = "python3 -m cosmu.ingest.voices_pass"
 
 # ROTATION RE-ARM: re-run the deploy-lane arm fleet daily after the clock. Each arm() is idempotent (a held
 # target leg is reused, the clock origin never resets) and now closes stale legs first (arm_rotation), so this

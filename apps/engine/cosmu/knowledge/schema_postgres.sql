@@ -298,6 +298,74 @@ create index if not exists idx_alt_data_lookup on alt_data (provider, symbol, me
 -- Without this the query does a seqscan over millions of rows (LunarCrush per-symbol backfill).
 create index if not exists idx_alt_data_metric_avail on alt_data (metric, available_at desc);
 
+-- POINT-IN-TIME UNSTRUCTURED-EVENT store (realtime-data-lane epic §5): typed news/tweet/Polymarket/OSINT
+-- events with TWO clocks — ts = the event's own publish time (event-study axis), available_at = OUR receipt
+-- time (the only honest trading-feature axis; scraped archives are "available at scrape time", never
+-- backdated). Append-only, deduped by (provider, content_hash). Title-level text only (small); numeric
+-- features derived from events flow into alt_data. Read by the event-study harness + mind/authority.py.
+create table if not exists market_events (
+  id bigint generated always as identity primary key,
+  provider text not null,
+  source text not null default '',
+  symbols text not null default '[]',     -- JSON array; [] = market-wide
+  ts text not null,                       -- the event's own publish/claim time
+  available_at text not null,             -- when WE received it (receipt/scrape time)
+  title text not null,
+  content_hash text not null,
+  event_type text,
+  root_event_id text,
+  novelty real,
+  direction integer,
+  magnitude real,
+  confidence real,
+  extractor_version text,
+  ingested_at text not null default (now()::text),
+  unique (provider, content_hash)
+);
+create index if not exists idx_market_events_ts on market_events (provider, ts);
+create index if not exists idx_market_events_root on market_events (root_event_id);
+
+-- CREDIBILITY pipeline durable storage (realtime-data-lane epic P2). voice_claims = every typed predictive
+-- claim Phase 1 extracted (append-only, deduped so a re-extraction never double-counts; ts == the post's own
+-- availability — a claim can never read the future). voice_scoreboard = ONE flat, human-readable row per
+-- followed voice, upserted each pass — the operator-facing surface (plain columns, no joins needed).
+create table if not exists voice_claims (
+  id bigint generated always as identity primary key,
+  handle text not null,
+  platform text not null,
+  post_id text not null,
+  entity text not null,
+  direction text not null,            -- up | down | flat
+  horizon text not null,              -- canonical horizon code
+  horizon_days integer not null,
+  conviction real not null,
+  ts text not null,                   -- claim time == the post's availability (PIT)
+  quote text not null default '',
+  url text not null default '',
+  extractor_version text,
+  ingested_at text not null default (now()::text),
+  unique (post_id, entity, direction, horizon)
+);
+create index if not exists idx_voice_claims_handle on voice_claims (handle, ts);
+
+create table if not exists voice_scoreboard (
+  handle text not null,
+  platform text not null,
+  n_posts integer not null default 0,        -- timeline posts on record
+  n_claims integer not null default 0,       -- typed claims extracted (volume, NOT skill)
+  n_resolved integer not null default 0,     -- claims old enough to be scored against the tape
+  hit_rate real,                             -- fraction of resolved claims whose direction realized
+  base_hit_rate real,                        -- what a coin-at-base-rate would have hit
+  excess_hit_rate real,                      -- hit_rate - base_hit_rate (skill above chance)
+  brier_skill_score real,                    -- >0 beats the base rate; <=0 does not
+  calibration_error real,                    -- |stated conviction - realized| (0 = perfectly calibrated)
+  skill real,                                -- the headline [0,1] scalar (sample-shrunk Brier skill)
+  authority real,                            -- citation-PageRank anchored to skill (influence != authority)
+  primacy_rate real,                         -- how often this voice is FIRST on a claim (breaker vs echo)
+  updated_at text not null,
+  primary key (platform, handle)
+);
+
 -- Per-(provider, metric) rollup of alt_data, refreshed INCREMENTALLY after each ingest pass (an upsert from
 -- the just-written rows, NEVER a full re-aggregate). The /intelligence data-freshness panel and the /scores
 -- source-trust freshness read this tiny table (≤ a few hundred rows) instead of a GROUP BY over the ~17M-row
