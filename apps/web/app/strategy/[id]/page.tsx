@@ -10,6 +10,7 @@ import { TvChart } from "@/components/charts/tv-chart";
 import { FoldBars } from "@/components/charts/fold-bars";
 import { ChartEmpty } from "@/components/charts/chart-kit";
 import { SpecView } from "@/components/strategy/spec-view";
+import { SummaryCard } from "@/components/strategy/summary-card";
 import { StrategyStages } from "@/components/nav/strategy-stages";
 import { StrategyHeader } from "@/components/strategies/strategy-header";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
@@ -168,6 +169,10 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
           <InterlockStrip interlocks={interlocksOf(headlineBt)} />
         </div>
       ) : null}
+
+      {/* Plain-language summary — written externally by the operator's agent from recorded facts;
+          stale badge when the numbers moved since it was written. Advisory, never the gate. */}
+      <SummaryCard summaryMd={strategy.summary_md} stale={strategy.summary_stale} updatedAt={strategy.summary_updated_at} />
 
       {/* Tabbed progressive disclosure — the digestible default (Performance) opens first; Gate, Trades,
           Spec, and Notes are a tap away. Only the active panel is mounted in the DOM, so the page reads

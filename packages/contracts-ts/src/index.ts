@@ -999,8 +999,27 @@ export interface StrategyDetailResponse {
   notes_md: string;
   params: Record<string, unknown>;
   spec: Record<string, unknown>;
+  summary_md?: string | null;
+  summary_stale?: boolean | null;
+  summary_updated_at?: string | null;
   trades: Execution[];
   version_id: string;
+}
+
+export interface StrategySummaryPutRequest {
+  body_md: string;
+  facts_hash: string;
+  model: string;
+  prompt_version: string;
+}
+
+export interface StrategySummaryPutResponse {
+  ok: boolean;
+}
+
+export interface SummaryFactsResponse {
+  facts: Record<string, unknown>;
+  facts_hash: string;
 }
 
 export interface TickDetail {
