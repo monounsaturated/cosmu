@@ -298,6 +298,33 @@ create index if not exists idx_alt_data_lookup on alt_data (provider, symbol, me
 -- Without this the query does a seqscan over millions of rows (LunarCrush per-symbol backfill).
 create index if not exists idx_alt_data_metric_avail on alt_data (metric, available_at desc);
 
+-- POINT-IN-TIME UNSTRUCTURED-EVENT store (realtime-data-lane epic §5): typed news/tweet/Polymarket/OSINT
+-- events with TWO clocks — ts = the event's own publish time (event-study axis), available_at = OUR receipt
+-- time (the only honest trading-feature axis; scraped archives are "available at scrape time", never
+-- backdated). Append-only, deduped by (provider, content_hash). Title-level text only (small); numeric
+-- features derived from events flow into alt_data. Read by the event-study harness + mind/authority.py.
+create table if not exists market_events (
+  id bigint generated always as identity primary key,
+  provider text not null,
+  source text not null default '',
+  symbols text not null default '[]',     -- JSON array; [] = market-wide
+  ts text not null,                       -- the event's own publish/claim time
+  available_at text not null,             -- when WE received it (receipt/scrape time)
+  title text not null,
+  content_hash text not null,
+  event_type text,
+  root_event_id text,
+  novelty real,
+  direction integer,
+  magnitude real,
+  confidence real,
+  extractor_version text,
+  ingested_at text not null default (now()::text),
+  unique (provider, content_hash)
+);
+create index if not exists idx_market_events_ts on market_events (provider, ts);
+create index if not exists idx_market_events_root on market_events (root_event_id);
+
 -- Per-(provider, metric) rollup of alt_data, refreshed INCREMENTALLY after each ingest pass (an upsert from
 -- the just-written rows, NEVER a full re-aggregate). The /intelligence data-freshness panel and the /scores
 -- source-trust freshness read this tiny table (≤ a few hundred rows) instead of a GROUP BY over the ~17M-row

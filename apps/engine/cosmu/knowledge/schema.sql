@@ -318,6 +318,33 @@ CREATE TABLE IF NOT EXISTS alt_data (
 );
 CREATE INDEX IF NOT EXISTS idx_alt_data_lookup ON alt_data (provider, symbol, metric, available_at);
 
+-- POINT-IN-TIME UNSTRUCTURED-EVENT store (realtime-data-lane epic §5): typed news/tweet/Polymarket/OSINT
+-- events with TWO clocks — ts = the event's own publish time (event-study axis), available_at = OUR receipt
+-- time (the only honest trading-feature axis; scraped archives are "available at scrape time", never
+-- backdated). Append-only, deduped by (provider, content_hash). Title-level text only (small); numeric
+-- features derived from events flow into alt_data. Read by the event-study harness + mind/authority.py.
+CREATE TABLE IF NOT EXISTS market_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT '',
+  symbols TEXT NOT NULL DEFAULT '[]',     -- JSON array; [] = market-wide
+  ts TEXT NOT NULL,
+  available_at TEXT NOT NULL,
+  title TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  event_type TEXT,
+  root_event_id TEXT,
+  novelty REAL,
+  direction INTEGER,
+  magnitude REAL,
+  confidence REAL,
+  extractor_version TEXT,
+  ingested_at TEXT NOT NULL,
+  UNIQUE (provider, content_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_market_events_ts ON market_events (provider, ts);
+CREATE INDEX IF NOT EXISTS idx_market_events_root ON market_events (root_event_id);
+
 -- Per-(provider, metric) rollup of alt_data, refreshed INCREMENTALLY after each ingest pass (an upsert from
 -- the just-written rows, NEVER a full re-aggregate of alt_data). Reads that only need "how fresh / how much"
 -- (the /intelligence data-freshness panel and the /scores source-trust freshness) hit this tiny table
