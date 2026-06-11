@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cosmu — Table OS</title>
+<style>
+:root {
+  --bg:           oklch(0.165 0.017 285);
+  --bg-1:         oklch(0.19  0.017 285);
+  --bg-2:         oklch(0.215 0.018 285);
+  --bg-3:         oklch(0.245 0.02  285);
+  --border:       oklch(0.28  0.018 285);
+  --border-faint: oklch(0.23  0.015 285);
+  --text:         oklch(0.92  0.01  285);
+  --text-2:       oklch(0.65  0.012 285);
+  --text-3:       oklch(0.45  0.01  285);
+  --iris:         oklch(0.66  0.19  290);
+  --iris-dim:     oklch(0.66  0.19  290 / 0.15);
+  --iris-mid:     oklch(0.66  0.19  290 / 0.35);
+  --up:           oklch(0.78  0.16  160);
+  --up-dim:       oklch(0.78  0.16  160 / 0.15);
+  --dn:           oklch(0.70  0.17  18);
+  --dn-dim:       oklch(0.70  0.17  18 / 0.15);
+  --killed-bg:    oklch(0.20  0.015 285);
+  --fs:           13px;
+  --fs-sm:        11px;
+  --fs-xs:        10px;
+  --r:            4px;
+  --r-sm:         3px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Fira Code', monospace; font-size: var(--fs); line-height: 1.5; overflow-x: hidden; }
+a { color: var(--iris); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font-family: inherit; font-size: var(--fs); cursor: pointer; border: none; background: none; color: inherit; }
+
+/* ── LAYOUT ── */
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ── HEADER ── */
+#header {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.header-row1 {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 16px; height: 40px;
+  border-bottom: 1px solid var(--border-faint);
+}
+.logo {
+  font-size: 13px; font-weight: 600; letter-spacing: 0.05em;
+  color: var(--text); display: flex; align-items: center; gap: 6px;
+}
+.logo-mark {
+  width: 18px; height: 18px; flex-shrink: 0;
+  background: var(--iris); border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: white;
+}
+.dash-strip {
+  flex: 1; font-size: var(--fs-sm); color: var(--text-2);
+  display: flex; align-items: center; gap: 12px; overflow: hidden;
+  white-space: nowrap;
+}
+.ds-sep { color: var(--border); }
+.up-val { color: var(--up); }
+.dn-val { color: var(--dn); }
+.header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.btn-liquidate {
+  background: var(--dn-dim); border: 1px solid var(--dn);
+  color: var(--dn); padding: 0 10px; height: 26px; border-radius: var(--r);
+  font-size: var(--fs-sm); font-weight: 600; letter-spacing: 0.02em;
+  transition: background 0.15s;
+}
+.btn-liquidate:hover { background: oklch(0.70 0.17 18 / 0.3); }
+.kbd-hint {
+  color: var(--text-3); font-size: var(--fs-xs); display: flex; align-items: center; gap: 4px;
+}
+.kbd { background: var(--bg-2); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; font-size: var(--fs-xs); color: var(--text-2); }
+
+/* ── FILTER ROW ── */
+.filter-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 16px; height: 36px;
+}
+.seg-control {
+  display: flex; background: var(--bg-1); border: 1px solid var(--border);
+  border-radius: var(--r); overflow: hidden;
+}
+.seg-btn {
+  padding: 0 12px; height: 28px; font-size: var(--fs-sm);
+  color: var(--text-2); border-right: 1px solid var(--border);
+  transition: background 0.1s, color 0.1s; white-space: nowrap;
+}
+.seg-btn:last-child { border-right: none; }
+.seg-btn.active {
+  background: var(--iris-dim); color: var(--iris);
+}
+.seg-btn:hover:not(.active) { background: var(--bg-2); color: var(--text); }
+.filter-right { margin-left: auto; color: var(--text-3); font-size: var(--fs-xs); display: flex; align-items: center; gap: 4px; }
+
+/* ── PANELS (collapsed rows above table) ── */
+#panels { border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.panel {
+  border-bottom: 1px solid var(--border-faint);
+}
+.panel:last-child { border-bottom: none; }
+.panel-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 16px; height: 34px; cursor: pointer;
+  transition: background 0.1s;
+  user-select: none;
+}
+.panel-header:hover { background: var(--bg-1); }
+.panel-chevron {
+  color: var(--text-3); font-size: 10px; width: 12px; text-align: center;
+  transition: transform 0.2s;
+}
+.panel.open .panel-chevron { transform: rotate(90deg); }
+.panel-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); letter-spacing: 0.04em; text-transform: uppercase; width: 72px; flex-shrink: 0; }
+.panel-summary { flex: 1; font-size: var(--fs-sm); color: var(--text-2); }
+.panel-actions { display: flex; align-items: center; gap: 8px; }
+.panel-body {
+  display: none; padding: 12px 16px 16px; background: var(--bg-1);
+  border-top: 1px solid var(--border-faint);
+}
+.panel.open .panel-body { display: block; }
+
+/* panel internals */
+.panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.panel-section { display: flex; flex-direction: column; gap: 8px; }
+.mini-table { width: 100%; border-collapse: collapse; }
+.mini-table th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); text-align: left; padding: 0 0 4px; border-bottom: 1px solid var(--border-faint); font-weight: 400; }
+.mini-table td { font-size: var(--fs-sm); padding: 4px 0; border-bottom: 1px solid var(--border-faint); vertical-align: middle; }
+.mini-table tr:last-child td { border-bottom: none; }
+.mini-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.panel-stat { display: flex; flex-direction: column; gap: 2px; }
+.panel-stat .label { font-size: var(--fs-xs); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; }
+.panel-stat .value { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.panel-stat-row { display: flex; gap: 24px; }
+
+.costs-bars { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.cost-bar-row { display: flex; align-items: center; gap: 8px; }
+.cost-bar-label { font-size: var(--fs-xs); color: var(--text-2); width: 120px; }
+.cost-bar-track { flex: 1; height: 4px; background: var(--bg-3); border-radius: 2px; overflow: hidden; }
+.cost-bar-fill { height: 100%; background: var(--iris); border-radius: 2px; }
+.cost-bar-val { font-size: var(--fs-xs); color: var(--text-2); width: 48px; text-align: right; }
+
+.cmds-list { display: flex; flex-direction: column; gap: 4px; }
+.cmd-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--border-faint); }
+.cmd-row:last-child { border-bottom: none; }
+.cmd-name { font-size: var(--fs-sm); color: var(--iris); width: 180px; }
+.cmd-desc { font-size: var(--fs-sm); color: var(--text-2); }
+
+.btn-ghost {
+  background: none; border: 1px solid var(--border);
+  color: var(--text-2); padding: 0 10px; height: 24px;
+  border-radius: var(--r-sm); font-size: var(--fs-xs);
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-ghost:hover { border-color: var(--text-2); color: var(--text); }
+.btn-ghost.danger:hover { border-color: var(--dn); color: var(--dn); }
+
+/* ── TABLE ── */
+#table-wrap { flex: 1; overflow-y: auto; }
+table.strat-table { width: 100%; border-collapse: collapse; }
+.strat-table thead th {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  padding: 0 8px; height: 32px;
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-3); font-weight: 400; text-align: left; white-space: nowrap;
+}
+.strat-table thead th.num { text-align: right; }
+.strat-table tbody tr.strategy-row {
+  border-bottom: 1px solid var(--border-faint);
+  cursor: pointer; transition: background 0.1s;
+}
+.strat-table tbody tr.strategy-row:hover { background: var(--bg-1); }
+.strat-table tbody tr.strategy-row.active { background: var(--bg-1); }
+.strat-table tbody tr.strategy-row.killed { opacity: 0.6; }
+td { padding: 0 8px; height: 38px; vertical-align: middle; white-space: nowrap; }
+
+/* stage timeline in table */
+.lifecycle { display: flex; align-items: center; gap: 2px; }
+.lc-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--bg-3); flex-shrink: 0;
+  position: relative;
+}
+.lc-dot.done { background: var(--iris); }
+.lc-dot.current { background: var(--iris); box-shadow: 0 0 0 2px var(--iris-dim); }
+.lc-dot.dead { background: var(--dn); }
+.lc-dot.gate-pass::after {
+  content: '✓'; position: absolute; top: -5px; left: -1px;
+  font-size: 7px; color: var(--up); font-weight: 700;
+}
+.lc-dot.gate-fail::after {
+  content: '✗'; position: absolute; top: -5px; left: -1px;
+  font-size: 7px; color: var(--dn); font-weight: 700;
+}
+.lc-line { width: 8px; height: 1px; background: var(--bg-3); flex-shrink: 0; }
+.lc-line.done { background: var(--iris); }
+
+.stage-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 6px; border-radius: 2px;
+  font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; white-space: nowrap;
+}
+.badge-live     { background: var(--up-dim);   color: var(--up); }
+.badge-paper    { background: var(--iris-dim);  color: var(--iris); }
+.badge-gate     { background: var(--up-dim);    color: var(--up); }
+.badge-backtest { background: var(--bg-2);      color: var(--text-3); }
+.badge-queued   { background: var(--bg-2);      color: var(--text-3); }
+.badge-killed   { background: var(--dn-dim);    color: var(--dn); }
+.badge-ready    { background: var(--up-dim);    color: var(--up); border: 1px solid var(--up); }
+
+.pnl-val { font-variant-numeric: tabular-nums; font-weight: 500; }
+.na { color: var(--text-3); }
+
+.expand-btn {
+  width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;
+  color: var(--text-3); font-size: 10px; transition: transform 0.2s, color 0.15s;
+  flex-shrink: 0;
+}
+tr.strategy-row.active .expand-btn { transform: rotate(90deg); color: var(--iris); }
+
+/* ── EXPANDED DETAIL ROW ── */
+tr.detail-row td { padding: 0; height: auto; }
+.detail-body {
+  padding: 16px 20px 24px;
+  background: var(--bg-1); border-bottom: 1px solid var(--border);
+  display: none;
+}
+tr.detail-row.open .detail-body { display: block; }
+
+.detail-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.detail-title { font-size: 16px; font-weight: 600; }
+.detail-thesis { font-size: var(--fs-sm); color: var(--text-2); margin-top: 2px; }
+.detail-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+.btn-primary {
+  background: var(--iris); color: white; padding: 0 14px; height: 28px;
+  border-radius: var(--r); font-size: var(--fs-sm); font-weight: 600;
+  transition: opacity 0.15s;
+}
+.btn-primary:hover { opacity: 0.85; }
+
+.detail-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+}
+@media (max-width: 900px) {
+  .detail-grid { grid-template-columns: 1fr; }
+  .panel-grid { grid-template-columns: 1fr; }
+}
+
+.detail-section { margin-bottom: 16px; }
+.detail-section-title {
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-3); margin-bottom: 8px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--border-faint);
+}
+
+/* lifecycle full timeline */
+.lc-full { display: flex; align-items: center; gap: 0; margin-bottom: 12px; flex-wrap: wrap; gap: 2px; }
+.lc-step {
+  display: flex; align-items: center; gap: 2px;
+}
+.lc-stage-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--bg-3);
+}
+.lc-stage-dot.done  { background: var(--iris); }
+.lc-stage-dot.current { background: var(--iris); box-shadow: 0 0 0 3px var(--iris-dim); }
+.lc-stage-dot.dead  { background: var(--dn); }
+.lc-stage-label { font-size: var(--fs-xs); color: var(--text-3); margin-left: 3px; }
+.lc-stage-label.done { color: var(--iris); }
+.lc-stage-label.current { color: var(--text); }
+.lc-stage-label.dead { color: var(--dn); }
+.lc-conn { width: 12px; height: 1px; background: var(--bg-3); }
+.lc-conn.done { background: var(--iris); }
+
+/* gate metrics chips */
+.metrics-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.metric-chip {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 5px 10px; cursor: help;
+  position: relative; transition: border-color 0.15s;
+}
+.metric-chip:hover { border-color: var(--iris); }
+.metric-chip .mc-name { font-size: var(--fs-xs); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
+.metric-chip .mc-value { font-size: var(--fs-sm); font-weight: 600; margin-top: 1px; }
+.mc-pass { color: var(--up); }
+.mc-warn { color: oklch(0.78 0.16 60); }
+.mc-fail { color: var(--dn); }
+.metric-chip .mc-tip {
+  display: none; position: absolute; bottom: calc(100% + 6px); left: 0;
+  background: var(--bg-3); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 6px 10px; width: 220px;
+  font-size: var(--fs-xs); color: var(--text-2); line-height: 1.5;
+  z-index: 200; white-space: normal;
+}
+.metric-chip:hover .mc-tip { display: block; }
+
+/* equity SVG chart */
+.chart-wrap { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r); padding: 8px; margin-bottom: 12px; }
+.chart-legend { display: flex; gap: 12px; margin-bottom: 6px; font-size: var(--fs-xs); color: var(--text-2); align-items: center; }
+.legend-dot { width: 24px; height: 1.5px; border-radius: 1px; display: inline-block; vertical-align: middle; margin-right: 4px; }
+
+/* building blocks */
+.blocks-list { display: flex; flex-direction: column; gap: 6px; }
+.block-row { display: flex; gap: 8px; align-items: flex-start; }
+.block-key { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); width: 56px; flex-shrink: 0; padding-top: 1px; }
+.block-val { font-size: var(--fs-sm); color: var(--text-2); }
+
+/* data feed */
+.feed-list { display: flex; flex-direction: column; gap: 4px; }
+.feed-row { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); }
+.feed-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--iris); flex-shrink: 0; }
+.feed-val { color: var(--text); flex: 1; }
+.feed-meta { color: var(--text-3); font-size: var(--fs-xs); }
+
+/* recent trades table */
+.trades-table { width: 100%; border-collapse: collapse; }
+.trades-table th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); font-weight: 400; text-align: left; padding: 0 4px 4px; border-bottom: 1px solid var(--border-faint); }
+.trades-table th.num { text-align: right; }
+.trades-table td { font-size: var(--fs-xs); padding: 4px; border-bottom: 1px solid var(--border-faint); font-variant-numeric: tabular-nums; }
+.trades-table td.num { text-align: right; }
+.trades-table tr:last-child td { border-bottom: none; }
+.side-buy  { color: var(--up); font-weight: 600; }
+.side-sell { color: var(--dn); font-weight: 600; }
+
+/* activity timeline */
+.activity-list { display: flex; flex-direction: column; gap: 0; }
+.activity-row {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 5px 0; border-left: 1px solid var(--border-faint); margin-left: 4px; padding-left: 10px;
+  position: relative;
+}
+.activity-row::before {
+  content: ''; position: absolute; left: -4px; top: 9px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--bg-3); border: 1px solid var(--border);
+}
+.activity-row.current::before { background: var(--iris); border-color: var(--iris); }
+.act-time { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; width: 100px; flex-shrink: 0; }
+.act-event { font-size: var(--fs-sm); color: var(--text-2); }
+.act-event strong { color: var(--text); }
+
+/* ── MODAL ── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 500;
+  background: oklch(0 0 0 / 0.7); align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 24px; max-width: 400px; width: 90%;
+}
+.modal-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; color: var(--dn); }
+.modal-body { font-size: var(--fs-sm); color: var(--text-2); line-height: 1.6; margin-bottom: 20px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.modal-cancel {
+  background: var(--bg-3); border: 1px solid var(--border);
+  color: var(--text-2); padding: 0 14px; height: 30px; border-radius: var(--r);
+  font-size: var(--fs-sm);
+}
+.modal-cancel:hover { color: var(--text); }
+.modal-confirm {
+  background: var(--dn); color: white; padding: 0 14px; height: 30px;
+  border-radius: var(--r); font-size: var(--fs-sm); font-weight: 600;
+}
+.modal-confirm:hover { opacity: 0.85; }
+
+/* ── TOAST ── */
+.toast {
+  position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%) translateY(10px);
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 8px 16px; font-size: var(--fs-sm); color: var(--text);
+  opacity: 0; transition: opacity 0.2s, transform 0.2s; z-index: 600;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── MOCKUP BADGE ── */
+.mockup-badge {
+  position: fixed; bottom: 10px; left: 10px; z-index: 700;
+  background: var(--bg-3); border: 1px solid var(--border);
+  border-radius: 3px; padding: 2px 7px;
+  font-size: var(--fs-xs); color: var(--text-3); letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border); }
+
+.divider { height: 1px; background: var(--border-faint); margin: 12px 0; }
+.text-right { text-align: right; }
+.text-iris { color: var(--iris); }
+
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--up); display: inline-block; margin-right: 4px; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══════ HEADER ══════ -->
+<div id="header">
+  <div class="header-row1">
+    <div class="logo">
+      <div class="logo-mark">C</div>
+      COSMU
+    </div>
+    <div class="dash-strip" id="dashStrip">
+      <span>Paper invested <span class="up-val">$18,392</span></span>
+      <span class="ds-sep">·</span>
+      <span>Paper P&amp;L <span class="up-val">+$1,392 (+9.27%)</span></span>
+      <span class="ds-sep">·</span>
+      <span>Live total <span class="up-val">$9,000</span></span>
+      <span class="ds-sep">·</span>
+      <span>Free <span class="up-val">$7,300</span></span>
+      <span class="ds-sep">·</span>
+      <span>Invested <span class="up-val">$1,700</span></span>
+      <span class="ds-sep">·</span>
+      <span>Live P&amp;L <span class="up-val">+$419 (+21%)</span></span>
+    </div>
+    <div class="header-actions">
+      <span class="kbd-hint"><span class="kbd">⌘K</span> commands</span>
+      <button class="btn-liquidate" onclick="openLiquidateModal()">Liquidate all</button>
+    </div>
+  </div>
+  <div class="filter-row">
+    <div class="seg-control" id="filterControl">
+      <button class="seg-btn active" data-filter="all">All</button>
+      <button class="seg-btn" data-filter="live">Live</button>
+      <button class="seg-btn" data-filter="paper">Paper</button>
+      <button class="seg-btn" data-filter="gate">Gate ✓</button>
+      <button class="seg-btn" data-filter="killed">Killed</button>
+      <button class="seg-btn" data-filter="queued">Queued</button>
+    </div>
+    <div class="filter-right"><span class="kbd">↑↓</span>&nbsp;navigate&nbsp;<span class="kbd">↵</span>&nbsp;expand&nbsp;<span class="kbd">esc</span>&nbsp;collapse</div>
+  </div>
+</div>
+
+<!-- ══════ PANELS ══════ -->
+<div id="panels">
+
+  <!-- LIVE panel -->
+  <div class="panel" id="panel-live">
+    <div class="panel-header" onclick="togglePanel('live')" data-panel-toggle="live">
+      <span class="panel-chevron">▶</span>
+      <span class="panel-label">Live</span>
+      <span class="panel-summary">
+        <span class="live-dot"></span>Armed · 1 position · Invested <span class="up-val">$1,700</span> · P&amp;L <span class="up-val">+$419 (+21%)</span> · Daily loss −$0 / $450 limit
+      </span>
+      <div class="panel-actions" onclick="event.stopPropagation()">
+        <button class="btn-liquidate" style="height:22px;font-size:10px;padding:0 8px;" onclick="openLiquidateModal()">Liquidate all</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="panel-grid">
+        <div>
+          <div class="detail-section-title">Live Positions</div>
+          <table class="mini-table">
+            <thead><tr>
+              <th>Strategy</th><th>Asset</th><th>Alloc</th><th class="num">P&amp;L</th><th class="num">Days</th><th></th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td><a href="#/strategy/funding-carry-btc" onclick="deepLink('funding-carry-btc'); return false;">Funding Carry BTC</a></td>
+                <td>BTC/USDC</td>
+                <td><span class="up-val">$1,700</span></td>
+                <td class="num"><span class="up-val">+$419 (+21%)</span></td>
+                <td class="num">47</td>
+                <td><button class="btn-ghost danger" style="height:20px;">Close</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="divider"></div>
+          <div class="panel-stat-row">
+            <div class="panel-stat">
+              <span class="label">Daily Loss Used</span>
+              <span class="value" style="font-size:14px;">$0 <span style="font-size:11px;color:var(--text-3)">/ $450</span></span>
+            </div>
+            <div class="panel-stat">
+              <span class="label">Cap per strategy</span>
+              <span class="value" style="font-size:14px;">$5,000</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="detail-section-title">Gauge — Daily Loss</div>
+          <svg width="100%" height="40" viewBox="0 0 300 40">
+            <rect x="0" y="14" width="300" height="8" rx="4" fill="oklch(0.245 0.02 285)"/>
+            <rect x="0" y="14" width="1" height="8" rx="1" fill="oklch(0.78 0.16 160)"/>
+            <text x="2" y="36" font-size="9" fill="oklch(0.45 0.01 285)" font-family="monospace">$0 used of $450 daily limit</text>
+            <text x="270" y="36" font-size="9" fill="oklch(0.45 0.01 285)" font-family="monospace">0%</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAPER panel -->
+  <div class="panel" id="panel-paper">
+    <div class="panel-header" onclick="togglePanel('paper')">
+      <span class="panel-chevron">▶</span>
+      <span class="panel-label">Paper</span>
+      <span class="panel-summary">
+        5 tracks running · Invested <span class="up-val">$18,392</span> · Aggregate P&amp;L <span class="up-val">+$1,392 (+9.27%)</span> · 1 live-ready
+      </span>
+      <div class="panel-actions" onclick="event.stopPropagation()">
+        <button class="btn-ghost" onclick="showToast('All paper tracks paused')">Pause all paper</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="panel-grid">
+        <div>
+          <div class="detail-section-title">Paper Tracks</div>
+          <table class="mini-table">
+            <thead><tr><th>Strategy</th><th class="num">Days</th><th class="num">P&amp;L</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td><a href="#/strategy/funding-carry-btc" onclick="deepLink('funding-carry-btc'); return false;">Funding Carry BTC</a></td><td class="num">47</td><td class="num"><span class="up-val">+9.3%</span></td><td><span class="stage-badge badge-live">Live</span></td></tr>
+              <tr><td><a href="#/strategy/xsect-momentum-top5" onclick="deepLink('xsect-momentum-top5'); return false;">X-Sect Momentum</a></td><td class="num">33</td><td class="num"><span class="up-val">+4.1%</span></td><td><span class="stage-badge badge-paper">Paper</span></td></tr>
+              <tr><td><a href="#/strategy/gtaa-monthly" onclick="deepLink('gtaa-monthly'); return false;">GTAA Monthly</a></td><td class="num">41</td><td class="num"><span class="up-val">+2.9%</span></td><td><span class="stage-badge badge-ready">Live-ready</span></td></tr>
+              <tr><td><a href="#/strategy/fg-contrarian-eth" onclick="deepLink('fg-contrarian-eth'); return false;">F&amp;G Contrarian ETH</a></td><td class="num">12</td><td class="num"><span class="dn-val">−0.8%</span></td><td><span class="stage-badge badge-paper">Paper</span></td></tr>
+              <tr><td><a href="#/strategy/stablecoin-lead-eth" onclick="deepLink('stablecoin-lead-eth'); return false;">Stablecoin Flows ETH</a></td><td class="num">8</td><td class="num"><span class="up-val">+1.2%</span></td><td><span class="stage-badge badge-paper">Paper</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div class="detail-section-title">Aggregate Equity Curve (Paper)</div>
+          <div class="chart-wrap" style="height:120px;padding:6px;">
+            <svg width="100%" height="108" viewBox="0 0 400 108" preserveAspectRatio="none">
+              <polyline points="0,100 40,95 80,88 120,80 160,72 200,68 240,60 280,52 320,45 360,40 400,34"
+                fill="none" stroke="oklch(0.66 0.19 290)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+              <line x1="0" y1="100" x2="400" y2="100" stroke="oklch(0.28 0.018 285)" stroke-width="0.5" vector-effect="non-scaling-stroke"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COSTS panel -->
+  <div class="panel" id="panel-costs">
+    <div class="panel-header" onclick="togglePanel('costs')">
+      <span class="panel-chevron">▶</span>
+      <span class="panel-label">Costs</span>
+      <span class="panel-summary">Opex $74/mo · 0.8% of equity · <span class="up-val">healthy</span></span>
+    </div>
+    <div class="panel-body">
+      <div class="panel-grid">
+        <div>
+          <div class="detail-section-title">Monthly Breakdown</div>
+          <div class="costs-bars">
+            <div class="cost-bar-row"><span class="cost-bar-label">Railway (infra)</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:42%"></div></div><span class="cost-bar-val">$31/mo</span></div>
+            <div class="cost-bar-row"><span class="cost-bar-label">LLM (Claude)</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:28%"></div></div><span class="cost-bar-val">$21/mo</span></div>
+            <div class="cost-bar-row"><span class="cost-bar-label">Vercel (web)</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:13%"></div></div><span class="cost-bar-val">$10/mo</span></div>
+            <div class="cost-bar-row"><span class="cost-bar-label">Data feeds</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:16%"></div></div><span class="cost-bar-val">$12/mo</span></div>
+          </div>
+          <div class="divider"></div>
+          <div style="font-size:var(--fs-xs);color:var(--text-3)">Total: $74/mo · Break-even at $8,880 AUM (current: $9,000 ✓)</div>
+        </div>
+        <div>
+          <div class="detail-section-title">LLM Spend (last 30d)</div>
+          <div class="panel-stat-row">
+            <div class="panel-stat"><span class="label">Input tokens</span><span class="value" style="font-size:13px;">2.1M</span></div>
+            <div class="panel-stat"><span class="label">Output tokens</span><span class="value" style="font-size:13px;">310k</span></div>
+            <div class="panel-stat"><span class="label">Cost</span><span class="value" style="font-size:13px;">$21.40</span></div>
+          </div>
+          <div class="divider"></div>
+          <div style="font-size:var(--fs-xs);color:var(--text-2);">Cache hit rate: <span style="color:var(--up)">74%</span> · Avg per backtest: $0.38</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMMANDS panel -->
+  <div class="panel" id="panel-commands">
+    <div class="panel-header" onclick="togglePanel('commands')">
+      <span class="panel-chevron">▶</span>
+      <span class="panel-label">Commands</span>
+      <span class="panel-summary">11 slash commands available · <span class="kbd" style="font-size:10px;">⌘K</span> to open palette</span>
+    </div>
+    <div class="panel-body">
+      <div class="cmds-list">
+        <div class="cmd-row"><span class="cmd-name">/create-strategy</span><span class="cmd-desc">Author a new strategy spec and submit to the Gate</span></div>
+        <div class="cmd-row"><span class="cmd-name">/run-gate &lt;id&gt;</span><span class="cmd-desc">Re-run Gate check for a strategy</span></div>
+        <div class="cmd-row"><span class="cmd-name">/launch-live &lt;id&gt;</span><span class="cmd-desc">Arm a Gate-passed strategy for live trading</span></div>
+        <div class="cmd-row"><span class="cmd-name">/kill &lt;id&gt; [reason]</span><span class="cmd-desc">Terminate a strategy at any stage</span></div>
+        <div class="cmd-row"><span class="cmd-name">/manage-data</span><span class="cmd-desc">Trigger data backfill / coverage report</span></div>
+        <div class="cmd-row"><span class="cmd-name">/scan-signals</span><span class="cmd-desc">Run signal scanner across current universe</span></div>
+        <div class="cmd-row"><span class="cmd-name">/groom</span><span class="cmd-desc">Prune dead code, archive stale strategies</span></div>
+        <div class="cmd-row"><span class="cmd-name">/align-check</span><span class="cmd-desc">Strategic alignment vs north star (autonomous profit)</span></div>
+        <div class="cmd-row"><span class="cmd-name">/variance-attribution</span><span class="cmd-desc">Decompose P&amp;L into signal / regime / noise</span></div>
+        <div class="cmd-row"><span class="cmd-name">/deploy-check</span><span class="cmd-desc">Pre-push gate: run pnpm verify</span></div>
+        <div class="cmd-row"><span class="cmd-name">/deep-research &lt;topic&gt;</span><span class="cmd-desc">Fan-out web searches, synthesize cited report</span></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /panels -->
+
+<!-- ══════ STRATEGY TABLE ══════ -->
+<div id="table-wrap">
+<table class="strat-table" id="stratTable">
+  <thead>
+    <tr>
+      <th style="width:28px;"></th>
+      <th>Strategy</th>
+      <th>Stage</th>
+      <th>Lifecycle</th>
+      <th class="num">Days</th>
+      <th class="num">P&amp;L</th>
+      <th>Gate</th>
+      <th style="width:120px;">Note</th>
+    </tr>
+  </thead>
+  <tbody id="stratTbody">
+    <!-- Rows injected by JS -->
+  </tbody>
+</table>
+</div>
+
+</div><!-- /app -->
+
+<!-- ══════ LIQUIDATE MODAL ══════ -->
+<div class="modal-overlay" id="liquidateModal">
+  <div class="modal">
+    <div class="modal-title">Liquidate all live positions</div>
+    <div class="modal-body">
+      Sell all live positions to USDC and disarm live trading. <strong>$1,700 across 1 strategy</strong> will be market-sold at current price. Paper tracks are not affected and will continue running.
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeLiquidateModal()">Cancel</button>
+      <button class="modal-confirm" onclick="confirmLiquidate()">Confirm liquidate</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ TOAST ══════ -->
+<div class="toast" id="toast"></div>
+
+<!-- ══════ MOCKUP BADGE ══════ -->
+<div class="mockup-badge">MOCKUP · synthetic data</div>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────────────────────
+const STRATEGIES = [
+  {
+    id: 'funding-carry-btc',
+    name: 'Funding Carry BTC',
+    stage: 'live',
+    days: 47,
+    pnl: '+$419 (+21%)',
+    pnlSign: 'up',
+    gate: { dsr: 1.12, pbo: 0.31, dd: '14%', oos: '+8.2%', trades: '34 ✓' },
+    note: '',
+    killed: false,
+    paperDays: 47,
+    paperPnl: '+9.3%',
+    paperPnlSign: 'up',
+    thesis: 'Collect positive funding from BTC perpetual-spot basis when funding rate exceeds a fitted threshold.',
+    liveReady: false,
+    gateAwait: false,
+    backtesting: false,
+    queued: false,
+  },
+  {
+    id: 'xsect-momentum-top5',
+    name: 'Cross-Sectional Momentum Top-5',
+    stage: 'paper',
+    days: 33,
+    pnl: '+4.1%',
+    pnlSign: 'up',
+    gate: { dsr: 0.98, pbo: 0.38, dd: '11%', oos: '+5.1%', trades: '28 ✓' },
+    note: '',
+    killed: false,
+    paperDays: 33,
+    paperPnl: '+4.1%',
+    paperPnlSign: 'up',
+    thesis: 'Long top-5 assets by trailing 20-day return, rebalanced weekly.',
+    liveReady: false,
+    gateAwait: false,
+    backtesting: false,
+    queued: false,
+  },
+  {
+    id: 'gtaa-monthly',
+    name: 'GTAA Monthly Rotation',
+    stage: 'paper',
+    days: 41,
+    pnl: '+2.9%',
+    pnlSign: 'up',
+    gate: { dsr: 1.05, pbo: 0.29, dd: '9%', oos: '+6.4%', trades: '31 ✓' },
+    note: 'live-ready',
+    killed: false,
+    paperDays: 41,
+    paperPnl: '+2.9%',
+    paperPnlSign: 'up',
+    thesis: 'Global tactical asset allocation across BTC, ETH, stables; rotate monthly by momentum + carry score.',
+    liveReady: true,
+    gateAwait: false,
+    backtesting: false,
+    queued: false,
+  },
+  {
+    id: 'fg-contrarian-eth',
+    name: 'Fear & Greed Contrarian ETH',
+    stage: 'paper',
+    days: 12,
+    pnl: '−0.8%',
+    pnlSign: 'dn',
+    gate: { dsr: 0.89, pbo: 0.44, dd: '17%', oos: '+2.1%', trades: '21 ✓' },
+    note: '',
+    killed: false,
+    paperDays: 12,
+    paperPnl: '−0.8%',
+    paperPnlSign: 'dn',
+    thesis: 'Buy ETH when fear/greed index drops to extreme fear; exit at greed.',
+    liveReady: false,
+    gateAwait: false,
+    backtesting: false,
+    queued: false,
+  },
+  {
+    id: 'stablecoin-lead-eth',
+    name: 'Stablecoin Flows Lead ETH',
+    stage: 'paper',
+    days: 8,
+    pnl: '+1.2%',
+    pnlSign: 'up',
+    gate: { dsr: 0.91, pbo: 0.42, dd: '12%', oos: '+3.8%', trades: '19 ✓' },
+    note: '',
+    killed: false,
+    paperDays: 8,
+    paperPnl: '+1.2%',
+    paperPnlSign: 'up',
+    thesis: 'Net stablecoin inflows to exchanges lead ETH price moves by ~6h.',
+    liveReady: false,
+    gateAwait: false,
+    backtesting: false,
+    queued: false,
+  },
+  {
+    id: 'vol-regime-btc',
+    name: 'Vol-Regime Switch BTC',
+    stage: 'gate',
+    days: null,
+    pnl: '—',
+    pnlSign: null,
+    gate: { dsr: 1.01, pbo: 0.33, dd: '16%', oos: '+4.9%', trades: '26 ✓' },
+    note: 'awaiting paper funding',
+    killed: false,
+    paperDays: null,
+    paperPnl: null,
+    thesis: 'Switch between trend-following and mean-reversion in BTC based on realized vol regime.',
+    liveReady: false,
+    gateAwait: true,
+    backtesting: false,
+    queued: false,
+  },
+  {
+    id: 'orb-sol-4h',
+    name: 'ORB Breakout SOL 4h',
+    stage: 'killed',
+    killedAt: 'gate',
+    killedReason: 'FDR control',
+    killedDate: '2026-05-28',
+    days: null,
+    pnl: '—',
+    pnlSign: null,
+    gate: null,
+    note: 'FDR control',
+    killed: true,
+    thesis: 'Opening range breakout on SOL 4h bars.',
+    liveReady: false,
+    gateAwait: false,
+    backtesting: false,
+    queued: false,
+  },
+  {
+    id: 'wiki-zscore-btc',
+    name: 'Wikipedia Pageviews Z-Score BTC',
+    stage: 'killed',
+    killedAt: 'gate',
+    killedReason: 'PBO 0.61',
+    killedDate: '2026-05-30',
+    days: null,
+    pnl: '—',
+    pnlSign: null,
+    gate: null,
+    note: 'PBO 0.61',
+    killed: true,
+    thesis: 'BTC price predictable from Wikipedia pageview z-score spikes.',
+    liveReady: false,
+    gateAwait: false,
+    backtesting: false,
+    queued: false,
+  },
+  {
+    id: 'reddit-spike-doge',
+    name: 'Reddit Volume Spike DOGE',
+    stage: 'killed',
+    killedAt: 'gate',
+    killedReason: 'holdout fail',
+    killedDate: '2026-06-02',
+    days: null,
+    pnl: '—',
+    pnlSign: null,
+    gate: null,
+    note: 'holdout fail',
+    killed: true,
+    thesis: 'Trade DOGE on Reddit submission spike signal.',
+    liveReady: false,
+    gateAwait: false,
+    backtesting: false,
+    queued: false,
+  },
+  {
+    id: 'pm-riskon-overlay',
+    name: 'Polymarket Risk-On Overlay',
+    stage: 'backtest',
+    days: null,
+    pnl: '—',
+    pnlSign: null,
+    gate: null,
+    note: 'in cohort now',
+    killed: false,
+    thesis: 'Overlay risk-on bias based on Polymarket macro event prices.',
+    liveReady: false,
+    gateAwait: false,
+    backtesting: true,
+    queued: false,
+  },
+  {
+    id: 'fvg-btc-1h',
+    name: 'FVG Retrace BTC 1h',
+    stage: 'queued',
+    days: null,
+    pnl: '—',
+    pnlSign: null,
+    gate: null,
+    note: 'inbox',
+    killed: false,
+    thesis: 'Trade fair-value gap retraces on BTC 1h chart.',
+    liveReady: false,
+    gateAwait: false,
+    backtesting: false,
+    queued: true,
+  },
+  {
+    id: 'ma-trend-eth-1d',
+    name: 'MA Trend Filter ETH 1d',
+    stage: 'backtest',
+    days: null,
+    pnl: '—',
+    pnlSign: null,
+    gate: null,
+    note: '',
+    killed: false,
+    thesis: 'Long ETH when 50d MA > 200d MA; cash otherwise.',
+    liveReady: false,
+    gateAwait: false,
+    backtesting: true,
+    queued: false,
+  },
+];
+
+// ─── LIFECYCLE RENDERING ─────────────────────────────────────────────────────
+const STAGES = ['queued','backtest','gate','paper','live'];
+const STAGE_LABELS = { queued:'Q', backtest:'BT', gate:'G', paper:'P', live:'L' };
+
+function lifecycleDots(s) {
+  const stage = s.stage;
+  const killed = s.killed;
+  const killedAt = s.killedAt;
+  let html = '';
+  for (let i = 0; i < STAGES.length; i++) {
+    const st = STAGES[i];
+    if (i > 0) {
+      const prevDone = killed ? STAGES.indexOf(killedAt) > i-1 || (killedAt === STAGES[i-1])
+        : STAGES.indexOf(stage) > i-1;
+      const lineClass = (!killed && STAGES.indexOf(stage) > i-1) || (killed && STAGES.indexOf(killedAt) >= i) ? 'done' : '';
+      html += `<span class="lc-line ${lineClass}"></span>`;
+    }
+    let cls = '';
+    if (killed && st === killedAt) cls = 'dead gate-fail';
+    else if (!killed && st === stage) {
+      cls = st === 'gate' ? 'done gate-pass' : 'current';
+    } else if (!killed && STAGES.indexOf(st) < STAGES.indexOf(stage)) {
+      cls = st === 'gate' ? 'done gate-pass' : 'done';
+    }
+    html += `<span class="lc-dot ${cls}" title="${st}"></span>`;
+  }
+  return `<span class="lifecycle">${html}</span>`;
+}
+
+function stageBadge(s) {
+  if (s.killed) return `<span class="stage-badge badge-killed">Killed</span>`;
+  if (s.liveReady) return `<span class="stage-badge badge-ready">Live-ready</span>`;
+  if (s.gateAwait) return `<span class="stage-badge badge-gate">Gate ✓</span>`;
+  if (s.stage === 'live')     return `<span class="stage-badge badge-live"><span class="live-dot" style="margin-right:3px;width:5px;height:5px;"></span>Live</span>`;
+  if (s.stage === 'paper')    return `<span class="stage-badge badge-paper">Paper</span>`;
+  if (s.stage === 'gate')     return `<span class="stage-badge badge-gate">Gate ✓</span>`;
+  if (s.stage === 'backtest') return `<span class="stage-badge badge-backtest">Backtesting</span>`;
+  if (s.stage === 'queued')   return `<span class="stage-badge badge-queued">Queued</span>`;
+  return '';
+}
+
+function pnlCell(s) {
+  if (s.pnlSign === 'up') return `<span class="pnl-val up-val">${s.pnl}</span>`;
+  if (s.pnlSign === 'dn') return `<span class="pnl-val dn-val">${s.pnl}</span>`;
+  return `<span class="pnl-val na">—</span>`;
+}
+
+function gateCell(s) {
+  if (!s.gate) {
+    if (s.killed) return `<span class="na dn-val" style="font-size:var(--fs-xs);">✗ ${s.killedReason||'—'}</span>`;
+    return '<span class="na">—</span>';
+  }
+  return `<span class="up-val" style="font-size:var(--fs-xs);">DSR ${s.gate.dsr} · PBO ${s.gate.pbo}</span>`;
+}
+
+function noteCell(s) {
+  if (s.liveReady) return `<span class="stage-badge badge-ready" style="font-size:10px;">≥30d live-ready</span>`;
+  if (s.gateAwait) return `<span style="font-size:var(--fs-xs);color:var(--text-3);">awaiting paper slot</span>`;
+  if (s.note) return `<span style="font-size:var(--fs-xs);color:var(--text-3);">${s.note}</span>`;
+  return '';
+}
+
+// ─── EQUITY SVG (for funding-carry-btc) ─────────────────────────────────────
+function equitySVG() {
+  // Gross line (slightly higher)
+  const gross = [0,100, 40,93, 80,85, 120,78, 160,70, 200,60, 240,52, 280,44, 320,36, 360,28, 400,20];
+  // Net of fees (slightly lower)
+  const net   = [0,100, 40,94, 80,87, 120,81, 160,73, 200,64, 240,57, 280,50, 320,44, 360,37, 400,31];
+
+  function pts(arr) {
+    let r = [];
+    for(let i=0;i<arr.length;i+=2) r.push(arr[i]+','+arr[i+1]);
+    return r.join(' ');
+  }
+
+  const entries = [[80,87],[200,64],[320,44]];
+  const exits   = [[160,73],[280,50],[400,31]];
+
+  let markers = '';
+  entries.forEach(([x,y]) => {
+    markers += `<circle cx="${x}" cy="${y}" r="3" fill="oklch(0.78 0.16 160)" stroke="oklch(0.165 0.017 285)" stroke-width="1.5"/>`;
+  });
+  exits.forEach(([x,y]) => {
+    markers += `<circle cx="${x}" cy="${y}" r="3" fill="oklch(0.70 0.17 18)" stroke="oklch(0.165 0.017 285)" stroke-width="1.5"/>`;
+  });
+
+  return `
+<svg width="100%" height="120" viewBox="0 0 400 120" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="eq-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="oklch(0.66 0.19 290)" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="oklch(0.66 0.19 290)" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <polygon points="${pts(gross)} 400,110 0,110" fill="url(#eq-fill)"/>
+  <polyline points="${pts(gross)}" fill="none" stroke="oklch(0.66 0.19 290)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+  <polyline points="${pts(net)}"   fill="none" stroke="oklch(0.66 0.19 290 / 0.45)" stroke-width="1.5" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
+  <line x1="0" y1="100" x2="400" y2="100" stroke="oklch(0.28 0.018 285)" stroke-width="0.5" vector-effect="non-scaling-stroke"/>
+  ${markers}
+</svg>`;
+}
+
+// ─── DETAIL BODY (full for funding-carry-btc, template for others) ───────────
+function detailBodyHTML(s) {
+  const isFull = s.id === 'funding-carry-btc';
+
+  const stageFull = () => {
+    let html = '<div class="lc-full">';
+    const stagesDef = [
+      {key:'queued',   label:'Queued'},
+      {key:'backtest', label:'Backtest'},
+      {key:'gate',     label:'Gate'},
+      {key:'paper',    label:'Paper'},
+      {key:'live',     label:'Live'},
+    ];
+    stagesDef.forEach((st, i) => {
+      if (i > 0) {
+        const done = s.killed
+          ? STAGES.indexOf(s.killedAt) > i-1
+          : STAGES.indexOf(s.stage) > i-1;
+        html += `<span class="lc-conn ${done?'done':''}"></span>`;
+      }
+      let cls = '';
+      if (s.killed && st.key === s.killedAt) cls = 'dead';
+      else if (!s.killed && st.key === s.stage) cls = 'current';
+      else if (!s.killed && STAGES.indexOf(st.key) < STAGES.indexOf(s.stage)) cls = 'done';
+      html += `<span class="lc-step"><span class="lc-stage-dot ${cls}"></span><span class="lc-stage-label ${cls}">${st.label}${s.killed&&st.key===s.killedAt?' ✗':''}</span></span>`;
+    });
+    html += '</div>';
+    return html;
+  };
+
+  const gateMetrics = () => {
+    if (!s.gate) return '<span class="na">Gate metrics not available</span>';
+    const chips = [
+      { name: 'Deflated Sharpe', val: s.gate.dsr, cls: s.gate.dsr >= 1 ? 'mc-pass' : 'mc-warn', tip: 'Edge after correcting for how many strategy variants were tried. Threshold: > 1.0.' },
+      { name: 'PBO', val: s.gate.pbo, cls: s.gate.pbo <= 0.4 ? 'mc-pass' : 'mc-fail', tip: 'Probability the backtest is overfit to in-sample noise. Threshold: < 0.40.' },
+      { name: 'Max DD', val: s.gate.dd, cls: 'mc-pass', tip: 'Maximum drawdown in backtest. Limit: 25%.' },
+      { name: 'OOS', val: s.gate.oos, cls: s.gate.oos.startsWith('+') ? 'mc-pass' : 'mc-fail', tip: 'Out-of-sample return on data the strategy never saw during fitting.' },
+      { name: 'Trades', val: s.gate.trades, cls: 'mc-pass', tip: 'Minimum 30 trades required for statistical confidence.' },
+    ];
+    return '<div class="metrics-chips">' + chips.map(c =>
+      `<div class="metric-chip"><div class="mc-name">${c.name}</div><div class="mc-value ${c.cls}">${c.val}</div><div class="mc-tip">${c.tip}</div></div>`
+    ).join('') + '</div>';
+  };
+
+  const buildingBlocks = () => `
+<div class="blocks-list">
+  <div class="block-row"><span class="block-key">Signal</span><span class="block-val">funding_rate below fitted threshold (−0.012%/8h)</span></div>
+  <div class="block-row"><span class="block-key">Filter</span><span class="block-val">MA-trend: 50d > 200d (regime filter)</span></div>
+  <div class="block-row"><span class="block-key">Exit</span><span class="block-val">Stop 4% · Take 12% · Time-stop 14d</span></div>
+  <div class="block-row"><span class="block-key">Sizing</span><span class="block-val">Fixed fraction 0.19 of allocated capital</span></div>
+  <div class="block-row"><span class="block-key">Similar</span><span class="block-val"><a href="#/strategy/vol-regime-btc" onclick="deepLink('vol-regime-btc');return false;">Vol-Regime Switch BTC</a> · <a href="#/strategy/gtaa-monthly" onclick="deepLink('gtaa-monthly');return false;">GTAA Monthly</a></span></div>
+</div>`;
+
+  const dataFeed = () => `
+<div class="feed-list">
+  <div class="feed-row"><span class="feed-dot"></span><span class="feed-val">funding_rate <strong>−0.018%</strong></span><span class="feed-meta">2h ago · Binance</span></div>
+  <div class="feed-row"><span class="feed-dot"></span><span class="feed-val">fear_greed <strong>71 (greed)</strong></span><span class="feed-meta">5h ago · alternative.me</span></div>
+  <div class="feed-row"><span class="feed-dot"></span><span class="feed-val">BTC spot <strong>$107,240</strong></span><span class="feed-meta">live · Binance</span></div>
+  <div class="feed-row"><span class="feed-dot"></span><span class="feed-val">MA50/MA200 <strong>bullish</strong></span><span class="feed-meta">4h ago · computed</span></div>
+</div>`;
+
+  const recentTrades = () => `
+<table class="trades-table">
+  <thead><tr><th>Date</th><th>Side</th><th class="num">Qty (BTC)</th><th class="num">Price</th><th class="num">Fee</th><th class="num">P&amp;L</th></tr></thead>
+  <tbody>
+    <tr><td>2026-06-10</td><td class="side-buy">BUY</td><td class="num">0.0158</td><td class="num">$107,240</td><td class="num">$1.12</td><td class="num"><span class="up-val">+$84</span></td></tr>
+    <tr><td>2026-05-27</td><td class="side-sell">SELL</td><td class="num">0.0158</td><td class="num">$102,890</td><td class="num">$1.08</td><td class="num"><span class="up-val">+$62</span></td></tr>
+    <tr><td>2026-05-14</td><td class="side-buy">BUY</td><td class="num">0.0161</td><td class="num">$99,410</td><td class="num">$1.05</td><td class="num"><span class="up-val">+$93</span></td></tr>
+    <tr><td>2026-04-30</td><td class="side-sell">SELL</td><td class="num">0.0161</td><td class="num">$95,640</td><td class="num">$1.01</td><td class="num"><span class="up-val">+$71</span></td></tr>
+    <tr><td>2026-04-16</td><td class="side-buy">BUY</td><td class="num">0.0168</td><td class="num">$94,120</td><td class="num">$0.97</td><td class="num"><span class="dn-val">−$12</span></td></tr>
+    <tr><td>2026-04-02</td><td class="side-sell">SELL</td><td class="num">0.0168</td><td class="num">$93,440</td><td class="num">$0.96</td><td class="num"><span class="up-val">+$121</span></td></tr>
+  </tbody>
+</table>`;
+
+  const activityTimeline = () => `
+<div class="activity-list">
+  <div class="activity-row"><span class="act-time">2026-04-01</span><span class="act-event"><strong>Created</strong> — spec drafted from funding rate research</span></div>
+  <div class="activity-row"><span class="act-time">2026-04-03</span><span class="act-event"><strong>Backtested</strong> — 3yr BTC/USDC hourly bars, 34 trades</span></div>
+  <div class="activity-row"><span class="act-time">2026-04-04</span><span class="act-event"><strong>Gate passed</strong> — DSR 1.12 · PBO 0.31 · OOS +8.2%</span></div>
+  <div class="activity-row"><span class="act-time">2026-04-06</span><span class="act-event"><strong>Paper day 1</strong> — $100k sim track started</span></div>
+  <div class="activity-row"><span class="act-time">2026-05-06</span><span class="act-event"><strong>Paper 30d</strong> — live-ready advisory badge earned</span></div>
+  <div class="activity-row current"><span class="act-time">2026-05-24</span><span class="act-event"><strong>Launched live</strong> — $1,700 allocated · running for 47 days</span></div>
+</div>`;
+
+  const launchBtn = (!s.killed && (s.stage === 'gate' || s.liveReady) && s.stage !== 'live')
+    ? `<button class="btn-primary" onclick="showToast('Launching ${s.name} live…')">Launch live</button>` : '';
+
+  const stageBadgeHeader = stageBadge(s);
+
+  if (isFull) {
+    return `
+<div class="detail-body">
+  <div class="detail-header">
+    <div>
+      <div class="detail-title">${s.name} ${stageBadgeHeader}</div>
+      <div class="detail-thesis">${s.thesis}</div>
+    </div>
+    <div class="detail-actions">${launchBtn}</div>
+  </div>
+  ${stageFull()}
+  <div class="detail-grid">
+    <div>
+      <div class="detail-section">
+        <div class="detail-section-title">Equity Curve — gross vs net of fees</div>
+        <div class="chart-wrap">
+          <div class="chart-legend">
+            <span><span class="legend-dot" style="background:oklch(0.66 0.19 290)"></span>Gross</span>
+            <span><span class="legend-dot" style="background:oklch(0.66 0.19 290 / 0.45);border-top:1.5px dashed oklch(0.66 0.19 290 / 0.45)"></span>Net of fees</span>
+            <span style="color:var(--up)">● entry</span>
+            <span style="color:var(--dn)">● exit</span>
+          </div>
+          ${equitySVG()}
+        </div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Gate Metrics</div>
+        ${gateMetrics()}
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Recent Trades</div>
+        ${recentTrades()}
+      </div>
+    </div>
+    <div>
+      <div class="detail-section">
+        <div class="detail-section-title">Building Blocks</div>
+        ${buildingBlocks()}
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Data Sources &amp; Latest Feed</div>
+        ${dataFeed()}
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Activity</div>
+        ${activityTimeline()}
+      </div>
+    </div>
+  </div>
+</div>`;
+  }
+
+  // Template for other rows
+  const killedNote = s.killed ? `<div style="font-size:var(--fs-sm);color:var(--dn);margin-bottom:12px;">✗ Killed at <strong>${s.killedAt}</strong> — ${s.killedReason||'—'} · ${s.killedDate||''}</div>` : '';
+
+  return `
+<div class="detail-body">
+  <div class="detail-header">
+    <div>
+      <div class="detail-title">${s.name} ${stageBadgeHeader}</div>
+      <div class="detail-thesis">${s.thesis}</div>
+    </div>
+    <div class="detail-actions">${launchBtn}</div>
+  </div>
+  ${stageFull()}
+  ${killedNote}
+  <div class="detail-grid">
+    <div>
+      <div class="detail-section">
+        <div class="detail-section-title">Gate Metrics</div>
+        ${gateMetrics()}
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Recent Trades</div>
+        <span class="na" style="font-size:var(--fs-sm);">— full detail available for funding-carry-btc</span>
+      </div>
+    </div>
+    <div>
+      <div class="detail-section">
+        <div class="detail-section-title">Building Blocks</div>
+        <span class="na" style="font-size:var(--fs-sm);">—</span>
+      </div>
+      <div class="detail-section">
+        <div class="detail-section-title">Activity</div>
+        <span class="na" style="font-size:var(--fs-sm);">—</span>
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+// ─── RENDER TABLE ─────────────────────────────────────────────────────────────
+let activeFilter = 'all';
+let openRowId = null;
+let focusedIdx = -1;
+
+function filterMatch(s, f) {
+  if (f === 'all') return true;
+  if (f === 'live')    return s.stage === 'live';
+  if (f === 'paper')   return s.stage === 'paper';
+  if (f === 'gate')    return s.stage === 'gate' || s.gateAwait || s.liveReady;
+  if (f === 'killed')  return s.killed;
+  if (f === 'queued')  return s.stage === 'queued' || s.backtesting;
+  return true;
+}
+
+function renderTable() {
+  const tbody = document.getElementById('stratTbody');
+  const visible = STRATEGIES.filter(s => filterMatch(s, activeFilter));
+  focusedIdx = -1;
+
+  tbody.innerHTML = visible.map((s, i) => {
+    const isOpen = openRowId === s.id;
+    const rowClass = ['strategy-row', s.killed ? 'killed' : '', isOpen ? 'active' : ''].filter(Boolean).join(' ');
+    const days = s.days != null ? s.days : '<span class="na">—</span>';
+    return `
+<tr class="${rowClass}" data-id="${s.id}" data-idx="${i}" onclick="toggleRow('${s.id}')">
+  <td><span class="expand-btn">▶</span></td>
+  <td style="font-weight:500;">${s.name}</td>
+  <td>${stageBadge(s)}</td>
+  <td>${lifecycleDots(s)}</td>
+  <td class="text-right" style="font-variant-numeric:tabular-nums;">${days}</td>
+  <td class="text-right">${pnlCell(s)}</td>
+  <td>${gateCell(s)}</td>
+  <td>${noteCell(s)}</td>
+</tr>
+<tr class="detail-row ${isOpen ? 'open' : ''}" data-detail="${s.id}">
+  <td colspan="8">${detailBodyHTML(s)}</td>
+</tr>`;
+  }).join('');
+}
+
+function toggleRow(id) {
+  if (openRowId === id) {
+    openRowId = null;
+    history.replaceState(null, '', '#/strategies');
+  } else {
+    openRowId = id;
+    history.replaceState(null, '', `#/strategy/${id}`);
+  }
+  renderTable();
+  if (openRowId) {
+    const el = document.querySelector(`tr[data-detail="${id}"]`);
+    if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+  }
+}
+
+// ─── FILTER CONTROL ──────────────────────────────────────────────────────────
+document.getElementById('filterControl').addEventListener('click', e => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeFilter = btn.dataset.filter;
+  openRowId = null;
+  renderTable();
+});
+
+// ─── PANEL TOGGLE ────────────────────────────────────────────────────────────
+function togglePanel(name) {
+  const el = document.getElementById(`panel-${name}`);
+  el.classList.toggle('open');
+  if (el.classList.contains('open')) {
+    history.replaceState(null, '', `#/${name}`);
+  }
+}
+
+// ─── MODAL ───────────────────────────────────────────────────────────────────
+function openLiquidateModal() {
+  document.getElementById('liquidateModal').classList.add('open');
+}
+function closeLiquidateModal() {
+  document.getElementById('liquidateModal').classList.remove('open');
+}
+function confirmLiquidate() {
+  closeLiquidateModal();
+  showToast('All live positions liquidated · Paper tracks unaffected');
+}
+document.getElementById('liquidateModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('liquidateModal')) closeLiquidateModal();
+});
+
+// ─── TOAST ───────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+// ─── KEYBOARD NAVIGATION ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const rows = [...document.querySelectorAll('tr.strategy-row')];
+  if (!rows.length) return;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    focusedIdx = Math.min(focusedIdx + 1, rows.length - 1);
+    rows[focusedIdx].focus();
+    rows[focusedIdx].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    focusedIdx = Math.max(focusedIdx - 1, 0);
+    rows[focusedIdx].focus();
+    rows[focusedIdx].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter' && focusedIdx >= 0) {
+    const id = rows[focusedIdx].dataset.id;
+    if (id) toggleRow(id);
+  } else if (e.key === 'Escape') {
+    if (openRowId) { openRowId = null; renderTable(); history.replaceState(null, '', '#/strategies'); }
+  } else if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    togglePanel('commands');
+    const panel = document.getElementById('panel-commands');
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+});
+
+// make rows focusable
+function patchTabIndex() {
+  document.querySelectorAll('tr.strategy-row').forEach(r => { r.tabIndex = 0; });
+}
+
+// ─── HASH DEEP-LINK ───────────────────────────────────────────────────────────
+function deepLink(id) {
+  openRowId = id;
+  activeFilter = 'all';
+  document.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
+  renderTable();
+  patchTabIndex();
+  const el = document.querySelector(`tr[data-detail="${id}"]`);
+  if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
+}
+
+function handleHash() {
+  const hash = location.hash || '#/strategies';
+  const m = hash.match(/^#\/strategy\/(.+)$/);
+  if (m) {
+    deepLink(m[1]);
+    return;
+  }
+  const panelMatch = hash.match(/^#\/(paper|live|costs|commands)$/);
+  if (panelMatch) {
+    const panel = document.getElementById(`panel-${panelMatch[1]}`);
+    if (panel && !panel.classList.contains('open')) panel.classList.add('open');
+    setTimeout(() => panel && panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
+    return;
+  }
+  // default: #/strategies
+  renderTable();
+  patchTabIndex();
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+renderTable();
+patchTabIndex();
+window.addEventListener('hashchange', handleHash);
+handleHash();
+</script>
+</body>
+</html>
