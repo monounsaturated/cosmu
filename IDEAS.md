@@ -18,6 +18,11 @@
 <!-- ↑↑↑ DUMP ABOVE THIS LINE ↑↑↑ -->
 
 ## Inbox (append below)
+- [2026-06-11] **KPI pedagogy in the UI** — every ratio surfaced (simple Sharpe, Deflated Sharpe, Sortino, Max Drawdown, PBO, Calmar, win rate) gets a plain-language one-liner + "why it matters" tooltip; the operator wants to LEARN the ratios while using the app. Include raw simple Sharpe next to DSR on strategy sheets/comparison tables (web redesign requirement, not just an idea).
+- [2026-06-11] **Data depth > interface** (operator principle, from variant-a1-prime's strategy page) — the real strategy sheet must carry the FULL trade log (not 6 rows), all past decisions, every data point received; pagination/virtualization rather than truncation. Depth is the product.
+- [2026-06-11] **Costs v2 — live spend + subscriptions** — plug provider APIs (Railway/Vercel/Supabase usage endpoints) for live actuals; model SUBSCRIPTIONS as first-class (provider, monthly price, renewal date, manual entry; Claude Max = flat sub → $0 marginal for Claude Code; OpenRouter = per-token actuals already tracked); allow manual backfill of ALL past spending; Costs page shows live month-to-date vs subs vs per-token. (web+engine)
+- [2026-06-11] **De-emphasize /run-gate as a separate flow** — gate is already inside strategize/create→backtest→gate; keep the skill as a DIAGNOSTIC (re-judge an existing spec after data refresh / debug) but remove it from primary operator-facing lists (Commands page) so the mental model stays "create → gate happens automatically". Don't delete the skill.
+
 
 ## Archived
 <!-- Triaged ideas move here with their disposition: promoted / deferred / dropped. -->
