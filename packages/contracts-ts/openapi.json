@@ -5204,6 +5204,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -5620,7 +5627,7 @@
     },
     "/autonomy/status": {
       "get": {
-        "description": "The human-overview snapshot of the autonomous master tick \u2014 running/paused, live on/off (reported, never\narmed here), cycles run, and the last tick's headline counts. Read entirely off the persisted ledger.",
+        "description": "The human-overview snapshot of the autonomous master tick \u2014 running/paused, live on/off (reported, never\narmed here), cycles run, and the last tick's headline counts. Read entirely off the persisted ledger.\n\nAll four reads share ONE autocommit Postgres connection (store.reading()) \u2014 without this each store.row()\nopens + closes a separate psycopg2 connection (~1s RTT \u00d7 4 \u2248 6\u20137s, over the 5s frontend budget).",
         "operationId": "autonomy_status_route_autonomy_status_get",
         "responses": {
           "200": {
@@ -6426,7 +6433,7 @@
     },
     "/mind": {
       "get": {
-        "description": "The Mind \u2014 the agent's standardized self-knowledge in one read: what it KNOWS (point-in-time data sources\n+ freshness), how it THINKS (the analyst panel + the debate's consensus), and what it has LEARNED (memory,\nthe ML survival model, regime coverage, gate efficiency). The panel reads REAL ingested signals only \u2014 a\nperspective with no data abstains, never fabricates. RAILGUARD: this reasons; it never funds or fires an\norder \u2014 the deterministic gate alone disposes.",
+        "description": "The Mind \u2014 the agent's standardized self-knowledge in one read: what it KNOWS (point-in-time data sources\n+ freshness), how it THINKS (the analyst panel + the debate's consensus), and what it has LEARNED (memory,\nthe ML survival model, regime coverage, gate efficiency). RAILGUARD: this reasons; it never funds or fires\nan order \u2014 the deterministic gate alone disposes.\n\nPRECOMPUTED, NEVER LIVE: the autonomy tick already persists the full snapshot to `mind_reflections` (it does\nthe live Binance regime read + the optional LLM judge OUT OF BAND). This GET serves the LAST persisted\nreflection \u2014 no synchronous market fetch and no LLM call on the request path, which is what made it hang for\n35 s on prod (the regime read blocked on a geo-throttled Binance REST call inside the handler). When no\nreflection exists yet we fall back to an OFFLINE, deterministic rebuild (NO reference bars \u2192 the technical\nanalyst honestly abstains; NO judge) \u2014 all-DB, fast, and never fabricated.",
         "operationId": "mind_mind_get",
         "responses": {
           "200": {
@@ -6496,7 +6503,7 @@
     },
     "/mind/source-trust": {
       "get": {
-        "description": "Source-trust scoreboard \u2014 for every registered data source, a plain-language trust score.\n\nTrust = freshness \u00d7 realized gate contribution (how many gate-passed backtests used this source).\nHonest: a source with no data ingested shows trust_score=0, status=\"no data\" \u2014 never fabricates.\nRead-only; no LLM on this path; the Gate/money path is deterministic and separate.",
+        "description": "Source-trust scoreboard \u2014 for every registered data source, a plain-language trust score.\n\nTrust = freshness \u00d7 realized gate contribution (how many gate-passed backtests used this source).\nHonest: a source with no data ingested shows trust_score=0, status=\"no data\" \u2014 never fabricates.\nRead-only; no LLM on this path; the Gate/money path is deterministic and separate. SERVED FROM A SHORT\nTTL CACHE so the heavy full-table aggregation runs at most once per few minutes, never per request.",
         "operationId": "mind_source_trust_mind_source_trust_get",
         "responses": {
           "200": {
@@ -6515,7 +6522,7 @@
     },
     "/overview": {
       "get": {
-        "description": "The aggregate read-out for the Overview surface \u2014 the \u03a3 of all standalone forward-test tracks. A pure\nread-out: there is NO pooled wallet and no cross-track allocation (each survivor proves on its own track).",
+        "description": "The aggregate read-out for the Overview surface \u2014 the \u03a3 of all standalone forward-test tracks. A pure\nread-out: there is NO pooled wallet and no cross-track allocation (each survivor proves on its own track).\n\nAll four reads share ONE autocommit Postgres connection (store.reading()) \u2014 without this each store.row()\nopens + closes a separate psycopg2 connection (~1s RTT \u00d7 5 \u2248 5\u20137s, over the 5s frontend budget).",
         "operationId": "overview_overview_get",
         "responses": {
           "200": {
@@ -6687,7 +6694,7 @@
     },
     "/research/drift": {
       "get": {
-        "description": "Per-funded-track ALPHA-DECAY snapshot (master/drift): edge half-life + how far live has drifted below the\nedge it was funded on, and whether the anticipatory monitor recommends pulling capital BEFORE P&L turns.\nRead-only + deterministic \u2014 the monitor only recommends; the deterministic lifecycle + live toggle move money.",
+        "description": "Per-funded-track ALPHA-DECAY snapshot (master/drift): edge half-life + how far live has drifted below the\nedge it was funded on, and whether the anticipatory monitor recommends pulling capital BEFORE P&L turns.\nRead-only + deterministic \u2014 the monitor only recommends; the deterministic lifecycle + live toggle move money.\nAll track equity rows are fetched in ONE batched query (batch_track_return_series) to avoid N+1 round-trips\non prod Postgres; was ~18s with many funded tracks, now one RTT regardless of track count.",
         "operationId": "research_drift_research_drift_get",
         "responses": {
           "200": {
