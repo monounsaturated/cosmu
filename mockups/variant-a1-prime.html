@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cosmu — A1 Prime</title>
+<style>
+/* ── Design tokens ── */
+:root {
+  --bg:       oklch(0.165 0.017 285);
+  --surf:     oklch(0.202 0.019 286);
+  --surf2:    oklch(0.242 0.021 287);
+  --surf3:    oklch(0.285 0.022 287);
+  --fg:       oklch(0.965 0.004 286);
+  --muted:    oklch(0.68  0.016 286);
+  --quiet:    oklch(0.55  0.015 286);
+  --border:   oklch(0.295 0.016 286);
+  --border-s: oklch(0.4   0.018 286);
+  --hairline: oklch(0.255 0.014 286);
+  --iris:     oklch(0.66  0.19  290);
+  --iris-s:   oklch(0.74  0.135 290);
+  --iris-ink: oklch(0.18  0.04  290);
+  --gold:     oklch(0.82  0.14   85);
+  --up:       oklch(0.78  0.16  160);
+  --down:     oklch(0.7   0.17   18);
+  --warn:     oklch(0.82  0.14   85);
+  --r:        0.75rem;
+  --r-sm:     0.5rem;
+  --sidebar-w: 200px;
+  --header-h:  52px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{color-scheme:dark;scrollbar-width:thin;scrollbar-color:var(--border-s) transparent}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+  background:
+    radial-gradient(1200px 540px at 88% -12%, color-mix(in oklab,var(--iris) 14%,transparent) 0%,transparent 68%),
+    radial-gradient(900px 460px at -4% 2%, color-mix(in oklab,oklch(0.74 0.12 235) 7%,transparent) 0%,transparent 62%),
+    var(--bg);
+  background-attachment:fixed;
+  color:var(--fg);
+  -webkit-font-smoothing:antialiased;
+  font-feature-settings:"cv05" 1,"ss01" 1,"calt" 1;
+  letter-spacing:-0.006em;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+.tab{font-variant-numeric:tabular-nums slashed-zero;font-feature-settings:"tnum" 1,"zero" 1}
+.mono{font-family:"SF Mono","Fira Code","Cascadia Code",ui-monospace,monospace}
+.up{color:var(--up)} .down{color:var(--down)} .gold{color:var(--gold)} .iris{color:var(--iris-s)} .muted{color:var(--muted)} .quiet{color:var(--quiet)}
+
+/* ── Layout ── */
+.shell{display:flex;min-height:100vh}
+
+/* ── Sidebar ── */
+.sidebar{
+  position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;
+  background:color-mix(in oklab,var(--surf) 80%,transparent);
+  backdrop-filter:blur(20px) saturate(1.3);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;z-index:50;
+  transition:transform 240ms cubic-bezier(.16,1,.3,1);
+}
+.sidebar-logo{
+  height:var(--header-h);display:flex;align-items:center;gap:10px;
+  padding:0 16px;border-bottom:1px solid var(--hairline);flex-shrink:0;
+}
+.sidebar-logo-mark{
+  width:26px;height:26px;border-radius:7px;
+  background:linear-gradient(135deg,var(--iris) 0%,color-mix(in oklab,var(--iris) 60%,var(--gold)) 100%);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.sidebar-logo-mark svg{width:14px;height:14px;fill:white}
+.sidebar-logo-name{font-size:15px;font-weight:700;letter-spacing:-0.02em;color:var(--fg)}
+.sidebar-logo-sub{font-size:10px;color:var(--quiet);font-weight:500;letter-spacing:.05em;text-transform:uppercase}
+.nav-section{flex:1;padding:8px 8px;overflow-y:auto}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r-sm);
+  cursor:pointer;text-decoration:none;color:var(--muted);font-size:13.5px;font-weight:500;
+  transition:background 140ms,color 140ms;position:relative;user-select:none;
+  border:1px solid transparent;
+}
+.nav-item:hover{background:color-mix(in oklab,var(--surf2) 70%,transparent);color:var(--fg)}
+.nav-item.active{background:color-mix(in oklab,var(--iris) 12%,transparent);color:var(--iris-s);border-color:color-mix(in oklab,var(--iris) 20%,transparent)}
+.nav-item svg{width:16px;height:16px;flex-shrink:0;opacity:.75}
+.nav-item.active svg{opacity:1}
+.nav-settings{padding:8px;border-top:1px solid var(--hairline);flex-shrink:0}
+.nav-settings .nav-item{font-size:12px;color:var(--quiet)}
+
+/* ── Main ── */
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-width:0}
+
+/* ── Header strip ── */
+.header{
+  position:sticky;top:0;height:var(--header-h);z-index:40;
+  background:color-mix(in oklab,var(--surf) 72%,transparent);
+  backdrop-filter:blur(20px) saturate(1.25);
+  border-bottom:1px solid var(--hairline);
+  display:flex;align-items:center;padding:0 20px;gap:12px;
+  overflow:hidden;
+}
+.dashboard-strip{
+  display:flex;align-items:center;gap:4px;flex-wrap:wrap;
+  font-size:12px;color:var(--muted);min-width:0;flex:1;
+}
+.ds-item{display:flex;align-items:center;gap:4px;white-space:nowrap}
+.ds-sep{color:var(--border-s);margin:0 4px}
+.ds-label{color:var(--quiet)}
+
+/* ── Machine Pulse cluster (header right) ── */
+.pulse-cluster{
+  display:flex;align-items:center;gap:6px;flex-shrink:0;
+  padding:5px 10px;border-radius:var(--r-sm);
+  border:1px solid var(--hairline);
+  background:color-mix(in oklab,var(--surf2) 30%,transparent);
+  font-size:11px;color:var(--muted);
+  white-space:nowrap;
+}
+@media(max-width:900px){.pulse-cluster{display:none}}
+.pulse-item{
+  display:flex;align-items:center;gap:4px;
+  position:relative;cursor:default;
+}
+.pulse-item+.pulse-item::before{content:'·';margin-right:2px;color:var(--border-s)}
+.pulse-dot{
+  width:6px;height:6px;border-radius:50%;flex-shrink:0;
+}
+.pulse-dot.green{background:var(--up);box-shadow:0 0 5px color-mix(in oklab,var(--up) 50%,transparent)}
+.pulse-dot.amber{background:var(--warn);box-shadow:0 0 5px color-mix(in oklab,var(--warn) 50%,transparent)}
+.pulse-item .pulse-tooltip{
+  display:none;position:absolute;top:calc(100% + 8px);right:0;
+  background:var(--surf2);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:9px 12px;font-size:11.5px;color:var(--muted);line-height:1.5;
+  white-space:normal;min-width:220px;max-width:280px;
+  box-shadow:0 8px 24px -8px rgba(0,0,0,.8);z-index:200;pointer-events:none;
+}
+.pulse-item:hover .pulse-tooltip{display:block}
+.pulse-item .pulse-label{color:var(--quiet)}
+.pulse-item .pulse-val{color:var(--fg);font-weight:500}
+.pulse-item.amber-item .pulse-label,.pulse-item.amber-item .pulse-val{color:var(--warn)}
+
+/* ⌘K header button */
+.cmd-k-btn{
+  display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:var(--r-sm);
+  border:1px solid var(--border);background:color-mix(in oklab,var(--surf3) 40%,transparent);
+  color:var(--quiet);font-size:11px;font-weight:500;cursor:pointer;
+  transition:all 140ms;flex-shrink:0;white-space:nowrap;
+}
+.cmd-k-btn:hover{border-color:var(--border-s);color:var(--muted);background:var(--surf3)}
+.cmd-k-kbd{
+  display:inline-flex;align-items:center;padding:1px 5px;border-radius:3px;
+  background:color-mix(in oklab,var(--surf3) 80%,transparent);border:1px solid var(--border);
+  font-size:10px;color:var(--quiet);letter-spacing:-.01em;
+}
+
+/* ── Page content ── */
+.page{display:none;padding:24px 24px 48px;max-width:1160px;width:100%;animation:pagein 200ms cubic-bezier(.16,1,.3,1)}
+.page.active{display:block}
+@keyframes pagein{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+/* ── Cards ── */
+.card{
+  background:color-mix(in oklab,var(--surf2) 60%,transparent);
+  border:1px solid var(--border);border-radius:var(--r);
+  box-shadow:0 1px 0 0 rgba(255,255,255,.04) inset,0 18px 40px -32px rgba(0,0,0,.9);
+}
+.card-header{padding:16px 18px 0;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-title{font-size:13px;font-weight:600;color:var(--fg)}
+.card-body{padding:16px 18px}
+
+/* ── Page header ── */
+.page-eyebrow{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--quiet);margin-bottom:4px}
+.page-title{font-size:22px;font-weight:700;letter-spacing:-.02em;color:var(--fg)}
+
+/* ── Filter chips ── */
+.chip-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{
+  display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:999px;
+  font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border);
+  background:transparent;color:var(--muted);transition:all 130ms;white-space:nowrap;
+}
+.chip:hover{border-color:var(--border-s);color:var(--fg)}
+.chip.active{background:color-mix(in oklab,var(--iris) 15%,transparent);border-color:color-mix(in oklab,var(--iris) 35%,transparent);color:var(--iris-s)}
+.chip-dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.7}
+
+/* ── Badges ── */
+.badge{
+  display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:4px;
+  font-size:11px;font-weight:600;letter-spacing:.01em;white-space:nowrap;
+}
+.badge-iris{background:color-mix(in oklab,var(--iris) 18%,transparent);color:var(--iris-s);border:1px solid color-mix(in oklab,var(--iris) 28%,transparent)}
+.badge-up{background:color-mix(in oklab,var(--up) 15%,transparent);color:var(--up);border:1px solid color-mix(in oklab,var(--up) 25%,transparent)}
+.badge-down{background:color-mix(in oklab,var(--down) 15%,transparent);color:var(--down);border:1px solid color-mix(in oklab,var(--down) 22%,transparent)}
+.badge-gold{background:color-mix(in oklab,var(--gold) 14%,transparent);color:var(--gold);border:1px solid color-mix(in oklab,var(--gold) 22%,transparent)}
+.badge-muted{background:color-mix(in oklab,var(--surf3) 60%,transparent);color:var(--muted);border:1px solid var(--border)}
+.badge-live{background:color-mix(in oklab,var(--down) 15%,transparent);color:var(--down);border:1px solid color-mix(in oklab,var(--down) 25%,transparent)}
+
+/* ── Table ── */
+.tbl-wrap{overflow-x:auto;border-radius:var(--r);border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{
+  text-align:left;padding:10px 14px;font-size:10.5px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--quiet);border-bottom:1px solid var(--border);
+  background:color-mix(in oklab,var(--surf2) 40%,transparent);white-space:nowrap;
+}
+th:first-child{border-radius:var(--r) 0 0 0}
+th:last-child{border-radius:0 var(--r) 0 0}
+td{padding:11px 14px;border-bottom:1px solid var(--hairline);vertical-align:middle;color:var(--fg)}
+tr:last-child td{border-bottom:none}
+tr.strat-row{cursor:pointer;transition:background 130ms}
+tr.strat-row:hover td{background:color-mix(in oklab,var(--iris) 5%,transparent)}
+tr.strat-row.hidden-row{display:none}
+
+/* ── Metro lifecycle line ── */
+.metro{display:flex;align-items:center;gap:2px}
+.metro-dot{width:9px;height:9px;border-radius:50%;border:1.5px solid var(--border);background:transparent;flex-shrink:0}
+.metro-dot.filled{background:var(--iris);border-color:var(--iris)}
+.metro-dot.pass{background:var(--up);border-color:var(--up)}
+.metro-dot.kill{background:var(--down);border-color:var(--down)}
+.metro-dot.live-dot{background:var(--down);border-color:var(--down);box-shadow:0 0 0 3px color-mix(in oklab,var(--down) 22%,transparent)}
+.metro-line{width:14px;height:1.5px;background:var(--border);flex-shrink:0}
+.metro-line.filled{background:var(--iris)}
+.metro-line.pass{background:var(--up)}
+
+/* ── Buttons ── */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--r-sm);
+  font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border);
+  background:color-mix(in oklab,var(--surf3) 60%,transparent);color:var(--fg);
+  transition:all 140ms;text-decoration:none;white-space:nowrap;
+}
+.btn:hover{background:var(--surf3);border-color:var(--border-s)}
+.btn-iris{background:color-mix(in oklab,var(--iris) 18%,transparent);border-color:color-mix(in oklab,var(--iris) 30%,transparent);color:var(--iris-s)}
+.btn-iris:hover{background:color-mix(in oklab,var(--iris) 26%,transparent)}
+.btn-danger{background:color-mix(in oklab,var(--down) 15%,transparent);border-color:color-mix(in oklab,var(--down) 28%,transparent);color:var(--down)}
+.btn-danger:hover{background:color-mix(in oklab,var(--down) 22%,transparent)}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn-ghost:hover{background:color-mix(in oklab,var(--surf3) 50%,transparent);border-color:var(--border);color:var(--fg)}
+.btn-sm{padding:4px 10px;font-size:12px}
+
+/* ── Modal ── */
+.overlay{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100;
+  align-items:center;justify-content:center;backdrop-filter:blur(4px);
+  animation:fadein 160ms ease;
+}
+.overlay.open{display:flex}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.modal{
+  background:var(--surf2);border:1px solid var(--border);border-radius:var(--r);
+  padding:24px;max-width:420px;width:calc(100% - 32px);
+  box-shadow:0 24px 56px -28px rgba(0,0,0,.92);
+  animation:modalin 200ms cubic-bezier(.16,1,.3,1);
+}
+@keyframes modalin{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:8px}
+.modal-body{font-size:13px;color:var(--muted);line-height:1.55;margin-bottom:20px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+
+/* ── Toast ── */
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:200;
+  background:var(--surf3);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:10px 18px;font-size:13px;color:var(--fg);
+  box-shadow:0 8px 24px -8px rgba(0,0,0,.8);
+  pointer-events:none;opacity:0;transition:opacity 200ms;
+}
+.toast.show{opacity:1}
+
+/* ── Grid helpers ── */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* ── Section helpers ── */
+.section-gap{margin-top:20px}
+.section-label{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--quiet);margin-bottom:10px}
+
+/* ── Back link ── */
+.back-link{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--quiet);cursor:pointer;text-decoration:none;transition:color 130ms;margin-bottom:16px;background:none;border:none;padding:0}
+.back-link:hover{color:var(--iris-s)}
+
+/* ── Gauge bar ── */
+.gauge-track{height:5px;border-radius:999px;background:var(--surf3);overflow:hidden}
+.gauge-fill{height:100%;border-radius:999px;transition:width .4s}
+
+/* ── Interlock chips ── */
+.interlock-row{display:flex;flex-wrap:wrap;gap:8px}
+.interlock-chip{
+  padding:6px 12px;border-radius:var(--r-sm);border:1px solid var(--border);
+  font-size:12px;display:flex;flex-direction:column;gap:2px;min-width:120px;
+}
+.interlock-chip.pass-chip{border-color:color-mix(in oklab,var(--up) 30%,transparent);background:color-mix(in oklab,var(--up) 8%,transparent)}
+.interlock-chip.fail-chip{border-color:color-mix(in oklab,var(--down) 30%,transparent);background:color-mix(in oklab,var(--down) 8%,transparent)}
+.interlock-val{font-size:16px;font-weight:700;letter-spacing:-.015em}
+.interlock-label{font-size:10.5px;color:var(--muted)}
+.interlock-thresh{font-size:10px;color:var(--quiet)}
+
+/* ── Activity timeline ── */
+.timeline{display:flex;flex-direction:column;gap:0}
+.tl-item{display:flex;gap:12px;position:relative}
+.tl-item:not(:last-child) .tl-stem{position:absolute;left:7px;top:20px;bottom:0;width:1px;background:var(--hairline)}
+.tl-dot{width:15px;height:15px;border-radius:50%;border:2px solid var(--border);background:var(--surf2);flex-shrink:0;margin-top:2px;z-index:1}
+.tl-dot.tl-pass{border-color:var(--up);background:color-mix(in oklab,var(--up) 20%,transparent)}
+.tl-dot.tl-kill{border-color:var(--down);background:color-mix(in oklab,var(--down) 20%,transparent)}
+.tl-dot.tl-live{border-color:var(--iris);background:color-mix(in oklab,var(--iris) 20%,transparent)}
+.tl-content{padding-bottom:14px;flex:1}
+.tl-title{font-size:13px;font-weight:500;color:var(--fg)}
+.tl-date{font-size:11px;color:var(--quiet);margin-top:2px}
+
+/* ── Data feed ── */
+.feed-item{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--hairline)}
+.feed-item:last-child{border-bottom:none}
+.feed-val{font-size:13px;font-weight:600;color:var(--fg)}
+.feed-meta{font-size:11px;color:var(--quiet);margin-top:1px}
+
+/* ── Positions table tone ── */
+.pnl-pos{color:var(--up)} .pnl-neg{color:var(--down)}
+
+/* ── Cost bar ── */
+.cost-bar-row{display:flex;align-items:center;gap:10px;padding:6px 0}
+.cost-bar-label{font-size:12.5px;color:var(--muted);width:140px;flex-shrink:0}
+.cost-bar-track{flex:1;height:6px;border-radius:999px;background:var(--surf3);overflow:hidden}
+.cost-bar-fill{height:100%;border-radius:999px;background:var(--iris)}
+.cost-bar-val{font-size:12px;color:var(--fg);width:56px;text-align:right;flex-shrink:0}
+
+/* ── Commands page ── */
+.cmd-item{padding:12px 16px;border-radius:var(--r-sm);border:1px solid var(--border);background:color-mix(in oklab,var(--surf2) 40%,transparent);margin-bottom:8px}
+.cmd-name{font-size:13px;font-weight:600;color:var(--iris-s);font-family:"SF Mono","Fira Code",ui-monospace,monospace}
+.cmd-desc{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+
+/* ── MOCKUP badge ── */
+.mockup-badge{
+  position:fixed;bottom:16px;left:16px;z-index:300;
+  padding:5px 10px;border-radius:var(--r-sm);
+  background:color-mix(in oklab,var(--gold) 12%,transparent);
+  border:1px solid color-mix(in oklab,var(--gold) 25%,transparent);
+  color:var(--gold);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  pointer-events:none;
+}
+
+/* ── Collapsible sections ── */
+.collapsible{border:1px solid var(--border);border-radius:var(--r);margin-bottom:10px;overflow:hidden;background:color-mix(in oklab,var(--surf2) 60%,transparent);box-shadow:0 1px 0 0 rgba(255,255,255,.04) inset,0 18px 40px -32px rgba(0,0,0,.9)}
+.collapsible-header{
+  display:flex;align-items:center;justify-content:space-between;padding:12px 18px;
+  cursor:pointer;user-select:none;gap:12px;
+}
+.collapsible-header:hover{background:color-mix(in oklab,var(--surf3) 30%,transparent)}
+.collapsible-title{font-size:13px;font-weight:600;color:var(--fg);flex-shrink:0}
+.collapsible-summary{font-size:11.5px;color:var(--quiet);flex:1;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:8px}
+.collapsible-chevron{width:16px;height:16px;flex-shrink:0;color:var(--quiet);transition:transform 200ms}
+.collapsible.open .collapsible-chevron{transform:rotate(180deg)}
+.collapsible-body{display:none;padding:0 18px 16px;border-top:1px solid var(--hairline)}
+.collapsible.open .collapsible-body{display:block}
+
+/* ── Verdict banner ── */
+.verdict-banner{
+  border:1px solid color-mix(in oklab,var(--up) 28%,transparent);
+  border-radius:var(--r);
+  background:color-mix(in oklab,var(--up) 7%,transparent);
+  padding:16px 20px;margin-bottom:20px;
+}
+.verdict-sentence{font-size:14.5px;font-weight:500;color:var(--fg);line-height:1.5;margin-bottom:14px}
+.verdict-kpi-row{display:flex;gap:24px;flex-wrap:wrap}
+.verdict-kpi{display:flex;flex-direction:column;gap:2px}
+.verdict-kpi-val{font-size:28px;font-weight:700;letter-spacing:-.03em;line-height:1}
+.verdict-kpi-label{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--quiet)}
+
+/* ── Hover-peek card ── */
+.peek-card{
+  position:fixed;z-index:180;
+  background:var(--surf2);border:1px solid var(--border-s);border-radius:var(--r);
+  padding:12px 14px;min-width:230px;max-width:280px;
+  box-shadow:0 12px 32px -12px rgba(0,0,0,.85);
+  pointer-events:none;opacity:0;
+  transition:opacity 120ms;
+}
+.peek-card.visible{opacity:1}
+.peek-name{font-size:13px;font-weight:600;color:var(--fg);margin-bottom:6px}
+.peek-sparkline{margin-bottom:8px;display:block}
+.peek-meta-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px}
+.peek-stage{color:var(--muted)}
+.peek-metric{font-weight:600}
+.peek-action{font-size:11px;color:var(--quiet);margin-top:5px}
+
+/* ── Command palette ── */
+.palette-overlay{
+  display:none;position:fixed;inset:0;z-index:500;
+  background:rgba(0,0,0,.5);backdrop-filter:blur(6px);
+  align-items:flex-start;justify-content:center;padding-top:14vh;
+}
+.palette-overlay.open{display:flex}
+.palette-modal{
+  background:var(--surf2);border:1px solid var(--border-s);border-radius:var(--r);
+  width:calc(100% - 32px);max-width:520px;
+  box-shadow:0 24px 56px -20px rgba(0,0,0,.92);
+  overflow:hidden;animation:modalin 180ms cubic-bezier(.16,1,.3,1);
+}
+.palette-input-row{
+  display:flex;align-items:center;gap:10px;
+  padding:12px 16px;border-bottom:1px solid var(--hairline);
+}
+.palette-input-icon{color:var(--quiet);flex-shrink:0}
+.palette-input{
+  flex:1;background:none;border:none;outline:none;
+  font-size:14px;color:var(--fg);font-family:inherit;
+  letter-spacing:-.006em;
+}
+.palette-input::placeholder{color:var(--quiet)}
+.palette-list{max-height:320px;overflow-y:auto;padding:6px}
+.palette-group-label{
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--quiet);padding:8px 10px 4px;
+}
+.palette-item{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 10px;border-radius:var(--r-sm);
+  cursor:pointer;transition:background 100ms;font-size:13px;
+}
+.palette-item:hover,.palette-item.selected{background:color-mix(in oklab,var(--iris) 14%,transparent);color:var(--fg)}
+.palette-item:hover .palette-item-icon,.palette-item.selected .palette-item-icon{color:var(--iris-s)}
+.palette-item-icon{width:28px;height:28px;border-radius:var(--r-sm);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--quiet);background:color-mix(in oklab,var(--surf3) 50%,transparent)}
+.palette-item-text{flex:1;min-width:0}
+.palette-item-name{font-weight:500;color:var(--fg)}
+.palette-item-sub{font-size:11px;color:var(--quiet);margin-top:1px}
+.palette-hint{padding:8px 16px;border-top:1px solid var(--hairline);font-size:11px;color:var(--quiet);display:flex;gap:12px}
+.palette-hint-key{display:inline-flex;align-items:center;gap:4px}
+.palette-hint-kbd{
+  display:inline-flex;align-items:center;padding:1px 5px;border-radius:3px;
+  background:var(--surf3);border:1px solid var(--border);font-size:10px;color:var(--muted);
+}
+
+/* ── Responsive ── */
+@media(max-width:768px){
+  :root{--sidebar-w:0px}
+  .sidebar{transform:translateX(-200px);width:200px}
+  .sidebar.open{transform:translateX(0)}
+  .main{margin-left:0}
+  .header{padding:0 14px}
+  .page{padding:16px 14px 48px}
+}
+.mob-menu-btn{
+  display:none;width:36px;height:36px;border-radius:var(--r-sm);
+  border:1px solid var(--border);background:transparent;color:var(--muted);
+  cursor:pointer;align-items:center;justify-content:center;flex-shrink:0;
+}
+@media(max-width:768px){.mob-menu-btn{display:flex}}
+
+/* ── Detail view ── */
+#detail-view{display:none;padding:24px;max-width:1160px;animation:pagein 200ms cubic-bezier(.16,1,.3,1)}
+#detail-view.active{display:block}
+
+/* ── Equity SVG ── */
+.eq-chart{width:100%;border-radius:var(--r-sm);overflow:hidden}
+</style>
+</head>
+<body>
+
+<!-- Liquidate modal -->
+<div class="overlay" id="liq-modal">
+  <div class="modal">
+    <div class="modal-title" style="color:var(--down)">Liquidate all live positions</div>
+    <div class="modal-body">
+      Sell all live positions to USDC and disarm live trading. <strong>$1,700 across 1 strategy</strong> will be market-sold on Binance spot. Paper tracks are not affected.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmLiquidate()">Confirm — sell all</button>
+    </div>
+  </div>
+</div>
+
+<!-- Command palette -->
+<div class="palette-overlay" id="palette-overlay" onclick="closePaletteIfOutside(event)">
+  <div class="palette-modal" id="palette-modal">
+    <div class="palette-input-row">
+      <span class="palette-input-icon">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l3 3"/></svg>
+      </span>
+      <input class="palette-input" id="palette-input" placeholder="Search strategies or actions…" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="palette-list" id="palette-list"></div>
+    <div class="palette-hint">
+      <span class="palette-hint-key"><span class="palette-hint-kbd">↑↓</span> navigate</span>
+      <span class="palette-hint-key"><span class="palette-hint-kbd">↵</span> open</span>
+      <span class="palette-hint-key"><span class="palette-hint-kbd">Esc</span> close</span>
+    </div>
+  </div>
+</div>
+
+<!-- Hover peek card -->
+<div class="peek-card" id="peek-card">
+  <div class="peek-name" id="peek-name"></div>
+  <svg class="peek-sparkline" id="peek-sparkline" height="40" width="202" viewBox="0 0 202 40"></svg>
+  <div class="peek-meta-row">
+    <span class="peek-stage" id="peek-stage"></span>
+    <span class="peek-metric" id="peek-metric"></span>
+  </div>
+  <div class="peek-action" id="peek-action"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<div class="shell">
+  <!-- ── Sidebar ── -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-mark">
+        <svg viewBox="0 0 14 14"><path d="M7 1 L12 4 L12 10 L7 13 L2 10 L2 4 Z" fill="none" stroke="white" stroke-width="1.5"/><circle cx="7" cy="7" r="2" fill="white"/></svg>
+      </div>
+      <div>
+        <div class="sidebar-logo-name">Cosmu</div>
+        <div class="sidebar-logo-sub">Quant Engine</div>
+      </div>
+    </div>
+    <div class="nav-section">
+      <a class="nav-item active" data-page="strategies" onclick="nav('strategies')">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M4 8h2m2-2h4m-4 4h2"/></svg>
+        Strategies
+      </a>
+      <a class="nav-item" data-page="paper" onclick="nav('paper')">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12 L5 8 L8 10 L11 5 L14 7"/><circle cx="14" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>
+        Paper
+      </a>
+      <a class="nav-item" data-page="live" onclick="nav('live')">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+        Live
+      </a>
+      <a class="nav-item" data-page="costs" onclick="nav('costs')">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v12M5 5h4.5a2 2 0 010 4H5m0-4v8"/></svg>
+        Costs
+      </a>
+      <a class="nav-item" data-page="commands" onclick="nav('commands')">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5l3 3-3 3m5 0h4"/></svg>
+        Commands
+      </a>
+    </div>
+    <div class="nav-settings">
+      <a class="nav-item" style="font-size:12px">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2"/><path d="M8 2v1m0 10v1M2 8h1m10 0h1m-2.1-3.9-.7.7M4.8 11.2l-.7.7m0-7.8.7.7m6.4 6.4.7.7"/></svg>
+        Settings
+      </a>
+    </div>
+  </nav>
+
+  <!-- ── Main ── -->
+  <div class="main">
+    <!-- Header -->
+    <header class="header">
+      <button class="mob-menu-btn" onclick="toggleSidebar()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h12"/></svg>
+      </button>
+      <div class="dashboard-strip tab">
+        <span class="ds-item"><span class="ds-label">Paper</span> <span class="up">+$1,392 (+9.27%)</span></span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Live total</span> $9,000</span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Invested</span> $1,700</span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Live P&amp;L</span> <span class="up">+$419 (+21%)</span></span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Free</span> $7,300</span>
+      </div>
+      <!-- Machine pulse cluster -->
+      <div class="pulse-cluster" id="pulse-cluster">
+        <div class="pulse-item">
+          <div class="pulse-dot green"></div>
+          <span class="pulse-label">Ingest</span>&nbsp;<span class="pulse-val">2h ago</span>
+          <div class="pulse-tooltip">Data ingest last ran 2 hours ago. All bar feeds (Binance OHLCV, funding rates) are current. Next run in ~58 minutes.</div>
+        </div>
+        <div class="pulse-item">
+          <div class="pulse-dot green"></div>
+          <span class="pulse-label">Executor</span>&nbsp;<span class="pulse-val">22:10</span>
+          <div class="pulse-tooltip">Order executor heartbeat confirmed today at 22:10. Live position for Funding Carry BTC is being monitored.</div>
+        </div>
+        <div class="pulse-item amber-item">
+          <div class="pulse-dot amber"></div>
+          <span class="pulse-label">Marks</span>&nbsp;<span class="pulse-val">38m ago</span>
+          <div class="pulse-tooltip" style="color:var(--fg)"><strong style="color:var(--warn)">Alternative.me feed is slow.</strong><br>Fear &amp; Greed mark is 38 minutes old — usually updates every 30 min. Strategies using this signal will skip re-entry until the mark refreshes. If stale for &gt;2h, check API key.</div>
+        </div>
+      </div>
+      <!-- ⌘K button -->
+      <button class="cmd-k-btn" onclick="openPalette()" title="Command palette (⌘K)">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="4.5"/><path d="M9.5 9.5l2.5 2.5"/></svg>
+        <span class="cmd-k-kbd">⌘K</span>
+      </button>
+    </header>
+
+    <!-- ══ STRATEGIES PAGE ══ -->
+    <div class="page active" id="page-strategies">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+        <div>
+          <div class="page-eyebrow">Strategies</div>
+          <div class="page-title">Every strategy, every stage</div>
+        </div>
+        <button class="btn btn-danger" onclick="openModal()">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 2l10 10M12 2L2 12"/></svg>
+          Liquidate all
+        </button>
+      </div>
+
+      <!-- Filter chips -->
+      <div class="chip-row" id="filter-chips" style="margin-bottom:16px">
+        <button class="chip active" data-filter="all" onclick="filterStrats('all',this)"><span class="chip-dot"></span>All (12)</button>
+        <button class="chip" data-filter="live" onclick="filterStrats('live',this)"><span class="chip-dot" style="color:var(--down)"></span>Live (1)</button>
+        <button class="chip" data-filter="paper" onclick="filterStrats('paper',this)">Paper (5)</button>
+        <button class="chip" data-filter="gate" onclick="filterStrats('gate',this)">Gate ✓ (1)</button>
+        <button class="chip" data-filter="killed" onclick="filterStrats('killed',this)">Killed (3)</button>
+        <button class="chip" data-filter="queued" onclick="filterStrats('queued',this)">Queued · Backtest (2)</button>
+      </div>
+
+      <!-- Strategies table -->
+      <div class="tbl-wrap">
+        <table id="strat-table">
+          <thead>
+            <tr>
+              <th style="width:220px">Strategy</th>
+              <th>Lifecycle</th>
+              <th>Stage</th>
+              <th class="tab" style="text-align:right">P&amp;L</th>
+              <th class="tab" style="text-align:right">Paper days</th>
+              <th>Gate</th>
+            </tr>
+          </thead>
+          <tbody id="strat-tbody">
+            <!-- rows injected by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ STRATEGY DETAIL ══ -->
+    <div id="detail-view">
+      <button class="back-link" onclick="closeDetail()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 2L4 7l5 5"/></svg>
+        Back to Strategies
+      </button>
+      <div id="detail-content"></div>
+    </div>
+
+    <!-- ══ PAPER PAGE ══ -->
+    <div class="page" id="page-paper">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+        <div>
+          <div class="page-eyebrow">Paper</div>
+          <div class="page-title">Paper tracks</div>
+        </div>
+        <button class="btn btn-ghost" onclick="showToast('All paper tracks paused (simulated)')">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="2" width="3" height="10" rx="1"/><rect x="8" y="2" width="3" height="10" rx="1"/></svg>
+          Pause all paper
+        </button>
+      </div>
+
+      <!-- Aggregate equity curve -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><span class="card-title">Aggregate paper equity — $100k sim per track</span><span class="badge badge-iris">5 active tracks</span></div>
+        <div class="card-body">
+          <svg class="eq-chart" height="160" viewBox="0 0 800 160" preserveAspectRatio="none" style="display:block">
+            <defs>
+              <linearGradient id="pg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="oklch(0.78 0.16 160)" stop-opacity=".35"/>
+                <stop offset="100%" stop-color="oklch(0.78 0.16 160)" stop-opacity=".02"/>
+              </linearGradient>
+            </defs>
+            <path d="M0,130 C60,125 120,118 180,112 C240,106 300,108 360,100 C420,92 480,88 540,78 C600,68 660,55 720,48 L800,42 L800,155 L0,155Z" fill="url(#pg)"/>
+            <path d="M0,130 C60,125 120,118 180,112 C240,106 300,108 360,100 C420,92 480,88 540,78 C600,68 660,55 720,48 L800,42" fill="none" stroke="oklch(0.78 0.16 160)" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Track table -->
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Strategy</th>
+              <th class="tab" style="text-align:right">Days in paper</th>
+              <th class="tab" style="text-align:right">P&amp;L</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span style="font-weight:500">Funding Carry BTC</span><div style="font-size:11px;color:var(--quiet);margin-top:1px">funding-carry-btc</div></td>
+              <td class="tab" style="text-align:right">47</td>
+              <td class="tab up" style="text-align:right">+9.3%</td>
+              <td><span class="badge badge-gold">Live-ready ≥30d</span></td>
+              <td style="text-align:right"><button class="btn btn-sm" onclick="openDetail('funding-carry-btc')">View</button></td>
+            </tr>
+            <tr>
+              <td><span style="font-weight:500">Cross-Sectional Momentum Top-5</span><div style="font-size:11px;color:var(--quiet);margin-top:1px">xsect-momentum-top5</div></td>
+              <td class="tab" style="text-align:right">33</td>
+              <td class="tab up" style="text-align:right">+4.1%</td>
+              <td><span class="badge badge-gold">Live-ready ≥30d</span></td>
+              <td style="text-align:right"><button class="btn btn-sm" onclick="openDetail('xsect-momentum-top5')">View</button></td>
+            </tr>
+            <tr>
+              <td><span style="font-weight:500">GTAA Monthly Rotation</span><div style="font-size:11px;color:var(--quiet);margin-top:1px">gtaa-monthly</div></td>
+              <td class="tab" style="text-align:right">41</td>
+              <td class="tab up" style="text-align:right">+2.9%</td>
+              <td><span class="badge badge-gold">Live-ready ≥30d</span></td>
+              <td style="text-align:right"><button class="btn btn-sm" onclick="openDetail('gtaa-monthly')">View</button></td>
+            </tr>
+            <tr>
+              <td><span style="font-weight:500">Fear &amp; Greed Contrarian ETH</span><div style="font-size:11px;color:var(--quiet);margin-top:1px">fg-contrarian-eth</div></td>
+              <td class="tab" style="text-align:right">12</td>
+              <td class="tab down" style="text-align:right">−0.8%</td>
+              <td><span class="badge badge-muted">Early</span></td>
+              <td style="text-align:right"><button class="btn btn-sm" onclick="openDetail('fg-contrarian-eth')">View</button></td>
+            </tr>
+            <tr>
+              <td><span style="font-weight:500">Stablecoin Flows Lead ETH</span><div style="font-size:11px;color:var(--quiet);margin-top:1px">stablecoin-lead-eth</div></td>
+              <td class="tab" style="text-align:right">8</td>
+              <td class="tab up" style="text-align:right">+1.2%</td>
+              <td><span class="badge badge-muted">Early</span></td>
+              <td style="text-align:right"><button class="btn btn-sm" onclick="openDetail('stablecoin-lead-eth')">View</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ LIVE PAGE ══ -->
+    <div class="page" id="page-live">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px">
+        <div>
+          <div class="page-eyebrow">Live</div>
+          <div class="page-title">Real money positions</div>
+        </div>
+        <button class="btn btn-danger" onclick="openModal()">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 2l10 10M12 2L2 12"/></svg>
+          Liquidate all
+        </button>
+      </div>
+
+      <!-- Armed banner -->
+      <div style="padding:12px 16px;border-radius:var(--r);border:1px solid color-mix(in oklab,var(--down) 30%,transparent);background:color-mix(in oklab,var(--down) 10%,transparent);display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--down);box-shadow:0 0 0 4px color-mix(in oklab,var(--down) 25%,transparent);flex-shrink:0"></div>
+        <div>
+          <span style="font-weight:600;font-size:13px;color:var(--down)">Live trading armed</span>
+          <span style="font-size:12px;color:var(--muted);margin-left:8px">Binance spot · real capital deployed</span>
+        </div>
+      </div>
+
+      <!-- KPI strip -->
+      <div class="grid3" style="margin-bottom:16px">
+        <div class="card card-body" style="padding:16px">
+          <div class="section-label">Total live</div>
+          <div style="font-size:22px;font-weight:700;letter-spacing:-.02em" class="tab">$9,000</div>
+        </div>
+        <div class="card card-body" style="padding:16px">
+          <div class="section-label">Invested</div>
+          <div style="font-size:22px;font-weight:700;letter-spacing:-.02em" class="tab">$1,700</div>
+        </div>
+        <div class="card card-body" style="padding:16px">
+          <div class="section-label">Live P&amp;L</div>
+          <div style="font-size:22px;font-weight:700;letter-spacing:-.02em;color:var(--up)" class="tab">+$419 <span style="font-size:14px;font-weight:500">(+21%)</span></div>
+        </div>
+      </div>
+
+      <!-- Risk caps -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><span class="card-title">Risk caps</span></div>
+        <div class="card-body">
+          <div style="display:flex;flex-wrap:wrap;gap:24px">
+            <div style="flex:1;min-width:160px">
+              <div class="section-label" style="margin-bottom:6px">Daily loss limit</div>
+              <div class="gauge-track"><div class="gauge-fill" style="width:18%;background:var(--up)"></div></div>
+              <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--quiet)" class="tab"><span>$0</span><span>$180 used of $1,000 max</span></div>
+            </div>
+            <div style="flex:1;min-width:160px">
+              <div class="section-label" style="margin-bottom:6px">Position cap</div>
+              <div class="gauge-track"><div class="gauge-fill" style="width:34%;background:var(--iris)"></div></div>
+              <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--quiet)" class="tab"><span>$0</span><span>$1,700 of $5,000 max</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Positions table -->
+      <div class="tbl-wrap" style="margin-bottom:16px">
+        <table>
+          <thead>
+            <tr>
+              <th>Strategy</th>
+              <th>Asset</th>
+              <th class="tab" style="text-align:right">Size</th>
+              <th class="tab" style="text-align:right">Entry</th>
+              <th class="tab" style="text-align:right">P&amp;L</th>
+              <th class="tab" style="text-align:right">P&amp;L %</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span style="font-weight:500">Funding Carry BTC</span></td>
+              <td><span class="badge badge-muted">BTC/USDC</span></td>
+              <td class="tab" style="text-align:right">$1,700</td>
+              <td class="tab" style="text-align:right">$62,480</td>
+              <td class="tab up" style="text-align:right">+$419</td>
+              <td class="tab up" style="text-align:right">+21%</td>
+              <td style="text-align:right"><button class="btn btn-sm btn-danger" onclick="showToast('Close order sent (simulated)')">Close</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p style="font-size:12.5px;color:var(--quiet)">
+        <a onclick="nav('strategies')" style="color:var(--iris-s);cursor:pointer;text-decoration:underline">Browse strategies</a> to launch more live positions from gate-passed tracks.
+      </p>
+    </div>
+
+    <!-- ══ COSTS PAGE ══ -->
+    <div class="page" id="page-costs">
+      <div style="margin-bottom:20px">
+        <div class="page-eyebrow">Costs</div>
+        <div class="page-title">Opex vs alpha</div>
+      </div>
+
+      <!-- Verdict band -->
+      <div class="card" style="margin-bottom:16px;overflow:hidden">
+        <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;border-bottom:none">
+          <div class="card-body" style="border-right:1px solid var(--hairline)">
+            <div class="section-label">Opex vs equity</div>
+            <div style="font-size:28px;font-weight:700;letter-spacing:-.02em;color:var(--up);margin:6px 0 2px" class="tab">1.84%</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Opex is a rounding error vs alpha</div>
+            <div class="gauge-track" style="height:6px"><div class="gauge-fill" style="width:18.4%;background:var(--up)"></div></div>
+            <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:10px" class="tab quiet"><span>0%</span><span>2% target</span><span>10%</span></div>
+          </div>
+          <div class="card-body" style="border-right:1px solid var(--hairline)">
+            <div class="section-label">Monthly opex</div>
+            <div style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:6px 0 2px" class="tab">$312</div>
+            <div style="font-size:12px;color:var(--muted)">3 live · 4 estimated</div>
+          </div>
+          <div class="card-body">
+            <div class="section-label">LLM spend</div>
+            <div style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:6px 0 2px" class="tab">$48</div>
+            <div style="font-size:12px;color:var(--muted)">1,240 calls · strategy authoring</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Category breakdown -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><span class="card-title">Where the money goes</span></div>
+        <div class="card-body">
+          <div class="cost-bar-row"><div class="cost-bar-label">LLM tokens</div><div class="cost-bar-track"><div class="cost-bar-fill" style="width:54%;background:var(--iris)"></div></div><div class="cost-bar-val tab">$168</div></div>
+          <div class="cost-bar-row"><div class="cost-bar-label">Infrastructure</div><div class="cost-bar-track"><div class="cost-bar-fill" style="width:24%;background:var(--iris-s)"></div></div><div class="cost-bar-val tab">$74</div></div>
+          <div class="cost-bar-row"><div class="cost-bar-label">Data feeds</div><div class="cost-bar-track"><div class="cost-bar-fill" style="width:18%;background:var(--gold)"></div></div><div class="cost-bar-val tab">$58</div></div>
+          <div class="cost-bar-row"><div class="cost-bar-label">Monitoring</div><div class="cost-bar-track"><div class="cost-bar-fill" style="width:4%;background:var(--muted)"></div></div><div class="cost-bar-val tab">$12</div></div>
+        </div>
+      </div>
+
+      <!-- LLM spend line -->
+      <div class="card">
+        <div class="card-header"><span class="card-title">LLM calls — last 30 days</span><span class="badge badge-muted">1,240 total</span></div>
+        <div class="card-body">
+          <svg width="100%" height="80" viewBox="0 0 600 80" preserveAspectRatio="none">
+            <path d="M0,65 C40,60 80,52 120,48 C160,44 200,50 240,42 C280,34 320,30 360,22 C400,14 440,18 480,12 L540,8 L600,10" fill="none" stroke="var(--iris-s)" stroke-width="1.5"/>
+          </svg>
+          <div style="display:flex;flex-wrap:wrap;gap:20px;margin-top:8px">
+            <div><div class="section-label">Strategy authoring</div><div style="font-size:15px;font-weight:600" class="tab">$31</div></div>
+            <div><div class="section-label">Gate analysis</div><div style="font-size:15px;font-weight:600" class="tab">$11</div></div>
+            <div><div class="section-label">Signal scoring</div><div style="font-size:15px;font-weight:600" class="tab">$6</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ COMMANDS PAGE ══ -->
+    <div class="page" id="page-commands">
+      <div style="margin-bottom:20px">
+        <div class="page-eyebrow">Commands</div>
+        <div class="page-title">Slash commands</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.6">Run these in a Claude Code session connected to the Cosmu workspace.</p>
+      <div class="cmd-item"><div class="cmd-name">/run-gate</div><div class="cmd-desc">Evaluate the current strategy cohort through the deterministic Gate. Produces pass/fail verdicts with DSR, PBO, drawdown, and trade count.</div></div>
+      <div class="cmd-item"><div class="cmd-name">/dump-idea &lt;thesis&gt;</div><div class="cmd-desc">Turn a natural-language trading idea into a typed StrategySpec and drop it in the inbox for the next Gate cohort.</div></div>
+      <div class="cmd-item"><div class="cmd-name">/create-strategy</div><div class="cmd-desc">Author a new strategy spec from scratch, flowing it through the Gate and into a paper track if it passes.</div></div>
+      <div class="cmd-item"><div class="cmd-name">/manage-data</div><div class="cmd-desc">Fetch, backfill, and verify market bars + alt-data sources. Reports coverage, staleness, and missing gaps.</div></div>
+      <div class="cmd-item"><div class="cmd-name">/evolve-strategy &lt;id&gt;</div><div class="cmd-desc">Isolate a gate-passed strategy's winning signal and graft it onto other assets or recombine with survivors.</div></div>
+      <div class="cmd-item"><div class="cmd-name">/scan-signals</div><div class="cmd-desc">Score all registered alt-data signals on live data and surface the top predictive candidates for the next cohort.</div></div>
+      <div class="cmd-item"><div class="cmd-name">/align-check</div><div class="cmd-desc">Strategic alignment review — measures recent work against the north star (autonomous profit, net of fees) and flags drift.</div></div>
+      <div class="cmd-item"><div class="cmd-name">/deploy-check</div><div class="cmd-desc">Pre-push gate — runs pnpm verify and confirms the tree is green before deploying.</div></div>
+    </div>
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<!-- Fixed MOCKUP badge -->
+<div class="mockup-badge">MOCKUP · synthetic data</div>
+
+<script>
+// ── Synthetic strategy data ──
+const STRATS = [
+  {id:'funding-carry-btc',  name:'Funding Carry BTC',              stage:'live',     pnl:'+$419 (+21%)', pnlClass:'up',  days:47,  gatePass:true,  dsr:1.12, pbo:0.31, lastAction:'Entered BTC 2d ago'},
+  {id:'xsect-momentum-top5',name:'Cross-Sectional Momentum Top-5', stage:'paper',    pnl:'+4.1%',        pnlClass:'up',  days:33,  gatePass:true,  dsr:0.98, pbo:0.38, lastAction:'Rotated to top 5 4d ago'},
+  {id:'gtaa-monthly',       name:'GTAA Monthly Rotation',          stage:'paper',    pnl:'+2.9%',        pnlClass:'up',  days:41,  gatePass:true,  dsr:1.04, pbo:0.29, lastAction:'Monthly rebalance 6d ago'},
+  {id:'fg-contrarian-eth',  name:'Fear & Greed Contrarian ETH',    stage:'paper',    pnl:'−0.8%',        pnlClass:'down',days:12,  gatePass:true,  dsr:0.87, pbo:0.42, lastAction:'Entered ETH 5d ago'},
+  {id:'stablecoin-lead-eth',name:'Stablecoin Flows Lead ETH',      stage:'paper',    pnl:'+1.2%',        pnlClass:'up',  days:8,   gatePass:true,  dsr:0.91, pbo:0.40, lastAction:'Signal fired 1d ago'},
+  {id:'vol-regime-btc',     name:'Vol-Regime Switch BTC',          stage:'gate',     pnl:'—',            pnlClass:'',    days:null,gatePass:true,  dsr:1.05, pbo:0.33, lastAction:'Gate passed 1d ago'},
+  {id:'orb-sol-4h',         name:'ORB Breakout SOL 4h',            stage:'killed',   pnl:'—',            pnlClass:'',    days:null,gatePass:false, killedAt:'gate', reason:'FDR control',   killedDate:'2026-05-28'},
+  {id:'wiki-zscore-btc',    name:'Wikipedia Pageviews Z-Score BTC',stage:'killed',   pnl:'—',            pnlClass:'',    days:null,gatePass:false, killedAt:'gate', reason:'PBO 0.61',       killedDate:'2026-05-20'},
+  {id:'reddit-spike-doge',  name:'Reddit Volume Spike DOGE',       stage:'killed',   pnl:'—',            pnlClass:'',    days:null,gatePass:false, killedAt:'gate', reason:'holdout fail',   killedDate:'2026-05-15'},
+  {id:'pm-riskon-overlay',  name:'Polymarket Risk-On Overlay',     stage:'backtest', pnl:'—',            pnlClass:'',    days:null,gatePass:false, lastAction:'Backtesting now'},
+  {id:'fvg-btc-1h',         name:'FVG Retrace BTC 1h',             stage:'queued',   pnl:'—',            pnlClass:'',    days:null,gatePass:false, lastAction:'Queued for Gate'},
+  {id:'ma-trend-eth-1d',    name:'MA Trend Filter ETH 1d',         stage:'backtest', pnl:'—',            pnlClass:'',    days:null,gatePass:false, lastAction:'Backtesting now'},
+];
+
+const STAGES = ['queued','backtest','gate','paper','live'];
+function stageIndex(s){if(s==='killed')return -1;return STAGES.indexOf(s)}
+
+function metroHTML(s, killedAt){
+  const dotStages=['backtest','gate','paper','live'];
+  const cur=stageIndex(s);
+  let html='<div class="metro">';
+  dotStages.forEach((ds,i)=>{
+    const dsi=STAGES.indexOf(ds);
+    const filled=cur>=dsi;
+    let cls='metro-dot';
+    if(s==='killed'&&killedAt===ds) cls+=' kill';
+    else if(ds==='live'&&s==='live') cls+=' live-dot';
+    else if(ds==='gate'&&filled) cls+=' pass';
+    else if(filled) cls+=' filled';
+    const lineFilled=cur>dsi;
+    if(i>0){
+      let lc='metro-line';
+      if(s!=='killed'&&lineFilled) lc+=' pass';
+      html+=`<div class="${lc}"></div>`;
+    }
+    html+=`<div class="${cls}" title="${ds}"></div>`;
+  });
+  html+='</div>';
+  return html;
+}
+
+function stageBadge(s,r){
+  if(s==='live')     return '<span class="badge badge-live">Live</span>';
+  if(s==='paper')    return '<span class="badge badge-iris">Paper</span>';
+  if(s==='gate')     return '<span class="badge badge-up">Gate ✓ — awaiting paper</span>';
+  if(s==='queued')   return '<span class="badge badge-muted">Queued</span>';
+  if(s==='backtest') return '<span class="badge badge-muted">Backtesting</span>';
+  if(s==='killed')   return `<span class="badge badge-down">Killed at ${r||'gate'}</span>`;
+  return '';
+}
+
+function renderTable(){
+  const tbody=document.getElementById('strat-tbody');
+  tbody.innerHTML=STRATS.map(s=>{
+    const liveReady=s.stage==='paper'&&s.days>=30;
+    const nameExtra=liveReady?' <span class="badge badge-gold" style="font-size:9.5px;vertical-align:middle">live-ready</span>':'';
+    return `<tr class="strat-row" data-stage="${s.stage}" data-id="${s.id}" onclick="openDetail('${s.id}')">
+      <td>
+        <div style="font-weight:500;font-size:13px" class="strat-name-cell" data-id="${s.id}">${s.name}${nameExtra}</div>
+        <div style="font-size:11px;color:var(--quiet);margin-top:1px;font-family:'SF Mono','Fira Code',ui-monospace,monospace">${s.id}</div>
+      </td>
+      <td>${metroHTML(s.stage,s.killedAt)}</td>
+      <td>${stageBadge(s.stage,s.killedAt)}</td>
+      <td class="tab" style="text-align:right;color:var(--${s.pnlClass||'muted'})">${s.pnl}</td>
+      <td class="tab" style="text-align:right;color:var(--muted)">${s.days!=null?s.days+'d':'—'}</td>
+      <td style="font-size:12px;color:var(--muted)">${s.gatePass?`<span style="color:var(--up)">✓</span> DSR ${s.dsr} · PBO ${s.pbo}`:(s.stage==='killed'?`<span style="color:var(--down)">✗</span> ${s.reason||''}`:'—')}</td>
+    </tr>`;
+  }).join('');
+  attachPeekListeners();
+}
+
+// ── Filtering ──
+function filterStrats(f,btn){
+  document.querySelectorAll('[data-filter]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.strat-row').forEach(row=>{
+    const stage=row.dataset.stage;
+    let show=false;
+    if(f==='all')    show=true;
+    else if(f==='live')   show=stage==='live';
+    else if(f==='paper')  show=stage==='paper';
+    else if(f==='gate')   show=stage==='gate';
+    else if(f==='killed') show=stage==='killed';
+    else if(f==='queued') show=stage==='queued'||stage==='backtest';
+    row.classList.toggle('hidden-row',!show);
+  });
+}
+
+// ── Navigation ──
+function nav(page){
+  const dv=document.getElementById('detail-view');
+  dv.classList.remove('active');
+  dv.style.display='none';
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  const pg=document.getElementById('page-'+page);
+  if(pg) pg.classList.add('active');
+  document.querySelectorAll(`[data-page="${page}"]`).forEach(n=>n.classList.add('active'));
+  window.location.hash='/'+page;
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open')}
+
+// ── Hash router ──
+function route(){
+  const h=window.location.hash.replace('#/','') || 'strategies';
+  if(h.startsWith('strategy/')){openDetail(h.replace('strategy/',''),false);return}
+  const valid=['strategies','paper','live','costs','commands'];
+  nav(valid.includes(h)?h:'strategies');
+}
+
+// ── Strategy detail ──
+function openDetail(id,pushHash=true){
+  const s=STRATS.find(x=>x.id===id);
+  if(!s) return;
+  hidePeek();
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  const dv=document.getElementById('detail-view');
+  dv.style.display='block';
+  dv.classList.add('active');
+  if(pushHash) window.location.hash='/strategy/'+id;
+  document.getElementById('detail-content').innerHTML=buildDetail(s);
+}
+
+function closeDetail(){
+  const dv=document.getElementById('detail-view');
+  dv.classList.remove('active');
+  dv.style.display='none';
+  nav('strategies');
+}
+
+// ── Verdict sentence generator ──
+function verdictSentence(s){
+  if(s.id==='funding-carry-btc')
+    return 'Earning its keep — +21% live in 18 days; its paper twin agrees (+9.3% over 47 days), gate verdict holds.';
+  if(s.stage==='live')
+    return `Live and performing — ${s.pnl} since launch; paper track and gate remain aligned.`;
+  if(s.stage==='paper'&&s.days>=30)
+    return `Paper-mature and live-ready — ${s.pnl} over ${s.days} days, gate interlock passed. Ready for live launch.`;
+  if(s.stage==='paper')
+    return `Early paper track — ${s.pnl} over ${s.days} days. Needs ${30-s.days} more days before live consideration.`;
+  if(s.stage==='gate')
+    return `Gate cleared — DSR ${s.dsr}, PBO ${s.pbo}. Awaiting paper track to accumulate 30 days of live data.`;
+  if(s.stage==='killed')
+    return `Killed at ${s.killedAt} — ${s.reason}. Edge did not survive the full Gate gauntlet.`;
+  return `In ${s.stage} — no P&L yet. Gate verdict pending.`;
+}
+
+function buildDetail(s){
+  const isFullDetail=s.id==='funding-carry-btc';
+  const eqSVG=buildEquitySVG();
+  const liveReady=s.stage==='paper'&&s.days>=30;
+  const launchBtn=(s.gatePass&&s.stage!=='live')
+    ?`<button class="btn btn-iris" onclick="showToast('Launch live — order sent (simulated)')">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6.5 1v11M1 6.5l5.5 5.5 5.5-5.5"/></svg>
+        Launch live
+       </button>`:'';
+
+  // Verdict KPIs
+  let kpi1='',kpi2='',kpi3='';
+  if(s.stage==='live'||s.stage==='paper'){
+    kpi1=`<div class="verdict-kpi"><div class="verdict-kpi-val tab ${s.pnlClass}">${s.pnl}</div><div class="verdict-kpi-label">${s.stage==='live'?'Live P&L':'Paper P&L'}</div></div>`;
+    kpi2=s.days?`<div class="verdict-kpi"><div class="verdict-kpi-val tab">${s.days}d</div><div class="verdict-kpi-label">In paper</div></div>`:'';
+    kpi3=s.gatePass?`<div class="verdict-kpi"><div class="verdict-kpi-val tab up">${s.dsr}</div><div class="verdict-kpi-label">DSR</div></div>`:'';
+  } else if(s.stage==='gate'){
+    kpi1=`<div class="verdict-kpi"><div class="verdict-kpi-val tab up">${s.dsr}</div><div class="verdict-kpi-label">DSR</div></div>`;
+    kpi2=`<div class="verdict-kpi"><div class="verdict-kpi-val tab up">${s.pbo}</div><div class="verdict-kpi-label">PBO</div></div>`;
+    kpi3=`<div class="verdict-kpi"><div class="verdict-kpi-val tab muted">0d</div><div class="verdict-kpi-label">Paper days</div></div>`;
+  }
+
+  return `
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+    <div>
+      <div style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--quiet);margin-bottom:4px">Strategy detail</div>
+      <h1 style="font-size:22px;font-weight:700;letter-spacing:-.02em;margin-bottom:6px">${s.name}</h1>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        ${metroHTML(s.stage,s.killedAt)}
+        ${stageBadge(s.stage,s.killedAt)}
+        ${liveReady?'<span class="badge badge-gold">live-ready ≥30d</span>':''}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${launchBtn}</div>
+  </div>
+
+  <!-- Verdict banner -->
+  <div class="verdict-banner">
+    <div class="verdict-sentence">${verdictSentence(s)}</div>
+    ${(kpi1||kpi2||kpi3)?`<div class="verdict-kpi-row">${kpi1}${kpi2}${kpi3}</div>`:''}
+  </div>
+
+  ${isFullDetail ? fullDetailHTML(s,eqSVG) : stubDetailHTML(s)}
+  `;
+}
+
+// ── Collapsible section builder ──
+function makeCollapsible(title, summary, bodyHTML, open=false){
+  const id='coll-'+Math.random().toString(36).slice(2);
+  return `
+  <div class="collapsible${open?' open':''}" id="${id}">
+    <div class="collapsible-header" onclick="toggleCollapsible('${id}')">
+      <span class="collapsible-title">${title}</span>
+      <span class="collapsible-summary">${summary}</span>
+      <svg class="collapsible-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l4 4 4-4"/></svg>
+    </div>
+    <div class="collapsible-body">${bodyHTML}</div>
+  </div>`;
+}
+
+function toggleCollapsible(id){
+  document.getElementById(id).classList.toggle('open');
+}
+
+function fullDetailHTML(s, eqSVG){
+  const perfBody=`
+    <div class="card-header" style="padding:0 0 12px"><span class="card-title">Equity curve — paper track ($100k sim)</span>
+      <div style="display:flex;gap:12px;font-size:11px">
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:20px;height:2px;background:var(--up);display:inline-block;border-radius:2px"></span>Gross</span>
+        <span style="display:flex;align-items:center;gap:4px"><span style="width:20px;height:2px;background:var(--iris-s);display:inline-block;border-radius:2px;border:1px dashed var(--iris-s)"></span>Net of fees</span>
+      </div>
+    </div>
+    ${eqSVG}`;
+
+  const gateBody=`
+    <div class="interlock-row" style="margin-top:4px">
+      <div class="interlock-chip pass-chip"><div class="interlock-val tab up">1.12</div><div class="interlock-label">Deflated Sharpe</div><div class="interlock-thresh">edge after correcting for variants tried · > 0</div></div>
+      <div class="interlock-chip pass-chip"><div class="interlock-val tab up">0.31</div><div class="interlock-label">PBO</div><div class="interlock-thresh">probability backtest is overfit · &lt; 0.50</div></div>
+      <div class="interlock-chip pass-chip"><div class="interlock-val tab up">14%</div><div class="interlock-label">Max drawdown</div><div class="interlock-thresh">vs 25% limit · ✓ headroom</div></div>
+      <div class="interlock-chip pass-chip"><div class="interlock-val tab up">+8.2%</div><div class="interlock-label">OOS return</div><div class="interlock-thresh">data strategy never saw during fitting</div></div>
+      <div class="interlock-chip pass-chip"><div class="interlock-val tab up">47</div><div class="interlock-label">Trades</div><div class="interlock-thresh">≥ 30 required · ✓</div></div>
+    </div>`;
+
+  const buildingBody=`
+    <div class="grid2" style="margin-top:4px">
+      <div>
+        <div style="display:flex;flex-direction:column;gap:10px;font-size:12.5px">
+          <div><div class="section-label">Signal</div><div style="color:var(--fg)">funding_rate below fitted threshold</div></div>
+          <div><div class="section-label">Filter</div><div style="color:var(--fg)">MA-trend (200d)</div></div>
+          <div><div class="section-label">Exit</div><div style="color:var(--fg)">stop 4% · take 12% · time-stop 14d</div></div>
+          <div><div class="section-label">Sizing</div><div style="color:var(--fg)">fixed fraction (2% risk)</div></div>
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--hairline);font-size:11.5px;color:var(--quiet)">Similar: <a onclick="openDetail('xsect-momentum-top5')" style="color:var(--iris-s);cursor:pointer">xsect-momentum-top5</a> · <a onclick="openDetail('gtaa-monthly')" style="color:var(--iris-s);cursor:pointer">gtaa-monthly</a></div>
+      </div>
+      <div>
+        <div class="section-label" style="margin-bottom:8px">Data feeds — latest marks</div>
+        <div class="feed-item"><div><div class="feed-val tab">funding_rate −0.018%</div><div class="feed-meta">2h ago · Binance</div></div><span class="badge badge-iris">live</span></div>
+        <div class="feed-item"><div><div class="feed-val tab">fear_greed 71 (greed)</div><div class="feed-meta">5h ago · Alternative.me</div></div><span class="badge badge-iris">live</span></div>
+        <div class="feed-item"><div><div class="feed-val tab">BTC/USDC price $69,240</div><div class="feed-meta">1m ago · Binance</div></div><span class="badge badge-iris">live</span></div>
+      </div>
+    </div>`;
+
+  const tradesBody=`
+    <div style="overflow-x:auto;margin-top:4px">
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Side</th><th class="tab" style="text-align:right">Qty</th><th class="tab" style="text-align:right">Price</th><th class="tab" style="text-align:right">Fee</th><th class="tab" style="text-align:right">P&amp;L</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="tab quiet">2026-06-09</td><td><span class="badge badge-up">buy</span></td><td class="tab" style="text-align:right">0.0271</td><td class="tab" style="text-align:right">$62,480</td><td class="tab muted" style="text-align:right">$1.69</td><td class="tab" style="text-align:right">—</td></tr>
+          <tr><td class="tab quiet">2026-05-26</td><td><span class="badge badge-down">sell</span></td><td class="tab" style="text-align:right">0.0268</td><td class="tab" style="text-align:right">$61,820</td><td class="tab muted" style="text-align:right">$1.65</td><td class="tab up" style="text-align:right">+$148</td></tr>
+          <tr><td class="tab quiet">2026-05-12</td><td><span class="badge badge-up">buy</span></td><td class="tab" style="text-align:right">0.0272</td><td class="tab" style="text-align:right">$59,410</td><td class="tab muted" style="text-align:right">$1.62</td><td class="tab" style="text-align:right">—</td></tr>
+          <tr><td class="tab quiet">2026-04-29</td><td><span class="badge badge-down">sell</span></td><td class="tab" style="text-align:right">0.0280</td><td class="tab" style="text-align:right">$58,200</td><td class="tab muted" style="text-align:right">$1.63</td><td class="tab up" style="text-align:right">+$112</td></tr>
+          <tr><td class="tab quiet">2026-04-15</td><td><span class="badge badge-up">buy</span></td><td class="tab" style="text-align:right">0.0291</td><td class="tab" style="text-align:right">$55,900</td><td class="tab muted" style="text-align:right">$1.63</td><td class="tab" style="text-align:right">—</td></tr>
+          <tr><td class="tab quiet">2026-04-02</td><td><span class="badge badge-down">sell</span></td><td class="tab" style="text-align:right">0.0295</td><td class="tab" style="text-align:right">$53,740</td><td class="tab muted" style="text-align:right">$1.59</td><td class="tab up" style="text-align:right">+$89</td></tr>
+        </tbody>
+      </table>
+    </div>`;
+
+  const timelineBody=`
+    <div class="timeline" style="margin-top:4px">
+      <div class="tl-item"><div class="tl-stem"></div><div class="tl-dot tl-live"></div><div class="tl-content"><div class="tl-title">Launched live</div><div class="tl-date">2026-04-25 · real capital deployed · Binance spot</div></div></div>
+      <div class="tl-item"><div class="tl-stem"></div><div class="tl-dot tl-pass"></div><div class="tl-content"><div class="tl-title">Paper day 47 — advisory live-ready</div><div class="tl-date">2026-06-10 · ≥30 days in paper · +9.3%</div></div></div>
+      <div class="tl-item"><div class="tl-stem"></div><div class="tl-dot"></div><div class="tl-content"><div class="tl-title">Paper track started</div><div class="tl-date">2026-04-24 · $100k sim · paper run begins</div></div></div>
+      <div class="tl-item"><div class="tl-stem"></div><div class="tl-dot tl-pass"></div><div class="tl-content"><div class="tl-title">Gate ✓ passed</div><div class="tl-date">2026-04-23 · DSR 1.12 · PBO 0.31 · DD 14%</div></div></div>
+      <div class="tl-item"><div class="tl-stem"></div><div class="tl-dot"></div><div class="tl-content"><div class="tl-title">Backtested</div><div class="tl-date">2026-04-22 · 47 trades · OOS +8.2%</div></div></div>
+      <div class="tl-item"><div class="tl-dot"></div><div class="tl-content"><div class="tl-title">Created</div><div class="tl-date">2026-04-20 · authored by LLM cohort #38</div></div></div>
+    </div>`;
+
+  return `
+  ${makeCollapsible('Performance','Paper +9.3% · 47 days · Live +21%',perfBody,true)}
+  ${makeCollapsible('Gate','DSR 1.12 · PBO 0.31 · DD 14% — all clear',gateBody)}
+  ${makeCollapsible('Building blocks · Data feed','funding_rate signal · MA-trend filter · 3 live feeds',buildingBody)}
+  ${makeCollapsible('Trades','47 total · last buy 2026-06-09',tradesBody)}
+  ${makeCollapsible('Timeline','Created 2026-04-20 · Gate 2026-04-23 · Live 2026-04-25',timelineBody)}`;
+}
+
+function stubDetailHTML(s){
+  const gateSection=s.gatePass?`
+    <div class="interlock-row" style="margin-top:4px">
+      <div class="interlock-chip pass-chip"><div class="interlock-val tab up">${s.dsr||'—'}</div><div class="interlock-label">Deflated Sharpe</div></div>
+      <div class="interlock-chip pass-chip"><div class="interlock-val tab up">${s.pbo||'—'}</div><div class="interlock-label">PBO</div></div>
+    </div>`:'<div style="font-size:13px;color:var(--muted);padding:4px 0">Gate not yet passed.</div>';
+
+  const summaryBody=`<div style="font-size:13px;color:var(--muted);line-height:1.6;margin-top:4px">
+    Full detail (equity curve, building blocks, trades, timeline) is identical in structure to <a onclick="openDetail('funding-carry-btc')" style="color:var(--iris-s);cursor:pointer">Funding Carry BTC</a> — populated with this strategy's data.
+    Stage: <strong style="color:var(--fg)">${s.stage}</strong>${s.days?' · '+s.days+' paper days':''} ${s.pnl!=='—'?'· P&L <span class="tab" style="color:var(--'+s.pnlClass+')">'+s.pnl+'</span>':''}.
+    ${s.stage==='killed'?`Killed at <strong style="color:var(--fg)">${s.killedAt}</strong> — reason: <span style="color:var(--down)">${s.reason}</span>${s.killedDate?' · '+s.killedDate:''}`:''}</div>`;
+
+  return `
+  ${makeCollapsible('Gate',s.gatePass?`DSR ${s.dsr} · PBO ${s.pbo}`:'Not passed',gateSection,s.gatePass)}
+  ${makeCollapsible('Summary','Placeholder detail for this strategy',summaryBody,true)}`;
+}
+
+function buildEquitySVG(){
+  const W=760,H=200,pad={t:16,r:16,b:28,l:48};
+  const inner={w:W-pad.l-pad.r,h:H-pad.t-pad.b};
+  const n=48;
+  const grossPts=[],netPts=[];
+  for(let i=0;i<n;i++){
+    const t=i/(n-1);
+    const noise=(Math.sin(i*2.1)*0.4+Math.sin(i*0.7)*0.3)*0.012;
+    const g=t*0.093+noise+0.004*Math.sin(i*0.5);
+    const net=g-t*0.003-0.001;
+    grossPts.push([pad.l+t*inner.w,pad.t+inner.h-(Math.max(0,g)*inner.h/0.12)]);
+    netPts.push([pad.l+t*inner.w,pad.t+inner.h-(Math.max(0,net)*inner.h/0.12)]);
+  }
+  const toPath=pts=>'M'+pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' L');
+  const markers=[{i:2,side:'buy'},{i:10,side:'sell'},{i:18,side:'buy'},{i:28,side:'sell'},{i:38,side:'buy'}];
+  const markerSVG=markers.map(m=>{
+    const [x,y]=grossPts[m.i];
+    const col=m.side==='buy'?'oklch(0.78 0.16 160)':'oklch(0.7 0.17 18)';
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${col}" stroke="var(--surf2)" stroke-width="1.5"/>`;
+  }).join('');
+  const yLabels=['0%','3%','6%','9%'].map((l,i)=>{
+    const y=pad.t+inner.h-(i*0.03*inner.h/0.12);
+    return `<text x="${pad.l-6}" y="${y+4}" text-anchor="end" font-size="9" fill="oklch(0.55 0.015 286)">${l}</text><line x1="${pad.l}" y1="${y}" x2="${W-pad.r}" y2="${y}" stroke="oklch(0.255 0.014 286)" stroke-width="0.5"/>`;
+  }).join('');
+  const areaPath='M'+grossPts[0][0]+','+grossPts[0][1]+' L'+grossPts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' L')+` L${W-pad.r},${pad.t+inner.h} L${pad.l},${pad.t+inner.h}Z`;
+  return `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;overflow:visible">
+    <defs>
+      <linearGradient id="eq-area" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="oklch(0.78 0.16 160)" stop-opacity=".22"/>
+        <stop offset="100%" stop-color="oklch(0.78 0.16 160)" stop-opacity=".01"/>
+      </linearGradient>
+      <clipPath id="eqclip"><rect x="${pad.l}" y="${pad.t}" width="${inner.w}" height="${inner.h}"/></clipPath>
+    </defs>
+    ${yLabels}
+    <g clip-path="url(#eqclip)">
+      <path d="${areaPath}" fill="url(#eq-area)"/>
+      <path d="${toPath(grossPts)}" fill="none" stroke="oklch(0.78 0.16 160)" stroke-width="2" stroke-linejoin="round"/>
+      <path d="${toPath(netPts)}" fill="none" stroke="oklch(0.74 0.135 290)" stroke-width="1.5" stroke-dasharray="4 3" stroke-linejoin="round"/>
+      ${markerSVG}
+    </g>
+    <text x="${pad.l}" y="${H-6}" font-size="9" fill="oklch(0.55 0.015 286)">Day 1</text>
+    <text x="${W-pad.r}" y="${H-6}" font-size="9" fill="oklch(0.55 0.015 286)" text-anchor="end">Day 47</text>
+  </svg>`;
+}
+
+// ── Modal ──
+function openModal(){document.getElementById('liq-modal').classList.add('open')}
+function closeModal(){document.getElementById('liq-modal').classList.remove('open')}
+function confirmLiquidate(){closeModal();showToast('All live positions liquidated — live trading disarmed (simulated)')}
+document.getElementById('liq-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
+
+// ── Toast ──
+let toastTimer;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),3000);
+}
+
+// ── Hover peek ──
+let peekTimer=null;
+const peekCard=document.getElementById('peek-card');
+let peekActive=false;
+
+function attachPeekListeners(){
+  document.querySelectorAll('.strat-name-cell').forEach(el=>{
+    el.addEventListener('mouseenter',e=>{
+      const id=el.dataset.id;
+      // only on non-touch: detect coarse pointer
+      if(window.matchMedia('(pointer: coarse)').matches) return;
+      clearTimeout(peekTimer);
+      peekTimer=setTimeout(()=>showPeek(id,e),150);
+    });
+    el.addEventListener('mousemove',e=>{
+      if(peekActive) movePeek(e);
+    });
+    el.addEventListener('mouseleave',()=>{
+      clearTimeout(peekTimer);
+      hidePeek();
+    });
+  });
+}
+
+function peekSparklineSVG(s){
+  const W=202,H=40,pts=[];
+  const n=20;
+  for(let i=0;i<n;i++){
+    const t=i/(n-1);
+    const noise=Math.sin(i*1.7)*0.3+Math.sin(i*3.1)*0.15;
+    const pnlNum=s.stage==='live'?0.21:s.stage==='paper'?parseFloat(s.pnl)||0:0;
+    const v=t*pnlNum*0.8+noise*0.04;
+    pts.push([4+t*(W-8), H-4-(Math.max(-0.08,Math.min(0.25,v+0.04))/(0.29))*(H-8)]);
+  }
+  const path='M'+pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' L');
+  const col=s.pnlClass==='up'?'oklch(0.78 0.16 160)':s.pnlClass==='down'?'oklch(0.7 0.17 18)':'oklch(0.74 0.135 290)';
+  const areaClose=` L${pts[pts.length-1][0].toFixed(1)},${H-4} L${pts[0][0].toFixed(1)},${H-4}Z`;
+  return `<defs><linearGradient id="pkg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${col}" stop-opacity=".3"/><stop offset="100%" stop-color="${col}" stop-opacity=".01"/></linearGradient></defs><path d="${path}${areaClose}" fill="url(#pkg)"/><path d="${path}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linejoin="round"/>`;
+}
+
+function showPeek(id,e){
+  const s=STRATS.find(x=>x.id===id);
+  if(!s) return;
+  document.getElementById('peek-name').textContent=s.name;
+  document.getElementById('peek-sparkline').innerHTML=peekSparklineSVG(s);
+  document.getElementById('peek-stage').innerHTML=stageBadge(s.stage,s.killedAt);
+  document.getElementById('peek-metric').innerHTML=s.pnl!=='—'?`<span class="${s.pnlClass}">${s.pnl}</span>`:s.gatePass?`DSR ${s.dsr}`:'';
+  document.getElementById('peek-action').textContent=s.lastAction||'';
+  peekCard.classList.add('visible');
+  peekActive=true;
+  movePeek(e);
+}
+
+function movePeek(e){
+  const card=peekCard;
+  const cw=card.offsetWidth,ch=card.offsetHeight;
+  let x=e.clientX+14,y=e.clientY-10;
+  if(x+cw>window.innerWidth-8) x=e.clientX-cw-14;
+  if(y+ch>window.innerHeight-8) y=window.innerHeight-ch-8;
+  if(y<8) y=8;
+  card.style.left=x+'px';
+  card.style.top=y+'px';
+}
+
+function hidePeek(){
+  peekCard.classList.remove('visible');
+  peekActive=false;
+}
+
+// ── Command palette ──
+const PALETTE_ACTIONS=[
+  {type:'action',name:'Go to Strategies',sub:'All strategies · every stage',icon:'list',action:()=>nav('strategies')},
+  {type:'action',name:'Go to Paper',sub:'Active paper tracks',icon:'chart',action:()=>nav('paper')},
+  {type:'action',name:'Go to Live',sub:'Real money positions',icon:'clock',action:()=>nav('live')},
+  {type:'action',name:'Go to Costs',sub:'Opex vs alpha',icon:'dollar',action:()=>nav('costs')},
+  {type:'action',name:'Go to Commands',sub:'Slash commands reference',icon:'cmd',action:()=>nav('commands')},
+  {type:'action',name:'Liquidate all…',sub:'Sell all live positions to USDC',icon:'danger',action:()=>{closePalette();openModal()}},
+  {type:'action',name:'Pause all paper',sub:'Halt all paper track simulation',icon:'pause',action:()=>{closePalette();showToast('All paper tracks paused (simulated)')}},
+];
+
+let paletteSelectedIdx=0;
+let paletteItems=[];
+
+function openPalette(){
+  document.getElementById('palette-overlay').classList.add('open');
+  const input=document.getElementById('palette-input');
+  input.value='';
+  renderPalette('');
+  setTimeout(()=>input.focus(),60);
+}
+
+function closePalette(){
+  document.getElementById('palette-overlay').classList.remove('open');
+  paletteSelectedIdx=0;
+}
+
+function closePaletteIfOutside(e){
+  if(e.target===document.getElementById('palette-overlay')) closePalette();
+}
+
+function paletteIconSVG(icon){
+  const s={
+    list:`<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3" width="14" height="10" rx="1.5"/><path d="M4 8h2m2-2h4m-4 4h2"/></svg>`,
+    chart:`<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12 L5 8 L8 10 L11 5 L14 7"/></svg>`,
+    clock:`<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>`,
+    dollar:`<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v12M5 5h4.5a2 2 0 010 4H5m0-4v8"/></svg>`,
+    cmd:`<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5l3 3-3 3m5 0h4"/></svg>`,
+    danger:`<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 2l10 10M12 2L2 12"/></svg>`,
+    pause:`<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="2" width="3" height="10" rx="1"/><rect x="8" y="2" width="3" height="10" rx="1"/></svg>`,
+    strat:`<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12 L5 9 L8 10 L14 4"/><circle cx="14" cy="4" r="1.5" fill="currentColor" stroke="none"/></svg>`,
+  };
+  return s[icon]||s.strat;
+}
+
+function renderPalette(query){
+  const q=query.toLowerCase().trim();
+  paletteItems=[];
+
+  // Actions
+  const actions=PALETTE_ACTIONS.filter(a=>!q||a.name.toLowerCase().includes(q)||a.sub.toLowerCase().includes(q));
+  // Strategies
+  const strats=STRATS.filter(s=>!q||s.name.toLowerCase().includes(q)||s.id.toLowerCase().includes(q));
+
+  const list=document.getElementById('palette-list');
+  let html='';
+
+  if(actions.length){
+    html+=`<div class="palette-group-label">Actions</div>`;
+    actions.forEach(a=>{
+      const idx=paletteItems.length;
+      paletteItems.push({type:'action',action:a.action});
+      html+=`<div class="palette-item${idx===paletteSelectedIdx?' selected':''}" data-pidx="${idx}" onclick="paletteExec(${idx})">
+        <div class="palette-item-icon">${paletteIconSVG(a.icon)}</div>
+        <div class="palette-item-text">
+          <div class="palette-item-name">${a.name}</div>
+          <div class="palette-item-sub">${a.sub}</div>
+        </div>
+      </div>`;
+    });
+  }
+
+  if(strats.length){
+    html+=`<div class="palette-group-label">Strategies</div>`;
+    strats.forEach(s=>{
+      const idx=paletteItems.length;
+      paletteItems.push({type:'strategy',id:s.id});
+      html+=`<div class="palette-item${idx===paletteSelectedIdx?' selected':''}" data-pidx="${idx}" onclick="paletteExec(${idx})">
+        <div class="palette-item-icon">${paletteIconSVG('strat')}</div>
+        <div class="palette-item-text">
+          <div class="palette-item-name">${s.name}</div>
+          <div class="palette-item-sub">${s.stage}${s.pnl!=='—'?' · '+s.pnl:''}</div>
+        </div>
+        ${stageBadge(s.stage,s.killedAt)}
+      </div>`;
+    });
+  }
+
+  if(!html) html=`<div style="padding:20px;text-align:center;font-size:13px;color:var(--quiet)">No results</div>`;
+  list.innerHTML=html;
+
+  if(paletteSelectedIdx>=paletteItems.length) paletteSelectedIdx=0;
+}
+
+function paletteExec(idx){
+  const item=paletteItems[idx];
+  if(!item) return;
+  closePalette();
+  if(item.type==='action') item.action();
+  else if(item.type==='strategy') openDetail(item.id);
+}
+
+function paletteMoveSelection(dir){
+  if(!paletteItems.length) return;
+  paletteSelectedIdx=(paletteSelectedIdx+dir+paletteItems.length)%paletteItems.length;
+  renderPalette(document.getElementById('palette-input').value);
+  // scroll selected into view
+  const sel=document.querySelector('.palette-item.selected');
+  if(sel) sel.scrollIntoView({block:'nearest'});
+}
+
+document.getElementById('palette-input').addEventListener('input',e=>{
+  paletteSelectedIdx=0;
+  renderPalette(e.target.value);
+});
+
+document.getElementById('palette-input').addEventListener('keydown',e=>{
+  if(e.key==='ArrowDown'){e.preventDefault();paletteMoveSelection(1)}
+  else if(e.key==='ArrowUp'){e.preventDefault();paletteMoveSelection(-1)}
+  else if(e.key==='Enter'){e.preventDefault();paletteExec(paletteSelectedIdx)}
+  else if(e.key==='Escape'){closePalette()}
+});
+
+// Global keyboard
+document.addEventListener('keydown',e=>{
+  // ⌘K or Ctrl+K
+  if((e.metaKey||e.ctrlKey)&&e.key==='k'){
+    e.preventDefault();
+    const overlay=document.getElementById('palette-overlay');
+    overlay.classList.contains('open')?closePalette():openPalette();
+  }
+  if(e.key==='Escape'){
+    if(document.getElementById('palette-overlay').classList.contains('open')) closePalette();
+    if(document.getElementById('liq-modal').classList.contains('open')) closeModal();
+  }
+});
+
+// ── Init ──
+renderTable();
+window.addEventListener('hashchange',route);
+route();
+</script>
+</body>
+</html>
