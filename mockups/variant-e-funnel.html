@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cosmu · Variant E — Funnel-First</title>
+<style>
+/* === RESET + BASE === */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; }
+body {
+  min-height: 100%;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background: oklch(0.165 0.017 285);
+  color: oklch(0.965 0.004 286);
+  -webkit-font-smoothing: antialiased;
+}
+* { scrollbar-width: thin; scrollbar-color: oklch(0.295 0.016 286) transparent; }
+
+/* === COLOR TOKENS === */
+:root {
+  --bg:          oklch(0.165 0.017 285);
+  --surface:     oklch(0.202 0.019 286);
+  --surface-2:   oklch(0.242 0.021 287);
+  --surface-3:   oklch(0.285 0.022 287);
+  --fg:          oklch(0.965 0.004 286);
+  --muted:       oklch(0.68 0.016 286);
+  --quiet:       oklch(0.55 0.015 286);
+  --border:      oklch(0.295 0.016 286);
+  --border-s:    oklch(0.4 0.018 286);
+  --hairline:    oklch(0.255 0.014 286);
+  --iris:        oklch(0.66 0.19 290);
+  --iris-soft:   oklch(0.74 0.135 290);
+  --iris-dim:    oklch(0.28 0.06 290);
+  --gold:        oklch(0.82 0.14 85);
+  --gold-dim:    oklch(0.3 0.05 85);
+  --up:          oklch(0.78 0.16 160);
+  --up-dim:      oklch(0.24 0.06 160);
+  --down:        oklch(0.7 0.17 18);
+  --down-dim:    oklch(0.25 0.06 18);
+  /* stage colors */
+  --c-queued:    oklch(0.55 0.015 286);
+  --c-queue-d:   oklch(0.22 0.01 286);
+  --c-back:      oklch(0.65 0.14 230);
+  --c-back-d:    oklch(0.22 0.05 230);
+  --c-gate:      oklch(0.7 0.18 290);
+  --c-gate-d:    oklch(0.22 0.06 290);
+  --c-paper:     oklch(0.72 0.18 260);
+  --c-paper-d:   oklch(0.22 0.06 260);
+  --c-live:      oklch(0.82 0.14 85);
+  --c-live-d:    oklch(0.28 0.05 85);
+  --c-killed:    oklch(0.68 0.15 18);
+  --c-killed-d:  oklch(0.22 0.05 18);
+}
+
+/* === LAYOUT === */
+#app { display: flex; flex-direction: column; min-height: 100vh; }
+nav {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in oklab, var(--bg) 85%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--hairline);
+  display: flex; align-items: center; gap: 0; padding: 0 1.25rem;
+  height: 52px;
+}
+.nav-brand {
+  font-weight: 700; font-size: 15px; letter-spacing: -0.02em;
+  color: var(--fg); margin-right: 2rem;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.nav-brand-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--iris);
+  box-shadow: 0 0 10px var(--iris);
+  flex-shrink: 0;
+}
+.nav-links { display: flex; align-items: center; gap: 0.25rem; flex: 1; }
+.nav-link {
+  padding: 0.35rem 0.75rem; border-radius: 6px;
+  color: var(--muted); text-decoration: none; font-size: 13.5px;
+  transition: color 0.15s, background 0.15s;
+  cursor: pointer; user-select: none;
+}
+.nav-link:hover { color: var(--fg); background: var(--surface-2); }
+.nav-link.active { color: var(--fg); background: var(--surface-2); }
+.nav-actions { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
+.main { flex: 1; padding: 1.5rem 1.5rem 3rem; max-width: 1200px; width: 100%; margin: 0 auto; }
+
+/* === TYPOGRAPHY === */
+h1 { font-size: 1.375rem; font-weight: 700; letter-spacing: -0.025em; }
+h2 { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.015em; }
+h3 { font-size: 0.9rem; font-weight: 600; }
+.mono { font-family: "SF Mono", ui-monospace, Menlo, monospace; }
+.up   { color: var(--up); }
+.down { color: var(--down); }
+.muted { color: var(--muted); }
+.quiet { color: var(--quiet); }
+
+/* === CARDS + SURFACES === */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  box-shadow: 0 1px 0 0 rgba(255,255,255,0.04) inset, 0 18px 40px -32px rgba(0,0,0,0.9);
+}
+.card-2 {
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+}
+
+/* === BUTTONS === */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  padding: 0.4rem 0.9rem; border-radius: 7px; border: 1px solid transparent;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: all 0.15s; user-select: none;
+}
+.btn-primary {
+  background: var(--iris); color: #fff; border-color: var(--iris);
+}
+.btn-primary:hover { filter: brightness(1.12); }
+.btn-ghost {
+  background: transparent; color: var(--muted); border-color: var(--border);
+}
+.btn-ghost:hover { background: var(--surface-2); color: var(--fg); border-color: var(--border-s); }
+.btn-danger {
+  background: var(--down-dim); color: var(--down); border-color: color-mix(in oklab, var(--down) 30%, transparent);
+}
+.btn-danger:hover { background: color-mix(in oklab, var(--down) 20%, transparent); }
+.btn-sm { padding: 0.25rem 0.6rem; font-size: 12px; }
+.btn-gold {
+  background: var(--gold-dim); color: var(--gold); border-color: color-mix(in oklab, var(--gold) 30%, transparent);
+}
+.btn-gold:hover { background: color-mix(in oklab, var(--gold) 20%, transparent); }
+.btn-danger-solid { background: var(--down); color: #fff; border-color: var(--down); }
+.btn-danger-solid:hover { filter: brightness(1.1); }
+
+/* === CHIPS / BADGES === */
+.chip {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.2rem 0.55rem; border-radius: 999px;
+  font-size: 11.5px; font-weight: 500; cursor: pointer;
+  border: 1px solid transparent; transition: all 0.15s;
+  user-select: none;
+}
+.chip-default { background: var(--surface-2); color: var(--muted); border-color: var(--hairline); }
+.chip-default:hover { color: var(--fg); border-color: var(--border); }
+.chip-active-all    { background: color-mix(in oklab, var(--fg) 10%, transparent); color: var(--fg); border-color: var(--border-s); }
+.chip-active-live   { background: var(--gold-dim); color: var(--gold); border-color: color-mix(in oklab,var(--gold) 35%, transparent); }
+.chip-active-paper  { background: var(--c-paper-d); color: var(--c-paper); border-color: color-mix(in oklab,var(--c-paper) 35%, transparent); }
+.chip-active-gate   { background: var(--iris-dim); color: var(--iris-soft); border-color: color-mix(in oklab,var(--iris) 35%, transparent); }
+.chip-active-killed { background: var(--c-killed-d); color: var(--c-killed); border-color: color-mix(in oklab,var(--c-killed) 35%, transparent); }
+.chip-active-queued { background: var(--c-queue-d); color: var(--c-queued); border-color: color-mix(in oklab,var(--c-queued) 30%, transparent); }
+
+/* === STATS STRIP === */
+.stats-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 1rem;
+  padding: 0.55rem 1rem; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--hairline);
+  font-size: 12.5px; color: var(--muted);
+  margin-bottom: 1rem;
+}
+.stats-strip .sep { color: var(--hairline); margin: 0 0.1rem; }
+.stats-strip b { color: var(--fg); font-weight: 500; }
+
+/* === FUNNEL === */
+.funnel-wrap {
+  padding: 1.5rem 1rem 0.75rem;
+  margin-bottom: 1rem;
+  position: relative;
+}
+.funnel-svg-container {
+  display: flex; justify-content: center;
+  overflow-x: auto;
+}
+
+/* === FILTER CHIPS ROW === */
+.chips-row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; align-items: center; }
+
+/* === VIEW TOGGLE === */
+.view-toggle {
+  display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden;
+}
+.view-toggle-btn {
+  padding: 0.3rem 0.7rem; background: transparent; color: var(--quiet);
+  border: none; cursor: pointer; transition: all 0.15s; font-size: 12px;
+  display: flex; align-items: center; gap: 0.3rem;
+}
+.view-toggle-btn.active { background: var(--surface-2); color: var(--fg); }
+
+/* === TABLE === */
+.strat-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.strat-table th {
+  padding: 0.5rem 0.75rem; text-align: left; font-weight: 500;
+  color: var(--quiet); font-size: 11.5px; letter-spacing: 0.03em; text-transform: uppercase;
+  border-bottom: 1px solid var(--hairline);
+}
+.strat-table td {
+  padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--hairline);
+  vertical-align: middle;
+}
+.strat-table tr { transition: background 0.12s; cursor: pointer; }
+.strat-table tr:hover td { background: var(--surface-2); }
+.strat-table tr:last-child td { border-bottom: none; }
+.strat-name { font-weight: 500; color: var(--fg); }
+.strat-id { font-size: 11px; color: var(--quiet); margin-top: 1px; font-family: "SF Mono", ui-monospace, Menlo, monospace; }
+
+/* === STAGE BADGE === */
+.stage-badge {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.15rem 0.5rem; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.stage-live    { background: var(--c-live-d); color: var(--c-live); }
+.stage-paper   { background: var(--c-paper-d); color: var(--c-paper); }
+.stage-gate    { background: var(--iris-dim); color: var(--iris-soft); }
+.stage-back    { background: var(--c-back-d); color: var(--c-back); }
+.stage-queued  { background: var(--c-queue-d); color: var(--c-queued); }
+.stage-killed  { background: var(--c-killed-d); color: var(--c-killed); }
+
+/* === LIFECYCLE TIMELINE === */
+.lc-timeline {
+  display: flex; align-items: center; gap: 2px;
+}
+.lc-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--surface-3); flex-shrink: 0;
+}
+.lc-dot.filled { background: var(--iris); }
+.lc-dot.live-dot { background: var(--c-live); box-shadow: 0 0 6px var(--c-live); }
+.lc-dot.killed-dot { background: var(--c-killed); }
+.lc-dot.gate-check {
+  border-radius: 3px; width: 10px; height: 10px;
+  font-size: 7px; display: flex; align-items: center; justify-content: center;
+  color: #fff;
+}
+.lc-dot.gate-pass { background: var(--iris); }
+.lc-dot.gate-fail { background: var(--c-killed); }
+.lc-line {
+  width: 16px; height: 2px; background: var(--surface-3); flex-shrink: 0; border-radius: 1px;
+}
+.lc-line.filled { background: var(--iris); }
+
+/* === CARD GRID === */
+.card-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem;
+}
+.strat-card {
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: 12px; padding: 1rem;
+  cursor: pointer; transition: all 0.15s;
+  position: relative; overflow: hidden;
+  box-shadow: 0 1px 0 0 rgba(255,255,255,0.04) inset, 0 18px 40px -32px rgba(0,0,0,0.9);
+}
+.strat-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  border-radius: 12px 12px 0 0;
+}
+.strat-card.live-card::before  { background: var(--c-live); box-shadow: 0 0 12px var(--c-live); }
+.strat-card.paper-card::before { background: var(--c-paper); }
+.strat-card.gate-card::before  { background: var(--iris); }
+.strat-card.back-card::before  { background: var(--c-back); }
+.strat-card.killed-card::before{ background: var(--c-killed); }
+.strat-card.queued-card::before{ background: var(--c-queued); }
+.strat-card:hover { background: var(--surface-2); border-color: var(--border); transform: translateY(-1px); }
+.card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; }
+.card-body { font-size: 12.5px; color: var(--muted); margin-bottom: 0.6rem; }
+.card-footer { display: flex; align-items: center; justify-content: space-between; }
+
+/* === SPARKLINE === */
+.sparkline { display: block; }
+
+/* === SECTION HEADER === */
+.section-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+.section-title { font-size: 1rem; font-weight: 600; letter-spacing: -0.015em; }
+
+/* === DETAIL VIEW === */
+.detail-header { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; margin-bottom: 1.5rem; }
+.detail-title-block { flex: 1; min-width: 260px; }
+.detail-thesis { font-size: 13px; color: var(--muted); margin-top: 0.35rem; max-width: 560px; }
+.detail-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.detail-section { margin-bottom: 1.5rem; }
+.detail-section-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--quiet); margin-bottom: 0.6rem;
+}
+.gate-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.gate-chip {
+  display: inline-flex; flex-direction: column; gap: 0.1rem;
+  padding: 0.5rem 0.75rem; background: var(--surface-2);
+  border: 1px solid var(--hairline); border-radius: 10px;
+  min-width: 130px; cursor: default;
+  position: relative;
+}
+.gate-chip:hover .gate-chip-tip { display: block; }
+.gate-chip-val { font-size: 15px; font-weight: 600; font-family: "SF Mono", ui-monospace, Menlo, monospace; }
+.gate-chip-label { font-size: 11px; color: var(--quiet); }
+.gate-chip-tip {
+  display: none; position: absolute; bottom: calc(100% + 6px); left: 0;
+  background: var(--surface-3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0.5rem 0.65rem;
+  font-size: 11.5px; color: var(--muted); max-width: 240px;
+  z-index: 30; white-space: normal; line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  pointer-events: none;
+}
+.blocks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; }
+.block-item {
+  background: var(--surface-2); border: 1px solid var(--hairline);
+  border-radius: 8px; padding: 0.6rem 0.75rem;
+}
+.block-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--quiet); margin-bottom: 0.2rem; }
+.block-val { font-size: 12.5px; color: var(--fg); }
+
+/* === TRADES TABLE === */
+.trades-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.trades-table th {
+  padding: 0.4rem 0.6rem; text-align: right; color: var(--quiet);
+  font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--hairline);
+}
+.trades-table th:first-child { text-align: left; }
+.trades-table td {
+  padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--hairline);
+  text-align: right; font-family: "SF Mono", ui-monospace, Menlo, monospace;
+}
+.trades-table td:first-child { text-align: left; font-family: inherit; }
+.trades-table tr:last-child td { border-bottom: none; }
+
+/* === ACTIVITY TIMELINE === */
+.activity-list { display: flex; flex-direction: column; gap: 0; }
+.activity-item {
+  display: flex; gap: 0.75rem; align-items: flex-start;
+  padding: 0.5rem 0;
+  border-left: 1px solid var(--hairline);
+  padding-left: 1rem; margin-left: 0.5rem;
+  position: relative;
+}
+.activity-item::before {
+  content: ''; position: absolute; left: -4.5px; top: 11px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--surface-3); border: 1.5px solid var(--border);
+}
+.activity-item.active::before { background: var(--iris); border-color: var(--iris); box-shadow: 0 0 6px var(--iris); }
+.activity-item.success::before { background: var(--up); border-color: var(--up); }
+.activity-item.danger::before { background: var(--c-killed); border-color: var(--c-killed); }
+.activity-date { font-size: 11.5px; color: var(--quiet); white-space: nowrap; }
+.activity-text { font-size: 13px; }
+
+/* === DASHBOARD === */
+.mode-toggle-wrap { display: flex; justify-content: center; margin-bottom: 1.5rem; }
+.mode-toggle {
+  display: flex; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 3px; gap: 2px;
+}
+.mode-toggle-btn {
+  padding: 0.45rem 1.5rem; border-radius: 7px; cursor: pointer;
+  font-size: 13.5px; font-weight: 600; border: none;
+  transition: all 0.18s; color: var(--quiet);
+  display: flex; align-items: center; gap: 0.5rem;
+}
+.mode-toggle-btn.active-live {
+  background: var(--c-live-d); color: var(--c-live);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--c-live) 30%, transparent);
+}
+.mode-toggle-btn.active-paper {
+  background: var(--c-paper-d); color: var(--c-paper);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--c-paper) 30%, transparent);
+}
+.mode-toggle-btn:not(.active-live):not(.active-paper):hover { color: var(--fg); background: var(--surface-2); }
+.mode-banner {
+  padding: 0.5rem 1rem; border-radius: 8px; margin-bottom: 1rem;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.02em; text-align: center;
+  text-transform: uppercase;
+}
+.mode-banner-live { background: var(--c-live-d); color: var(--c-live); border: 1px solid color-mix(in oklab, var(--c-live) 30%, transparent); }
+.mode-banner-paper { background: var(--c-paper-d); color: var(--c-paper); border: 1px solid color-mix(in oklab, var(--c-paper) 30%, transparent); }
+.pos-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pos-table th {
+  padding: 0.45rem 0.75rem; text-align: left; color: var(--quiet);
+  font-size: 11.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--hairline);
+}
+.pos-table td { padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--hairline); }
+.pos-table tr:last-child td { border-bottom: none; }
+.gauge-wrap { margin-bottom: 1rem; }
+.gauge-track {
+  height: 8px; background: var(--surface-2); border-radius: 999px;
+  overflow: hidden; margin-top: 4px;
+}
+.gauge-fill {
+  height: 100%; border-radius: 999px;
+  transition: width 0.3s;
+}
+.gauge-live { background: linear-gradient(90deg, var(--c-live), color-mix(in oklab, var(--c-live) 70%, var(--down))); }
+.gauge-warn { background: var(--down); }
+
+/* === PAPER TRACK CARD === */
+.track-card {
+  background: var(--surface-2); border: 1px solid var(--hairline);
+  border-radius: 10px; padding: 0.85rem 1rem;
+  display: flex; align-items: center; gap: 1rem;
+}
+.track-name { font-weight: 500; flex: 1; }
+.track-meta { font-size: 12px; color: var(--muted); }
+.lr-badge {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0.15rem 0.45rem; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+  background: color-mix(in oklab, var(--iris) 15%, transparent);
+  color: var(--iris-soft);
+  border: 1px solid color-mix(in oklab, var(--iris) 25%, transparent);
+}
+
+/* === COSTS PAGE === */
+.opex-verdict {
+  padding: 0.75rem 1rem; border-radius: 10px;
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.opex-ok { background: var(--up-dim); border: 1px solid color-mix(in oklab, var(--up) 25%, transparent); color: var(--up); }
+.cost-bar-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.6rem; }
+.cost-bar-label { font-size: 12.5px; color: var(--muted); min-width: 130px; }
+.cost-bar-track { flex: 1; height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.cost-bar-fill { height: 100%; border-radius: 999px; background: var(--iris); }
+.cost-bar-val { font-size: 12.5px; color: var(--fg); text-align: right; min-width: 55px; font-family: "SF Mono", ui-monospace, Menlo, monospace; }
+
+/* === DATA FEED === */
+.feed-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.4rem 0; border-bottom: 1px solid var(--hairline);
+  font-size: 12.5px;
+}
+.feed-item:last-child { border-bottom: none; }
+.feed-key { color: var(--muted); }
+.feed-source { font-size: 11px; color: var(--quiet); }
+
+/* === MODAL === */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100; backdrop-filter: blur(4px);
+}
+.modal-overlay.hidden { display: none; }
+.modal-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 1.5rem; max-width: 440px; width: 90%;
+  box-shadow: 0 32px 64px rgba(0,0,0,0.8);
+}
+.modal-title { font-size: 15px; font-weight: 700; margin-bottom: 0.5rem; color: var(--down); }
+.modal-body { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 1.25rem; }
+.modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+.modal-confirm-1 { padding: 0.45rem 1rem; font-size: 13px; }
+.modal-confirm-2 { padding: 0.45rem 1rem; font-size: 13px; animation: pulse-danger 1s ease infinite; }
+@keyframes pulse-danger { 0%,100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--down) 40%, transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
+
+/* === TOAST === */
+.toast-container { position: fixed; bottom: 2.5rem; left: 50%; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 0.4rem; pointer-events: none; }
+.toast {
+  background: var(--surface-3); border: 1px solid var(--border);
+  border-radius: 9px; padding: 0.5rem 1rem; font-size: 13px; color: var(--fg);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  animation: toast-in 0.2s ease, toast-out 0.3s ease 2.7s forwards;
+  pointer-events: none;
+}
+@keyframes toast-in { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+@keyframes toast-out { to { opacity:0; transform: translateY(-6px); } }
+
+/* === MOCKUP BADGE === */
+.mockup-badge {
+  position: fixed; bottom: 1rem; left: 1rem; z-index: 300;
+  background: var(--surface-3); border: 1px solid var(--border);
+  border-radius: 999px; padding: 0.25rem 0.7rem;
+  font-size: 11px; color: var(--quiet); pointer-events: none;
+  letter-spacing: 0.03em;
+}
+
+/* === COMMANDS PAGE === */
+.cmd-stub { padding: 2rem; text-align: center; color: var(--quiet); }
+
+/* === BACK LINK === */
+.back-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  font-size: 13px; color: var(--muted); cursor: pointer;
+  margin-bottom: 1rem; padding: 0.25rem 0;
+  border: none; background: none;
+  transition: color 0.15s;
+}
+.back-btn:hover { color: var(--fg); }
+
+/* === DIVIDER === */
+.divider { height: 1px; background: var(--hairline); margin: 1.25rem 0; }
+
+/* === RESPONSIVE === */
+@media (max-width: 640px) {
+  .main { padding: 1rem 0.75rem 3rem; }
+  nav { padding: 0 0.75rem; }
+  .nav-brand span { display: none; }
+  .nav-link { padding: 0.35rem 0.5rem; font-size: 12.5px; }
+  .funnel-svg-container svg { transform: scale(0.75); transform-origin: top center; }
+  .card-grid { grid-template-columns: 1fr; }
+  .mode-toggle-btn { padding: 0.45rem 1rem; font-size: 12.5px; }
+  .detail-header { flex-direction: column; }
+}
+
+/* === HIDDEN === */
+.hidden { display: none !important; }
+.page { display: none; }
+.page.active { display: block; }
+
+/* === LIVE PULSE DOT === */
+.live-pulse {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--c-live);
+  box-shadow: 0 0 0 0 color-mix(in oklab, var(--c-live) 50%, transparent);
+  animation: live-anim 2s ease-out infinite;
+  display: inline-block;
+}
+@keyframes live-anim {
+  0%   { box-shadow: 0 0 0 0 color-mix(in oklab, var(--c-live) 70%, transparent); }
+  70%  { box-shadow: 0 0 0 5px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* === EQUITY CURVE SVG === */
+.equity-svg-wrap {
+  background: var(--surface-2); border: 1px solid var(--hairline);
+  border-radius: 10px; padding: 0.75rem;
+  overflow: hidden;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- NAV -->
+  <nav>
+    <div class="nav-brand">
+      <div class="nav-brand-dot"></div>
+      <span>Cosmu</span>
+    </div>
+    <div class="nav-links">
+      <a class="nav-link" onclick="route('strategies')">Strategies</a>
+      <a class="nav-link" onclick="route('dashboard')">Dashboard</a>
+      <a class="nav-link" onclick="route('costs')">Costs</a>
+      <a class="nav-link" onclick="route('commands')">Commands</a>
+    </div>
+  </nav>
+
+  <!-- STRATEGIES PAGE -->
+  <div id="page-strategies" class="page main">
+    <!-- Stats strip -->
+    <div class="stats-strip">
+      <span>Paper invested <b>$18,392</b></span>
+      <span class="sep">·</span>
+      <span>Paper P&amp;L <b class="up">+$1,392 (+9.27%)</b></span>
+      <span class="sep">·</span>
+      <span>Live total <b>$9,000</b></span>
+      <span class="sep">·</span>
+      <span>Free <b>$7,300</b></span>
+      <span class="sep">·</span>
+      <span>Invested <b>$1,700</b></span>
+      <span class="sep">·</span>
+      <span>Live P&amp;L <b class="up">+$419 (+21%)</b></span>
+      <button class="btn btn-danger btn-sm" style="margin-left:auto" onclick="openLiquidateModal()">⚠ Liquidate all</button>
+    </div>
+
+    <!-- FUNNEL -->
+    <div class="card funnel-wrap" style="margin-bottom:1rem">
+      <div style="text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:0.07em;color:var(--quiet);margin-bottom:0.75rem">Strategy Pipeline</div>
+      <div class="funnel-svg-container">
+        <svg id="funnel-svg" viewBox="0 0 780 200" width="780" height="200" style="overflow:visible">
+          <!-- Queued -->
+          <g class="funnel-stage" data-stage="queued" style="cursor:pointer" onclick="funnelClick('queued')">
+            <rect id="fs-queued" x="10" y="30" width="120" height="80" rx="10"
+              fill="oklch(0.22 0.01 286)" stroke="oklch(0.40 0.015 286)" stroke-width="1.5"/>
+            <text x="70" y="62" text-anchor="middle" fill="oklch(0.55 0.015 286)" font-size="11" font-weight="600" text-transform="uppercase" letter-spacing="0.06em">QUEUED</text>
+            <text x="70" y="82" text-anchor="middle" fill="oklch(0.965 0.004 286)" font-size="26" font-weight="700">1</text>
+            <text x="70" y="98" text-anchor="middle" fill="oklch(0.55 0.015 286)" font-size="10">strategy</text>
+          </g>
+          <!-- Arrow -->
+          <path d="M 135 70 L 165 70" stroke="oklch(0.40 0.016 286)" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+          <!-- Backtesting -->
+          <g class="funnel-stage" data-stage="backtesting" style="cursor:pointer" onclick="funnelClick('backtesting')">
+            <rect id="fs-backtesting" x="170" y="20" width="130" height="100" rx="10"
+              fill="oklch(0.22 0.05 230)" stroke="oklch(0.45 0.12 230)" stroke-width="1.5"/>
+            <text x="235" y="54" text-anchor="middle" fill="oklch(0.65 0.14 230)" font-size="11" font-weight="600">BACKTESTING</text>
+            <text x="235" y="76" text-anchor="middle" fill="oklch(0.965 0.004 286)" font-size="26" font-weight="700">2</text>
+            <text x="235" y="92" text-anchor="middle" fill="oklch(0.65 0.14 230)" font-size="10">in cohort</text>
+          </g>
+          <!-- Arrow -->
+          <path d="M 305 70 L 335 70" stroke="oklch(0.40 0.016 286)" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+          <!-- Gate checkpoint -->
+          <g class="funnel-stage" data-stage="gate" style="cursor:pointer" onclick="funnelClick('gate')">
+            <rect id="fs-gate" x="340" y="10" width="110" height="120" rx="10"
+              fill="oklch(0.22 0.06 290)" stroke="oklch(0.50 0.16 290)" stroke-width="2"/>
+            <text x="395" y="44" text-anchor="middle" fill="oklch(0.74 0.135 290)" font-size="11" font-weight="600">GATE ✓</text>
+            <text x="395" y="68" text-anchor="middle" fill="oklch(0.965 0.004 286)" font-size="26" font-weight="700">1</text>
+            <text x="395" y="84" text-anchor="middle" fill="oklch(0.74 0.135 290)" font-size="10">awaiting</text>
+            <text x="395" y="112" text-anchor="middle" fill="oklch(0.68 0.15 18)" font-size="10">3 killed here</text>
+            <!-- Kill drops -->
+            <circle cx="360" cy="155" r="7" fill="oklch(0.22 0.05 18)" stroke="oklch(0.55 0.12 18)" stroke-width="1.2">
+              <title>Killed: FDR control (ORB Breakout SOL 4h)</title>
+            </circle>
+            <circle cx="380" cy="162" r="7" fill="oklch(0.22 0.05 18)" stroke="oklch(0.55 0.12 18)" stroke-width="1.2">
+              <title>Killed: PBO 0.61 (Wikipedia Pageviews Z-Score BTC)</title>
+            </circle>
+            <circle cx="400" cy="155" r="7" fill="oklch(0.22 0.05 18)" stroke="oklch(0.55 0.12 18)" stroke-width="1.2">
+              <title>Killed: Holdout fail (Reddit Volume Spike DOGE)</title>
+            </circle>
+            <path d="M 370 135 L 360 148" stroke="oklch(0.55 0.12 18)" stroke-width="1" stroke-dasharray="3,2"/>
+            <path d="M 390 132 L 380 155" stroke="oklch(0.55 0.12 18)" stroke-width="1" stroke-dasharray="3,2"/>
+            <path d="M 408 135 L 400 148" stroke="oklch(0.55 0.12 18)" stroke-width="1" stroke-dasharray="3,2"/>
+            <text x="380" y="182" text-anchor="middle" fill="oklch(0.55 0.12 18)" font-size="9.5">killed (3)</text>
+          </g>
+          <!-- Arrow -->
+          <path d="M 455 70 L 485 70" stroke="oklch(0.40 0.016 286)" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+          <!-- Paper -->
+          <g class="funnel-stage" data-stage="paper" style="cursor:pointer" onclick="funnelClick('paper')">
+            <rect id="fs-paper" x="490" y="20" width="130" height="100" rx="10"
+              fill="oklch(0.22 0.06 260)" stroke="oklch(0.48 0.15 260)" stroke-width="1.5"/>
+            <text x="555" y="54" text-anchor="middle" fill="oklch(0.72 0.18 260)" font-size="11" font-weight="600">PAPER</text>
+            <text x="555" y="76" text-anchor="middle" fill="oklch(0.965 0.004 286)" font-size="26" font-weight="700">4</text>
+            <text x="555" y="92" text-anchor="middle" fill="oklch(0.72 0.18 260)" font-size="10">live tracks</text>
+          </g>
+          <!-- Arrow -->
+          <path d="M 625 70 L 655 70" stroke="oklch(0.40 0.016 286)" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+
+          <!-- Live -->
+          <g class="funnel-stage" data-stage="live" style="cursor:pointer" onclick="funnelClick('live')">
+            <rect id="fs-live" x="660" y="30" width="110" height="80" rx="10"
+              fill="oklch(0.28 0.05 85)" stroke="oklch(0.65 0.13 85)" stroke-width="2"/>
+            <!-- glow -->
+            <rect x="660" y="30" width="110" height="80" rx="10"
+              fill="none" stroke="oklch(0.82 0.14 85)" stroke-width="0.5" opacity="0.5"/>
+            <text x="715" y="62" text-anchor="middle" fill="oklch(0.82 0.14 85)" font-size="11" font-weight="700">LIVE</text>
+            <text x="715" y="82" text-anchor="middle" fill="oklch(0.965 0.004 286)" font-size="26" font-weight="700">1</text>
+            <text x="715" y="98" text-anchor="middle" fill="oklch(0.82 0.14 85)" font-size="10">real money</text>
+          </g>
+
+          <!-- Arrowhead marker -->
+          <defs>
+            <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+              <path d="M 0 0 L 8 3 L 0 6 Z" fill="oklch(0.40 0.016 286)"/>
+            </marker>
+          </defs>
+        </svg>
+      </div>
+      <div style="font-size:11px;color:var(--quiet);text-align:center;margin-top:0.5rem">Click a stage to filter · Hover kill drops for reasons</div>
+    </div>
+
+    <!-- Chips + view toggle row -->
+    <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:1rem">
+      <div class="chips-row" style="margin-bottom:0;flex:1;flex-wrap:wrap">
+        <span class="chip chip-active-all" data-filter="all" onclick="setFilter('all')">All <span style="margin-left:2px;opacity:0.7">12</span></span>
+        <span class="chip chip-default" data-filter="live" onclick="setFilter('live')"><span class="live-pulse" style="width:5px;height:5px"></span>Live 1</span>
+        <span class="chip chip-default" data-filter="paper" onclick="setFilter('paper')">Paper 4</span>
+        <span class="chip chip-default" data-filter="gate" onclick="setFilter('gate')">Gate ✓ 1</span>
+        <span class="chip chip-default" data-filter="killed" onclick="setFilter('killed')">Killed 3</span>
+        <span class="chip chip-default" data-filter="queued" onclick="setFilter('queued')">Queued 1</span>
+      </div>
+      <div class="view-toggle">
+        <button class="view-toggle-btn active" id="vt-table" onclick="setView('table')">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="2" width="12" height="1.5" rx="0.75" fill="currentColor"/><rect x="1" y="6" width="12" height="1.5" rx="0.75" fill="currentColor"/><rect x="1" y="10" width="12" height="1.5" rx="0.75" fill="currentColor"/></svg>
+          Table
+        </button>
+        <button class="view-toggle-btn" id="vt-cards" onclick="setView('cards')">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor"/><rect x="7.5" y="1" width="5.5" height="5.5" rx="1.5" fill="currentColor"/><rect x="1" y="7.5" width="5.5" height="5.5" rx="1.5" fill="currentColor"/><rect x="7.5" y="7.5" width="5.5" height="5.5" rx="1.5" fill="currentColor"/></svg>
+          Cards
+        </button>
+      </div>
+    </div>
+
+    <!-- Table view -->
+    <div id="strat-table-wrap" class="card" style="overflow:hidden">
+      <table class="strat-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Stage</th>
+            <th>Lifecycle</th>
+            <th style="text-align:right">P&amp;L</th>
+            <th style="text-align:right">Days</th>
+            <th>Gate</th>
+          </tr>
+        </thead>
+        <tbody id="strat-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Card grid view -->
+    <div id="strat-grid-wrap" class="hidden card-grid" id="strat-grid"></div>
+  </div>
+
+  <!-- STRATEGY DETAIL PAGE -->
+  <div id="page-strategy" class="page main">
+    <button class="back-btn" onclick="route('strategies')">← Back to Strategies</button>
+    <div id="strategy-detail"></div>
+  </div>
+
+  <!-- DASHBOARD PAGE -->
+  <div id="page-dashboard" class="page main">
+    <div class="mode-toggle-wrap">
+      <div class="mode-toggle">
+        <button id="dash-paper-btn" class="mode-toggle-btn active-paper" onclick="setDashMode('paper')">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="2" width="10" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2"/></svg>
+          Paper
+        </button>
+        <button id="dash-live-btn" class="mode-toggle-btn" onclick="setDashMode('live')">
+          <span class="live-pulse" style="width:6px;height:6px"></span>
+          Live
+        </button>
+      </div>
+    </div>
+
+    <!-- Paper Dashboard -->
+    <div id="dash-paper">
+      <div class="mode-banner mode-banner-paper">SIMULATED — No Real Money · Paper Forward Test</div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.75rem;margin-bottom:1.25rem">
+        <div class="card-2" style="padding:0.9rem 1rem">
+          <div class="detail-section-label">Tracks Running</div>
+          <div style="font-size:1.5rem;font-weight:700">4</div>
+        </div>
+        <div class="card-2" style="padding:0.9rem 1rem">
+          <div class="detail-section-label">Sim Capital</div>
+          <div style="font-size:1.5rem;font-weight:700">$18,392</div>
+        </div>
+        <div class="card-2" style="padding:0.9rem 1rem">
+          <div class="detail-section-label">Aggregate P&amp;L</div>
+          <div style="font-size:1.5rem;font-weight:700" class="up">+$1,392</div>
+          <div class="mono up" style="font-size:11.5px">+9.27%</div>
+        </div>
+        <div class="card-2" style="padding:0.9rem 1rem">
+          <div class="detail-section-label">Live-Ready</div>
+          <div style="font-size:1.5rem;font-weight:700">2</div>
+          <div style="font-size:11.5px;color:var(--muted)">≥30 days</div>
+        </div>
+      </div>
+
+      <div class="detail-section-label" style="margin-bottom:0.6rem">Aggregate Equity Curve (Paper)</div>
+      <div class="equity-svg-wrap" style="margin-bottom:1.25rem">
+        <svg viewBox="0 0 600 120" width="100%" height="120" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="pg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="oklch(0.72 0.18 260)" stop-opacity="0.25"/>
+              <stop offset="100%" stop-color="oklch(0.72 0.18 260)" stop-opacity="0.0"/>
+            </linearGradient>
+          </defs>
+          <path d="M0,100 C30,98 60,92 100,88 C140,84 170,80 200,72 C230,64 260,55 290,50 C320,45 350,42 380,38 C410,34 440,30 480,22 C510,16 540,12 600,8" fill="url(#pg)"/>
+          <path d="M0,100 C30,98 60,92 100,88 C140,84 170,80 200,72 C230,64 260,55 290,50 C320,45 350,42 380,38 C410,34 440,30 480,22 C510,16 540,12 600,8" fill="none" stroke="oklch(0.72 0.18 260)" stroke-width="2"/>
+        </svg>
+      </div>
+
+      <div class="detail-section-label" style="margin-bottom:0.6rem">Per-Track Cards</div>
+      <div style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1.25rem" id="paper-tracks"></div>
+
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="showToast('All paper tracks paused (simulated)')">⏸ Pause all paper</button>
+      </div>
+    </div>
+
+    <!-- Live Dashboard -->
+    <div id="dash-live" class="hidden">
+      <div class="mode-banner mode-banner-live">⚡ REAL MONEY — Live Trading Armed</div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.75rem;margin-bottom:1.25rem">
+        <div class="card-2" style="padding:0.9rem 1rem">
+          <div class="detail-section-label">Positions</div>
+          <div style="font-size:1.5rem;font-weight:700">1</div>
+        </div>
+        <div class="card-2" style="padding:0.9rem 1rem">
+          <div class="detail-section-label">Total Capital</div>
+          <div style="font-size:1.5rem;font-weight:700">$9,000</div>
+        </div>
+        <div class="card-2" style="padding:0.9rem 1rem">
+          <div class="detail-section-label">Invested</div>
+          <div style="font-size:1.5rem;font-weight:700">$1,700</div>
+        </div>
+        <div class="card-2" style="padding:0.9rem 1rem">
+          <div class="detail-section-label">Live P&amp;L</div>
+          <div style="font-size:1.5rem;font-weight:700" class="up">+$419</div>
+          <div class="mono up" style="font-size:11.5px">+21%</div>
+        </div>
+      </div>
+
+      <!-- Gauges -->
+      <div class="card" style="padding:1rem;margin-bottom:1.25rem">
+        <div class="gauge-wrap">
+          <div style="display:flex;justify-content:space-between;font-size:12px">
+            <span class="muted">Capital utilisation</span>
+            <span class="mono">$1,700 / $9,000 — 18.9%</span>
+          </div>
+          <div class="gauge-track"><div class="gauge-fill gauge-live" style="width:18.9%"></div></div>
+        </div>
+        <div class="gauge-wrap" style="margin-bottom:0">
+          <div style="display:flex;justify-content:space-between;font-size:12px">
+            <span class="muted">Daily loss limit</span>
+            <span class="mono">$0 / $450 limit — 0%</span>
+          </div>
+          <div class="gauge-track"><div class="gauge-fill gauge-live" style="width:1%"></div></div>
+        </div>
+      </div>
+
+      <!-- Positions table -->
+      <div class="card" style="overflow:hidden;margin-bottom:1.25rem">
+        <div style="padding:0.75rem 1rem;border-bottom:1px solid var(--hairline);display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px;font-weight:600">Open Positions</span>
+        </div>
+        <table class="pos-table">
+          <thead>
+            <tr>
+              <th>Strategy</th>
+              <th>Asset</th>
+              <th>Size</th>
+              <th>Entry</th>
+              <th>P&amp;L</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span style="font-weight:500">Funding Carry BTC</span></td>
+              <td><span class="chip stage-live" style="font-size:11px">BTC</span></td>
+              <td><span class="mono">$1,700</span></td>
+              <td><span class="mono">$61,204</span></td>
+              <td><span class="mono up">+$419 (+21%)</span></td>
+              <td><button class="btn btn-ghost btn-sm" onclick="showToast('Close order sent (simulated)')">Close</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn btn-danger" onclick="openLiquidateModal()">⚠ Liquidate all</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- COSTS PAGE -->
+  <div id="page-costs" class="page main">
+    <h1 style="margin-bottom:1.25rem">Costs</h1>
+
+    <div class="opex-verdict opex-ok" style="margin-bottom:1.25rem">
+      <div>
+        <div style="font-weight:700;font-size:14px">Opex vs Equity — Sustainable</div>
+        <div style="font-size:12.5px;margin-top:2px;color:var(--up)">Running cost is 0.41% of total equity per month</div>
+      </div>
+      <span class="chip" style="background:var(--up-dim);color:var(--up);border-color:color-mix(in oklab,var(--up) 30%,transparent)">✓ Below 1% threshold</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:1.25rem">
+      <div class="card" style="padding:1rem">
+        <div class="detail-section-label">Monthly Total</div>
+        <div style="font-size:1.75rem;font-weight:700;letter-spacing:-0.025em">$37.20</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">↓ $4.10 vs last month</div>
+      </div>
+      <div class="card" style="padding:1rem">
+        <div class="detail-section-label">LLM Spend (MTD)</div>
+        <div style="font-size:1.75rem;font-weight:700;letter-spacing:-0.025em">$8.40</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">Strategy ideation + gate reviews</div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:1rem;margin-bottom:1.25rem">
+      <div class="detail-section-label" style="margin-bottom:0.75rem">Category Breakdown</div>
+      <div class="cost-bar-row"><span class="cost-bar-label">LLM (Anthropic)</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:46%;background:var(--iris)"></div></div><span class="cost-bar-val">$8.40</span></div>
+      <div class="cost-bar-row"><span class="cost-bar-label">Railway Infra</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:28%;background:var(--c-back)"></div></div><span class="cost-bar-val">$5.00</span></div>
+      <div class="cost-bar-row"><span class="cost-bar-label">Vercel (web)</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:5%;background:var(--muted)"></div></div><span class="cost-bar-val">$0.00</span></div>
+      <div class="cost-bar-row"><span class="cost-bar-label">Data feeds</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:22%;background:var(--gold)"></div></div><span class="cost-bar-val">$23.80</span></div>
+      <div class="cost-bar-row"><span class="cost-bar-label">Exchange fees</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:0%;"></div></div><span class="cost-bar-val mono" style="color:var(--quiet)">net P&amp;L</span></div>
+    </div>
+
+    <div class="card" style="padding:1rem">
+      <div class="detail-section-label" style="margin-bottom:0.6rem">LLM Spend — Rolling 6 Months</div>
+      <svg viewBox="0 0 520 60" width="100%" height="60" preserveAspectRatio="none">
+        <rect x="10" y="35" width="60" height="20" rx="3" fill="var(--iris-dim)"/>
+        <rect x="95" y="28" width="60" height="27" rx="3" fill="var(--iris-dim)"/>
+        <rect x="180" y="32" width="60" height="23" rx="3" fill="var(--iris-dim)"/>
+        <rect x="265" y="22" width="60" height="33" rx="3" fill="var(--iris-dim)"/>
+        <rect x="350" y="30" width="60" height="25" rx="3" fill="var(--iris-dim)"/>
+        <rect x="435" y="36" width="60" height="19" rx="3" fill="var(--iris)" opacity="0.6"/>
+        <text x="40"  y="58" text-anchor="middle" fill="var(--quiet)" font-size="9.5">Jan</text>
+        <text x="125" y="58" text-anchor="middle" fill="var(--quiet)" font-size="9.5">Feb</text>
+        <text x="210" y="58" text-anchor="middle" fill="var(--quiet)" font-size="9.5">Mar</text>
+        <text x="295" y="58" text-anchor="middle" fill="var(--quiet)" font-size="9.5">Apr</text>
+        <text x="380" y="58" text-anchor="middle" fill="var(--quiet)" font-size="9.5">May</text>
+        <text x="465" y="58" text-anchor="middle" fill="var(--iris-soft)" font-size="9.5" font-weight="600">Jun</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- COMMANDS PAGE -->
+  <div id="page-commands" class="page main">
+    <h1 style="margin-bottom:1rem">Commands</h1>
+    <div class="card cmd-stub">
+      <div style="font-size:2rem;margin-bottom:0.5rem;opacity:0.3">⌘</div>
+      <div style="font-size:14px;color:var(--muted)">Engine command interface — run backtests, force gate re-runs, trigger data ingest.</div>
+      <div style="font-size:12px;color:var(--quiet);margin-top:0.5rem">CLI passthrough — available in the next iteration.</div>
+    </div>
+  </div>
+</div>
+
+<!-- LIQUIDATE MODAL -->
+<div class="modal-overlay hidden" id="liquidate-modal" onclick="if(event.target===this)closeLiquidateModal()">
+  <div class="modal-box">
+    <div class="modal-title">⚠ Liquidate All Live Positions</div>
+    <div class="modal-body" id="liq-modal-body">
+      Sell all live positions to USDC and disarm live trading.<br><br>
+      <strong style="color:var(--down)">$1,700 across 1 strategy will be market-sold.</strong><br><br>
+      Paper tracks are not affected.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost modal-confirm-1" onclick="closeLiquidateModal()">Cancel</button>
+      <button class="btn btn-danger modal-confirm-1" id="liq-confirm-btn" onclick="liquidateStep()">Liquidate — confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- MOCKUP BADGE -->
+<div class="mockup-badge">MOCKUP · synthetic data</div>
+
+<script>
+// ==================== DATA ====================
+const STRATEGIES = [
+  {
+    id: 'funding-carry-btc',
+    name: 'Funding Carry BTC',
+    stage: 'live',
+    pnl: '+$419',
+    pnlPct: '+21%',
+    pnlDir: 'up',
+    days: 47,
+    gatePass: true,
+    dsr: '1.12',
+    pbo: '0.31',
+    thesis: 'Collect BTC perpetual funding when rate persistently negative; hedge delta; capture premium net of fees.',
+    sparkData: [100,102,101,103,105,107,106,109,111,110,112,114,113,116,118,120,119,121,124],
+    liveReady: true,
+  },
+  {
+    id: 'xsect-momentum-top5',
+    name: 'Cross-Sectional Momentum Top-5',
+    stage: 'paper',
+    pnl: '+$741',
+    pnlPct: '+4.1%',
+    pnlDir: 'up',
+    days: 33,
+    gatePass: true,
+    dsr: '0.98',
+    pbo: '0.38',
+    thesis: 'Long top-5 crypto by 30d returns, rebalance weekly. Simple cross-sectional momentum with size cap.',
+    sparkData: [100,100.5,101,101.5,102,103,102.5,103.5,104,103.8,104.5,105,104.8,105.5,106,106.5,106.8,107.2,104.1],
+    liveReady: true,
+  },
+  {
+    id: 'gtaa-monthly',
+    name: 'GTAA Monthly Rotation',
+    stage: 'paper',
+    pnl: '+$533',
+    pnlPct: '+2.9%',
+    pnlDir: 'up',
+    days: 41,
+    gatePass: true,
+    dsr: '0.91',
+    pbo: '0.34',
+    thesis: 'Global Tactical Asset Allocation with monthly rebalance across BTC, ETH, stables, SOL.',
+    sparkData: [100,100.3,100.8,100.6,101,101.5,101.2,101.8,102,101.8,102.3,102.7,102.5,102.9,103.1,102.8,103.2,103.5,102.9],
+    liveReady: true,
+  },
+  {
+    id: 'fg-contrarian-eth',
+    name: 'Fear & Greed Contrarian ETH',
+    stage: 'paper',
+    pnl: '−$147',
+    pnlPct: '−0.8%',
+    pnlDir: 'down',
+    days: 12,
+    gatePass: true,
+    dsr: '0.85',
+    pbo: '0.40',
+    thesis: 'Enter ETH long when F&G < 25 (extreme fear); exit on recovery above 50 or 10d time stop.',
+    sparkData: [100,99.8,99.5,99.2,99.6,99.3,99.1,99.4,99.2,98.9,99.1,99.2,99.4,99.2,98.9,99.0,99.1,99.2,99.2],
+    liveReady: false,
+  },
+  {
+    id: 'stablecoin-lead-eth',
+    name: 'Stablecoin Flows Lead ETH',
+    stage: 'paper',
+    pnl: '+$220',
+    pnlPct: '+1.2%',
+    pnlDir: 'up',
+    days: 8,
+    gatePass: true,
+    dsr: '1.02',
+    pbo: '0.36',
+    thesis: 'Net stablecoin inflows to exchanges predict 48h ETH upside; mean-reversion exit.',
+    sparkData: [100,100.2,100.5,100.3,100.7,101,101.2,101.1,101.4,101.2,101.5,101.8,101.6,101.9,102,101.8,102.1,102.3,101.2],
+    liveReady: false,
+  },
+  {
+    id: 'vol-regime-btc',
+    name: 'Vol-Regime Switch BTC',
+    stage: 'gate',
+    pnl: '—',
+    pnlPct: '—',
+    pnlDir: null,
+    days: null,
+    gatePass: true,
+    dsr: '1.21',
+    pbo: '0.28',
+    thesis: 'Switch between trend-follow and mean-revert on BTC based on realised vol regime.',
+    sparkData: null,
+    liveReady: false,
+  },
+  {
+    id: 'orb-sol-4h',
+    name: 'ORB Breakout SOL 4h',
+    stage: 'killed',
+    killReason: 'Failed FDR control — too many variants tested',
+    killDate: '2026-05-28',
+    killStage: 'gate',
+    pnl: '—',
+    pnlPct: '—',
+    pnlDir: null,
+    days: null,
+    gatePass: false,
+    sparkData: null,
+  },
+  {
+    id: 'wiki-zscore-btc',
+    name: 'Wikipedia Pageviews Z-Score BTC',
+    stage: 'killed',
+    killReason: 'PBO 0.61 — backtest likely overfit',
+    killDate: '2026-05-20',
+    killStage: 'gate',
+    pnl: '—',
+    pnlPct: '—',
+    pnlDir: null,
+    days: null,
+    gatePass: false,
+    sparkData: null,
+  },
+  {
+    id: 'reddit-spike-doge',
+    name: 'Reddit Volume Spike DOGE',
+    stage: 'killed',
+    killReason: 'Out-of-sample holdout failure',
+    killDate: '2026-06-01',
+    killStage: 'gate',
+    pnl: '—',
+    pnlPct: '—',
+    pnlDir: null,
+    days: null,
+    gatePass: false,
+    sparkData: null,
+  },
+  {
+    id: 'pm-riskon-overlay',
+    name: 'Polymarket Risk-On Overlay',
+    stage: 'backtesting',
+    pnl: '—',
+    pnlPct: '—',
+    pnlDir: null,
+    days: null,
+    gatePass: null,
+    sparkData: null,
+  },
+  {
+    id: 'fvg-btc-1h',
+    name: 'FVG Retrace BTC 1h',
+    stage: 'queued',
+    pnl: '—',
+    pnlPct: '—',
+    pnlDir: null,
+    days: null,
+    gatePass: null,
+    sparkData: null,
+  },
+  {
+    id: 'ma-trend-eth-1d',
+    name: 'MA Trend Filter ETH 1d',
+    stage: 'backtesting',
+    pnl: '—',
+    pnlPct: '—',
+    pnlDir: null,
+    days: null,
+    gatePass: null,
+    sparkData: null,
+  },
+];
+
+// ==================== STATE ====================
+let currentFilter = 'all';
+let currentView = 'table';
+let dashMode = 'paper';
+let liqStep = 0;
+
+// ==================== ROUTER ====================
+function route(page, stratId) {
+  // set all pages inactive
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+
+  if (page === 'strategies') {
+    document.getElementById('page-strategies').classList.add('active');
+    document.querySelectorAll('.nav-link')[0].classList.add('active');
+    window.location.hash = '#/strategies';
+  } else if (page === 'strategy' && stratId) {
+    document.getElementById('page-strategy').classList.add('active');
+    renderDetail(stratId);
+    window.location.hash = '#/strategy/' + stratId;
+  } else if (page === 'dashboard') {
+    document.getElementById('page-dashboard').classList.add('active');
+    document.querySelectorAll('.nav-link')[1].classList.add('active');
+    window.location.hash = '#/dashboard';
+  } else if (page === 'paper') {
+    document.getElementById('page-dashboard').classList.add('active');
+    document.querySelectorAll('.nav-link')[1].classList.add('active');
+    setDashMode('paper');
+    window.location.hash = '#/paper';
+  } else if (page === 'live') {
+    document.getElementById('page-dashboard').classList.add('active');
+    document.querySelectorAll('.nav-link')[1].classList.add('active');
+    setDashMode('live');
+    window.location.hash = '#/live';
+  } else if (page === 'costs') {
+    document.getElementById('page-costs').classList.add('active');
+    document.querySelectorAll('.nav-link')[2].classList.add('active');
+    window.location.hash = '#/costs';
+  } else if (page === 'commands') {
+    document.getElementById('page-commands').classList.add('active');
+    document.querySelectorAll('.nav-link')[3].classList.add('active');
+    window.location.hash = '#/commands';
+  } else {
+    // default
+    document.getElementById('page-strategies').classList.add('active');
+    document.querySelectorAll('.nav-link')[0].classList.add('active');
+  }
+}
+
+window.addEventListener('hashchange', handleHash);
+function handleHash() {
+  const h = window.location.hash;
+  if (!h || h === '#/' || h === '#/strategies') route('strategies');
+  else if (h.startsWith('#/strategy/')) route('strategy', h.slice(11));
+  else if (h === '#/dashboard') route('dashboard');
+  else if (h === '#/paper') route('paper');
+  else if (h === '#/live') route('live');
+  else if (h === '#/costs') route('costs');
+  else if (h === '#/commands') route('commands');
+}
+
+// ==================== FILTER ====================
+function setFilter(f) {
+  currentFilter = f;
+  // update chip styles
+  document.querySelectorAll('.chip[data-filter]').forEach(c => {
+    const cf = c.dataset.filter;
+    c.className = 'chip';
+    if (cf === f) {
+      const map = {all:'chip-active-all',live:'chip-active-live',paper:'chip-active-paper',gate:'chip-active-gate',killed:'chip-active-killed',queued:'chip-active-queued'};
+      c.classList.add(map[cf] || 'chip-active-all');
+    } else {
+      c.classList.add('chip-default');
+    }
+  });
+  // also update funnel active state
+  document.querySelectorAll('.funnel-stage rect:first-child').forEach(r => {
+    r.style.filter = '';
+  });
+  if (f !== 'all') {
+    const funnelMap = {live:'live',paper:'paper',gate:'gate',killed:'gate',queued:'queued',backtesting:'backtesting'};
+    const targetId = 'fs-' + (funnelMap[f] || f);
+    const el = document.getElementById(targetId);
+    if (el) el.style.filter = 'brightness(1.4) drop-shadow(0 0 8px currentColor)';
+  }
+  renderList();
+}
+
+// ==================== FUNNEL CLICK ====================
+function funnelClick(stage) {
+  // map funnel stage to filter
+  const map = {queued:'queued',backtesting:'backtesting',gate:'gate',paper:'paper',live:'live'};
+  const f = map[stage] || 'all';
+  // if already filtered to this, clear
+  if (currentFilter === f) setFilter('all');
+  else setFilter(f);
+
+  // glow effect on clicked stage
+  document.querySelectorAll('[id^="fs-"]').forEach(el => { el.style.filter=''; el.style.strokeWidth='1.5'; });
+  if (currentFilter !== 'all') {
+    const el = document.getElementById('fs-'+stage);
+    if (el) { el.style.filter='brightness(1.5)'; el.style.strokeWidth='2.5'; }
+  }
+}
+
+// ==================== VIEW TOGGLE ====================
+function setView(v) {
+  currentView = v;
+  document.getElementById('vt-table').classList.toggle('active', v === 'table');
+  document.getElementById('vt-cards').classList.toggle('active', v === 'cards');
+  document.getElementById('strat-table-wrap').classList.toggle('hidden', v !== 'table');
+  document.getElementById('strat-grid-wrap').classList.toggle('hidden', v !== 'cards');
+  renderList();
+}
+
+// ==================== LIFECYCLE TIMELINE HTML ====================
+function lcTimeline(strat) {
+  const stages = ['queued','backtesting','gate','paper','live'];
+  const stageIdx = {queued:0,backtesting:1,gate:2,paper:3,live:4,killed:99};
+  const curIdx = stageIdx[strat.stage] ?? 99;
+  let html = '<div class="lc-timeline">';
+  stages.forEach((s,i) => {
+    const filled = curIdx >= i && strat.stage !== 'killed';
+    const killed = strat.stage === 'killed' && strat.killStage === s;
+    if (i > 0) html += `<div class="lc-line ${filled && !killed ? 'filled' : ''}"></div>`;
+    if (s === 'gate') {
+      if (strat.stage === 'killed' && strat.killStage === 'gate') {
+        html += '<div class="lc-dot gate-check gate-fail" title="Gate ✗">✗</div>';
+      } else if (curIdx >= 2) {
+        html += '<div class="lc-dot gate-check gate-pass" title="Gate ✓">✓</div>';
+      } else {
+        html += '<div class="lc-dot gate-check" style="background:var(--surface-3)" title="Gate pending">·</div>';
+      }
+    } else {
+      const cls = s === 'live' && strat.stage === 'live' ? 'live-dot' :
+                  strat.stage === 'killed' && stageIdx[strat.killStage] === i ? 'killed-dot' :
+                  filled ? 'filled' : '';
+      html += `<div class="lc-dot ${cls}" title="${s}"></div>`;
+    }
+  });
+  html += '</div>';
+  return html;
+}
+
+// ==================== STAGE BADGE ====================
+function stageBadge(strat) {
+  if (strat.stage === 'live') return `<span class="stage-badge stage-live"><span class="live-pulse" style="width:5px;height:5px"></span>Live</span>`;
+  if (strat.stage === 'paper') {
+    const lr = strat.liveReady ? ' <span class="lr-badge">live-ready</span>' : '';
+    return `<span class="stage-badge stage-paper">Paper</span>${lr}`;
+  }
+  if (strat.stage === 'gate') return `<span class="stage-badge stage-gate">Gate ✓</span>`;
+  if (strat.stage === 'backtesting') return `<span class="stage-badge stage-back">Backtesting</span>`;
+  if (strat.stage === 'queued') return `<span class="stage-badge stage-queued">Queued</span>`;
+  if (strat.stage === 'killed') return `<span class="stage-badge stage-killed">Killed</span>`;
+  return '';
+}
+
+// ==================== SPARKLINE SVG ====================
+function sparklineSVG(data, color) {
+  if (!data || !data.length) return '<svg width="80" height="30" viewBox="0 0 80 30"><text x="40" y="18" text-anchor="middle" fill="oklch(0.4 0.01 286)" font-size="9">—</text></svg>';
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data.map((v,i) => {
+    const x = (i / (data.length - 1)) * 78 + 1;
+    const y = 28 - ((v - min) / range) * 26;
+    return `${x},${y}`;
+  }).join(' ');
+  const last = data[data.length-1], first = data[0];
+  const c = last >= first ? 'oklch(0.78 0.16 160)' : 'oklch(0.7 0.17 18)';
+  const fillPts = `1,28 ${pts} 79,28`;
+  return `<svg class="sparkline" width="80" height="30" viewBox="0 0 80 30">
+    <defs><linearGradient id="sg${Math.random().toString(36).slice(2)}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${c}" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="${c}" stop-opacity="0"/>
+    </linearGradient></defs>
+    <polyline points="${pts}" fill="none" stroke="${c}" stroke-width="1.5" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+// ==================== FILTER STRATEGIES ====================
+function filteredStrategies() {
+  if (currentFilter === 'all') return STRATEGIES;
+  if (currentFilter === 'live') return STRATEGIES.filter(s => s.stage === 'live');
+  if (currentFilter === 'paper') return STRATEGIES.filter(s => s.stage === 'paper');
+  if (currentFilter === 'gate') return STRATEGIES.filter(s => s.stage === 'gate');
+  if (currentFilter === 'killed') return STRATEGIES.filter(s => s.stage === 'killed');
+  if (currentFilter === 'queued') return STRATEGIES.filter(s => s.stage === 'queued');
+  if (currentFilter === 'backtesting') return STRATEGIES.filter(s => s.stage === 'backtesting');
+  return STRATEGIES;
+}
+
+// ==================== RENDER LIST ====================
+function renderList() {
+  const data = filteredStrategies();
+  if (currentView === 'table') {
+    renderTable(data);
+  } else {
+    renderCards(data);
+  }
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById('strat-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = data.map(s => {
+    const pnlHtml = s.pnlDir === 'up' ? `<span class="mono up">${s.pnl} (${s.pnlPct})</span>` :
+                    s.pnlDir === 'down' ? `<span class="mono down">${s.pnl} (${s.pnlPct})</span>` :
+                    `<span class="mono quiet">—</span>`;
+    const gateHtml = s.gatePass === true ? `<span style="color:var(--iris-soft);font-size:12px">✓ DSR ${s.dsr} PBO ${s.pbo}</span>` :
+                     s.gatePass === false ? `<span style="color:var(--c-killed);font-size:12px">✗ ${s.killReason||''}</span>` :
+                     `<span class="quiet" style="font-size:12px">—</span>`;
+    const daysHtml = s.days ? `<span class="mono">${s.days}d</span>` : `<span class="quiet">—</span>`;
+    return `<tr onclick="route('strategy','${s.id}')">
+      <td>
+        <div class="strat-name">${s.name}</div>
+        <div class="strat-id">${s.id}</div>
+      </td>
+      <td>${stageBadge(s)}</td>
+      <td>${lcTimeline(s)}</td>
+      <td style="text-align:right">${pnlHtml}</td>
+      <td style="text-align:right">${daysHtml}</td>
+      <td>${gateHtml}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderCards(data) {
+  const grid = document.getElementById('strat-grid-wrap');
+  if (!grid) return;
+  grid.innerHTML = data.map(s => {
+    const cardClass = s.stage === 'live' ? 'live-card' : s.stage === 'paper' ? 'paper-card' :
+      s.stage === 'gate' ? 'gate-card' : s.stage === 'backtesting' ? 'back-card' :
+      s.stage === 'killed' ? 'killed-card' : 'queued-card';
+    const pnlHtml = s.pnlDir === 'up' ? `<span class="mono up">${s.pnl} (${s.pnlPct})</span>` :
+                    s.pnlDir === 'down' ? `<span class="mono down">${s.pnl} (${s.pnlPct})</span>` :
+                    `<span class="mono quiet">—</span>`;
+    return `<div class="strat-card ${cardClass}" onclick="route('strategy','${s.id}')">
+      <div class="card-header">
+        <div>
+          <div style="font-weight:600;font-size:13.5px;margin-bottom:3px">${s.name}</div>
+          ${stageBadge(s)}
+        </div>
+        ${sparklineSVG(s.sparkData)}
+      </div>
+      <div class="card-body">${s.thesis || (s.stage==='killed' ? `Killed: ${s.killReason}` : '—')}</div>
+      <div class="card-footer">
+        ${lcTimeline(s)}
+        <div style="text-align:right">${pnlHtml}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ==================== DETAIL VIEW ====================
+function renderDetail(id) {
+  const s = STRATEGIES.find(x => x.id === id);
+  const el = document.getElementById('strategy-detail');
+  if (!s) { el.innerHTML = '<div class="quiet">Strategy not found.</div>'; return; }
+
+  const isFullDetail = id === 'funding-carry-btc';
+
+  let html = '';
+
+  // Header
+  html += `<div class="detail-header">
+    <div class="detail-title-block">
+      <h1>${s.name}</h1>
+      <div style="margin:0.35rem 0 0.5rem">${stageBadge(s)} ${s.liveReady ? '<span class="lr-badge" style="margin-left:4px">live-ready</span>' : ''}</div>
+      <div style="margin-bottom:0.4rem">${lcTimeline(s)}</div>
+      <div class="detail-thesis">${s.thesis || '—'}</div>
+    </div>
+    <div class="detail-actions">`;
+
+  if (s.gatePass && s.stage !== 'live' && s.stage !== 'killed') {
+    html += `<button class="btn btn-gold" onclick="showToast('Launch live — confirm dialog would appear here')">⚡ Launch live</button>`;
+  }
+  if (s.stage === 'live') {
+    html += `<button class="btn btn-danger btn-sm" onclick="openLiquidateModal()">⚠ Liquidate</button>`;
+  }
+  html += `</div></div>`;
+
+  if (isFullDetail) {
+    // Equity curve
+    html += `<div class="detail-section">
+      <div class="detail-section-label">Equity Curve — Gross vs Net of Fees</div>
+      <div class="equity-svg-wrap">
+        <svg viewBox="0 0 600 140" width="100%" height="140" style="display:block">
+          <defs>
+            <linearGradient id="eg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="oklch(0.78 0.16 160)" stop-opacity="0.2"/>
+              <stop offset="100%" stop-color="oklch(0.78 0.16 160)" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <!-- Grid lines -->
+          <line x1="0" y1="110" x2="600" y2="110" stroke="oklch(0.255 0.014 286)" stroke-width="0.5"/>
+          <line x1="0" y1="80" x2="600" y2="80" stroke="oklch(0.255 0.014 286)" stroke-width="0.5"/>
+          <line x1="0" y1="50" x2="600" y2="50" stroke="oklch(0.255 0.014 286)" stroke-width="0.5"/>
+          <!-- Labels -->
+          <text x="5" y="113" fill="oklch(0.45 0.012 286)" font-size="9">$100k</text>
+          <text x="5" y="83" fill="oklch(0.45 0.012 286)" font-size="9">$105k</text>
+          <text x="5" y="53" fill="oklch(0.45 0.012 286)" font-size="9">$110k</text>
+          <!-- Gross curve (fill) -->
+          <path d="M40,110 C80,108 110,104 150,100 C190,96 220,92 260,86 C300,80 330,74 370,66 C410,58 440,50 480,42 C510,36 540,30 580,22 L580,125 L40,125 Z" fill="url(#eg)" opacity="0.6"/>
+          <!-- Gross line -->
+          <path d="M40,110 C80,108 110,104 150,100 C190,96 220,92 260,86 C300,80 330,74 370,66 C410,58 440,50 480,42 C510,36 540,30 580,22" fill="none" stroke="oklch(0.78 0.16 160)" stroke-width="2" stroke-linejoin="round"/>
+          <!-- Net line (slightly below) -->
+          <path d="M40,110 C80,109 110,106 150,103 C190,100 220,97 260,93 C300,89 330,84 370,77 C410,70 440,63 480,55 C510,49 540,43 580,35" fill="none" stroke="oklch(0.78 0.16 160)" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.6"/>
+          <!-- Entry markers -->
+          <circle cx="150" cy="100" r="4" fill="oklch(0.72 0.18 260)" stroke="var(--bg)" stroke-width="1.5"/>
+          <circle cx="260" cy="86" r="4" fill="oklch(0.72 0.18 260)" stroke="var(--bg)" stroke-width="1.5"/>
+          <circle cx="370" cy="66" r="4" fill="oklch(0.7 0.17 18)" stroke="var(--bg)" stroke-width="1.5"/>
+          <circle cx="480" cy="42" r="4" fill="oklch(0.72 0.18 260)" stroke="var(--bg)" stroke-width="1.5"/>
+          <circle cx="580" cy="22" r="4" fill="oklch(0.7 0.17 18)" stroke="var(--bg)" stroke-width="1.5"/>
+          <!-- Tooltips via title -->
+          <circle cx="150" cy="100" r="4" fill="transparent"><title>Entry · 2026-01-15 · $61,204</title></circle>
+          <circle cx="260" cy="86" r="4" fill="transparent"><title>Entry · 2026-02-20 · $63,100</title></circle>
+          <circle cx="370" cy="66" r="4" fill="transparent"><title>Exit · 2026-03-28 · $65,800</title></circle>
+          <circle cx="480" cy="42" r="4" fill="transparent"><title>Entry · 2026-04-30 · $67,200</title></circle>
+          <circle cx="580" cy="22" r="4" fill="transparent"><title>Exit · 2026-06-01 · $68,900</title></circle>
+          <!-- Legend -->
+          <line x1="40" y1="130" x2="60" y2="130" stroke="oklch(0.78 0.16 160)" stroke-width="2"/>
+          <text x="64" y="133" fill="oklch(0.68 0.016 286)" font-size="9">Gross</text>
+          <line x1="100" y1="130" x2="120" y2="130" stroke="oklch(0.78 0.16 160)" stroke-width="1.5" stroke-dasharray="4,2" opacity="0.7"/>
+          <text x="124" y="133" fill="oklch(0.68 0.016 286)" font-size="9">Net of fees</text>
+          <circle cx="175" cy="130" r="3" fill="oklch(0.72 0.18 260)"/>
+          <text x="181" y="133" fill="oklch(0.68 0.016 286)" font-size="9">Entry</text>
+          <circle cx="210" cy="130" r="3" fill="oklch(0.7 0.17 18)"/>
+          <text x="216" y="133" fill="oklch(0.68 0.016 286)" font-size="9">Exit</text>
+        </svg>
+      </div>
+    </div>`;
+
+    // Gate metrics
+    html += `<div class="detail-section">
+      <div class="detail-section-label">Gate Metrics</div>
+      <div class="gate-chips">
+        <div class="gate-chip">
+          <span class="gate-chip-val" style="color:var(--iris-soft)">1.12</span>
+          <span class="gate-chip-label">Deflated Sharpe (DSR)</span>
+          <div class="gate-chip-tip">Edge after correcting for how many variants were tried during development. DSR > 1.0 required.</div>
+        </div>
+        <div class="gate-chip">
+          <span class="gate-chip-val" style="color:var(--iris-soft)">0.31</span>
+          <span class="gate-chip-label">Prob. Backtest Overfit (PBO)</span>
+          <div class="gate-chip-tip">Probability the backtest is overfit via combinatorial purged cross-validation. Must be below 0.5.</div>
+        </div>
+        <div class="gate-chip">
+          <span class="gate-chip-val" style="color:var(--up)">14%</span>
+          <span class="gate-chip-label">Max Drawdown</span>
+          <div class="gate-chip-tip">Peak-to-trough loss in backtest. Limit is 25%. Strategy comfortably within budget.</div>
+        </div>
+        <div class="gate-chip">
+          <span class="gate-chip-val" style="color:var(--up)">+8.2%</span>
+          <span class="gate-chip-label">OOS Return</span>
+          <div class="gate-chip-tip">Out-of-sample performance: data the strategy never saw during fitting or parameter search.</div>
+        </div>
+        <div class="gate-chip">
+          <span class="gate-chip-val" style="color:var(--up)">47 ✓</span>
+          <span class="gate-chip-label">Trade Count</span>
+          <div class="gate-chip-tip">Number of backtest trades. Minimum 30 required for statistical validity.</div>
+        </div>
+      </div>
+    </div>`;
+
+    // Building blocks
+    html += `<div class="detail-section">
+      <div class="detail-section-label">Building Blocks</div>
+      <div class="blocks-grid">
+        <div class="block-item"><div class="block-label">Signal</div><div class="block-val">funding_rate below fitted threshold</div></div>
+        <div class="block-item"><div class="block-label">Filter</div><div class="block-val">MA-trend (200d SMA)</div></div>
+        <div class="block-item"><div class="block-label">Exit</div><div class="block-val">Stop 4% / Take 12% / Time 14d</div></div>
+        <div class="block-item"><div class="block-label">Sizing</div><div class="block-val">Fixed fraction (Kelly × 0.25)</div></div>
+        <div class="block-item"><div class="block-label">Rebalance</div><div class="block-val">Event-driven on signal flip</div></div>
+        <div class="block-item"><div class="block-label">Universe</div><div class="block-val">BTC perpetual futures (Binance)</div></div>
+      </div>
+      <div style="margin-top:0.6rem;font-size:12px;color:var(--quiet)">Similar strategies share these blocks:
+        <a href="#" onclick="route('strategy','ma-trend-eth-1d');return false;" style="color:var(--iris-soft);text-decoration:none;margin-left:4px">MA Trend Filter ETH 1d</a>
+        <a href="#" onclick="route('strategy','fg-contrarian-eth');return false;" style="color:var(--iris-soft);text-decoration:none;margin-left:8px">Fear &amp; Greed Contrarian ETH</a>
+      </div>
+    </div>`;
+
+    // Data sources + feed
+    html += `<div class="detail-section">
+      <div class="detail-section-label">Data Sources &amp; Latest Information</div>
+      <div class="card-2" style="padding:0.5rem 0.75rem">
+        <div class="feed-item">
+          <div><span class="feed-key">funding_rate</span> <span class="mono" style="color:var(--down)">−0.018%</span></div>
+          <div class="feed-source">2h ago · Binance Futures</div>
+        </div>
+        <div class="feed-item">
+          <div><span class="feed-key">fear_greed</span> <span class="mono">71 (greed)</span></div>
+          <div class="feed-source">5h ago · Alternative.me</div>
+        </div>
+        <div class="feed-item">
+          <div><span class="feed-key">BTC 1d close</span> <span class="mono">$68,941</span></div>
+          <div class="feed-source">8h ago · Binance spot</div>
+        </div>
+        <div class="feed-item">
+          <div><span class="feed-key">BTC 200d SMA</span> <span class="mono">$54,203</span> <span class="up" style="font-size:11px">above — trend up</span></div>
+          <div class="feed-source">8h ago · derived</div>
+        </div>
+      </div>
+    </div>`;
+
+    // Recent trades
+    html += `<div class="detail-section">
+      <div class="detail-section-label">Recent Trades</div>
+      <div class="card" style="overflow:hidden">
+        <table class="trades-table">
+          <thead><tr>
+            <th>Date</th><th style="text-align:right">Side</th><th style="text-align:right">Qty (BTC)</th>
+            <th style="text-align:right">Price</th><th style="text-align:right">Fee</th><th style="text-align:right">P&amp;L</th>
+          </tr></thead>
+          <tbody>
+            <tr><td>2026-06-01</td><td style="text-align:right"><span class="chip" style="background:var(--up-dim);color:var(--up);font-size:10px;padding:0.1rem 0.35rem">BUY</span></td><td>0.024</td><td>$68,120</td><td>$1.63</td><td class="up">—</td></tr>
+            <tr><td>2026-05-18</td><td style="text-align:right"><span class="chip" style="background:var(--down-dim);color:var(--down);font-size:10px;padding:0.1rem 0.35rem">SELL</span></td><td>0.024</td><td>$66,800</td><td>$1.60</td><td class="up">+$31.68</td></tr>
+            <tr><td>2026-05-04</td><td style="text-align:right"><span class="chip" style="background:var(--up-dim);color:var(--up);font-size:10px;padding:0.1rem 0.35rem">BUY</span></td><td>0.025</td><td>$65,540</td><td>$1.64</td><td>—</td></tr>
+            <tr><td>2026-04-22</td><td style="text-align:right"><span class="chip" style="background:var(--down-dim);color:var(--down);font-size:10px;padding:0.1rem 0.35rem">SELL</span></td><td>0.026</td><td>$64,100</td><td>$1.67</td><td class="up">+$48.10</td></tr>
+            <tr><td>2026-04-08</td><td style="text-align:right"><span class="chip" style="background:var(--up-dim);color:var(--up);font-size:10px;padding:0.1rem 0.35rem">BUY</span></td><td>0.026</td><td>$62,250</td><td>$1.62</td><td>—</td></tr>
+            <tr><td>2026-03-28</td><td style="text-align:right"><span class="chip" style="background:var(--down-dim);color:var(--down);font-size:10px;padding:0.1rem 0.35rem">SELL</span></td><td>0.027</td><td>$61,800</td><td>$1.67</td><td class="up">+$40.50</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+    // Activity timeline
+    html += `<div class="detail-section">
+      <div class="detail-section-label">Activity Timeline</div>
+      <div class="activity-list">
+        <div class="activity-item active"><span class="activity-date">2026-06-10</span><span class="activity-text">Running live · day 1 · Position open $1,700</span></div>
+        <div class="activity-item success"><span class="activity-date">2026-06-09</span><span class="activity-text">Launched live · operator approved · armed on Binance spot</span></div>
+        <div class="activity-item success"><span class="activity-date">2026-05-01</span><span class="activity-text">Paper day 41 · live-ready badge awarded (≥30 days)</span></div>
+        <div class="activity-item success"><span class="activity-date">2026-04-01</span><span class="activity-text">Paper tracking started · $100k simulated capital</span></div>
+        <div class="activity-item success"><span class="activity-date">2026-03-31</span><span class="activity-text">Gate ✓ passed · DSR 1.12 · PBO 0.31 · OOS +8.2%</span></div>
+        <div class="activity-item"><span class="activity-date">2026-03-28</span><span class="activity-text">Backtest completed · 47 trades · max DD 14%</span></div>
+        <div class="activity-item"><span class="activity-date">2026-03-20</span><span class="activity-text">Created by LLM proposal · entered backtest cohort</span></div>
+      </div>
+    </div>`;
+
+  } else {
+    // Minimal detail for other strategies
+    if (s.gatePass === true) {
+      html += `<div class="detail-section">
+        <div class="detail-section-label">Gate Metrics</div>
+        <div class="gate-chips">
+          <div class="gate-chip"><span class="gate-chip-val" style="color:var(--iris-soft)">${s.dsr}</span><span class="gate-chip-label">Deflated Sharpe</span></div>
+          <div class="gate-chip"><span class="gate-chip-val" style="color:var(--iris-soft)">${s.pbo}</span><span class="gate-chip-label">PBO</span></div>
+        </div>
+      </div>`;
+    }
+    if (s.stage === 'killed') {
+      html += `<div class="detail-section card-2" style="padding:0.75rem 1rem">
+        <div class="detail-section-label">Kill Reason</div>
+        <div style="color:var(--c-killed)">${s.killReason}</div>
+        <div style="font-size:12px;color:var(--quiet);margin-top:4px">Killed at ${s.killStage} · ${s.killDate}</div>
+      </div>`;
+    }
+    html += `<div class="card-2" style="padding:1.5rem;text-align:center;color:var(--quiet);font-size:13px">Full detail view available for funding-carry-btc. Other strategies show header + gate metrics only in this mockup.</div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+// ==================== DASHBOARD MODE ====================
+function setDashMode(mode) {
+  dashMode = mode;
+  const paperBtn = document.getElementById('dash-paper-btn');
+  const liveBtn = document.getElementById('dash-live-btn');
+  const paperDiv = document.getElementById('dash-paper');
+  const liveDiv = document.getElementById('dash-live');
+  if (mode === 'paper') {
+    paperBtn.className = 'mode-toggle-btn active-paper';
+    liveBtn.className = 'mode-toggle-btn';
+    paperDiv.classList.remove('hidden');
+    liveDiv.classList.add('hidden');
+  } else {
+    paperBtn.className = 'mode-toggle-btn';
+    liveBtn.className = 'mode-toggle-btn active-live';
+    paperDiv.classList.add('hidden');
+    liveDiv.classList.remove('hidden');
+  }
+}
+
+// ==================== LIQUIDATE MODAL ====================
+function openLiquidateModal() {
+  liqStep = 0;
+  const btn = document.getElementById('liq-confirm-btn');
+  btn.textContent = 'Liquidate — confirm';
+  btn.className = 'btn btn-danger modal-confirm-1';
+  document.getElementById('liquidate-modal').classList.remove('hidden');
+}
+
+function closeLiquidateModal() {
+  liqStep = 0;
+  document.getElementById('liquidate-modal').classList.add('hidden');
+}
+
+function liquidateStep() {
+  liqStep++;
+  const btn = document.getElementById('liq-confirm-btn');
+  if (liqStep === 1) {
+    btn.textContent = '⚠ Yes, sell all — final confirm';
+    btn.className = 'btn btn-danger-solid modal-confirm-2';
+  } else {
+    closeLiquidateModal();
+    showToast('All live positions liquidated (simulated). Live trading disarmed.');
+  }
+}
+
+// ==================== TOAST ====================
+function showToast(msg) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = msg;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3100);
+}
+
+// ==================== PAPER TRACKS ====================
+function renderPaperTracks() {
+  const tracks = STRATEGIES.filter(s => s.stage === 'paper' || s.stage === 'live');
+  const el = document.getElementById('paper-tracks');
+  if (!el) return;
+  el.innerHTML = tracks.map(s => {
+    const pnlHtml = s.pnlDir === 'up' ? `<span class="mono up">${s.pnl} (${s.pnlPct})</span>` :
+                    s.pnlDir === 'down' ? `<span class="mono down">${s.pnl} (${s.pnlPct})</span>` : `—`;
+    const lr = s.liveReady ? '<span class="lr-badge" style="margin-left:8px">live-ready</span>' : '';
+    return `<div class="track-card">
+      <div>
+        <div class="track-name">${s.name}${lr}</div>
+        <div class="track-meta">${s.days ? s.days + ' days' : '—'} paper track</div>
+      </div>
+      <div style="text-align:right">
+        ${pnlHtml}
+        <div style="margin-top:3px">${sparklineSVG(s.sparkData)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ==================== INIT ====================
+function init() {
+  renderList();
+  renderPaperTracks();
+  handleHash();
+  if (!window.location.hash) route('strategies');
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
