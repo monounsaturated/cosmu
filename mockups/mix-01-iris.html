@@ -358,6 +358,21 @@ body.dense .screener-table tbody tr td{height:29px}
 .phase-tbl td.cur-col{background:var(--iris-dim);color:var(--iris-s)}
 .phase-tbl td.up{color:var(--up)} .phase-tbl td.dn{color:var(--down)}
 
+/* phase v2 — single-phase chart + selector + stat boxes */
+.eq-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.phase-sel{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;flex-shrink:0}
+.phase-sel button{background:transparent;border:none;color:var(--quiet);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:3px 9px;cursor:pointer;font-family:inherit;transition:all 140ms}
+.phase-sel button.on{background:var(--iris-dim);color:var(--iris-s)}
+.phase-sel button:not(:last-child){border-right:1px solid var(--border)}
+.pbox-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pbox{border:1px solid var(--border);border-radius:8px;padding:9px 11px}
+.pbox.cur{border-color:var(--iris-mid);background:var(--iris-dim)}
+.pb-name{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet);margin-bottom:6px;display:flex;justify-content:space-between}
+.pbox.cur .pb-name{color:var(--iris-s)}
+.pb-line{display:flex;justify-content:space-between;font-size:11px;padding:2px 0;color:var(--muted)}
+.pb-line b{font-variant-numeric:tabular-nums;color:var(--fg);font-weight:600}
+.pb-line b.up{color:var(--up)}
+
 /* gate chips */
 .gate-chips{display:flex;flex-wrap:wrap;gap:7px}
 .gate-chip{background:var(--surf2);border:1px solid var(--border);border-radius:var(--r-sm);padding:7px 10px;cursor:default;min-width:100px}
@@ -946,57 +961,68 @@ function fundingCarryPanel(){
 </div>
 
 <div class="psec">
-  <div class="psec-title">Equity — all phases</div>
-  <div class="eq-wrap">
-    <div class="eq-legend">
-      <span class="phase-chip bt">Backtest OOS</span>
-      <span class="phase-chip pa">Paper</span>
-      <span class="phase-chip li">Live</span>
-      <span style="margin-left:4px;color:var(--quiet);font-size:9px">· hairlines = phase boundaries</span>
+  <div class="eq-head">
+    <div class="psec-title" style="margin:0" id="eq-title">Equity — Live <span style="color:var(--quiet);font-weight:500">(current · 18d)</span></div>
+    <div class="phase-sel">
+      <button onclick="setPhase('bt',this)">Backtest</button>
+      <button onclick="setPhase('pa',this)">Paper</button>
+      <button class="on" onclick="setPhase('li',this)">Live</button>
     </div>
-    <svg viewBox="0 0 580 100" width="100%" height="100" style="display:block">
-      <defs>
-        <linearGradient id="gbt" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="oklch(0.52 0.013 286)" stop-opacity=".18"/><stop offset="100%" stop-color="oklch(0.52 0.013 286)" stop-opacity="0"/></linearGradient>
-        <linearGradient id="gpap" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="oklch(0.66 0.19 290)" stop-opacity=".22"/><stop offset="100%" stop-color="oklch(0.66 0.19 290)" stop-opacity="0"/></linearGradient>
-        <linearGradient id="gliv" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="oklch(0.70 0.17 18)" stop-opacity=".25"/><stop offset="100%" stop-color="oklch(0.70 0.17 18)" stop-opacity="0"/></linearGradient>
-      </defs>
-      <!-- backtest segment 0–220 -->
-      <path d="M0,72 C20,70 60,66 100,60 C140,54 180,50 220,46 L220,100 L0,100Z" fill="url(#gbt)" opacity=".5"/>
-      <path d="M0,72 C20,70 60,66 100,60 C140,54 180,50 220,46" fill="none" stroke="var(--muted)" stroke-width="1.2" opacity=".5"/>
-      <!-- paper segment 220–440 -->
-      <path d="M220,46 C260,42 310,38 360,32 C400,27 430,24 440,22 L440,100 L220,100Z" fill="url(#gpap)"/>
-      <path d="M220,46 C260,42 310,38 360,32 C400,27 430,24 440,22" fill="none" stroke="var(--iris)" stroke-width="1.4"/>
-      <!-- live segment 440–580 -->
-      <path d="M440,22 C470,18 510,12 580,6 L580,100 L440,100Z" fill="url(#gliv)"/>
-      <path d="M440,22 C470,18 510,12 580,6" fill="none" stroke="var(--down)" stroke-width="1.5"/>
-      <!-- separators -->
-      <line x1="220" y1="0" x2="220" y2="100" stroke="var(--hairline)" stroke-width="1" stroke-dasharray="3,2"/>
-      <line x1="440" y1="0" x2="440" y2="100" stroke="var(--hairline)" stroke-width="1" stroke-dasharray="3,2"/>
-      <!-- date labels -->
+  </div>
+  <div class="eq-wrap">
+    <svg id="eq-bt" viewBox="0 0 580 100" width="100%" height="100" style="display:none">
+      <defs><linearGradient id="g2bt" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="oklch(0.62 0.05 286)" stop-opacity=".2"/><stop offset="100%" stop-color="oklch(0.62 0.05 286)" stop-opacity="0"/></linearGradient></defs>
+      <path d="M0,80 C60,76 120,70 200,58 C300,46 420,34 580,20 L580,100 L0,100Z" fill="url(#g2bt)"/>
+      <path d="M0,80 C60,76 120,70 200,58 C300,46 420,34 580,20" fill="none" stroke="oklch(0.62 0.05 286)" stroke-width="1.4"/>
       <text x="5" y="98" font-size="8" fill="oklch(0.52 0.013 286)">Jan 2025</text>
-      <text x="225" y="98" font-size="8" fill="oklch(0.52 0.013 286)">Nov 2025</text>
-      <text x="445" y="98" font-size="8" fill="oklch(0.52 0.013 286)">May 2026</text>
+      <text x="540" y="98" font-size="8" fill="oklch(0.52 0.013 286)">Nov 2025</text>
+      <text x="5" y="12" font-size="8" fill="oklch(0.52 0.013 286)">OOS · +8.2% · 47 trades</text>
+    </svg>
+    <svg id="eq-pa" viewBox="0 0 580 100" width="100%" height="100" style="display:none">
+      <defs><linearGradient id="g2pa" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="oklch(0.66 0.19 290)" stop-opacity=".22"/><stop offset="100%" stop-color="oklch(0.66 0.19 290)" stop-opacity="0"/></linearGradient></defs>
+      <path d="M0,78 C70,74 140,64 230,56 C340,46 460,32 580,18 L580,100 L0,100Z" fill="url(#g2pa)"/>
+      <path d="M0,78 C70,74 140,64 230,56 C340,46 460,32 580,18" fill="none" stroke="var(--iris)" stroke-width="1.4"/>
+      <text x="5" y="98" font-size="8" fill="oklch(0.52 0.013 286)">Nov 2025</text>
+      <text x="540" y="98" font-size="8" fill="oklch(0.52 0.013 286)">May 2026</text>
+      <text x="5" y="12" font-size="8" fill="oklch(0.52 0.013 286)">47 days · +9.3% · still running</text>
+    </svg>
+    <svg id="eq-li" viewBox="0 0 580 100" width="100%" height="100">
+      <defs><linearGradient id="g2li" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="oklch(0.78 0.16 160)" stop-opacity=".22"/><stop offset="100%" stop-color="oklch(0.78 0.16 160)" stop-opacity="0"/></linearGradient></defs>
+      <path d="M0,82 C80,74 160,62 260,52 C380,40 480,24 580,10 L580,100 L0,100Z" fill="url(#g2li)"/>
+      <path d="M0,82 C80,74 160,62 260,52 C380,40 480,24 580,10" fill="none" stroke="var(--up)" stroke-width="1.6"/>
+      <circle cx="580" cy="10" r="3" fill="var(--up)"/>
+      <text x="5" y="98" font-size="8" fill="oklch(0.52 0.013 286)">May 25 2026</text>
+      <text x="535" y="98" font-size="8" fill="oklch(0.52 0.013 286)">Today</text>
+      <text x="5" y="12" font-size="8" fill="oklch(0.52 0.013 286)">18 days · +21% · $1,700 deployed</text>
     </svg>
   </div>
 </div>
 
 <div class="psec">
-  <div class="psec-title">Phase comparison</div>
-  <table class="phase-tbl">
-    <thead><tr>
-      <th></th>
-      <th>Backtest</th>
-      <th>Paper</th>
-      <th class="cur-col">Live ← current</th>
-    </tr></thead>
-    <tbody>
-      <tr><td>Return</td><td class="up">+8.2%</td><td class="up">+9.3%</td><td class="cur-col up">+21%</td></tr>
-      <tr><td>Sharpe (DSR)</td><td>1.12</td><td>1.05</td><td class="cur-col">1.18</td></tr>
-      <tr><td>Max DD</td><td>14%</td><td>6.2%</td><td class="cur-col up">3.1%</td></tr>
-      <tr><td>Trades</td><td>47</td><td>31</td><td class="cur-col">9</td></tr>
-      <tr><td>Duration</td><td><span class="quiet">OOS</span></td><td>47d</td><td class="cur-col">18d</td></tr>
-    </tbody>
-  </table>
+  <div class="psec-title">Per-phase stats</div>
+  <div class="pbox-row">
+    <div class="pbox">
+      <div class="pb-name">Backtest <span>OOS</span></div>
+      <div class="pb-line"><span>Return</span><b class="up">+8.2%</b></div>
+      <div class="pb-line"><span>Sharpe (DSR)</span><b>1.12</b></div>
+      <div class="pb-line"><span>Max DD</span><b>14%</b></div>
+      <div class="pb-line"><span>Trades</span><b>47</b></div>
+    </div>
+    <div class="pbox">
+      <div class="pb-name">Paper <span>47d</span></div>
+      <div class="pb-line"><span>Return</span><b class="up">+9.3%</b></div>
+      <div class="pb-line"><span>Sharpe</span><b>1.05</b></div>
+      <div class="pb-line"><span>Max DD</span><b>6.2%</b></div>
+      <div class="pb-line"><span>Trades</span><b>31</b></div>
+    </div>
+    <div class="pbox cur">
+      <div class="pb-name">Live · current <span>18d</span></div>
+      <div class="pb-line"><span>Return</span><b class="up">+21%</b></div>
+      <div class="pb-line"><span>Sharpe</span><b>1.18</b></div>
+      <div class="pb-line"><span>Max DD</span><b>3.1%</b></div>
+      <div class="pb-line"><span>Trades</span><b>9</b></div>
+    </div>
+  </div>
 </div>
 
 <div class="psec">
@@ -1078,17 +1104,24 @@ function templatePanel(s){
   ${s.stage==='gate'?'<div class="panel-actions"><button class="btn btn-iris btn-sm">Launch live</button></div>':''}
 </div>
 <div class="psec">
-  <div class="psec-title">Phase comparison</div>
-  <table class="phase-tbl">
-    <thead><tr><th></th><th>Backtest</th><th class="cur-col">${s.stage==='paper'?'Paper ← current':'Paper'}</th><th ${s.stage==='live'?'class="cur-col"':''}>Live</th></tr></thead>
-    <tbody>
-      <tr><td>Return</td><td class="up">—</td><td class="${s.stage==='paper'?'cur-col up':'up'}">${s.pnlPct||'—'}</td><td ${s.stage==='live'?'class="cur-col"':''}>—</td></tr>
-      <tr><td>Sharpe (DSR)</td><td>${s.dsr||'—'}</td><td class="${s.stage==='paper'?'cur-col':''}">${s.dsr||'—'}</td><td>—</td></tr>
-      <tr><td>Max DD</td><td>${s.dd!==null?s.dd+'%':'—'}</td><td class="${s.stage==='paper'?'cur-col':''}">${s.dd!==null?s.dd+'%':'—'}</td><td>—</td></tr>
-      <tr><td>Trades</td><td>—</td><td class="${s.stage==='paper'?'cur-col':''}">—</td><td>—</td></tr>
-      <tr><td>Duration</td><td>OOS</td><td class="${s.stage==='paper'?'cur-col':''}">${s.days?s.days+'d':'—'}</td><td>—</td></tr>
-    </tbody>
-  </table>
+  <div class="psec-title">Per-phase stats</div>
+  <div class="pbox-row">
+    <div class="pbox">
+      <div class="pb-name">Backtest</div>
+      <div class="pb-line"><span>Sharpe (DSR)</span><b>${s.dsr||'—'}</b></div>
+      <div class="pb-line"><span>Max DD</span><b>${s.dd!==null?s.dd+'%':'—'}</b></div>
+    </div>
+    <div class="pbox ${s.stage==='paper'?'cur':''}">
+      <div class="pb-name">Paper${s.stage==='paper'?' · current':''} <span>${s.days?s.days+'d':'—'}</span></div>
+      <div class="pb-line"><span>Return</span><b class="up">${s.pnlPct||'—'}</b></div>
+      <div class="pb-line"><span>Trades</span><b>—</b></div>
+    </div>
+    <div class="pbox ${s.stage==='live'?'cur':''}">
+      <div class="pb-name">Live${s.stage==='live'?' · current':''}</div>
+      <div class="pb-line"><span>Return</span><b>—</b></div>
+      <div class="pb-line"><span>Trades</span><b>—</b></div>
+    </div>
+  </div>
 </div>
 <div class="psec">
   <div class="psec-title">Gate metrics</div>
@@ -1150,6 +1183,13 @@ function closePanel(){
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePanel();closeLiquidate()}});
 
 // ── Liquidate modal ──
+function setPhase(ph,btn){
+  document.querySelectorAll('.phase-sel button').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  ['bt','pa','li'].forEach(k=>{const el=document.getElementById('eq-'+k);if(el)el.style.display=k===ph?'block':'none'});
+  const titles={bt:'Equity — Backtest <span style="color:var(--quiet);font-weight:500">(OOS)</span>',pa:'Equity — Paper <span style="color:var(--quiet);font-weight:500">(47d)</span>',li:'Equity — Live <span style="color:var(--quiet);font-weight:500">(current · 18d)</span>'};
+  const ti=document.getElementById('eq-title');if(ti)ti.innerHTML=titles[ph];
+}
 function openLiquidate(){document.getElementById('liq-overlay').classList.add('open')}
 function closeLiquidate(){document.getElementById('liq-overlay').classList.remove('open')}
 document.getElementById('liq-overlay').addEventListener('click',e=>{if(e.target===document.getElementById('liq-overlay'))closeLiquidate()});
