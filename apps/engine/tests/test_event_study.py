@@ -145,3 +145,24 @@ def test_echoes_are_deduped_to_the_root():
     report = run_event_study([*events, *echoes], bars, _CFG)
     # roots_only: the echoes collapse into the breaker — the signal cell sees the same 15 observations.
     assert report.cell("signal").n_total == 15
+
+
+def test_multi_symbol_event_is_one_inference_draw():
+    """A story hitting two symbols is ONE event draw, not two observations of sample size — the
+    cross-sectional-correlation guard (Kothari–Warner clustering critique)."""
+    events, bars = _fixture()
+    # Give the market panel a second alt so a multi-symbol event has two real legs.
+    rng = random.Random(9)
+    r_m = [rng.gauss(0.0, 0.0008) for _ in range(_N)]
+    bars = dict(bars)
+    bars["ALT2USDT"] = _bars_from_returns([0.5 * m + rng.gauss(0.0, 0.0008) for m in r_m])
+
+    wide = MarketEvent(provider="test", source="", symbols=("ALTUSDT", "ALT2USDT"),
+                       ts=_T0 + timedelta(minutes=5000) - timedelta(seconds=30),
+                       available_at=_T0 + timedelta(minutes=5000), title="cross-asset story",
+                       event_type="wide")
+    report = run_event_study([*events, wide], bars, _CFG)
+    cell = report.cell("wide")
+    assert cell.n_total == 2 and cell.n_clean == 2   # two (event, symbol) observations…
+    assert cell.n_clean_events == 1                  # …but ONE inference unit
+    assert cell.verdict == "insufficient"            # 1 event << min_events — never a verdict from one story

@@ -40,10 +40,11 @@ class EventStudyConfig:
     beta_window: int = 1440          # β/σ estimation span (1 day of 1m bars), strictly pre-event
     exclusion_bars: int = 120        # two events on one symbol within this distance are both confounded
     market_z: float = 3.0            # |market CAR z| above this during the primary window ⇒ comove flag
-    min_events: int = 20             # a cell below this is INSUFFICIENT, not a verdict
+    min_events: int = 20             # CLEAN EVENTS (not observations) below this ⇒ INSUFFICIENT, not a verdict
     placebo_sets: int = 200          # randomization-inference resamples
     seed: int = 7
     fdr_q: float = 0.10
+    leakage_alpha: float = 0.10      # pre-window RI p below this ⇒ leakage flag (the move preceded the "news")
     market_symbol: str = "BTCUSDT"
     roots_only: bool = True          # study root events only (the breaker per cluster); echoes are a separate study
 
@@ -149,8 +150,9 @@ class CellResult:
     n_skipped: int = 0        # unpowered (no bars / insufficient history or future)
     n_confounded: int = 0     # excluded: another root event too close on the same symbol
     n_comove: int = 0         # excluded: the whole market moved (beta, not the event)
-    n_clean: int = 0
-    mean_scar: dict[int, float] = field(default_factory=dict)
+    n_clean: int = 0          # clean (event, symbol) observations
+    n_clean_events: int = 0   # clean EVENTS — the inference unit (a 2-symbol event is ONE draw, not two)
+    mean_scar: dict[int, float] = field(default_factory=dict)   # descriptive, observation-level
     mean_pre_scar: float = 0.0
     ri_pvalue: float | None = None      # randomization-inference p (primary window, two-sided), clean set
     pre_pvalue: float | None = None     # same machinery on the PRE-window
@@ -359,26 +361,43 @@ def run_event_study(
         pool = candidate_pool[symbol]
         return rng.choice(pool) if pool else None
 
-    def placebo_pvalues(observations: list[_Obs]) -> tuple[float, float] | None:
-        """(primary-window p, pre-window p): two-sided RI against placebo_sets matched pseudo-event sets."""
-        real_mean = sum(o.scars[cfg.primary_window] for o in observations) / len(observations)
-        real_pre = sum(o.pre_scar for o in observations) / len(observations)
+    def placebo_pvalues(groups: list[list[_Obs]]) -> tuple[float, float] | None:
+        """(primary-window p, pre-window p): two-sided RI against placebo_sets matched pseudo-event sets.
+        The inference unit is the EVENT: a multi-symbol event's observations are averaged WITHIN the event
+        first (real and placebo alike), so cross-sectional correlation between the symbols one story hits
+        can't masquerade as extra sample size (the Kothari–Warner clustering critique)."""
+
+        def _group_means(obs: list[_Obs]) -> tuple[float, float]:
+            return (
+                sum(o.scars[cfg.primary_window] for o in obs) / len(obs),
+                sum(o.pre_scar for o in obs) / len(obs),
+            )
+
+        real = [_group_means(g) for g in groups]
+        real_mean = sum(m for m, _ in real) / len(real)
+        real_pre = sum(p for _, p in real) / len(real)
         ge_main = ge_pre = 0
         sets_done = 0
         for _ in range(cfg.placebo_sets):
             mains: list[float] = []
             pres: list[float] = []
-            for o in observations:
-                a = matched_candidate(o.symbol, o.anchor)
-                if a is None:
-                    continue
-                pnl = panel(o.symbol)
-                beta, sigma, _sm = candidate_meta[o.symbol][a]
-                s = pnl.scar(a, cfg.primary_window, beta, sigma)
-                p = pnl.scar(a - 1 - cfg.pre_window, cfg.pre_window, beta, sigma)
-                if s is not None and p is not None:
-                    mains.append(s)
-                    pres.append(p)
+            for g in groups:
+                g_main: list[float] = []
+                g_pre: list[float] = []
+                for o in g:
+                    a = matched_candidate(o.symbol, o.anchor)
+                    if a is None:
+                        continue
+                    pnl = panel(o.symbol)
+                    beta, sigma, _sm = candidate_meta[o.symbol][a]
+                    s = pnl.scar(a, cfg.primary_window, beta, sigma)
+                    p = pnl.scar(a - 1 - cfg.pre_window, cfg.pre_window, beta, sigma)
+                    if s is not None and p is not None:
+                        g_main.append(s)
+                        g_pre.append(p)
+                if g_main:
+                    mains.append(sum(g_main) / len(g_main))
+                    pres.append(sum(g_pre) / len(g_pre))
             if not mains:
                 continue
             sets_done += 1
@@ -390,7 +409,8 @@ def run_event_study(
             return None
         return (1 + ge_main) / (1 + sets_done), (1 + ge_pre) / (1 + sets_done)
 
-    # Per-cell statistics + inference, in deterministic key order.
+    # Per-cell statistics + inference, in deterministic key order. The inference unit is the EVENT
+    # (observations grouped by content_hash), never the (event, symbol) observation.
     ordered = sorted(cells.keys())
     for key in ordered:
         cell = cells[key]
@@ -399,15 +419,20 @@ def run_event_study(
             for w in sorted({*cfg.windows, cfg.primary_window}):
                 cell.mean_scar[w] = sum(o.scars[w] for o in observations) / len(observations)
             cell.mean_pre_scar = sum(o.pre_scar for o in observations) / len(observations)
-        if len(observations) < cfg.min_events:
+        grouped: dict[str, list[_Obs]] = {}
+        for o in observations:
+            grouped.setdefault(o.content_hash, []).append(o)
+        groups = [grouped[h] for h in sorted(grouped)]
+        cell.n_clean_events = len(groups)
+        if len(groups) < cfg.min_events:
             cell.verdict = "insufficient"
             continue
-        pvals = placebo_pvalues(observations)
+        pvals = placebo_pvalues(groups)
         if pvals is None:
             cell.verdict = "insufficient"
             continue
         cell.ri_pvalue, cell.pre_pvalue = pvals
-        cell.leakage_flag = cell.pre_pvalue < 0.10
+        cell.leakage_flag = cell.pre_pvalue < cfg.leakage_alpha
         cell.verdict = "fail"  # provisional; FDR decides pass below
 
     # BH-FDR across every cell that earned a p-value (window/type/source shopping is corrected here).
