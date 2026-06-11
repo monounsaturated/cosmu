@@ -91,6 +91,9 @@ from cosmu.api.models.credibility import (  # noqa: F401
     CredibilityResponse,
     CredibilityRow,
 )
+from cosmu.api.models.realtime import (  # noqa: F401
+    RealtimeStatusResponse,
+)
 from cosmu.api.models.drift import (  # noqa: F401
     DriftResponse,
     DriftTrack,
@@ -295,6 +298,8 @@ __all__ = [
     "VendorActual",
     # credibility
     "CredibilityResponse",
+    # realtime
+    "RealtimeStatusResponse",
     "CredibilityRow",
     # drift
     "DriftResponse",

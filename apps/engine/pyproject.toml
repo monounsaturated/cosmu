@@ -19,6 +19,7 @@ dependencies = [
   "pyyaml>=6.0",  # parse typed YAML front-matter in `.md` inbox specs (cosmu.lab.inbox)
   "sqlalchemy>=2.0",
   "uvicorn>=0.30",
+  "websockets>=12",  # realtime worker's Binance kline stream (import-guarded; worker is OFF by default)
 ]
 
 [project.optional-dependencies]

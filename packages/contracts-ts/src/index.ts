@@ -893,6 +893,15 @@ export interface PopulationResponse {
   total: number;
 }
 
+export interface RealtimeStatusResponse {
+  consumers?: Record<string, unknown> | null;
+  enabled: boolean;
+  last_heartbeat_at?: string | null;
+  seconds_since_heartbeat?: number | null;
+  stale_after_seconds: number;
+  status: string;
+}
+
 export interface Recommendation {
   body: string;
   id: string;
