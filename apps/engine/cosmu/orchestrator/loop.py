@@ -421,22 +421,42 @@ def _funding_rate_asof(store: Store, symbol: str) -> Decimal | None:
     return Decimal(str(row["value"])) if row else None
 
 
+# The hourly intraday lane steps ONLY sub-daily horizons: crypto bars are closed-candle-guarded (data/market),
+# while the Yahoo equity source serves an in-progress day bar — so daily tracks stay on the daily clocks.
+_INTRADAY_BAR_SIZES = frozenset({"1h", "4h"})
+
+
 def _main(argv: list[str] | None = None) -> int:
     """Railway cron entrypoint for the FORWARD-TEST CLOCK: first the EXECUTOR (forward_step.step_tracks — each
     gate-lane track's OWN spec/params decide exits and re-entries through the one order path, sim-only), then
     the MARK (re-mark every held sim position against the latest REAL close, routed by asset class — crypto →
     Binance, equity/ETF → Yahoo total-return). Step-then-mark so the snapshot reflects post-trade state.
-    `python3 -m cosmu.orchestrator.loop`."""
+
+    Three cadences, one entrypoint (re-running on the same closed bar is always a no-op — decision-bar coids):
+      `python3 -m cosmu.orchestrator.loop`             full clock (daily crons, 00:10 + 22:10 UTC)
+      `python3 -m cosmu.orchestrator.loop --intraday`  hourly lane: step sub-daily (1h/4h) tracks, then mark all
+      `python3 -m cosmu.orchestrator.loop --mark-only` marks only (no executor step) — freshness without trades
+    """
     import argparse
 
     from cosmu.config.settings import Settings
     from cosmu.orchestrator.forward_step import step_tracks
 
-    argparse.ArgumentParser(description="Run the forward-test executor (each track's own exits/entries, sim-only) then mark held positions to the latest real close, asset-aware.").parse_args(argv)
+    parser = argparse.ArgumentParser(
+        description="Run the forward-test executor (each track's own exits/entries, sim-only) then mark held positions to the latest real close, asset-aware."
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--intraday", action="store_true",
+                      help="step only sub-daily (1h/4h) tracks, then mark all held positions (the hourly lane)")
+    mode.add_argument("--mark-only", action="store_true",
+                      help="skip the executor step; just re-mark held positions to the latest real close")
+    args = parser.parse_args(argv)
     store = Store(Settings())
-    step = step_tracks(store)
-    print(f"FORWARD-TEST STEP — managed={step.managed} closed={step.closed} opened={step.opened} "
-          f"skipped(deploy/unmanaged)={step.skipped_deploy}/{step.skipped_unmanaged}")
+    if not args.mark_only:
+        step = step_tracks(store, bar_sizes=_INTRADAY_BAR_SIZES if args.intraday else None)
+        lane = "intraday" if args.intraday else "full"
+        print(f"FORWARD-TEST STEP ({lane}) — managed={step.managed} closed={step.closed} opened={step.opened} "
+              f"skipped(deploy/unmanaged)={step.skipped_deploy}/{step.skipped_unmanaged}")
     snap = mark_tracks(store)
     print(f"SIM MARK-TO-MARKET — equity={float(snap['equity']):.2f} pnl={float(snap['pnl']):+.2f} drawdown={float(snap['drawdown']):.4f}")
     return 0

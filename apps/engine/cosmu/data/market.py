@@ -1,4 +1,8 @@
-# intent: fetch and cache Binance spot OHLCV bars; inputs: symbol/timeframe requests; outputs: ordered Bar records; invariants: secrets are never needed, cached bars remain exchange-sourced, and tests can inject a provider.
+# intent: fetch and cache Binance spot OHLCV bars; inputs: symbol/timeframe requests; outputs: ordered Bar records;
+# invariants: secrets are never needed, cached bars remain exchange-sourced, tests can inject a provider, and the
+# crypto providers serve only CLOSED candles — the in-progress candle is dropped before caching, a cache whose
+# newest bar is no longer the latest closed bar is refetched, and a fetched row replaces a cached row on ts
+# collision (a row cached while its candle was still forming must not freeze the executor's view forever).
 
 from __future__ import annotations
 
@@ -30,21 +34,73 @@ class MarketDataProvider(Protocol):
         """Return ascending OHLCV bars for one venue symbol."""
 
 
-class BinanceSpotOHLCVProvider:
-    """Binance spot OHLCV provider with a ccxt path and a stdlib REST fallback."""
+# Timeframe → period seconds for the closed-bar / freshness math. An unknown timeframe maps to None and
+# keeps the legacy cache behaviour (no freshness check) rather than guessing a period.
+_TIMEFRAME_SECONDS: dict[str, int] = {
+    "1m": 60, "5m": 300, "15m": 900, "30m": 1800,
+    "1h": 3_600, "4h": 14_400, "1d": 86_400, "1w": 604_800,
+}
 
-    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/binance") -> None:
+
+def _drop_unclosed(bars: list[Bar], timeframe: str, now: datetime) -> list[Bar]:
+    """Drop trailing bars whose candle has not CLOSED yet (close time = ts + period > now). Exchange kline
+    endpoints return the live in-progress candle as the last row; caching it freezes a mid-bar snapshot as if
+    it were a final close — the executor-freshness trap. Unknown timeframe → unchanged (no period to judge by)."""
+    period = _TIMEFRAME_SECONDS.get(timeframe)
+    if period is None:
+        return bars
+    cutoff = now.timestamp() - period
+    out = list(bars)
+    while out and out[-1].ts.timestamp() > cutoff:
+        out.pop()
+    return out
+
+
+def _cache_is_fresh(cached: list[Bar], timeframe: str, now: datetime) -> bool:
+    """True when the cache's newest bar IS the latest closed candle (newest.ts + 2*period > now) — then a
+    network fetch can add nothing. False forces a refetch even when the cache covers the requested limit.
+    Unknown timeframe → treated as fresh (legacy behaviour: serve the covering cache)."""
+    period = _TIMEFRAME_SECONDS.get(timeframe)
+    if period is None:
+        return True
+    if not cached:
+        return False
+    return now.timestamp() < cached[-1].ts.timestamp() + 2 * period
+
+
+class BinanceSpotOHLCVProvider:
+    """Binance spot OHLCV provider with a ccxt path and a stdlib REST fallback. Serves CLOSED candles only:
+    the in-progress candle is dropped before caching, and a covering-but-stale cache is refetched rather than
+    served (`now_fn` is injectable so tests pin the clock)."""
+
+    def __init__(
+        self,
+        cache_dir: Path | str = ".cosmu/market_data/binance",
+        *,
+        now_fn=None,  # noqa: ANN001 — Callable[[], datetime]; injected by tests to pin the clock
+    ) -> None:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._now_fn = now_fn or (lambda: datetime.now(tz=UTC))
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        now = self._now_fn()
         cached = self._read_cache(symbol, timeframe)
-        if len(cached) >= limit:
+        if len(cached) >= limit and _cache_is_fresh(cached, timeframe, now):
             return cached[-limit:]
 
-        bars = self._fetch_with_ccxt(symbol, timeframe, limit)
+        # +1 so dropping the in-progress last candle still leaves `limit` closed bars (page cap 1000).
+        page = min(limit + 1, 1000)
+        try:
+            bars = self._fetch_with_ccxt(symbol, timeframe, page)
+        except Exception:  # noqa: BLE001 — a ccxt transport error must still fall through to the REST path
+            bars = []
         if not bars:
-            bars = self._fetch_with_rest(symbol, timeframe, limit)
+            try:
+                bars = self._fetch_with_rest(symbol, timeframe, page)
+            except Exception:  # noqa: BLE001 — offline/refused: a covering-but-stale cache still serves
+                bars = []      # (degrade, never raise where the pre-freshness code served the cache silently)
+        bars = _drop_unclosed(bars, timeframe, now)
         if not bars:
             return cached[-limit:]  # network empty → never shrink; serve what we have
         # A single REST/ccxt page caps at 1000 bars; merge into (never overwrite) the cache so a
@@ -154,15 +210,26 @@ class KrakenSpotOHLCVProvider:
     # Kraken takes the interval in MINUTES; map the common timeframe strings we use.
     _INTERVAL_MINUTES = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440, "1w": 10080}
 
-    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/kraken") -> None:
+    def __init__(
+        self,
+        cache_dir: Path | str = ".cosmu/market_data/kraken",
+        *,
+        now_fn=None,  # noqa: ANN001 — Callable[[], datetime]; injected by tests to pin the clock
+    ) -> None:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._now_fn = now_fn or (lambda: datetime.now(tz=UTC))
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        now = self._now_fn()
         cached = self._read_cache(symbol, timeframe)
-        if len(cached) >= limit:
+        if len(cached) >= limit and _cache_is_fresh(cached, timeframe, now):
             return cached[-limit:]
-        bars = self._fetch_rest(symbol, timeframe)
+        try:
+            fetched = self._fetch_rest(symbol, timeframe)
+        except Exception:  # noqa: BLE001 — offline/refused: a covering-but-stale cache still serves (degrade)
+            fetched = []
+        bars = _drop_unclosed(fetched, timeframe, now)
         if not bars:
             return cached[-limit:]  # network empty → never shrink; serve what we have
         return self._write_cache(symbol, timeframe, bars)[-limit:]
@@ -201,15 +268,26 @@ class BybitSpotOHLCVProvider:
     # Bybit v5 interval codes (minutes as strings, D/W/M for higher frames).
     _INTERVAL = {"1m": "1", "5m": "5", "15m": "15", "30m": "30", "1h": "60", "4h": "240", "1d": "D", "1w": "W"}
 
-    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/bybit") -> None:
+    def __init__(
+        self,
+        cache_dir: Path | str = ".cosmu/market_data/bybit",
+        *,
+        now_fn=None,  # noqa: ANN001 — Callable[[], datetime]; injected by tests to pin the clock
+    ) -> None:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._now_fn = now_fn or (lambda: datetime.now(tz=UTC))
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        now = self._now_fn()
         cached = self._read_cache(symbol, timeframe)
-        if len(cached) >= limit:
+        if len(cached) >= limit and _cache_is_fresh(cached, timeframe, now):
             return cached[-limit:]
-        bars = self._fetch_rest(symbol, timeframe, limit)
+        try:
+            fetched = self._fetch_rest(symbol, timeframe, limit + 1)
+        except Exception:  # noqa: BLE001 — offline/refused: a covering-but-stale cache still serves (degrade)
+            fetched = []
+        bars = _drop_unclosed(fetched, timeframe, now)
         if not bars:
             return cached[-limit:]  # network empty → never shrink; serve what we have
         return self._write_cache(symbol, timeframe, bars)[-limit:]
@@ -318,11 +396,13 @@ def _ssl_context() -> ssl.SSLContext:
 
 
 def _merge_bars(existing: list[Bar], fetched: list[Bar]) -> list[Bar]:
-    """Union two bar lists deduped on ts, ascending. `existing` wins on a ts collision (a closed bar is
-    immutable, so the on-disk value is authoritative and merging stays idempotent). This is the core
-    never-shrink invariant: merging a short fetched page with a deep cache can only ADD bars."""
-    merged: dict[datetime, Bar] = {b.ts: b for b in fetched}
-    merged.update({b.ts: b for b in existing})
+    """Union two bar lists deduped on ts, ascending. `fetched` wins on a ts collision: a genuinely closed bar
+    is immutable so this is a no-op for it, but a row CACHED while its candle was still forming (the pre-fix
+    22:10 cron snapshotting the in-progress daily candle) must be repaired by the exchange's final values, not
+    frozen forever. Still a union — the never-shrink invariant holds: merging a short fetched page with a deep
+    cache can only ADD or REPAIR bars, never remove one."""
+    merged: dict[datetime, Bar] = {b.ts: b for b in existing}
+    merged.update({b.ts: b for b in fetched})
     return sorted(merged.values(), key=lambda b: b.ts)
 
 
