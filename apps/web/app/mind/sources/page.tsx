@@ -1,19 +1,24 @@
 // Full source-trust scoreboard — the data-source catalog: every registered feed, sortable + filterable,
-// with a coverage rollup up top (trusted · fresh · contributing). Linked from the Mind page.
+// with a coverage rollup up top (trusted · fresh · contributing), plus the SOURCE CREDIBILITY scoreboard
+// (the pre-registered voice panel's resolved-call records). Linked from the Mind page.
 
-import { ArrowLeft, CheckCircle, Database, ShieldCheck, Zap } from "lucide-react";
+import { ArrowLeft, CheckCircle, Database, Mic, ShieldCheck, Zap } from "lucide-react";
 import Link from "next/link";
-import { getSourceTrust, engineConfigured } from "../../data";
+import { getSourceTrust, getVoiceCredibility, engineConfigured } from "../../data";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/ui/section";
 import { NotConnected } from "@/components/ui/honest-state";
 import { MetricCard } from "@/components/ui/viz";
 import { SourceTrustTable } from "./source-trust-table";
+import { VoiceCredibilityTable } from "./voice-credibility-table";
 import { SourceCatalog } from "@/components/mind/source-catalog";
 
 export default async function SourcesPage() {
-  const { trust, connected } = await getSourceTrust();
+  const [{ trust, connected }, { credibility, connected: credConnected }] = await Promise.all([
+    getSourceTrust(),
+    getVoiceCredibility(),
+  ]);
   const rows = trust.rows ?? [];
 
   const freshCount = rows.filter((r) => r.status === "fresh" || r.status === "recent").length;
@@ -89,6 +94,45 @@ export default async function SourcesPage() {
           </Card>
         </>
       )}
+
+      {/* SOURCE CREDIBILITY — the voice scoreboard (realtime-data-lane epic P2): every pre-registered
+          voice's resolved-call record, skill DESC with untested (null) voices last. Honest: a null metric
+          renders as an em-dash with an "untested" hint — never a fabricated 0. */}
+      <section className="space-y-3 pt-2">
+        <SectionHeader
+          eyebrow="source credibility"
+          title={
+            <span className="flex items-center gap-2 text-base">
+              <Mic className="size-4 text-iris-soft" /> Source credibility
+            </span>
+          }
+          aside={
+            <div className="flex items-center gap-2">
+              <Badge variant="muted">{credibility.panel_size} voice{credibility.panel_size !== 1 ? "s" : ""} on the panel</Badge>
+            </div>
+          }
+        />
+        <p className="text-[12px] text-muted">
+          Who actually calls it right — each followed voice scored on its RESOLVED claims: hit rate vs the base
+          rate (being right vs the market simply going up), Brier skill, calibration, skill-anchored authority,
+          and primacy (breaker vs echo). Untested voices show &quot;—&quot; — untested ≠ unskilled, never a zero.
+          {credibility.as_of && (
+            <span className="ml-2 text-quiet">As of {new Date(credibility.as_of).toLocaleString()}.</span>
+          )}
+        </p>
+        {!credConnected ? (
+          <NotConnected
+            configured={engineConfigured}
+            what="Voice credibility scores appear once the engine is connected and the credibility pass has run."
+          />
+        ) : (
+          <Card>
+            <CardContent className="pt-5">
+              <VoiceCredibilityTable rows={credibility.rows ?? []} />
+            </CardContent>
+          </Card>
+        )}
+      </section>
 
       {/* Declarative source catalog — static, always shown regardless of engine connection.
           Shows what each source IS, its PIT contract, coverage, key requirements, and

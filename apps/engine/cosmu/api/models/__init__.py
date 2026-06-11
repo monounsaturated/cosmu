@@ -87,6 +87,10 @@ from cosmu.api.models.costs import (  # noqa: F401
     LlmCallSummary,
     VendorActual,
 )
+from cosmu.api.models.credibility import (  # noqa: F401
+    CredibilityResponse,
+    CredibilityRow,
+)
 from cosmu.api.models.drift import (  # noqa: F401
     DriftResponse,
     DriftTrack,
@@ -289,6 +293,9 @@ __all__ = [
     "InfraLine",
     "LlmCallSummary",
     "VendorActual",
+    # credibility
+    "CredibilityResponse",
+    "CredibilityRow",
     # drift
     "DriftResponse",
     "DriftTrack",

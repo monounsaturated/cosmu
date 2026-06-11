@@ -267,6 +267,29 @@ export interface CostsResponse {
   vendor_actuals: VendorActual[];
 }
 
+export interface CredibilityResponse {
+  as_of?: string | null;
+  panel_size: number;
+  rows: CredibilityRow[];
+}
+
+export interface CredibilityRow {
+  authority?: number | null;
+  base_hit_rate?: number | null;
+  brier_skill_score?: number | null;
+  calibration_error?: number | null;
+  excess_hit_rate?: number | null;
+  handle: string;
+  hit_rate?: number | null;
+  n_claims: number;
+  n_posts: number;
+  n_resolved: number;
+  platform: string;
+  primacy_rate?: number | null;
+  skill?: number | null;
+  updated_at: string;
+}
+
 export interface CrossAssetVerdict {
   attempts: number;
   bar: Record<string, unknown>;
