@@ -59,6 +59,14 @@ command = "python3 -m cosmu.orchestrator.loop"
 schedule = "5 * * * *"
 command = "python3 -m cosmu.orchestrator.loop --intraday"
 
+# CREDIBILITY PASS (realtime-data-lane P2): hourly tick over the PRE-REGISTERED voice panel — pull timelines
+# (key-gated), store new posts durably, extract typed claims from NEW posts only (hard per-pass caps bound the
+# LLM bill), then deterministically rescore the scoreboard + the two social_authority PIT features. An empty
+# panel (config/voices.py) means the pass honestly does nothing.
+[[cron]]
+schedule = "25 * * * *"
+command = "python3 -m cosmu.ingest.voices_pass"
+
 # ROTATION RE-ARM: re-run the deploy-lane arm fleet daily after the clock. Each arm() is idempotent (a held
 # target leg is reused, the clock origin never resets) and now closes stale legs first (arm_rotation), so this
 # is what makes the documented rotation strategies (GEM, GTAA, VAA, PAA, DAA, ...) actually ROTATE unattended

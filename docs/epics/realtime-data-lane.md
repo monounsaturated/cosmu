@@ -226,7 +226,31 @@ Options considered:
 - **(d) No new lane; rely on the Theories surface.** Cheapest, but near-misses accrue no forward
   evidence and slow/weak-but-real event signals stay invisible — fails the operator's goal.
 
-**Recommendation: (c).** Pending operator sign-off (question sent); no lane code lands before that.
+**DECIDED 2026-06-11 (operator): stay as-is — no new gate, no new lane for now.** The strictness is
+load-bearing (every near-miss across 16 spaces was unmasked as noise), and a lane only pays off once event
+strategies exist to route into it. Revisit AFTER the first event-study verdict: if a cell passes, decide
+then — with real candidates in hand — between the existing deploy-lane bar and the exploratory lane in (c).
+
+## 8b. Cost picture for P2/P3 (operator ask 2026-06-11: fees, vs now, how to limit)
+
+**Now (post-Tier-1):** Railway engine + crons ~$5–20/mo (the 15-min ingest adds ~$2–5 of that) · data $0
+(all free tiers) · LLM at ingest ≈ pennies/day — news scoring is content-hash cached (only NEW headlines
+bill, ~$2.5e-6/call on the cheap tier; the 115k-item narrative corpus cost $4.77 TOTAL).
+
+**Audit finding (fixed 2026-06-11):** the 15-min cron would have multiplied the two PAID per-pass LLM
+sources (xAI LiveSearch twitter sentiment, llm_index rubric scores) ×24 — calls scaled with cron cadence,
+not data freshness. Fixed: `llm_source_min_interval_minutes` (default 60) skips a paid source while its
+stored series is fresh. Spend is now bounded by the interval regardless of cron speed.
+
+**P2 (credibility pipeline):** compute $0 marginal (runs inside existing crons). LLM cost = claim
+extraction only — one cheap call per NEW post (content-cached, never re-extracted), bounded by hard caps
+(max posts/handle/pass + the pass throttle). A 20-handle panel polled hourly ≈ low hundreds of new posts/day
+≈ **well under $1/mo** on the cheap tier; Grok LiveSearch pulls ride the existing xAI credits, same throttle.
+Phases 2–3 (resolution, authority) are deterministic — $0.
+
+**P3 (worker):** the always-on instance is the cost: **~$5–15/mo** Railway + ~$0–25/mo Supabase growth
+(within Pro). Its collectors are the same free APIs; its LLM enrichment inherits the same content-hash
+caching + budget guard. Hard rule: alert when monthly compute exceeds the `costs` budget line.
 
 ## 9. Per-strategy plain-language summaries (decision: Claude Code + backfill)
 
