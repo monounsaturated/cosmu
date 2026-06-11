@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cosmu · Mix 03 Porcelain</title>
+<style>
+/* ── Tokens: warm off-white porcelain light workspace ── */
+:root {
+  --bg:        #faf9f7;
+  --surf:      #ffffff;
+  --surf2:     #f4f3f0;
+  --surf3:     #eeede9;
+  --fg:        #1a1a1e;
+  --muted:     #5a5a63;
+  --quiet:     #8a8a96;
+  --hairline:  #e7e5e0;
+  --border:    #dddbd5;
+  --border-s:  #c8c5bd;
+  --iris:      #3730a3;
+  --iris-s:    #4338ca;
+  --iris-dim:  rgba(67,56,202,0.08);
+  --iris-mid:  rgba(67,56,202,0.18);
+  --up:        #0e7a4f;
+  --up-dim:    rgba(14,122,79,0.09);
+  --down:      #c0392b;
+  --down-dim:  rgba(192,57,43,0.09);
+  --gold:      #92400e;
+  --gold-dim:  rgba(146,64,14,0.09);
+  --warn:      #92400e;
+  --sidebar-w: 232px;
+  --header-h:  44px;
+  --r:         5px;
+  --r-sm:      4px;
+  --shadow:    0 1px 3px rgba(26,26,30,0.06), 0 1px 2px rgba(26,26,30,0.04);
+  --shadow-md: 0 4px 16px rgba(26,26,30,0.10), 0 2px 6px rgba(26,26,30,0.06);
+  --shadow-lg: 0 12px 40px rgba(26,26,30,0.14), 0 4px 12px rgba(26,26,30,0.08);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{color-scheme:light;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+  background:var(--bg);color:var(--fg);
+  -webkit-font-smoothing:antialiased;
+  font-feature-settings:"cv05" 1,"ss01" 1,"calt" 1;
+  letter-spacing:-0.005em;font-size:13px;
+  min-height:100vh;overflow-x:hidden;
+}
+.mono{font-family:"SF Mono","Fira Code","Cascadia Code",ui-monospace,monospace;font-variant-numeric:tabular-nums slashed-zero}
+.tab{font-variant-numeric:tabular-nums slashed-zero}
+.up{color:var(--up)}.dn{color:var(--down)}.gold{color:var(--gold)}.iris{color:var(--iris-s)}.muted{color:var(--muted)}.quiet{color:var(--quiet)}
+
+/* ── Shell ── */
+.shell{display:flex;min-height:100vh}
+
+/* ── Sidebar ── */
+.sidebar{
+  position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;
+  background:var(--surf);border-right:1px solid var(--hairline);
+  display:flex;flex-direction:column;z-index:50;flex-shrink:0;
+  box-shadow:1px 0 0 var(--hairline);
+}
+.sb-logo{
+  height:var(--header-h);display:flex;align-items:center;gap:10px;
+  padding:0 16px;border-bottom:1px solid var(--hairline);flex-shrink:0;
+}
+.sb-mark{
+  width:24px;height:24px;border-radius:6px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--iris-s) 0%,#6d28d9 100%);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 6px rgba(67,56,202,0.28);
+}
+.sb-mark svg{width:12px;height:12px;fill:white}
+.sb-name{font-size:14px;font-weight:700;letter-spacing:-0.02em;color:var(--fg)}
+.sb-sub{font-size:9px;color:var(--quiet);font-weight:500;letter-spacing:.07em;text-transform:uppercase}
+.sb-nav{flex:1;overflow-y:auto;padding:8px 8px 0}
+.nav-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 10px;border-radius:var(--r-sm);
+  cursor:pointer;color:var(--muted);font-size:13px;font-weight:500;
+  transition:background 120ms,color 120ms;user-select:none;
+  border:none;background:transparent;width:100%;text-align:left;
+}
+.nav-item:hover{background:var(--surf2);color:var(--fg)}
+.nav-item.active{background:var(--iris-dim);color:var(--iris-s)}
+.nav-left{display:flex;align-items:center;gap:8px}
+.nav-item svg{width:14px;height:14px;flex-shrink:0;opacity:.55}
+.nav-item.active svg{opacity:1}
+.nav-count{
+  font-size:10px;font-weight:600;background:var(--surf3);color:var(--quiet);
+  border-radius:999px;padding:1px 6px;min-width:20px;text-align:center;
+  font-variant-numeric:tabular-nums;border:1px solid var(--hairline);
+}
+.nav-item.active .nav-count{background:var(--iris-mid);color:var(--iris-s);border-color:rgba(67,56,202,0.2)}
+.sb-footer{padding:8px;border-top:1px solid var(--hairline);flex-shrink:0}
+.density-toggle{display:flex;border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;width:100%}
+.dt-btn{flex:1;padding:4px 0;font-size:10.5px;font-weight:500;cursor:pointer;border:none;background:transparent;color:var(--quiet);transition:background 100ms,color 100ms;font-family:inherit}
+.dt-btn.active{background:var(--surf3);color:var(--iris-s)}
+.dt-btn:hover:not(.active){background:var(--surf2);color:var(--muted)}
+
+/* ── Main ── */
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-width:0}
+
+/* ── Header ── */
+.header{
+  position:sticky;top:0;height:var(--header-h);z-index:40;
+  background:var(--surf);border-bottom:1px solid var(--hairline);
+  display:flex;align-items:center;padding:0 18px;gap:12px;flex-shrink:0;
+  box-shadow:0 1px 0 var(--hairline);
+}
+.dash-strip{display:flex;align-items:center;gap:2px;font-size:11.5px;color:var(--muted);flex:1;overflow:hidden;white-space:nowrap;min-width:0}
+.ds-item{display:flex;align-items:center;gap:3px;white-space:nowrap;flex-shrink:0}
+.ds-sep{color:var(--border-s);margin:0 6px;user-select:none;font-size:12px}
+.ds-label{color:var(--quiet);font-size:11px}
+.ds-badge{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--quiet);padding:2px 6px;border:1px solid var(--border);border-radius:3px;background:var(--surf2)}
+
+/* ── Pages ── */
+.page{display:none;flex:1;min-height:0;flex-direction:column}
+.page.active{display:flex;animation:pagein 160ms cubic-bezier(.16,1,.3,1)}
+@keyframes pagein{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+
+/* ── Toolbar ── */
+.toolbar{display:flex;align-items:center;gap:8px;padding:14px 18px 0;flex-shrink:0;flex-wrap:wrap}
+.page-title{font-size:17px;font-weight:700;letter-spacing:-.025em;color:var(--fg);margin-right:2px}
+.chip-row{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+.chip{
+  display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;
+  font-size:11.5px;font-weight:500;cursor:pointer;border:1px solid var(--border);
+  background:var(--surf);color:var(--muted);transition:all 120ms;white-space:nowrap;
+  box-shadow:var(--shadow);
+}
+.chip:hover{border-color:var(--border-s);color:var(--fg);background:var(--surf2)}
+.chip.active{background:var(--iris-dim);border-color:rgba(67,56,202,0.25);color:var(--iris-s)}
+.chip-dot{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.7}
+
+/* col picker */
+.col-picker-wrap{position:relative;margin-left:auto;flex-shrink:0}
+.btn-col-picker{
+  display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--r-sm);
+  font-size:11.5px;font-weight:500;cursor:pointer;border:1px solid var(--border);
+  background:var(--surf);color:var(--muted);transition:all 120ms;white-space:nowrap;box-shadow:var(--shadow);
+}
+.btn-col-picker:hover{border-color:var(--border-s);color:var(--fg)}
+.col-picker-menu{
+  display:none;position:absolute;right:0;top:calc(100% + 5px);
+  background:var(--surf);border:1px solid var(--border);border-radius:var(--r);
+  padding:6px;min-width:180px;z-index:70;box-shadow:var(--shadow-lg);
+}
+.col-picker-menu.open{display:block;animation:menuin 130ms cubic-bezier(.16,1,.3,1)}
+@keyframes menuin{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.col-picker-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--r-sm);cursor:pointer;font-size:11.5px;color:var(--muted);transition:background 100ms,color 100ms;user-select:none}
+.col-picker-item:hover{background:var(--surf2);color:var(--fg)}
+.col-picker-item input[type=checkbox]{width:13px;height:13px;accent-color:var(--iris-s);cursor:pointer;flex-shrink:0}
+
+/* ── Table area ── */
+.tbl-area{flex:1;overflow-y:auto;padding:8px 18px 48px}
+
+/* Summary ribbon */
+.summary-ribbon{
+  display:flex;align-items:center;gap:20px;
+  background:var(--surf);border:1px solid var(--border);
+  border-radius:var(--r) var(--r) 0 0;border-bottom:none;
+  padding:0 14px;height:30px;font-size:11px;color:var(--muted);
+  flex-wrap:nowrap;overflow:hidden;margin-top:10px;
+  box-shadow:var(--shadow);
+}
+.ribbon-item{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.ribbon-label{color:var(--quiet);font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.06em}
+.ribbon-val{font-variant-numeric:tabular-nums;font-size:11.5px}
+
+/* Screener table */
+.screener-wrap{border:1px solid var(--border);border-radius:0 0 var(--r) var(--r);overflow:hidden;box-shadow:var(--shadow)}
+.screener-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12.5px}
+.screener-table thead th{
+  position:sticky;top:0;z-index:10;
+  background:var(--surf2);border-bottom:1px solid var(--border);
+  padding:0 10px;height:28px;
+  font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--quiet);white-space:nowrap;cursor:pointer;user-select:none;text-align:left;vertical-align:middle;
+}
+.screener-table thead th:hover{color:var(--muted)}
+.th-inner{display:flex;align-items:center;gap:4px}
+.sort-ind{font-size:8px;opacity:.6}
+.sort-ind.asc::after{content:"▲"}
+.sort-ind.desc::after{content:"▼"}
+.screener-table tbody tr{cursor:pointer;transition:background 80ms}
+.screener-table tbody tr td{
+  padding:0 10px;border-bottom:1px solid var(--hairline);
+  vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--surf);
+}
+body.dense .screener-table tbody tr td{height:30px}
+body:not(.dense) .screener-table tbody tr td{height:38px}
+.screener-table tbody tr:last-child td{border-bottom:none}
+.screener-table tbody tr:hover td{background:rgba(67,56,202,0.04)!important}
+.screener-table tbody tr.sel td{background:rgba(67,56,202,0.07)!important}
+.screener-table tbody tr.row-killed td{opacity:.5;background:var(--surf2)!important}
+.screener-table tbody tr.row-killed:hover td{opacity:.65!important}
+.screener-table tbody tr.row-queued td{opacity:.7}
+.screener-table tbody tr.row-backtest td{opacity:.72}
+
+/* col widths */
+.col-name{width:220px;min-width:160px}
+.col-stage{width:90px}
+.col-life{width:96px}
+.col-days{width:52px}
+.col-pnl{width:108px}
+.col-dsr{width:92px}
+.col-pbo{width:68px}
+.col-dd{width:84px}
+.col-oos{width:72px}
+.col-venue{width:72px}
+.col-hidden{display:none!important}
+
+/* cells */
+.cell-name{font-size:13px;font-weight:600;color:var(--fg)}
+.cell-sub{font-size:10px;color:var(--quiet);margin-top:1px}
+
+/* Stage badges */
+.stage-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:.02em}
+.sb-live{background:rgba(192,57,43,0.08);color:var(--down);border:1px solid rgba(192,57,43,0.22)}
+.sb-paper{background:var(--iris-dim);color:var(--iris-s);border:1px solid rgba(67,56,202,0.2)}
+.sb-gate{background:rgba(14,122,79,0.08);color:var(--up);border:1px solid rgba(14,122,79,0.2)}
+.sb-killed{background:var(--surf3);color:var(--muted);border:1px solid var(--border)}
+.sb-queued{background:rgba(146,64,14,0.08);color:var(--gold);border:1px solid rgba(146,64,14,0.2)}
+.sb-backtest{background:var(--surf3);color:var(--muted);border:1px solid var(--border)}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--down);animation:livepulse 2s infinite;flex-shrink:0}
+@keyframes livepulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,0.45)}60%{box-shadow:0 0 0 4px transparent}}
+
+/* lifecycle glyph */
+.glyph{display:inline-flex;align-items:center;gap:2px}
+.g-dot{width:6px;height:6px;border-radius:50%;background:var(--surf3);border:1.5px solid var(--border);flex-shrink:0}
+.g-dot.done{background:var(--iris-s);border-color:var(--iris-s)}
+.g-dot.cur{background:var(--iris-s);border-color:var(--iris-s);box-shadow:0 0 0 2.5px rgba(67,56,202,0.18)}
+.g-dot.gate-ok{background:var(--up);border-color:var(--up)}
+.g-dot.gate-cur{background:var(--up);border-color:var(--up);box-shadow:0 0 0 2.5px rgba(14,122,79,0.18)}
+.g-dot.live-c{background:var(--down);border-color:var(--down);box-shadow:0 0 0 2.5px rgba(192,57,43,0.18)}
+.g-dot.dead{background:var(--down);border-color:var(--down);opacity:.6}
+.g-line{width:8px;height:1px;background:var(--border);flex-shrink:0}
+.g-line.done{background:var(--iris-s)}
+.g-line.gate{background:var(--up)}
+
+/* DSR bar */
+.dsr-wrap{display:flex;align-items:center;gap:6px}
+.dsr-track{width:44px;height:4px;background:var(--surf3);border-radius:2px;overflow:visible;position:relative;flex-shrink:0;border:1px solid var(--hairline)}
+.dsr-fill{height:100%;border-radius:2px}
+.dsr-thr{position:absolute;top:-3px;height:10px;width:1px;background:var(--border-s);z-index:1}
+.dsr-val{font-variant-numeric:tabular-nums;font-size:12px}
+
+/* MaxDD arc */
+.dd-wrap{display:flex;align-items:center;gap:5px}
+.dd-arc{width:22px;height:12px;flex-shrink:0}
+.dd-val{font-variant-numeric:tabular-nums;font-size:12px}
+
+/* P&L heat */
+.pnl-wrap{position:relative}
+.pnl-bg{position:absolute;inset:0;pointer-events:none;border-radius:2px}
+.pnl-val{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;position:relative}
+.pnl-pct{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;position:relative}
+
+/* ── Peek pane ── */
+.peek-backdrop{display:none;position:fixed;inset:0;z-index:60}
+.peek-backdrop.open{display:block}
+.peek-pane{
+  position:fixed;right:0;top:0;bottom:0;width:640px;max-width:50vw;
+  background:var(--surf);border-left:1px solid var(--border);
+  z-index:61;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:var(--shadow-lg);
+  transform:translateX(100%);transition:transform 230ms cubic-bezier(.16,1,.3,1);
+}
+.peek-pane.open{transform:translateX(0)}
+.peek-header{
+  display:flex;align-items:flex-start;justify-content:space-between;
+  padding:16px 20px 12px;border-bottom:1px solid var(--hairline);flex-shrink:0;
+}
+.peek-title{font-size:15px;font-weight:700;color:var(--fg);line-height:1.25;letter-spacing:-0.015em}
+.peek-subtitle{font-size:11px;color:var(--quiet);margin-top:3px}
+.peek-close{background:var(--surf2);border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:5px 8px;border-radius:var(--r-sm);font-family:inherit;transition:all 120ms}
+.peek-close:hover{background:var(--surf3);color:var(--fg)}
+.peek-body{flex:1;overflow-y:auto;padding:0 20px 32px}
+.peek-section{margin-top:20px}
+.peek-section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--quiet);margin-bottom:10px}
+.peek-actions{display:flex;gap:8px;padding:0 20px 16px;flex-shrink:0;border-top:1px solid var(--hairline);padding-top:14px}
+
+/* Equity chart placeholder */
+.equity-chart{
+  width:100%;height:160px;border-radius:var(--r);border:1px solid var(--border);
+  background:var(--surf2);overflow:hidden;position:relative;margin-top:4px;
+}
+.eq-svg{width:100%;height:100%}
+
+/* Phase comparison table */
+.phase-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+.phase-table th{padding:5px 10px;font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet);border-bottom:1px solid var(--border);text-align:left;background:var(--surf2)}
+.phase-table th.cur-col{color:var(--iris-s);background:var(--iris-dim)}
+.phase-table td{padding:6px 10px;border-bottom:1px solid var(--hairline);color:var(--muted);font-variant-numeric:tabular-nums}
+.phase-table td.cur-col{background:rgba(67,56,202,0.04);font-weight:600;color:var(--fg)}
+.phase-table td.row-label{color:var(--quiet);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.phase-table tr:last-child td{border-bottom:none}
+
+/* Gate chips */
+.gate-chips{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+.gate-chip-row{display:flex;align-items:flex-start;gap:10px;padding:8px 12px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surf2)}
+.gate-chip-val{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;min-width:56px;flex-shrink:0}
+.gate-chip-label{font-size:11.5px;font-weight:600;color:var(--fg);margin-bottom:2px}
+.gate-chip-desc{font-size:10.5px;color:var(--quiet);line-height:1.45}
+.gate-chip-pass{border-left:3px solid var(--up)}
+.gate-chip-warn{border-left:3px solid var(--gold)}
+
+/* Building blocks */
+.block-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px}
+.block-item{padding:7px 10px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surf2)}
+.block-item-label{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet);margin-bottom:2px}
+.block-item-val{font-size:11.5px;font-weight:600;color:var(--fg)}
+.block-hint{font-size:10.5px;color:var(--quiet);margin-top:8px;font-style:italic}
+
+/* Data feed */
+.feed-list{display:flex;flex-direction:column;gap:4px;margin-top:4px}
+.feed-row{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surf2);font-size:11.5px}
+.feed-name{font-weight:600;color:var(--fg)}
+.feed-val{font-variant-numeric:tabular-nums;font-weight:600}
+.feed-meta{color:var(--quiet);font-size:10.5px}
+
+/* Trades */
+.trades-list{display:flex;flex-direction:column;gap:1px;margin-top:4px;border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden}
+.trade-row{display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--surf);border-bottom:1px solid var(--hairline);font-size:11.5px}
+.trade-row:last-child{border-bottom:none}
+.trade-dir{font-weight:700;min-width:30px}
+.trade-asset{color:var(--fg);font-weight:600;min-width:60px}
+.trade-date{color:var(--quiet);font-size:10.5px;flex:1}
+.trade-pnl{font-variant-numeric:tabular-nums;font-weight:600}
+
+/* Activity timeline */
+.timeline{display:flex;flex-direction:column;gap:0;margin-top:4px}
+.tl-item{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--hairline);font-size:11.5px}
+.tl-item:last-child{border-bottom:none}
+.tl-dot-wrap{display:flex;flex-direction:column;align-items:center;width:14px;flex-shrink:0;padding-top:3px}
+.tl-dot{width:7px;height:7px;border-radius:50%;background:var(--border-s);border:1.5px solid var(--border);flex-shrink:0}
+.tl-dot.green{background:var(--up);border-color:var(--up)}
+.tl-dot.indigo{background:var(--iris-s);border-color:var(--iris-s)}
+.tl-dot.red{background:var(--down);border-color:var(--down)}
+.tl-text{flex:1}
+.tl-msg{color:var(--fg);line-height:1.4}
+.tl-time{color:var(--quiet);font-size:10.5px;margin-top:1px}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:var(--r-sm);font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--surf);color:var(--fg);transition:all 130ms;white-space:nowrap;font-family:inherit;box-shadow:var(--shadow)}
+.btn:hover{background:var(--surf2);border-color:var(--border-s)}
+.btn-iris{background:var(--iris-dim);border-color:rgba(67,56,202,0.25);color:var(--iris-s)}
+.btn-iris:hover{background:rgba(67,56,202,0.14)}
+.btn-danger{background:rgba(192,57,43,0.07);border-color:rgba(192,57,43,0.22);color:var(--down)}
+.btn-danger:hover{background:rgba(192,57,43,0.13)}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted);box-shadow:none}
+.btn-ghost:hover{background:var(--surf2);border-color:var(--border);color:var(--fg)}
+.btn-sm{padding:3px 9px;font-size:11.5px}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:3px;font-size:10.5px;font-weight:600;white-space:nowrap}
+.badge-up{background:rgba(14,122,79,0.08);color:var(--up);border:1px solid rgba(14,122,79,0.2)}
+.badge-down{background:rgba(192,57,43,0.08);color:var(--down);border:1px solid rgba(192,57,43,0.18)}
+.badge-iris{background:var(--iris-dim);color:var(--iris-s);border:1px solid rgba(67,56,202,0.2)}
+.badge-gold{background:rgba(146,64,14,0.08);color:var(--gold);border:1px solid rgba(146,64,14,0.2)}
+.badge-muted{background:var(--surf3);color:var(--muted);border:1px solid var(--border)}
+
+/* ── Cards ── */
+.card{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow)}
+.card-hdr{padding:12px 16px 0;display:flex;align-items:center;justify-content:space-between}
+.card-lbl{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--quiet)}
+.card-body{padding:12px 16px}
+
+/* ── Monitor tiles ── */
+.monitor-band{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px}
+@media(max-width:1100px){.monitor-band{grid-template-columns:repeat(3,1fr)}}
+.mon-tile{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+.mon-tile.warn-tile{border-color:rgba(146,64,14,0.3);background:rgba(146,64,14,0.04)}
+.mon-tile-label{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--quiet);margin-bottom:5px}
+.mon-tile-val{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.mon-tile-sub{font-size:10.5px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums}
+
+/* ── Equity hero ── */
+.equity-hero{height:220px;border:1px solid var(--border);border-radius:var(--r);background:var(--surf);position:relative;overflow:hidden;box-shadow:var(--shadow);margin-bottom:16px}
+.hero-svg{width:100%;height:100%}
+.hero-overlay{position:absolute;top:12px;left:16px;font-size:11px;color:var(--muted)}
+.hero-val{font-size:26px;font-weight:700;letter-spacing:-.03em;color:var(--fg);font-variant-numeric:tabular-nums;position:absolute;top:12px;right:16px}
+.hero-delta{font-size:12px;position:absolute;top:44px;right:16px;font-variant-numeric:tabular-nums}
+
+/* ── Live armed banner ── */
+.armed-banner{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 14px;border-radius:var(--r);margin-bottom:12px;
+  background:rgba(192,57,43,0.06);border:1px solid rgba(192,57,43,0.2);
+}
+.armed-text{font-size:12.5px;font-weight:600;color:var(--down);display:flex;align-items:center;gap:7px}
+.daily-loss-gauge{margin-top:12px;margin-bottom:16px}
+.gauge-label{font-size:10.5px;color:var(--muted);margin-bottom:6px;display:flex;justify-content:space-between}
+.gauge-track{height:6px;background:var(--surf3);border-radius:3px;overflow:hidden;border:1px solid var(--hairline)}
+.gauge-fill{height:100%;background:linear-gradient(90deg,var(--up) 0%,#e8a500 70%,var(--down) 100%);border-radius:3px;width:19%}
+.gauge-tick{position:relative;margin-top:3px;display:flex;justify-content:space-between;font-size:9.5px;color:var(--quiet)}
+
+/* ── Modal ── */
+.overlay{display:none;position:fixed;inset:0;background:rgba(26,26,30,0.35);z-index:100;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.overlay.open{display:flex;animation:fadein 150ms ease}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.modal{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);padding:24px 26px;max-width:480px;width:calc(100% - 32px);box-shadow:var(--shadow-lg);animation:modalin 190ms cubic-bezier(.16,1,.3,1)}
+@keyframes modalin{from{opacity:0;transform:scale(.97) translateY(6px)}to{opacity:1;transform:none}}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:10px;letter-spacing:-.015em;color:var(--fg)}
+.modal-body{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:20px}
+.modal-body strong{color:var(--fg);font-weight:600}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+
+/* ── Costs / Commands ── */
+.costs-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+@media(max-width:900px){.costs-grid{grid-template-columns:1fr 1fr}}
+.cost-card{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow)}
+.cost-card-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--quiet);margin-bottom:6px}
+.cost-card-val{font-size:22px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--fg)}
+.cost-card-sub{font-size:11px;color:var(--muted);margin-top:3px}
+.cmd-list{display:flex;flex-direction:column;gap:6px}
+.cmd-item{display:flex;align-items:flex-start;gap:14px;padding:10px 14px;background:var(--surf);border:1px solid var(--border);border-radius:var(--r-sm);box-shadow:var(--shadow)}
+.cmd-name{font-size:12px;font-weight:700;font-family:"SF Mono","Fira Code",ui-monospace,monospace;color:var(--iris-s);min-width:200px;flex-shrink:0}
+.cmd-desc{font-size:12px;color:var(--muted);line-height:1.45}
+
+/* ── Misc ── */
+.divider{height:1px;background:var(--hairline);margin:16px 0}
+.mockup-badge{position:fixed;bottom:10px;right:12px;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--quiet);background:var(--surf2);border:1px solid var(--border);border-radius:3px;padding:3px 7px;z-index:200;user-select:none}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet);margin-bottom:10px}
+.cohort-ribbon{display:flex;align-items:center;gap:16px;background:var(--surf);border:1px solid var(--border);border-radius:var(--r);padding:8px 14px;margin-bottom:12px;box-shadow:var(--shadow);font-size:11px;color:var(--muted);flex-wrap:wrap}
+.cohort-stat{display:flex;flex-direction:column;gap:1px}
+.cohort-label{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--quiet)}
+.cohort-val{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--fg)}
+</style>
+</head>
+<body>
+
+<div class="shell">
+<!-- ── SIDEBAR ── -->
+<nav class="sidebar">
+  <div class="sb-logo">
+    <div class="sb-mark">
+      <svg viewBox="0 0 12 12"><path d="M6 1L10.5 3.5V8.5L6 11L1.5 8.5V3.5L6 1Z" fill="white" opacity=".9"/><circle cx="6" cy="6" r="1.5" fill="white"/></svg>
+    </div>
+    <div>
+      <div class="sb-name">Cosmu</div>
+      <div class="sb-sub">Quant Engine</div>
+    </div>
+  </div>
+  <div class="sb-nav">
+    <button class="nav-item active" onclick="nav('strategies')">
+      <span class="nav-left">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="12" height="12" rx="2"/><line x1="1" y1="5" x2="13" y2="5"/><line x1="5" y1="5" x2="5" y2="13"/></svg>
+        Strategies
+      </span>
+      <span class="nav-count">12</span>
+    </button>
+    <button class="nav-item" onclick="nav('paper')">
+      <span class="nav-left">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="1,10 4,6 7,8 10,3 13,5"/></svg>
+        Paper
+      </span>
+      <span class="nav-count">4</span>
+    </button>
+    <button class="nav-item" onclick="nav('live')">
+      <span class="nav-left">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/><circle cx="7" cy="7" r="2" fill="currentColor" stroke="none"/></svg>
+        Live
+      </span>
+      <span class="nav-count">1</span>
+    </button>
+    <button class="nav-item" onclick="nav('costs')">
+      <span class="nav-left">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5.5"/><line x1="7" y1="4" x2="7" y2="5.5"/><line x1="7" y1="8.5" x2="7" y2="10"/><path d="M5 5.5h3a1.5 1.5 0 010 3H6a1.5 1.5 0 000 3h3"/></svg>
+        Costs
+      </span>
+    </button>
+    <button class="nav-item" onclick="nav('commands')">
+      <span class="nav-left">
+        <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3,5 1,7 3,9"/><polyline points="11,5 13,7 11,9"/><line x1="8" y1="2" x2="6" y2="12"/></svg>
+        Commands
+      </span>
+    </button>
+  </div>
+  <div class="sb-footer">
+    <div class="density-toggle">
+      <button class="dt-btn active" onclick="setDensity(false,this)">Comfortable</button>
+      <button class="dt-btn" onclick="setDensity(true,this)">Dense</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ── MAIN ── -->
+<div class="main">
+  <!-- sticky header strip -->
+  <header class="header">
+    <div class="dash-strip">
+      <span class="ds-item"><span class="ds-label">Paper invested</span>&nbsp;<span class="tab">$18,392</span></span>
+      <span class="ds-sep">·</span>
+      <span class="ds-item"><span class="ds-label">Paper P&L</span>&nbsp;<span class="up tab">+$1,392</span>&nbsp;<span class="up tab">(+9.27%)</span></span>
+      <span class="ds-sep">·</span>
+      <span class="ds-item"><span class="ds-label">Live total</span>&nbsp;<span class="tab">$9,000</span></span>
+      <span class="ds-sep">·</span>
+      <span class="ds-item"><span class="ds-label">Free</span>&nbsp;<span class="tab">$7,300</span></span>
+      <span class="ds-sep">·</span>
+      <span class="ds-item"><span class="ds-label">Invested</span>&nbsp;<span class="tab">$1,700</span></span>
+      <span class="ds-sep">·</span>
+      <span class="ds-item"><span class="ds-label">Live P&L</span>&nbsp;<span class="up tab">+$419</span>&nbsp;<span class="up tab">(+21%)</span></span>
+    </div>
+    <span class="ds-badge">MOCKUP · synthetic data</span>
+  </header>
+
+  <!-- ══ STRATEGIES PAGE ══ -->
+  <div class="page active" id="page-strategies">
+    <div class="toolbar">
+      <span class="page-title">Strategies</span>
+      <div class="chip-row">
+        <button class="chip active" onclick="filterChip(this,'all')"><span class="chip-dot"></span>All</button>
+        <button class="chip" onclick="filterChip(this,'live')"><span class="chip-dot" style="background:var(--down)"></span>Live</button>
+        <button class="chip" onclick="filterChip(this,'paper')"><span class="chip-dot" style="background:var(--iris-s)"></span>Paper</button>
+        <button class="chip" onclick="filterChip(this,'gate')">Gate ✓</button>
+        <button class="chip" onclick="filterChip(this,'killed')">Killed</button>
+        <button class="chip" onclick="filterChip(this,'queued')">Queued</button>
+      </div>
+      <div class="col-picker-wrap">
+        <button class="btn-col-picker" onclick="toggleColPicker()">
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="9" height="2"/><rect x="1" y="5" width="6" height="2"/><rect x="1" y="9" width="7" height="2"/></svg>
+          Columns
+        </button>
+        <div class="col-picker-menu" id="colMenu">
+          <div class="col-picker-item"><input type="checkbox" id="chk-dsr" checked onchange="toggleCol('dsr',this)"><label for="chk-dsr">DSR</label></div>
+          <div class="col-picker-item"><input type="checkbox" id="chk-pbo" checked onchange="toggleCol('pbo',this)"><label for="chk-pbo">PBO</label></div>
+          <div class="col-picker-item"><input type="checkbox" id="chk-dd" checked onchange="toggleCol('dd',this)"><label for="chk-dd">Max DD</label></div>
+          <div class="col-picker-item"><input type="checkbox" id="chk-oos" checked onchange="toggleCol('oos',this)"><label for="chk-oos">OOS</label></div>
+          <div class="col-picker-item"><input type="checkbox" id="chk-venue" checked onchange="toggleCol('venue',this)"><label for="chk-venue">Venue</label></div>
+          <div class="col-picker-item"><input type="checkbox" id="chk-days" checked onchange="toggleCol('days',this)"><label for="chk-days">Days</label></div>
+        </div>
+      </div>
+    </div>
+    <div class="tbl-area">
+      <div class="summary-ribbon">
+        <div class="ribbon-item"><span class="ribbon-label">Invested</span><span class="ribbon-val tab">$18,392 paper · $1,700 live</span></div>
+        <div class="ribbon-item"><span class="ribbon-label">Median P&L</span><span class="ribbon-val tab up">+3.6%</span></div>
+        <div class="ribbon-item"><span class="ribbon-label">Median DSR</span><span class="ribbon-val tab">1.05</span></div>
+        <div class="ribbon-item"><span class="ribbon-label">By stage</span><span class="ribbon-val tab">1 Live · 4 Paper · 1 Gate · 2 Backtesting · 1 Queued · 3 Killed</span></div>
+      </div>
+      <div class="screener-wrap">
+        <table class="screener-table" id="screenerTable">
+          <colgroup>
+            <col class="col-name">
+            <col class="col-stage">
+            <col class="col-life">
+            <col class="col-days" id="hcol-days">
+            <col class="col-pnl">
+            <col class="col-dsr" id="hcol-dsr">
+            <col class="col-pbo" id="hcol-pbo">
+            <col class="col-dd" id="hcol-dd">
+            <col class="col-oos" id="hcol-oos">
+            <col class="col-venue" id="hcol-venue">
+          </colgroup>
+          <thead>
+            <tr>
+              <th onclick="sortBy('name')"><div class="th-inner">Name<span class="sort-ind" id="si-name"></span></div></th>
+              <th onclick="sortBy('stage')"><div class="th-inner">Stage<span class="sort-ind" id="si-stage"></span></div></th>
+              <th><div class="th-inner">Lifecycle</div></th>
+              <th id="th-days" onclick="sortBy('days')"><div class="th-inner">Days<span class="sort-ind" id="si-days"></span></div></th>
+              <th onclick="sortBy('pnl')"><div class="th-inner">P&amp;L<span class="sort-ind" id="si-pnl"></span></div></th>
+              <th id="th-dsr" onclick="sortBy('dsr')"><div class="th-inner">DSR<span class="sort-ind" id="si-dsr"></span></div></th>
+              <th id="th-pbo" onclick="sortBy('pbo')"><div class="th-inner">PBO<span class="sort-ind" id="si-pbo"></span></div></th>
+              <th id="th-dd" onclick="sortBy('dd')"><div class="th-inner">Max DD<span class="sort-ind" id="si-dd"></span></div></th>
+              <th id="th-oos" onclick="sortBy('oos')"><div class="th-inner">OOS<span class="sort-ind" id="si-oos"></span></div></th>
+              <th id="th-venue" onclick="sortBy('venue')"><div class="th-inner">Venue<span class="sort-ind" id="si-venue"></span></div></th>
+            </tr>
+          </thead>
+          <tbody id="screenerBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ PAPER PAGE ══ -->
+  <div class="page" id="page-paper">
+    <div class="toolbar"><span class="page-title">Paper</span><button class="btn btn-ghost btn-sm" style="margin-left:auto">⏸ Pause all paper</button></div>
+    <div class="tbl-area">
+      <div class="cohort-ribbon">
+        <div class="cohort-stat"><span class="cohort-label">Invested</span><span class="cohort-val">$18,392</span></div>
+        <div class="cohort-stat"><span class="cohort-label">Portfolio P&L</span><span class="cohort-val up">+$1,392 (+9.27%)</span></div>
+        <div class="cohort-stat"><span class="cohort-label">Strategies</span><span class="cohort-val">4 active</span></div>
+        <div class="cohort-stat"><span class="cohort-label">Best</span><span class="cohort-val up">Funding Carry +9.3%</span></div>
+        <div class="cohort-stat"><span class="cohort-label">Worst</span><span class="cohort-val dn">F&G Contrarian −0.8%</span></div>
+      </div>
+      <div class="equity-hero">
+        <svg class="hero-svg" viewBox="0 0 800 220" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="heroGradP" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="rgba(67,56,202,0.13)"/>
+              <stop offset="100%" stop-color="rgba(67,56,202,0)"/>
+            </linearGradient>
+          </defs>
+          <path d="M0,180 C40,175 80,160 120,155 S200,140 240,130 S320,115 360,108 S440,98 480,88 S560,72 600,65 S680,55 720,48 L800,40 L800,220 L0,220Z" fill="url(#heroGradP)"/>
+          <path d="M0,180 C40,175 80,160 120,155 S200,140 240,130 S320,115 360,108 S440,98 480,88 S560,72 600,65 S680,55 720,48 L800,40" fill="none" stroke="var(--iris-s)" stroke-width="2"/>
+        </svg>
+        <div class="hero-overlay">Paper Portfolio · 47 days</div>
+        <div class="hero-val tab">$19,784</div>
+        <div class="hero-delta up tab">+$1,392 (+9.27%)</div>
+      </div>
+      <div class="section-title">Active Paper Tracks</div>
+      <div class="screener-wrap">
+        <table class="screener-table">
+          <colgroup><col class="col-name"><col class="col-stage"><col class="col-days"><col class="col-pnl"><col class="col-dsr"><col class="col-dd"><col class="col-venue"></colgroup>
+          <thead><tr>
+            <th>Name</th><th>Stage</th><th>Days</th><th>P&L</th><th>DSR</th><th>Max DD</th><th>Venue</th>
+          </tr></thead>
+          <tbody>
+            <tr onclick="openPeek('funding-carry-btc')"><td><div class="cell-name">Funding Carry BTC</div><div class="cell-sub">funding_rate signal</div></td><td><span class="stage-badge sb-paper">Paper</span></td><td class="muted tab">47</td><td><div class="pnl-wrap"><div class="pnl-bg" style="background:rgba(14,122,79,0.07)"></div><div class="pnl-val up">+$1,720</div><div class="pnl-pct up">+9.3%</div></div></td><td><div class="dsr-wrap"><div class="dsr-track"><div class="dsr-fill" style="width:75%;background:var(--iris-s)"></div><div class="dsr-thr" style="left:63%"></div></div><span class="dsr-val tab">1.05</span></div></td><td><div class="dd-wrap"><svg class="dd-arc" viewBox="0 0 22 12"><path d="M2,11 A9,9 0 0,1 20,11" fill="none" stroke="var(--border)" stroke-width="2.5" stroke-linecap="round"/><path d="M2,11 A9,9 0 0,1 9.5,2.5" fill="none" stroke="var(--up)" stroke-width="2.5" stroke-linecap="round"/></svg><span class="dd-val tab">6.2%</span></div></td><td class="quiet">Binance</td></tr>
+            <tr onclick="openPeek('xsect-momentum-top5')"><td><div class="cell-name">Cross-Sect Momentum Top-5</div><div class="cell-sub">cross-sectional rank</div></td><td><span class="stage-badge sb-paper">Paper</span></td><td class="muted tab">33</td><td><div class="pnl-wrap"><div class="pnl-bg" style="background:rgba(14,122,79,0.06)"></div><div class="pnl-val up">+$738</div><div class="pnl-pct up">+4.1%</div></div></td><td><div class="dsr-wrap"><div class="dsr-track"><div class="dsr-fill" style="width:65%;background:var(--iris-s)"></div><div class="dsr-thr" style="left:63%"></div></div><span class="dsr-val tab">0.98</span></div></td><td><div class="dd-wrap"><svg class="dd-arc" viewBox="0 0 22 12"><path d="M2,11 A9,9 0 0,1 20,11" fill="none" stroke="var(--border)" stroke-width="2.5" stroke-linecap="round"/><path d="M2,11 A9,9 0 0,1 8,3" fill="none" stroke="var(--gold)" stroke-width="2.5" stroke-linecap="round"/></svg><span class="dd-val tab">9.4%</span></div></td><td class="quiet">Binance</td></tr>
+            <tr onclick="openPeek('gtaa-monthly')"><td><div class="cell-name">GTAA Monthly Rotation</div><div class="cell-sub">macro allocation</div></td><td><span class="stage-badge sb-paper">Paper</span></td><td class="muted tab">41</td><td><div class="pnl-wrap"><div class="pnl-bg" style="background:rgba(14,122,79,0.05)"></div><div class="pnl-val up">+$522</div><div class="pnl-pct up">+2.9%</div></div></td><td><div class="dsr-wrap"><div class="dsr-track"><div class="dsr-fill" style="width:59%;background:var(--iris-s)"></div><div class="dsr-thr" style="left:63%"></div></div><span class="dsr-val tab">0.91</span></div></td><td><div class="dd-wrap"><svg class="dd-arc" viewBox="0 0 22 12"><path d="M2,11 A9,9 0 0,1 20,11" fill="none" stroke="var(--border)" stroke-width="2.5" stroke-linecap="round"/><path d="M2,11 A9,9 0 0,1 7,3.5" fill="none" stroke="var(--gold)" stroke-width="2.5" stroke-linecap="round"/></svg><span class="dd-val tab">11%</span></div></td><td class="quiet">Kraken</td></tr>
+            <tr onclick="openPeek('fg-contrarian-eth')"><td><div class="cell-name">Fear &amp; Greed Contrarian ETH</div><div class="cell-sub">sentiment signal</div></td><td><span class="stage-badge sb-paper">Paper</span></td><td class="muted tab">12</td><td><div class="pnl-wrap"><div class="pnl-bg" style="background:rgba(192,57,43,0.06)"></div><div class="pnl-val dn">−$144</div><div class="pnl-pct dn">−0.8%</div></div></td><td><div class="dsr-wrap"><div class="dsr-track"><div class="dsr-fill" style="width:45%;background:var(--muted)"></div><div class="dsr-thr" style="left:63%"></div></div><span class="dsr-val tab muted">0.71</span></div></td><td><div class="dd-wrap"><svg class="dd-arc" viewBox="0 0 22 12"><path d="M2,11 A9,9 0 0,1 20,11" fill="none" stroke="var(--border)" stroke-width="2.5" stroke-linecap="round"/><path d="M2,11 A9,9 0 0,1 6.5,4" fill="none" stroke="var(--up)" stroke-width="2.5" stroke-linecap="round"/></svg><span class="dd-val tab">4.1%</span></div></td><td class="quiet">Binance</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ LIVE PAGE ══ -->
+  <div class="page" id="page-live">
+    <div class="toolbar"><span class="page-title">Live</span><button class="btn btn-danger btn-sm" style="margin-left:auto" onclick="openLiquidateModal()">⚠ Liquidate all</button></div>
+    <div class="tbl-area">
+      <div class="armed-banner">
+        <div class="armed-text"><span class="live-dot"></span>Live trading armed — 1 strategy · $1,700 deployed</div>
+        <button class="btn btn-danger btn-sm" onclick="openLiquidateModal()">Liquidate all</button>
+      </div>
+      <div class="daily-loss-gauge">
+        <div class="gauge-label"><span class="muted">Daily loss used</span><span class="tab muted">$47 of $250 limit (19%)</span></div>
+        <div class="gauge-track"><div class="gauge-fill"></div></div>
+        <div class="gauge-tick"><span>$0</span><span>$125</span><span>$250 cap</span></div>
+      </div>
+      <div class="cohort-ribbon">
+        <div class="cohort-stat"><span class="cohort-label">Deployed</span><span class="cohort-val">$1,700</span></div>
+        <div class="cohort-stat"><span class="cohort-label">Live P&L</span><span class="cohort-val up">+$419 (+21%)</span></div>
+        <div class="cohort-stat"><span class="cohort-label">Duration</span><span class="cohort-val">18 days</span></div>
+        <div class="cohort-stat"><span class="cohort-label">Open positions</span><span class="cohort-val">1</span></div>
+      </div>
+      <div class="equity-hero">
+        <svg class="hero-svg" viewBox="0 0 800 220" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="heroGradL" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="rgba(14,122,79,0.14)"/>
+              <stop offset="100%" stop-color="rgba(14,122,79,0)"/>
+            </linearGradient>
+          </defs>
+          <path d="M0,190 C60,188 120,178 180,165 S300,142 360,128 S480,105 540,90 S660,68 720,55 L800,45 L800,220 L0,220Z" fill="url(#heroGradL)"/>
+          <path d="M0,190 C60,188 120,178 180,165 S300,142 360,128 S480,105 540,90 S660,68 720,55 L800,45" fill="none" stroke="var(--up)" stroke-width="2.5"/>
+        </svg>
+        <div class="hero-overlay">Live Portfolio · 18 days</div>
+        <div class="hero-val tab">$2,119</div>
+        <div class="hero-delta up tab">+$419 (+21%)</div>
+      </div>
+      <div class="section-title">Live Strategies</div>
+      <div class="screener-wrap">
+        <table class="screener-table">
+          <colgroup><col class="col-name"><col class="col-stage"><col class="col-days"><col class="col-pnl"><col class="col-dsr"><col class="col-dd"><col class="col-venue"></colgroup>
+          <thead><tr><th>Name</th><th>Stage</th><th>Days</th><th>P&L</th><th>DSR</th><th>Max DD</th><th>Venue</th></tr></thead>
+          <tbody>
+            <tr onclick="openPeek('funding-carry-btc')"><td><div class="cell-name">Funding Carry BTC</div><div class="cell-sub">funding_rate signal</div></td><td><span class="stage-badge sb-live"><span class="live-dot"></span>Live</span></td><td class="muted tab">18</td><td><div class="pnl-wrap"><div class="pnl-bg" style="background:rgba(14,122,79,0.09)"></div><div class="pnl-val up">+$419</div><div class="pnl-pct up">+21%</div></div></td><td><div class="dsr-wrap"><div class="dsr-track"><div class="dsr-fill" style="width:80%;background:var(--iris-s)"></div><div class="dsr-thr" style="left:63%"></div></div><span class="dsr-val tab">1.18</span></div></td><td><div class="dd-wrap"><svg class="dd-arc" viewBox="0 0 22 12"><path d="M2,11 A9,9 0 0,1 20,11" fill="none" stroke="var(--border)" stroke-width="2.5" stroke-linecap="round"/><path d="M2,11 A9,9 0 0,1 11.5,2.1" fill="none" stroke="var(--up)" stroke-width="2.5" stroke-linecap="round"/></svg><span class="dd-val tab">3.1%</span></div></td><td class="quiet">Binance</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ COSTS PAGE ══ -->
+  <div class="page" id="page-costs">
+    <div class="toolbar"><span class="page-title">Costs</span></div>
+    <div class="tbl-area">
+      <div class="costs-grid">
+        <div class="cost-card"><div class="cost-card-label">Trading fees (30d)</div><div class="cost-card-val tab">$42.18</div><div class="cost-card-sub">Binance maker/taker</div></div>
+        <div class="cost-card"><div class="cost-card-label">Data feeds (mo)</div><div class="cost-card-val tab">$0</div><div class="cost-card-sub">All free sources</div></div>
+        <div class="cost-card"><div class="cost-card-label">Slippage est.</div><div class="cost-card-val tab">$18.60</div><div class="cost-card-sub">Based on avg fill</div></div>
+        <div class="cost-card"><div class="cost-card-label">Net P&L after costs</div><div class="cost-card-val tab up">+$358</div><div class="cost-card-sub">Live, 30-day window</div></div>
+        <div class="cost-card"><div class="cost-card-label">Cost / $ deployed</div><div class="cost-card-val tab">3.6%</div><div class="cost-card-sub">annualised rate</div></div>
+        <div class="cost-card"><div class="cost-card-label">Infra</div><div class="cost-card-val tab">$0</div><div class="cost-card-sub">Railway Hobby plan</div></div>
+      </div>
+      <div class="section-title">Cost breakdown over time</div>
+      <div style="height:120px;border:1px solid var(--border);border-radius:var(--r);background:var(--surf);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;color:var(--quiet);font-size:11.5px">Monthly cost chart (synthetic)</div>
+    </div>
+  </div>
+
+  <!-- ══ COMMANDS PAGE ══ -->
+  <div class="page" id="page-commands">
+    <div class="toolbar"><span class="page-title">Commands</span></div>
+    <div class="tbl-area">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px">CLI commands available in the engine. Run via <code style="font-family:monospace;background:var(--surf2);padding:1px 5px;border-radius:3px;border:1px solid var(--border);font-size:11px">pnpm cosmu &lt;command&gt;</code></p>
+      <div class="cmd-list">
+        <div class="cmd-item"><div class="cmd-name">gate run &lt;spec&gt;</div><div class="cmd-desc">Run the full Gate pipeline on a strategy spec. Produces DSR, PBO, max-DD and OOS scores.</div></div>
+        <div class="cmd-item"><div class="cmd-name">paper start &lt;spec&gt;</div><div class="cmd-desc">Begin a paper track for a gate-passed strategy using live market data with no capital at risk.</div></div>
+        <div class="cmd-item"><div class="cmd-name">live arm &lt;spec&gt;</div><div class="cmd-desc">Deploy capital to a strategy. Requires paper track ≥ 30 days and explicit operator confirmation.</div></div>
+        <div class="cmd-item"><div class="cmd-name">live disarm &lt;spec&gt;</div><div class="cmd-desc">Liquidate all positions for a strategy and return funds to the free pool.</div></div>
+        <div class="cmd-item"><div class="cmd-name">data fetch</div><div class="cmd-desc">Pull and backfill all configured data sources to the current timestamp.</div></div>
+        <div class="cmd-item"><div class="cmd-name">data status</div><div class="cmd-desc">Show coverage report for all data feeds (staleness, gaps, last tick).</div></div>
+        <div class="cmd-item"><div class="cmd-name">strategy kill &lt;id&gt; &lt;reason&gt;</div><div class="cmd-desc">Mark a strategy as killed with a recorded reason. Stops paper tracks and blocks re-entry.</div></div>
+      </div>
+    </div>
+  </div>
+</div><!-- .main -->
+</div><!-- .shell -->
+
+<!-- ── PEEK PANE ── -->
+<div class="peek-backdrop" id="peekBackdrop" onclick="closePeek()"></div>
+<div class="peek-pane" id="peekPane">
+  <div class="peek-header">
+    <div>
+      <div class="peek-title" id="peekTitle">Funding Carry BTC</div>
+      <div class="peek-subtitle" id="peekSubtitle">Live · Binance · 18d live · 47d paper</div>
+    </div>
+    <button class="peek-close" onclick="closePeek()">✕</button>
+  </div>
+  <div class="peek-actions" id="peekActions">
+    <span class="stage-badge sb-live" id="peekBadge"><span class="live-dot"></span>Live</span>
+    <button class="btn btn-danger btn-sm" onclick="openLiquidateModal()">Liquidate</button>
+    <button class="btn btn-ghost btn-sm" style="margin-left:auto">View logs</button>
+  </div>
+  <div class="peek-body" id="peekBody">
+    <!-- equity chart -->
+    <div class="peek-section">
+      <div class="peek-section-title">Equity — Backtest OOS → Paper → Live</div>
+      <div class="equity-chart">
+        <svg class="eq-svg" viewBox="0 0 600 160" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="btGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(67,56,202,0.15)"/><stop offset="100%" stop-color="rgba(67,56,202,0)"/></linearGradient>
+            <linearGradient id="papGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(67,56,202,0.12)"/><stop offset="100%" stop-color="rgba(67,56,202,0)"/></linearGradient>
+            <linearGradient id="livGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(14,122,79,0.2)"/><stop offset="100%" stop-color="rgba(14,122,79,0)"/></linearGradient>
+          </defs>
+          <!-- Backtest OOS segment (dimmed) -->
+          <path d="M10,130 C40,125 60,118 90,112 S130,105 160,100 L200,95 L200,155 L10,155Z" fill="url(#btGrad)" opacity=".6"/>
+          <path d="M10,130 C40,125 60,118 90,112 S130,105 160,100 L200,95" fill="none" stroke="var(--iris-s)" stroke-width="1.5" opacity=".45" stroke-dasharray="4,3"/>
+          <!-- Paper segment (dimmed) -->
+          <path d="M200,95 C230,91 260,86 290,80 S330,72 360,66 L400,60 L400,155 L200,155Z" fill="url(#papGrad)" opacity=".7"/>
+          <path d="M200,95 C230,91 260,86 290,80 S330,72 360,66 L400,60" fill="none" stroke="var(--iris-s)" stroke-width="1.5" opacity=".6"/>
+          <!-- Live segment (CURRENT, saturated) -->
+          <path d="M400,60 C430,55 460,48 490,40 S540,30 580,22 L600,18 L600,155 L400,155Z" fill="url(#livGrad)"/>
+          <path d="M400,60 C430,55 460,48 490,40 S540,30 580,22 L600,18" fill="none" stroke="var(--up)" stroke-width="2.5"/>
+          <!-- Phase hairlines -->
+          <line x1="200" y1="10" x2="200" y2="150" stroke="var(--border-s)" stroke-width="1" stroke-dasharray="3,3"/>
+          <line x1="400" y1="10" x2="400" y2="150" stroke="var(--border-s)" stroke-width="1" stroke-dasharray="3,3"/>
+          <!-- Phase labels -->
+          <text x="100" y="22" text-anchor="middle" fill="#8a8a96" font-size="9" font-family="system-ui">OOS Backtest</text>
+          <text x="300" y="22" text-anchor="middle" fill="#8a8a96" font-size="9" font-family="system-ui">Paper</text>
+          <text x="500" y="22" text-anchor="middle" fill="#0e7a4f" font-size="9" font-weight="bold" font-family="system-ui">▶ Live</text>
+        </svg>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:7px;flex-wrap:wrap">
+        <span class="badge badge-muted" style="opacity:.6">Backtest OOS · 2025-10-01–2026-01-05</span>
+        <span class="badge badge-iris" style="opacity:.75">Paper · 2026-01-06–2026-05-22 · 47d</span>
+        <span class="badge badge-up">Live · 2026-05-23–now · 18d</span>
+      </div>
+    </div>
+
+    <!-- Phase comparison table -->
+    <div class="peek-section">
+      <div class="peek-section-title">Phase comparison</div>
+      <table class="phase-table">
+        <thead><tr>
+          <th style="width:110px">Metric</th>
+          <th>Backtest OOS</th>
+          <th>Paper</th>
+          <th class="cur-col">Live ◀ now</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="row-label">Return</td><td>+8.2%</td><td>+9.3%</td><td class="cur-col up">+21%</td></tr>
+          <tr><td class="row-label">DSR</td><td>1.12</td><td>1.05</td><td class="cur-col">1.18</td></tr>
+          <tr><td class="row-label">Max DD</td><td>14%</td><td>6.2%</td><td class="cur-col up">3.1%</td></tr>
+          <tr><td class="row-label">Trades</td><td class="tab">47</td><td class="tab">31</td><td class="cur-col tab">9</td></tr>
+          <tr><td class="row-label">Duration</td><td class="quiet">OOS window</td><td class="quiet">47d</td><td class="cur-col quiet">18d</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Gate chips -->
+    <div class="peek-section">
+      <div class="peek-section-title">Gate signals</div>
+      <div class="gate-chips">
+        <div class="gate-chip-row gate-chip-pass">
+          <div class="gate-chip-val up tab">1.12</div>
+          <div><div class="gate-chip-label">DSR — Deflated Sharpe Ratio</div><div class="gate-chip-desc">Edge after correcting for how many variants were tried. &gt; 0.95 required.</div></div>
+        </div>
+        <div class="gate-chip-row gate-chip-pass">
+          <div class="gate-chip-val up tab">0.31</div>
+          <div><div class="gate-chip-label">PBO — Probability of Backtest Overfitting</div><div class="gate-chip-desc">Probability the backtest is overfit via combinatorial cross-validation. &lt; 0.50 required.</div></div>
+        </div>
+        <div class="gate-chip-row gate-chip-pass">
+          <div class="gate-chip-val up tab">14%</div>
+          <div><div class="gate-chip-label">Max DD vs 25% limit</div><div class="gate-chip-desc">Peak-to-trough drawdown during the OOS period. Must stay below 25% hard cap.</div></div>
+        </div>
+        <div class="gate-chip-row gate-chip-pass">
+          <div class="gate-chip-val up tab">+8.2%</div>
+          <div><div class="gate-chip-label">OOS Return</div><div class="gate-chip-desc">Return on data the strategy never saw during fitting. Must be positive.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Building blocks -->
+    <div class="peek-section">
+      <div class="peek-section-title">Building blocks</div>
+      <div class="block-grid">
+        <div class="block-item"><div class="block-item-label">Signal</div><div class="block-item-val">funding_rate &lt; fitted −0.025%</div></div>
+        <div class="block-item"><div class="block-item-label">Filter</div><div class="block-item-val">MA-trend (200d) bullish</div></div>
+        <div class="block-item"><div class="block-item-label">Exit</div><div class="block-item-val">Stop 4% · Take 12% · Time 14d</div></div>
+        <div class="block-item"><div class="block-item-label">Sizing</div><div class="block-item-val">Fixed fraction 0.12</div></div>
+      </div>
+      <div class="block-hint">Similar strategies share these blocks: MA Trend Filter ETH 1d, GTAA Monthly Rotation</div>
+    </div>
+
+    <!-- Data feed -->
+    <div class="peek-section">
+      <div class="peek-section-title">Data feed</div>
+      <div class="feed-list">
+        <div class="feed-row"><span class="feed-name">funding_rate</span><span class="feed-val dn tab">−0.018%</span><span class="feed-meta">2h ago · Binance</span></div>
+        <div class="feed-row"><span class="feed-name">fear_greed</span><span class="feed-val tab" style="color:var(--gold)">71 (Greed)</span><span class="feed-meta">5h ago · Alternative.me</span></div>
+      </div>
+    </div>
+
+    <!-- Recent trades -->
+    <div class="peek-section">
+      <div class="peek-section-title">6 recent trades</div>
+      <div class="trades-list">
+        <div class="trade-row"><span class="trade-dir up">BUY</span><span class="trade-asset">BTC/USDC</span><span class="trade-date">2026-06-08</span><span class="trade-pnl up">+$94</span></div>
+        <div class="trade-row"><span class="trade-dir dn">SELL</span><span class="trade-asset">BTC/USDC</span><span class="trade-date">2026-06-01</span><span class="trade-pnl up">+$61</span></div>
+        <div class="trade-row"><span class="trade-dir up">BUY</span><span class="trade-asset">BTC/USDC</span><span class="trade-date">2026-05-29</span><span class="trade-pnl up">+$108</span></div>
+        <div class="trade-row"><span class="trade-dir dn">SELL</span><span class="trade-asset">BTC/USDC</span><span class="trade-date">2026-05-24</span><span class="trade-pnl dn">−$22</span></div>
+        <div class="trade-row"><span class="trade-dir up">BUY</span><span class="trade-asset">BTC/USDC</span><span class="trade-date">2026-05-19</span><span class="trade-pnl up">+$88</span></div>
+        <div class="trade-row"><span class="trade-dir dn">SELL</span><span class="trade-asset">BTC/USDC</span><span class="trade-date">2026-05-12</span><span class="trade-pnl up">+$90</span></div>
+      </div>
+    </div>
+
+    <!-- Activity timeline -->
+    <div class="peek-section">
+      <div class="peek-section-title">Activity</div>
+      <div class="timeline">
+        <div class="tl-item"><div class="tl-dot-wrap"><div class="tl-dot red"></div></div><div class="tl-text"><div class="tl-msg">Open long 0.021 BTC · entry $68,400</div><div class="tl-time">2026-06-08 09:14 UTC</div></div></div>
+        <div class="tl-item"><div class="tl-dot-wrap"><div class="tl-dot green"></div></div><div class="tl-text"><div class="tl-msg">Daily P&L +$94 · DD still 3.1%</div><div class="tl-time">2026-06-08 00:01 UTC</div></div></div>
+        <div class="tl-item"><div class="tl-dot-wrap"><div class="tl-dot indigo"></div></div><div class="tl-text"><div class="tl-msg">Paper track promoted to Live · $1,700 deployed</div><div class="tl-time">2026-05-23 11:02 UTC</div></div></div>
+        <div class="tl-item"><div class="tl-dot-wrap"><div class="tl-dot indigo"></div></div><div class="tl-text"><div class="tl-msg">Gate passed · DSR 1.12 · PBO 0.31 · OOS +8.2%</div><div class="tl-time">2025-12-14 18:30 UTC</div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── LIQUIDATE MODAL ── -->
+<div class="overlay" id="liqOverlay">
+  <div class="modal">
+    <div class="modal-title">Liquidate all live positions?</div>
+    <div class="modal-body">Sell all live positions to USDC and disarm live trading. <strong>$1,700 across 1 strategy</strong> will be market-sold at current prices. Paper tracks are not affected.</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeLiquidateModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="closeLiquidateModal()">Confirm liquidate</button>
+    </div>
+  </div>
+</div>
+
+<div class="mockup-badge">MOCKUP · synthetic data</div>
+
+<script>
+// ── Strategy data ──
+const STRATEGIES = [
+  {id:'funding-carry-btc',name:'Funding Carry BTC',sub:'funding_rate signal',stage:'live',days:18,pnl:419,pnlPct:21,dsr:1.12,pbo:0.31,dd:3.1,oos:8.2,venue:'Binance',lifecycle:'live'},
+  {id:'xsect-momentum-top5',name:'Cross-Sectional Momentum Top-5',sub:'cross-sectional rank',stage:'paper',days:33,pnl:738,pnlPct:4.1,dsr:0.98,pbo:0.38,dd:9.4,oos:6.1,venue:'Binance',lifecycle:'paper'},
+  {id:'gtaa-monthly',name:'GTAA Monthly Rotation',sub:'macro allocation',stage:'paper',days:41,pnl:522,pnlPct:2.9,dsr:0.91,pbo:0.44,dd:11,oos:5.5,venue:'Kraken',lifecycle:'paper'},
+  {id:'fg-contrarian-eth',name:'Fear & Greed Contrarian ETH',sub:'sentiment signal',stage:'paper',days:12,pnl:-144,pnlPct:-0.8,dsr:0.71,pbo:0.49,dd:4.1,oos:3.2,venue:'Binance',lifecycle:'paper'},
+  {id:'stablecoin-lead-eth',name:'Stablecoin Flows Lead ETH',sub:'on-chain signal',stage:'paper',days:8,pnl:216,pnlPct:1.2,dsr:0.85,pbo:0.41,dd:5.8,oos:4.1,venue:'Binance',lifecycle:'paper'},
+  {id:'vol-regime-btc',name:'Vol-Regime Switch BTC',sub:'volatility signal',stage:'gate',days:0,pnl:null,pnlPct:null,dsr:1.02,pbo:0.29,dd:8.2,oos:7.8,venue:'Binance',lifecycle:'gate'},
+  {id:'orb-sol-4h',name:'ORB Breakout SOL 4h',sub:'opening range',stage:'killed',days:null,pnl:null,pnlPct:null,dsr:0.62,pbo:0.71,dd:22,oos:null,venue:'Binance',lifecycle:'killed',reason:'FDR control 2026-05-28'},
+  {id:'wiki-zscore-btc',name:'Wikipedia Pageviews Z-Score BTC',sub:'alt-data',stage:'killed',days:null,pnl:null,pnlPct:null,dsr:0.48,pbo:0.61,dd:31,oos:null,venue:'Binance',lifecycle:'killed',reason:'PBO 0.61 > limit'},
+  {id:'reddit-spike-doge',name:'Reddit Volume Spike DOGE',sub:'social signal',stage:'killed',days:null,pnl:null,pnlPct:null,dsr:0.51,pbo:0.57,dd:28,oos:null,venue:'Binance',lifecycle:'killed',reason:'Holdout fail'},
+  {id:'pm-riskon-overlay',name:'Polymarket Risk-On Overlay',sub:'prediction market',stage:'backtest',days:null,pnl:null,pnlPct:null,dsr:null,pbo:null,dd:null,oos:null,venue:'Binance',lifecycle:'backtest'},
+  {id:'fvg-btc-1h',name:'FVG Retrace BTC 1h',sub:'price action',stage:'queued',days:null,pnl:null,pnlPct:null,dsr:null,pbo:null,dd:null,oos:null,venue:'Binance',lifecycle:'queued'},
+  {id:'ma-trend-eth-1d',name:'MA Trend Filter ETH 1d',sub:'trend following',stage:'backtest',days:null,pnl:null,pnlPct:null,dsr:null,pbo:null,dd:null,oos:null,venue:'Binance',lifecycle:'backtest'},
+];
+
+let currentFilter = 'all';
+let sortCol = null, sortDir = 1;
+
+function stageOrder(s){return{live:0,paper:1,gate:2,backtest:3,queued:4,killed:5}[s]??6}
+
+function renderRows(){
+  const body = document.getElementById('screenerBody');
+  let rows = [...STRATEGIES];
+  if(currentFilter!=='all') rows = rows.filter(r=>{
+    if(currentFilter==='live') return r.stage==='live';
+    if(currentFilter==='paper') return r.stage==='paper';
+    if(currentFilter==='gate') return r.stage==='gate';
+    if(currentFilter==='killed') return r.stage==='killed';
+    if(currentFilter==='queued') return r.stage==='queued';
+    return true;
+  });
+  if(sortCol){
+    rows.sort((a,b)=>{
+      let av=a[sortCol], bv=b[sortCol];
+      if(sortCol==='stage'){av=stageOrder(a.stage);bv=stageOrder(b.stage)}
+      if(av==null&&bv==null) return 0;
+      if(av==null) return 1;
+      if(bv==null) return -1;
+      return (av>bv?1:-1)*sortDir;
+    });
+  }
+
+  body.innerHTML = rows.map(r=>{
+    const killed = r.stage==='killed';
+    const queued = r.stage==='queued';
+    const bt = r.stage==='backtest';
+    const rowClass = killed?'row-killed':queued?'row-queued':bt?'row-backtest':'';
+
+    const stageBadge = {
+      live:`<span class="stage-badge sb-live"><span class="live-dot"></span>Live</span>`,
+      paper:`<span class="stage-badge sb-paper">Paper</span>`,
+      gate:`<span class="stage-badge sb-gate">Gate ✓</span>`,
+      killed:`<span class="stage-badge sb-killed">Killed</span>`,
+      queued:`<span class="stage-badge sb-queued">Queued</span>`,
+      backtest:`<span class="stage-badge sb-backtest">Backtesting</span>`,
+    }[r.stage]||'';
+
+    const lifecycle = {
+      live:`<span class="glyph"><span class="g-dot done"></span><span class="g-line done"></span><span class="g-dot done"></span><span class="g-line gate"></span><span class="g-dot live-c"></span></span>`,
+      paper:`<span class="glyph"><span class="g-dot done"></span><span class="g-line done"></span><span class="g-dot cur"></span><span class="g-line"></span><span class="g-dot"></span></span>`,
+      gate:`<span class="glyph"><span class="g-dot done"></span><span class="g-line done"></span><span class="g-dot gate-cur"></span><span class="g-line"></span><span class="g-dot"></span></span>`,
+      killed:`<span class="glyph"><span class="g-dot dead"></span><span class="g-line"></span><span class="g-dot"></span><span class="g-line"></span><span class="g-dot"></span></span>`,
+      queued:`<span class="glyph"><span class="g-dot cur"></span><span class="g-line"></span><span class="g-dot"></span><span class="g-line"></span><span class="g-dot"></span></span>`,
+      backtest:`<span class="glyph"><span class="g-dot cur"></span><span class="g-line"></span><span class="g-dot"></span><span class="g-line"></span><span class="g-dot"></span></span>`,
+    }[r.stage]||'';
+
+    const pnlHTML = r.pnl!=null
+      ? `<div class="pnl-wrap"><div class="pnl-bg" style="background:${r.pnl>=0?'rgba(14,122,79,0.07)':'rgba(192,57,43,0.06)'}"></div><div class="pnl-val ${r.pnl>=0?'up':'dn'}">${r.pnl>=0?'+':'-'}$${Math.abs(r.pnl)}</div><div class="pnl-pct ${r.pnl>=0?'up':'dn'}">${r.pnl>=0?'+':''}${r.pnlPct}%</div></div>`
+      : `<span class="quiet">—</span>`;
+
+    let dsrHTML = '—';
+    if(r.dsr!=null){
+      const w = Math.min(100,Math.max(0,(r.dsr/2)*100));
+      const color = r.dsr>=0.95?'var(--iris-s)':'var(--muted)';
+      dsrHTML = `<div class="dsr-wrap"><div class="dsr-track"><div class="dsr-fill" style="width:${w}%;background:${color}"></div><div class="dsr-thr" style="left:47.5%"></div></div><span class="dsr-val tab ${r.dsr>=0.95?'':'muted'}">${r.dsr.toFixed(2)}</span></div>`;
+    }
+
+    let ddHTML = '—';
+    if(r.dd!=null){
+      const safeDD = Math.min(r.dd, 25);
+      const angle = (safeDD/25)*160;
+      const rad = (angle-80)*Math.PI/180;
+      const x2 = 11+9*Math.sin(rad), y2 = 11-9*Math.cos(rad);
+      const ddColor = r.dd<10?'var(--up)':r.dd<20?'var(--gold)':'var(--down)';
+      ddHTML = `<div class="dd-wrap"><svg class="dd-arc" viewBox="0 0 22 12"><path d="M2,11 A9,9 0 0,1 20,11" fill="none" stroke="var(--border)" stroke-width="2.5" stroke-linecap="round"/><path d="M2,11 A9,9 0 0,1 ${x2.toFixed(1)},${y2.toFixed(1)}" fill="none" stroke="${ddColor}" stroke-width="2.5" stroke-linecap="round"/></svg><span class="dd-val tab">${r.dd}%</span></div>`;
+    }
+
+    const subText = killed && r.reason ? `<div class="cell-sub dn">${r.reason}</div>` : `<div class="cell-sub">${r.sub}</div>`;
+
+    return `<tr class="${rowClass}" onclick="openPeek('${r.id}')">
+      <td><div class="cell-name">${r.name}</div>${subText}</td>
+      <td>${stageBadge}</td>
+      <td>${lifecycle}</td>
+      <td class="muted tab">${r.days??'—'}</td>
+      <td id="pcell-${r.id}">${pnlHTML}</td>
+      <td id="dcell-${r.id}" class="col-dsr">${dsrHTML}</td>
+      <td class="col-pbo tab ${r.pbo==null?'quiet':r.pbo<0.5?'':'dn'}">${r.pbo!=null?r.pbo.toFixed(2):'—'}</td>
+      <td class="col-dd">${ddHTML}</td>
+      <td class="col-oos tab ${r.oos!=null&&r.oos>0?'up':''}">${r.oos!=null?(r.oos>0?'+':'')+r.oos+'%':'—'}</td>
+      <td class="quiet col-venue" style="font-size:11px">${r.venue??'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function filterChip(el, filter){
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  currentFilter = filter;
+  renderRows();
+}
+
+function sortBy(col){
+  if(sortCol===col) sortDir*=-1; else{sortCol=col;sortDir=-1}
+  document.querySelectorAll('[id^=si-]').forEach(el=>{el.className='sort-ind'});
+  const ind = document.getElementById('si-'+col);
+  if(ind) ind.className = 'sort-ind '+(sortDir===1?'asc':'desc');
+  renderRows();
+}
+
+function toggleColPicker(){
+  document.getElementById('colMenu').classList.toggle('open');
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.col-picker-wrap')) document.getElementById('colMenu').classList.remove('open');
+});
+
+function toggleCol(col, cb){
+  ['th-'+col,'hcol-'+col].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.classList.toggle('col-hidden', !cb.checked);
+  });
+  document.querySelectorAll('.col-'+col).forEach(el=>el.classList.toggle('col-hidden', !cb.checked));
+}
+
+function nav(page){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  event.currentTarget.classList.add('active');
+  closePeek();
+}
+
+function setDensity(dense, btn){
+  document.body.classList.toggle('dense', dense);
+  document.querySelectorAll('.dt-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ── Peek pane ──
+function openPeek(id){
+  const r = STRATEGIES.find(s=>s.id===id);
+  document.getElementById('peekBackdrop').classList.add('open');
+  document.getElementById('peekPane').classList.add('open');
+  // Dim table
+  document.querySelector('.screener-wrap') && (document.querySelector('.screener-wrap').style.opacity='0.55');
+
+  if(r){
+    document.getElementById('peekTitle').textContent = r.name;
+    const stageLabel = {live:'Live',paper:'Paper',gate:'Gate ✓',killed:'Killed',queued:'Queued',backtest:'Backtesting'}[r.stage]||r.stage;
+    document.getElementById('peekSubtitle').textContent = `${stageLabel} · ${r.venue} · ${r.days??'—'}d current`;
+  }
+}
+
+function closePeek(){
+  document.getElementById('peekBackdrop').classList.remove('open');
+  document.getElementById('peekPane').classList.remove('open');
+  document.querySelector('.screener-wrap') && (document.querySelector('.screener-wrap').style.opacity='');
+}
+
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closePeek()});
+
+// ── Liquidate modal ──
+function openLiquidateModal(){
+  document.getElementById('liqOverlay').classList.add('open');
+}
+function closeLiquidateModal(){
+  document.getElementById('liqOverlay').classList.remove('open');
+}
+document.getElementById('liqOverlay').addEventListener('click',e=>{
+  if(e.target===e.currentTarget) closeLiquidateModal();
+});
+
+// ── Init ──
+renderRows();
+</script>
+</body>
+</html>
