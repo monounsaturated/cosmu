@@ -85,7 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const statusLabel = engine.connected
-    ? engine.live ? "Live armed" : engine.state === "running" ? "Running · Simulation" : "Connected · Simulation"
+    ? engine.live ? "Live armed" : engine.state === "running" ? "Running · Paper" : "Connected · Paper"
     : engine.checked ? "Offline" : "Connecting…";
   const statusColor = engine.live ? "text-info" : engine.connected ? "text-up" : "text-quiet";
   const dotColor = engine.live ? "bg-info" : engine.connected ? "bg-up" : "bg-quiet";
@@ -156,7 +156,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {engine.live ? (
               <Badge variant="info" dot>Live</Badge>
             ) : (
-              <Badge variant="muted"><Lock className="size-3" /> Simulation only</Badge>
+              <Badge variant="muted"><Lock className="size-3" /> Paper only</Badge>
             )}
             <ThemeToggle />
           </div>

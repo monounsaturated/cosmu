@@ -1,8 +1,8 @@
 # intent: ARM the validated KELLER DEFENSIVE ASSET ALLOCATION (DAA, top-6, canary EEM/AGG) strategy as a COSMU
-# forward-test — register it into the SAME control-plane rows the deterministic finder writes for a gate-passed
-# survivor (strategies + strategy_versions[forward_test] + backtests[screen] + tracks + a `track_opened` event), and
+# paper — register it into the SAME control-plane rows the deterministic finder writes for a gate-passed
+# survivor (strategies + strategy_versions[paper] + backtests[screen] + tracks + a `track_opened` event), and
 # open the held SIM positions in the currently-targeted assets (each sized to its DAA target weight of the track
-# capital) at their latest REAL closes. From that moment the forward-test clock (this module's --mark, or
+# capital) at their latest REAL closes. From that moment the paper clock (this module's --mark, or
 # orchestrator.mark_tracks) marks the held positions against the latest equity closes on every run, accruing honest
 # daily net-of-fee P&L the leaderboard + overview surface.
 #
@@ -10,7 +10,7 @@
 # Keuning 2018, the canary-universe successor to VAA, widely replicated); equity_daa.validate() confirms it is POSITIVE
 # OOS net of real IBKR fees and BEATS buy-and-hold SPY risk-adjusted (the documented edge is crisis avoidance via the
 # canary breadth signal -> a much shallower drawdown, typically at a higher Sharpe) on our total-return data. We arm it
-# to forward-test on real prices going forward. We do NOT touch / lower the 0.95 Gate — that is a separate honesty
+# to paper on real prices going forward. We do NOT touch / lower the 0.95 Gate — that is a separate honesty
 # guard for NOVEL in-sample-mined edges.
 #
 # invariants: SIM only (live stays OFF — no real orders, no money moved); idempotent (re-running re-uses the existing
@@ -42,7 +42,7 @@ TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size
 IBKR_ETF_BPS_PER_SIDE = daa.IBKR_ETF_BPS_PER_SIDE
 # DAA is positive net-of-fee across the trend regimes on our data and its WHOLE POINT is to scale the book into short
 # Treasuries as the canary breadth signal (EEM/AGG) deteriorates in a bear market. So its proven-regime passport is the
-# full set; this lets master/live_eligibility clear the regime gate once the 30-day forward test matures (human clicks).
+# full set; this lets master/live_eligibility clear the regime gate once the 30-day paper run matures (human clicks).
 PROVEN_REGIMES = ["bull", "bear", "chop"]
 
 
@@ -147,7 +147,7 @@ def _last_equity_close(symbol: str) -> Decimal:
 
 
 def arm(store: Store | None = None) -> dict:
-    """Register DAA as a forward-test track and open the held sim positions at their DAA target weights (the defensive
+    """Register DAA as a paper track and open the held sim positions at their DAA target weights (the defensive
     pool absorbs the protective cash fraction, so the FULL track capital is deployed). Idempotent. Returns a summary
     dict (version_id, weights, fills)."""
     store = store or Store(Settings())
@@ -184,13 +184,13 @@ def arm(store: Store | None = None) -> dict:
                 "mutation_operator": None,
                 "mutation_rationale": "documented strategy (Keller DAA top-6) — deployed via the documented-deploy lane, not the in-sample Gate",
                 "origin": STRATEGY_ORIGIN,
-                "status": "forward_test",
+                "status": "paper",
                 "created_at": now,
                 "killed_at": None,
                 "kill_reason": None,
             },
         )
-        print(f"\nREGISTERED strategy + version: version_id={version_id}  (status=forward_test, origin=documented)")
+        print(f"\nREGISTERED strategy + version: version_id={version_id}  (status=paper, origin=documented)")
     else:
         print(f"\nVersion already present: version_id={version_id} (idempotent — clock NOT reset)")
 
@@ -216,9 +216,9 @@ def arm(store: Store | None = None) -> dict:
         )
         print("  + backfilled track row")
 
-    # track_opened event (the forward-test clock origin + proven-regime passport, read by master/live_eligibility).
-    # MIN(ts) of this event is when the forward test started ticking; live-arming is HARD-gated on >=
-    # FORWARD_TEST_MIN_DAYS of net-positive forward evidence FROM HERE + the current regime being in the proven set.
+    # track_opened event (the paper clock origin + proven-regime passport, read by master/live_eligibility).
+    # MIN(ts) of this event is when the paper run started ticking; live-arming is HARD-gated on >=
+    # PAPER_MIN_DAYS of net-positive forward evidence FROM HERE + the current regime being in the proven set.
     if store.row("SELECT 1 FROM events WHERE kind='track_opened' AND ref_id = ? LIMIT 1", (version_id,)) is None:
         store.append_event(
             actor="research",
@@ -273,7 +273,7 @@ def arm(store: Store | None = None) -> dict:
         marks[instrument.id] = price
         fills.append({"symbol": sym, "qty": str(qty), "price": str(price), "weight": weight, "reused": False})
 
-    # FIRST MARK — write the opening portfolio_snapshot (scope=track) so the forward-test trajectory has a t0 point.
+    # FIRST MARK — write the opening portfolio_snapshot (scope=track) so the paper trajectory has a t0 point.
     snap = portfolio.mark_to_market(marks)
     store.append_event(
         actor="research", kind="tracks_marked", ref_type="strategy_version", ref_id=version_id,
@@ -285,17 +285,17 @@ def arm(store: Store | None = None) -> dict:
     if deferred:
         print(f"  OFFLINE (deferred, no close fetched): {deferred} — the next --mark run will open + price these.")
     print(f"Aggregate equity now ${float(snap['equity']):,.2f}.")
-    print("\nThe forward-test is ARMED. The forward-test clock will re-mark these positions against the latest equity")
-    print("closes on every run; watch it accrue on GET /leaderboard (forward_age_days, live_ready) and GET /overview.")
+    print("\nThe paper is ARMED. The paper clock will re-mark these positions against the latest equity")
+    print("closes on every run; watch it accrue on GET /leaderboard (paper_age_days, live_ready) and GET /overview.")
     print("Run the clock with:  python3 -m cosmu.research.equity_daa_arm --mark")
     return {"armed": True, "version_id": version_id, "weights": weights, "fills": fills,
             "deferred": deferred, "equity": float(snap["equity"]), "rotation": rotation}
 
 
 def mark(store: Store | None = None) -> dict:
-    """Re-mark the DAA held positions against the latest REAL equity closes (the forward-test clock, equity edition).
-    Each run writes a fresh portfolio_snapshot, advancing the forward-test trajectory, and drives tracks.return_pct from
-    the LIVE marked trajectory (so a flat/negative forward test can never reach live_ready on a stale seed). SIM only."""
+    """Re-mark the DAA held positions against the latest REAL equity closes (the paper clock, equity edition).
+    Each run writes a fresh portfolio_snapshot, advancing the paper trajectory, and drives tracks.return_pct from
+    the LIVE marked trajectory (so a flat/negative paper run can never reach live_ready on a stale seed). SIM only."""
     store = store or Store(Settings())
     version_id = _existing_version(store)
     if version_id is None:
@@ -326,7 +326,7 @@ def mark(store: Store | None = None) -> dict:
         actor="research", kind="tracks_marked", ref_type="strategy_version", ref_id=version_id,
         payload={"marked": len(marks), "equity": float(snap["equity"])},
     )
-    print(f"DAA forward-test MARK — marked {len(marks)} position(s); aggregate equity ${float(snap['equity']):,.2f} "
+    print(f"DAA paper MARK — marked {len(marks)} position(s); aggregate equity ${float(snap['equity']):,.2f} "
           f"pnl ${float(snap['pnl']):+,.2f}")
     return {"marked": True, "version_id": version_id, "n": len(marks), "equity": float(snap["equity"])}
 

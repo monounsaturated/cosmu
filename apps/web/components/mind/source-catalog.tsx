@@ -362,7 +362,7 @@ const SECTIONS: SourceSection[] = [
         name: "gtrends",
         provider: "Google Trends (pytrends)",
         what: "Search interest for crypto keywords (0–100 normalised by Google). A retail attention proxy: search spikes often coincide with price extremes.",
-        pitNote: "REVISION HAZARD: Google Trends rescales all historical values whenever the query window changes. A score for 2022-09 fetched today may differ from a score fetched in 2022 — look-ahead contamination is real. Available_at = UTC timestamp of the actual fetch, not the week end. Forward-test only until Gate-validated on truly out-of-sample data with a fixed rolling window.",
+        pitNote: "REVISION HAZARD: Google Trends rescales all historical values whenever the query window changes. A score for 2022-09 fetched today may differ from a score fetched in 2022 — look-ahead contamination is real. Available_at = UTC timestamp of the actual fetch, not the week end. Paper only until Gate-validated on truly out-of-sample data with a fixed rolling window.",
         pitHonesty: "revision-hazard",
         coverage: "Market-wide. Weekly buckets. History from 2004. Free, no key. Requires pytrends pip package.",
         keyGate: "none",

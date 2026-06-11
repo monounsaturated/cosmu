@@ -9,7 +9,7 @@ from fastapi import APIRouter
 from cosmu.api._shared import _json, _metric, store
 from cosmu.api.models import LeaderboardResponse, LeaderboardRow
 from cosmu.master.divergence import divergence as forward_divergence
-from cosmu.master.forward_maturity import maturity as forward_maturity
+from cosmu.master.paper_maturity import maturity as paper_maturity
 from cosmu.strategy.taxonomy import derive_facets
 
 router = APIRouter()
@@ -36,7 +36,7 @@ def _oos_window_days(oos_start: object, oos_end: object) -> float | None:
     return months * _DAYS_PER_MONTH
 
 
-def _forward_return_pct(tr_equity: object, starting_capital: object) -> float | None:
+def _paper_return_pct(tr_equity: object, starting_capital: object) -> float | None:
     """The real net-of-fee forward return % from the marked trajectory: (marked_equity / starting_capital - 1) * 100.
     Returns None when the track has no marked snapshot yet (day-0 / never marked) or its starting_capital is
     missing/degenerate — so the contract carries an honest `null` rather than the rosy backtest number. A marked
@@ -55,14 +55,14 @@ def _forward_return_pct(tr_equity: object, starting_capital: object) -> float | 
 
 @router.get("/leaderboard", response_model=LeaderboardResponse)
 def leaderboard() -> LeaderboardResponse:
-    # The track's forward-test clock origin = its FIRST `track_opened` event (per-version, written when the
-    # deterministic gate opened the standalone track). MIN(ts) is the moment the forward test started ticking;
-    # advisory maturity (forward_age_days / live_ready) is computed from it. LEFT JOIN so non-funded rows still
+    # The track's paper clock origin = its FIRST `track_opened` event (per-version, written when the
+    # deterministic gate opened the standalone track). MIN(ts) is the moment the paper run started ticking;
+    # advisory maturity (paper_age_days / live_ready) is computed from it. LEFT JOIN so non-funded rows still
     # appear with a 0-day clock (not yet ready).
-    # forward_return_pct is the REAL forward-test number: marked-to-market equity (the LATEST per-track
+    # paper_return_pct is the REAL paper number: marked-to-market equity (the LATEST per-track
     # portfolio_snapshot the mark clock wrote) vs the track's starting_capital — net of fees, since funding.
     # We derive it from the marked SNAPSHOT (not tracks.return_pct, which is SEEDED with the backtest number at
-    # funding time): a track with no marked snapshot yet has `tr_equity` NULL → forward_return_pct stays null
+    # funding time): a track with no marked snapshot yet has `tr_equity` NULL → paper_return_pct stays null
     # (day-0 truth), so a fresh track can NEVER surface its rosy backtest as forward performance.
     rows = store.rows(
         """
@@ -95,23 +95,23 @@ def leaderboard() -> LeaderboardResponse:
       try:
         # net_pct is the net-of-fee return the maturity signal reads — same field surfaced on the row.
         net_pct = _metric(row["oos_return"]) * 100 - 0.18
-        # ADVISORY ONLY (master/forward_maturity.py): surfaced, never a gate. The forward-test clock runs from the
+        # ADVISORY ONLY (master/paper_maturity.py): surfaced, never a gate. The paper clock runs from the
         # track's first mark; live_ready recommends a matured + net-positive track. The operator decides.
-        mat = forward_maturity(row["funded_at"], net_pct)
-        # The REAL forward-test return: marked equity (latest scope='track' snapshot) vs the track's
+        mat = paper_maturity(row["funded_at"], net_pct)
+        # The REAL paper return: marked equity (latest scope='track' snapshot) vs the track's
         # starting_capital, net of fees. Null when the track has NO marked snapshot yet (day-0 / never
         # marked) — we NEVER fall back to b.oos_return, so a fresh track shows its honest 0/— forward, not
-        # the rosy backtest. Once marked, a flat/negative forward test shows its TRUE (0 or negative) number.
-        forward_return_pct = _forward_return_pct(row["tr_equity"], row["starting_capital"])
+        # the rosy backtest. Once marked, a flat/negative paper run shows its TRUE (0 or negative) number.
+        paper_return_pct = _paper_return_pct(row["tr_equity"], row["starting_capital"])
         # ADVISORY (master/divergence.py): an early warning that the REAL marked forward return has stopped
         # tracking the backtest this track was funded on. We compare the marked forward return to the backtest OOS
         # return pro-rated to the SAME elapsed forward window (track_return_pct = oos_return*100 is the backtest %,
-        # mat.forward_age_days is the marked clock, and the OOS window length comes from the b.oos_start/end bounds).
+        # mat.paper_age_days is the marked clock, and the OOS window length comes from the b.oos_start/end bounds).
         # Fails safe to the "insufficient" empty state when the marked window is too short or any input is missing —
         # so a fresh / un-marked track NEVER raises a false alarm. MONITORING ONLY, never on the Gate/money path.
         div = forward_divergence(
-            forward_return_pct,
-            mat.forward_age_days,
+            paper_return_pct,
+            mat.paper_age_days,
             _metric(row["oos_return"]) * 100,
             _oos_window_days(row["oos_start"], row["oos_end"]),
         )
@@ -127,11 +127,11 @@ def leaderboard() -> LeaderboardResponse:
                 track_return_pct=_metric(row["oos_return"]) * 100,
                 deflated_sharpe=_metric(row["deflated_sharpe"]),
                 net_pct=net_pct,
-                forward_return_pct=forward_return_pct,
+                paper_return_pct=paper_return_pct,
                 pbo=_metric(row["pbo"]),
                 status=row["status"],
                 lineage="seed:template -> wfo",
-                forward_age_days=mat.forward_age_days,
+                paper_age_days=mat.paper_age_days,
                 live_ready=mat.live_ready,
                 # Honest divergence read-out: "insufficient" carries a null gap (the empty state), so the UI never
                 # renders a fabricated number for a track without enough marked history.

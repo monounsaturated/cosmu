@@ -4,7 +4,7 @@
 # the ranking score is an "accelerating" BLEND of the 1-, 3- and 6-month trailing total returns instead of a single
 # 12-month look-back. The shorter, faster-reacting blend is the documented edge vs plain GEM: it de-risks earlier into
 # drawdowns and re-engages faster on recoveries. Externally documented; here we check it is POSITIVE OOS net of REAL
-# IBKR fees and BEATS buy-and-hold SPY risk-adjusted on OUR total-return data, then arm a SIM forward-test. We NEVER
+# IBKR fees and BEATS buy-and-hold SPY risk-adjusted on OUR total-return data, then arm a SIM paper. We NEVER
 # touch / lower the 0.95 Gate (that is an overfitting guard for NOVEL mined edges, not for a documented strategy).
 #
 # THE RULE (monthly, signal at month-end t, trade t+1 — NO look-ahead):
@@ -318,7 +318,7 @@ def validate() -> dict:
           f"higher Sharpe={full_higher_sharpe} [ADM {adm_stats.ann_sharpe:+.2f} vs SPY {spy_stats.ann_sharpe:+.2f}])")
     print(f"  (3) REAL holdout DSR > 0?                    {holdout_ok}  (DSR {split.holdout_dsr:+.4f})")
     print(f"  (4) Fee-robust at 5 bps/side?                {fee_robust}  (net total {fee5.total_return:+.1%})")
-    print(f"  ==> {'DEPLOYABLE — arm the live forward-test' if deployable else 'NOT deployable on our data (honest FAIL)'}")
+    print(f"  ==> {'DEPLOYABLE — arm the live paper' if deployable else 'NOT deployable on our data (honest FAIL)'}")
     print("=" * 104)
 
     current_signal = _signal(series, last_complete, bonds)

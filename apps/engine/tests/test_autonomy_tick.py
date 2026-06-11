@@ -206,7 +206,7 @@ def test_recommendation_approve_and_dismiss(tmp_path, monkeypatch):
     rec = items[0]
     approve = client.post(f"/recommendations/{rec['id']}/approve").json()
     assert approve["ok"] is True
-    # forward_test_promotion_watch is not money-adjacent → applied.
+    # paper_promotion_watch is not money-adjacent → applied.
     assert approve["applied"] is True
     # Re-approving is a no-op (already approved).
     again = client.post(f"/recommendations/{rec['id']}/approve").json()

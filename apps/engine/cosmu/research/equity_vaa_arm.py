@@ -1,8 +1,8 @@
 # intent: ARM the validated KELLER VIGILANT ASSET ALLOCATION — AGGRESSIVE (VAA-G4) strategy as a COSMU LIVE
-# FORWARD-TEST — register it into the SAME control-plane rows the deterministic finder writes for a gate-passed
-# survivor (strategies + strategy_versions[forward_test] + backtests[screen] + tracks + a `track_opened` event), and
+# PAPER — register it into the SAME control-plane rows the deterministic finder writes for a gate-passed
+# survivor (strategies + strategy_versions[paper] + backtests[screen] + tracks + a `track_opened` event), and
 # open ONE real held SIM position in the currently-signalled ETF priced at the latest REAL close. From that moment the
-# forward-test clock (orchestrator.mark_tracks / `python3 -m cosmu.orchestrator.loop`, or `--mark` here) marks the
+# paper clock (orchestrator.mark_tracks / `python3 -m cosmu.orchestrator.loop`, or `--mark` here) marks the
 # held position against the latest equity close on every run, accruing honest daily net-of-fee P&L the leaderboard +
 # overview surface.
 #
@@ -10,7 +10,7 @@
 # (Keller & Keuning 2017, widely replicated); equity_vaa.validate() confirms it is POSITIVE OOS net of real IBKR fees
 # and beats buy-and-hold SPY BOTH on full-cycle Sharpe (0.95 vs 0.80) AND maxDD (~45% of SPY's) on our total-return
 # data, with the real purged+embargoed holdout (cosmu.research.equity_holdout) giving a holdout dSR ~ +0.38 (>0 =>
-# significantly positive out-of-sample). We arm it to forward-test on real prices going forward. We do NOT touch /
+# significantly positive out-of-sample). We arm it to paper on real prices going forward. We do NOT touch /
 # lower the 0.95 Gate — that is a separate honesty guard for NOVEL in-sample-mined edges.
 #
 # invariants: SIM only (live stays OFF — no real orders, no money moved); idempotent (re-running re-uses the existing
@@ -45,7 +45,7 @@ IBKR_ETF_BPS_PER_SIDE = vaa.IBKR_ETF_BPS_PER_SIDE
 # VAA is positive net-of-fee across the trend regimes on our data and its WHOLE POINT is to rotate to short Treasuries
 # in bear markets (the canary breadth signal). 2008 shows -7.9% while SPY lost 48%, COVID +4.9% vs SPY -9.2%, 2022
 # -12.1% vs SPY -18.2%. So its proven-regime passport is the full set; this lets master/live_eligibility clear the
-# regime gate once the 30-day forward test matures (a human still clicks).
+# regime gate once the 30-day paper run matures (a human still clicks).
 PROVEN_REGIMES = ["bull", "bear", "chop"]
 
 
@@ -149,7 +149,7 @@ def _last_equity_close(symbol: str) -> Decimal:
 
 
 def arm(store: Store | None = None) -> dict:
-    """Register VAA as a forward-test track and open the held sim position in its current signal. Idempotent.
+    """Register VAA as a paper track and open the held sim position in its current signal. Idempotent.
     Returns a summary dict (version_id, signal, price, qty, forward clock origin)."""
     store = store or Store(Settings())
     # Route the documented-strategy validation through the TYPED two-lane router: the spec's lane="deploy" forces the
@@ -183,16 +183,16 @@ def arm(store: Store | None = None) -> dict:
                 "mutation_operator": None,
                 "mutation_rationale": "documented strategy (Keller VAA-G4 aggressive) — deployed via the documented-deploy lane, not the in-sample Gate",
                 "origin": STRATEGY_ORIGIN,
-                "status": "forward_test",
+                "status": "paper",
                 "created_at": now,
                 "killed_at": None,
                 "kill_reason": None,
             },
         )
-        print(f"\nREGISTERED forward-test version: version_id={version_id}  (status=forward_test, origin=documented)")
+        print(f"\nREGISTERED paper version: version_id={version_id}  (status=paper, origin=documented)")
     else:
         version_id = existing
-        print(f"\nForward-test version already registered: version_id={version_id} (idempotent — clock NOT reset)")
+        print(f"\nPaper version already registered: version_id={version_id} (idempotent — clock NOT reset)")
 
     # Backfill the dependent control-plane rows IDEMPOTENTLY — each is written only if missing. This keeps the arm
     # self-healing across a partial failure (e.g. a version that landed but whose backtest/track/track_opened didn't):
@@ -214,8 +214,8 @@ def arm(store: Store | None = None) -> dict:
             },
         )
         print("  + track row written")
-    # The forward-test clock origin + proven-regime passport (read by master/live_eligibility). MIN(ts) of this event
-    # is when the forward test started ticking; live-arming is HARD-gated on >= FORWARD_TEST_MIN_DAYS of net-positive
+    # The paper clock origin + proven-regime passport (read by master/live_eligibility). MIN(ts) of this event
+    # is when the paper run started ticking; live-arming is HARD-gated on >= PAPER_MIN_DAYS of net-positive
     # forward evidence FROM HERE, plus the current regime being in the proven set. Written ONCE (never reset).
     if store.row("SELECT id FROM events WHERE ref_id=? AND kind='track_opened' LIMIT 1", (version_id,)) is None:
         store.append_event(
@@ -263,7 +263,7 @@ def arm(store: Store | None = None) -> dict:
         instrument_id=instrument.id, symbol=signal, venue=VENUE, side=1, qty=qty, price=price,
         fee=(TRACK_CAPITAL * Decimal(str(IBKR_ETF_BPS_PER_SIDE)) / Decimal("1e4")), strategy_version_id=version_id,
     )
-    # FIRST MARK — write the opening portfolio_snapshot (scope=track) so the forward-test trajectory has a t0 point.
+    # FIRST MARK — write the opening portfolio_snapshot (scope=track) so the paper trajectory has a t0 point.
     snap = portfolio.mark_to_market({instrument.id: price})
     store.append_event(
         actor="research", kind="tracks_marked", ref_type="strategy_version", ref_id=version_id,
@@ -271,17 +271,17 @@ def arm(store: Store | None = None) -> dict:
     )
     print(f"OPENED held sim position + FIRST MARK: {qty} {signal} @ {price} (capital ${TRACK_CAPITAL}). "
           f"Aggregate equity now ${float(snap['equity']):,.2f}.")
-    print("\nThe forward-test is ARMED. The forward-test clock (orchestrator.mark_tracks) will re-mark this position")
-    print("against the latest equity close on every run; watch it accrue on GET /leaderboard (forward_age_days,")
+    print("\nThe paper is ARMED. The paper clock (orchestrator.mark_tracks) will re-mark this position")
+    print("against the latest equity close on every run; watch it accrue on GET /leaderboard (paper_age_days,")
     print("live_ready) and GET /overview. Run the clock with:  python3 -m cosmu.research.equity_vaa_arm --mark")
     return {"armed": True, "version_id": version_id, "signal": signal, "qty": str(qty), "price": str(price),
             "equity": float(snap["equity"]), "rotation": rotation}
 
 
 def mark(store: Store | None = None) -> dict:
-    """Re-mark the VAA held position against the latest REAL equity close (the forward-test clock, equity edition).
+    """Re-mark the VAA held position against the latest REAL equity close (the paper clock, equity edition).
     The generic orchestrator.mark_tracks prices via Binance; this prices the equity leg via Yahoo. Run on a schedule
-    (cron) — each run writes a fresh portfolio_snapshot, advancing the forward-test trajectory. SIM only."""
+    (cron) — each run writes a fresh portfolio_snapshot, advancing the paper trajectory. SIM only."""
     store = store or Store(Settings())
     version_id = _existing_version(store)
     if version_id is None:
@@ -296,10 +296,10 @@ def mark(store: Store | None = None) -> dict:
         if price > 0:
             marks[p.instrument_id] = price
     snap = portfolio.mark_to_market(marks)
-    # Drive tracks.return_pct from the LIVE marked trajectory so the forward-test net P&L (not the seeded OOS number)
+    # Drive tracks.return_pct from the LIVE marked trajectory so the paper net P&L (not the seeded OOS number)
     # is what master/live_eligibility reads for live_ready. The per-track snapshot value = marked positions + realized
-    # P&L; vs the track's starting capital that IS its genuine forward-test net-of-fee return. This closes the loop so
-    # a flat/negative forward test can NEVER reach live_ready on a stale seed.
+    # P&L; vs the track's starting capital that IS its genuine paper net-of-fee return. This closes the loop so
+    # a flat/negative paper run can NEVER reach live_ready on a stale seed.
     track_snap = store.row(
         "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1",
         (version_id,),
@@ -316,7 +316,7 @@ def mark(store: Store | None = None) -> dict:
         actor="research", kind="tracks_marked", ref_type="strategy_version", ref_id=version_id,
         payload={"marked": len(marks), "equity": float(snap["equity"])},
     )
-    print(f"VAA forward-test MARK — marked {len(marks)} position(s); aggregate equity ${float(snap['equity']):,.2f} "
+    print(f"VAA paper MARK — marked {len(marks)} position(s); aggregate equity ${float(snap['equity']):,.2f} "
           f"pnl ${float(snap['pnl']):+,.2f}")
     return {"marked": True, "version_id": version_id, "n": len(marks), "equity": float(snap["equity"])}
 

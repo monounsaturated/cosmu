@@ -5,7 +5,7 @@
 // HONESTY CONTRACT (the machine that never lies): every number here is real engine data. With no engine we
 // show "—" and "engine offline"; with the engine up but no funded tracks yet we show an honest "$0 · no
 // funded tracks yet" day-0 state and render NO curve (the Sparkline already declines to draw <2 points —
-// never a flat fake line). The figure is explicitly labelled "Simulation" so a sim curve is never mistaken
+// never a flat fake line). The figure is explicitly labelled "Paper" so a sim curve is never mistaken
 // for live money. Net of fees is stated, because that is the only number that matters.
 
 import Link from "next/link";
@@ -36,7 +36,7 @@ export function MoneyHero({
   const running = statusConnected && status.running && !status.paused;
   const stateLabel = !statusConnected ? "Unknown" : status.paused ? "Paused" : status.running ? "Running" : "Idle";
   const stateVariant = running ? "up" : status.paused ? "warn" : "muted";
-  const modeLabel = status.live_enabled ? "Live" : "Simulation";
+  const modeLabel = status.live_enabled ? "Live" : "Paper";
   const lastTick = timeAgo(status.last_tick_at);
 
   const tone: "up" | "down" | "muted" = !overviewConnected ? "muted" : pnl > 0 ? "up" : pnl < 0 ? "down" : "muted";
@@ -46,7 +46,7 @@ export function MoneyHero({
   const subline = !overviewConnected
     ? "Engine offline — no live figure to show."
     : hasCurve
-      ? "Net of fees, across every funded simulation track."
+      ? "Net of fees, across every funded paper track."
       : "No funded tracks yet — the figure starts moving when a strategy clears the Gate.";
 
   // Operating-cost-vs-alpha ratio — a real /overview field. Honest: 0 reads as "—" (not yet measurable),
@@ -71,7 +71,7 @@ export function MoneyHero({
           {/* One calm row: what this number is, then the machine's state + mode. */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-quiet">
-              Simulation net P&amp;L
+              Paper net P&amp;L
             </span>
             <span className="ml-auto flex items-center gap-1.5">
               <Badge variant={stateVariant}>
@@ -122,7 +122,7 @@ export function MoneyHero({
                 width={336}
                 height={92}
                 strokeWidth={2}
-                ariaLabel="simulation equity curve, net of fees"
+                ariaLabel="paper equity curve, net of fees"
                 className="w-full"
               />
             </div>

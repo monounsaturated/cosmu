@@ -40,7 +40,7 @@ def _persist_version(store: Store, spec, *, passed: bool, vid_origin="seed") -> 
             "strategy_id": sid, "parent_id": None, "spec": spec.model_dump(mode="json"),
             "generated_code": compiled.code, "code_hash": compiled.code_hash, "params": params,
             "mutation_operator": None, "mutation_rationale": None, "origin": vid_origin,
-            "status": "forward_test" if passed else "killed", "created_at": utcnow(),
+            "status": "paper" if passed else "killed", "created_at": utcnow(),
             "killed_at": None if passed else utcnow(), "kill_reason": None if passed else "pbo",
         },
     )

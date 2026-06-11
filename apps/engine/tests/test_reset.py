@@ -16,7 +16,7 @@ def test_reset_purges_sim_state_but_preserves_config_and_live_toggle(tmp_path):
     store = _store(tmp_path)
     # Seed: a strategy version + track + position + snapshot (discovery/paper state), and config we must keep.
     sid = store.insert("strategies", {"name": "s1", "thesis": "t", "origin": "seed", "created_at": "2026-01-01"})
-    vid = store.insert("strategy_versions", {"strategy_id": sid, "spec": {}, "generated_code": "", "code_hash": "h", "params": {}, "origin": "seed", "status": "forward_test", "created_at": "2026-01-01"})
+    vid = store.insert("strategy_versions", {"strategy_id": sid, "spec": {}, "generated_code": "", "code_hash": "h", "params": {}, "origin": "seed", "status": "paper", "created_at": "2026-01-01"})
     store.insert("tracks", {"strategy_version_id": vid, "starting_capital": "100000", "equity": "100000", "return_pct": "0", "updated_at": "2026-01-01"})
     store.insert("positions", {"strategy_version_id": vid, "instrument_id": "i1", "symbol": "BTCUSDT", "venue": "binance", "qty": "1", "avg_price": "100", "realized_pnl": "0", "last_was_loss": 0, "updated_at": "2026-01-01"})
     store.insert("portfolio_snapshots", {"scope": "pool", "ref_id": "global", "ts": "2026-01-01", "equity": "83196", "cash": "0", "positions_value": "0", "pnl": "-16804", "drawdown": "0.16"})

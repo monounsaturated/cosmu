@@ -32,12 +32,12 @@ command = "python3 -m cosmu.research.loop --ingest"
 schedule = "0 */4 * * *"
 command = "python3 -m cosmu.master.scheduler"
 
-# FORWARD-TEST CLOCK: STEP then MARK. Step = the executor (orchestrator/forward_step.py) re-evaluates each
+# PAPER CLOCK: STEP then MARK. Step = the executor (orchestrator/paper_step.py) re-evaluates each
 # gate-lane track's OWN spec/params on the latest real bars and closes/re-opens through the one order path
 # (SIM fills only — live stays off); mark = re-mark every held SIM position against the latest REAL close,
 # routed by asset class (crypto -> Binance spot, equity/ETF -> Yahoo total-return). Daily at 22:10 UTC (after
 # the US equity cash close) suits daily-bar strategies; bump to hourly if a faster-bar crypto track needs it.
-# This is the hands-off floor: it makes the forward test a genuine strategy test, not buy-and-hold.
+# This is the hands-off floor: it makes the paper run a genuine strategy test, not buy-and-hold.
 [[cron]]
 schedule = "10 22 * * *"
 command = "python3 -m cosmu.orchestrator.loop"

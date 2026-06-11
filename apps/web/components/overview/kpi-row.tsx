@@ -1,14 +1,14 @@
 // module: KpiRow — the Overview's compact KPI strip, the second-glance answer to "where does the machine
 // stand?". Four dense tiles, every one REAL engine data:
 //   • Survivors       — strategies that have cleared the honest Gate (funnel.gate_passed).
-//   • In simulation   — funded tracks accumulating live-bar evidence with no capital (funnel.funded).
+//   • In paper   — funded tracks accumulating live-bar evidence with no capital (funnel.funded).
 //   • Days to live-ready — the SHORTEST remaining wait until a maturing track crosses the ≥30d signal,
-//                          or "ready" the moment one has. Honest "—" when no track is in simulation.
+//                          or "ready" the moment one has. Honest "—" when no track is in paper.
 //   • Gate verdicts   — how many theories the Gate has ruled on (PASS or FAIL), with the pass tally.
 //
 // HONESTY CONTRACT: nothing is fabricated. Each tile shows "—" + "engine offline" when its source is not
 // connected, and an honest empty value when the engine is up but the count is genuinely zero. The
-// days-to-ready number is computed only from real forward_age_days — never an estimate or a target.
+// days-to-ready number is computed only from real paper_age_days — never an estimate or a target.
 
 import { CalendarClock, ClipboardCheck, FlaskConical, ShieldCheck } from "lucide-react";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
@@ -32,9 +32,9 @@ export function KpiRow({
   summary: ExperimentsResponse["summary"];
   experimentsConnected: boolean;
 }) {
-  // Days to live-ready — derived ONLY from real forward_age_days. If any track already has ≥30d it is
+  // Days to live-ready — derived ONLY from real paper_age_days. If any track already has ≥30d it is
   // "ready"; otherwise we surface the shortest remaining wait. Null (→ "—") when nothing is maturing.
-  const ages = simRows.map((r) => Math.floor(r.forward_age_days ?? 0));
+  const ages = simRows.map((r) => Math.floor(r.paper_age_days ?? 0));
   const anyReady = ages.some((d) => d >= LIVE_READY_DAYS);
   const maturing = ages.filter((d) => d < LIVE_READY_DAYS);
   const minRemaining = maturing.length > 0 ? Math.min(...maturing.map((d) => LIVE_READY_DAYS - d)) : null;
@@ -56,7 +56,7 @@ export function KpiRow({
     liveReadyTone = "iris";
   } else {
     liveReadyValue = "—";
-    liveReadyHint = "no tracks in simulation";
+    liveReadyHint = "no tracks in paper";
     liveReadyTone = "muted";
   }
 
@@ -73,7 +73,7 @@ export function KpiRow({
         hint={intelConnected ? `${funnel.authored} authored · ${funnel.killed} killed` : "engine offline"}
       />
       <MetricCard
-        label="In simulation"
+        label="In paper"
         tone="iris"
         icon={<FlaskConical className="size-4" />}
         value={intelConnected ? funnel.funded : "—"}

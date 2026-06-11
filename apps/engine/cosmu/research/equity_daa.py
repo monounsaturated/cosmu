@@ -4,7 +4,7 @@
 # GEM/VAA/PAA it is a documented monthly cross-asset rotation; it does NOT need our in-sample Gate to "discover" it
 # (the Gate is an overfitting guard for NOVEL mined edges). The appropriate validators are (a) the external literature,
 # (b) a positive OOS-net-of-fees check on OUR total-return data that BEATS buy-and-hold SPY risk-adjusted, (c) the LIVE
-# forward-test. This module does (b) and (its sibling arm) does (c). It NEVER touches / lowers the 0.95 Gate.
+# paper. This module does (b) and (its sibling arm) does (c). It NEVER touches / lowers the 0.95 Gate.
 #
 # THE RULE (monthly; signal at month-end t from completed-month closes, trade t+1 — NO look-ahead):
 #   RISK universe (the liquid ETFs we hold point-in-time): {SPY, QQQ, EFA, EEM, GLD, AGG, LQD, TLT}.
@@ -34,7 +34,7 @@
 # VALIDATION (the DEPLOYMENT bar, not the 0.95 Gate): positive OOS net of real fees, BEATS buy-and-hold SPY
 #   risk-adjusted (higher Sharpe AND/OR materially lower maxDD), robust across an IS/OOS purged split + major regimes.
 #
-# Propose/measure-only — this module moves no money; the sibling `equity_daa_arm` arms a SIM forward-test (live OFF).
+# Propose/measure-only — this module moves no money; the sibling `equity_daa_arm` arms a SIM paper (live OFF).
 
 from __future__ import annotations
 
@@ -432,7 +432,7 @@ def validate() -> dict:
     print(f"  (3) FULL-cycle risk-adjusted beat vs B&H SPY?      {full_riskadj_beat}  "
           f"(Sharpe {daa_stats.ann_sharpe:+.2f} vs {spy_stats.ann_sharpe:+.2f} [{full_sharpe_beat}]; "
           f"maxDD {daa_stats.max_dd:.1%} vs {spy_stats.max_dd:.1%} [{full_dd_beat}])")
-    print(f"  ==> {'DEPLOYABLE — arm the live forward-test' if deployable else 'NOT deployable on our data'}")
+    print(f"  ==> {'DEPLOYABLE — arm the live paper' if deployable else 'NOT deployable on our data'}")
     print("  HONEST EXPECTATION: a crisis-avoidance portfolio — the canary breadth signal (EEM/AGG) scales the book")
     print("  PROGRESSIVELY into short Treasuries before equity drawdowns deepen, while holding a diversified momentum")
     print("  basket when risk is on. Higher turnover than GEM/PAA means the fee leg matters (see the sweep). That")

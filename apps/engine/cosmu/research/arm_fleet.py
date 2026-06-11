@@ -1,4 +1,4 @@
-"""arm_fleet.py — one-command entrypoint to arm the full equity forward-test fleet.
+"""arm_fleet.py — one-command entrypoint to arm the full equity paper fleet.
 
 Calls each equity *_arm.py module's arm() function in declaration order, honours
 idempotency (each arm() skips already-armed tracks), is offline-safe (arm() defers

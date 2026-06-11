@@ -12,7 +12,7 @@ router = APIRouter()
 
 @router.get("/overview", response_model=OverviewResponse)
 def overview() -> OverviewResponse:
-    """The aggregate read-out for the Overview surface — the Σ of all standalone forward-test tracks. A pure
+    """The aggregate read-out for the Overview surface — the Σ of all standalone paper tracks. A pure
     read-out: there is NO pooled wallet and no cross-track allocation (each survivor proves on its own track).
 
     All four reads share ONE autocommit Postgres connection (store.reading()) — without this each store.row()

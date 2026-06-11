@@ -11,12 +11,12 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# ADVISORY forward-test maturity threshold (calendar days). A funded SIM track that has run at least this many
+# ADVISORY paper maturity threshold (calendar days). A funded SIM track that has run at least this many
 # days of real-close forward time AND is net-of-fee positive is *recommended* as live-ready (see
-# master/forward_maturity.py). This is SURFACED, NOT ENFORCED — the operator launches via the modal at their
+# master/paper_maturity.py). This is SURFACED, NOT ENFORCED — the operator launches via the modal at their
 # discretion and the 5 interlocks remain the only hard gate. Kept a named constant (never an inline magic number)
 # and intentionally OUTSIDE GateSettings so it can never leak into the deterministic scorer/FDR/money path.
-FORWARD_TEST_MIN_DAYS: int = 30
+PAPER_MIN_DAYS: int = 30
 
 
 class SpendSettings(BaseModel):
@@ -135,7 +135,7 @@ class Settings(BaseSettings):
     # Operating jurisdiction (ISO-3166 alpha-2). Live-legality is a venue+country fact (e.g. Binance is not
     # legal for US live), so this PICKS which venues can move real money. Override with LIVE_JURISDICTION.
     live_jurisdiction: str = "FR"
-    # Per-strategy STANDALONE track size — the capital one forward-test/SIM track is funded with (the funder
+    # Per-strategy STANDALONE track size — the capital one paper/SIM track is funded with (the funder
     # deploys exactly this per survivor; finder/arms stamp it as the track's starting_capital). Override with
     # SIM_TRACK_CAPITAL. Default $1k: small enough to be credible, above Binance-spot min-notional.
     sim_track_capital: Decimal = Decimal("1000")

@@ -2,7 +2,7 @@
 
 # Cosmu v2 — Product Memo & Build Plan
 
-> **One line:** an autonomous, multi-venue quant **money machine**. A *deterministic master* runs a *population of self-improving, LLM-authored swing strategies*, backtested walk-forward with real per-venue fees, **forward-testing each survivor on its own standalone SIM track 24/7 with live trading OFF by default** — flip one toggle and a qualifying strategy is launched LIVE manually with dedicated capital. It competes on **returns, not speed**, and is steered by **plain chat (text or voice)**.
+> **One line:** an autonomous, multi-venue quant **money machine**. A *deterministic master* runs a *population of self-improving, LLM-authored swing strategies*, backtested walk-forward with real per-venue fees, **papering each survivor on its own standalone SIM track 24/7 with live trading OFF by default** — flip one toggle and a qualifying strategy is launched LIVE manually with dedicated capital. It competes on **returns, not speed**, and is steered by **plain chat (text or voice)**.
 
 > **The one metric:** realized risk-adjusted profit, net of every cost (fees, slippage, funding, LLM/API spend, hosting). Everything here is justified only if it moves that number.
 
@@ -17,7 +17,7 @@
 | 4 | The autonomous lab agent + model router | authoring, ML, self-improvement, model calls |
 | 5 | The evolution loop & live toggle | how strategies are born/scored/killed/promoted |
 | 6 | Knowledge, memory, ingestion & RAG | reading/writing notes, indexes, audit, inputs |
-| 7 | Venues, fees, realistic forward-test, arbitrage | anything market-facing |
+| 7 | Venues, fees, realistic paper, arbitrage | anything market-facing |
 | 8 | ML | the agent-written + tabular models |
 | 9 | Risk & safety | anything that can lose money |
 | 10 | Data model | schema/queries |
@@ -37,8 +37,8 @@
 - **Profit is the only score.** Everything secondary must defend itself by moving net profit.
 - **LLM proposes, deterministic disposes.** LLMs author/mutate/analyze/do-ML. A deterministic master owns money, scheduling, allocation, caps, and the live gate. No LLM ever fires a live order directly.
 - **Two things the AI never touches: the scorer and the money.** The fitness metric (walk-forward OOS + untouched holdout) and capital are deterministic and out of the agent's reach. Take those away and the agent can be *as autonomous and creative as it wants* — including writing and running its own ML — because it can't grade its own homework or lose real capital on a hallucination. This single rule is what makes "fully autonomous" safe.
-- **Explore wide, gate hard.** The rigor (deflated Sharpe, holdout, multiple-testing correction, "kill 95%+") is a **valve on *capital*, not a choke on *ideas*.** Generation is deliberately cheap, wild, and creative — exotic hypotheses, weird feature combos, cross-market long-shots — and a **fixed exploration budget** is spent on high-variance, low-prior "wildcards," not just mutations of current winners. **Luck is allowed to run:** a lucky-looking strategy isn't pre-judged or forbidden — it's funded on its own *SIM track* and then separated from real edge over time by the holdout + weeks of forward-test. The gates decide what gets *money*, never what gets *tried*. The constraints (no hardcoded numbers, single-variable-by-default) are **enablers**: they let the data find numbers humans wouldn't guess, and keep attribution clean — they are not a creativity tax. Guard against **monoculture**: diversity/decorrelation has option value, so keep weird, slightly-lower-ranked bets alive.
-- **Live OFF by default.** The machine forward-tests strategies in realistic SIM 24/7, tracked *as if live*. Flipping the global toggle launches a qualifying strategy LIVE manually with dedicated capital, under hard caps. SIM (forward-test) and LIVE are the same code path, the same entities — never a separate system.
+- **Explore wide, gate hard.** The rigor (deflated Sharpe, holdout, multiple-testing correction, "kill 95%+") is a **valve on *capital*, not a choke on *ideas*.** Generation is deliberately cheap, wild, and creative — exotic hypotheses, weird feature combos, cross-market long-shots — and a **fixed exploration budget** is spent on high-variance, low-prior "wildcards," not just mutations of current winners. **Luck is allowed to run:** a lucky-looking strategy isn't pre-judged or forbidden — it's funded on its own *SIM track* and then separated from real edge over time by the holdout + weeks of paper. The gates decide what gets *money*, never what gets *tried*. The constraints (no hardcoded numbers, single-variable-by-default) are **enablers**: they let the data find numbers humans wouldn't guess, and keep attribution clean — they are not a creativity tax. Guard against **monoculture**: diversity/decorrelation has option value, so keep weird, slightly-lower-ranked bets alive.
+- **Live OFF by default.** The machine papers strategies in realistic SIM 24/7, tracked *as if live*. Flipping the global toggle launches a qualifying strategy LIVE manually with dedicated capital, under hard caps. SIM (paper) and LIVE are the same code path, the same entities — never a separate system.
 - **Buy commodities, build the differentiator.** Buy/borrow managed services for undifferentiated plumbing (model routing, sandboxes, voice, search). Keep tight, hand-written control of the core loop and its deterministic gates — that loop *is* our edge, and it's the thing that keeps us out of "slop." When unsure a buy is worth it, flag the stakes (§12).
 - **Agentic-first, token-frugal.** Structured data is the source of truth; markdown + an INDEX are the cheap human/LLM-readable views; RAG retrieves only what's relevant.
 - **Audit everything.** Every decision, fill, model call, and dollar is a structured, queryable record.
@@ -50,8 +50,8 @@
 A small, beautiful app with **a few surfaces** (lean — collapse toward ~4–6, never 10; if a page doesn't help you *decide* or *earn*, it isn't a page). You mostly watch and occasionally chat; the machine runs strategies and proactively pings you. **Complex, rare, or heavy operations are NOT new app pages** — they live in Claude Code + `docs/` (author/migrate/research via a coding agent). The app stays a clean *monitoring + steering* surface; customization is config, not clutter.
 
 1. **Dashboard** — the aggregate read-out (Σ of all standalone tracks, *not* a pooled wallet you trade from): net equity curve (SIM + live), **P&L net of all costs**, per-track funding across strategies/venues, a compact **Costs card** (infra · hosting · data/APIs · LLM/sandbox, drill-down per-category & per-strategy), opex-vs-profit gauge, and the **global live toggle (off by default)**.
-2. **Leaderboard** — every strategy-version on its **own standalone track** (default **$1,000**, `sim_track_capital`), ranked by **risk-adjusted %** (out-of-sample), with lineage, status (alive / forward-test / live / killed), and why.
-3. **Strategy detail** — backtest & SIM (forward-test) equity, trade list, the LLM-authored code, the agent's notes/post-mortem, fee/slippage breakdown, OOS vs holdout.
+2. **Leaderboard** — every strategy-version on its **own standalone track** (default **$1,000**, `sim_track_capital`), ranked by **risk-adjusted %** (out-of-sample), with lineage, status (alive / paper / live / killed), and why.
+3. **Strategy detail** — backtest & SIM (paper) equity, trade list, the LLM-authored code, the agent's notes/post-mortem, fee/slippage breakdown, OOS vs holdout.
 4. **Console (chat + voice + vision + recommendations)** — the control surface. Type, **speak** (STT in, TTS out), or **drop an image** — a screenshot of trades, a tweet/post, a chart. A vision model extracts it, a **veracity gate** verifies the claims against real data (§6), and the result feeds research / monitoring / hypotheses (never a blind trade). The master parses everything to *validated config changes* and **posts recommendations + approval asks on its own**.
 
 **Steer in natural language** (all deterministically validated before applying):
@@ -63,7 +63,7 @@ A small, beautiful app with **a few surfaces** (lean — collapse toward ~4–6,
 - "Why did strat #142 die?" → reads its audit trail + notes, answers in plain language (or voice).
 
 **Proactive recommendations** (Console inbox):
-- "3 strategies cleared OOS + holdout and survived 6 weeks of forward-test (SIM). If you flip live on, each launches at $X dedicated cap — want me to?"
+- "3 strategies cleared OOS + holdout and survived 6 weeks of paper (SIM). If you flip live on, each launches at $X dedicated cap — want me to?"
 - "Crypto regime shifted to high-vol; I de-risked momentum books and flagged it."
 - "LLM/API spend is 40% of trailing strategy yield — I throttled to the cheap tier."
 
@@ -75,7 +75,7 @@ You are needed only to **move real money** (flip live, raise caps). Everything e
 
 Treat it as a tiny fund. Two ledgers: **opex** (cost to run) and **alpha** (what it earns). Job: alpha ≫ opex, then **compound**.
 
-**Monthly opex (forward-test / R&D phase, tunable):**
+**Monthly opex (paper / R&D phase, tunable):**
 
 | Item | Est. / mo | Notes |
 |------|-----------|-------|
@@ -176,7 +176,7 @@ The brain is genuinely autonomous *inside the lab*: it designs experiments, writ
 **Live toggle (off by default).** Everything runs in realistic SIM, **tracked as if live** (same code path — backtest = SIM = live). Flip the **global toggle ON** and a strategy that has passed the gates is **launched LIVE manually with dedicated capital under hard caps** — same entity, just routed to a live venue. No separate SIM-bots vs live-bots. (It still *announces* promotions in the Console and respects per-venue/global caps; if a strategy's live edge underperforms its SIM track, it's defunded automatically.)
 
 **Capital model — standalone tracks (no pooled wallet):**
-- **Each survivor proves itself on its OWN standalone track.** Every strategy-version that clears the gate gets its *own* SIM forward-test (a **Track**, default **$1,000** — `sim_track_capital`), held and marked-to-market across real bars, judged purely on **risk-adjusted % return**. It always has full capital to express its signal — there is **no pooled wallet**, no cross-strategy allocation, and no capped-Kelly pool sizing, so a good strategy is never mis-scored because some shared book drew down or another strategy hogged capital. This is the leaderboard signal.
+- **Each survivor proves itself on its OWN standalone track.** Every strategy-version that clears the gate gets its *own* SIM paper (a **Track**, default **$1,000** — `sim_track_capital`), held and marked-to-market across real bars, judged purely on **risk-adjusted % return**. It always has full capital to express its signal — there is **no pooled wallet**, no cross-strategy allocation, and no capped-Kelly pool sizing, so a good strategy is never mis-scored because some shared book drew down or another strategy hogged capital. This is the leaderboard signal.
 - **Going live is manual and per-strategy.** A track that proves itself is **launched LIVE manually with dedicated capital** under hard caps — same entity, just routed to a live venue. No automatic pooled bankroll; each live strategy gets its own dedicated allocation.
 - The UI shows **both**: per-strategy track % (Leaderboard) and the **aggregate read-out** — the Σ of all standalone tracks (Dashboard) — which is a read-out, not an account you trade from. A manual top-up/reset (reset = back to starting capital, not zero) stays available for clean experiments.
 
@@ -196,13 +196,13 @@ Structured data is the source of truth; markdown + an INDEX are the cheap views;
 
 ---
 
-## 7. Venues, fees, realistic forward-test (SIM) & arbitrage
+## 7. Venues, fees, realistic paper (SIM) & arbitrage
 
 **Venues, pairs, and fees are first-class.** The agent sees a catalog: "instrument @ venue @ fee schedule @ constraints." Adding a venue is config + an adapter.
 
 - **V1 covers crypto *and* stocks** (Binance spot + IBKR equities) on one abstraction, plus **ccxt** breadth for more crypto venues. FX/options/futures via the same interface later.
-- **Realistic forward-test / SIM (as close to live as possible):** per-venue maker/taker fees, **slippage vs. order size/liquidity/ADV**, partial fills, latency, **funding rates** (perps), **borrow costs** (shorts/margin), spread, **market hours & halts** (equities), min-notional & lot sizes — via Nautilus fill models on real historical + live-shadow data. "It worked in SIM" must mean something, because the SIM track *is* the promotion track record.
-- **Data is first-class (the quant weak link most people get wrong):** **point-in-time, survivorship-free** history (incl. delisted names), corporate-actions-adjusted for equities, and **seeded/reproducible** backtests. Crypto via exchange/**ccxt** (free, solid); equities via dedicated **bars + fundamentals** vendors (§15). Forward-test (SIM) runs on **live-shadow** market data so fills reflect *current* liquidity, not just clean history. Garbage-in is the silent killer of SIM→live parity. **Storage split:** bars/feature **history live in the Nautilus Parquet catalog** (columnar, Polars); **Postgres is the control-plane + money-truth only** — never row-per-bar OHLC. Features are read by **as-of join** on knowledge-time (the mechanism that makes lagged sources like 13F/COT safe, not look-ahead). Some free sources are **best-effort/degraded** (crypto liquidations, token-unlocks) and ship as low-confidence features that must still earn their place through the OOS gate (`docs/archive/BUILD_PLAN.md §6`, historical).
+- **Realistic paper / SIM (as close to live as possible):** per-venue maker/taker fees, **slippage vs. order size/liquidity/ADV**, partial fills, latency, **funding rates** (perps), **borrow costs** (shorts/margin), spread, **market hours & halts** (equities), min-notional & lot sizes — via Nautilus fill models on real historical + live-shadow data. "It worked in SIM" must mean something, because the SIM track *is* the promotion track record.
+- **Data is first-class (the quant weak link most people get wrong):** **point-in-time, survivorship-free** history (incl. delisted names), corporate-actions-adjusted for equities, and **seeded/reproducible** backtests. Crypto via exchange/**ccxt** (free, solid); equities via dedicated **bars + fundamentals** vendors (§15). Paper (SIM) runs on **live-shadow** market data so fills reflect *current* liquidity, not just clean history. Garbage-in is the silent killer of SIM→live parity. **Storage split:** bars/feature **history live in the Nautilus Parquet catalog** (columnar, Polars); **Postgres is the control-plane + money-truth only** — never row-per-bar OHLC. Features are read by **as-of join** on knowledge-time (the mechanism that makes lagged sources like 13F/COT safe, not look-ahead). Some free sources are **best-effort/degraded** (crypto liquidations, token-unlocks) and ship as low-confidence features that must still earn their place through the OOS gate (`docs/archive/BUILD_PLAN.md §6`, historical).
 - **Quant feature sources, tiered (signal-first, cost-aware).** *More data = more overfitting surface*, so each source needs a **prior hypothesis** for why it carries edge at swing horizon and must survive the same OOS gate. No data for its own sake.
   - *Tier 0 — free/cheap, high-signal, start here:* crypto funding rates / open interest / liquidations / perp-spot basis / exchange flows (ccxt + exchange APIs); **CFTC COT** (positioning), put/call ratio, VIX term structure; **SEC EDGAR** (8-K, 10-Q, Form 4 insider, 13F), earnings & short-interest; **FRED** macro (rates, yields, DXY, credit spreads); economic / earnings / dividend / token-unlock / halving **calendars**; **prediction-market odds**; news + social (LunarCrush, Reddit/X, Google Trends).
   - *Tier 1 — premium, buy only when an edge justifies it (ROI rule §2):* on-chain (Glassnode / Nansen / Dune), options flow / IV surface / gamma exposure, estimate revisions and other alt-data.
@@ -270,7 +270,7 @@ Old DB killed; fresh schema on Supabase Postgres + pgvector. Core tables below; 
 | DB + RAG | **Supabase + pgvector** | managed | a switch, not a build — keep |
 | Market data (bars) | **Norgate** (survivorship-free *daily* US/AU/CA, cheap) + **Databento** (intraday/breadth) for equities · **ccxt** (crypto, free) | buy | **survivorship-free, point-in-time, corp-actions-adjusted**; ~$30–100/mo. Data quality = SIM→live parity |
 | Equity fundamentals | **Sharadar** (Nasdaq Data Link) or **SimFin** | buy | point-in-time, pre-parsed (~$30–50/mo) — keeps "quantamental" honest vs building an EDGAR ETL; also supplies earnings dates |
-| Prediction markets | **Polymarket** (native Nautilus adapter) · Kalshi optional | buy/lib | data+exec via CLOB; **forward-test (SIM) now, real money gated on jurisdiction** (France geoblock) |
+| Prediction markets | **Polymarket** (native Nautilus adapter) · Kalshi optional | buy/lib | data+exec via CLOB; **paper (SIM) now, real money gated on jurisdiction** (France geoblock) |
 | Engine | **NautilusTrader** | core lib | no managed equivalent — keep |
 | Frontend host | **Vercel** | managed | keep |
 | Observability + evals | **OpenTelemetry + Langfuse** | buy / OSS | vendor-neutral traces; free tier / self-host; **audit ledger stays money-truth** |
@@ -294,7 +294,7 @@ Secrets (server-side only, never in prompts): venue keys (Binance, later IBKR), 
 
 ## 14. Milestones (few, huge — V1 built in parallel)
 
-**V1 — the autonomous, self-improving forward-test (SIM) money-machine (everything, in parallel).**
+**V1 — the autonomous, self-improving paper (SIM) money-machine (everything, in parallel).**
 A thin spine is laid hour-zero (engine + fresh schema + tool bus), then these workstreams are built **concurrently**:
 - multi-venue engine, **crypto + stocks**, realistic fees/slippage/funding/halts;
 - deterministic master (scheduler, allocator, risk, scorer, live gate **off by default**, policy/chat+voice, audit ledger);
@@ -304,7 +304,7 @@ A thin spine is laid hour-zero (engine + fresh schema + tool bus), then these wo
 - **ML** (agent-written + tabular baseline);
 - **RAG + INDEX + structured store**;
 - the **4-surface UI** with the **chat + voice Console**, recommendation inbox, and the global live toggle.
-Result: fully autonomous, fully SIM (forward-test), realistic — flip a switch away from live.
+Result: fully autonomous, fully SIM (paper), realistic — flip a switch away from live.
 
 **V2 — live & scale.** Turn the toggle on with real capital + scaling on live-proven survivors; more venues, FX/options, deeper arbitrage, heavier ingestion/ML. *Earning mode: double down on what works live.* *(Optional extra leverage: submit our best signals to **Numerai Signals** for NMR — a side revenue stream on the same research.)*
 
@@ -317,8 +317,8 @@ Result: fully autonomous, fully SIM (forward-test), realistic — flip a switch 
 3. **Railway** account + connect repo (I configure the worker).
 4. **Supabase** — confirm I create a fresh project/schema with pgvector.
 5. **Voice + research API keys:** Deepgram/ElevenLabs (voice), Exa or Tavily (web), a news API, YouTube-transcript API, LunarCrush. Tell me which to enable from day one. **Tier-0 quant data is free** (ccxt, SEC EDGAR, FRED, CFTC, prediction-market public APIs) — no keys; premium alt-data (on-chain/options flow) is opt-in later.
-6. **Prediction markets (Polymarket via Nautilus's native adapter; Kalshi optional):** odds feed in as features now; forward-test (SIM) ships V1; **live trades under the same global toggle as every venue.** To go live you provide a **Polygon wallet + pUSD/USDC** (like a Binance key). **Legality/eligibility is your call** — Polymarket is geo-blocked in France (ANJ), Kalshi is US-only; the system doesn't special-case it.
-7. **Binance API key** (spot, read+trade) — *not needed for V1 forward-test (SIM)*; needed when you flip live.
+6. **Prediction markets (Polymarket via Nautilus's native adapter; Kalshi optional):** odds feed in as features now; paper (SIM) ships V1; **live trades under the same global toggle as every venue.** To go live you provide a **Polygon wallet + pUSD/USDC** (like a Binance key). **Legality/eligibility is your call** — Polymarket is geo-blocked in France (ANJ), Kalshi is US-only; the system doesn't special-case it.
+7. **Binance API key** (spot, read+trade) — *not needed for V1 paper (SIM)*; needed when you flip live.
 8. **Equities bars vendor** (Polygon / Databento / Norgate) — **survivorship-free, point-in-time, corp-actions-adjusted**; pick one or let me default. (Crypto data is free via ccxt.) **IBKR** account + gateway is for equity *execution*, needed only when you flip live.
 9. **Equity fundamentals vendor** (**Sharadar** via Nasdaq Data Link, or **SimFin**) — point-in-time, ~$30–50/mo; you approved buying. Account/API key needed when track A builds equity fundamentals features (not an hour-zero blocker).
 9. **SIM bankroll + base currency** — default **$1,000 USD-equiv per standalone track** (`sim_track_capital`, adjustable) unless you say otherwise.
@@ -330,7 +330,7 @@ Result: fully autonomous, fully SIM (forward-test), realistic — flip a switch 
 
 - **Overfitting / reward-hacking (the big one):** the agent could "prove" itself rich by gaming a metric — so the **scorer (walk-forward OOS + untouched holdout) is the master's, not the agent's**, plus deflated Sharpe, min-trades, multi-regime, and ML overfit-flagging. We expect to kill the vast majority of ideas.
 - **Evaluation biases:** *starvation* killed by standalone per-strategy tracks; *capacity* by market-impact/slippage modeling so % is honest at deployable size; *survivorship/lookahead* by point-in-time data; *revenge/recovery* by memoryless sizing. (Details §5/§9.)
-- **SIM≠live divergence:** realistic forward-test / SIM (fees, slippage, funding, borrow, latency, halts) + auto-defunding any strategy whose live edge underperforms its SIM track.
+- **SIM≠live divergence:** realistic paper / SIM (fees, slippage, funding, borrow, latency, halts) + auto-defunding any strategy whose live edge underperforms its SIM track.
 - **Cost runaway (heavier now — sandbox + APIs are usage-priced):** daily caps, cheap-tier-by-default routing, and research spend tied to trailing realized edge. The agent throttles itself when it's not earning.
 - **Sandbox security:** managed (E2B/Modal), no secrets, no execution-venue network path.
 - **Garbage qualitative/OSINT data:** news/social can only **confirm or veto** a numbers-based setup — never originate a trade.
@@ -351,7 +351,7 @@ The point of v2 is to fix the specific failure modes that made v1 unreliable and
 | **Fuzzy fitness** | many metrics → cherry-picking, overfit | **one scalar: deflated OOS Sharpe, gated**; holdout seen once (§5) |
 | **Reward-hacking / overfit** | agent "proves" itself rich by gaming the metric | **scorer + money out of the agent's reach**; deflated Sharpe, min-trades, multi-regime, ML overfit-flag (§0, §9, §16) |
 | **Cold start** | nothing to trade on day one | **seed from OSS patterns** (TradingAgents/Freqtrade/pine) + indicator templates, then mutate (§6) |
-| **Agent-authored code reaching live** | unsafe/buggy generated code on real money | must **survive sandbox → OOS → holdout → forward-test (SIM)**, pass static checks + the validator before any capital (§4, §9) |
+| **Agent-authored code reaching live** | unsafe/buggy generated code on real money | must **survive sandbox → OOS → holdout → paper (SIM)**, pass static checks + the validator before any capital (§4, §9) |
 | **Compute throughput** | farming is backtest-bound | vectorized + **parallel backtests**, ML prioritizes which candidates to spend compute on; scale on edge (§8, §12) |
 | **Token burn** (v1) | naive prompting got expensive fast | **structured store + INDEX + RAG**, cheap-tier-by-default routing, daily spend cap (§4, §6) |
 | **Schema drift Python↔TS** | hand-maintained types diverge, frontend breaks | **Pydantic → OpenAPI → generated TS client**, never typed twice (§13) |

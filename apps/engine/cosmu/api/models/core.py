@@ -17,7 +17,7 @@ class CostSlice(BaseModel):
 
 class OverviewResponse(BaseModel):
     """The aggregate read-out for the Overview surface ("are we making money?"): the Σ of all standalone
-    forward-test tracks. This is a pure read-out — there is NO pooled wallet and no cross-track allocation."""
+    paper tracks. This is a pure read-out — there is NO pooled wallet and no cross-track allocation."""
 
     equity_curve: list[Point]
     pnl_net: float
@@ -35,16 +35,16 @@ class LeaderboardRow(BaseModel):
     pbo: float
     status: str
     lineage: str
-    # The REAL forward-test return: net-of-fee % from the LIVE marked trajectory (`tracks.return_pct`), marked
+    # The REAL paper return: net-of-fee % from the LIVE marked trajectory (`tracks.return_pct`), marked
     # to market since the track's first `track_opened` for every asset class. This is the only number that
     # proves the edge forward — NOT the backtest. `null` when no track exists yet; a just-funded/un-marked
     # track reads 0.00 (day-0 truth), NEVER the rosy backtest (track_return_pct / net_pct = BACKTEST OOS).
-    forward_return_pct: float | None = None
-    # ADVISORY forward-test maturity signal (master/forward_maturity.py) — SURFACED, NOT ENFORCED. `forward_age_days`
-    # is calendar time the track's forward-test clock has run since its first mark; `live_ready` recommends a track
-    # that has both matured (>= FORWARD_TEST_MIN_DAYS) and is net-of-fee positive. The operator launches via the
+    paper_return_pct: float | None = None
+    # ADVISORY paper maturity signal (master/paper_maturity.py) — SURFACED, NOT ENFORCED. `paper_age_days`
+    # is calendar time the track's paper clock has run since its first mark; `live_ready` recommends a track
+    # that has both matured (>= PAPER_MIN_DAYS) and is net-of-fee positive. The operator launches via the
     # modal at their discretion; the 5 interlocks remain the only hard gate. Never consulted by the gate/money path.
-    forward_age_days: float
+    paper_age_days: float
     live_ready: bool
     # ADVISORY SIM-vs-backtest divergence read-out (master/divergence.py) — SURFACED, NEVER ENFORCED. An early
     # warning that this track's REAL marked forward return has stopped tracking the backtest it was funded on
@@ -260,8 +260,8 @@ class LaunchActivateRequest(BaseModel):
     """Request body for the strategy launch-live flow: arm one strategy on a specific venue + asset
     with a given budget. Confirm must be true (two-click safety); caps are set here and carried
     through to the live_caps upsert so the operator sees exactly what they agreed to.
-    `override_forward_test` (default OFF) is the explicit human escape hatch: arm a strategy that has NOT
-    yet cleared the >= FORWARD_TEST_MIN_DAYS net-positive forward-test precondition, recorded with a loud
+    `override_paper` (default OFF) is the explicit human escape hatch: arm a strategy that has NOT
+    yet cleared the >= PAPER_MIN_DAYS net-positive paper precondition, recorded with a loud
     `live_override_launch` warning event. It never waives the regime gate or the 5 execution interlocks."""
 
     version_id: str
@@ -272,17 +272,17 @@ class LaunchActivateRequest(BaseModel):
     global_cap: float = 1000.0
     max_daily_loss: float = 50.0
     confirm: bool
-    override_forward_test: bool = False
+    override_paper: bool = False
 
 
 class LaunchActivateResponse(BaseModel):
     """Result of the launch-live flow for one strategy.
     `armed` = eligibility + the 5 interlocks cleared and the strategy is now live (status='live' written here).
-    `forward_test_days` = forward-test maturity in days (None = no track yet).
-    `readiness` = "proven" (>= FORWARD_TEST_MIN_DAYS forward days net-positive) or "not yet proven". This is now
+    `paper_days` = paper maturity in days (None = no track yet).
+    `readiness` = "proven" (>= PAPER_MIN_DAYS forward days net-positive) or "not yet proven". This is now
     a HARD precondition for arming, not merely advisory: a "not yet proven" strategy is refused (armed=False)
-    unless the human sets `override_forward_test`.
-    `overridden` = True when the human waived the forward-test precondition to arm an unproven strategy."""
+    unless the human sets `override_paper`.
+    `overridden` = True when the human waived the paper precondition to arm an unproven strategy."""
 
     armed: bool
     version_id: str
@@ -291,9 +291,9 @@ class LaunchActivateResponse(BaseModel):
     budget: float
     caps: LiveCaps
     eligible: list[EligibleStrategy]
-    forward_test_days: float | None = None   # how many real forward-test days this track has (None = no track)
+    paper_days: float | None = None   # how many real paper days this track has (None = no track)
     readiness: Literal["proven", "not yet proven"] = "not yet proven"
-    overridden: bool = False                 # True when arming waived the forward-test precondition (logged)
+    overridden: bool = False                 # True when arming waived the paper precondition (logged)
     reason: str | None = None
 
 

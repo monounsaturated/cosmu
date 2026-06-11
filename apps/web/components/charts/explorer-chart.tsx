@@ -293,7 +293,7 @@ export function ExplorerChart({
       <ChartEmpty
         icon={<TrendingUp className="size-5" />}
         title="No equity curve yet"
-        hint="Fills are recorded once this strategy has traded in Simulation. Nothing here is fabricated."
+        hint="Fills are recorded once this strategy has traded in Paper. Nothing here is fabricated."
         height={height + paneHeight}
       />
     );

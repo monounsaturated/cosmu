@@ -1,4 +1,4 @@
-# Closing the autonomous loop: Finder survivors → each opens its OWN standalone forward-test track (no pooled
+# Closing the autonomous loop: Finder survivors → each opens its OWN standalone paper track (no pooled
 # wallet, no cross-track competition) → master/portfolio holds positions + marks-to-market. GET /overview reads
 # the REAL persisted aggregate read-out (Σ of tracks), no fixtures.
 
@@ -139,7 +139,7 @@ class _FlatBars:
 
 
 def _persist_survivor(store: Store, *, name: str, asset_classes: list[str], venues: list[str]) -> str:
-    """Persist a gate-passed forward-test survivor (strategies + strategy_versions + screen backtest + track) whose
+    """Persist a gate-passed paper survivor (strategies + strategy_versions + screen backtest + track) whose
     spec declares the given asset class/venues — the exact rows fund_tracks_from_survivors reads. Returns the
     version_id."""
     now = "2024-01-01T00:00:00Z"
@@ -159,7 +159,7 @@ def _persist_survivor(store: Store, *, name: str, asset_classes: list[str], venu
             },
             "generated_code": "# test", "code_hash": f"hash-{name}", "params": {},
             "mutation_operator": None, "mutation_rationale": None, "origin": "finder",
-            "status": "forward_test", "created_at": now, "killed_at": None, "kill_reason": None,
+            "status": "paper", "created_at": now, "killed_at": None, "kill_reason": None,
         },
     )
     store.insert(

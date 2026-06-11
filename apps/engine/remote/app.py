@@ -1,5 +1,5 @@
 # intent: the Modal HEAVY-COMPUTE lane — run beefy engine jobs (cohort gate sweeps, the ML-ordered
-# autonomous cycle, ingest, forward-mark) off the M2 and off the small Railway box. Same code, same DB,
+# autonomous cycle, ingest, paper-mark) off the M2 and off the small Railway box. Same code, same DB,
 # bigger CPU/RAM, scale-to-zero (~$0 idle). Driven by `modal run` from Claude Code or a cloud session.
 # inputs: a Modal Secret named "cosmu-engine" (DATABASE_URL, XAI_API_KEY, FRED_API_KEY, APP_ENV=production …),
 #         created from .env.local via scripts/sync_modal_secret.py.
@@ -67,8 +67,8 @@ def ingest() -> int:
 
 
 @app.function(**_HEAVY)
-def forward_mark() -> int:
-    """Re-mark held SIM positions against the latest real close (forward-test clock, paper-only, no orders)."""
+def paper_mark() -> int:
+    """Re-mark held SIM positions against the latest real close (paper clock, paper-only, no orders)."""
     return _run(["cosmu.orchestrator.loop"])
 
 
@@ -96,12 +96,13 @@ def run_module(module: str, args: list[str] | None = None) -> int:
 
 @app.local_entrypoint()
 def main(job: str = "gate_sweep", module: str = "", args: str = "") -> None:
-    """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|perp_gate_sweep|forward_mark|cost_refresh|run_module]`.
+    """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|perp_gate_sweep|paper_mark|cost_refresh|run_module]`.
     For run_module pass --module cosmu.x.y and optional --args "--flag value" (space-split)."""
     jobs = {
         "gate_sweep": gate_sweep,
         "ingest": ingest,
-        "forward_mark": forward_mark,
+        "paper_mark": paper_mark,
+        "forward_mark": paper_mark,  # legacy alias (pre-2026-06-11 vocabulary) — same job
         "cost_refresh": cost_refresh,
         "perp_gate_sweep": perp_gate_sweep,
     }

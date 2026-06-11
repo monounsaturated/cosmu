@@ -1,7 +1,7 @@
 # intent: ONE rotation-close for every deploy-lane arm. A documented rotation strategy (GEM, GTAA, VAA, PAA,
 # DAA, sector/TSMOM, risk-parity …) re-arms into its CURRENT target holdings — but every arm used to only check
 # "is the target already held?", so on rotation (SPY→AGG, sleeve drops below SMA, canary flips) the OLD leg was
-# left open and the NEW leg opened on top: double capital deployed, the forward-test P&L polluted by a position
+# left open and the NEW leg opened on top: double capital deployed, the paper P&L polluted by a position
 # the strategy had already rotated out of. This module closes the stale legs FIRST, at the latest REAL close,
 # charging the same per-side fee the arm pays on entries — the faithful rotation sell. inputs: the portfolio +
 # the keep-set of target symbols + the arm's own price fetch + per-side fee; outputs: booked closing fills (real

@@ -1,8 +1,8 @@
 # intent: ARM the cross-sectional LONG/SHORT MARKET-NEUTRAL PERP book (the perp-momentum-neutral lead) as a COSMU
-# forward-test track — register it into the SAME control-plane rows the deterministic finder writes for a survivor
-# (strategies + strategy_versions[forward_test] + backtests[screen] + tracks + a `track_opened` event) and seed/advance
+# paper track — register it into the SAME control-plane rows the deterministic finder writes for a survivor
+# (strategies + strategy_versions[paper] + backtests[screen] + tracks + a `track_opened` event) and seed/advance
 # the track's equity trajectory (portfolio_snapshots, scope=track) from the REAL validated NET-return stream. From that
-# moment the forward-test clock (this module's --mark) re-validates the book on the latest cached perp bars + funding
+# moment the paper clock (this module's --mark) re-validates the book on the latest cached perp bars + funding
 # and advances the per-track marked-value series, accruing the honest net-of-perp-fee + net-of-funding edge.
 #
 # THIS IS THE DEPLOY-A-REAL-BUT-UNDERPOWERED-EDGE TRACK, NOT the 0.95 in-sample Gate. The perp-momentum-neutral book
@@ -10,7 +10,7 @@
 # is POSITIVE out-of-sample on the REAL purged+embargoed holdout and beats its only fair hurdle (cash = 0; a
 # dollar-neutral book carries no market beta). perp_market_neutral.validate() confirms the deployment bar on a FINER
 # rebalance over the full perp history. We route it through master/lane_router on a lane="deploy" spec (the lane is
-# enforced in code, not by which function a runner happens to call) and forward-test it. We do NOT touch / lower the
+# enforced in code, not by which function a runner happens to call) and paper it. We do NOT touch / lower the
 # 0.95 Gate — that is a separate honesty guard for NOVEL in-sample-mined edges.
 #
 # WHY A RETURN-STREAM TRACK (no per-leg catalog positions): the cross-section is collapsed to ONE realized
@@ -42,7 +42,7 @@ STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-real-but-underpo
 VENUE = "kraken_futures"  # the cheapest SHORT-CAPABLE perp venue we catalog (2/5 bps, FR-legal); LIVE post-edge only
 TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size (settings.sim_track_capital)
 # A market-neutral momentum book is direction-free: it tilts to relative winners vs losers and harvests the funding
-# the crowded longs pay. It carries no market beta, so its proven-regime passport is the full set (the forward test +
+# the crowded longs pay. It carries no market beta, so its proven-regime passport is the full set (the paper run +
 # a human still gate live-arming via master/live_eligibility).
 PROVEN_REGIMES = ["bull", "bear", "chop"]
 
@@ -165,7 +165,7 @@ def _write_track_trajectory(store: Store, version_id: str, net: list[float]) -> 
 
 
 def arm(store: Store | None = None) -> dict:
-    """Register the perp-momentum-neutral book as a forward-test track and seed its equity trajectory from the REAL
+    """Register the perp-momentum-neutral book as a paper track and seed its equity trajectory from the REAL
     validated net-return stream. Idempotent. Returns a summary dict (version_id, current_signal, equity, deployable)."""
     store = store or Store(Settings())
     # Route the deploy validation through the TYPED two-lane router: the spec's lane="deploy" forces the DEPLOY-lane
@@ -206,15 +206,15 @@ def arm(store: Store | None = None) -> dict:
                 "mutation_rationale": "real-but-underpowered edge (perp-momentum-neutral) — deployed via the "
                                       "deploy lane (positive-OOS + beats-benchmark), not the 0.95 in-sample Gate",
                 "origin": STRATEGY_ORIGIN,
-                "status": "forward_test",
+                "status": "paper",
                 "created_at": now,
                 "killed_at": None,
                 "kill_reason": None,
             },
         )
-        print(f"\nREGISTERED forward-test version: version_id={version_id}  (status=forward_test, origin=documented)")
+        print(f"\nREGISTERED paper version: version_id={version_id}  (status=paper, origin=documented)")
     else:
-        print(f"\nForward-test version already registered: version_id={version_id} (idempotent — clock NOT reset)")
+        print(f"\nPaper version already registered: version_id={version_id} (idempotent — clock NOT reset)")
 
     # backtest (screen) — insert if absent
     if store.row("SELECT id FROM backtests WHERE strategy_version_id=? AND kind='screen'", (version_id,)) is None:
@@ -223,7 +223,7 @@ def arm(store: Store | None = None) -> dict:
         store.insert("backtests", bt)
         print("  + backtest(screen) row written")
 
-    # Seed the per-track equity trajectory from the REAL validated net stream (the forward-test curve's t0..now).
+    # Seed the per-track equity trajectory from the REAL validated net stream (the paper curve's t0..now).
     equity = _write_track_trajectory(store, version_id, net)
 
     # track — insert if absent
@@ -264,11 +264,11 @@ def arm(store: Store | None = None) -> dict:
         payload={"current_long": current_signal.get("long", []), "current_short": current_signal.get("short", []),
                  "equity": float(equity), "first_mark": True},
     )
-    print(f"OPENED perp-momentum-neutral forward-test track. CURRENT book: LONG {current_signal.get('long', [])} "
+    print(f"OPENED perp-momentum-neutral paper track. CURRENT book: LONG {current_signal.get('long', [])} "
           f"SHORT {current_signal.get('short', [])}. Equity now ${float(equity):,.2f}.")
     print(f"  LIVE note: {v.get('venue_note', '')}")
-    print("\nThe forward-test is ARMED. The clock re-validates on the latest cached perp bars + funding on every run;")
-    print("watch it accrue on GET /leaderboard (forward_age_days, live_ready) and GET /overview.")
+    print("\nThe paper is ARMED. The clock re-validates on the latest cached perp bars + funding on every run;")
+    print("watch it accrue on GET /leaderboard (paper_age_days, live_ready) and GET /overview.")
     print("Run the clock with:  python3 -m cosmu.research.perp_market_neutral_arm --mark")
     return {"armed": True, "version_id": version_id, "current_signal": current_signal,
             "equity": float(equity), "deployable": True, "reused": _existing_version(store) is not None}
@@ -276,9 +276,9 @@ def arm(store: Store | None = None) -> dict:
 
 def mark(store: Store | None = None) -> dict:
     """Re-validate the perp-momentum-neutral book on the latest cached perp bars + funding and advance the per-track
-    marked-value trajectory (the forward-test clock, perp edition). SIM only — no orders. If the book has decayed
+    marked-value trajectory (the paper clock, perp edition). SIM only — no orders. If the book has decayed
     below the deployment bar the mark still records the up-to-date (possibly negative) trajectory honestly — a flat or
-    decayed forward test must never reach live_ready on a stale seed."""
+    decayed paper run must never reach live_ready on a stale seed."""
     store = store or Store(Settings())
     version_id = _existing_version(store)
     if version_id is None:
@@ -297,7 +297,7 @@ def mark(store: Store | None = None) -> dict:
         actor="research", kind="tracks_marked", ref_type="strategy_version", ref_id=version_id,
         payload={"n_periods": len(net), "equity": float(equity), "deployable": bool(v.get("deployable"))},
     )
-    print(f"Perp-momentum-neutral forward-test MARK — {len(net)} periods; equity ${float(equity):,.2f} "
+    print(f"Perp-momentum-neutral paper MARK — {len(net)} periods; equity ${float(equity):,.2f} "
           f"(return {float(ret_pct):+.2f}%, still deployable={bool(v.get('deployable'))})")
     return {"marked": True, "version_id": version_id, "n": len(net), "equity": float(equity)}
 

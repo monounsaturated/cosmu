@@ -1,7 +1,7 @@
 "use client";
 
 // module: app navigation. Nine surfaces covering the full vibe loop (idea → spec → verdict), the
-// machine's experiment memory (Theories), the lifecycle stages (Backtest → Simulation → Live), and
+// machine's experiment memory (Theories), the lifecycle stages (Backtest → Paper → Live), and
 // the operator's main decisions. Desktop = a persistent rail grouped into a clear IA — Operate /
 // Pipeline / Knowledge (+ a More section) — so the column reads as sections, not one long list.
 // Mobile = a bottom tab bar (4 primary tabs + a More sheet with the rest).
@@ -38,7 +38,7 @@ export const navItems: NavItem[] = [
   { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal },
   { href: "/lab", label: "Lab", desc: "Idea → spec → verdict", icon: FlaskConical },
   { href: "/strategies", label: "Strategies", desc: "Backtest · ranked & faceted", icon: ListChecks },
-  { href: "/forward-test", label: "Simulation", desc: "Live data · no money", icon: LineChart },
+  { href: "/paper", label: "Paper", desc: "Live data · no money", icon: LineChart },
   { href: "/verdicts", label: "Theories", desc: "Every theory tested · Gate verdict", icon: ClipboardCheck },
   { href: "/correlations", label: "Correlations", desc: "Signal scan · IC · FDR findings", icon: ScatterChart },
   { href: "/explorer", label: "Explorer", desc: "Pick · chart · compare", icon: Telescope },
@@ -58,7 +58,7 @@ export const moreItems: NavItem[] = [
 type NavGroup = { label: string; hrefs: string[] };
 const NAV_GROUPS: NavGroup[] = [
   { label: "Operate", hrefs: ["/", "/console"] },
-  { label: "Pipeline", hrefs: ["/lab", "/strategies", "/forward-test"] },
+  { label: "Pipeline", hrefs: ["/lab", "/strategies", "/paper"] },
   { label: "Knowledge", hrefs: ["/verdicts", "/correlations", "/explorer", "/mind", "/costs"] }
 ];
 

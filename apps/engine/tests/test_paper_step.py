@@ -1,4 +1,4 @@
-# The FORWARD-TEST EXECUTOR (orchestrator/forward_step.py): a funded gate-lane track must be run by its OWN
+# The PAPER EXECUTOR (orchestrator/paper_step.py): a funded gate-lane track must be run by its OWN
 # spec + fitted params on the latest real bars — exits on its stop / take / time-stop / signal-exit, re-entry
 # when its entry signal fires — all through the ONE order path (fees + sim slippage + audit). Deploy-lane
 # (documented rotation arms) are skipped: their arm modules own rotation. And the funder funds a survivor
@@ -13,7 +13,7 @@ from cosmu.config.settings import Settings
 from cosmu.data.market import Bar
 from cosmu.knowledge.store import Store
 from cosmu.master.portfolio import Portfolio
-from cosmu.orchestrator.forward_step import step_tracks
+from cosmu.orchestrator.paper_step import step_tracks
 from cosmu.orchestrator.loop import PricingRouter, fund_tracks_from_survivors
 from cosmu.spine.venue import default_catalog
 
@@ -45,7 +45,7 @@ def _router(closes: list[float]):
 
 
 def _persist_survivor(store: Store, *, params: dict, max_hold_days: int = 365, signal_exit_floor: float | None = None) -> str:
-    """A gate-passed forward-test survivor with a REAL evaluable spec (ret_Nd momentum, fitted sl/tp), the exact
+    """A gate-passed paper survivor with a REAL evaluable spec (ret_Nd momentum, fitted sl/tp), the exact
     rows the funder reads and the executor manages."""
     now = "2024-01-01T00:00:00Z"
     exits: dict = {"stop_loss": {"param": "sl"}, "take_profit": {"param": "tp"}, "signal_exits": []}
@@ -73,7 +73,7 @@ def _persist_survivor(store: Store, *, params: dict, max_hold_days: int = 365, s
             },
             "generated_code": "# test", "code_hash": "hash-fwdstep", "params": params,
             "mutation_operator": None, "mutation_rationale": None, "origin": "finder",
-            "status": "forward_test", "created_at": now, "killed_at": None, "kill_reason": None,
+            "status": "paper", "created_at": now, "killed_at": None, "kill_reason": None,
         },
     )
     store.insert(
@@ -251,6 +251,8 @@ def test_deploy_lane_tracks_are_skipped(tmp_path):
             },
             "generated_code": "#", "code_hash": "hash-gemish", "params": {},
             "mutation_operator": None, "mutation_rationale": None, "origin": "documented",
+            # Legacy status value on purpose: pins the executor's tolerance for pre-rename rows
+            # (forward_test == paper) until the 2026-06-11 migration has run against prod.
             "status": "forward_test", "created_at": now, "killed_at": None, "kill_reason": None,
         },
     )
@@ -313,7 +315,7 @@ def test_drift_defund_closes_the_held_position_and_blocks_reentry(tmp_path, monk
     and a defunded FLAT track is not re-entered by its own signal."""
     from types import SimpleNamespace
 
-    import cosmu.orchestrator.forward_step as fs
+    import cosmu.orchestrator.paper_step as fs
 
     store = _store(tmp_path)
     vid = _persist_survivor(store, params={"mom": -1.0, "sl": 0.50, "tp": 0.50})  # entry always true

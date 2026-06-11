@@ -33,7 +33,7 @@ wallet. Strategy detail lives under `/strategies/{id}` (and `/strategy/{id}`), n
 ## 1. Persona — the operator
 
 **You are a one-person fund.** Not a day-trader, not an engineer babysitting a script. You allocate
-capital and carry the P&L; the machine does the research, backtesting, and 24/7 forward-testing. Your
+capital and carry the P&L; the machine does the research, backtesting, and 24/7 papering. Your
 scarce resource is **attention** and your only privileged action is **moving real money** (flip live,
 raise caps). Everything else runs unattended and pings you when it needs a decision.
 

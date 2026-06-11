@@ -63,7 +63,7 @@ def list_strategies(store: Store, *, status: str | None = None, limit: int = 20)
 
 
 def list_tracks(store: Store, *, limit: int = 20) -> list[dict[str, Any]]:
-    """The N most recently-updated forward-test tracks (one standalone track per funded survivor — there is NO
+    """The N most recently-updated paper tracks (one standalone track per funded survivor — there is NO
     pooled wallet). Read-only: a single SELECT. `equity`/`return_pct` here are the track's marked state; this
     tool reads them, it never marks or moves them."""
     limit = max(1, min(int(limit), 200))
@@ -139,7 +139,7 @@ def read_leaderboard(store: Store, *, limit: int = 20) -> list[dict[str, Any]]:
 
 
 def read_overview(store: Store) -> dict[str, Any]:
-    """The aggregate forward-test read-out: the Σ-equity curve across all standalone tracks, net PnL, the
+    """The aggregate paper read-out: the Σ-equity curve across all standalone tracks, net PnL, the
     spend-by-category slice, and whether live trading is enabled. A pure read-out (no pooled wallet) — every
     query is a SELECT and no value is ever written."""
     snapshots = store.rows(

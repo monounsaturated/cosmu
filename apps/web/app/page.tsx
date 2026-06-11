@@ -1,5 +1,5 @@
 // Overview — the operator's CONTROL ROOM. Answers the only two questions that matter, in five seconds:
-//   (1) Is the machine making money?  → the hero figure (live simulation net P&L, net of fees) + the real
+//   (1) Is the machine making money?  → the hero figure (live paper net P&L, net of fees) + the real
 //       equity curve, with an honest "$0 · no funded tracks yet" day-0 state.
 //   (2) Does it need me?              → the "Needs you" queue (human-only decisions) beside the recent
 //       machine activity feed.
@@ -9,7 +9,7 @@
 //                   Everything the operator needs to decide "leave it running" or "step in" is above the
 //                   fold, at the highest visual weight.
 //   • THE DETAIL  — one labelled section, progressively disclosed via tabs (pipeline · verdicts ·
-//                   simulation · data), so the supporting context is one focused panel at a time instead
+//                   paper · data), so the supporting context is one focused panel at a time instead
 //                   of a long wall of equal-weight cards.
 //
 // HONESTY (the machine that never lies): when the engine is unreachable we render a single "not connected"
@@ -86,7 +86,7 @@ export default async function OverviewPage() {
         <Header />
         <NotConnected
           configured={engineConfigured}
-          what="The Overview shows whether the machine is making money and whether it needs you — the live simulation P&L, what's waiting for your call, the candidate pipeline, the Gate's verdicts, and data freshness. Connect the engine to see real data; nothing is fabricated."
+          what="The Overview shows whether the machine is making money and whether it needs you — the live paper P&L, what's waiting for your call, the candidate pipeline, the Gate's verdicts, and data freshness. Connect the engine to see real data; nothing is fabricated."
         />
       </div>
     );
@@ -96,7 +96,7 @@ export default async function OverviewPage() {
   const allLbRows = leaderboard.rows as LeaderboardRow[];
   const simRows = allLbRows.filter((r) => {
     const s = (r.status ?? "").toLowerCase();
-    return s === "forward_test" || s === "forward" || s === "paper";
+    return s === "paper" || s === "forward_test" || s === "forward";
   });
 
   // Tab counts — every one a real engine count, so the labels never overstate what is there.
@@ -119,7 +119,7 @@ export default async function OverviewPage() {
         statusConnected={statusConnected}
       />
 
-      {/* The four glanceable KPIs — survivors, tracks in simulation, days to live-ready, Gate verdicts. */}
+      {/* The four glanceable KPIs — survivors, tracks in paper, days to live-ready, Gate verdicts. */}
       <KpiRow
         funnel={intelligence.funnel}
         intelConnected={intelConnected}
@@ -143,7 +143,7 @@ export default async function OverviewPage() {
           <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">the detail</div>
           <h2 className="mt-1.5 text-lg font-semibold tracking-tight text-foreground">How the machine got here</h2>
           <p className="mt-1 text-[12.5px] text-muted">
-            The pipeline that produces the figure above — idea to spec to Gate to simulation. Every number real.
+            The pipeline that produces the figure above — idea to spec to Gate to paper. Every number real.
           </p>
         </div>
 
@@ -175,12 +175,12 @@ export default async function OverviewPage() {
               )
             },
             {
-              id: "simulation",
-              label: "In simulation",
+              id: "paper",
+              label: "In paper",
               count: inSimCount,
               content: (
                 <Card className="p-5">
-                  <ForwardTestWindow rows={simRows} connected={lbConnected} />
+                  <PaperWindow rows={simRows} connected={lbConnected} />
                 </Card>
               )
             },
@@ -227,7 +227,7 @@ function PanelHead({ icon, title, sub }: { icon: ReactNode; title: ReactNode; su
   );
 }
 
-// Candidate pipeline — shows the search funnel (authored → passed Gate → in simulation) with
+// Candidate pipeline — shows the search funnel (authored → passed Gate → in paper) with
 // a dump box so the operator can feed the machine new ideas inline.
 function CandidatePipeline({
   funnel,
@@ -245,7 +245,7 @@ function CandidatePipeline({
       <PanelHead
         icon={<FlaskConical className="size-4" />}
         title="Candidate pipeline"
-        sub="idea → spec → Gate → simulation"
+        sub="idea → spec → Gate → paper"
       />
       <div className="space-y-4">
         {/* Pipeline funnel stats */}
@@ -274,7 +274,7 @@ const FUNNEL_STAGES: { key: keyof FunnelStats; label: string; tone: string }[] =
   { key: "authored", label: "Specs authored", tone: "bg-border-strong" },
   { key: "screened", label: "Screened", tone: "bg-info/70" },
   { key: "gate_passed", label: "Passed Gate", tone: "bg-up/80" },
-  { key: "funded", label: "In simulation", tone: "bg-iris/80" },
+  { key: "funded", label: "In paper", tone: "bg-iris/80" },
   { key: "live", label: "Live", tone: "bg-iris" }
 ];
 
@@ -435,25 +435,25 @@ function TheoryStats({ theory }: { theory: ExperimentTheory }) {
   );
 }
 
-// Forward-test window — strategies that cleared the Gate and are now accumulating real-bar evidence.
+// Paper window — strategies that cleared the Gate and are now accumulating real-bar evidence.
 // Shows days elapsed so the operator can see which are approaching the ≥30d readiness signal.
-function ForwardTestWindow({ rows, connected }: { rows: LeaderboardRow[]; connected: boolean }) {
+function PaperWindow({ rows, connected }: { rows: LeaderboardRow[]; connected: boolean }) {
   return (
     <div>
       <PanelHead
         icon={<LineChart className="size-4" />}
-        title="In simulation"
+        title="In paper"
         sub="Cleared Gate · live bars · no capital"
       />
       {!connected ? (
         <EmptyState
           title="Engine not connected"
-          hint="Simulation status appears here once the engine is connected."
+          hint="Paper status appears here once the engine is connected."
           icon={<LineChart className="size-5" />}
         />
       ) : rows.length === 0 ? (
         <EmptyState
-          title="No strategies in simulation yet"
+          title="No strategies in paper yet"
           hint={
             <>
               Strategies move here automatically once they clear the Gate. Check the{" "}
@@ -463,10 +463,10 @@ function ForwardTestWindow({ rows, connected }: { rows: LeaderboardRow[]; connec
           icon={<LineChart className="size-5" />}
         />
       ) : (
-        <DataPreview href="/forward-test" viewAllLabel="View all in simulation" total={rows.length}>
+        <DataPreview href="/paper" viewAllLabel="View all in paper" total={rows.length}>
           <ul className="divide-y divide-border/60">
             {rows.slice(0, 5).map((r) => {
-              const days = Math.floor(r.forward_age_days ?? 0);
+              const days = Math.floor(r.paper_age_days ?? 0);
               const ready = days >= 30;
               return (
                 <li key={r.version_id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
@@ -476,7 +476,7 @@ function ForwardTestWindow({ rows, connected }: { rows: LeaderboardRow[]; connec
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {/* Forward CLOCK only — never the backtest % dressed up as forward return. The forward
-                        test is the clock since funding; a forward-return number isn't in the contract yet. */}
+                        test is the clock since funding; a paper-return number isn't in the contract yet. */}
                     <span className="text-[11.5px] tabular text-quiet">{days < 1 ? "day 0" : `${days}d fwd`}</span>
                     <Badge variant={ready ? "up" : "muted"}>{ready ? "≥30d" : "maturing"}</Badge>
                   </div>

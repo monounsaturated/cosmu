@@ -314,7 +314,7 @@ export function ExplorerClient({ initialList }: { initialList: ExplorerListRespo
               <CardTitle className="flex items-center gap-1.5">
                 <ChartLine className="size-4 text-iris-soft" />
                 Equity curve
-                <Tooltip content="Cumulative realized P&L from stored simulation fills. Gross (dashed iris) = before fees, Net (solid line) = after fees. Entry ▲ and exit ▼ markers from the fill log. Nothing fabricated — honest empty state when no fills exist." />
+                <Tooltip content="Cumulative realized P&L from stored paper fills. Gross (dashed iris) = before fees, Net (solid line) = after fees. Entry ▲ and exit ▼ markers from the fill log. Nothing fabricated — honest empty state when no fills exist." />
               </CardTitle>
               {loading ? (
                 <Loader className="size-4 animate-spin text-quiet" />
@@ -385,7 +385,7 @@ export function ExplorerClient({ initialList }: { initialList: ExplorerListRespo
                       <Stat
                         label="# Trades"
                         value={stats.num_trades !== null ? String(stats.num_trades) : null}
-                        tooltip="Number of fills recorded in the simulation track"
+                        tooltip="Number of fills recorded in the paper track"
                       />
                     </RailGroup>
 

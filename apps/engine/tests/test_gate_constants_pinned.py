@@ -1,5 +1,5 @@
 # THE GATE'S CALIBRATION IS PINNED. These constants ARE the machine's honesty: the 0.95 deflated-Sharpe
-# probability bar, the BH-FDR level, the trade-count/drawdown/fold/PBO floors, and the 30-day forward-test
+# probability bar, the BH-FDR level, the trade-count/drawdown/fold/PBO floors, and the 30-day paper
 # maturity. They were locked by calibration evidence (synthetic-noise refusal + real-data behavior), and an
 # agent "helpfully" relaxing one (0.95 → 0.5) must FAIL verify loudly instead of shipping a silently weaker
 # gate. If you are changing a value here, you are recalibrating the machine: bring the evidence, change the
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from cosmu.config.settings import FORWARD_TEST_MIN_DAYS, GateSettings
+from cosmu.config.settings import PAPER_MIN_DAYS, GateSettings
 
 
 def test_gate_bar_is_the_locked_calibration():
@@ -24,6 +24,6 @@ def test_gate_bar_is_the_locked_calibration():
     assert g.require_beat_buy_and_hold is True            # a bull-regime long must beat just HOLDING
 
 
-def test_forward_test_maturity_floor_is_pinned():
+def test_paper_maturity_floor_is_pinned():
     # The advisory live-readiness floor: ≥30 calendar days of net-positive REAL forward evidence.
-    assert FORWARD_TEST_MIN_DAYS == 30
+    assert PAPER_MIN_DAYS == 30

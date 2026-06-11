@@ -2,7 +2,7 @@
 
 The single source of truth for product terms. **DB tables, API fields, UI labels, and docs all use these exact words.** If a name here and a name in code/UI disagree, this file wins — fix the other side (ask before a broad rename; see `AGENTS.md`).
 
-> **The lifecycle is LOCKED:** **Backtest → Simulation → Live.** There is **NO pooled wallet** — each survivor proves itself on its **own standalone track**. The dead words **"Paper"** (as a stage/label), **"Forward-test"** (as a user-facing stage name), and **"Incubate"** must not reappear in new UI/labels. (Code symbols `forward_test` / `is_paper` may remain as internal identifiers until fully migrated.)
+> **The lifecycle is LOCKED:** **Backtest → Paper → Live.** There is **NO pooled wallet** — each survivor proves itself on its **own standalone track**. The stage name is **"Paper"** everywhere — front AND back (operator decision 2026-06-11). The dead words **"Paper"** and **"Simulation"** (as stage names) and **"Incubate"** must not reappear in UI/labels or code. **Legacy note for agents:** `paper` == formerly `paper`; the prod DB may carry `paper` status rows / `paper_promotion_watch` event kinds until the 2026-06-11 migration is applied — readers stay tolerant (`IN ('paper', 'paper', ...)`) until then. `executions.is_paper` (the "this fill was simulated" boolean) is orthogonal and unchanged.
 
 ## Strategy lifecycle
 
@@ -10,7 +10,7 @@ The single source of truth for product terms. **DB tables, API fields, UI labels
 |------|---------------------|
 | **Strategy** | The idea / thesis — the economic *why* (e.g. "fade crowded perp funding"). One Strategy, many Versions. |
 | **Version** | A parameterized variant of a Strategy — a concrete `StrategySpec` with a fitted `param_space`. What actually gets scored. |
-| **Track** | A Version's **standalone** SIM forward-test (default **$1,000** — a single adjustable setting `sim_track_capital`), judged in **net-of-fee %**. Each Version runs its **own** track — there is no shared pool and no cross-strategy allocation. Every track uses the same standardized size so results compare apples-to-apples. |
+| **Track** | A Version's **standalone** SIM paper run (default **$1,000** — a single adjustable setting `sim_track_capital`), judged in **net-of-fee %**. Each Version runs its **own** track — there is no shared pool and no cross-strategy allocation. Every track uses the same standardized size so results compare apples-to-apples. |
 | **Aggregate read-out** | The Σ of all standalone Tracks, shown on the Overview ("are we making money?"). A pure read-out — **not** an account you trade from, and **not** a pooled wallet. |
 
 ## Stages (where a Strategy lives)
@@ -18,7 +18,7 @@ The single source of truth for product terms. **DB tables, API fields, UI labels
 | Term | One-line definition |
 |------|---------------------|
 | **Backtest** | Discovery + screening. The research brain, Strategy Finder, and the Gate run Walk-Forward OOS + holdout on historical data — no real money, no live prices. Formerly called "Lab". |
-| **Simulation** | Validation on live data. Each gate-passed Version gets its own standalone SIM track (default **$1,000**, `sim_track_capital`). The daily clock first **EXECUTES** each gate-lane track's own spec/params on the latest real bars — its stop / take / time-stop / signal-exit closes the position, its entry signal re-enters (`orchestrator/forward_step.py`, sim fills with real fees + slippage) — then **marks** every held position to the real close. Deploy-lane rotation arms rotate via their own arm modules (stale legs close first). A **≥ 30 forward-day net-of-fee proof** is the recommended live-readiness signal (advisory — the operator decides; the 5 interlocks are the hard gate). Formerly called "Forward-test" and (earlier) "Paper". |
+| **Paper** | Validation on live data. Each gate-passed Version gets its own standalone SIM track (default **$1,000**, `sim_track_capital`). The daily clock first **EXECUTES** each gate-lane track's own spec/params on the latest real bars — its stop / take / time-stop / signal-exit closes the position, its entry signal re-enters (`orchestrator/paper_step.py`, sim fills with real fees + slippage) — then **marks** every held position to the real close. Deploy-lane rotation arms rotate via their own arm modules (stale legs close first). A **≥ 30 paper-day net-of-fee proof** is the recommended live-readiness signal (advisory — the operator decides; the 5 interlocks are the hard gate). A paper track keeps running after 30 days — until the operator kills it (the history is training data). Formerly called "Simulation", before that "Paper", and in v1 "Paper" — back to "Paper" by operator decision 2026-06-11. |
 | **Live** | Real money. Off by default; only gate-passing Versions promote, and only when the live toggle is armed. Live bots are launched manually with dedicated capital (1-button + confirm). |
 
 ## Judging
@@ -36,7 +36,7 @@ The single source of truth for product terms. **DB tables, API fields, UI labels
 | **SIM** | Simulated money, no real funds. The badge shown next to every figure in **Simulation**. |
 | **LIVE** | Real capital, off until armed via the live toggle. |
 
-> There is **no "demo"** and **no "paper"** money state in the product. When there is no engine or no data, show an honest **empty / connect** state — never fabricated numbers.
+> There is **no "demo"** money state in the product. The SIM money state surfaces to the user as the **Paper** stage; venue/money-state values stay `sim`/`live` in code. When there is no engine or no data, show an honest **empty / connect** state — never fabricated numbers.
 
 ## The Mind (agentic reasoning)
 
@@ -71,8 +71,8 @@ These exact spellings are enforced; the dead spellings on the right must not ret
 | Concept | Canonical | Dead (do not use) |
 |---------|-----------|-------------------|
 | UI stage label — discovery/screening | **Backtest** | `Lab`, `Farm`, `Research` (as a stage name) |
-| UI stage label — live-data validation | **Simulation** | `Forward-test`, `Paper`, `SIM` (as a stage label) |
-| Code status value (`strategy_versions.status`) | `forward_test` (internal, pending rename) | `paper`, `incubate` |
+| UI stage label — live-data validation | **Paper** | `Paper`, `Simulation`, `SIM` (as a stage label) |
+| Code status value (`strategy_versions.status`) | `paper` (legacy `paper` tolerated by readers until the 2026-06-11 migration runs) | `paper` (as a new write), `incubate` |
 | Money-state / sim venue label | `sim` | `paper` |
 | Heavy compute vendor | **Modal** | `Fly.io`, `Render` (worker) |
 | Per-strategy unit (class · table) | `Track` · `tracks` | `Sleeve` · `sleeves` |

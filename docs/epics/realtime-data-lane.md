@@ -13,7 +13,7 @@ Everything in the deployed loop is **cron-shaped, not stream-shaped**. Measured 
 |---|---|---|
 | Alt-data ingest (`cosmu.research.loop --ingest`) | every 6h | a news/funding/sentiment shift is seen 0–6h late |
 | Autonomy tick (author → gate → fund) | every 4h | new specs wait up to 4h |
-| Forward-test executor (`orchestrator/forward_step.py`) | daily 22:10 UTC | paper bots act **once a day** |
+| Paper executor (`orchestrator/paper_step.py`) | daily 22:10 UTC | paper bots act **once a day** |
 | Arm-fleet rotation re-arm | daily 22:40 UTC | rotation legs move once a day |
 | Mark-to-market | daily (inside the 22:10 clock) | dashboards/"24h perf" are stale up to 24h |
 
@@ -48,11 +48,11 @@ epic's core, hold Tier 3 behind a profit gate (e.g. trailing-30d live net P&L > 
                                    ▼
                   executor trigger (intraday lane): on bar_closed for a
                   symbol×timeframe with an active intraday track → run the
-                  SAME forward_step path (one order path, real fees, slippage)
+                  SAME paper_step path (one order path, real fees, slippage)
 ```
 
 Principles (non-negotiable, inherited from AGENTS.md):
-- **One order path.** The intraday lane calls the existing `forward_step` / `execute_orders`
+- **One order path.** The intraday lane calls the existing `paper_step` / `execute_orders`
   gauntlet — no second execution code path, sim and live identical, kill-switch checked every tick.
 - **PIT honesty.** `available_at` = wall-clock receipt time, never the event's claimed time.
   A real-time source has **no trustworthy backfilled history** — it must accumulate recorded-live
@@ -92,7 +92,7 @@ Principles (non-negotiable, inherited from AGENTS.md):
 | Memory leaks in a long-lived process | bounded queues; restart-safe (Railway restarts are normal, not incidents) |
 | Railway worker cost creep | one small instance, scale-to-zero stays for Modal; alert if monthly compute > budget line in `costs` |
 | In-progress candle decisions | only act on **closed** bars (the bar-cache freshness PRE-LIVE gate in BACKLOG.md is a hard prerequisite for the executor lane) |
-| Two execution cadences (daily + intraday) diverging | both lanes call the same `forward_step` path; per-spec `horizon.bar_size` decides the lane — no per-lane logic forks |
+| Two execution cadences (daily + intraday) diverging | both lanes call the same `paper_step` path; per-spec `horizon.bar_size` decides the lane — no per-lane logic forks |
 
 ## 7. Phases & acceptance criteria
 

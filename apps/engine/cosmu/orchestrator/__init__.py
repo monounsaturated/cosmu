@@ -1,4 +1,4 @@
-# intent: orchestrator — the live autonomous loop (ingest → signals → ML → gate → forward-test tracks); invariants:
+# intent: orchestrator — the live autonomous loop (ingest → signals → ML → gate → paper tracks); invariants:
 # the deterministic gate is the sole promote authority, no live order without the live toggle, and every cycle is
 # auditable. The live path is scheduler.run_tick → loop.fund_tracks_from_survivors / mark_tracks.
 

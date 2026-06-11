@@ -1,14 +1,14 @@
 # intent: ARM the validated RISK-PARITY ({SPY, AGG, GLD} inverse-realized-vol, monthly rebalance) strategy as a LIVE
-# FORWARD-TEST — register it into the SAME control-plane rows the deterministic finder writes for a gate-passed survivor
-# (strategies + strategy_versions[forward_test] + backtests[screen] + tracks + a `track_opened` event), and open THREE
+# PAPER — register it into the SAME control-plane rows the deterministic finder writes for a gate-passed survivor
+# (strategies + strategy_versions[paper] + backtests[screen] + tracks + a `track_opened` event), and open THREE
 # held SIM positions (one per sleeve, sized to its current inverse-vol weight × the track capital) at the latest REAL
-# adjusted close. From that moment the forward-test clock (this module's `--mark`, or orchestrator.mark_tracks) marks
+# adjusted close. From that moment the paper clock (this module's `--mark`, or orchestrator.mark_tracks) marks
 # the three legs against the latest closes on every run, accruing honest daily net-of-fee P&L the leaderboard surfaces.
 #
 # THIS IS THE DEPLOY-A-DOCUMENTED-STRATEGY TRACK, NOT the 0.95 in-sample Gate. Risk parity is a textbook,
 # externally-documented heuristic (Qian; "All-Weather-lite"); equity_risk_parity.validate() confirms it is POSITIVE OOS
 # net of real IBKR fees and beats BOTH 60/40 and buy-and-hold SPY risk-adjusted (Sharpe ~1.14 vs 0.87/0.79, maxDD ~15%
-# vs 32%/51%) on our total-return data. We arm it to forward-test on real prices going forward. We do NOT touch / lower
+# vs 32%/51%) on our total-return data. We arm it to paper on real prices going forward. We do NOT touch / lower
 # the 0.95 Gate — that is a separate honesty guard for NOVEL in-sample-mined edges.
 #
 # invariants: SIM only (live stays OFF — no real orders, no money moved); idempotent (re-running re-uses the existing
@@ -42,7 +42,7 @@ CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/ma
 IBKR_ETF_BPS_PER_SIDE = rp.IBKR_ETF_BPS_PER_SIDE
 # Risk parity is positive net-of-fee and beats both benchmarks risk-adjusted across all three trend regimes on our data
 # (it cushions equity crashes with bonds+gold: 2008 -3% vs SPY -41%, COVID +2% vs SPY -9%, even 2022 -11% vs SPY -18%).
-# So its proven-regime passport is the full set; live_eligibility can clear the regime gate once the forward test
+# So its proven-regime passport is the full set; live_eligibility can clear the regime gate once the paper run
 # matures (a human still clicks).
 PROVEN_REGIMES = ["bull", "bear", "chop"]
 
@@ -142,7 +142,7 @@ def _last_adj_close(symbol: str) -> Decimal:
 
 
 def arm(store: Store | None = None) -> dict:
-    """Register risk parity as a forward-test track and open the three held SIM legs at their current inverse-vol
+    """Register risk parity as a paper track and open the three held SIM legs at their current inverse-vol
     weights. Idempotent. Returns a summary dict (version_id, weights, legs, aggregate equity)."""
     store = store or Store(Settings())
     # Route the documented-strategy validation through the TYPED two-lane router: the spec's lane="deploy" forces the
@@ -179,16 +179,16 @@ def arm(store: Store | None = None) -> dict:
                 "mutation_operator": None,
                 "mutation_rationale": "documented strategy (risk parity / inverse-vol) — deployed via the documented-deploy lane, not the in-sample Gate",
                 "origin": STRATEGY_ORIGIN,
-                "status": "forward_test",
+                "status": "paper",
                 "created_at": now,
                 "killed_at": None,
                 "kill_reason": None,
             },
         )
-        print(f"\nREGISTERED forward-test track: version_id={version_id}  (status=forward_test, origin=documented)")
+        print(f"\nREGISTERED paper track: version_id={version_id}  (status=paper, origin=documented)")
     else:
         version_id = existing
-        print(f"\nForward-test track already registered: version_id={version_id} (idempotent — clock NOT reset)")
+        print(f"\nPaper track already registered: version_id={version_id} (idempotent — clock NOT reset)")
 
     # Supplementary control-plane rows, written IF-MISSING (in BOTH branches) so the registration is fully idempotent
     # AND self-healing: if a prior run created strategy+version but a downstream insert failed (each store.insert
@@ -260,7 +260,7 @@ def arm(store: Store | None = None) -> dict:
         any_opened = True
         legs.append({"symbol": sym, "qty": str(qty), "price": str(price), "weight": round(weights[sym], 4)})
 
-    # FIRST MARK — write the opening portfolio_snapshot (scope=track) so the forward-test trajectory has a t0 point.
+    # FIRST MARK — write the opening portfolio_snapshot (scope=track) so the paper trajectory has a t0 point.
     snap = portfolio.mark_to_market(marks)
     store.append_event(
         actor="research", kind="tracks_marked", ref_type="strategy_version", ref_id=version_id,
@@ -277,17 +277,17 @@ def arm(store: Store | None = None) -> dict:
         flag = " (reused)" if leg.get("reused") else (" (DEFERRED-offline)" if leg.get("deferred") else "")
         print(f"  {leg['symbol']:<4} qty={leg['qty']:<16} @ {leg['price']}{flag}")
     print(f"Aggregate equity now ${float(snap['equity']):,.2f}.")
-    print("\nThe forward-test is ARMED. The forward-test clock will re-mark these legs against the latest equity closes")
-    print("on every run; watch it accrue on GET /leaderboard (forward_age_days, live_ready) and GET /overview.")
+    print("\nThe paper is ARMED. The paper clock will re-mark these legs against the latest equity closes")
+    print("on every run; watch it accrue on GET /leaderboard (paper_age_days, live_ready) and GET /overview.")
     print("Run the clock with:  python3 -m cosmu.research.equity_risk_parity_arm --mark")
     return {"armed": True, "version_id": version_id, "weights": weights, "legs": legs,
             "equity": float(snap["equity"]), "rotation": rotation}
 
 
 def mark(store: Store | None = None) -> dict:
-    """Re-mark the risk-parity held legs against the latest REAL adjusted closes (the forward-test clock, equity
-    edition). Each run writes a fresh portfolio_snapshot, advancing the forward-test trajectory, and drives
-    tracks.return_pct from the LIVE marked value so a flat/negative forward test can never reach live_ready on a stale
+    """Re-mark the risk-parity held legs against the latest REAL adjusted closes (the paper clock, equity
+    edition). Each run writes a fresh portfolio_snapshot, advancing the paper trajectory, and drives
+    tracks.return_pct from the LIVE marked value so a flat/negative paper run can never reach live_ready on a stale
     seed. SIM only."""
     store = store or Store(Settings())
     version_id = _existing_version(store)
@@ -319,7 +319,7 @@ def mark(store: Store | None = None) -> dict:
         actor="research", kind="tracks_marked", ref_type="strategy_version", ref_id=version_id,
         payload={"marked": len(marks), "equity": float(snap["equity"])},
     )
-    print(f"Risk Parity forward-test MARK — marked {len(marks)} leg(s); aggregate equity ${float(snap['equity']):,.2f} "
+    print(f"Risk Parity paper MARK — marked {len(marks)} leg(s); aggregate equity ${float(snap['equity']):,.2f} "
           f"pnl ${float(snap['pnl']):+,.2f}")
     return {"marked": True, "version_id": version_id, "n": len(marks), "equity": float(snap["equity"])}
 

@@ -21,7 +21,7 @@ from cosmu.master.risk import OrderIntent, PortfolioRiskState, validate_order_fu
 from cosmu.spine.venue import VenueCatalog
 
 # SIM fills cross the half-spread the ADVERSE way at this fraction — the same 5 bps base the gate-lane backtest
-# charges (run_strategy_backtest's slippage_bps default), so forward-test P&L is never flattered relative to the
+# charges (run_strategy_backtest's slippage_bps default), so paper P&L is never flattered relative to the
 # screen that funded the track. (The backtest's participation-impact term needs bar volume, which the order path
 # doesn't see — the base half-spread is the honest floor.) The executions row has always RECORDED slippage as
 # 0.0005; this constant is what makes the fill price actually pay it. Live fills book the intended price and
