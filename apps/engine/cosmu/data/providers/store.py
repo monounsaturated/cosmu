@@ -360,4 +360,12 @@ class StoreBackedAltProvider:
                     alias = _STORE_METRIC_ALIAS.get(metric)
                     if alias:
                         points = self._store.read_all(provider, base, alias)
+        # Collapse exact re-appended duplicates (same ts AND available_at; last write wins, matching
+        # read_asof's id-DESC rule) BEFORE the trailing slice — the slice must count DISTINCT points, or a
+        # store that accreted duplicate copies of a window (the pre-dedup scheduled ingest did this every
+        # pass) silently shrinks the history the gate sees to a fraction of what it asked for.
+        if points:
+            by_key = {(p.ts, p.available_at): p for p in points}
+            if len(by_key) != len(points):
+                points = list(by_key.values())
         return points[-limit:]

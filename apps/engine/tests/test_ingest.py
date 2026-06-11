@@ -43,9 +43,50 @@ def test_ingest_writes_point_in_time_and_is_idempotent(tmp_path):
     assert len(news_now) == 5
     assert any(p.value > 0 for p in news_now)  # bullish headlines standardized to positive sentiment
 
-    # Re-running the schedule appends again but the point-in-time view is unchanged (latest-wins per ts).
+    # Re-running the schedule writes NOTHING new — not just an unchanged point-in-time view, but zero
+    # duplicate rows in the underlying store. The 15-min cron re-pulls a full provider window every pass;
+    # without (ts, available_at) dedup the store gained a full duplicate copy per pass (unbounded growth,
+    # and the [-limit:] read slice covered ever-less DISTINCT history).
     ingest_free_sources(store, funding_provider=funding, feargreed_provider=feargreed, news_provider=news, symbols=["BTCUSDT"])
     assert len(store.read_asof("binance", "BTCUSDT", "funding_rate", now)) == 5
+    assert len(store.read_all("binance", "BTCUSDT", "funding_rate")) == 5, "re-run must append 0 duplicate rows"
+    assert len(store.read_all("news", "BTCUSDT", "news_sentiment")) == 5
+    assert len(store.read_all("alternative.me", "MARKET", "fear_greed")) == 5
+
+
+def test_reingest_keeps_vendor_revisions(tmp_path):
+    """Dedup must NOT swallow a genuine revision: the same `ts` re-served with a LATER `available_at` is new
+    point-in-time information (an ALFRED-style vintage) and must land as an extra row."""
+    store = AltDataStore(tmp_path / "alt")
+    original = [AltDataPoint(ts=_T0, available_at=_T0 + timedelta(hours=1), value=1.0)]
+    revised = original + [AltDataPoint(ts=_T0, available_at=_T0 + timedelta(days=2), value=1.5)]
+
+    from cosmu.ingest.pipeline import ingest_numeric
+
+    ingest_numeric(store, FixtureAltDataProvider({("MARKET", "macro_regime"): original}), ["MARKET"], "macro_regime", provider_name="fred")
+    ingest_numeric(store, FixtureAltDataProvider({("MARKET", "macro_regime"): revised}), ["MARKET"], "macro_regime", provider_name="fred")
+    rows = store.read_all("fred", "MARKET", "macro_regime")
+    assert len(rows) == 2, "the revision (same ts, later available_at) must be kept"
+    # The point-in-time view honors the revision timeline: before the revision lands, the first value rules.
+    assert store.read_asof("fred", "MARKET", "macro_regime", _T0 + timedelta(days=1))[0].value == 1.0
+    assert store.read_asof("fred", "MARKET", "macro_regime", _T0 + timedelta(days=3))[0].value == 1.5
+
+
+def test_fetch_series_counts_distinct_history_despite_duplicates(tmp_path):
+    """A store that already accreted duplicate copies of a window (the pre-dedup scheduled ingest) must not
+    shrink the history the gate sees: fetch_series collapses exact (ts, available_at) duplicates BEFORE the
+    trailing [-limit:] slice, so `limit` counts DISTINCT points."""
+    from cosmu.data.providers.store import StoreBackedAltProvider
+
+    store = AltDataStore(tmp_path / "alt")
+    window = [AltDataPoint(ts=_T0 + timedelta(days=i), available_at=_T0 + timedelta(days=i), value=float(i)) for i in range(10)]
+    for _ in range(3):  # three cron passes of the same window, pre-dedup style
+        store.append("binance", "BTCUSDT", "funding_rate", window)
+
+    provider = StoreBackedAltProvider(store)
+    got = provider.fetch_series("BTCUSDT", "funding_rate", limit=10)
+    assert len(got) == 10
+    assert [p.value for p in got] == [float(i) for i in range(10)], "limit must cover the DISTINCT window, not 10 duplicate rows"
 
 
 def test_run_once_accepts_knowledge_store(tmp_path):
