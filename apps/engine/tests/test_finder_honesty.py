@@ -242,3 +242,74 @@ def test_cluster_representatives_collapse_near_duplicates():
     reps = _cluster_representatives(results, returns, threshold=0.95)
     assert "a" in reps and "b" not in reps and "c" in reps  # a,b collapse; c is distinct
     assert len(reps) == 2
+
+
+# ------------------------------------------------- deep review H4 — the holdout is champion-only, never a filter
+
+
+def test_include_holdout_false_skips_the_exam_and_keeps_validation_identical():
+    """The screening lane's include_holdout=False must (a) never simulate the holdout — its metrics read the
+    no-evidence sentinel (−0.5, what an empty holdout stream produces) — and (b) leave every validation number
+    byte-identical, so skipping the exam can never change selection."""
+    market = _correlated_market(mu=0.004)
+    spec = seed_orb_fvg_spec()
+    params = _valid_params(spec)
+    fee = default_catalog().venue("binance").taker_fee_bps
+
+    with_exam = run_strategy_backtest_detailed(spec, params, market, fee_bps=fee)
+    without = run_strategy_backtest_detailed(spec, params, market, fee_bps=fee, include_holdout=False)
+
+    assert float(without.metrics.holdout_deflated_sharpe) == -0.5  # the exam was never sat
+    assert without.holdout_returns == []
+    assert without.metrics.oos_return == with_exam.metrics.oos_return
+    assert without.metrics.sharpe_per_obs == with_exam.metrics.sharpe_per_obs
+    assert without.val_returns == with_exam.val_returns
+
+
+def test_finder_holdout_is_champion_only(tmp_path):
+    """H4 (deep review): the grid screens WITHOUT the holdout; only PROMOTED cluster representatives sit the
+    exam — exactly once each, audited as a `holdout_look` event. Non-promoted variants carry the no-evidence
+    sentinel: a 256-variant grid can no longer select against the untouched window."""
+    from cosmu.config.settings import GateSettings
+
+    # The relentless-bull significant-edge regime (see test_close_loop) with beat-BnH opted out so a champion
+    # actually promotes and the champion-only holdout path is exercised, not vacuously skipped.
+    import random as _random
+
+    rng = _random.Random(5)
+    base = dt.datetime(2022, 1, 1, tzinfo=dt.UTC)
+    factor = [rng.gauss(0, 0.004) for _ in range(300)]
+    market: dict[str, list[Bar]] = {}
+    for k, (sym, p0) in enumerate(_SYMS.items()):
+        p = p0
+        bars = []
+        for i in range(300):
+            drift = 0.008 if i % 100 < 78 else -0.001
+            r = drift + 0.95 * factor[i] + rng.gauss(0, 0.0006 * (1 + k * 0.1))
+            o = p
+            p = max(1e-6, p * (1 + r))
+            hi = max(o, p) * (1 + abs(rng.gauss(0, 0.001)))
+            lo = min(o, p) * (1 - abs(rng.gauss(0, 0.001)))
+            bars.append(Bar(ts=base + dt.timedelta(days=i), open=Decimal(str(o)), high=Decimal(str(hi)),
+                            low=Decimal(str(lo)), close=Decimal(str(p)), volume=Decimal("5000000")))
+        market[sym] = bars
+
+    store = Store(Settings(database_url=f"sqlite:///{tmp_path}/champion.sqlite3", openrouter_api_key=None,
+                           gates=GateSettings(require_beat_buy_and_hold=False)))
+    finder = StrategyFinder(settings=store.settings, store=store, market_data=_Bars(market))
+    report = finder.find(seed_orb_fvg_spec(), max_variants=10, persist=False)
+
+    assert report.survivors, "the significant-edge fixture must promote a champion (else this test is vacuous)"
+    look_ids = [r["ref_id"] for r in store.rows("SELECT ref_id FROM events WHERE kind = 'holdout_look'")]
+    assert look_ids, "promoted champions must be audited as holdout_look events"
+    assert len(look_ids) == len(set(look_ids))  # one exam look per champion — a champion never re-sits it
+    # every confirmed survivor really sat the exam (real verdict, not the no-evidence sentinel) and is audited
+    for r in report.survivors:
+        assert float(r.metrics.holdout_deflated_sharpe) != -0.5
+        assert f"{report.strategy_name}:{r.config_tag}" in set(look_ids)
+    # non-promoted variants never simulated the exam — the sentinel proves the screen ran without the holdout
+    non_champions = [r for r in report.leaderboard if not r.promoted]
+    assert non_champions, "fixture should produce gate-passers beyond the promoted reps"
+    for r in non_champions:
+        assert float(r.metrics.holdout_deflated_sharpe) == -0.5
+        assert r.holdout_passed is False

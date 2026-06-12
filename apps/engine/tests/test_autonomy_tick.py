@@ -62,9 +62,12 @@ def test_one_tick_runs_end_to_end_paper_only_and_audited(tmp_path):
     assert payload["summary"]["authored"] == 6
     assert payload["live_enabled"] is False
 
-    # A funded paper position exists (the Wallet was actually funded, no fabricated numbers).
-    pos = store.row("SELECT id FROM positions WHERE CAST(qty AS REAL) != 0 LIMIT 1")
+    # A funded track was REGISTERED (a real zero-qty registration row — H2 deep-review fix: the funder
+    # never opens a static long; the forward-test executor opens the first position when the spec's own
+    # entry signal fires on its clock, not inside the tick).
+    pos = store.row("SELECT qty FROM positions WHERE strategy_version_id IS NOT NULL LIMIT 1")
     assert pos is not None
+    assert float(pos["qty"]) == 0.0
 
 
 def test_tick_is_idempotent_when_paused(tmp_path):

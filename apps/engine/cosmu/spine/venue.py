@@ -223,6 +223,12 @@ def default_catalog() -> VenueCatalog:
         instruments=[
             Instrument(id="btc-usdt-binance", venue_id="binance", symbol="BTCUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.00001"), min_notional=Decimal("10")),
             Instrument(id="eth-usdt-binance", venue_id="binance", symbol="ETHUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.0001"), min_notional=Decimal("10")),
+            # The rest of the crypto SCREEN universe (evolution/loop.py CRYPTO_SCREEN_UNIVERSE) — real Binance
+            # spot filters. Without these a survivor screened on BNB/SOL/XRP could only forward-test on BTC/ETH,
+            # i.e. on an instrument its gate evidence never covered.
+            Instrument(id="bnb-usdt-binance", venue_id="binance", symbol="BNBUSDT", asset_class="crypto", tick_size=Decimal("0.1"), lot_size=Decimal("0.001"), min_notional=Decimal("10")),
+            Instrument(id="sol-usdt-binance", venue_id="binance", symbol="SOLUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.001"), min_notional=Decimal("10")),
+            Instrument(id="xrp-usdt-binance", venue_id="binance", symbol="XRPUSDT", asset_class="crypto", tick_size=Decimal("0.0001"), lot_size=Decimal("1"), min_notional=Decimal("10")),
             Instrument(id="btc-usd-kraken", venue_id="kraken", symbol="BTC/USD", asset_class="crypto", tick_size=Decimal("0.1"), lot_size=Decimal("0.00001"), min_notional=Decimal("10")),
             Instrument(id="btc-usd-coinbase", venue_id="coinbase", symbol="BTC-USD", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.000001"), min_notional=Decimal("1")),
             Instrument(id="spy-ibkr", venue_id="ibkr", symbol="SPY", asset_class="equity", tick_size=Decimal("0.01"), lot_size=Decimal("1"), min_notional=Decimal("1")),

@@ -82,11 +82,13 @@ def test_survivors_open_standalone_tracks_and_real_positions(tmp_path):
     funding = fund_tracks_from_survivors(store, market_data=fb)
     assert funding.survivors >= 1
     assert funding.funded >= 1
-    # each survivor proves on its OWN standalone track — funded count == tracks opened (no pooled competition)
+    # each survivor proves on its OWN standalone track — funded count == tracks registered (no pooled competition)
     assert funding.funded == len(funding.funded_tracks)
-    # real positions opened (no fabricated numbers)
-    positions = store.rows("SELECT COUNT(*) AS n FROM positions WHERE CAST(qty AS REAL) != 0")[0]["n"]
-    assert positions >= 1
+    # H2 (deep review): funding REGISTERS the track FLAT — a real zero-qty registration row, never a static
+    # long. The track's first position is opened by the forward-test executor when ITS OWN entry signal fires.
+    rows = store.rows("SELECT qty FROM positions WHERE strategy_version_id IS NOT NULL")
+    assert len(rows) >= 1
+    assert all(Decimal(str(r["qty"])) == 0 for r in rows)
     # a marked snapshot was written
     assert store.rows("SELECT COUNT(*) AS n FROM portfolio_snapshots")[0]["n"] >= 1
 
@@ -197,12 +199,12 @@ def test_equity_survivor_never_gets_a_binance_crypto_position(tmp_path):
     assert funding.survivors == 1 and funding.funded == 1
 
     rows = store.rows(
-        "SELECT symbol, venue, instrument_id FROM positions WHERE strategy_version_id = ? AND CAST(qty AS REAL) != 0",
+        "SELECT symbol, venue, instrument_id FROM positions WHERE strategy_version_id = ?",
         (equity_vid,),
     )
     assert len(rows) == 1
     pos = rows[0]
-    # routed to the EQUITY venue/instrument, NOT a Binance crypto symbol
+    # registered (flat) on the EQUITY venue/instrument, NOT a Binance crypto symbol
     crypto_symbols = {i.symbol for i in cat.instruments if i.venue_id == "binance" and i.asset_class == "crypto"}
     equity_symbols = {i.symbol for i in cat.instruments if i.venue_id == "ibkr" and i.asset_class == "equity"}
     assert pos["symbol"] not in crypto_symbols, f"equity survivor mislabeled onto a Binance crypto symbol: {pos['symbol']}"
@@ -224,6 +226,27 @@ def test_survivor_with_no_funding_venue_is_skipped_not_forced_onto_crypto(tmp_pa
     )[0]["n"] == 0
 
 
+def test_crypto_survivors_fund_on_their_screened_universe(tmp_path):
+    """H3 (deep review): a crypto survivor forward-tests on a symbol its gate evidence actually covered — the
+    screened universe (CRYPTO_SCREEN_UNIVERSE), round-robined ACROSS that pool for multiple survivors — never
+    an arbitrary catalog rotation onto an instrument it was never screened on."""
+    from cosmu.evolution.loop import CRYPTO_SCREEN_UNIVERSE
+
+    store = _store(tmp_path)
+    vid_a = _persist_survivor(store, name="CryptoA", asset_classes=["crypto"], venues=["binance"])
+    vid_b = _persist_survivor(store, name="CryptoB", asset_classes=["crypto"], venues=["binance"])
+
+    funding = fund_tracks_from_survivors(store, market_data=_FixtureBars())
+    assert funding.funded == 2
+
+    rows = store.rows(
+        "SELECT symbol FROM positions WHERE strategy_version_id IN (?, ?)", (vid_a, vid_b)
+    )
+    symbols = {r["symbol"] for r in rows}
+    assert symbols <= set(CRYPTO_SCREEN_UNIVERSE), f"funded outside the screened universe: {symbols}"
+    assert len(symbols) == 2  # round-robin spreads survivors across the screened pool, not onto one symbol
+
+
 def test_crypto_survivor_still_routes_to_binance(tmp_path):
     # NO REGRESSION: a crypto survivor must still fund a Binance crypto position exactly as before.
     store = _store(tmp_path)
@@ -233,7 +256,7 @@ def test_crypto_survivor_still_routes_to_binance(tmp_path):
     assert funding.survivors == 1 and funding.funded == 1
 
     rows = store.rows(
-        "SELECT venue, instrument_id FROM positions WHERE strategy_version_id = ? AND CAST(qty AS REAL) != 0",
+        "SELECT venue, instrument_id FROM positions WHERE strategy_version_id = ?",
         (crypto_vid,),
     )
     assert len(rows) == 1

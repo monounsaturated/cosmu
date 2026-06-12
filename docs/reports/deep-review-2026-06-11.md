@@ -46,6 +46,13 @@ self-learning 5/10**. Grades: structure C+ · LLM-readability A− · leanness B
 ## Open findings (recorded in BACKLOG as pre-live gates)
 
 ### High — these contaminate the live-readiness evidence
+> **UPDATE 2026-06-12: H2, H3, H4 are FIXED** (forward-test honesty wave). H2: the funder now REGISTERS
+> tracks flat (`Portfolio.register_track`) and the executor opens the first position on the spec's own
+> entry signal. H3: crypto survivors fund on `CRYPTO_SCREEN_UNIVERSE ∩ catalog` (BNB/SOL/XRP added with
+> real Binance filters). H4: champion-only holdout — the grid screens with `include_holdout=False`,
+> selection + FDR use validation evidence only (`score(check_holdout=False)`), and only promoted cluster
+> representatives sit the exam, once each, audited as `holdout_look` events. Originals kept below for the
+> record.
 - **H2 — the funder's first entry is not the strategy's** (`orchestrator/loop.py:206-221`): every newly
   funded track opens an immediate static long (side=1, conviction 0.5, 0.95/1.10 brackets) at the current
   mark regardless of the spec's entry signal. The first (often longest) leg of the ≥30-forward-day proof
