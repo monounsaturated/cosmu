@@ -434,11 +434,20 @@ def _run_symbol(
             if take and notional > 0:
                 # Entry crosses the spread the adverse way: long buys up (1+slip), short sells down (1-slip).
                 fill = float(bar.open) * (1 + d * slip)
-                # Open the leg. For a long this is the EXACT original: qty = notional*(1-fee)/fill and
-                # cash -= notional. For a short, `d` flips it: we sell `notional` worth, taking in proceeds.
-                position = (notional * (1 - fee)) / fill
+                if d == 1:
+                    # Long (the EXACT original): the entry fee comes out of the bought qty —
+                    # qty = notional*(1-fee)/fill — and the full notional leaves cash.
+                    position = (notional * (1 - fee)) / fill
+                    cash -= notional
+                else:
+                    # Short: we SELL `notional` worth — the liability is the FULL qty and the entry fee
+                    # comes out of the sale proceeds. The previous `d`-mirrored form (qty*(1-fee), full
+                    # proceeds) shrank the liability instead of the proceeds, booking the entry fee as a
+                    # GAIN — every short equity curve was near fee-free while pnl_pct charged fees, so
+                    # curve-derived gate metrics (return/Sharpe/DSR/folds) were gross-of-fee for shorts.
+                    position = notional / fill
+                    cash += notional * (1 - fee)
                 entry_qty = position
-                cash -= d * notional
                 entry_price = fill
                 entry_idx = idx
                 # Stop sits the adverse side of entry: below for a long, above for a short.

@@ -55,6 +55,21 @@ def append_dedup(alt_store: AltDataStore, provider_name: str, symbol: str, metri
     return len(fresh)
 
 
+def _append_fresh(alt_store: AltDataStore, provider_name: str, symbol: str, metric: str, points: list[AltDataPoint]) -> None:
+    """Append only points whose (ts, available_at) pair is not already stored — the idempotent primitive for
+    the SCHEDULED ingest paths below, which re-pull a full provider window every cron pass. Unlike
+    `append_dedup` (ts-only key, for backfills of revision-free series) this keeps genuine vendor revisions
+    (same ts, later available_at). Without it every 15-min pass appended a full duplicate copy of the window:
+    unbounded alt_data growth, AND the `[-limit:]` read slice in StoreBackedAltProvider covered ever-less
+    DISTINCT history — the gate silently saw days of unique data where it asked for years."""
+    if not points:
+        return
+    existing = {(p.ts, p.available_at) for p in alt_store.read_all(provider_name, symbol, metric)}
+    fresh = [p for p in points if (p.ts, p.available_at) not in existing]
+    if fresh:
+        alt_store.append(provider_name, symbol, metric, fresh)
+
+
 @dataclass(frozen=True)
 class BackfillResult:
     """Per-symbol outcome of a funding backfill: how many NEW points landed and the span covered."""
@@ -97,12 +112,14 @@ def backfill_funding(
 
 
 def ingest_numeric(alt_store: AltDataStore, provider: AltDataProvider, symbols: list[str], metric: str, *, provider_name: str, limit: int = 1000) -> int:
-    """Pull a numeric metric for each symbol and append it point-in-time. No LLM."""
+    """Pull a numeric metric for each symbol and append it point-in-time. No LLM. Returns the number of
+    points the provider SERVED (the source-liveness signal the tick's recommendations watch — 0 means the
+    source returned nothing); only genuinely-new (ts, available_at) rows are appended."""
     total = 0
     for symbol in symbols:
         points = provider.fetch_series(symbol, metric, limit=limit)
         if points:
-            alt_store.append(provider_name, symbol, metric, points)
+            _append_fresh(alt_store, provider_name, symbol, metric, points)
             total += len(points)
     return total
 
@@ -123,7 +140,7 @@ def ingest_news_sentiment(
     for symbol in symbols:
         points = standardize_news(news_provider.fetch_news(symbol, limit=limit), cache=cache, llm=llm)
         if points:
-            alt_store.append(provider_name, symbol, "news_sentiment", points)
+            _append_fresh(alt_store, provider_name, symbol, "news_sentiment", points)
             total += len(points)
     return total
 
@@ -142,7 +159,7 @@ def ingest_market_wide_numeric(
     macro_regime / risk_on) at the MARKET key. The native→semantic mapping lives here, at ingest. No LLM."""
     points = provider.fetch_series("MARKET", source_metric, limit=limit)
     if points:
-        alt_store.append(provider_name, "MARKET", stored_metric, points)
+        _append_fresh(alt_store, provider_name, "MARKET", stored_metric, points)
     return len(points)
 
 
@@ -186,7 +203,7 @@ def ingest_news_event_score(
         events = score_news_events(news_provider.fetch_news(symbol, limit=limit), cache=cache, llm=llm)
         points = scored_events_to_altdata(events)
         if points:
-            alt_store.append(provider_name, symbol, "news_event_score", points)
+            _append_fresh(alt_store, provider_name, symbol, "news_event_score", points)
             total += len(points)
     return total
 
@@ -199,7 +216,7 @@ def ingest_liquidations(alt_store: AltDataStore, provider: AltDataProvider, symb
     for symbol in symbols:
         points = provider.fetch_series(symbol, "liquidations", limit=limit)
         if points:
-            alt_store.append(provider_name, symbol, "liquidation_cascade", points)
+            _append_fresh(alt_store, provider_name, symbol, "liquidation_cascade", points)
             total += len(points)
     return total
 

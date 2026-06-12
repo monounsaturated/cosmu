@@ -17,7 +17,6 @@ dependencies = [
   "pydantic>=2.9",
   "pydantic-settings>=2.5",
   "pyyaml>=6.0",  # parse typed YAML front-matter in `.md` inbox specs (cosmu.lab.inbox)
-  "sqlalchemy>=2.0",
   "uvicorn>=0.30",
 ]
 
@@ -38,7 +37,6 @@ remote = [
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
-  "evals: evaluation gates for agentic behavior",
   "allow_network: opt-out of the session-wide socket guard (for tests that genuinely need a live connection)",
 ]
 
