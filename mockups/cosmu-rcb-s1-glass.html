@@ -362,7 +362,7 @@ body{
   border-radius:var(--r);margin-bottom:var(--gap);
   box-shadow:var(--cell-shadow);
 }
-.live-banner-dot{width:9px;height:9px;border-radius:50%;background:var(--down);animation:livepulse 2s infinite;flex-shrink:0}
+.live-banner-dot{width:9px;height:9px;border-radius:50%;background:var(--down);box-shadow:0 0 0 2px oklch(0.70 0.17 18 / 0.18);flex-shrink:0}
 
 /* daily loss gauge */
 .gauge-row{display:flex;align-items:center;gap:10px;padding:4px 0}
@@ -690,34 +690,7 @@ th[onclick]:active .th-inner{transform:translateY(0.5px)}
   <nav class="sb-nav">
     <button class="nav-item active" onclick="nav('strategies')" id="nav-strategies">
       <span class="nav-left">
-        <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.5" y="2.5" width="12" height="10" rx="1.2"/><line x1="1.5" y1="6" x2="13.5" y2="6"/><line x1="5.5" y1="6" x2="5.5" y2="12.5"/></svg>
-        Strategies
-      </span>
-      <span class="nav-count">12</span>
-    </button>
-    <button class="nav-item" onclick="nav('paper')" id="nav-paper">
-      <span class="nav-left">
-        <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4"><polyline points="1.5,11 5,7 8,9.5 13.5,3.5"/></svg>
-        Paper
-      </span>
-      <span class="nav-count">4</span>
-    </button>
-    <button class="nav-item" onclick="nav('live')" id="nav-live">
-      <span class="nav-left">
-        <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7.5" cy="7.5" r="3"/><circle cx="7.5" cy="7.5" r="5.5" stroke-opacity=".4"/></svg>
-        Live
-      </span>
-      <span class="nav-count">1</span>
-    </button>
-    <button class="nav-item" onclick="nav('costs')" id="nav-costs">
-      <span class="nav-left">
-        <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7.5" cy="7.5" r="5.5"/><path d="M7.5 4v7M5.5 5.5h3a1.5 1.5 0 0 1 0 3H5.5h3.5a1.5 1.5 0 0 1 0 3H5.5"/></svg>
-        Costs
-      </span>
-    </button>
-    <button class="nav-item" onclick="nav('commands')" id="nav-commands">
-      <span class="nav-left">
-        <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4"><polyline points="3,5 6.5,7.5 3,10"/><line x1="8" y1="10" x2="12" y2="10"/></svg>
+        <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="12" height="10" rx="1.6"/><polyline points="4,6 6.5,8 4,10"/><line x1="8" y1="10" x2="11" y2="10"/></svg>
         Commands
       </span>
     </button>
