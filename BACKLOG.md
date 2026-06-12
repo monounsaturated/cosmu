@@ -45,6 +45,11 @@
 > **Merged 2026-06-07 (5-PR wave — do NOT re-add):** hygiene sweep + deploy-lane fleet (#151) · typed two-lane routing + perp harness + intraday source + control-room overview + Theories surface + arm_fleet (#152) · divergence alert + fleet ETF catalog (#153) · Faber phantom-mark fix (#154) · 10 PIT-honest alt-data sources (21 features) + full frontend overhaul (#155).
 > **Previously merged (do NOT re-add):** finder significance leaks (P0), forward-test hard gate (P1), pre-push verify hook (P3), cost/ROI writers, managed data layer, 40 alt-features wired · 2026-06-04 7-PR train (#47–60) · bar backbone / Binance Vision backfiller (#129) · MCP layer (#128) · honesty harness: fake exchange_netflow disabled, funding annualization, FRED ALFRED vintage, registry⊆routable guard (#132).
 
+## ⚡ Alpaca equities lane (operator-approved 2026-06-12 — adapter SHIPPED, key-gated OFF)
+- [ ] **OPERATOR: create a free Alpaca account** (alpaca.markets) and set `ALPACA_PAPER_API_KEY` / `ALPACA_PAPER_API_SECRET` on Railway — that alone turns on US-equities market data (IEX, dividend-adjusted) + free paper execution. Keys policy: docs/KEYS.md. (operator)
+- [ ] **Wire the equity lane onto Alpaca once keys exist**: PricingRouter's equity leg prefers `AlpacaDailyBarsProvider.from_settings` (falls back to Yahoo), add `alpaca` to `spine/universe.py:VENUES_WITH_DATA`, and grow the alpaca instrument list past SPY. Fixes the deep review's M3 (frozen Yahoo cache + missing dividends) for this lane — the provider already has the closed-bar guard + stale-cache refetch + adjustment=all. (engine, sonnet — AFTER keys land)
+- [ ] **Later: route equity survivors' forward tests through Alpaca paper** (real broker fills replacing internal sim for the equity lane) and consider Alpaca options paper for a defined-risk options lane. (engine, opus — after first equity survivor)
+
 ## Now (the honest-edge path — data first, then lift)
 - [ ] Run robust full backfill + activate all FREE sources via `/manage-data` → deep, broad data across the now-wide (~30) perp universe + multi-timeframe (the #1 unblock) (engine, **local/Railway** — needs live data-API network, not a cloud agent)
 - [ ] **Re-run the gate on the deep data** — author the lucrative set (funding-carry · cross-sectional momentum · funding-contrarian · vol-regime) → first real survivor (or honest fail) (engine, opus)
