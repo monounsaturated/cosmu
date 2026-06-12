@@ -77,6 +77,7 @@ def run_strategy_backtest(
     size_multiplier: float = 1.0,
     alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
     size_series: dict[str, float] | None = None,
+    include_holdout: bool = True,
 ) -> BacktestMetrics:
     """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout. Thin
     wrapper over `run_strategy_backtest_detailed` for callers that only need the scoreable metrics."""
@@ -90,6 +91,7 @@ def run_strategy_backtest(
         size_multiplier=size_multiplier,
         alt_by_symbol=alt_by_symbol,
         size_series=size_series,
+        include_holdout=include_holdout,
     ).metrics
 
 
@@ -104,8 +106,15 @@ def run_strategy_backtest_detailed(
     size_multiplier: float = 1.0,
     alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
     size_series: dict[str, float] | None = None,
+    include_holdout: bool = True,
 ) -> BacktestResult:
     """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout.
+
+    `include_holdout=False` SKIPS the holdout simulation entirely — holdout metrics read the same no-evidence
+    sentinel an empty holdout stream produces (holdout_deflated_sharpe = PSR(∅) − 0.5 = −0.5). The
+    grid-screening lane uses it so non-champion variants never touch the exam — the holdout is a CONFIRMATION
+    set for the one selected champion (evaluated once, via the HoldoutLedger), never a selection filter a
+    256-variant grid gets to retry against.
 
     `slippage_bps` is the fixed half-spread; `impact_bps` scales market impact with participation
     (order notional / bar quote-volume), so larger size erodes the edge — the capacity dimension.
@@ -141,7 +150,7 @@ def run_strategy_backtest_detailed(
         v_run = _run_symbol(spec, params, val_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt, size_series)
         validation_runs.append(v_run)
         symbol_trades[symbol] = len(v_run.trades)
-        if holdout_bars:
+        if holdout_bars and include_holdout:
             holdout_runs.append(_run_symbol(spec, params, holdout_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt, size_series))
 
     if not validation_runs:

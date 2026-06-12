@@ -49,6 +49,7 @@ def promote_cohort(
     register: bool = True,
     trials: TrialStats | None = None,
     persist: CohortPersist | None = None,
+    check_holdout: bool = True,
 ) -> list[Promotion]:
     """Judge a cohort of DISTINCT candidates together. Steps: (1) register every candidate as a trial — the
     deflation/FDR math is invalid if any bypasses this; (2) score each on stats vs the trial-inflated benchmark;
@@ -76,7 +77,10 @@ def promote_cohort(
     trials = trials if trials is not None else trial_stats(store)
 
     # 2. per-candidate statistical verdict (Deflated Sharpe / PBO / folds / drawdown / holdout).
-    verdicts = [score(c.metrics, gates, trials=trials) for c in candidates]
+    # `check_holdout=False` = screening-lane mode (see scorer.score): the caller selects on validation-only
+    # evidence and applies the one-shot holdout to its promoted champions AFTERWARDS — never as a retryable
+    # per-variant filter inside the cohort verdict.
+    verdicts = [score(c.metrics, gates, trials=trials, check_holdout=check_holdout) for c in candidates]
 
     # 3. Benjamini-Hochberg across the cohort of DISTINCT candidates (not correlated param-variants).
     pvalues = [dsr_pvalue(float(v.deflated_sharpe_prob)) for v in verdicts]

@@ -1,22 +1,24 @@
 # intent: CLOSE THE AUTONOMOUS LOOP — read REAL persisted survivors (Finder/research gate-passers with tracks),
 # open a STANDALONE forward-test track for each (its own simulated capital, no pooled wallet, no cross-track
-# competition), routing intended orders through the ONE order path (master/execution → master/portfolio), then
-# mark-to-market so GET /overview reflects genuine positions/equity (no fabricated numbers). inputs: the store +
-# a market provider for latest marks; outputs: funded tracks + opened sim positions + a marked snapshot.
-# invariants: only gate-passed survivors are funded, each track is standalone (fixed per-strategy capital, never a
-# pooled share), live stays OFF (sim fills only), every fill is audited, deterministic for a fixed store + marks,
-# offline-safe (degrades to cache).
+# competition). Funding REGISTERS the track FLAT (a zero-qty position row): the track's first entry is its own
+# spec's signal, executed by the forward-test executor (orchestrator/forward_step.py) — the funder never opens a
+# static long, so the ≥30-day forward record measures the strategy, not buy-and-hold-from-funding-day. Each
+# survivor funds on a symbol its gate evidence actually covered (the screened universe ∩ the venue catalog),
+# then mark-to-market so GET /overview reflects genuine positions/equity (no fabricated numbers). inputs: the
+# store + a market provider for latest marks; outputs: registered flat tracks + a marked snapshot. invariants:
+# only gate-passed survivors are funded, each track is standalone (fixed per-strategy capital, never a pooled
+# share), live stays OFF, registration is idempotent (an existing row is never reset), deterministic for a fixed
+# store + marks, offline-safe (degrades to cache).
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, replace
-from decimal import ROUND_DOWN, Decimal
+from decimal import Decimal
 
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider, YahooDailyBarsProvider
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.drift import monitor_drift
-from cosmu.master.execution import IntendedOrder, execute_orders
 from cosmu.master.neutral import accrue_funding, neutral_tracks
 from cosmu.master.portfolio import Portfolio
 from cosmu.portfolio.rotation import Track, select_tracks
@@ -44,6 +46,20 @@ def _venue_symbols(catalog: VenueCatalog, venue_id: str, asset_class: str) -> li
     """Symbols that actually exist as instruments at `venue_id` for `asset_class` (so a sim fill can resolve an
     instrument). A track only funds tradable instruments — no fabricated symbols."""
     return [i.symbol for i in catalog.instruments if i.venue_id == venue_id and i.asset_class == asset_class]
+
+
+def _screened_symbols(raw_spec: object, asset_class: str, venue_symbols: list[str]) -> list[str]:
+    """The venue-tradable subset of the universe this survivor was SCREENED on — so a forward test runs on an
+    instrument its gate evidence actually covered, never a rotation-assigned stranger. Crypto gate-lane
+    candidates are screened against the fixed CRYPTO_SCREEN_UNIVERSE (evolution/loop.py); equity gate evidence
+    comes from the campaign cohorts on the catalog ETFs, which already match `venue_symbols`. Empty ⇒ the
+    caller falls back to the whole venue list (historical rows; better an imperfect track than none)."""
+    if asset_class != "crypto":
+        return []
+    from cosmu.evolution.loop import CRYPTO_SCREEN_UNIVERSE  # deferred: evolution imports master at module level
+
+    tradable = set(venue_symbols)
+    return [s for s in CRYPTO_SCREEN_UNIVERSE if s in tradable]
 
 
 def _survivor_asset_class(raw_spec: object) -> str:
@@ -104,10 +120,13 @@ def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Tra
         symbols = symbols_by_class.setdefault(asset_class, _venue_symbols(catalog, venue_id, asset_class))
         if not symbols:
             continue  # the funding venue has no tradable instrument for this class → SKIP (no fabricated symbol)
+        # Fund on the SCREENED universe: round-robin spreads multiple survivors, but only across symbols this
+        # survivor's gate evidence covered. Whole-venue fallback only when the screened set is empty (historical).
+        pool = _screened_symbols(r.get("spec"), asset_class, symbols) or symbols
         i = next_idx.get(asset_class, 0)
         next_idx[asset_class] = i + 1
         track = Track(id=r["version_id"], rolling_dsr=float(r["deflated_sharpe"] or 0.0))
-        out.append((r["version_id"], track, symbols[i % len(symbols)], venue_id))
+        out.append((r["version_id"], track, pool[i % len(pool)], venue_id))
     return out
 
 
@@ -177,61 +196,34 @@ def fund_tracks_from_survivors(
         )
     }
 
-    # Build the latest marks + the intended sim orders for each NEW funded track. Each track is standalone: it is
-    # sized to a fixed per-strategy capital (the standardized track size), not a competed pooled share.
+    # Register each NEW funded track FLAT. The funder used to open a static long at the current mark (side=1,
+    # 0.95/1.10 brackets) regardless of the spec's entry signal — so the FIRST (often longest) leg of the
+    # ≥30-day forward proof measured buy-and-hold-from-funding-day, not the strategy. Now funding writes a
+    # zero-qty registration row; the forward-test executor (forward_step.py) opens the first position when —
+    # and only when — the track's OWN entry signal fires, through the one order path. Each track is standalone:
+    # sized to the fixed per-strategy capital by the executor at entry, never a competed pooled share.
     marks: dict[str, Decimal] = {}
-    intents: list[IntendedOrder] = []
-    # A standalone track is funded with one per-strategy slice (sim_track_capital), drawn from the SIM pool
-    # (sim_bankroll) — so the pool fits many tracks and the gauntlet's per_strategy_cap/min_cash_reserve pass.
-    per_track_capital = store.settings.sim_track_capital
+    registered: list[str] = []
     for vid in fundable:
         if vid in already_funded:
             continue
         _track, symbol, venue_id = track_by_id[vid]
-        # Mark via the asset-aware router (crypto → Binance, equity → Yahoo) at the survivor's OWN venue — so an
-        # equity survivor prices off a real equity close, not a Binance symbol that does not exist.
+        # Mark via the asset-aware router (crypto → Binance, equity → Yahoo) at the survivor's OWN venue — a
+        # symbol we cannot price honestly is not funded this cycle (the executor could neither enter nor mark it).
         price = pricer.last_price(symbol, venue_id)
         if price <= 0:
             continue
         instrument = cat.instrument(symbol, venue_id)
         marks[instrument.id] = price
-        # Standalone track size = the standardized per-strategy capital (the risk gauntlet enforces the same cap,
-        # so the sim fill is accepted rather than rejected).
-        notional = per_track_capital
-        # Round qty DOWN so qty*price can never round a hair OVER the per-strategy cap (the gauntlet's
-        # `notional > cap` is strict — sizing to exactly the cap then rounding up would trip it + reject the fill).
-        qty = (notional / price).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
-        if qty <= 0:
-            continue
-        intents.append(
-            IntendedOrder(
-                strategy_version_id=vid,
-                symbol=symbol,
-                venue_id=venue_id,
-                side=1,
-                qty=qty,
-                price=price,
-                # Bracket the sim entry with conservative protective levels (the risk gauntlet requires both;
-                # the deterministic master owns final sizing — these are structure, not magic edge numbers).
-                stop_loss=(price * Decimal("0.95")).quantize(Decimal("0.01")),
-                take_profit=(price * Decimal("1.10")).quantize(Decimal("0.01")),
-                conviction=Decimal("0.5"),
-                gate_passed=True,        # only gate-passed survivors reach here; live still gated by the toggle
-            )
+        # venue='sim' matches the fill-ledger label the order path persists — the executor's flat-row query
+        # (and the funder's own already_funded guard) see exactly what a closed sim position would look like.
+        portfolio.register_track(
+            instrument_id=instrument.id, symbol=symbol, venue="sim", strategy_version_id=vid
         )
+        registered.append(vid)
 
-    execute_orders(
-        intents,
-        live_enabled=False,             # the loop funds SIM tracks; live stays off until explicitly armed
-        kill_switch=False,
-        adapter=None,
-        store=store,
-        portfolio=portfolio,
-        risk=store.settings.risk,
-        catalog=cat,
-    )
-    report.funded = len(intents)
-    report.funded_tracks = [i.strategy_version_id for i in intents if i.strategy_version_id]
+    report.funded = len(registered)
+    report.funded_tracks = registered
     snapshot = portfolio.mark_to_market(marks)
     report.equity = float(snapshot["equity"])
     report.pnl = float(snapshot["pnl"])

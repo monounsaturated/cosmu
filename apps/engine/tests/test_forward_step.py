@@ -98,10 +98,16 @@ def _persist_survivor(
     return version_id
 
 
-def _fund(store: Store, *, entry_price: float = 30000.0) -> None:
-    router, _ = _router([entry_price] * 30)
+def _fund(store: Store, *, entry_price: float = 30000.0, expect_entry: bool = True) -> None:
+    """Fund (the funder registers the track FLAT — it never opens a static long) then run one executor tick
+    on a flat path at `entry_price`, so the track's OWN entry signal opens the first position through the
+    order path. `expect_entry=False` documents specs whose entry signal is false at funding: they stay
+    honestly flat — the exact behaviour the old static-long funder violated."""
+    router, _ = _router([entry_price] * 25)
     funding = fund_tracks_from_survivors(store, router=router)
     assert funding.funded == 1
+    report = step_tracks(store, router=router)
+    assert report.opened == (1 if expect_entry else 0)
 
 
 def _held_qty(store: Store, vid: str) -> Decimal:
@@ -203,28 +209,30 @@ def test_flat_track_reenters_on_its_own_entry_signal(tmp_path):
     assert report.opened == 1
     assert _held_qty(store, vid) > 0
     buys = store.rows("SELECT id FROM executions WHERE side = 'buy' AND strategy_version_id = ?", (vid,))
-    assert len(buys) == 2  # the original funding + the executor's re-entry
+    assert len(buys) == 2  # the executor's first entry (at funding) + its re-entry
     assert store.row("SELECT id FROM events WHERE kind = 'forward_entry'") is not None
 
 
 def test_flat_track_stays_flat_when_entry_signal_false(tmp_path):
+    """H2 (deep review): funding REGISTERS a track flat — a spec whose entry signal never fires must never
+    hold a position, however long it stays funded. The old funder force-opened a static long here."""
     store = _store(tmp_path)
     vid = _persist_survivor(store, params={"mom": 100.0, "sl": 0.50, "tp": 0.10})  # entry needs ret > 100 (never)
-    _fund(store, entry_price=30000.0)
-    router, _ = _router([30000.0] * 25 + [33500.0])
-    assert step_tracks(store, router=router).closed == 1
+    _fund(store, entry_price=30000.0, expect_entry=False)
 
+    router, _ = _router([30000.0] * 25 + [33500.0])
     report = step_tracks(store, router=router)
 
-    assert report.opened == 0
+    assert report.managed == 1 and report.opened == 0 and report.closed == 0
     assert _held_qty(store, vid) == 0
+    assert store.row("SELECT id FROM executions WHERE strategy_version_id = ?", (vid,)) is None
 
 
 def test_funder_never_reopens_an_executor_closed_track(tmp_path):
     """REGRESSION: funding is ONCE per survivor. After the executor closes a track by its own rules, the next
     funding tick must NOT overwrite that verdict with a fresh static long — the executor owns re-entry."""
     store = _store(tmp_path)
-    vid = _persist_survivor(store, params={"mom": 100.0, "sl": 0.50, "tp": 0.10})
+    vid = _persist_survivor(store, params={"mom": -1.0, "sl": 0.50, "tp": 0.10})
     _fund(store, entry_price=30000.0)
     router, _ = _router([30000.0] * 25 + [33500.0])
     assert step_tracks(store, router=router).closed == 1
@@ -280,10 +288,10 @@ def test_closed_track_keeps_realized_pnl_in_equity_and_trajectory(tmp_path):
     from cosmu.orchestrator.loop import mark_tracks
 
     store = _store(tmp_path)
-    vid = _persist_survivor(store, params={"mom": 100.0, "sl": 0.05, "tp": 0.50})  # entry never re-fires
+    vid = _persist_survivor(store, params={"mom": -1.0, "sl": 0.05, "tp": 0.50})
     _fund(store, entry_price=30000.0)
     router, _ = _router([30000.0] * 25 + [27900.0])  # -7% → beyond the fitted 5% stop
-    assert step_tracks(store, router=router).closed == 1
+    assert step_tracks(store, router=router).closed == 1  # same-bar re-entry is blocked by the exit stamp
 
     snap = mark_tracks(store, router=router)
 
@@ -344,7 +352,7 @@ def test_take_profit_fills_at_the_limit_never_the_overshoot(tmp_path):
     test vs the screen that funded it. Close 33500 >> limit (basis*1.10): the sell books at the limit (minus
     sim slippage), not at 33500."""
     store = _store(tmp_path)
-    vid = _persist_survivor(store, params={"mom": 100.0, "sl": 0.50, "tp": 0.10})
+    vid = _persist_survivor(store, params={"mom": -1.0, "sl": 0.50, "tp": 0.10})
     _fund(store, entry_price=30000.0)
     basis = Decimal("30000") * Decimal("1.0005")  # entry slippage is in the basis
     limit = basis * Decimal("1.10")
