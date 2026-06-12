@@ -13,7 +13,7 @@ import tempfile
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Protocol
@@ -149,25 +149,68 @@ class BinanceSpotOHLCVProvider:
         return merged
 
 
+_US_EQUITY_CLOSE_UTC = time(21, 5)  # 16:00 ET close; 21:05 UTC is exact+buffer in winter, ~1h conservative in summer
+
+
+def _drop_unclosed_us_daily(bars: list[Bar], now: datetime) -> list[Bar]:
+    """Drop trailing daily bar(s) whose US cash session has not CLOSED yet (a daily bar dated D is final only
+    once `now` ≥ D 21:05 UTC). The keyless equity vendors include today's in-progress bar mid-session; caching
+    it would freeze a partial close as final (the deep review's M3). Conservative by ≤1h in summer DST —
+    the 22:10 UTC equity clock still sees today's close either way."""
+    out = list(bars)
+    while out and now < datetime.combine(out[-1].ts.date(), _US_EQUITY_CLOSE_UTC, tzinfo=UTC):
+        out.pop()
+    return out
+
+
+def _latest_expected_us_session(now: datetime) -> date:
+    """The most recent US cash-session DATE whose close has passed — weekends skipped. Holidays are NOT
+    modeled: on a holiday the expected bar is missing, so freshness fails and the provider refetches (a
+    harmless no-op merge), never serves a frozen cache."""
+    d = now.date()
+    if now < datetime.combine(d, _US_EQUITY_CLOSE_UTC, tzinfo=UTC):
+        d -= timedelta(days=1)
+    while d.weekday() >= 5:  # Sat/Sun
+        d -= timedelta(days=1)
+    return d
+
+
+def _equity_cache_is_fresh(cached: list[Bar], now: datetime) -> bool:
+    """Fresh ⇔ the cache already holds the latest EXPECTED closed US session — then a fetch adds nothing.
+    Anything older forces a refetch: the pre-fix behaviour served ANY existing cache forever, silently
+    freezing equity marks (and rotation inputs) at whenever the cache file happened to be created."""
+    return bool(cached) and cached[-1].ts.date() >= _latest_expected_us_session(now)
+
+
 class StooqDailyBarsProvider:
     """Free daily equity bars via Stooq CSV (no key). Known limit: Stooq lists only CURRENTLY-traded
     symbols — it is SURVIVORSHIP-BIASED (delisted names are absent). Declared, not hidden: this proves
-    signal *presence* cross-asset, not deployable capacity. Norgate replaces it at the live phase."""
+    signal *presence* cross-asset, not deployable capacity. Norgate replaces it at the live phase.
+    Serves only CLOSED US sessions; a cache missing the latest expected session is refetched (never served
+    forever), and offline it degrades to the cache."""
 
     survivorship_complete = False  # free bars have no delisted names — see class docstring
 
-    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/stooq") -> None:
+    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/stooq", *, now_fn=None) -> None:  # noqa: ANN001
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._now_fn = now_fn or (lambda: datetime.now(tz=UTC))
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        now = self._now_fn()
         cached = self._read_cache(symbol)
-        if cached:
+        if len(cached) >= limit and _equity_cache_is_fresh(cached, now):
             return cached[-limit:]
-        bars = self._fetch_csv(symbol)
-        if bars:
-            self._write_cache(symbol, bars)
-        return bars[-limit:]
+        try:
+            fetched = self._fetch_csv(symbol)
+        except Exception:  # noqa: BLE001 — offline/blocked: degrade to the cache, never crash the caller
+            return cached[-limit:]
+        fetched = _drop_unclosed_us_daily(fetched, now)
+        if not fetched:
+            return cached[-limit:]
+        merged = _merge_bars(cached, fetched)
+        self._write_cache(symbol, merged)
+        return merged[-limit:]
 
     def _fetch_csv(self, symbol: str) -> list[Bar]:
         # Stooq US tickers are suffixed ".us" (e.g. spy.us); pass-through if already qualified.
@@ -321,22 +364,32 @@ class BybitSpotOHLCVProvider:
 class YahooDailyBarsProvider:
     """Free daily equity/ETF bars via the Yahoo Finance chart API (no key). Like Stooq it lists only
     CURRENTLY-traded symbols, so it is SURVIVORSHIP-BIASED (delisted names absent) — declared, not hidden:
-    it proves cross-asset signal PRESENCE, not deployable capacity. Norgate replaces it at the live phase."""
+    it proves cross-asset signal PRESENCE, not deployable capacity. Norgate replaces it at the live phase.
+    Serves only CLOSED US sessions; a cache missing the latest expected session is refetched (never served
+    forever), and offline it degrades to the cache."""
 
     survivorship_complete = False  # free bars have no delisted names — see class docstring
 
-    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/yahoo") -> None:
+    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/yahoo", *, now_fn=None) -> None:  # noqa: ANN001
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._now_fn = now_fn or (lambda: datetime.now(tz=UTC))
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        now = self._now_fn()
         cached = self._read_cache(symbol)
-        if cached:
+        if len(cached) >= limit and _equity_cache_is_fresh(cached, now):
             return cached[-limit:]
-        bars = self._fetch_chart(symbol)
-        if bars:
-            self._write_cache(symbol, bars)
-        return bars[-limit:]
+        try:
+            fetched = self._fetch_chart(symbol)
+        except Exception:  # noqa: BLE001 — offline/blocked: degrade to the cache, never crash the caller
+            return cached[-limit:]
+        fetched = _drop_unclosed_us_daily(fetched, now)
+        if not fetched:
+            return cached[-limit:]
+        merged = _merge_bars(cached, fetched)
+        self._write_cache(symbol, merged)
+        return merged[-limit:]
 
     def _fetch_chart(self, symbol: str) -> list[Bar]:
         # Use an EXPLICIT epoch window (period1/period2), NOT range=max: Yahoo SILENTLY downgrades
