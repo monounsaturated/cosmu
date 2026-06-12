@@ -656,7 +656,6 @@ th[onclick]:active .th-inner{transform:translateY(0.5px)}
 .chip{min-height:24px}
 .chip:active{transform:scale(.97)}
 
-
 /* sidebar S2: ghost rail */
 .sidebar{background:transparent;backdrop-filter:none;border-right:none;box-shadow:none}
 .nav-item{border:none;background:transparent;margin:1px 10px;border-radius:8px;position:relative}
@@ -693,6 +692,33 @@ th[onclick]:active .th-inner{transform:translateY(0.5px)}
   </div>
   <nav class="sb-nav">
     <button class="nav-item active" onclick="nav('strategies')" id="nav-strategies">
+      <span class="nav-left">
+        <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 1.5l6 3-6 3-6-3z"/><path d="M1.5 7.5l6 3 6-3"/><path d="M1.5 10.5l6 3 6-3"/></svg>
+        Strategies
+      </span>
+      <span class="nav-count">12</span>
+    </button>
+    <button class="nav-item" onclick="nav('paper')" id="nav-paper">
+      <span class="nav-left">
+        <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 1.5h3M6.8 1.5v4l-3.6 6a1.4 1.4 0 0 0 1.2 2.1h6.2a1.4 1.4 0 0 0 1.2-2.1l-3.6-6v-4"/><path d="M4.5 10h6"/></svg>
+        Paper
+      </span>
+      <span class="nav-count">4</span>
+    </button>
+    <button class="nav-item" onclick="nav('live')" id="nav-live">
+      <span class="nav-left">
+        <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="1.6" fill="currentColor" stroke="none"/><path d="M4.6 10.4a4.1 4.1 0 0 1 0-5.8M10.4 4.6a4.1 4.1 0 0 1 0 5.8"/><path d="M2.8 12.2a6.6 6.6 0 0 1 0-9.4M12.2 2.8a6.6 6.6 0 0 1 0 9.4" opacity=".55"/></svg>
+        Live
+      </span>
+      <span class="nav-count">1</span>
+    </button>
+    <button class="nav-item" onclick="nav('costs')" id="nav-costs">
+      <span class="nav-left">
+        <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="3.5" width="12" height="9" rx="1.6"/><path d="M1.5 6h12"/><circle cx="11" cy="9.5" r=".9" fill="currentColor" stroke="none"/></svg>
+        Costs
+      </span>
+    </button>
+    <button class="nav-item" onclick="nav('commands')" id="nav-commands">
       <span class="nav-left">
         <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="12" height="10" rx="1.6"/><polyline points="4,6 6.5,8 4,10"/><line x1="8" y1="10" x2="11" y2="10"/></svg>
         Commands
