@@ -43,6 +43,8 @@ app needs two **server-side** vars to reach the engine:
 | Polymarket | `POLYMARKET_TOKEN` | Prediction-market risk-on cross-asset source. A market token id, **not a secret**. | optional | free | Engine env (Railway) |
 | Binance (live) | `BINANCE_API_KEY` / `BINANCE_API_SECRET` | Real-money execution on Binance spot. Only needed once you arm live trading. | live-only | free | Engine env (Railway) |
 | Binance (testnet) | `BINANCE_TESTNET_API_KEY` / `BINANCE_TESTNET_API_SECRET` | Paper execution against Binance testnet (testnet.binance.vision). | optional | free | Engine env (Railway) |
+| Alpaca (paper) | `ALPACA_PAPER_API_KEY` / `ALPACA_PAPER_API_SECRET` | US equities market data (IEX feed) + free paper execution — the equity data/forward-test lane (`adapters/data/alpaca.py`, `adapters/exec/alpaca.py`). Free account at alpaca.markets. | optional | free | Engine env (Railway) |
+| Alpaca (live) | `ALPACA_API_KEY` / `ALPACA_API_SECRET` | Real-money US equities execution on Alpaca. Honored ONLY with `live.mode=="real"` — paper keys always take precedence. | live-only | free | Engine env (Railway) |
 | Slack alerts | `SLACK_WEBHOOK_URL` | Ops alerts to a Slack channel. | optional | free | Engine env (Railway) |
 
 > "Free/Paid" is the cost of the **key/account**, not of trading itself. Binance keys are free to create;

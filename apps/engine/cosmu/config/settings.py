@@ -171,6 +171,14 @@ class Settings(BaseSettings):
     binance_api_secret: str | None = Field(default=None, repr=False)
     binance_testnet_api_key: str | None = Field(default=None, repr=False)
     binance_testnet_api_secret: str | None = Field(default=None, repr=False)
+    # Alpaca (US equities): PAPER keys unlock the free paper-trading lane AND the market-data API (IEX feed) —
+    # the equity data+forward-test venue. Live keys are honored ONLY with live.mode=="real" (the same
+    # never-auto-live interlock as Binance). No keys → the adapter is disabled and the equity lane stays on
+    # the keyless Yahoo/Stooq path (honest degradation).
+    alpaca_paper_api_key: str | None = Field(default=None, repr=False)
+    alpaca_paper_api_secret: str | None = Field(default=None, repr=False)
+    alpaca_api_key: str | None = Field(default=None, repr=False)
+    alpaca_api_secret: str | None = Field(default=None, repr=False)
     api_secret_key: str | None = Field(default=None, repr=False)
     railway_api_token: str | None = Field(default=None, repr=False)
     slack_webhook_url: str | None = Field(default=None, repr=False)
