@@ -119,11 +119,17 @@ def auto_research_pass(
     that skips (or fails) the leaky gate still completes and persists its ingest work."""
     alt_store = alt_store if alt_store is not None else _default_alt_store()
     if ingest:
+        from cosmu.ingest.health import check_ingest_health
         from cosmu.ingest.run import run_once
+        from cosmu.notify.slack import SlackNotifier
 
         # Self-contained + persisting: run_once banks per-source counts as it goes, so the ingest step's work
         # is durable regardless of what the optional gate step does next.
-        run_once(alt_store, providers=providers)
+        counts = run_once(alt_store, providers=providers)
+        # The stale-source alarm (deep review): a pass where EVERY source returned 0, or providers gone quiet
+        # for days, pages Slack ONCE per cooldown window — silent data death no longer needs someone to look.
+        # Best-effort by invariant: a health-check failure never touches the ingest result.
+        check_ingest_health(store, counts, notifier=SlackNotifier.from_env())
 
     if not cross_asset_gate:
         return None

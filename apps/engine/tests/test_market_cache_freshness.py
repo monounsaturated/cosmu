@@ -165,3 +165,89 @@ def test_cache_is_fresh_boundaries():
     assert _cache_is_fresh(one_behind, "1h", now) is False
     assert _cache_is_fresh([], "1h", now) is False
     assert _cache_is_fresh(one_behind, "3h", now) is True  # unknown timeframe → legacy serve
+
+
+# ----------------------------------------- the EQUITY lane gets the same honesty (deep review M3, 2026-06-12)
+
+
+def _us_bars(dates: list[str], px: float = 500.0) -> list[Bar]:
+    return [
+        Bar(ts=datetime.fromisoformat(d).replace(hour=13, minute=30, tzinfo=UTC),
+            open=Decimal(str(px)), high=Decimal(str(px)), low=Decimal(str(px)),
+            close=Decimal(str(px + i)), volume=Decimal("1000"))
+        for i, d in enumerate(dates)
+    ]
+
+
+def test_yahoo_drops_the_in_progress_session_and_repairs_on_close(tmp_path, monkeypatch):
+    """Mid-session, today's daily bar is partial — it must NOT be cached as final. After the close (≥21:05
+    UTC) the same fetch serves it. The pre-fix provider cached whatever the vendor sent, forever."""
+    from cosmu.data.market import YahooDailyBarsProvider
+
+    served = _us_bars(["2024-06-04", "2024-06-05", "2024-06-06"])  # Tue, Wed, Thu(today)
+    mid_session = datetime(2024, 6, 6, 15, 0, tzinfo=UTC)
+    provider = YahooDailyBarsProvider(tmp_path / "yahoo", now_fn=lambda: mid_session)
+    monkeypatch.setattr(provider, "_fetch_chart", lambda symbol: list(served))
+
+    bars = provider.fetch_bars("SPY", "1d", limit=10)
+    assert [b.ts.date().isoformat() for b in bars] == ["2024-06-04", "2024-06-05"], "today's partial bar must be dropped"
+
+    after_close = datetime(2024, 6, 6, 21, 10, tzinfo=UTC)
+    provider_pm = YahooDailyBarsProvider(tmp_path / "yahoo", now_fn=lambda: after_close)
+    monkeypatch.setattr(provider_pm, "_fetch_chart", lambda symbol: list(served))
+    bars_pm = provider_pm.fetch_bars("SPY", "1d", limit=10)
+    assert [b.ts.date().isoformat() for b in bars_pm][-1] == "2024-06-06", "the 22:10 clock must see today's close"
+
+
+def test_equity_cache_is_refetched_when_missing_the_latest_session(tmp_path, monkeypatch):
+    """The pre-fix providers served ANY existing cache forever — a forward-test mark could freeze at whenever
+    the cache file was created. A cache missing the latest expected closed session must refetch (and merge)."""
+    from cosmu.data.market import StooqDailyBarsProvider
+
+    calls = {"n": 0}
+    old = _us_bars(["2024-06-03", "2024-06-04"])
+    new = _us_bars(["2024-06-03", "2024-06-04", "2024-06-05", "2024-06-06"])
+
+    after_close_thu = datetime(2024, 6, 6, 22, 0, tzinfo=UTC)
+    provider = StooqDailyBarsProvider(tmp_path / "stooq", now_fn=lambda: after_close_thu)
+
+    def _serve_old(symbol):
+        calls["n"] += 1
+        return list(old)
+
+    monkeypatch.setattr(provider, "_fetch_csv", _serve_old)
+    assert [b.ts.date().isoformat() for b in provider.fetch_bars("SPY", "1d", limit=10)][-1] == "2024-06-04"
+
+    def _serve_new(symbol):
+        calls["n"] += 1
+        return list(new)
+
+    monkeypatch.setattr(provider, "_fetch_csv", _serve_new)
+    bars = provider.fetch_bars("SPY", "1d", limit=10)  # cache is STALE (missing 06-05/06-06) → refetch + merge
+    assert [b.ts.date().isoformat() for b in bars][-1] == "2024-06-06"
+    assert calls["n"] == 2
+
+    # Fresh cache (holds the latest expected session) → served from disk, no third fetch.
+    provider.fetch_bars("SPY", "1d", limit=2)
+    assert calls["n"] == 2
+
+
+def test_equity_offline_degrades_to_cache_over_the_weekend(tmp_path, monkeypatch):
+    """Weekend: Friday's bar is the latest expected session → a Friday-complete cache is FRESH on Saturday
+    (no fetch), and a fetch failure on a stale ask degrades to the cache instead of crashing the caller."""
+    from cosmu.data.market import YahooDailyBarsProvider
+
+    fri_complete = _us_bars(["2024-06-06", "2024-06-07"])  # Thu, Fri
+    saturday = datetime(2024, 6, 8, 12, 0, tzinfo=UTC)
+    provider = YahooDailyBarsProvider(tmp_path / "yahoo", now_fn=lambda: saturday)
+    monkeypatch.setattr(provider, "_fetch_chart", lambda symbol: list(fri_complete))
+    provider.fetch_bars("SPY", "1d", limit=2)  # seeds the cache
+
+    def _boom(symbol):
+        raise OSError("offline")
+
+    monkeypatch.setattr(provider, "_fetch_chart", _boom)
+    bars = provider.fetch_bars("SPY", "1d", limit=2)  # fresh → no fetch attempted at all
+    assert [b.ts.date().isoformat() for b in bars] == ["2024-06-06", "2024-06-07"]
+    deep_ask = provider.fetch_bars("SPY", "1d", limit=10)  # stale-by-depth ask + offline → degrade to cache
+    assert [b.ts.date().isoformat() for b in deep_ask] == ["2024-06-06", "2024-06-07"]
