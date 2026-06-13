@@ -63,7 +63,7 @@ paying for GitHub Actions). `verify:remote` manually dispatches it (`gh` CLI req
 
 ## Deploy
 
-Push to your working branch. **Railway** (engine + 4h cron) and **Vercel** (web) auto-deploy.
+Push to your working branch. **Railway** (engine + 7 crons: 15-min ingest · 4h autonomous tick · daily+hourly forward-test/mark clocks · hourly voices · daily rotation re-arm — see `apps/engine/railway.toml`) and **Vercel** (web) auto-deploy.
 That's the only trigger — never also run `railway up` / `vercel deploy` (double-deploy race).
 
 ## Stack

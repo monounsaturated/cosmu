@@ -28,7 +28,18 @@ if (!existsSync(path.join(root, ".git"))) {
 
 try {
   execFileSync("git", ["config", "core.hooksPath", hooksPath], { cwd: root, stdio: "inherit" });
-  console.log(`[setup-hooks] core.hooksPath -> ${hooksPath} (pre-push gate enabled: naming + drift + engine tests + typecheck).`);
+  // A stale per-worktree override (.git/worktrees/<wt>/config.worktree) can SHADOW the value we just set,
+  // leaving the pre-push gate silently dead even though the command above succeeded. Verify the EFFECTIVE
+  // resolution and surface a shadowing override loudly instead of claiming the gate is on.
+  const resolved = execFileSync("git", ["config", "core.hooksPath"], { cwd: root }).toString().trim();
+  if (resolved !== hooksPath) {
+    console.warn(
+      `[setup-hooks] WARNING: core.hooksPath resolves to '${resolved}', not '${hooksPath}' — a per-worktree ` +
+      `override is shadowing it, so the pre-push gate is OFF here. Fix: git config --worktree core.hooksPath ${hooksPath}`,
+    );
+  } else {
+    console.log(`[setup-hooks] core.hooksPath -> ${hooksPath} (pre-push gate enabled: naming + drift + engine tests + typecheck).`);
+  }
 } catch (error) {
   // Never break install/deploy just because hooks couldn't be configured.
   const msg = error instanceof Error ? error.message : String(error);
