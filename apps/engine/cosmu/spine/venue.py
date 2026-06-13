@@ -212,6 +212,23 @@ def default_catalog() -> VenueCatalog:
                     VenueFeeTier(min_volume_30d_usd=Decimal("100000000"), maker_fee_bps=Decimal("-1"),   taker_fee_bps=Decimal("2")),
                 ],
             ),
+            # Derivatives — Hyperliquid: non-KYC on-chain perp DEX (+ emerging native options). The
+            # blockchain lane for a French resident: no KYC = no authorization gate (Polymarket-style), EU-
+            # fundable, cheap (1.5/4.5 bps base, lower at 14d volume). NOT live-wired yet (no exec adapter).
+            # Legality: non-KYC self-custodial; restricted_jurisdictions empty (the user's rule: no-KYC is OK).
+            # ESMA (2026) treats crypto perps as CFD-like for EU retail — research-first, size accordingly.
+            Venue(
+                id="hyperliquid", name="Hyperliquid", kind="crypto", adapter="hyperliquid",
+                maker_fee_bps=Decimal("1.5"), taker_fee_bps=Decimal("4.5"),
+                min_notional=Decimal("1"), lot_size=Decimal("0.0001"),
+                live_enabled=False, restricted_jurisdictions=[],
+                fee_tiers=[
+                    VenueFeeTier(min_volume_30d_usd=Decimal("0"),         maker_fee_bps=Decimal("1.5"),  taker_fee_bps=Decimal("4.5")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("5000000"),   maker_fee_bps=Decimal("1.2"),  taker_fee_bps=Decimal("4")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("25000000"),  maker_fee_bps=Decimal("0.8"),  taker_fee_bps=Decimal("3")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("100000000"), maker_fee_bps=Decimal("0"),    taker_fee_bps=Decimal("2.4")),
+                ],
+            ),
             # Prediction — Polymarket: research / cross-asset signal source (no live wiring).
             Venue(
                 id="polymarket", name="Polymarket", kind="prediction", adapter="nautilus.polymarket",
@@ -336,6 +353,14 @@ def default_catalog() -> VenueCatalog:
             Instrument(id="dot-usd-kf",   venue_id="kraken_futures", symbol="PF_DOTUSD",  asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("1"),  min_notional=Decimal("1")),
             Instrument(id="doge-usd-kf",  venue_id="kraken_futures", symbol="PF_DOGEUSD", asset_class="crypto", tick_size=Decimal("0.00001"),lot_size=Decimal("1"), min_notional=Decimal("1")),
             Instrument(id="ltc-usd-kf",   venue_id="kraken_futures", symbol="PF_LTCUSD",  asset_class="crypto", tick_size=Decimal("0.01"),  lot_size=Decimal("1"),  min_notional=Decimal("1")),
+            # Hyperliquid perps (base-asset symbols, e.g. "BTC") — the non-KYC on-chain lane. Overlap the
+            # majors with OKX/Kraken-Futures so the fee router has real cross-venue comparisons per base asset.
+            Instrument(id="btc-hl",  venue_id="hyperliquid", symbol="BTC",  asset_class="crypto", tick_size=Decimal("1"),      lot_size=Decimal("0.0001"), min_notional=Decimal("1")),
+            Instrument(id="eth-hl",  venue_id="hyperliquid", symbol="ETH",  asset_class="crypto", tick_size=Decimal("0.1"),    lot_size=Decimal("0.001"),  min_notional=Decimal("1")),
+            Instrument(id="sol-hl",  venue_id="hyperliquid", symbol="SOL",  asset_class="crypto", tick_size=Decimal("0.01"),   lot_size=Decimal("0.01"),   min_notional=Decimal("1")),
+            Instrument(id="xrp-hl",  venue_id="hyperliquid", symbol="XRP",  asset_class="crypto", tick_size=Decimal("0.0001"), lot_size=Decimal("1"),      min_notional=Decimal("1")),
+            Instrument(id="avax-hl", venue_id="hyperliquid", symbol="AVAX", asset_class="crypto", tick_size=Decimal("0.01"),   lot_size=Decimal("0.1"),    min_notional=Decimal("1")),
+            Instrument(id="doge-hl", venue_id="hyperliquid", symbol="DOGE", asset_class="crypto", tick_size=Decimal("0.00001"),lot_size=Decimal("1"),      min_notional=Decimal("1")),
             Instrument(id="pm-fed-cut", venue_id="polymarket", symbol="PM-FED-CUT-2026", asset_class="prediction", tick_size=Decimal("0.01"), lot_size=Decimal("1"), min_notional=Decimal("1")),
         ],
     )
