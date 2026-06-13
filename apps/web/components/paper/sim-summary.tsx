@@ -1,26 +1,32 @@
+import type { ReactNode } from "react";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
-import { MetricCard, GaugeBar } from "@/components/ui/viz";
-import { cn, formatPct, formatUsd } from "@/lib/utils";
+import { cn, formatPct, formatUsd, numOrNull } from "@/lib/utils";
 
-// The Paper cohort KPI row (v18 kpi-grid). Four honest, money-first read-outs over the REAL tracks the
-// Gate has funded — chart-on-top, then this strip, then the per-track cards:
-//   - Invested:    Σ of the capital deployed across paper tracks (current value − net P&L, per track).
-//   - P&L:         Σ of net-of-fee P&L in $ across marked tracks, with the cohort % alongside (always $).
-//   - Tracks:      how many cleared the Gate and are now marked on live data.
-//   - Live-ready:  how many have crossed the +30-day net-positive threshold (live_ready === true), with a
-//                  maturity gauge reading the REAL matured share.
+// The Paper cohort KPI strip (Iris Bento `.kpi-grid`, mirrors the mockup's kpiPaper/kbox). Four honest,
+// money-first read-outs over the REAL tracks the Gate has funded — it sits between the equity hero and the
+// positions/trades split:
+//   - Invested:    Σ deployed capital across paper tracks (current value − net P&L, per track).
+//   - P&L:         Σ net-of-fee P&L in $ across marked tracks, with the cohort % in the sub-line.
+//   - Strategies:  how many cleared the Gate and are now marked on live data.
+//   - Live-ready:  how many crossed the +30-day net-positive threshold (live_ready === true).
 //
-// HONESTY: every number is derived from the rows the engine returned. The $ aggregates are summed ONLY
-// over tracks that carry a real value_usd / pnl_usd — a cohort with no marked dollar history shows a plain
-// "—", never a fabricated 0 or curve. The divergence split (tracking / diverging) rides in the P&L hint so
-// the operator still sees it at a glance without a fifth box.
-//
-// Live-ready threshold mirrors the engine's PAPER_MIN_DAYS (30 net-positive paper days).
+// HONESTY: every number is derived from the rows the engine returned. The $ aggregates are summed ONLY over
+// tracks that carry a real value_usd / pnl_usd — a cohort with no marked dollar history renders a plain "—"
+// in a `.quiet` span, never a fabricated 0. The divergence split rides in the P&L sub-line.
 const LIVE_READY_DAYS = 30;
 
-// A finite-number guard — null / NaN / non-finite never enters an aggregate.
-function num(v: number | null | undefined): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
+// A finite-number guard (the shared honest-"—" helper) — null / NaN / non-finite never enters an aggregate.
+const num = numOrNull;
+
+// One bento KPI box. `cls` tones the value (up / gold / dn); the sub-line falls back to muted.
+function KBox({ label, value, sub, cls }: { label: string; value: ReactNode; sub: ReactNode; cls?: string }) {
+  return (
+    <div className="kpi-box">
+      <div className="kpi-label">{label}</div>
+      <div className={cn("kpi-val tab", cls)}>{value}</div>
+      <div className={cn("kpi-sub", cls ?? "muted")}>{sub}</div>
+    </div>
+  );
 }
 
 export function SimSummary({ rows }: { rows: LeaderboardRow[] }) {
@@ -29,11 +35,9 @@ export function SimSummary({ rows }: { rows: LeaderboardRow[] }) {
   const tracking = rows.filter((r) => r.divergence_status === "tracking").length;
   const diverging = rows.filter((r) => r.divergence_status === "diverging").length;
 
-  // Σ over tracks that carry REAL dollar marks. A track with null value_usd / pnl_usd is excluded from the
-  // sum (never counted as a fabricated 0). If no track carries a dollar mark, the aggregate is null → "—".
-  const valued = rows.map((r) => num(r.value_usd)).filter((v): v is number => v !== null);
+  // Σ over tracks that carry REAL dollar marks. A track with null pnl_usd is excluded from the sum (never
+  // counted as a fabricated 0). If no track carries a dollar mark, the aggregate is null → "—".
   const pnls = rows.map((r) => num(r.pnl_usd)).filter((v): v is number => v !== null);
-  const totalValue = valued.length > 0 ? valued.reduce((a, b) => a + b, 0) : null;
   const totalPnl = pnls.length > 0 ? pnls.reduce((a, b) => a + b, 0) : null;
   // Invested = current value − net P&L, summed only over tracks that carry BOTH marks.
   const investedParts = rows
@@ -47,77 +51,51 @@ export function SimSummary({ rows }: { rows: LeaderboardRow[] }) {
   // Cohort % = total net P&L over total invested. Only when both real aggregates exist and invested > 0.
   const cohortPct = totalPnl !== null && invested !== null && invested > 0 ? (totalPnl / invested) * 100 : null;
 
-  const pnlTone = totalPnl === null ? "muted" : totalPnl > 0 ? "up" : totalPnl < 0 ? "down" : "muted";
+  const pnlTone = totalPnl === null ? undefined : totalPnl > 0 ? "up" : totalPnl < 0 ? "dn" : undefined;
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {/* Invested — Σ deployed capital across paper tracks (always $). */}
-      <MetricCard
+    <div className="kpi-grid">
+      {/* Invested — Σ deployed capital across paper tracks (always $; "—" when nothing marked). */}
+      <KBox
         label="Invested"
-        tone="iris"
-        value={
-          invested === null ? (
-            <span className="text-muted">—</span>
-          ) : (
-            <span className="text-foreground">{formatUsd(invested)}</span>
-          )
-        }
-        hint={
+        value={invested === null ? <span className="quiet">—</span> : formatUsd(invested)}
+        sub={
           invested === null
             ? "no marked track value yet"
-            : `across ${investedParts.length} marked track${investedParts.length === 1 ? "" : "s"} · standalone, no pooled wallet`
+            : `across ${investedParts.length} marked track${investedParts.length === 1 ? "" : "s"}`
         }
       />
 
-      {/* P&L — Σ net-of-fee dollar P&L, with the cohort % alongside. The divergence split rides in the hint. */}
-      <MetricCard
+      {/* P&L — Σ net-of-fee dollar P&L; cohort % + divergence split in the sub-line. */}
+      <KBox
         label="P&L"
-        tone={pnlTone}
-        value={
-          totalPnl === null ? (
-            <span className="text-muted">—</span>
-          ) : (
-            <span className={totalPnl >= 0 ? "text-up" : "text-down"}>{formatUsd(totalPnl)}</span>
-          )
-        }
-        delta={
-          cohortPct === null
-            ? null
-            : { value: `${formatPct(cohortPct)} net of fees`, tone: cohortPct >= 0 ? "up" : "down" }
-        }
-        hint={
-          <span className="tabular">
-            <span className="text-up">{tracking}</span> tracking
-            <span className="px-1 text-quiet">·</span>
-            <span className={diverging > 0 ? "text-warn" : "text-quiet"}>{diverging}</span> diverging
+        cls={pnlTone}
+        value={totalPnl === null ? <span className="quiet">—</span> : formatUsd(totalPnl)}
+        sub={
+          <span className="tab">
+            {cohortPct === null ? "net of fees" : `${formatPct(cohortPct)} net`}
+            <span className="quiet"> · </span>
+            <span className="up">{tracking}</span> tracking
+            <span className="quiet"> · </span>
+            <span className={diverging > 0 ? "gold" : "quiet"}>{diverging}</span> diverging
           </span>
         }
       />
 
-      {/* Tracks — how many cleared the Gate and run on live data. */}
-      <MetricCard
-        label="Tracks"
-        tone="info"
-        value={<span className="text-foreground">{total}</span>}
-        hint="cleared the Gate · marked on live data"
-      />
+      {/* Strategies — how many cleared the Gate and run on live data. */}
+      <KBox label="Strategies" value={total} sub="cleared the Gate · running" />
 
-      {/* Live-ready — matured share past +30d net-positive, with the maturity gauge. */}
-      <MetricCard
+      {/* Live-ready — matured share past +30d net-positive. */}
+      <KBox
         label="Live-ready"
-        tone={matured > 0 ? "up" : "muted"}
+        cls={matured > 0 ? "gold" : undefined}
         value={
-          <span className={matured > 0 ? "text-foreground" : "text-muted"}>
+          <>
             {matured}
-            <span className="text-[13px] font-normal text-quiet"> / {total}</span>
-          </span>
+            <span className="quiet" style={{ fontSize: 13, fontWeight: 400 }}> / {total}</span>
+          </>
         }
-        hint={
-          <div className="space-y-1.5">
-            <GaugeBar value={matured} max={Math.max(1, total)} marker={1} tone={matured > 0 ? "up" : "muted"} />
-            <span className={cn("text-quiet")}>matured past +{LIVE_READY_DAYS}d net-positive</span>
-          </div>
-        }
+        sub={`≥ ${LIVE_READY_DAYS} net-positive days`}
       />
     </div>
   );

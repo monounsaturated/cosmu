@@ -1,11 +1,7 @@
 import "./globals.css";
 import type { ReactNode } from "react";
-import { Inter, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import { AppShell } from "@/components/nav/app-shell";
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
-const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata = {
   title: "Cosmu — autonomous quant lab",
@@ -13,16 +9,18 @@ export const metadata = {
 };
 
 // Cosmu is a LIVE operator dashboard — every route renders on-demand with fresh engine data; nothing is
-// statically pre-rendered (static export hangs fetching the engine at build time). Applies to all routes.
+// statically pre-rendered (static export hangs fetching the engine at build time). The bento shell is a
+// client component so it paints instantly; pages stream their data region behind a <Suspense> skeleton.
 export const dynamic = "force-dynamic";
 
-// Apply the saved theme before paint to avoid a flash of the wrong palette.
+// Apply the saved theme before paint to avoid a flash of the wrong palette. The Iris Bento system is
+// dark by default; `.light` on <html> flips the palette (globals.css `html.light`).
 const themeScript = `try{if(localStorage.getItem('cosmu.theme')==='light')document.documentElement.classList.add('light')}catch(e){}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${mono.variable}`} suppressHydrationWarning>
-      <body className="font-sans">
+    <html lang="en" suppressHydrationWarning>
+      <body>
         <Script id="cosmu-theme-init" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
         <AppShell>{children}</AppShell>
       </body>

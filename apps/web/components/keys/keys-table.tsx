@@ -1,44 +1,39 @@
-"use client";
-
-// module: Keys → the v18 services ledger table (mockup id=page-services). One row per env var:
+// Keys → the v18 services ledger table (mockup id=page-services, `.key-tbl`). One row PER env var:
 //   status-dot · Key · Service · Description · Location
-// The status dot reads at a glance (green connected · amber unverified · red missing · grey unset);
-// hovering it reveals the full label. The Location cell shows the env var name + ".env.local" (grey)
-// + the deploy host (Railway/Vercel/…) COLOURED by whether the engine sees it set on that host.
+// The status dot reads at a glance (green connected · gold unverified · red missing · grey unset) and
+// hovering it (data-tip) reveals the full label. The Location cell shows ".env.local" (grey) + the deploy
+// host (Railway/Vercel/…) COLOURED by whether the engine sees the key set on that host.
 //
 // SECURITY: this NEVER renders a key value — only presence/status booleans the engine reports. It is a
-// view-only index, so there are no inputs and nothing is editable here.
+// view-only index, so there are no inputs and nothing is editable here. Server-safe (no client hooks):
+// the only interactivity is the global tooltip handler reading `data-tip`.
 
-import type { ReactNode } from "react";
-import type { SettingsKeyRow } from "@/app/data";
-import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
-import { Tooltip } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import type { SettingsKeyRow } from "@cosmu/contracts-ts";
 
-// Status → dot colour + human label. Mirrors the v18 SVCST mapping (live/pending/error/off) onto the
-// engine's per-var status enum. `unset` is the calm grey "no key needed / not provided yet".
+// Status → the v18 dot/host suffix (live/pending/error/off) + human tooltip. Maps the engine's per-var
+// status enum (connected/unverified/missing/unset) onto the bento class suffixes verbatim from the mockup.
 type KeyStatus = NonNullable<SettingsKeyRow["status"]>;
 
-const STATUS_META: Record<KeyStatus, { dot: string; label: string; detail: string }> = {
+const STATUS_META: Record<KeyStatus, { suffix: string; label: string; tip: string }> = {
   connected: {
-    dot: "bg-up",
-    label: "Connected",
-    detail: "Key is set and the engine verified it works.",
+    suffix: "live",
+    label: "connected",
+    tip: "Connected — set locally and on the host, live & reachable",
   },
   unverified: {
-    dot: "bg-warn",
-    label: "Set · unverified",
-    detail: "Key is present but the engine has not confirmed a live call yet.",
+    suffix: "pending",
+    label: "unverified",
+    tip: "Unverified — set, but the host copy is not confirmed live yet",
   },
   missing: {
-    dot: "bg-down",
-    label: "Missing",
-    detail: "A required key is not set — the feature it unlocks stays off.",
+    suffix: "error",
+    label: "missing",
+    tip: "Missing on the host — set in .env.local but the deployed host has no key",
   },
   unset: {
-    dot: "bg-quiet",
-    label: "Not set",
-    detail: "Optional key — not provided. The lane runs keyless or stays off.",
+    suffix: "off",
+    label: "unset",
+    tip: "Not set — no key anywhere yet",
   },
 };
 
@@ -53,8 +48,8 @@ function statusOf(row: SettingsKeyRow): KeyStatus {
 const HOST_LABEL: Record<NonNullable<SettingsKeyRow["host"]>, string> = {
   railway: "Railway",
   vercel: "Vercel",
-  local: "local only",
-  none: "—",
+  local: "local",
+  none: "",
 };
 
 function hostLabel(row: SettingsKeyRow): string {
@@ -63,116 +58,116 @@ function hostLabel(row: SettingsKeyRow): string {
 }
 
 // Colour the host token by whether the engine sees the key set THERE.
-//   present.host === true  → green  (set on the deploy host)
-//   present.host === false → red    (missing on the deploy host)
-//   present.host == null   → amber  (unverified — None means we couldn't confirm)
-function hostToneClass(present: SettingsKeyRow["present"]): string {
+//   present.host === true  → h-live    (green — set on the deploy host)
+//   present.host === false → h-error   (red — missing on the deploy host)
+//   present.host == null   → h-pending (gold — unverified, couldn't confirm)
+function hostSuffix(present: SettingsKeyRow["present"]): string {
   const h = present?.host;
-  if (h === true) return "text-up";
-  if (h === false) return "text-down";
-  return "text-warn"; // null / undefined → unverified
+  if (h === true) return "live";
+  if (h === false) return "error";
+  return "pending";
 }
 
-function StatusDot({ status }: { status: KeyStatus }) {
-  const meta = STATUS_META[status];
-  return (
-    <Tooltip
-      side="bottom"
-      content={
-        <span>
-          <span className="font-medium text-foreground">{meta.label}.</span> {meta.detail}
-        </span>
-      }
-    >
-      <span
-        className={cn("inline-block size-2 shrink-0 rounded-full", meta.dot)}
-        aria-label={meta.label}
-      />
-    </Tooltip>
-  );
-}
-
-// The Location cell: env var (mono) · .env.local (grey) · host (coloured by presence).
+// The Location cell: ".env.local" (grey) · host (coloured by presence). Mirrors the mockup's locCell:
+// a keyed row shows ".env.local · <host>"; a keyless / project-linked row shows just the host or a
+// "public API" hint.
 function Location({ row }: { row: SettingsKeyRow }) {
   const host = hostLabel(row);
-  const localTone = row.present?.local === true ? "text-up" : "text-quiet";
+  if (!row.key) {
+    // Keyless / project-linked service (no env var to set).
+    return host ? (
+      <span className={`loc-host h-${hostSuffix(row.present)}`}>{host}</span>
+    ) : (
+      <span className="loc-env">public API</span>
+    );
+  }
+  const localSet = row.present?.local === true;
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-      <code className="rounded bg-background/60 px-1.5 py-0.5 font-mono text-[10.5px] text-foreground">
-        {row.env_var}
-      </code>
-      <span className={cn("font-mono", localTone)}>.env.local</span>
-      {host ? <span className={cn("font-mono", hostToneClass(row.present))}>{host}</span> : null}
-    </div>
+    <>
+      <span className="loc-env" style={localSet ? { color: "var(--up)" } : undefined}>
+        .env.local
+      </span>
+      {host ? (
+        <>
+          <span className="loc-sep">·</span>
+          <span className={`loc-host h-${hostSuffix(row.present)}`}>{host}</span>
+        </>
+      ) : null}
+    </>
   );
 }
 
 export function KeysTable({ rows }: { rows: SettingsKeyRow[] }) {
   return (
-    <Table>
-      <THead>
-        <TR className="hover:bg-transparent">
-          <TH className="w-6 whitespace-nowrap pr-0" aria-label="Status" />
-          <TH className="whitespace-nowrap">Key</TH>
-          <TH className="whitespace-nowrap">Service</TH>
-          <TH className="whitespace-nowrap">Description</TH>
-          <TH className="whitespace-nowrap">Location</TH>
-        </TR>
-      </THead>
-      <TBody>
+    <table className="mini-tbl key-tbl">
+      <thead>
+        <tr>
+          <th className="k-st" aria-label="Status" />
+          <th>Key</th>
+          <th>Service</th>
+          <th>Description</th>
+          <th>Location</th>
+        </tr>
+      </thead>
+      <tbody>
         {rows.map((row) => {
           const status = statusOf(row);
+          const meta = STATUS_META[status];
           return (
-            <TR key={row.env_var}>
-              <TD className="pr-0">
-                <StatusDot status={status} />
-              </TD>
-              <TD className="whitespace-nowrap font-medium text-foreground">{row.name}</TD>
-              <TD className="whitespace-nowrap text-quiet">{row.service || "—"}</TD>
-              <TD className="text-[12px] text-muted">{row.description || "—"}</TD>
-              <TD className="whitespace-nowrap">
+            <tr key={row.env_var}>
+              <td className="k-st">
+                <span className={`kdot s-${meta.suffix}`} data-tip={meta.tip} />
+              </td>
+              <td>
+                {row.key ? (
+                  <span className="k-key">{row.env_var}</span>
+                ) : (
+                  <span className="quiet" style={{ fontSize: 11 }}>
+                    {row.host ? "project-linked" : "keyless · public API"}
+                  </span>
+                )}
+              </td>
+              <td className="k-svc2">
+                <span className="k-nm">{row.service || row.name}</span>
+              </td>
+              <td className="k-desc">{row.description || "—"}</td>
+              <td>
                 <Location row={row} />
-              </TD>
-            </TR>
+              </td>
+            </tr>
           );
         })}
-      </TBody>
-    </Table>
+      </tbody>
+    </table>
   );
 }
 
-// Re-export the status meta so callers can build a coverage read-out without re-deriving the labels.
-export function statusMeta(status: KeyStatus): { label: string; dot: string } {
-  return STATUS_META[status];
+// Honest count helper — how many KEYED rows (env vars) are connected, for the "N of M connected" header.
+export function keyedCounts(rows: SettingsKeyRow[]): { connected: number; total: number } {
+  const keyed = rows.filter((r) => r.key);
+  const connected = keyed.filter((r) => statusOf(r) === "connected").length;
+  return { connected, total: keyed.length };
 }
 
-export function keyStatusOf(row: SettingsKeyRow): KeyStatus {
-  return statusOf(row);
-}
-
-// Type aliases for callers that want them.
-export type { KeyStatus };
-
-// Honest helper: count of rows in a given status (used by the page header / legend).
-export function countByStatus(rows: SettingsKeyRow[]): Record<KeyStatus, number> {
-  const out: Record<KeyStatus, number> = { connected: 0, unverified: 0, missing: 0, unset: 0 };
-  for (const r of rows) out[statusOf(r)] += 1;
-  return out;
-}
-
-// A tiny inline legend for the four dot colours — keeps the meaning in reach above the table.
-export function KeysLegend({ rows }: { rows: SettingsKeyRow[] }) {
-  const counts = countByStatus(rows);
-  const order: KeyStatus[] = ["connected", "unverified", "missing", "unset"];
+// The inline three-dot legend in the card header (connected · unverified · missing), verbatim from
+// the mockup's LEGEND markup.
+export function KeysLegend() {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-quiet">
-      {order.map((s) => (
-        <span key={s} className="inline-flex items-center gap-1.5">
-          <span className={cn("inline-block size-2 rounded-full", STATUS_META[s].dot)} aria-hidden />
-          <span className="text-muted">{STATUS_META[s].label}</span>
-          <span className="tabular text-quiet">{counts[s]}</span>
-        </span>
-      ))}
-    </div>
+    <span className="key-legend">
+      <span className="lg">
+        <span className="kdot s-live" />
+        connected
+      </span>
+      <span className="lg">
+        <span className="kdot s-pending" />
+        unverified
+      </span>
+      <span className="lg">
+        <span className="kdot s-error" />
+        missing
+      </span>
+    </span>
   );
 }
+
+export type { KeyStatus };

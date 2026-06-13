@@ -1,209 +1,115 @@
-// module: Commands — the canonical "how to drive Cosmu from Claude Code" reference. The app is the glass
-// cockpit (it SHOWS everything and lets you approve/steer); the DOING — adding data, importing strategies,
-// running the gate, deploying — happens in Claude Code as runnable playbooks (skills). This page is a
-// plain-language CATALOG of those actions, grouped by lifecycle stage, so the operator always knows what
-// they can run and when. Pure static render (no engine calls) — works offline, never moves money.
-// Source of truth: .claude/skills/<name>/SKILL.md. Keep this list in sync when a skill is added/removed.
+// Commands — the v18 static reference surface (mockup id=page-commands): a flat bento `.cmd-row` list
+// (cmd-name mono + cmd-desc) inside a `.card`. The app is the glass cockpit (it SHOWS everything and lets
+// you approve/steer); the DOING — adding data, importing strategies, running the gate, deploying — happens
+// as runnable playbooks. Pure static render (no engine calls) — works offline, never moves money.
+//
+// HONESTY: the mockup listed a `cosmu …` CLI that does NOT exist (and dead "paper" verbs). The real,
+// runnable commands are the Claude Code slash-skills in `.claude/skills/<name>/SKILL.md` plus the `pnpm`
+// driver scripts in package.json. Every row below is a command that actually exists. Source of truth:
+// `.claude/skills/` and the root package.json scripts — keep this list in sync when one is added/removed.
 
-import {
-  Bug,
-  Database,
-  FileCode2,
-  FileText,
-  Gavel,
-  Landmark,
-  Layers,
-  PlugZap,
-  RefreshCw,
-  Rocket,
-  Search,
-  Sparkles,
-  Terminal
-} from "lucide-react";
-import type { ComponentType } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { SectionHeader } from "@/components/ui/section";
+import { Suspense } from "react";
+import { Page, Toolbar } from "@/components/ui/toolbar";
 
-type Cmd = { cmd: string; what: string; when: string; icon: ComponentType<{ className?: string }> };
-type Group = { stage: string; blurb: string; cmds: Cmd[] };
+type Cmd = { name: string; desc: string };
+type Group = { stage: string; cmds: Cmd[] };
 
-// Mirrors the runnable playbooks in .claude/skills/. Keep in sync when a skill is added/removed.
+// Mirrors the real runnable playbooks in .claude/skills/ and the real `pnpm` scripts. The slash commands
+// run inside Claude Code (or any agent: open `.claude/skills/<name>/SKILL.md` and follow it); the `pnpm`
+// rows are the deterministic dev/ops scripts. Keep in sync when a skill or script is added/removed.
 const GROUPS: Group[] = [
   {
     stage: "Discover",
-    blurb: "Find and shape ideas. Everything here only PROPOSES — the Gate decides what's real.",
     cmds: [
-      {
-        cmd: "/scan-signals",
-        icon: Search,
-        what: "Unbiased sweep across every data source for weak / cross-asset signals → testable hypotheses, each with the evidence against it.",
-        when: "You want fresh edges to test."
-      },
-      {
-        cmd: "/create-strategy",
-        icon: FileText,
-        what: "Turn a thesis or idea into a typed, auditable StrategySpec and drop it in the inbox.",
-        when: "You have an idea to put on trial."
-      },
-      {
-        cmd: "/import-pine",
-        icon: FileCode2,
-        what: "TradingView Pine → typed spec. Hardcoded numbers become a fitted search space, never baked in.",
-        when: "Porting a TradingView strategy."
-      }
-    ]
+      { name: "/scan-signals", desc: "Unbiased cross-asset sweep over every data source → testable hypotheses, each with its disconfirmer — propose-only, never moves money" },
+      { name: "/create-strategy", desc: "Turn a thesis into a typed, auditable StrategySpec and drop it in the inbox" },
+      { name: "/import-pine", desc: "TradingView Pine → typed spec; hardcoded numbers become a fitted search space, never baked in" },
+      { name: "/dump-idea", desc: "Capture a loose natural-language idea as a StrategySpec in strategies/inbox/" },
+    ],
   },
   {
     stage: "Data & venues",
-    blurb: "Feed the machine. New inputs widen what the Gate can find.",
     cmds: [
-      {
-        cmd: "/add-data-source",
-        icon: Database,
-        what: "Wire a new point-in-time data source end-to-end: provider → feature → ingest → test.",
-        when: "Adding a new signal feed."
-      },
-      {
-        cmd: "/manage-data",
-        icon: RefreshCw,
-        what: "Fetch, backfill and verify market bars + alt sources through one idempotent path — and report coverage.",
-        when: "Pulling data, deepening history, or checking what's stale."
-      },
-      {
-        cmd: "/add-venue",
-        icon: Landmark,
-        what: "Wire a new exchange or asset class: adapter → catalog → universe gate → real per-venue fees → test.",
-        when: "Adding somewhere to trade."
-      }
-    ]
+      { name: "/add-data-source", desc: "Wire a new point-in-time data source end-to-end: provider → feature → ingest → test" },
+      { name: "/manage-data", desc: "Fetch, backfill and verify market bars + alt sources through one idempotent path; report coverage" },
+      { name: "/add-venue", desc: "Wire a new exchange or asset class: adapter → catalog → universe gate → real per-venue fees → test" },
+      { name: "/profile-source", desc: "Audit a new feed's PIT history (coverage · gaps · look-ahead) into a GO / REVIEW / NO-GO verdict" },
+    ],
   },
   {
     stage: "Test & judge",
-    blurb: "Let the deterministic Gate — never an LLM — be the judge.",
     cmds: [
-      {
-        cmd: "/run-gate",
-        icon: Gavel,
-        what: "Run the real-data cross-asset Gate and report the verdict: fund a forward-test track, or kill with reasons.",
-        when: "Checking whether an edge is real."
-      },
-      {
-        cmd: "/evolve-strategy",
-        icon: Layers,
-        what: "Isolate a gate-passed signal, graft it onto other assets, recombine survivors — and route the cohort back through the Gate.",
-        when: "Compounding a proven edge without manufacturing one."
-      },
-      {
-        cmd: "/debug-strategy",
-        icon: Bug,
-        what: "Post-mortem on a dead or underperforming Version — why it died, what to learn.",
-        when: "Understanding a loss."
-      }
-    ]
+      { name: "/run-gate", desc: "Run the deterministic real-data Gate and report the verdict — fund a forward-test track, or kill with reasons" },
+      { name: "/evolve-strategy", desc: "Isolate a gate-passed signal, graft it onto other assets, recombine survivors — route the cohort back through the Gate" },
+      { name: "/debug-strategy", desc: "Post-mortem a dead or zero-trade Version — why it died, what to learn" },
+      { name: "/variance-attribution", desc: "Decompose a funded track's SIM→live divergence into named, signed buckets (fees · slippage · funding · decay · regime)" },
+    ],
   },
   {
     stage: "Ship & maintain",
-    blurb: "Keep it live and lean. Push = deploy.",
     cmds: [
-      {
-        cmd: "/deploy-check",
-        icon: PlugZap,
-        what: "The pre-push gate — run pnpm verify (lint + types + tests) and confirm the tree is green and coherent.",
-        when: "Before every push."
-      },
-      {
-        cmd: "/deploy-iterate",
-        icon: Rocket,
-        what: "Agentic deploy → read Railway / Vercel runtime logs → fix → repeat, without wasted redeploys.",
-        when: "A deploy is failing."
-      },
-      {
-        cmd: "/groom",
-        icon: Sparkles,
-        what: "Self-maintenance: prune dead code, graveyard stale strategies, keep docs + memory lean, leave the tree green.",
-        when: "Periodic cleanup so the system stays smart without bloating."
-      }
-    ]
-  }
+      { name: "/deploy-check", desc: "The pre-push gate — run pnpm verify and confirm the tree is green and coherent" },
+      { name: "/deploy-iterate", desc: "After a push, read Railway / Vercel logs to confirm the deploy is healthy and iterate on failures" },
+      { name: "/groom", desc: "Self-maintenance: prune dead code, graveyard stale strategies, keep docs + memory lean, leave the tree green" },
+      { name: "/code-review", desc: "Pre-merge quality gate — review the diff for correctness traps, synthetic-data leaks and security" },
+    ],
+  },
+  {
+    stage: "Dev scripts",
+    cmds: [
+      { name: "pnpm verify", desc: "Lint + types + engine tests + build + contract-drift — the deterministic pre-push gate" },
+      { name: "pnpm dev", desc: "Regenerate contracts and run the web app locally" },
+      { name: "pnpm engine:test", desc: "Run the engine pytest suite" },
+      { name: "pnpm engine:api", desc: "Run the engine API locally (cosmu.api.app)" },
+    ],
+  },
 ];
 
 export default function CommandsPage() {
   return (
-    <div className="mx-auto max-w-[960px] space-y-6 px-4 py-6 sm:px-5 sm:py-7 lg:space-y-7 lg:px-7">
-      <SectionHeader
-        eyebrow="commands"
-        title="Run from Claude Code"
-        aside={<Badge variant="iris">The app shows · Claude Code does</Badge>}
-      />
+    <Page>
+      <Toolbar title="Commands" />
+      <Suspense fallback={<div className="skel" style={{ height: 320 }} />}>
+        <CommandsBody />
+      </Suspense>
+    </Page>
+  );
+}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5">
-            <Terminal className="size-4 text-iris-soft" /> The cockpit and the hands
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-[13px] leading-relaxed text-muted">
-          <p>
-            Cosmu&apos;s screens are a <span className="text-foreground">glass cockpit</span> — they show you everything
-            (data, strategies, the gate funnel, P&amp;L) and let you{" "}
-            <span className="text-foreground">approve and steer</span>. The{" "}
-            <span className="text-foreground">doing</span> — adding data sources, importing strategies, running the
-            gate, deploying — happens in <span className="text-foreground">Claude Code</span> as runnable playbooks. One
-            place to act, one place to watch.
-          </p>
-          <p className="text-quiet">
-            In Claude Code, type the slash command below. On any other agent (Codex, Cursor), open{" "}
-            <code className="rounded bg-surface-2/60 px-1 py-0.5 font-mono text-[11.5px] text-iris-soft">
+// Static — no engine call. Wrapped in the same streamed region as the data surfaces so the toolbar paints
+// instantly and the page transition feels uniform.
+function CommandsBody() {
+  return (
+    <>
+      <div className="card">
+        <div className="card-body">
+          <p className="quiet" style={{ fontSize: 11.5, lineHeight: 1.6, margin: "0 0 4px" }}>
+            The screens are a glass cockpit — they show you everything and let you approve and steer. The
+            doing runs as playbooks. In Claude Code, type the slash command; on any other agent open{" "}
+            <code className="mono" style={{ color: "var(--iris-s)", fontSize: 11 }}>
               .claude/skills/&lt;name&gt;/SKILL.md
             </code>{" "}
-            and follow it — same playbook.
+            and follow it — same playbook. The Gate and anything that moves money stay deterministic and out
+            of any LLM path.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {GROUPS.map((group) => (
-        <section key={group.stage} className="space-y-3">
-          <div>
-            <h3 className="text-[13px] font-semibold text-foreground">{group.stage}</h3>
-            <p className="text-[12px] text-quiet">{group.blurb}</p>
+        <div className="card" key={group.stage}>
+          <div className="card-hdr">
+            <span className="card-lbl">{group.stage}</span>
           </div>
-
-          <Card>
-            <CardContent className="overflow-x-auto px-0 pt-0">
-              <ul className="min-w-[34rem] divide-y divide-hairline">
-                {group.cmds.map((c) => {
-                  const Icon = c.icon;
-                  return (
-                    <li
-                      key={c.cmd}
-                      className="flex flex-col gap-1.5 px-5 py-3.5 sm:flex-row sm:items-start sm:gap-4"
-                    >
-                      <div className="flex w-[13.5rem] shrink-0 items-center gap-2">
-                        <Icon className="size-4 shrink-0 text-iris-soft" aria-hidden />
-                        <code className="whitespace-nowrap font-mono text-[12.5px] font-medium text-iris-soft">
-                          {c.cmd}
-                        </code>
-                      </div>
-                      <div className="min-w-0 space-y-1">
-                        <p className="text-[12.5px] leading-relaxed text-muted">{c.what}</p>
-                        <p className="text-[11.5px] text-quiet">
-                          <span className="text-muted">When:</span> {c.when}
-                        </p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </CardContent>
-          </Card>
-        </section>
+          <div className="card-body">
+            {group.cmds.map((c) => (
+              <div className="cmd-row" key={c.name}>
+                <span className="cmd-name">{c.name}</span>
+                <span className="cmd-desc">{c.desc}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       ))}
-
-      <p className="text-[11.5px] leading-relaxed text-quiet">
-        The Gate and anything that moves money are deterministic and out of any LLM path — Claude Code only proposes;
-        the Gate disposes. Live trading stays off behind its interlocks regardless of what you run here.
-      </p>
-    </div>
+    </>
   );
 }

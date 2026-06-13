@@ -1,32 +1,30 @@
 "use client";
 
-// module: the live-trading Rules modal — the operator's hard-limit editor, opened from the grey "Rules"
-// button left of Stop in the Live header. It edits the three caps the engine enforces deterministically
-// in the order gauntlet:
+// The live-trading Rules modal (Iris Bento Modal) — the operator's hard-limit editor, opened from the grey
+// "Rules" button left of Stop in the Live toolbar. It edits the three caps the engine enforces
+// deterministically in the order gauntlet:
 //   • global max notional — the HARD $ blocker: total live notional can never exceed this.
 //   • max daily loss      — the auto-disarm threshold for the day.
-//   • per-venue max notional — a per-venue ceiling, shown alongside each legal venue's REAL deployed_usd
-//     and headroom (cap − deployed) so the operator sizes against actual exposure.
+//   • per-venue max notional — a per-venue ceiling, shown alongside each legal venue's REAL deployed_usd and
+//     headroom (cap − deployed) so the operator sizes against actual exposure.
 //
-// SAFETY: setting Rules NEVER arms live — the toggle / keys / gate / kill-switch interlocks still all
-// apply. This control only writes limits. POST /live/rules returns the reconciled RulesResponse; we
-// re-seed the form from the server's answer so the displayed caps + headroom are always the truth.
+// SAFETY: setting Rules NEVER arms live — the toggle / keys / gate / kill-switch interlocks still all apply.
+// This control only writes limits. POST /live/rules returns the reconciled RulesResponse; we re-seed the
+// form from the server's answer so the displayed caps + headroom are always the truth. Per-control in-flight
+// flag + 8s AbortController, always cleared in `finally`.
 //
-// HONESTY: per-venue cap blank = uncapped (sent as null, which CLEARS the cap). Deployed + headroom are
-// the engine's real numbers; a venue with no cap shows "—" headroom, never a fabricated figure. Offline
-// → an honest note, never a silent success. Per-control in-flight flag, always cleared in `finally`.
+// HONESTY: per-venue cap blank = uncapped (sent as null, which CLEARS the cap). Deployed + headroom are the
+// engine's real numbers; a venue with no cap shows "—" headroom in a `.quiet` span, never a fabricated
+// figure. Offline → an honest note, never a silent success. Jurisdiction is NOT shown.
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
 import type { RulesResponse, VenueRule } from "@cosmu/contracts-ts";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { Modal } from "@/components/ui/modal";
 import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn, formatUsd } from "@/lib/utils";
 
-// A blank per-venue field means "uncapped" (null). We keep the editable value as a string so the input
-// can be empty without coercing to 0 (0 is a real, different cap meaning "no notional allowed").
+// A blank per-venue field means "uncapped" (null). We keep the editable value as a string so the input can
+// be empty without coercing to 0 (0 is a real, different cap meaning "no notional allowed").
 type VenueEdit = { venue: string; name: string; cap: string; deployed_usd: number };
 
 function toEdits(venues: VenueRule[]): VenueEdit[] {
@@ -114,137 +112,128 @@ export function RulesModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Live trading rules">
-      <button aria-label="Close" onClick={onClose} className="animate-overlay-in absolute inset-0 bg-black/50" />
-      <div className="glass animate-menu-in relative w-full max-w-2xl rounded-2xl border border-border bg-surface p-5 shadow-2xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
-              <SlidersHorizontal className="size-4 text-iris-soft" /> Live trading rules
-            </h2>
-            <p className="mt-1 text-[12.5px] text-muted">
-              The hard limits the engine enforces on every live order. Editing these never arms live — the
-              toggle, keys, gate, and kill-switch interlocks still all apply.
-            </p>
-          </div>
-          <button onClick={onClose} aria-label="Close" className="text-quiet hover:text-foreground">
-            <X className="size-5" />
-          </button>
-        </div>
-
-        {/* The two global blockers. */}
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <RuleField
-            label="Global max notional"
-            hint="The hard $ ceiling — total live notional can never exceed this."
-            value={globalMax}
-            onChange={setGlobalMax}
-          />
-          <RuleField
-            label="Max daily loss"
-            hint="Auto-disarms live for the day when reached."
-            value={maxDailyLoss}
-            onChange={setMaxDailyLoss}
-          />
-        </div>
-
-        {/* Global headroom preview against real deployed capital. */}
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 bg-surface-2/40 px-3 py-2 text-[12px]">
-          <span className="text-muted">
-            Deployed now <span className="tabular font-medium text-foreground">{formatUsd(totalDeployed)}</span> across {venues.length}{" "}
-            venue{venues.length === 1 ? "" : "s"}
+    <Modal
+      open
+      onClose={onClose}
+      title="Live trading rules"
+      width={620}
+      actions={
+        <>
+          <span className="badge badge-muted" style={{ marginRight: "auto" }}>
+            Setting rules does not arm live
           </span>
-          {globalHeadroom != null ? (
-            <span className={cn("tabular", globalHeadroom < 0 ? "text-down" : "text-quiet")}>
-              {globalHeadroom < 0 ? "over cap by " : "headroom "}
-              <span className="font-medium">{formatUsd(Math.abs(globalHeadroom))}</span>
-            </span>
-          ) : null}
-        </div>
+          <button className="btn btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn btn-iris" onClick={save} disabled={pending || !connected}>
+            Save rules
+          </button>
+        </>
+      }
+    >
+      <p style={{ marginBottom: 14 }}>
+        The hard limits the engine enforces on every live order. Editing these never arms live — the toggle,
+        keys, gate, and kill-switch interlocks still all apply.
+      </p>
 
-        {/* Per-venue caps — compact, horizontally scrollable table with deployed + headroom. */}
-        <div className="mt-4">
-          <div className="mb-1.5 flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-quiet">Per-venue max notional</span>
-            <span className="text-[11px] text-quiet">Blank = uncapped</span>
+      {/* The two global blockers. */}
+      <div className="kgrid" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 12 }}>
+        <RuleField
+          label="Global max notional"
+          hint="The hard $ ceiling — total live notional can never exceed this."
+          value={globalMax}
+          onChange={setGlobalMax}
+        />
+        <RuleField
+          label="Max daily loss"
+          hint="Auto-disarms live for the day when reached."
+          value={maxDailyLoss}
+          onChange={setMaxDailyLoss}
+        />
+      </div>
+
+      {/* Global headroom preview against real deployed capital. */}
+      <div className="money-band" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 14 }}>
+        <div className="mb-cell">
+          <div className="mb-label">Deployed now</div>
+          <div className="mb-val tab">{formatUsd(totalDeployed)}</div>
+          <div className="mb-sub">
+            across {venues.length} venue{venues.length === 1 ? "" : "s"}
           </div>
-          {venues.length === 0 ? (
-            <div className="rounded-md border border-border/60 bg-surface-2/30 px-3 py-4 text-center text-[12px] text-muted">
-              {connected ? "No live-legal venues for this jurisdiction yet." : "Venues appear here once the engine is reachable."}
-            </div>
-          ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH className="whitespace-nowrap">Venue</TH>
-                  <TH className="whitespace-nowrap text-right">Deployed</TH>
-                  <TH className="whitespace-nowrap text-right">Headroom</TH>
-                  <TH className="whitespace-nowrap text-right">Max notional ($)</TH>
-                </TR>
-              </THead>
-              <TBody>
+        </div>
+        <div className="mb-cell">
+          <div className="mb-label">{globalHeadroom != null && globalHeadroom < 0 ? "Over cap by" : "Headroom"}</div>
+          <div className={cn("mb-val tab", globalHeadroom != null && globalHeadroom < 0 ? "dn" : "")}>
+            {globalHeadroom == null ? <span className="quiet">—</span> : formatUsd(Math.abs(globalHeadroom))}
+          </div>
+          <div className="mb-sub">vs the global hard blocker</div>
+        </div>
+      </div>
+
+      {/* Per-venue caps — compact table with deployed + headroom. */}
+      <div style={{ marginBottom: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <span className="kpi-label" style={{ marginBottom: 0 }}>Per-venue max notional</span>
+          <span className="quiet" style={{ fontSize: 10.5 }}>Blank = uncapped</span>
+        </div>
+        {venues.length === 0 ? (
+          <div
+            className="quiet"
+            style={{ border: "1px dashed var(--border)", borderRadius: "var(--r-sm)", padding: "16px 12px", textAlign: "center", fontSize: 12 }}
+          >
+            {connected ? "No live-legal venues yet." : "Venues appear here once the engine is reachable."}
+          </div>
+        ) : (
+          <div className="tbl-scroll">
+            <table className="mini-tbl">
+              <thead>
+                <tr>
+                  <th>Venue</th>
+                  <th className="r">Deployed</th>
+                  <th className="r">Headroom</th>
+                  <th className="r">Max notional ($)</th>
+                </tr>
+              </thead>
+              <tbody>
                 {venues.map((v) => {
                   const cap = parseCap(v.cap);
                   const headroom = cap == null ? null : cap - v.deployed_usd;
                   return (
-                    <TR key={v.venue}>
-                      <TD className="whitespace-nowrap font-medium text-foreground">{v.name}</TD>
-                      <TD className="whitespace-nowrap text-right tabular text-muted">{formatUsd(v.deployed_usd)}</TD>
-                      <TD className="whitespace-nowrap text-right tabular">
-                        {headroom == null ? (
-                          <span className="text-quiet">—</span>
-                        ) : (
-                          <span className={headroom < 0 ? "text-down" : "text-up"}>{formatUsd(headroom)}</span>
-                        )}
-                      </TD>
-                      <TD className="whitespace-nowrap text-right">
-                        <div className="ml-auto flex w-32 items-center rounded-md border border-border bg-background/60 px-2 transition-colors focus-within:border-iris/60 focus-within:ring-2 focus-within:ring-ring/40">
-                          <span className="text-[12px] text-quiet">$</span>
-                          <input
-                            type="number"
-                            min={0}
-                            inputMode="decimal"
-                            value={v.cap}
-                            placeholder="∞"
-                            onChange={(e) => setVenueCap(v.venue, e.target.value)}
-                            aria-label={`${v.name} max notional`}
-                            className="w-full bg-transparent py-1.5 pl-1 text-right text-[13px] tabular text-foreground outline-none placeholder:text-quiet"
-                          />
-                        </div>
-                      </TD>
-                    </TR>
+                    <tr key={v.venue}>
+                      <td style={{ fontWeight: 500, color: "var(--fg)" }}>{v.name}</td>
+                      <td className="r tab muted">{formatUsd(v.deployed_usd)}</td>
+                      <td className={cn("r tab", headroom == null ? "quiet" : headroom < 0 ? "dn" : "up")}>
+                        {headroom == null ? "—" : formatUsd(headroom)}
+                      </td>
+                      <td className="r">
+                        <input
+                          className="cap-in"
+                          style={{ width: 72, textAlign: "right" }}
+                          type="number"
+                          min={0}
+                          inputMode="decimal"
+                          value={v.cap}
+                          placeholder="∞"
+                          onChange={(e) => setVenueCap(v.venue, e.target.value)}
+                          aria-label={`${v.name} max notional`}
+                        />
+                      </td>
+                    </tr>
                   );
                 })}
-              </TBody>
-            </Table>
-          )}
-        </div>
-
-        {note ? (
-          <div className="mt-3 flex items-start gap-2 rounded-md border border-warn/35 bg-warn/10 px-3 py-2 text-[12px] text-warn">
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-            <span>{note}</span>
+              </tbody>
+            </table>
           </div>
-        ) : null}
-
-        <div className="mt-5 flex items-center justify-between gap-2">
-          <Badge variant="muted">Setting rules does not arm live</Badge>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="md" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button variant="primary" size="md" onClick={save} disabled={pending || !connected}>
-              <ShieldCheck className="size-4" /> Save rules
-            </Button>
-          </div>
-        </div>
+        )}
       </div>
-    </div>
+
+      {note ? <div style={{ marginTop: 12, color: "var(--down)", fontSize: 12 }}>{note}</div> : null}
+    </Modal>
   );
 }
 
 // A labelled $-prefixed numeric field kept as a string (so it can be empty mid-edit). Used for the two
-// global blockers; per-venue caps use their own inline inputs in the table.
+// global blockers; per-venue caps use their own inline `.cap-in` inputs in the table.
 function RuleField({
   label,
   hint,
@@ -257,20 +246,19 @@ function RuleField({
   onChange: (v: string) => void;
 }) {
   return (
-    <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-quiet">{label}</span>
-      <div className="mt-1 flex items-center rounded-md border border-border bg-surface-2/40 px-2.5 transition-colors focus-within:border-iris/60 focus-within:ring-2 focus-within:ring-ring/40">
-        <span className="text-[12px] text-quiet">$</span>
-        <input
-          type="number"
-          min={0}
-          inputMode="decimal"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-transparent py-2 pl-1 text-[13px] tabular text-foreground outline-none"
-        />
-      </div>
-      <span className="mt-1 block text-[11px] text-quiet">{hint}</span>
+    <label style={{ display: "block" }}>
+      <span className="kpi-label" style={{ marginBottom: 4, display: "block" }}>{label}</span>
+      <input
+        className="search-input"
+        style={{ width: "100%", height: 30 }}
+        type="number"
+        min={0}
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={label}
+      />
+      <span className="quiet" style={{ fontSize: 10.5, marginTop: 4, display: "block" }}>{hint}</span>
     </label>
   );
 }

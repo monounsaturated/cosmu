@@ -1,8 +1,9 @@
 import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
 
+// Conditional class joiner. The app is styled with the hand-written Iris Bento CSS (app/globals.css),
+// NOT Tailwind utilities, so plain clsx is all we need — no tailwind-merge collapsing.
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+  return clsx(inputs);
 }
 
 export function formatUsd(value: number, fractionDigits = 0) {
@@ -23,6 +24,26 @@ export function formatPct(value: number | null | undefined, digits = 2) {
 
 export function formatSigned(value: number) {
   return `${value >= 0 ? "+" : "-"}${formatUsd(Math.abs(value))}`;
+}
+
+// Signed USD with NO sign on zero ("+$419" / "-$81" / "$0"). Distinct from formatSigned, which always
+// emits a sign (formatSigned(0) === "+$0"). Canonical home for the +/-abs money construction.
+export function signedUsd(value: number): string {
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${formatUsd(Math.abs(value))}`;
+}
+
+// Finite-number guard — returns the number only when it is a real finite value, else null. Used wherever a
+// nullable engine money/metric field renders an honest "—" instead of 0.
+export function numOrNull(v: number | null | undefined): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+// The canonical paper-stage predicate (paper / forward_test / forward). ONE taxonomy, imported everywhere
+// (screener, dashboards, sidebar counts) so the cohort never drifts between surfaces.
+export function isPaper(status: string | null | undefined): boolean {
+  const s = (status ?? "").toLowerCase();
+  return s === "paper" || s === "forward_test" || s === "forward";
 }
 
 // Compact "how long ago" for timestamps (last tick, last event). Returns null for a null/unparseable
