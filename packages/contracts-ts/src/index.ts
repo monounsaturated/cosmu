@@ -605,6 +605,11 @@ export interface JurisdictionsResponse {
   options: JurisdictionOption[];
 }
 
+export interface KeyPresence {
+  host?: boolean | null;
+  local?: boolean | null;
+}
+
 export interface LaunchActivateRequest {
   budget?: number;
   confirm: boolean;
@@ -1017,9 +1022,15 @@ export interface SetJurisdictionRequest {
 export interface SettingsKeyRow {
   configured: boolean;
   cost: "free" | "paid";
+  description: string;
   env_var: string;
+  host?: "railway" | "vercel" | "local" | "none";
   key: string;
+  name: string;
+  present?: KeyPresence;
   requirement: "required" | "optional" | "live-only";
+  service: string;
+  status?: "connected" | "unverified" | "missing" | "unset";
   unlocks: string;
   where: string;
 }

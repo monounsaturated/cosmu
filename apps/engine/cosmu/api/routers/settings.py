@@ -1,4 +1,4 @@
-# intent: read-only key inventory for Settings → Keys; inputs: none; outputs: SettingsKeysResponse; invariants: only a boolean `configured` per key is derived — no secret value is ever returned.
+# intent: read-only key inventory for the Keys page (one row PER env var); inputs: none; outputs: SettingsKeysResponse; invariants: only presence booleans are derived — no secret value is ever returned.
 
 from __future__ import annotations
 
@@ -7,170 +7,95 @@ import os
 from fastapi import APIRouter
 
 from cosmu.api._shared import settings
-from cosmu.api.models import SettingsKeyRow, SettingsKeysResponse
+from cosmu.api.models import KeyPresence, SettingsKeyRow, SettingsKeysResponse
 
 router = APIRouter()
 
+# Host the env var belongs on for the v18 "Location" column. Almost everything is the engine deploy host
+# (Railway); Modal tokens are laptop/CI-only and never baked into the Railway image.
+Host = str  # Literal["railway","vercel","local","none"] on the model; plain str here for the table below.
+
+# The canonical key table: (env_var, service, description, requirement, cost, host, configured).
+# ONE entry PER env var — composite secrets (Binance/Alpaca/R2/Modal/Reddit) are split into their parts so
+# the v18 index keys on a single var. `configured` is the ONLY thing read from a secret — a boolean, never
+# the value. Mirrors docs/KEYS.md.
+
+
+def _key_table() -> list[tuple[str, str, str, str, str, str, bool]]:
+    env = os.environ
+    return [
+        ("API_SECRET_KEY", "API secret", "Locks the control-plane API — the web app sends it; nobody else can call the engine.", "required", "free", "railway", bool(settings.api_secret_key)),
+        ("XAI_API_KEY", "xAI (Grok)", "LLM strategy authoring (preferred). Research still runs offline without it.", "optional", "paid", "railway", bool(settings.xai_api_key)),
+        ("OPENROUTER_API_KEY", "OpenRouter", "LLM authoring fallback when xAI is not set.", "optional", "paid", "railway", bool(settings.openrouter_api_key)),
+        ("LUNARCRUSH_API_KEY", "LunarCrush", "Social-sentiment scores + a real (non-synthetic) edge-gate verdict.", "optional", "paid", "railway", bool(settings.lunarcrush_api_key)),
+        ("FRED_API_KEY", "FRED", "Macro-regime cross-asset source (free key).", "optional", "free", "railway", bool(settings.fred_api_key)),
+        ("POLYMARKET_TOKEN", "Polymarket", "Prediction-market risk-on cross-asset source (a market token id, not a secret).", "optional", "free", "railway", bool(settings.polymarket_token)),
+        ("BINANCE_API_KEY", "Binance (live)", "Real-money execution on Binance spot. Only needed once you arm live trading.", "live-only", "free", "railway", bool(settings.binance_api_key)),
+        ("BINANCE_API_SECRET", "Binance (live)", "Real-money execution on Binance spot. Only needed once you arm live trading.", "live-only", "free", "railway", bool(settings.binance_api_secret)),
+        ("BINANCE_TESTNET_API_KEY", "Binance (testnet)", "Paper execution against Binance testnet (testnet.binance.vision).", "optional", "free", "railway", bool(settings.binance_testnet_api_key)),
+        ("BINANCE_TESTNET_API_SECRET", "Binance (testnet)", "Paper execution against Binance testnet (testnet.binance.vision).", "optional", "free", "railway", bool(settings.binance_testnet_api_secret)),
+        ("ALPACA_PAPER_API_KEY", "Alpaca (paper)", "US equities market data (IEX) + free paper execution — the equity forward-test lane.", "optional", "free", "railway", bool(settings.alpaca_paper_api_key)),
+        ("ALPACA_PAPER_API_SECRET", "Alpaca (paper)", "US equities market data (IEX) + free paper execution — the equity forward-test lane.", "optional", "free", "railway", bool(settings.alpaca_paper_api_secret)),
+        ("ALPACA_API_KEY", "Alpaca (live)", "Real-money US equities execution on Alpaca. Only needed once you arm live trading.", "live-only", "free", "railway", bool(settings.alpaca_api_key)),
+        ("ALPACA_API_SECRET", "Alpaca (live)", "Real-money US equities execution on Alpaca. Only needed once you arm live trading.", "live-only", "free", "railway", bool(settings.alpaca_api_secret)),
+        ("SLACK_WEBHOOK_URL", "Slack alerts", "Ops alerts to a Slack channel.", "optional", "free", "railway", bool(env.get("SLACK_WEBHOOK_URL"))),
+        ("RAILWAY_API_TOKEN", "Railway", "Live Railway billing on the Costs page (real run-rate, not an estimate).", "optional", "free", "railway", bool(settings.railway_api_token)),
+        ("R2_ACCOUNT_ID", "Cloudflare R2", "The cold-data lake — alt-data history as Parquet on R2 (cheap, zero-egress), queried by DuckDB.", "optional", "paid", "railway", bool(settings.r2_account_id)),
+        ("R2_ACCESS_KEY_ID", "Cloudflare R2", "The cold-data lake — alt-data history as Parquet on R2 (cheap, zero-egress), queried by DuckDB.", "optional", "paid", "railway", bool(settings.r2_access_key_id)),
+        ("R2_SECRET_ACCESS_KEY", "Cloudflare R2", "The cold-data lake — alt-data history as Parquet on R2 (cheap, zero-egress), queried by DuckDB.", "optional", "paid", "railway", bool(settings.r2_secret_access_key)),
+        ("R2_BUCKET", "Cloudflare R2", "The cold-data lake — alt-data history as Parquet on R2 (cheap, zero-egress), queried by DuckDB.", "optional", "paid", "railway", bool(settings.r2_bucket)),
+        ("MODAL_TOKEN_ID", "Modal", "Heavy compute offload (backtests / ML / matrix sweeps) on Modal's scale-to-zero workers.", "optional", "paid", "local", bool(env.get("MODAL_TOKEN_ID"))),
+        ("MODAL_TOKEN_SECRET", "Modal", "Heavy compute offload (backtests / ML / matrix sweeps) on Modal's scale-to-zero workers.", "optional", "paid", "local", bool(env.get("MODAL_TOKEN_SECRET"))),
+        ("CRYPTOPANIC_API_KEY", "CryptoPanic", "News-vote sentiment per symbol (free tier). Degrades to [] without it.", "optional", "free", "railway", bool(settings.cryptopanic_api_key)),
+        ("REDDIT_CLIENT_ID", "Reddit", "Reddit post / comment volume features. Keyless-degrades to [] without it.", "optional", "free", "railway", bool(env.get("REDDIT_CLIENT_ID"))),
+        ("REDDIT_CLIENT_SECRET", "Reddit", "Reddit post / comment volume features. Keyless-degrades to [] without it.", "optional", "free", "railway", bool(env.get("REDDIT_CLIENT_SECRET"))),
+    ]
+
 
 def _settings_key_rows() -> list[SettingsKeyRow]:
-    """Build the read-only key inventory from typed settings. SECURITY: only the boolean `configured` is
-    derived — no value is ever read into the response. The canonical table lives in docs/KEYS.md."""
-    binance_live = bool(settings.binance_api_key and settings.binance_api_secret)
-    binance_testnet = bool(settings.binance_testnet_api_key and settings.binance_testnet_api_secret)
-    return [
-        SettingsKeyRow(
-            key="API secret",
-            env_var="API_SECRET_KEY",
-            configured=bool(settings.api_secret_key),
-            unlocks="Locks the control-plane API — the web app sends it; nobody else can call the engine.",
-            requirement="required",
-            cost="free",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="xAI (Grok)",
-            env_var="XAI_API_KEY",
-            configured=bool(settings.xai_api_key),
-            unlocks="LLM strategy authoring (preferred). Research still runs offline without it.",
-            requirement="optional",
-            cost="paid",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="OpenRouter",
-            env_var="OPENROUTER_API_KEY",
-            configured=bool(settings.openrouter_api_key),
-            unlocks="LLM authoring fallback when xAI is not set. Optional.",
-            requirement="optional",
-            cost="paid",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="LunarCrush",
-            env_var="LUNARCRUSH_API_KEY",
-            configured=bool(settings.lunarcrush_api_key),
-            unlocks="Social-sentiment scores + a REAL (non-synthetic) edge-gate verdict.",
-            requirement="optional",
-            cost="paid",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="FRED",
-            env_var="FRED_API_KEY",
-            configured=bool(settings.fred_api_key),
-            unlocks="Macro-regime cross-asset source (free key).",
-            requirement="optional",
-            cost="free",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="Polymarket",
-            env_var="POLYMARKET_TOKEN",
-            configured=bool(settings.polymarket_token),
-            unlocks="Prediction-market risk-on cross-asset source (a market token id, not a secret).",
-            requirement="optional",
-            cost="free",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="Binance (live)",
-            env_var="BINANCE_API_KEY / BINANCE_API_SECRET",
-            configured=binance_live,
-            unlocks="Real-money execution on Binance spot. Only needed once you arm live trading.",
-            requirement="live-only",
-            cost="free",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="Binance (testnet)",
-            env_var="BINANCE_TESTNET_API_KEY / BINANCE_TESTNET_API_SECRET",
-            configured=binance_testnet,
-            unlocks="Paper execution against Binance testnet (testnet.binance.vision).",
-            requirement="optional",
-            cost="free",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="Alpaca (paper)",
-            env_var="ALPACA_PAPER_API_KEY / ALPACA_PAPER_API_SECRET",
-            configured=bool(settings.alpaca_paper_api_key and settings.alpaca_paper_api_secret),
-            unlocks="US equities market data (IEX feed) + free paper execution — the equity forward-test lane.",
-            requirement="optional",
-            cost="free",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="Alpaca (live)",
-            env_var="ALPACA_API_KEY / ALPACA_API_SECRET",
-            configured=bool(settings.alpaca_api_key and settings.alpaca_api_secret),
-            unlocks="Real-money US equities execution on Alpaca. Only needed once you arm live trading.",
-            requirement="live-only",
-            cost="free",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="Slack alerts",
-            env_var="SLACK_WEBHOOK_URL",
-            configured=bool(os.environ.get("SLACK_WEBHOOK_URL")),
-            unlocks="Ops alerts to a Slack channel.",
-            requirement="optional",
-            cost="free",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="Railway",
-            env_var="RAILWAY_API_TOKEN",
-            configured=bool(settings.railway_api_token),
-            unlocks="Live Railway billing on the Costs page (real run-rate, not an estimate). Costs falls back to estimates without it.",
-            requirement="optional",
-            cost="free",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="Cloudflare R2",
-            env_var="R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET",
-            configured=bool(
-                settings.r2_account_id and settings.r2_access_key_id
-                and settings.r2_secret_access_key and settings.r2_bucket
-            ),
-            unlocks="The cold-data lake — alt-data history as Parquet on R2 (cheap, zero-egress), queried by DuckDB. Flip ALT_DATA_BACKEND=parquet to use it as the store.",
-            requirement="optional",
-            cost="paid",
-            where="Engine env (Railway) + .env.local",
-        ),
-        SettingsKeyRow(
-            key="Modal",
-            env_var="MODAL_TOKEN_ID / MODAL_TOKEN_SECRET",
-            configured=bool(os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET")),
-            unlocks="Heavy compute offload (backtests / ML / matrix sweeps) on Modal's scale-to-zero workers.",
-            requirement="optional",
-            cost="paid",
-            where="Local / CI env (laptop) — never the Railway image",
-        ),
-        SettingsKeyRow(
-            key="CryptoPanic",
-            env_var="CRYPTOPANIC_API_KEY",
-            configured=bool(settings.cryptopanic_api_key),
-            unlocks="News-vote sentiment per symbol (free tier). Degrades to [] without it.",
-            requirement="optional",
-            cost="free",
-            where="Engine env (Railway)",
-        ),
-        SettingsKeyRow(
-            key="Reddit",
-            env_var="REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET",
-            configured=bool(os.environ.get("REDDIT_CLIENT_ID") and os.environ.get("REDDIT_CLIENT_SECRET")),
-            unlocks="Reddit post / comment volume features. Keyless-degrades to [] without it.",
-            requirement="optional",
-            cost="free",
-            where="Engine env (Railway)",
-        ),
-    ]
+    """Build the read-only per-env-var key inventory. SECURITY: only a boolean presence is derived per env var
+    — no value is ever read into the response. The engine can only observe the env of the PROCESS it runs in,
+    so presence is recorded for that one side and left None (honest "unverified") for the other — never
+    fabricated. The canonical table lives in docs/KEYS.md."""
+    # The engine process can only see its own env. In production it's the deployed host (Railway) → the values
+    # it reads ARE the host's; locally it's the laptop/.env.local. We NEVER guess the side we cannot observe.
+    is_prod = getattr(settings, "environment", "local") == "production"
+    rows: list[SettingsKeyRow] = []
+    for env_var, service, description, requirement, cost, host, configured in _key_table():
+        present = KeyPresence(
+            local=None if is_prod else configured,
+            host=configured if is_prod else None,
+        )
+        observed = present.host if is_prod else present.local  # the side we can actually see
+        if observed:
+            status = "connected"
+        elif requirement in ("required", "live-only"):
+            status = "missing"  # expected but absent on the side we observe
+        else:
+            status = "unset"  # optional and absent
+        rows.append(
+            SettingsKeyRow(
+                key=service,
+                env_var=env_var,
+                configured=configured,
+                unlocks=description,
+                where=f"{service} key on {host}",
+                name=env_var,
+                service=service,
+                description=description,
+                host=host,  # type: ignore[arg-type]
+                present=present,
+                status=status,  # type: ignore[arg-type]
+                requirement=requirement,  # type: ignore[arg-type]
+                cost=cost,  # type: ignore[arg-type]
+            )
+        )
+    return rows
 
 
 @router.get("/settings/keys", response_model=SettingsKeysResponse)
 def settings_keys() -> SettingsKeysResponse:
-    """Read-only key inventory for the Settings → Keys page: which provider keys are configured on the
-    engine and what each unlocks. SECURITY: values are NEVER returned — only a boolean `configured` per
-    key. Safe to render in the browser. The canonical key table lives in docs/KEYS.md."""
+    """Read-only per-env-var key inventory for the Keys page: which env vars are configured (per location) and
+    what each unlocks. SECURITY: values are NEVER returned — only a presence boolean per var. The canonical key
+    table lives in docs/KEYS.md."""
     return SettingsKeysResponse(rows=_settings_key_rows())

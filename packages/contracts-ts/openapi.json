@@ -3032,6 +3032,35 @@
         "title": "JurisdictionsResponse",
         "type": "object"
       },
+      "KeyPresence": {
+        "description": "Whether a key is present at each LOCATION, checked INDEPENDENTLY. A running engine can only observe its\nOWN env (the process it's in), so exactly one side is a real bool and the other is `None` (not False) \u2014 the\nhonest \"unverified\" state. `local` = present in the laptop/.env.local env; `host` = present on the deployed\nhost (Railway). The v18 Keys page colours the host name green/red/grey from `host`, and never fabricates the\nside it cannot see.",
+        "properties": {
+          "host": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "local": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local"
+          }
+        },
+        "title": "KeyPresence",
+        "type": "object"
+      },
       "LaunchActivateRequest": {
         "description": "Request body for the strategy launch-live flow: arm one strategy on a specific venue + asset\nwith a given budget. Confirm must be true (two-click safety); caps are set here and carried\nthrough to the live_caps upsert so the operator sees exactly what they agreed to.\n`override_paper` (default OFF) is the explicit human escape hatch: arm a strategy that has NOT\nyet cleared the >= PAPER_MIN_DAYS net-positive paper precondition, recorded with a loud\n`live_override_launch` warning event. It never waives the regime gate or the 5 execution interlocks.",
         "properties": {
@@ -5174,7 +5203,7 @@
         "type": "object"
       },
       "SettingsKeyRow": {
-        "description": "One configurable secret/key, surfaced to the operator so they can see what's plugged vs missing.\n\nSECURITY: `configured` is a boolean only \u2014 the VALUE is NEVER read, returned, or logged. `requirement`\nis one of \"required\" (the app needs it to do its core job), \"optional\" (unlocks a paid/extra path), or\n\"live-only\" (only needed to move real money). `cost` is \"free\" or \"paid\". `where` tells the operator\nwhich env var to set on the engine.",
+        "description": "One configurable secret/key (ONE row PER env var), surfaced so the operator sees what's plugged vs missing.\n\nSECURITY: presence is a boolean only \u2014 the VALUE is NEVER read, returned, or logged. `requirement` is\n\"required\" (core job), \"optional\" (paid/extra path), or \"live-only\" (only to move real money). `cost` is\n\"free\"/\"paid\".\n\nv18 fields: `name` (the bare env var, the index key), `service` (provider/group label), `description` (the\nshort \"what it unlocks\" copy), `host` (which deploy host the var belongs on), `present` (per-location\npresence), `status` (connected | unverified | missing | unset \u2014 the status dot). The legacy `key`/`env_var`/\n`unlocks`/`where`/`configured` fields are kept (additive) for back-compat.",
         "properties": {
           "configured": {
             "title": "Configured",
@@ -5188,13 +5217,36 @@
             "title": "Cost",
             "type": "string"
           },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
           "env_var": {
             "title": "Env Var",
+            "type": "string"
+          },
+          "host": {
+            "default": "railway",
+            "enum": [
+              "railway",
+              "vercel",
+              "local",
+              "none"
+            ],
+            "title": "Host",
             "type": "string"
           },
           "key": {
             "title": "Key",
             "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "present": {
+            "$ref": "#/components/schemas/KeyPresence",
+            "default": {}
           },
           "requirement": {
             "enum": [
@@ -5203,6 +5255,21 @@
               "live-only"
             ],
             "title": "Requirement",
+            "type": "string"
+          },
+          "service": {
+            "title": "Service",
+            "type": "string"
+          },
+          "status": {
+            "default": "unset",
+            "enum": [
+              "connected",
+              "unverified",
+              "missing",
+              "unset"
+            ],
+            "title": "Status",
             "type": "string"
           },
           "unlocks": {
@@ -5219,15 +5286,18 @@
           "env_var",
           "configured",
           "unlocks",
+          "where",
+          "name",
+          "service",
+          "description",
           "requirement",
-          "cost",
-          "where"
+          "cost"
         ],
         "title": "SettingsKeyRow",
         "type": "object"
       },
       "SettingsKeysResponse": {
-        "description": "Read-only key inventory for the Settings \u2192 Keys page. Values are never exposed \u2014 only whether each\nkey is configured on the engine and what it unlocks. Safe to render in the browser.",
+        "description": "Read-only key inventory for the Keys page. Values are never exposed \u2014 only whether each key is\nconfigured (per location) and what it unlocks. Safe to render in the browser.",
         "properties": {
           "rows": {
             "items": {
@@ -7497,7 +7567,7 @@
     },
     "/settings/keys": {
       "get": {
-        "description": "Read-only key inventory for the Settings \u2192 Keys page: which provider keys are configured on the\nengine and what each unlocks. SECURITY: values are NEVER returned \u2014 only a boolean `configured` per\nkey. Safe to render in the browser. The canonical key table lives in docs/KEYS.md.",
+        "description": "Read-only per-env-var key inventory for the Keys page: which env vars are configured (per location) and\nwhat each unlocks. SECURITY: values are NEVER returned \u2014 only a presence boolean per var. The canonical key\ntable lives in docs/KEYS.md.",
         "operationId": "settings_keys_settings_keys_get",
         "responses": {
           "200": {
