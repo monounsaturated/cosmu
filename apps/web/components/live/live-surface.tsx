@@ -9,8 +9,7 @@
 // + not kill-switched; otherwise it paper-simulates and defaults to testnet. We send confirm
 // only on the explicit second click. Offline -> a clearly-labelled paper demo, never armed.
 //
-// Types mirror the shared contract (see ./contracts) — same locally-typed pattern as
-// cross-asset-gate.tsx until @cosmu/contracts-ts ships them.
+// Types mirror the shared contract (see ./contracts) — locally typed until @cosmu/contracts-ts ships them.
 
 import { useState } from "react";
 import { AlertTriangle, Building2, Lock, Power, Rocket, ShieldCheck, Unlock, X } from "lucide-react";
