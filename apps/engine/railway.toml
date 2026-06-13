@@ -74,3 +74,11 @@ command = "python3 -m cosmu.ingest.voices_pass"
 [[cron]]
 schedule = "40 22 * * *"
 command = "python3 -m cosmu.research.arm_fleet"
+
+# VENUE-FEE ROUTING: daily snapshot of each crypto venue's per-pair fee into the PIT venue_fees store, then
+# recompute the cheapest-LEGAL-venue-per-asset routing map (Binance/Kraken/Hyperliquid/OKX, jurisdiction-aware)
+# and emit it as a venue_fee_routing event. PLANNING ONLY — the live lane reads it to "know where to send";
+# it never places an order. Idempotent + offline-safe (catalog volume-tier fees as the baseline).
+[[cron]]
+schedule = "50 23 * * *"
+command = "python3 -m cosmu.ingest.venue_fees_refresh"
