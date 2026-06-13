@@ -3,7 +3,7 @@
 # Allocation" (2017). Externally validated, published, widely replicated. Like GEM it is a documented monthly
 # cross-asset rotation; it does NOT need our in-sample Gate to "discover" it (the Gate is an overfitting guard for
 # NOVEL mined edges). The appropriate validators are (a) the external literature, (b) a positive OOS-net-of-fees check
-# on OUR total-return data, (c) the LIVE forward-test. This module does (b) and (its sibling arm) does (c). It NEVER
+# on OUR total-return data, (c) the LIVE paper. This module does (b) and (its sibling arm) does (c). It NEVER
 # touches / lowers the 0.95 Gate.
 #
 # THE RULE (monthly; signal at month-end t from completed-month closes, trade t+1 — NO look-ahead):
@@ -33,7 +33,7 @@
 #   DOCUMENTED edge is CRISIS AVOIDANCE — the canary breadth signal yanks it to short Treasuries before equity
 #   drawdowns deepen, so the honest expectation is a markedly lower maxDD with a higher full-cycle Sharpe than SPY.
 #
-# Propose/measure-only — this module moves no money; the sibling `equity_vaa_arm` arms a SIM forward-test (live OFF).
+# Propose/measure-only — this module moves no money; the sibling `equity_vaa_arm` arms a SIM paper (live OFF).
 
 from __future__ import annotations
 
@@ -389,7 +389,7 @@ def validate() -> dict:
           f"~{vaa_stats.max_dd / spy_stats.max_dd:.0%} of SPY)")
     print(f"  (3) OOS maxDD not worse than SPY OOS?              {oos_dd_ok}  "
           f"(VAA {oos_vaa.max_dd:.1%} vs SPY {oos_spy.max_dd:.1%})")
-    print(f"  ==> {'DEPLOYABLE — arm the live forward-test' if deployable else 'NOT deployable on our data'}")
+    print(f"  ==> {'DEPLOYABLE — arm the live paper' if deployable else 'NOT deployable on our data'}")
     print("  HONEST EXPECTATION: a crisis-avoidance strategy — the canary breadth signal (EEM/AGG) flips the book to")
     print("  short Treasuries before equity drawdowns deepen. It trades some bull upside for a much shallower maxDD;")
     print("  higher turnover than GEM means the fee leg matters (see the sweep). That asymmetry IS the documented edge.")

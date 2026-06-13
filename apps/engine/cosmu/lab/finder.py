@@ -494,7 +494,7 @@ class StrategyFinder:
     def _persist(self, spec: StrategySpec, results: list[VariantResult], market: dict[str, list[Bar]]) -> None:
         """Write the config library: one strategies row + one strategy_versions row per variant (origin='finder',
         config_tag carried in params), the screen backtest, and — for promoted+holdout-passing variants — a track,
-        a `track_opened` event (the forward-test clock origin + proven-regime passport that master/live_eligibility
+        a `track_opened` event (the paper clock origin + proven-regime passport that master/live_eligibility
         reads, mirroring the evolution loop), and a finder-survivor event. Idempotent: a variant whose code_hash
         already exists is not re-inserted."""
         with self.store.batch() as b:
@@ -504,7 +504,7 @@ class StrategyFinder:
                     continue
                 holdout_ok = r.holdout_passed
                 promote = r.promoted and holdout_ok
-                status = "forward_test" if promote else ("screened" if r.gate_passed else "killed")
+                status = "paper" if promote else ("screened" if r.gate_passed else "killed")
                 kill_reason = None if r.gate_passed else (",".join(r.reasons) or "screened_out")
                 fitted = r.fitted_params or fit_params(spec)
                 params = {**fitted, "config_tag": r.config_tag}
@@ -542,11 +542,11 @@ class StrategyFinder:
                             "updated_at": utcnow(),
                         },
                     )
-                    # The forward-test clock origin. master/live_eligibility reads the FIRST `track_opened` event for
-                    # a version as BOTH its maturity-clock origin (forward_clock_origin) and its proven-regime
+                    # The paper clock origin. master/live_eligibility reads the FIRST `track_opened` event for
+                    # a version as BOTH its maturity-clock origin (paper_clock_origin) and its proven-regime
                     # passport (proven_regimes_for) — exactly as the evolution loop writes it. Without this a promoted
-                    # finder survivor would have origin=None → forward_age_days 0 forever → never forward_ready →
-                    # never live-armable (forward-test is HARD-enforced in api/routers/live.py). So a finder survivor
+                    # finder survivor would have origin=None → paper_age_days 0 forever → never forward_ready →
+                    # never live-armable (paper is HARD-enforced in api/routers/live.py). So a finder survivor
                     # gets the SAME track_opened mark, carrying the regimes its screen proved positive net edge in.
                     proven = sorted(proven_regimes(r.metrics.regime_returns))
                     b.append_event(

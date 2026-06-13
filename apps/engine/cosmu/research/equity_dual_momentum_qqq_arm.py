@@ -1,7 +1,7 @@
-# intent: ARM the QQQ/EFA tech-tilt dual-momentum variant (equity_dual_momentum_qqq) as a SIM forward-test track —
+# intent: ARM the QQQ/EFA tech-tilt dual-momentum variant (equity_dual_momentum_qqq) as a SIM paper track —
 # the SAME control-plane rows the deterministic finder writes for a gate-passed survivor (strategies +
-# strategy_versions[forward_test] + backtests[screen] + tracks + a `track_opened` event) — and open ONE real held SIM
-# position in the currently-signalled ETF priced at the latest REAL close. From that moment the forward-test clock
+# strategy_versions[paper] + backtests[screen] + tracks + a `track_opened` event) — and open ONE real held SIM
+# position in the currently-signalled ETF priced at the latest REAL close. From that moment the paper clock
 # (orchestrator.mark_tracks / `python3 -m cosmu.orchestrator.loop`, or `--mark` here) marks the held position against
 # the latest equity close on every run, accruing honest daily net-of-fee P&L.
 #
@@ -38,7 +38,7 @@ TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size
 IBKR_ETF_BPS_PER_SIDE = 1.0
 # This variant is positive net-of-fee across regimes (holds the stronger of QQQ/EFA in bull/chop, rotates to AGG in
 # bear — the 2008 subperiod shows +3.5% while SPY lost 41%). Full proven-regime passport so master/live_eligibility
-# can clear the regime gate once the 30-day forward test matures (a human still clicks).
+# can clear the regime gate once the 30-day paper run matures (a human still clicks).
 PROVEN_REGIMES = ["bull", "bear", "chop"]
 
 # ETFs this variant may rotate into. The shared catalog only ships SPY/QQQ (+ a few single names); EFA/AGG/SHY are
@@ -150,7 +150,7 @@ def _last_equity_close(symbol: str) -> Decimal:
 
 
 def arm(store: Store | None = None) -> dict:
-    """Register the QQQ/EFA variant as a forward-test track and open the held sim position in its current signal.
+    """Register the QQQ/EFA variant as a paper track and open the held sim position in its current signal.
     Idempotent. Returns a summary dict (version_id, signal, price, qty, equity)."""
     store = store or Store(Settings())
     # Route the documented-strategy validation through the TYPED two-lane router: the spec's lane="deploy" forces the
@@ -183,7 +183,7 @@ def arm(store: Store | None = None) -> dict:
                 "mutation_operator": None,
                 "mutation_rationale": "documented strategy (tech-tilt dual momentum, SPY->QQQ) — deployed via the documented-deploy lane, not the in-sample Gate",
                 "origin": STRATEGY_ORIGIN,
-                "status": "forward_test",
+                "status": "paper",
                 "created_at": now,
                 "killed_at": None,
                 "kill_reason": None,
@@ -214,10 +214,10 @@ def arm(store: Store | None = None) -> dict:
                 "deployment_bar": "positive OOS net of IBKR fees + Sharpe>SPY + ~half SPY drawdown + real holdout DSR>0 (NOT the 0.95 in-sample Gate)",
             },
         )
-        print(f"\nREGISTERED forward-test track: version_id={version_id}  (status=forward_test, origin=documented)")
+        print(f"\nREGISTERED paper track: version_id={version_id}  (status=paper, origin=documented)")
     else:
         version_id = existing
-        print(f"\nForward-test track already registered: version_id={version_id} (idempotent — clock NOT reset)")
+        print(f"\nPaper track already registered: version_id={version_id} (idempotent — clock NOT reset)")
 
     # Open / confirm the held SIM position in the current signal at the latest REAL close. SIM only — live stays OFF.
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
@@ -255,14 +255,14 @@ def arm(store: Store | None = None) -> dict:
     )
     print(f"OPENED held sim position + FIRST MARK: {qty} {signal} @ {price} (capital ${TRACK_CAPITAL}). "
           f"Aggregate equity now ${float(snap['equity']):,.2f}.")
-    print("\nThe forward-test is ARMED (SIM only). The clock will re-mark this position against the latest equity")
+    print("\nThe paper is ARMED (SIM only). The clock will re-mark this position against the latest equity")
     print("close on every run. Run the clock with:  python3 -m cosmu.research.equity_dual_momentum_qqq_arm --mark")
     return {"armed": True, "version_id": version_id, "signal": signal, "qty": str(qty), "price": str(price),
             "equity": float(snap["equity"]), "rotation": rotation}
 
 
 def mark(store: Store | None = None) -> dict:
-    """Re-mark the QQQ/EFA variant's held position against the latest REAL equity close (the forward-test clock,
+    """Re-mark the QQQ/EFA variant's held position against the latest REAL equity close (the paper clock,
     equity edition). Each run writes a fresh portfolio_snapshot, advancing the trajectory. SIM only."""
     store = store or Store(Settings())
     version_id = _existing_version(store)

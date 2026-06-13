@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cosmu — Hybrid 01 · Linear</title>
+<style>
+/* ── Tokens ── */
+:root {
+  --bg:        oklch(0.155 0.015 285);
+  --surf:      oklch(0.192 0.016 285);
+  --surf2:     oklch(0.228 0.017 285);
+  --surf3:     oklch(0.265 0.018 285);
+  --fg:        oklch(0.955 0.005 285);
+  --muted:     oklch(0.66  0.012 285);
+  --quiet:     oklch(0.50  0.010 285);
+  --hairline:  oklch(0.240 0.012 285);
+  --border:    oklch(0.278 0.014 285);
+  --border-s:  oklch(0.340 0.016 285);
+  --iris:      oklch(0.66  0.19  290);
+  --iris-s:    oklch(0.74  0.14  290);
+  --iris-dim:  oklch(0.66  0.19  290 / 0.14);
+  --iris-mid:  oklch(0.66  0.19  290 / 0.30);
+  --up:        oklch(0.76  0.15  160);
+  --up-dim:    oklch(0.76  0.15  160 / 0.14);
+  --down:      oklch(0.70  0.17   18);
+  --down-dim:  oklch(0.70  0.17   18 / 0.14);
+  --gold:      oklch(0.82  0.14   85);
+  --gold-dim:  oklch(0.82  0.14   85 / 0.14);
+  --sidebar-w: 196px;
+  --header-h:  48px;
+  --peek-w:    480px;
+  --r:         4px;
+  --r-sm:      3px;
+}
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: dark; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv05" 1, "ss01" 1;
+  letter-spacing: -0.005em;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+.mono { font-family: "SF Mono","Fira Code","Cascadia Code",ui-monospace,monospace; }
+.tab  { font-variant-numeric: tabular-nums slashed-zero; }
+.up   { color: var(--up); }
+.down { color: var(--down); }
+.gold { color: var(--gold); }
+.iris { color: var(--iris-s); }
+.muted { color: var(--muted); }
+.quiet { color: var(--quiet); }
+
+/* ── Shell ── */
+.shell { display: flex; min-height: 100vh; }
+
+/* ── Sidebar ── */
+.sidebar {
+  position: fixed; top: 0; left: 0; width: var(--sidebar-w); height: 100vh;
+  background: var(--surf);
+  border-right: 1px solid var(--hairline);
+  display: flex; flex-direction: column; z-index: 50;
+  flex-shrink: 0;
+}
+.sb-logo {
+  height: var(--header-h); display: flex; align-items: center; gap: 9px;
+  padding: 0 14px; border-bottom: 1px solid var(--hairline); flex-shrink: 0;
+}
+.sb-mark {
+  width: 22px; height: 22px; border-radius: 5px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--iris) 0%, oklch(0.62 0.16 265) 100%);
+  display: flex; align-items: center; justify-content: center;
+}
+.sb-mark svg { width: 12px; height: 12px; }
+.sb-name { font-size: 13.5px; font-weight: 700; letter-spacing: -0.02em; color: var(--fg); }
+.sb-sub  { font-size: 9.5px; color: var(--quiet); font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+.sb-nav  { flex: 1; overflow-y: auto; padding: 6px 6px 0; }
+.sb-section { margin-bottom: 2px; }
+.sb-section-label {
+  font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--quiet); padding: 8px 10px 3px; display: block;
+}
+.nav-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 10px; border-radius: var(--r-sm);
+  cursor: pointer; color: var(--muted); font-size: 12.5px; font-weight: 500;
+  transition: background 120ms, color 120ms; user-select: none;
+  text-decoration: none; border: none; background: transparent; width: 100%; text-align: left;
+}
+.nav-item:hover { background: var(--surf2); color: var(--fg); }
+.nav-item.active { background: var(--iris-dim); color: var(--iris-s); }
+.nav-item-left  { display: flex; align-items: center; gap: 7px; }
+.nav-item svg   { width: 14px; height: 14px; flex-shrink: 0; opacity: .7; }
+.nav-item.active svg { opacity: 1; }
+.nav-count {
+  font-size: 10px; font-weight: 600; background: var(--surf3); color: var(--quiet);
+  border-radius: 999px; padding: 1px 5px; min-width: 18px; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.nav-item.active .nav-count { background: var(--iris-mid); color: var(--iris-s); }
+/* sub-items under Strategies */
+.nav-sub { padding-left: 8px; margin-top: 1px; margin-bottom: 1px; }
+.nav-sub .nav-item { font-size: 12px; padding: 4px 10px; }
+.nav-sub .nav-item svg { opacity: .5; }
+.sb-footer {
+  padding: 6px; border-top: 1px solid var(--hairline); flex-shrink: 0;
+}
+
+/* ── Main ── */
+.main { margin-left: var(--sidebar-w); flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+/* ── Header ── */
+.header {
+  position: sticky; top: 0; height: var(--header-h); z-index: 40;
+  background: var(--surf);
+  border-bottom: 1px solid var(--hairline);
+  display: flex; align-items: center; padding: 0 16px; gap: 12px;
+  flex-shrink: 0;
+}
+.dash-strip {
+  display: flex; align-items: center; gap: 3px; font-size: 11.5px; color: var(--muted);
+  flex: 1; overflow: hidden; white-space: nowrap; flex-wrap: nowrap; min-width: 0;
+}
+.ds-item  { display: flex; align-items: center; gap: 3px; white-space: nowrap; flex-shrink: 0; }
+.ds-sep   { color: var(--border-s); margin: 0 3px; user-select: none; }
+.ds-label { color: var(--quiet); }
+
+/* ── Pages ── */
+.page { display: none; flex: 1; min-height: 0; }
+.page.active { display: flex; flex-direction: column; }
+
+/* ── Toolbar (above table) ── */
+.toolbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px 0; flex-shrink: 0;
+}
+.seg-control { display: flex; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; }
+.seg-btn {
+  padding: 4px 11px; font-size: 11.5px; font-weight: 500; color: var(--muted);
+  background: transparent; border: none; cursor: pointer;
+  transition: background 100ms, color 100ms; border-right: 1px solid var(--border);
+  font-family: inherit; white-space: nowrap;
+}
+.seg-btn:last-child { border-right: none; }
+.seg-btn:hover { background: var(--surf2); color: var(--fg); }
+.seg-btn.active { background: var(--iris-dim); color: var(--iris-s); }
+.search-wrap { position: relative; flex: 1; max-width: 240px; }
+.search-input {
+  width: 100%; padding: 4px 8px 4px 28px; font-size: 12px; color: var(--fg);
+  background: var(--surf2); border: 1px solid var(--border); border-radius: var(--r-sm);
+  outline: none; transition: border-color 150ms; font-family: inherit;
+}
+.search-input::placeholder { color: var(--quiet); }
+.search-input:focus { border-color: var(--iris); }
+.search-icon {
+  position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+  width: 12px; height: 12px; color: var(--quiet); pointer-events: none;
+}
+.toolbar-spacer { flex: 1; }
+.btn-liq {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--down); border-radius: var(--r-sm);
+  background: var(--down-dim); color: var(--down);
+  transition: background 130ms; font-family: inherit; white-space: nowrap;
+}
+.btn-liq:hover { background: oklch(0.70 0.17 18 / 0.22); }
+.btn-ghost-sm {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 11px; font-size: 11.5px; font-weight: 500; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: transparent; color: var(--muted);
+  transition: border-color 130ms, color 130ms; font-family: inherit; white-space: nowrap;
+}
+.btn-ghost-sm:hover { border-color: var(--border-s); color: var(--fg); }
+
+/* ── Table area ── */
+.tbl-area { flex: 1; overflow-y: auto; padding: 8px 16px 48px; }
+
+/* ── Group header rows ── */
+.grp-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 16px 0 4px; border-bottom: 1px solid var(--hairline);
+  margin-bottom: 0;
+}
+.grp-label {
+  font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--quiet);
+}
+.grp-count { font-size: 9.5px; color: var(--quiet); font-variant-numeric: tabular-nums; }
+.grp-line { flex: 1; height: 1px; background: var(--hairline); }
+
+/* ── Strategy table ── */
+table.strat-tbl {
+  width: 100%; border-collapse: collapse; table-layout: fixed;
+  font-size: 12px;
+}
+table.strat-tbl colgroup col {}
+table.strat-tbl thead th {
+  text-align: left; padding: 5px 8px;
+  font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--quiet); border-bottom: 1px solid var(--hairline); white-space: nowrap;
+  position: sticky; top: 0; background: var(--bg); z-index: 5;
+}
+table.strat-tbl thead th.r { text-align: right; }
+table.strat-tbl tbody tr.s-row {
+  border-bottom: 1px solid var(--hairline); cursor: pointer;
+  transition: background 80ms;
+}
+table.strat-tbl tbody tr.s-row:hover td { background: oklch(0.66 0.19 290 / 0.04); }
+table.strat-tbl tbody tr.s-row.selected td { background: oklch(0.66 0.19 290 / 0.07); }
+table.strat-tbl tbody tr.s-row.killed { opacity: 0.54; }
+table.strat-tbl tbody tr.s-row:focus { outline: none; }
+table.strat-tbl td {
+  padding: 0 8px; height: 36px; vertical-align: middle;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+table.strat-tbl td.r { text-align: right; }
+table.strat-tbl tr.s-hidden { display: none; }
+
+/* Column widths */
+.col-spark { width: 72px; }
+.col-name  { min-width: 160px; }
+.col-glyph { width: 148px; }
+.col-days  { width: 52px; }
+.col-pnl   { width: 100px; }
+.col-dsr   { width: 48px; }
+.col-pbo   { width: 48px; }
+
+/* ── Sparkline ── */
+.spark { display: inline-block; width: 64px; height: 22px; vertical-align: middle; }
+.spark svg { width: 100%; height: 100%; display: block; }
+
+/* ── Life glyph ── */
+.glyph { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.g-stage {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; padding: 1px 5px; border-radius: 2px; flex-shrink: 0;
+}
+.g-live     { background: var(--up-dim);   color: var(--up); }
+.g-paper    { background: var(--iris-dim); color: var(--iris-s); }
+.g-gate     { background: var(--up-dim);   color: var(--up); }
+.g-backtest { background: var(--surf3);    color: var(--quiet); }
+.g-queued   { background: var(--surf3);    color: var(--quiet); }
+.g-killed   { background: var(--down-dim); color: var(--down); }
+.g-ready    { background: var(--gold-dim); color: var(--gold); }
+.g-dots { display: inline-flex; align-items: center; gap: 1px; margin-left: 3px; }
+.g-dot {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--surf3); flex-shrink: 0;
+  position: relative;
+}
+.g-dot.done    { background: var(--iris); }
+.g-dot.current { background: var(--iris); box-shadow: 0 0 0 2px var(--iris-dim); }
+.g-dot.dead    { background: var(--down); }
+.g-dot.gate-ok::after  { content:'✓'; position:absolute; top:-5px; left:-1px; font-size:6px; color:var(--up); font-weight:700; }
+.g-dot.gate-x::after   { content:'✗'; position:absolute; top:-5px; left:-1px; font-size:6px; color:var(--down); font-weight:700; }
+.g-line { width: 6px; height: 1px; background: var(--surf3); flex-shrink: 0; }
+.g-line.done { background: var(--iris); }
+
+/* live pulse */
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+.live-pulse { width:5px; height:5px; border-radius:50%; background:var(--up); display:inline-block; margin-right:2px; animation: pulse 2s infinite; vertical-align: middle; }
+
+/* ── Stage footer ── */
+tr.s-footer td {
+  padding: 3px 8px; height: 20px;
+  font-size: 9.5px; color: var(--quiet); background: var(--surf);
+  border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Right Peek Pane ── */
+.peek-backdrop {
+  display: none; position: fixed; inset: 0; z-index: 60;
+  background: transparent;
+}
+.peek-backdrop.open { display: block; }
+.peek-pane {
+  position: fixed; top: 0; right: 0; width: var(--peek-w); height: 100vh; z-index: 61;
+  background: var(--surf); border-left: 1px solid var(--border);
+  box-shadow: -8px 0 32px -8px rgba(0,0,0,.6);
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 200ms cubic-bezier(0.16,1,0.3,1);
+  overflow: hidden;
+}
+.peek-pane.open { transform: translateX(0); }
+.peek-header {
+  height: var(--header-h); display: flex; align-items: center; gap: 10px;
+  padding: 0 16px; border-bottom: 1px solid var(--hairline); flex-shrink: 0;
+}
+.peek-close {
+  width: 28px; height: 28px; border-radius: var(--r-sm); border: 1px solid var(--border);
+  background: transparent; color: var(--muted); cursor: pointer; font-size: 14px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  transition: background 120ms, color 120ms; font-family: inherit;
+}
+.peek-close:hover { background: var(--surf2); color: var(--fg); }
+.peek-title { font-size: 13px; font-weight: 600; color: var(--fg); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.peek-body { flex: 1; overflow-y: auto; padding: 16px; }
+
+/* ── Sections inside peek ── */
+.detail-sec { margin-bottom: 20px; }
+.detail-sec-title {
+  font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--quiet); margin-bottom: 8px; padding-bottom: 5px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* lifecycle in detail */
+.lc-row { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; margin-bottom: 4px; }
+.lc-node { display: flex; align-items: center; gap: 2px; }
+.lc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--surf3); flex-shrink: 0; }
+.lc-dot.done    { background: var(--iris); }
+.lc-dot.current { background: var(--iris); box-shadow: 0 0 0 3px var(--iris-dim); }
+.lc-dot.dead    { background: var(--down); }
+.lc-lbl { font-size: 10.5px; color: var(--quiet); margin-left: 3px; }
+.lc-lbl.done { color: var(--iris-s); }
+.lc-lbl.current { color: var(--fg); font-weight: 600; }
+.lc-lbl.dead  { color: var(--down); }
+.lc-conn { width: 14px; height: 1px; background: var(--surf3); margin: 0 2px; }
+.lc-conn.done { background: var(--iris); }
+
+/* verdict badge */
+.verdict {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: var(--r-sm); font-size: 11px; font-weight: 700;
+  letter-spacing: .03em; text-transform: uppercase;
+}
+.verdict-live    { background: var(--up-dim);   color: var(--up);    border: 1px solid var(--up); }
+.verdict-paper   { background: var(--iris-dim); color: var(--iris-s); border: 1px solid var(--iris); }
+.verdict-gate    { background: var(--up-dim);   color: var(--up);    border: 1px solid var(--up); }
+.verdict-backtest{ background: var(--surf3);    color: var(--quiet); border: 1px solid var(--border); }
+.verdict-queued  { background: var(--surf3);    color: var(--quiet); border: 1px solid var(--border); }
+.verdict-killed  { background: var(--down-dim); color: var(--down);  border: 1px solid var(--down); }
+
+/* gate chips */
+.gate-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gate-chip {
+  background: var(--surf2); border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 6px 10px; cursor: help; transition: border-color 130ms; position: relative;
+}
+.gate-chip:hover { border-color: var(--iris); }
+.gate-chip:hover .chip-tip { display: block; }
+.chip-name  { font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--quiet); }
+.chip-value { font-size: 13.5px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.chip-pass  { color: var(--up); }
+.chip-warn  { color: var(--gold); }
+.chip-fail  { color: var(--down); }
+.chip-tip {
+  display: none; position: absolute; bottom: calc(100% + 5px); left: 0;
+  background: var(--surf3); border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 6px 10px; width: 220px; font-size: 10.5px; color: var(--muted);
+  line-height: 1.55; z-index: 200; white-space: normal; box-shadow: 0 6px 18px -4px rgba(0,0,0,.6);
+}
+
+/* equity svg */
+.eq-wrap {
+  background: var(--surf2); border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 8px; margin-bottom: 4px; overflow: hidden;
+}
+.eq-legend { display: flex; gap: 10px; font-size: 10px; color: var(--muted); margin-bottom: 4px; align-items: center; }
+.eq-swatch { width: 18px; height: 1.5px; display: inline-block; vertical-align: middle; margin-right: 3px; border-radius: 1px; }
+
+/* blocks */
+.blocks { display: flex; flex-direction: column; gap: 5px; }
+.block-row { display: flex; gap: 8px; font-size: 11.5px; }
+.block-key { width: 52px; flex-shrink: 0; font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--quiet); padding-top: 1px; }
+.block-val { color: var(--muted); line-height: 1.4; }
+
+/* similar */
+.similar-note { font-size: 11px; color: var(--quiet); margin-top: 6px; padding: 6px 10px; border: 1px solid var(--hairline); border-radius: var(--r-sm); }
+
+/* data feed */
+.feed-list { display: flex; flex-direction: column; gap: 4px; }
+.feed-row { display: flex; align-items: baseline; gap: 6px; font-size: 11px; }
+.feed-bullet { width: 5px; height: 5px; border-radius: 50%; background: var(--iris); flex-shrink: 0; margin-top: 3px; }
+.feed-val { color: var(--fg); font-variant-numeric: tabular-nums; }
+.feed-ago { color: var(--quiet); font-size: 10px; }
+
+/* trades mini table */
+.mini-tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
+.mini-tbl th { font-size: 9px; text-transform: uppercase; letter-spacing: .07em; color: var(--quiet); font-weight: 600; text-align: left; padding: 0 4px 4px; border-bottom: 1px solid var(--hairline); }
+.mini-tbl th.r { text-align: right; }
+.mini-tbl td { padding: 4px 4px; border-bottom: 1px solid var(--hairline); font-variant-numeric: tabular-nums; vertical-align: middle; }
+.mini-tbl td.r { text-align: right; }
+.mini-tbl tr:last-child td { border-bottom: none; }
+.side-buy  { color: var(--up);   font-weight: 600; }
+.side-sell { color: var(--down); font-weight: 600; }
+
+/* activity */
+.act-list { display: flex; flex-direction: column; gap: 0; }
+.act-row {
+  display: flex; gap: 8px; align-items: flex-start;
+  padding: 5px 0 5px 10px;
+  border-left: 1px solid var(--hairline); margin-left: 4px;
+  position: relative;
+}
+.act-row::before {
+  content: ''; position: absolute; left: -4px; top: 9px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--surf3); border: 1px solid var(--border);
+}
+.act-row.current::before { background: var(--iris); border-color: var(--iris); }
+.act-time  { font-size: 10px; color: var(--quiet); white-space: nowrap; width: 80px; flex-shrink: 0; }
+.act-event { font-size: 11.5px; color: var(--muted); }
+.act-event strong { color: var(--fg); font-weight: 500; }
+
+/* launch button */
+.btn-launch {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--iris); border-radius: var(--r-sm);
+  background: var(--iris-dim); color: var(--iris-s);
+  transition: background 130ms; font-family: inherit;
+}
+.btn-launch:hover { background: var(--iris-mid); }
+
+/* ── Paper, Live, Costs pages ── */
+.p-inner { padding: 20px 16px 48px; max-width: 900px; width: 100%; }
+.page-ey { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .09em; color: var(--quiet); margin-bottom: 3px; }
+.page-h  { font-size: 20px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 16px; }
+
+.card {
+  background: var(--surf); border: 1px solid var(--border); border-radius: var(--r);
+  margin-bottom: 12px;
+}
+.card-hdr { padding: 12px 16px 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card-title { font-size: 11.5px; font-weight: 600; color: var(--fg); }
+.card-body  { padding: 12px 16px; }
+
+.badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 3px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.badge-iris { background: var(--iris-dim); color: var(--iris-s); border: 1px solid var(--iris-mid); }
+.badge-up   { background: var(--up-dim);   color: var(--up);    border: 1px solid oklch(0.76 0.15 160 / 0.28); }
+.badge-down { background: var(--down-dim); color: var(--down);  border: 1px solid oklch(0.70 0.17 18 / 0.28); }
+.badge-gold { background: var(--gold-dim); color: var(--gold);  border: 1px solid oklch(0.82 0.14 85 / 0.25); }
+.badge-muted{ background: var(--surf3);    color: var(--muted); border: 1px solid var(--border); }
+
+/* live banner */
+.live-banner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: var(--r); margin-bottom: 12px;
+  border: 1px solid oklch(0.70 0.17 18 / 0.32);
+  background: oklch(0.70 0.17 18 / 0.08);
+}
+.live-pulse-big {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--down);
+  box-shadow: 0 0 0 4px oklch(0.70 0.17 18 / 0.2); flex-shrink: 0; animation: pulse 2s infinite;
+}
+.armed-label { font-size: 12.5px; font-weight: 600; color: var(--down); }
+.armed-sub   { font-size: 11.5px; color: var(--muted); margin-left: 8px; }
+
+/* gauge */
+.gauge-track { height: 5px; border-radius: 999px; background: var(--surf3); overflow: hidden; }
+.gauge-fill  { height: 100%; border-radius: 999px; }
+
+/* grid helpers */
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+@media(max-width: 720px) { .g2, .g3 { grid-template-columns: 1fr; } }
+
+/* stat cards */
+.stat-card { background: var(--surf); border: 1px solid var(--border); border-radius: var(--r); padding: 12px 16px; }
+.stat-label { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--quiet); margin-bottom: 4px; }
+.stat-value { font-size: 20px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+
+/* costs */
+.cost-bar-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.cost-bar-label { font-size: 11.5px; color: var(--muted); width: 130px; flex-shrink: 0; }
+.cost-bar-track { flex: 1; height: 5px; border-radius: 999px; background: var(--surf3); overflow: hidden; }
+.cost-bar-fill  { height: 100%; border-radius: 999px; background: var(--iris); }
+.cost-bar-val   { font-size: 11.5px; color: var(--fg); width: 48px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+/* paper table */
+.paper-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.paper-tbl th { font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--quiet); font-weight: 600; text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--hairline); }
+.paper-tbl th.r { text-align: right; }
+.paper-tbl td { padding: 9px 10px; border-bottom: 1px solid var(--hairline); vertical-align: middle; font-variant-numeric: tabular-nums; }
+.paper-tbl td.r { text-align: right; }
+.paper-tbl tr:last-child td { border-bottom: none; }
+.paper-tbl tr { cursor: pointer; transition: background 80ms; }
+.paper-tbl tr:hover td { background: var(--surf2); }
+
+/* commands */
+.cmd-row { display: flex; gap: 10px; align-items: baseline; padding: 7px 12px; border-radius: var(--r-sm); border: 1px solid var(--hairline); margin-bottom: 5px; background: var(--surf); }
+.cmd-name { font-size: 12px; font-weight: 600; color: var(--iris-s); font-family: "SF Mono","Fira Code",ui-monospace,monospace; width: 200px; flex-shrink: 0; }
+.cmd-desc { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+
+/* ── Modal ── */
+.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 200; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+.overlay.open { display: flex; }
+.modal {
+  background: var(--surf2); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 22px; max-width: 400px; width: calc(100% - 32px);
+  box-shadow: 0 24px 56px -20px rgba(0,0,0,.9);
+  animation: modal-in 200ms cubic-bezier(.16,1,.3,1);
+}
+@keyframes modal-in { from { opacity:0; transform:translateY(8px) scale(.97); } to { opacity:1; transform:none; } }
+.modal-title  { font-size: 14.5px; font-weight: 600; color: var(--down); margin-bottom: 8px; }
+.modal-body   { font-size: 12.5px; color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
+.modal-acts   { display: flex; gap: 8px; justify-content: flex-end; }
+.btn-cancel   { padding: 7px 14px; font-size: 12.5px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surf3); color: var(--muted); cursor: pointer; font-family: inherit; transition: color 120ms; }
+.btn-cancel:hover { color: var(--fg); }
+.btn-confirm  { padding: 7px 14px; font-size: 12.5px; font-weight: 600; border-radius: var(--r-sm); border: 1px solid var(--down); background: var(--down); color: white; cursor: pointer; font-family: inherit; transition: opacity 130ms; }
+.btn-confirm:hover { opacity: .85; }
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(6px);
+  background: var(--surf3); border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 8px 16px; font-size: 12px; color: var(--fg); z-index: 500;
+  opacity: 0; transition: opacity 180ms, transform 180ms; pointer-events: none;
+  box-shadow: 0 6px 20px -6px rgba(0,0,0,.7);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── Footer kbd legend ── */
+.kbd-footer {
+  position: fixed; bottom: 10px; right: 16px; z-index: 300;
+  display: flex; align-items: center; gap: 10px; font-size: 10px; color: var(--quiet);
+}
+.kbd-item { display: flex; align-items: center; gap: 3px; }
+kbd {
+  background: var(--surf2); border: 1px solid var(--border); border-radius: 3px;
+  padding: 1px 5px; font-size: 9.5px; color: var(--muted); font-family: inherit;
+  box-shadow: 0 1px 0 var(--border);
+}
+
+/* ── MOCKUP badge ── */
+.mockup-badge {
+  position: fixed; bottom: 10px; left: 10px; z-index: 400;
+  padding: 3px 8px; border-radius: var(--r-sm);
+  background: var(--gold-dim); border: 1px solid oklch(0.82 0.14 85 / 0.24);
+  color: var(--gold); font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* ── Responsive ── */
+@media(max-width: 780px) {
+  :root { --sidebar-w: 0px; --peek-w: 100vw; }
+  .sidebar { transform: translateX(-196px); width: 196px; transition: transform 200ms cubic-bezier(.16,1,.3,1); }
+  .sidebar.open { transform: translateX(0); }
+  .mob-btn { display: flex !important; }
+  .main { margin-left: 0; }
+}
+.mob-btn {
+  display: none; width: 32px; height: 32px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+  cursor: pointer; align-items: center; justify-content: center; flex-shrink: 0;
+}
+@keyframes page-in { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
+.page.active { animation: page-in 180ms cubic-bezier(.16,1,.3,1); }
+</style>
+</head>
+<body>
+
+<!-- Liquidate modal -->
+<div class="overlay" id="liqModal">
+  <div class="modal">
+    <div class="modal-title">Liquidate all live positions</div>
+    <div class="modal-body">
+      Sell all live positions to USDC and disarm live trading.
+      <strong style="color:var(--fg)">$1,700 across 1 strategy</strong> will be market-sold on Binance spot.
+      Paper tracks are not affected.
+    </div>
+    <div class="modal-acts">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-confirm" onclick="confirmLiq()">Confirm — sell all</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- MOCKUP badge -->
+<div class="mockup-badge">MOCKUP · synthetic data</div>
+
+<!-- kbd footer -->
+<div class="kbd-footer">
+  <span class="kbd-item"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+  <span class="kbd-item"><kbd>Enter</kbd> open</span>
+  <span class="kbd-item"><kbd>Esc</kbd> close</span>
+</div>
+
+<div class="shell">
+  <!-- ── Sidebar ── -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sb-logo">
+      <div class="sb-mark">
+        <svg viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="1.4">
+          <polygon points="6,1 11,3.5 11,8.5 6,11 1,8.5 1,3.5"/>
+          <circle cx="6" cy="6" r="1.8" fill="white" stroke="none"/>
+        </svg>
+      </div>
+      <div>
+        <div class="sb-name">Cosmu</div>
+        <div class="sb-sub">Quant Engine</div>
+      </div>
+    </div>
+
+    <div class="sb-nav">
+      <!-- Strategies with saved views -->
+      <div class="sb-section">
+        <button class="nav-item active" data-nav="strategies" onclick="gotoNav('strategies')">
+          <span class="nav-item-left">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="2" width="12" height="10" rx="1.5"/><path d="M3 7h2m2-2h4m-4 4h2"/></svg>
+            Strategies
+          </span>
+          <span class="nav-count" id="cnt-all">12</span>
+        </button>
+        <div class="nav-sub" id="sub-strategies">
+          <button class="nav-item" data-view="all" onclick="setView('all')">
+            <span class="nav-item-left">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5"/><path d="M7 4v3l2 2"/></svg>
+              All
+            </span>
+            <span class="nav-count" id="cnt-view-all">12</span>
+          </button>
+          <button class="nav-item" data-view="money" onclick="setView('money')">
+            <span class="nav-item-left">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 9 L5 6 L7 8 L10 4 L12 6"/></svg>
+              Money
+            </span>
+            <span class="nav-count" id="cnt-view-money">6</span>
+          </button>
+          <button class="nav-item" data-view="graveyard" onclick="setView('graveyard')">
+            <span class="nav-item-left">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M7 2v6M4 5h6M3 12h8M4 8v4M10 8v4"/></svg>
+              Graveyard
+            </span>
+            <span class="nav-count" id="cnt-view-graveyard">3</span>
+          </button>
+          <button class="nav-item" data-view="watch" onclick="setView('watch')">
+            <span class="nav-item-left">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="5"/><circle cx="7" cy="7" r="2"/></svg>
+              Watch
+            </span>
+            <span class="nav-count" id="cnt-view-watch">2</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="sb-section">
+        <button class="nav-item" data-nav="paper" onclick="gotoNav('paper')">
+          <span class="nav-item-left">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 10 L5 6 L8 8 L11 3 L12 4.5"/></svg>
+            Paper
+          </span>
+          <span class="nav-count">5</span>
+        </button>
+        <button class="nav-item" data-nav="live" onclick="gotoNav('live')">
+          <span class="nav-item-left">
+            <span class="live-pulse" style="flex-shrink:0;margin-right:1px;"></span>
+            Live
+          </span>
+          <span class="nav-count">1</span>
+        </button>
+        <button class="nav-item" data-nav="costs" onclick="gotoNav('costs')">
+          <span class="nav-item-left">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M7 2v10M4.5 4.5h4a1.5 1.5 0 010 3H4.5"/></svg>
+            Costs
+          </span>
+        </button>
+        <button class="nav-item" data-nav="commands" onclick="gotoNav('commands')">
+          <span class="nav-item-left">
+            <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 5l3 2-3 2m5 1h4"/></svg>
+            Commands
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <div class="sb-footer">
+      <button class="nav-item" style="font-size:12px;color:var(--quiet)">
+        <span class="nav-item-left">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="2"/><path d="M7 2v1M7 11v1M2 7h1M11 7h1M4 4l.7.7M9.3 9.3l.7.7M4 10l.7-.7M9.3 4.7l.7-.7"/></svg>
+          Settings
+        </span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ── Main ── -->
+  <div class="main">
+
+    <!-- Header -->
+    <header class="header">
+      <button class="mob-btn" onclick="document.getElementById('sidebar').classList.toggle('open')">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1 3h12M1 7h12M1 11h12"/></svg>
+      </button>
+      <div class="dash-strip tab">
+        <span class="ds-item"><span class="ds-label">Paper invested</span>&nbsp;$18,392</span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Paper P&amp;L</span>&nbsp;<span class="up">+$1,392 (+9.27%)</span></span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Live total</span>&nbsp;$9,000</span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Free</span>&nbsp;$7,300</span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Invested</span>&nbsp;$1,700</span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Live P&amp;L</span>&nbsp;<span class="up">+$419 (+21%)</span></span>
+      </div>
+    </header>
+
+    <!-- ══ STRATEGIES PAGE ══ -->
+    <div class="page active" id="page-strategies" style="display:flex;flex-direction:column;min-height:0;">
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="seg-control" id="chipBar">
+          <button class="seg-btn active" data-f="all"     onclick="setChip('all',this)">All</button>
+          <button class="seg-btn"        data-f="live"    onclick="setChip('live',this)">Live</button>
+          <button class="seg-btn"        data-f="paper"   onclick="setChip('paper',this)">Paper</button>
+          <button class="seg-btn"        data-f="gate"    onclick="setChip('gate',this)">Gate ✓</button>
+          <button class="seg-btn"        data-f="killed"  onclick="setChip('killed',this)">Killed</button>
+          <button class="seg-btn"        data-f="queued"  onclick="setChip('queued',this)">Queued</button>
+        </div>
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="5" cy="5" r="3.5"/><path d="M8 8l2.5 2.5"/></svg>
+          <input class="search-input" id="searchInput" placeholder="Search strategies…" oninput="onSearch()" />
+        </div>
+        <div class="toolbar-spacer"></div>
+        <button class="btn-liq" onclick="openModal()">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1 1l8 8M9 1L1 9"/></svg>
+          Liquidate all
+        </button>
+      </div>
+
+      <!-- Table -->
+      <div class="tbl-area" id="tblArea">
+        <table class="strat-tbl" id="stratTbl" role="grid" aria-label="Strategies">
+          <colgroup>
+            <col class="col-spark">
+            <col class="col-name">
+            <col class="col-glyph">
+            <col class="col-days">
+            <col class="col-pnl">
+            <col class="col-dsr">
+            <col class="col-pbo">
+          </colgroup>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Strategy</th>
+              <th>Stage · Lifecycle</th>
+              <th class="r">Days</th>
+              <th class="r">P&amp;L · Δ24h</th>
+              <th class="r" title="Deflated Sharpe Ratio — edge after multiple-testing correction">DSR</th>
+              <th class="r" title="Probability of Backtest Overfitting. Lower is better.">PBO</th>
+            </tr>
+          </thead>
+          <tbody id="stratTbody">
+            <!-- injected by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ PAPER PAGE ══ -->
+    <div class="page" id="page-paper">
+      <div class="p-inner">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div class="page-ey">Paper</div>
+            <div class="page-h">Paper tracks</div>
+          </div>
+          <button class="btn-ghost-sm" onclick="showToast('All paper tracks paused (simulated)')">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="1" width="3.5" height="10" rx="1"/><rect x="6.5" y="1" width="3.5" height="10" rx="1"/></svg>
+            Pause all paper
+          </button>
+        </div>
+
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">Aggregate paper equity</span><span class="badge badge-iris">5 active tracks</span></div>
+          <div class="card-body">
+            <svg width="100%" height="120" viewBox="0 0 600 120" preserveAspectRatio="none" style="display:block">
+              <defs>
+                <linearGradient id="pgrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="oklch(0.66 0.19 290)" stop-opacity=".25"/>
+                  <stop offset="100%" stop-color="oklch(0.66 0.19 290)" stop-opacity=".02"/>
+                </linearGradient>
+              </defs>
+              <path d="M0,100 C60,95 120,88 180,82 C240,76 300,79 360,70 C420,61 480,55 540,44 L600,36 L600,115 L0,115Z" fill="url(#pgrad)"/>
+              <path d="M0,100 C60,95 120,88 180,82 C240,76 300,79 360,70 C420,61 480,55 540,44 L600,36" fill="none" stroke="var(--iris)" stroke-width="1.5"/>
+            </svg>
+          </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+          <table class="paper-tbl">
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th class="r">Days</th>
+                <th class="r">P&amp;L</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr onclick="openPeek('funding-carry-btc')">
+                <td><span style="font-weight:500">Funding Carry BTC</span><div class="mono quiet" style="font-size:10px;margin-top:1px">funding-carry-btc</div></td>
+                <td class="r tab">47</td>
+                <td class="r tab up">+9.3%</td>
+                <td><span class="badge badge-gold">Live-ready ≥30d</span></td>
+                <td style="text-align:right"><button class="btn-ghost-sm" onclick="event.stopPropagation();openPeek('funding-carry-btc')">View</button></td>
+              </tr>
+              <tr onclick="openPeek('xsect-momentum-top5')">
+                <td><span style="font-weight:500">Cross-Sectional Momentum Top-5</span><div class="mono quiet" style="font-size:10px;margin-top:1px">xsect-momentum-top5</div></td>
+                <td class="r tab">33</td>
+                <td class="r tab up">+4.1%</td>
+                <td><span class="badge badge-gold">Live-ready ≥30d</span></td>
+                <td style="text-align:right"><button class="btn-ghost-sm" onclick="event.stopPropagation();openPeek('xsect-momentum-top5')">View</button></td>
+              </tr>
+              <tr onclick="openPeek('gtaa-monthly')">
+                <td><span style="font-weight:500">GTAA Monthly Rotation</span><div class="mono quiet" style="font-size:10px;margin-top:1px">gtaa-monthly</div></td>
+                <td class="r tab">41</td>
+                <td class="r tab up">+2.9%</td>
+                <td><span class="badge badge-gold">Live-ready ≥30d</span></td>
+                <td style="text-align:right"><button class="btn-ghost-sm" onclick="event.stopPropagation();openPeek('gtaa-monthly')">View</button></td>
+              </tr>
+              <tr onclick="openPeek('fg-contrarian-eth')">
+                <td><span style="font-weight:500">Fear &amp; Greed Contrarian ETH</span><div class="mono quiet" style="font-size:10px;margin-top:1px">fg-contrarian-eth</div></td>
+                <td class="r tab">12</td>
+                <td class="r tab down">−0.8%</td>
+                <td><span class="badge badge-muted">Early</span></td>
+                <td style="text-align:right"><button class="btn-ghost-sm" onclick="event.stopPropagation();openPeek('fg-contrarian-eth')">View</button></td>
+              </tr>
+              <tr onclick="openPeek('stablecoin-lead-eth')">
+                <td><span style="font-weight:500">Stablecoin Flows Lead ETH</span><div class="mono quiet" style="font-size:10px;margin-top:1px">stablecoin-lead-eth</div></td>
+                <td class="r tab">8</td>
+                <td class="r tab up">+1.2%</td>
+                <td><span class="badge badge-muted">Early</span></td>
+                <td style="text-align:right"><button class="btn-ghost-sm" onclick="event.stopPropagation();openPeek('stablecoin-lead-eth')">View</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ LIVE PAGE ══ -->
+    <div class="page" id="page-live">
+      <div class="p-inner">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div class="page-ey">Live</div>
+            <div class="page-h">Real money positions</div>
+          </div>
+          <button class="btn-liq" onclick="openModal()">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1 1l8 8M9 1L1 9"/></svg>
+            Liquidate all
+          </button>
+        </div>
+
+        <div class="live-banner">
+          <div class="live-pulse-big"></div>
+          <span class="armed-label">Live trading armed</span>
+          <span class="armed-sub">Binance spot · real capital deployed</span>
+        </div>
+
+        <div class="g3" style="margin-bottom:12px">
+          <div class="stat-card"><div class="stat-label">Live total</div><div class="stat-value tab">$9,000</div></div>
+          <div class="stat-card"><div class="stat-label">Invested</div><div class="stat-value tab">$1,700</div></div>
+          <div class="stat-card"><div class="stat-label">Live P&amp;L</div><div class="stat-value tab up">+$419 <span style="font-size:13px;font-weight:500">(+21%)</span></div></div>
+        </div>
+
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-hdr"><span class="card-title">Risk caps</span></div>
+          <div class="card-body">
+            <div class="g2" style="gap:20px">
+              <div>
+                <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--quiet);margin-bottom:5px">Daily loss limit</div>
+                <div class="gauge-track"><div class="gauge-fill" style="width:18%;background:var(--up)"></div></div>
+                <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:10px;color:var(--quiet)" class="tab"><span>$0</span><span>$180 / $1,000 max</span></div>
+              </div>
+              <div>
+                <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--quiet);margin-bottom:5px">Position cap</div>
+                <div class="gauge-track"><div class="gauge-fill" style="width:34%;background:var(--iris)"></div></div>
+                <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:10px;color:var(--quiet)" class="tab"><span>$0</span><span>$1,700 / $5,000 max</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="overflow-x:auto;border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px">
+          <table class="paper-tbl" style="min-width:540px">
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th>Asset</th>
+                <th class="r">Size</th>
+                <th class="r">Entry</th>
+                <th class="r">P&amp;L</th>
+                <th class="r">P&amp;L %</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span style="font-weight:500">Funding Carry BTC</span></td>
+                <td><span class="badge badge-muted">BTC/USDC</span></td>
+                <td class="r tab">$1,700</td>
+                <td class="r tab">$62,480</td>
+                <td class="r tab up">+$419</td>
+                <td class="r tab up">+21%</td>
+                <td style="text-align:right"><button class="btn-liq" style="font-size:10.5px;padding:3px 9px;" onclick="showToast('Close order sent (simulated)')">Close</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ COSTS PAGE ══ -->
+    <div class="page" id="page-costs">
+      <div class="p-inner">
+        <div class="page-ey">Costs</div>
+        <div class="page-h">Opex vs alpha</div>
+
+        <div class="g3" style="margin-bottom:12px">
+          <div class="stat-card">
+            <div class="stat-label">Opex vs equity</div>
+            <div class="stat-value tab up" style="font-size:24px">1.84%</div>
+            <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Opex is a rounding error vs alpha</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Monthly opex</div>
+            <div class="stat-value tab" style="font-size:24px">$312</div>
+            <div style="font-size:10.5px;color:var(--muted);margin-top:3px">3 live · 4 estimated</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">LLM spend</div>
+            <div class="stat-value tab" style="font-size:24px">$48</div>
+            <div style="font-size:10.5px;color:var(--muted);margin-top:3px">1,240 calls · strategy authoring</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-hdr"><span class="card-title">Category breakdown</span></div>
+          <div class="card-body">
+            <div class="cost-bar-row"><div class="cost-bar-label">LLM tokens</div><div class="cost-bar-track"><div class="cost-bar-fill" style="width:54%"></div></div><div class="cost-bar-val">$168</div></div>
+            <div class="cost-bar-row"><div class="cost-bar-label">Infrastructure</div><div class="cost-bar-track"><div class="cost-bar-fill" style="width:24%;background:var(--iris-s)"></div></div><div class="cost-bar-val">$74</div></div>
+            <div class="cost-bar-row"><div class="cost-bar-label">Data feeds</div><div class="cost-bar-track"><div class="cost-bar-fill" style="width:18%;background:var(--gold)"></div></div><div class="cost-bar-val">$58</div></div>
+            <div class="cost-bar-row"><div class="cost-bar-label">Monitoring</div><div class="cost-bar-track"><div class="cost-bar-fill" style="width:4%;background:var(--muted)"></div></div><div class="cost-bar-val">$12</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">LLM calls — last 30 days</span><span class="badge badge-muted">1,240 total</span></div>
+          <div class="card-body">
+            <svg width="100%" height="60" viewBox="0 0 600 60" preserveAspectRatio="none" style="display:block;margin-bottom:10px">
+              <path d="M0,50 C40,46 80,40 120,36 C160,32 200,38 240,30 C280,22 320,18 360,12 C400,6 440,10 480,6 L560,3 L600,4" fill="none" stroke="var(--iris-s)" stroke-width="1.5"/>
+            </svg>
+            <div style="display:flex;flex-wrap:wrap;gap:20px">
+              <div><div class="stat-label" style="font-size:9.5px">Strategy authoring</div><div style="font-size:14px;font-weight:600" class="tab">$31</div></div>
+              <div><div class="stat-label" style="font-size:9.5px">Gate analysis</div><div style="font-size:14px;font-weight:600" class="tab">$11</div></div>
+              <div><div class="stat-label" style="font-size:9.5px">Signal scoring</div><div style="font-size:14px;font-weight:600" class="tab">$6</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ COMMANDS PAGE ══ -->
+    <div class="page" id="page-commands">
+      <div class="p-inner">
+        <div class="page-ey">Commands</div>
+        <div class="page-h">Slash commands</div>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.6">Run in a Claude Code session connected to the Cosmu workspace.</p>
+        <div class="cmd-row"><div class="cmd-name">/run-gate</div><div class="cmd-desc">Evaluate the current strategy cohort through the deterministic Gate. Produces pass/fail verdicts with DSR, PBO, drawdown, and trade count.</div></div>
+        <div class="cmd-row"><div class="cmd-name">/dump-idea &lt;thesis&gt;</div><div class="cmd-desc">Turn a natural-language trading idea into a typed StrategySpec and drop it in the inbox for the next Gate cohort.</div></div>
+        <div class="cmd-row"><div class="cmd-name">/create-strategy</div><div class="cmd-desc">Author a new strategy spec from scratch and flow it through the Gate.</div></div>
+        <div class="cmd-row"><div class="cmd-name">/manage-data</div><div class="cmd-desc">Fetch, backfill, and verify market bars and alt-data sources. Reports coverage and gaps.</div></div>
+        <div class="cmd-row"><div class="cmd-name">/evolve-strategy &lt;id&gt;</div><div class="cmd-desc">Isolate a gate-passed strategy's winning signal and graft it onto other assets or recombine with survivors.</div></div>
+        <div class="cmd-row"><div class="cmd-name">/scan-signals</div><div class="cmd-desc">Score all registered alt-data signals on live data and surface top predictive candidates.</div></div>
+        <div class="cmd-row"><div class="cmd-name">/align-check</div><div class="cmd-desc">Strategic alignment review — measures recent work against the north star (autonomous profit, net of fees) and flags drift.</div></div>
+        <div class="cmd-row"><div class="cmd-name">/deploy-check</div><div class="cmd-desc">Pre-push gate — runs pnpm verify and confirms the tree is green before deploying.</div></div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<!-- ── Right Peek Pane ── -->
+<div class="peek-backdrop" id="peekBackdrop" onclick="closePeek()"></div>
+<div class="peek-pane" id="peekPane">
+  <div class="peek-header">
+    <button class="peek-close" onclick="closePeek()">✕</button>
+    <div class="peek-title" id="peekTitle">Strategy</div>
+    <div id="peekActions"></div>
+  </div>
+  <div class="peek-body" id="peekBody"></div>
+</div>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────────────────────
+const STRATS = [
+  {
+    id:'funding-carry-btc', name:'Funding Carry BTC',
+    stage:'live', pnl:'+$419', pnlPct:'(+21%)', pnlSign:'up', delta24h:'+$38', deltaSign:'up',
+    days:47, dsr:1.12, pbo:0.31, gatePass:true, liveReady:false,
+    spark:[50,46,41,36,30,24,18,12,7,3], sparkSign:'up',
+    venue:'Binance · BTC/USDC',
+    thesis:'Collect positive funding from BTC perpetual-spot basis when funding rate exceeds a fitted threshold.',
+  },
+  {
+    id:'xsect-momentum-top5', name:'Cross-Sectional Momentum Top-5',
+    stage:'paper', pnl:'+4.1%', pnlPct:null, pnlSign:'up', delta24h:'+0.3%', deltaSign:'up',
+    days:33, dsr:0.98, pbo:0.38, gatePass:true, liveReady:false,
+    spark:[50,48,44,40,36,32,29,25,21,18], sparkSign:'up',
+    venue:'Binance · Multi',
+    thesis:'Long top-5 assets by trailing 20-day return, rebalanced weekly.',
+  },
+  {
+    id:'gtaa-monthly', name:'GTAA Monthly Rotation',
+    stage:'paper', pnl:'+2.9%', pnlPct:null, pnlSign:'up', delta24h:'+0.1%', deltaSign:'up',
+    days:41, dsr:1.05, pbo:0.29, gatePass:true, liveReady:true,
+    spark:[50,48,46,43,41,38,36,33,31,29], sparkSign:'up',
+    venue:'Binance · BTC/ETH/USDC',
+    thesis:'Global tactical asset allocation across BTC, ETH, stables; rotate monthly by momentum and carry score.',
+  },
+  {
+    id:'fg-contrarian-eth', name:'Fear & Greed Contrarian ETH',
+    stage:'paper', pnl:'−0.8%', pnlPct:null, pnlSign:'down', delta24h:'−0.2%', deltaSign:'down',
+    days:12, dsr:0.87, pbo:0.44, gatePass:true, liveReady:false,
+    spark:[50,50,51,52,51,52,51,50,51,50], sparkSign:'down',
+    venue:'Binance · ETH/USDC',
+    thesis:'Buy ETH when fear/greed index drops to extreme fear; exit at greed.',
+  },
+  {
+    id:'stablecoin-lead-eth', name:'Stablecoin Flows Lead ETH',
+    stage:'paper', pnl:'+1.2%', pnlPct:null, pnlSign:'up', delta24h:'+0.4%', deltaSign:'up',
+    days:8, dsr:0.91, pbo:0.40, gatePass:true, liveReady:false,
+    spark:[50,49,49,50,49,48,47,48,47,48], sparkSign:'up',
+    venue:'Binance · ETH/USDC',
+    thesis:'Net stablecoin inflows to exchanges lead ETH price moves by ~6h.',
+  },
+  {
+    id:'vol-regime-btc', name:'Vol-Regime Switch BTC',
+    stage:'gate', pnl:'—', pnlPct:null, pnlSign:null, delta24h:null, deltaSign:null,
+    days:null, dsr:1.05, pbo:0.33, gatePass:true, liveReady:false, gateAwait:true,
+    spark:null, sparkSign:null,
+    venue:'Binance · BTC/USDC',
+    thesis:'Switch between trend-following and mean-reversion in BTC based on realized vol regime.',
+  },
+  {
+    id:'pm-riskon-overlay', name:'Polymarket Risk-On Overlay',
+    stage:'backtest', pnl:'—', pnlPct:null, pnlSign:null, delta24h:null, deltaSign:null,
+    days:null, dsr:null, pbo:null, gatePass:false, liveReady:false,
+    spark:null, sparkSign:null, venue:'Binance · Multi',
+    thesis:'Overlay risk-on bias based on Polymarket macro event prices.',
+  },
+  {
+    id:'ma-trend-eth-1d', name:'MA Trend Filter ETH 1d',
+    stage:'backtest', pnl:'—', pnlPct:null, pnlSign:null, delta24h:null, deltaSign:null,
+    days:null, dsr:null, pbo:null, gatePass:false, liveReady:false,
+    spark:null, sparkSign:null, venue:'Binance · ETH/USDC',
+    thesis:'Long ETH when 50d MA > 200d MA; cash otherwise.',
+  },
+  {
+    id:'fvg-btc-1h', name:'FVG Retrace BTC 1h',
+    stage:'queued', pnl:'—', pnlPct:null, pnlSign:null, delta24h:null, deltaSign:null,
+    days:null, dsr:null, pbo:null, gatePass:false, liveReady:false,
+    spark:null, sparkSign:null, venue:'Binance · BTC/USDC',
+    thesis:'Trade fair-value gap retraces on BTC 1h chart.',
+  },
+  {
+    id:'orb-sol-4h', name:'ORB Breakout SOL 4h',
+    stage:'killed', killedAt:'gate', killedReason:'FDR control', killedDate:'2026-05-28',
+    pnl:'—', pnlPct:null, pnlSign:null, delta24h:null, deltaSign:null,
+    days:null, dsr:null, pbo:null, gatePass:false, liveReady:false,
+    spark:null, sparkSign:null, venue:'Binance · SOL/USDC',
+    thesis:'Opening range breakout on SOL 4h bars.',
+  },
+  {
+    id:'wiki-zscore-btc', name:'Wikipedia Pageviews Z-Score BTC',
+    stage:'killed', killedAt:'gate', killedReason:'PBO 0.61', killedDate:'2026-05-20',
+    pnl:'—', pnlPct:null, pnlSign:null, delta24h:null, deltaSign:null,
+    days:null, dsr:null, pbo:null, gatePass:false, liveReady:false,
+    spark:null, sparkSign:null, venue:'Binance · BTC/USDC',
+    thesis:'BTC price predictable from Wikipedia pageview z-score spikes.',
+  },
+  {
+    id:'reddit-spike-doge', name:'Reddit Volume Spike DOGE',
+    stage:'killed', killedAt:'gate', killedReason:'holdout fail', killedDate:'2026-06-02',
+    pnl:'—', pnlPct:null, pnlSign:null, delta24h:null, deltaSign:null,
+    days:null, dsr:null, pbo:null, gatePass:false, liveReady:false,
+    spark:null, sparkSign:null, venue:'Binance · DOGE/USDC',
+    thesis:'Trade DOGE on Reddit submission spike signal.',
+  },
+];
+
+const STAGE_SEQ = ['queued','backtest','gate','paper','live'];
+const STAGE_IDX = {queued:0,backtest:1,gate:2,paper:3,live:4};
+
+// ─── SPARKLINE ───────────────────────────────────────────────────────────────
+function sparkSVG(data, sign) {
+  if (!data || !data.length) {
+    return `<svg viewBox="0 0 64 22" preserveAspectRatio="none">
+      <line x1="0" y1="11" x2="64" y2="11" stroke="oklch(0.265 0.018 285)" stroke-width="0.8" vector-effect="non-scaling-stroke"/>
+    </svg>`;
+  }
+  const n = data.length;
+  const mn = Math.min(...data), mx = Math.max(...data);
+  const rng = mx - mn || 1;
+  const pts = data.map((v,i) => {
+    const x = (i/(n-1))*64;
+    const y = 21 - ((v-mn)/rng)*20;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const col = sign==='up'?'oklch(0.76 0.15 160)':sign==='down'?'oklch(0.70 0.17 18)':'oklch(0.66 0.19 290)';
+  return `<svg viewBox="0 0 64 22" preserveAspectRatio="none">
+    <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.3" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+  </svg>`;
+}
+
+// ─── LIFE GLYPH ──────────────────────────────────────────────────────────────
+function lifeGlyph(s) {
+  let cls, lbl;
+  if (s.stage==='killed') { cls='g-killed'; lbl='Killed'; }
+  else if (s.liveReady)   { cls='g-ready';  lbl='≥30d'; }
+  else if (s.gateAwait)   { cls='g-gate';   lbl='Gate ✓'; }
+  else if (s.stage==='live')     { cls='g-live';     lbl='<span class="live-pulse" style="width:4px;height:4px;margin-right:2px"></span>Live'; }
+  else if (s.stage==='paper')    { cls='g-paper';    lbl='Paper'; }
+  else if (s.stage==='gate')     { cls='g-gate';     lbl='Gate ✓'; }
+  else if (s.stage==='backtest') { cls='g-backtest'; lbl='Backtesting'; }
+  else if (s.stage==='queued')   { cls='g-queued';   lbl='Queued'; }
+  else { cls='g-queued'; lbl=s.stage; }
+
+  const cur = s.killed ? STAGE_IDX[s.killedAt]||2 : (STAGE_IDX[s.stage]??-1);
+  let dots = '<span class="g-dots">';
+  STAGE_SEQ.forEach((st,i) => {
+    if (i>0) {
+      const lineDone = !s.killed && STAGE_IDX[s.stage] > i-1;
+      dots += `<span class="g-line${lineDone?' done':''}"></span>`;
+    }
+    let dotCls='g-dot';
+    if (s.killed && st===s.killedAt) dotCls += ' dead gate-x';
+    else if (s.killed && STAGE_IDX[st] < STAGE_IDX[s.killedAt||'gate']) dotCls += ' done';
+    else if (!s.killed && st==='gate' && STAGE_IDX[s.stage]>=STAGE_IDX['gate']) dotCls += ' done gate-ok';
+    else if (!s.killed && STAGE_IDX[st] < STAGE_IDX[s.stage]) dotCls += ' done';
+    else if (!s.killed && st===s.stage) dotCls += ' current';
+    dots += `<span class="${dotCls}" title="${st}"></span>`;
+  });
+  dots += '</span>';
+  return `<span class="glyph"><span class="g-stage ${cls}">${lbl}</span>${dots}</span>`;
+}
+
+// ─── RENDER TABLE ─────────────────────────────────────────────────────────────
+const GROUP_ORDER = ['live','paper','gate','backtest','queued','killed'];
+const GROUP_LABEL = {live:'Live',paper:'Paper',gate:'Gate ✓ — Awaiting Paper',backtest:'Backtesting',queued:'Queued',killed:'Killed'};
+
+let activeChip = 'all';
+let activeView = 'all';
+let searchQ = '';
+let selectedIdx = -1;
+let visibleRows = [];
+
+function matchesFilter(s) {
+  if (activeChip==='live')   return s.stage==='live';
+  if (activeChip==='paper')  return s.stage==='paper';
+  if (activeChip==='gate')   return s.stage==='gate';
+  if (activeChip==='killed') return s.stage==='killed';
+  if (activeChip==='queued') return s.stage==='queued'||s.stage==='backtest';
+  if (activeView==='money')     return s.stage==='live'||s.stage==='paper'||s.stage==='gate';
+  if (activeView==='graveyard') return s.stage==='killed';
+  if (activeView==='watch')     return s.liveReady || s.gateAwait;
+  return true; // all
+}
+
+function matchesSearch(s) {
+  if (!searchQ) return true;
+  const q = searchQ.toLowerCase();
+  return s.name.toLowerCase().includes(q) || s.id.includes(q);
+}
+
+function renderTable() {
+  const tbody = document.getElementById('stratTbody');
+  let html = '';
+  visibleRows = [];
+  let rowIdx = 0;
+
+  GROUP_ORDER.forEach(grp => {
+    const rows = STRATS.filter(s => s.stage===grp && matchesFilter(s) && matchesSearch(s));
+    if (!rows.length) return;
+
+    html += `<tr class="grp-header-row"><td colspan="7" style="padding:0">
+      <div class="grp-header"><span class="grp-label">${GROUP_LABEL[grp]}</span><span class="grp-count">${rows.length}</span><div class="grp-line"></div></div>
+    </td></tr>`;
+
+    rows.forEach(s => {
+      const pnlCol = s.pnlSign==='up'?'up':s.pnlSign==='down'?'down':'muted';
+      const deltaCol = s.deltaSign==='up'?'up':s.deltaSign==='down'?'down':'quiet';
+      const dsrTxt = s.dsr!=null ? `<span class="${s.dsr>=1?'up':'muted'}">${s.dsr}</span>` : '<span class="quiet">—</span>';
+      const pboTxt = s.pbo!=null ? `<span class="${s.pbo<=0.40?'up':'down'}">${s.pbo}</span>` : '<span class="quiet">—</span>';
+      const daysTxt = s.days!=null ? `<span class="tab">${s.days}d</span>` : '<span class="quiet">—</span>';
+      const deltaTxt = s.delta24h ? `<div class="${deltaCol} mono" style="font-size:9.5px;margin-top:1px">${s.delta24h}</div>` : '';
+
+      const ri = rowIdx++;
+      visibleRows.push(s.id);
+      html += `<tr class="s-row${s.stage==='killed'?' killed':''}" tabindex="0" data-id="${s.id}" data-ridx="${ri}" onclick="openPeek('${s.id}')" onkeydown="rowKey(event,'${s.id}')">
+        <td><div class="spark">${sparkSVG(s.spark, s.sparkSign)}</div></td>
+        <td>
+          <div style="font-weight:500;font-size:12.5px;overflow:hidden;text-overflow:ellipsis">${s.name}</div>
+          <div class="mono quiet" style="font-size:10px;margin-top:1px">${s.id}</div>
+        </td>
+        <td>${lifeGlyph(s)}</td>
+        <td class="r">${daysTxt}</td>
+        <td class="r">
+          <div class="tab ${pnlCol}" style="font-weight:500">${s.pnl}${s.pnlPct?` <span style="font-size:10px;font-weight:400">${s.pnlPct}</span>`:''}</div>
+          ${deltaTxt}
+        </td>
+        <td class="r mono" style="font-size:11.5px">${dsrTxt}</td>
+        <td class="r mono" style="font-size:11.5px">${pboTxt}</td>
+      </tr>`;
+    });
+
+    // footer aggregate
+    const withPnl = rows.filter(s=>s.pnlSign==='up'||s.pnlSign==='down');
+    let footerExtra = '';
+    if (grp==='live')  footerExtra = 'Total deployed: $1,700 · P&L: +$419';
+    if (grp==='paper') footerExtra = '5 tracks · Agg P&L: +$1,392 (+9.27%)';
+    if (grp==='killed') footerExtra = '3 strategies terminated at Gate';
+    if (footerExtra) {
+      html += `<tr class="s-footer"><td colspan="7" class="quiet mono" style="font-size:9.5px">${footerExtra}</td></tr>`;
+    }
+  });
+
+  tbody.innerHTML = html;
+  restoreSelection();
+}
+
+function restoreSelection() {
+  if (selectedIdx < 0 || selectedIdx >= visibleRows.length) return;
+  const id = visibleRows[selectedIdx];
+  const row = document.querySelector(`tr.s-row[data-id="${id}"]`);
+  if (row) row.classList.add('selected');
+}
+
+// ─── FILTER / SEARCH ─────────────────────────────────────────────────────────
+function setChip(f, btn) {
+  activeChip = f;
+  activeView = 'all';
+  document.querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('[data-view]').forEach(b=>b.classList.remove('active'));
+  selectedIdx = -1;
+  renderTable();
+}
+
+function setView(v) {
+  activeView = v;
+  activeChip = 'all';
+  document.querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector('.seg-btn[data-f="all"]').classList.add('active');
+  document.querySelectorAll('[data-view]').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`[data-view="${v}"]`).classList.add('active');
+  selectedIdx = -1;
+  renderTable();
+  gotoNav('strategies');
+}
+
+function onSearch() {
+  searchQ = document.getElementById('searchInput').value.trim();
+  selectedIdx = -1;
+  renderTable();
+}
+
+// ─── NAVIGATION ──────────────────────────────────────────────────────────────
+function gotoNav(page) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('[data-nav]').forEach(n=>n.classList.remove('active'));
+  const pg = document.getElementById('page-'+page);
+  if (pg) pg.classList.add('active');
+  document.querySelectorAll(`[data-nav="${page}"]`).forEach(n=>n.classList.add('active'));
+  window.location.hash = '/'+page;
+  if (page==='strategies') {
+    document.getElementById('sub-strategies').style.display = '';
+  }
+}
+
+// ─── HASH ROUTER ─────────────────────────────────────────────────────────────
+function route() {
+  const h = window.location.hash.replace('#/','') || 'strategies';
+  if (h.startsWith('strategy/')) {
+    const id = h.replace('strategy/','');
+    gotoNav('strategies');
+    requestAnimationFrame(() => openPeek(id));
+    return;
+  }
+  const valid = ['strategies','paper','live','costs','commands'];
+  gotoNav(valid.includes(h)?h:'strategies');
+}
+window.addEventListener('hashchange', route);
+
+// ─── PEEK PANE ───────────────────────────────────────────────────────────────
+let currentPeekId = null;
+
+function openPeek(id, pushHash=true) {
+  const s = STRATS.find(x=>x.id===id);
+  if (!s) return;
+  currentPeekId = id;
+  // dim table
+  document.getElementById('tblArea') && (document.getElementById('tblArea').style.opacity = '0.6');
+  // mark selected
+  document.querySelectorAll('tr.s-row').forEach(r=>r.classList.toggle('selected', r.dataset.id===id));
+  // update peek
+  document.getElementById('peekTitle').textContent = s.name;
+  document.getElementById('peekActions').innerHTML = (s.gatePass && s.stage!=='live')
+    ? `<button class="btn-launch" onclick="showToast('Launching ${s.name} live…')">Launch live</button>` : '';
+  document.getElementById('peekBody').innerHTML = buildPeekContent(s);
+  document.getElementById('peekBackdrop').classList.add('open');
+  requestAnimationFrame(()=>document.getElementById('peekPane').classList.add('open'));
+  if (pushHash) window.location.hash = '/strategy/'+id;
+}
+
+function closePeek() {
+  document.getElementById('peekPane').classList.remove('open');
+  document.getElementById('peekBackdrop').classList.remove('open');
+  document.getElementById('tblArea') && (document.getElementById('tblArea').style.opacity = '');
+  document.querySelectorAll('tr.s-row').forEach(r=>r.classList.remove('selected'));
+  currentPeekId = null;
+  if (window.location.hash.startsWith('#/strategy/')) history.replaceState(null,'','#/strategies');
+}
+
+function buildPeekContent(s) {
+  const isFull = s.id === 'funding-carry-btc';
+
+  // Lifecycle
+  const cur = s.stage==='killed' ? STAGE_IDX[s.killedAt||'gate'] : (STAGE_IDX[s.stage]??-1);
+  let lcHtml = '<div class="lc-row">';
+  STAGE_SEQ.forEach((st,i) => {
+    if (i>0) {
+      const connDone = !s.killed && STAGE_IDX[s.stage]>i-1;
+      lcHtml += `<div class="lc-conn${connDone?' done':''}"></div>`;
+    }
+    let dCls='lc-dot', lCls='lc-lbl';
+    if (s.killed && st===s.killedAt) { dCls+=' dead'; lCls+=' dead'; }
+    else if (s.killed && STAGE_IDX[st]<STAGE_IDX[s.killedAt||'gate']) { dCls+=' done'; lCls+=' done'; }
+    else if (!s.killed && STAGE_IDX[st]<STAGE_IDX[s.stage]) { dCls+=' done'; lCls+=' done'; }
+    else if (!s.killed && st===s.stage) { dCls+=' current'; lCls+=' current'; }
+    lcHtml += `<div class="lc-node"><div class="${dCls}"></div><span class="${lCls}">${st}</span></div>`;
+  });
+  lcHtml += '</div>';
+
+  // Verdict
+  let vCls = 'verdict-'+s.stage;
+  let vTxt = s.stage.charAt(0).toUpperCase()+s.stage.slice(1);
+  if (s.liveReady) { vCls='verdict-gate'; vTxt='Live-ready ≥30d'; }
+  if (s.gateAwait) { vCls='verdict-gate'; vTxt='Gate ✓ — Awaiting Paper'; }
+  const verdict = `<span class="verdict ${vCls}">${vTxt}</span>`;
+
+  if (!isFull) {
+    return `
+      <div class="detail-sec">
+        <div class="detail-sec-title">Stage</div>
+        ${lcHtml}
+        <div style="margin-top:8px">${verdict}</div>
+      </div>
+      <div class="detail-sec">
+        <div class="detail-sec-title">Thesis</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6">${s.thesis||'—'}</div>
+      </div>
+      ${s.dsr!=null ? `
+      <div class="detail-sec">
+        <div class="detail-sec-title">Gate metrics</div>
+        <div class="gate-chips">
+          <div class="gate-chip"><div class="chip-name">DSR</div><div class="chip-value ${s.dsr>=1?'chip-pass':'chip-warn'}">${s.dsr}</div><div class="chip-tip">Deflated Sharpe — edge after correcting for how many variants were tried. Threshold ≥ 1.0</div></div>
+          <div class="gate-chip"><div class="chip-name">PBO</div><div class="chip-value ${s.pbo<=0.40?'chip-pass':'chip-fail'}">${s.pbo}</div><div class="chip-tip">Probability of Backtest Overfitting — lower is better. Threshold ≤ 0.40</div></div>
+        </div>
+      </div>` : ''}
+      <div style="font-size:11px;color:var(--quiet);padding:8px;border:1px solid var(--hairline);border-radius:var(--r-sm)">
+        Full detail available for gate-passed strategies with paper track history.
+      </div>`;
+  }
+
+  // Full detail for funding-carry-btc
+  return `
+    <div class="detail-sec">
+      <div class="detail-sec-title">Stage timeline</div>
+      ${lcHtml}
+      <div style="margin-top:8px">${verdict}</div>
+    </div>
+
+    <div class="detail-sec">
+      <div class="detail-sec-title">Equity curve — Paper track (47d)</div>
+      <div class="eq-wrap">
+        <div class="eq-legend">
+          <span><span class="eq-swatch" style="background:var(--up)"></span>Gross</span>
+          <span><span class="eq-swatch" style="background:var(--iris);opacity:.7"></span>Net of fees</span>
+        </div>
+        <svg width="100%" height="100" viewBox="0 0 440 100" preserveAspectRatio="none" style="display:block">
+          <defs>
+            <linearGradient id="eqg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="oklch(0.76 0.15 160)" stop-opacity=".22"/>
+              <stop offset="100%" stop-color="oklch(0.76 0.15 160)" stop-opacity=".02"/>
+            </linearGradient>
+          </defs>
+          <path d="M0,88 C40,83 80,76 120,68 C160,60 200,58 240,48 C280,38 320,28 360,20 L440,12 L440,95 L0,95Z" fill="url(#eqg)"/>
+          <path d="M0,88 C40,83 80,76 120,68 C160,60 200,58 240,48 C280,38 320,28 360,20 L440,12" fill="none" stroke="oklch(0.76 0.15 160)" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M0,90 C40,86 80,80 120,73 C160,66 200,64 240,55 C280,46 320,36 360,28 L440,21" fill="none" stroke="oklch(0.66 0.19 290)" stroke-width="1" stroke-dasharray="3 2" opacity=".7"/>
+          <!-- entry/exit markers -->
+          <circle cx="62"  cy="80" r="3" fill="var(--up)" opacity=".9"/>
+          <circle cx="130" cy="70" r="3" fill="var(--down)" opacity=".9"/>
+          <circle cx="198" cy="60" r="3" fill="var(--up)" opacity=".9"/>
+          <circle cx="278" cy="44" r="3" fill="var(--down)" opacity=".9"/>
+          <circle cx="360" cy="20" r="3" fill="var(--up)" opacity=".9"/>
+        </svg>
+        <div style="font-size:9.5px;color:var(--quiet);margin-top:3px">Green dots = entries · Red dots = exits</div>
+      </div>
+    </div>
+
+    <div class="detail-sec">
+      <div class="detail-sec-title">Gate chips</div>
+      <div class="gate-chips">
+        <div class="gate-chip">
+          <div class="chip-name">DSR</div>
+          <div class="chip-value chip-pass">1.12</div>
+          <div class="chip-tip">Deflated Sharpe — edge after correcting for how many variants were tried. Threshold ≥ 1.0</div>
+        </div>
+        <div class="gate-chip">
+          <div class="chip-name">PBO</div>
+          <div class="chip-value chip-pass">0.31</div>
+          <div class="chip-tip">Probability of Backtest Overfitting — probability the backtest is overfit. Threshold ≤ 0.40</div>
+        </div>
+        <div class="gate-chip">
+          <div class="chip-name">Max DD</div>
+          <div class="chip-value chip-pass">14%</div>
+          <div class="chip-tip">Maximum drawdown in backtest. Limit is 25%.</div>
+        </div>
+        <div class="gate-chip">
+          <div class="chip-name">OOS</div>
+          <div class="chip-value chip-pass">+8.2%</div>
+          <div class="chip-tip">Out-of-sample return — data the strategy never saw during fitting. Positive confirms edge holds on unseen data.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-sec">
+      <div class="detail-sec-title">Building blocks</div>
+      <div class="blocks">
+        <div class="block-row"><span class="block-key">Signal</span><span class="block-val">funding_rate below fitted threshold</span></div>
+        <div class="block-row"><span class="block-key">Filter</span><span class="block-val">MA-trend (50d > 200d)</span></div>
+        <div class="block-row"><span class="block-key">Exit</span><span class="block-val">Stop 4% / Take 12% / Time-stop 14d</span></div>
+        <div class="block-row"><span class="block-key">Sizing</span><span class="block-val">Fixed fraction of equity</span></div>
+      </div>
+      <div class="similar-note">Similar strategies share these blocks: <span class="iris">MA Trend Filter ETH 1d</span></div>
+    </div>
+
+    <div class="detail-sec">
+      <div class="detail-sec-title">Data sources · latest received</div>
+      <div class="feed-list">
+        <div class="feed-row"><div class="feed-bullet"></div><span class="feed-val">funding_rate −0.018%</span><span class="feed-ago">2h ago · Binance</span></div>
+        <div class="feed-row"><div class="feed-bullet"></div><span class="feed-val">fear_greed 71 (Greed)</span><span class="feed-ago">5h ago · Alternative.me</span></div>
+        <div class="feed-row"><div class="feed-bullet"></div><span class="feed-val">BTC/USDC close $67,344</span><span class="feed-ago">1h ago · Binance</span></div>
+      </div>
+    </div>
+
+    <div class="detail-sec">
+      <div class="detail-sec-title">Recent trades (6)</div>
+      <table class="mini-tbl">
+        <thead>
+          <tr><th>Date</th><th>Side</th><th class="r">Price</th><th class="r">Size</th><th class="r">P&amp;L</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>2026-06-08</td><td><span class="side-buy">BUY</span></td><td class="r tab">$64,820</td><td class="r tab">0.026</td><td class="r tab up">+$142</td></tr>
+          <tr><td>2026-05-30</td><td><span class="side-sell">SELL</span></td><td class="r tab">$63,110</td><td class="r tab">0.026</td><td class="r tab down">−$48</td></tr>
+          <tr><td>2026-05-22</td><td><span class="side-buy">BUY</span></td><td class="r tab">$61,480</td><td class="r tab">0.027</td><td class="r tab up">+$89</td></tr>
+          <tr><td>2026-05-14</td><td><span class="side-sell">SELL</span></td><td class="r tab">$60,220</td><td class="r tab">0.027</td><td class="r tab down">−$22</td></tr>
+          <tr><td>2026-05-06</td><td><span class="side-buy">BUY</span></td><td class="r tab">$58,900</td><td class="r tab">0.028</td><td class="r tab up">+$193</td></tr>
+          <tr><td>2026-04-28</td><td><span class="side-sell">SELL</span></td><td class="r tab">$57,440</td><td class="r tab">0.028</td><td class="r tab up">+$65</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="detail-sec">
+      <div class="detail-sec-title">Activity timeline</div>
+      <div class="act-list">
+        <div class="act-row current"><span class="act-time">2026-06-11</span><div class="act-event"><strong>Live</strong> — capital deployed $1,700</div></div>
+        <div class="act-row"><span class="act-time">2026-05-01</span><div class="act-event"><strong>Paper</strong> track started — 47 days running</div></div>
+        <div class="act-row"><span class="act-time">2026-04-29</span><div class="act-event"><strong>Gate ✓</strong> — DSR 1.12 · PBO 0.31 · OOS +8.2%</div></div>
+        <div class="act-row"><span class="act-time">2026-04-22</span><div class="act-event"><strong>Backtest</strong> completed — 34 trades · 3y history</div></div>
+        <div class="act-row"><span class="act-time">2026-04-20</span><div class="act-event">Spec authored by LLM · funding-carry thesis</div></div>
+      </div>
+    </div>`;
+}
+
+// ─── KEYBOARD NAV ─────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const tag = document.activeElement.tagName;
+  if (tag==='INPUT') return;
+  if (e.key==='Escape') {
+    if (currentPeekId) { closePeek(); e.preventDefault(); }
+    return;
+  }
+  if (!['ArrowUp','ArrowDown','Enter'].includes(e.key)) return;
+  if (!document.getElementById('page-strategies').classList.contains('active')) return;
+
+  e.preventDefault();
+  const rows = document.querySelectorAll('tr.s-row');
+  const ids = [...rows].map(r=>r.dataset.id);
+  visibleRows = ids;
+
+  if (e.key==='ArrowDown') selectedIdx = Math.min(selectedIdx+1, ids.length-1);
+  if (e.key==='ArrowUp')   selectedIdx = Math.max(selectedIdx-1, 0);
+  if (e.key==='Enter' && selectedIdx>=0) { openPeek(ids[selectedIdx]); return; }
+
+  rows.forEach(r=>r.classList.remove('selected'));
+  if (selectedIdx>=0 && selectedIdx<rows.length) {
+    rows[selectedIdx].classList.add('selected');
+    rows[selectedIdx].scrollIntoView({block:'nearest'});
+  }
+});
+
+function rowKey(e, id) {
+  if (e.key==='Enter'||e.key===' ') { e.preventDefault(); openPeek(id); }
+}
+
+// ─── MODAL ────────────────────────────────────────────────────────────────────
+function openModal() { document.getElementById('liqModal').classList.add('open'); }
+function closeModal(){ document.getElementById('liqModal').classList.remove('open'); }
+function confirmLiq(){
+  closeModal();
+  showToast('All live positions market-sold. Live trading disarmed. (simulated)');
+}
+
+// ─── TOAST ────────────────────────────────────────────────────────────────────
+let _tTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(_tTimer);
+  _tTimer = setTimeout(()=>t.classList.remove('show'), 3000);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+renderTable();
+route();
+
+// Esc closes modal too
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape' && document.getElementById('liqModal').classList.contains('open')) closeModal();
+});
+</script>
+</body>
+</html>

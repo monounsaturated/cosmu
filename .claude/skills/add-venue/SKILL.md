@@ -5,7 +5,7 @@ description: Add a trading venue or asset class (data + optional execution adapt
 
 # add-venue
 
-Add a venue with **real, volume-tiered fees** and explicit jurisdiction legality. Fees are the single source of truth in the catalog — the screen, gate, and forward-test all price against `catalog.venue_for(spec.universe.venues)`, so a new venue is priced correctly by construction.
+Add a venue with **real, volume-tiered fees** and explicit jurisdiction legality. Fees are the single source of truth in the catalog — the screen, gate, and paper all price against `catalog.venue_for(spec.universe.venues)`, so a new venue is priced correctly by construction.
 
 ## Steps (mirror `docs/CODING_STANDARDS.md` "Adding a venue / asset class")
 1. **Catalog entry** in `cosmu/spine/venue.py` `default_catalog()`: a `Venue` with real `maker_fee_bps`/`taker_fee_bps`, `fee_tiers` (30d-volume tiers), `min_notional`/`lot_size`, `live_enabled` (False for data/research-only venues), and `restricted_jurisdictions` (ISO-3166 alpha-2). Add its `Instrument`s.

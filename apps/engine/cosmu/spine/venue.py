@@ -82,7 +82,7 @@ class VenueCatalog(BaseModel):
 
     def venue_for(self, venues: list[str]) -> Venue:
         """The venue a spec should be PRICED against — the single source of fee truth for the screen, the
-        gate, and forward-test. Returns the first declared universe venue that exists in the catalog, else
+        gate, and paper. Returns the first declared universe venue that exists in the catalog, else
         Binance (the default crypto-spot venue). Threading fees through here is why an IBKR-equity spec is
         screened at IBKR fees, not Binance's — no hardcoded per-call-site venue."""
         for vid in venues or []:
@@ -169,7 +169,7 @@ def default_catalog() -> VenueCatalog:
                 min_notional=Decimal("1"), lot_size=Decimal("1"),
                 live_enabled=True, restricted_jurisdictions=[],
             ),
-            # Equity — Alpaca: commission-free DATA + paper (forward-test) venue. Not a live execution path yet,
+            # Equity — Alpaca: commission-free DATA + paper (paper) venue. Not a live execution path yet,
             # so live_enabled stays False — it feeds the lab and the incubation clock, it does not move money.
             Venue(
                 id="alpaca", name="Alpaca", kind="equity", adapter="nautilus.alpaca",

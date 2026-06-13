@@ -212,6 +212,7 @@ def evolve_survivor(
     siblings: list[StrategySpec] | None = None,
     seed: int = 7,
     max_specs: int = 16,
+    rank: dict[str, float] | None = None,
 ) -> EvolvedCohort:
     """ENTRY FUNCTION. Take ONE gate-passed survivor, isolate its winning signal logic, and deterministically
     generate a cohort of derived specs that (a) GRAFT that logic onto other asset classes in the universe and
@@ -245,8 +246,11 @@ def evolve_survivor(
         _add(_graft(logic, asset_class, tag=f"graft-{rng.randint(1000, 9999)}"), graft=True)
 
     # (b) RECOMBINE with sibling survivors' exit/risk plumbing — proven entry, borrowed management. Deterministic
-    # order (sorted by name) so the cohort is reproducible regardless of how siblings were passed in.
-    for partner in sorted(siblings or [], key=lambda s: s.name):
+    # order: by descending block-registry strength when a `rank` is provided (the observed funded-rate of each
+    # partner's exit/sizing blocks — observational, the Gate still judges every output), name as tie-break and
+    # as the only key when no rank exists. Same inputs + same DB state -> same cohort.
+    partner_rank = rank or {}
+    for partner in sorted(siblings or [], key=lambda s: (-partner_rank.get(s.name, 0.0), s.name)):
         if partner.name == survivor.name:
             continue
         _add(_recombine(logic, partner, tag=f"mix-{rng.randint(1000, 9999)}"), graft=False)
@@ -265,8 +269,15 @@ def run_evolution_cohort(
     """Glue: evolve a survivor into a cohort, then route it through the EXISTING FarmLoop gate path. The evolved
     specs enter as `extra_seeds` with `explore_pct=0.0` (no wildcards — we are testing THIS edge's grafts, not
     sampling noise). FarmLoop runs the SAME screen -> score() -> Benjamini-Hochberg FDR cull as every other
-    cohort; nothing here re-implements or bypasses the gate/scorer/FDR. Returns the FarmLoop CohortSummary."""
-    cohort = evolve_survivor(survivor, siblings=siblings, seed=seed, max_specs=max_specs)
+    cohort; nothing here re-implements or bypasses the gate/scorer/FDR. Returns the FarmLoop CohortSummary.
+
+    Partner ordering: when the block registry is available on the farm_loop's store, siblings whose exit/sizing
+    blocks have historically been funded more often are recombined FIRST (so a capped cohort spends its slots
+    on the empirically stronger plumbing). Observational re-ordering only — fail-open to name order."""
+    from cosmu.knowledge.block_registry import partner_rank
+
+    rank = partner_rank(farm_loop.store, siblings or [])
+    cohort = evolve_survivor(survivor, siblings=siblings, seed=seed, max_specs=max_specs, rank=rank)
     if not cohort.specs:
         return farm_loop.run_cohort(seed=seed, cohort_size=1, explore_pct=0.0)
     return farm_loop.run_cohort(

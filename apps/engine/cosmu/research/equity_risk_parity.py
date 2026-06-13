@@ -441,7 +441,7 @@ def validate(lookback_d: int = VOL_LOOKBACK_D) -> dict:
     print(f"  (3) Beats 60/40 risk-adjusted?                {beats_6040}  "
           f"(RP Sharpe {rp_s.ann_sharpe:+.2f} vs {sf_s.ann_sharpe:+.2f}; "
           f"maxDD {rp_s.max_dd:.1%} vs {sf_s.max_dd:.1%})")
-    print(f"  ==> {'DEPLOYABLE — arm the live forward-test' if deployable else 'NOT deployable on our data'}")
+    print(f"  ==> {'DEPLOYABLE — arm the live paper' if deployable else 'NOT deployable on our data'}")
     print("=" * 104)
 
     current_w = inverse_vol_weights(data, last_complete, lookback_d)

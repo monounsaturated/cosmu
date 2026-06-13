@@ -3,7 +3,7 @@
 # externally validated: decades of OOS evidence, a published paper + book, and a live record. Such a strategy does NOT
 # need our in-sample Gate to "discover" it (the Gate is an OVERFITTING guard for NOVEL mined edges). The appropriate
 # validators are: (a) the external literature, (b) a positive OOS-net-of-fees check on OUR data that BEATS buy-and-hold
-# SPY risk-adjusted (Faber's documented edge is MUCH lower drawdown), (c) the LIVE forward-test. This module does (b)
+# SPY risk-adjusted (Faber's documented edge is MUCH lower drawdown), (c) the LIVE paper. This module does (b)
 # and arms (c). It NEVER touches / lowers the 0.95 Gate.
 #
 # THE RULE (monthly, signal at month-end t, trade t+1 — NO look-ahead):
@@ -32,8 +32,8 @@
 #   risk-adjusted (higher Sharpe AND/OR materially lower maxDD), robust across an IS/OOS purged temporal split + the
 #   major regime subperiods.
 #
-# ARM: register the validated strategy as a forward-test track (the SAME control-plane rows the finder writes) and open
-#   the held SIM positions in the currently-invested sleeves at their latest REAL closes; mark them. The forward-test
+# ARM: register the validated strategy as a paper track (the SAME control-plane rows the finder writes) and open
+#   the held SIM positions in the currently-invested sleeves at their latest REAL closes; mark them. The paper
 #   clock then accrues honest daily P&L going forward. Propose/measure + arm-sim only; live stays OFF (no real orders).
 
 from __future__ import annotations
@@ -370,7 +370,7 @@ def validate(window: int = SMA_MONTHS) -> dict:
     print(f"  (3) FULL-cycle risk-adjusted beat vs B&H SPY?      {full_riskadj_beat}  "
           f"(Sharpe {gtaa_stats.ann_sharpe:+.2f} vs {spy_stats.ann_sharpe:+.2f} [{full_sharpe_beat}]; "
           f"maxDD {gtaa_stats.max_dd:.1%} vs {spy_stats.max_dd:.1%} [{full_dd_beat}])")
-    print(f"  ==> {'DEPLOYABLE — arm the live forward-test' if deployable else 'NOT deployable on our data'}")
+    print(f"  ==> {'DEPLOYABLE — arm the live paper' if deployable else 'NOT deployable on our data'}")
     print("  HONEST EXPECTATION: a real, modest absolute-momentum / trend-timing portfolio — it trades a slice of")
     print("  bull-market upside for a dramatically smaller drawdown and lower volatility than buy-and-hold equities.")
     print("=" * 104)

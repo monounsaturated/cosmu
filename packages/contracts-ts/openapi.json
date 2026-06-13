@@ -489,6 +489,71 @@
         "title": "Backtest",
         "type": "object"
       },
+      "BlockLeaderboardResponse": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "connected": {
+            "default": true,
+            "title": "Connected",
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/BlockStat"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "available",
+          "rows"
+        ],
+        "title": "BlockLeaderboardResponse",
+        "type": "object"
+      },
+      "BlockStat": {
+        "description": "One row of the block leaderboard \u2014 OBSERVATIONAL ONLY (which building blocks keep appearing in\nGate-funded strategies). Never an input to the scorer/Gate/FDR.",
+        "properties": {
+          "block_hash": {
+            "title": "Block Hash",
+            "type": "string"
+          },
+          "funded_rate": {
+            "title": "Funded Rate",
+            "type": "number"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "n_funded": {
+            "title": "N Funded",
+            "type": "integer"
+          },
+          "n_versions": {
+            "title": "N Versions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "block_hash",
+          "kind",
+          "label",
+          "n_versions",
+          "n_funded",
+          "funded_rate"
+        ],
+        "title": "BlockStat",
+        "type": "object"
+      },
       "BrainGated": {
         "properties": {
           "generated": {
@@ -782,6 +847,11 @@
           "cohort_id": {
             "title": "Cohort Id",
             "type": "string"
+          },
+          "duplicates": {
+            "default": 0,
+            "title": "Duplicates",
+            "type": "integer"
           },
           "generated": {
             "title": "Generated",
@@ -2963,7 +3033,7 @@
         "type": "object"
       },
       "LaunchActivateRequest": {
-        "description": "Request body for the strategy launch-live flow: arm one strategy on a specific venue + asset\nwith a given budget. Confirm must be true (two-click safety); caps are set here and carried\nthrough to the live_caps upsert so the operator sees exactly what they agreed to.\n`override_forward_test` (default OFF) is the explicit human escape hatch: arm a strategy that has NOT\nyet cleared the >= FORWARD_TEST_MIN_DAYS net-positive forward-test precondition, recorded with a loud\n`live_override_launch` warning event. It never waives the regime gate or the 5 execution interlocks.",
+        "description": "Request body for the strategy launch-live flow: arm one strategy on a specific venue + asset\nwith a given budget. Confirm must be true (two-click safety); caps are set here and carried\nthrough to the live_caps upsert so the operator sees exactly what they agreed to.\n`override_paper` (default OFF) is the explicit human escape hatch: arm a strategy that has NOT\nyet cleared the >= PAPER_MIN_DAYS net-positive paper precondition, recorded with a loud\n`live_override_launch` warning event. It never waives the regime gate or the 5 execution interlocks.",
         "properties": {
           "budget": {
             "default": 100.0,
@@ -2984,9 +3054,9 @@
             "title": "Max Daily Loss",
             "type": "number"
           },
-          "override_forward_test": {
+          "override_paper": {
             "default": false,
-            "title": "Override Forward Test",
+            "title": "Override Paper",
             "type": "boolean"
           },
           "per_strategy_cap": {
@@ -3017,7 +3087,7 @@
         "type": "object"
       },
       "LaunchActivateResponse": {
-        "description": "Result of the launch-live flow for one strategy.\n`armed` = eligibility + the 5 interlocks cleared and the strategy is now live (status='live' written here).\n`forward_test_days` = forward-test maturity in days (None = no track yet).\n`readiness` = \"proven\" (>= FORWARD_TEST_MIN_DAYS forward days net-positive) or \"not yet proven\". This is now\na HARD precondition for arming, not merely advisory: a \"not yet proven\" strategy is refused (armed=False)\nunless the human sets `override_forward_test`.\n`overridden` = True when the human waived the forward-test precondition to arm an unproven strategy.",
+        "description": "Result of the launch-live flow for one strategy.\n`armed` = eligibility + the 5 interlocks cleared and the strategy is now live (status='live' written here).\n`paper_days` = paper maturity in days (None = no track yet).\n`readiness` = \"proven\" (>= PAPER_MIN_DAYS forward days net-positive) or \"not yet proven\". This is now\na HARD precondition for arming, not merely advisory: a \"not yet proven\" strategy is refused (armed=False)\nunless the human sets `override_paper`.\n`overridden` = True when the human waived the paper precondition to arm an unproven strategy.",
         "properties": {
           "armed": {
             "title": "Armed",
@@ -3037,7 +3107,12 @@
             "title": "Eligible",
             "type": "array"
           },
-          "forward_test_days": {
+          "overridden": {
+            "default": false,
+            "title": "Overridden",
+            "type": "boolean"
+          },
+          "paper_days": {
             "anyOf": [
               {
                 "type": "number"
@@ -3046,12 +3121,7 @@
                 "type": "null"
               }
             ],
-            "title": "Forward Test Days"
-          },
-          "overridden": {
-            "default": false,
-            "title": "Overridden",
-            "type": "boolean"
+            "title": "Paper Days"
           },
           "readiness": {
             "default": "not yet proven",
@@ -3156,21 +3226,6 @@
             "title": "Features",
             "type": "array"
           },
-          "forward_age_days": {
-            "title": "Forward Age Days",
-            "type": "number"
-          },
-          "forward_return_pct": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Forward Return Pct"
-          },
           "lineage": {
             "title": "Lineage",
             "type": "string"
@@ -3190,6 +3245,21 @@
           "origin": {
             "title": "Origin",
             "type": "string"
+          },
+          "paper_age_days": {
+            "title": "Paper Age Days",
+            "type": "number"
+          },
+          "paper_return_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paper Return Pct"
           },
           "pbo": {
             "title": "Pbo",
@@ -3233,7 +3303,7 @@
           "pbo",
           "status",
           "lineage",
-          "forward_age_days",
+          "paper_age_days",
           "live_ready",
           "signal_family",
           "signal_family_label",
@@ -4282,7 +4352,7 @@
         "type": "object"
       },
       "OverviewResponse": {
-        "description": "The aggregate read-out for the Overview surface (\"are we making money?\"): the \u03a3 of all standalone\nforward-test tracks. This is a pure read-out \u2014 there is NO pooled wallet and no cross-track allocation.",
+        "description": "The aggregate read-out for the Overview surface (\"are we making money?\"): the \u03a3 of all standalone\npaper tracks. This is a pure read-out \u2014 there is NO pooled wallet and no cross-track allocation.",
         "properties": {
           "costs": {
             "items": {
@@ -4458,10 +4528,6 @@
             "title": "By Origin",
             "type": "object"
           },
-          "forward_test": {
-            "title": "Forward Test",
-            "type": "integer"
-          },
           "graveyard": {
             "items": {
               "$ref": "#/components/schemas/GraveyardRow"
@@ -4481,6 +4547,10 @@
             "title": "Live",
             "type": "integer"
           },
+          "paper": {
+            "title": "Paper",
+            "type": "integer"
+          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -4488,7 +4558,7 @@
         },
         "required": [
           "total",
-          "forward_test",
+          "paper",
           "live",
           "killed",
           "by_origin",
@@ -5012,6 +5082,34 @@
           "rows"
         ],
         "title": "SettingsKeysResponse",
+        "type": "object"
+      },
+      "SimilarVersion": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "shared_blocks": {
+            "title": "Shared Blocks",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "status",
+          "shared_blocks"
+        ],
+        "title": "SimilarVersion",
         "type": "object"
       },
       "Skill": {
@@ -5893,6 +5991,40 @@
         ],
         "title": "VerdictsResponse",
         "type": "object"
+      },
+      "VersionBlocksResponse": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/BlockStat"
+            },
+            "title": "Blocks",
+            "type": "array"
+          },
+          "similar": {
+            "items": {
+              "$ref": "#/components/schemas/SimilarVersion"
+            },
+            "title": "Similar",
+            "type": "array"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "available",
+          "blocks",
+          "similar"
+        ],
+        "title": "VersionBlocksResponse",
+        "type": "object"
       }
     }
   },
@@ -6014,6 +6146,63 @@
           }
         },
         "summary": "Autonomy Tick Job"
+      }
+    },
+    "/blocks": {
+      "get": {
+        "operationId": "blocks_blocks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockLeaderboardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Blocks"
+      }
+    },
+    "/blocks/version/{version_id}": {
+      "get": {
+        "operationId": "version_blocks_blocks_version__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionBlocksResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Version Blocks"
       }
     },
     "/console/command": {
@@ -6632,7 +6821,7 @@
     },
     "/live/launch": {
       "post": {
-        "description": "Strategy launch-live flow: arm one gate-passed strategy on a chosen venue + asset with a given budget.\nThis is the ONLY path that launches a single strategy live \u2014 and the ONLY path that writes status='live'\n(on a confirmed, eligible launch). Forward-test maturity is now a HARD precondition: the strategy must have\n>= FORWARD_TEST_MIN_DAYS of net-positive forward evidence AND be in a proven regime to arm. `override_forward_test`\n(default OFF) lets a human arm an UNPROVEN strategy anyway, recorded with a loud `live_override_launch` warning;\nit never waives the regime gate. The 5 execution interlocks still apply in full at execute time (toggle ON +\nkeys present + gate passed + caps available + no kill-switch). `confirm` must be true (two-click safety).",
+        "description": "Strategy launch-live flow: arm one gate-passed strategy on a chosen venue + asset with a given budget.\nThis is the ONLY path that launches a single strategy live \u2014 and the ONLY path that writes status='live'\n(on a confirmed, eligible launch). Paper maturity is now a HARD precondition: the strategy must have\n>= PAPER_MIN_DAYS of net-positive forward evidence AND be in a proven regime to arm. `override_paper`\n(default OFF) lets a human arm an UNPROVEN strategy anyway, recorded with a loud `live_override_launch` warning;\nit never waives the regime gate. The 5 execution interlocks still apply in full at execute time (toggle ON +\nkeys present + gate passed + caps available + no kill-switch). `confirm` must be true (two-click safety).",
         "operationId": "live_launch_live_launch_post",
         "requestBody": {
           "content": {

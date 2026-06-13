@@ -260,7 +260,7 @@ def strategies(status: str | None = None, limit: int = 20) -> list[dict[str, Any
 
 @mcp.tool(
     description=(
-        "READ-ONLY. The N most recently-updated forward-test tracks (one standalone track per funded survivor; "
+        "READ-ONLY. The N most recently-updated paper tracks (one standalone track per funded survivor; "
         "there is no pooled wallet). Returns marked equity/return_pct. Reads only — never marks or moves money."
     ),
     annotations={"readOnlyHint": True, "idempotentHint": True},
@@ -293,7 +293,7 @@ def leaderboard(limit: int = 20) -> list[dict[str, Any]]:
 
 @mcp.tool(
     description=(
-        "READ-ONLY. The aggregate forward-test overview: Σ-equity curve across all standalone tracks, net PnL, "
+        "READ-ONLY. The aggregate paper overview: Σ-equity curve across all standalone tracks, net PnL, "
         "spend-by-category, and whether live is enabled. A pure read-out (no pooled wallet)."
     ),
     annotations={"readOnlyHint": True, "idempotentHint": True},

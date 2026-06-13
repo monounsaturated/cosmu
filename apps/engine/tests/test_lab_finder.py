@@ -7,14 +7,14 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from cosmu.config.settings import FORWARD_TEST_MIN_DAYS, Settings
+from cosmu.config.settings import PAPER_MIN_DAYS, Settings
 from cosmu.data.market import Bar
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.knowledge.store import Store
 from cosmu.lab.finder import StrategyFinder, VariantResult, build_grid
 from cosmu.master.live_eligibility import (
-    forward_clock_origin,
+    paper_clock_origin,
     live_eligibility_verdict,
     proven_regimes_for,
 )
@@ -104,10 +104,10 @@ def _bull_bars(n: int = 80) -> list[Bar]:
 
 
 def test_finder_promotion_opens_forward_clock_and_is_live_eligible(tmp_path):
-    # A finder survivor must reach the SAME forward-test clock as an evolution survivor: promotion now writes a
+    # A finder survivor must reach the SAME paper clock as an evolution survivor: promotion now writes a
     # `track_opened` event (clock origin + proven-regime passport) so master/live_eligibility can mature it. Before
-    # this, finder survivors had forward_clock_origin=None → forward_age_days 0 forever → never forward_ready → never
-    # armable (forward-test is HARD-enforced on the live-arm path), silently stranding every finder survivor. The
+    # this, finder survivors had paper_clock_origin=None → paper_age_days 0 forever → never forward_ready → never
+    # armable (paper is HARD-enforced on the live-arm path), silently stranding every finder survivor. The
     # fixture grid promotes nothing through the full Gate+holdout, so drive the promotion-persist path directly with a
     # net-positive, holdout-passing survivor, then prove the clock starts and the survivor becomes live-eligible.
     finder = _finder(tmp_path)
@@ -128,8 +128,8 @@ def test_finder_promotion_opens_forward_clock_and_is_live_eligible(tmp_path):
     vid = survivor.version_id
     assert vid is not None
 
-    # Promotion opened the forward-test clock and recorded the proven-regime passport (only the net-positive regime).
-    assert forward_clock_origin(finder.store, vid) is not None
+    # Promotion opened the paper clock and recorded the proven-regime passport (only the net-positive regime).
+    assert paper_clock_origin(finder.store, vid) is not None
     assert proven_regimes_for(finder.store, vid) == {"bull"}
     # The pre-existing finder_survivor event is still written (track_opened is ADDED, not a replacement).
     survivor_events = finder.store.rows(
@@ -143,11 +143,11 @@ def test_finder_promotion_opens_forward_clock_and_is_live_eligible(tmp_path):
     assert fresh.forward_ready is False
     assert fresh.eligible is False
 
-    # After a simulated >= FORWARD_TEST_MIN_DAYS window, net-positive AND in a proven regime → forward_ready + armable.
+    # After a simulated >= PAPER_MIN_DAYS window, net-positive AND in a proven regime → forward_ready + armable.
     matured = live_eligibility_verdict(
-        finder.store, vid, _bull_bars(), now=now + timedelta(days=FORWARD_TEST_MIN_DAYS + 5)
+        finder.store, vid, _bull_bars(), now=now + timedelta(days=PAPER_MIN_DAYS + 5)
     )
-    assert matured.forward_age_days >= FORWARD_TEST_MIN_DAYS
+    assert matured.paper_age_days >= PAPER_MIN_DAYS
     assert matured.forward_ready is True
     assert matured.regime_eligible is True
     assert matured.eligible is True

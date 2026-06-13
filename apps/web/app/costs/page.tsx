@@ -132,7 +132,7 @@ export default async function CostsPage() {
 }
 
 // ─── Verdict band ───────────────────────────────────────────────────────────────
-// The hero read-out. The opex-vs-equity ratio is the single trust number — total costs ÷ simulation
+// The hero read-out. The opex-vs-equity ratio is the single trust number — total costs ÷ paper
 // equity — toned green (≤2%) / gold (≤10%) / red (>10%). Monthly opex and LLM spend sit beside it as
 // the two raw figures that feed it. Honest "—" for the ratio until the engine reports equity.
 function VerdictBand({
@@ -190,7 +190,7 @@ function VerdictBand({
             </div>
           ) : (
             <p className="mt-2 text-[11px] leading-relaxed text-quiet">
-              total costs ÷ simulation equity — resolves once the engine reports equity.
+              total costs ÷ paper equity — resolves once the engine reports equity.
             </p>
           )}
         </div>

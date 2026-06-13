@@ -72,7 +72,7 @@ Each cell = a hypothesis that MUST carry a pre-registered disconfirmer.
 
 **Per-tick loop:** pick the least-explored cells → LLM authors N typed `StrategySpec` drafts (no magic
 numbers) → register EACH as a trial → cheap screen on Modal (parallel) → Gate the screened survivors
-with **global deflated-Sharpe + BH-FDR over the whole trial history** → open forward-test tracks for
+with **global deflated-Sharpe + BH-FDR over the whole trial history** → open paper tracks for
 gate-passers → write verdicts.
 
 > 🔴 **NON-NEGOTIABLE:** Generating MANY drafts is the #1 way to manufacture a fake winner (data

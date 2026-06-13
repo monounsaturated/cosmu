@@ -291,7 +291,7 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     #   * NON-CAUSAL CONTROLS (weather, astro ephemeris, exotic earthquakes/Kp, daily flight counts) are
     #     wired honestly so the Gate has a known-false baseline to KILL — they are NEVER expected to survive.
     #   * google_trends carries an explicit REVISION-HAZARD note: it rescales history on every re-fetch
-    #     (look-ahead contamination) — REVIEW/NO-GO for backtest, forward-test alerting only until validated.
+    #     (look-ahead contamination) — REVIEW/NO-GO for backtest, paper alerting only until validated.
     # =====================================================================================================
     # --- Extended FRED macro (free, key optional; ALFRED initial-release vintages → available_at == realtime_start) ---
     FeatureDefinition(
@@ -400,7 +400,7 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
             "REVISION HAZARD: Trends RESCALES all historical values whenever the query window changes, so a past "
             "week's value re-fetched today differs from what was knowable then — this is silent look-ahead "
             "contamination. We stamp available_at = the actual fetch time so the store surfaces (never hides) the "
-            "revision. REVIEW / likely NO-GO for backtest; acceptable only for forward-test alerting (each bar is a "
+            "revision. REVIEW / likely NO-GO for backtest; acceptable only for paper alerting (each bar is a "
             "fresh current snapshot). Low-confidence — must earn OOS evidence before any live strategy."
         ),
         transform_version="gtrends-weekly-v1",

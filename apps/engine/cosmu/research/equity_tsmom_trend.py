@@ -4,7 +4,7 @@
 # Faber "A Quantitative Approach to Tactical Asset Allocation" 2007 — the 10-month/12-month timing rule). The edge is
 # external + decades-deep, so it does NOT need our in-sample Gate (which is an OVERFITTING guard for NOVEL mined
 # edges). The validators here are: (a) the external literature, (b) a positive OOS-net-of-fees check on OUR data that
-# BEATS buy-and-hold SPY risk-adjusted, on the REAL purged+embargoed holdout, (c) the LIVE forward-test. This module
+# BEATS buy-and-hold SPY risk-adjusted, on the REAL purged+embargoed holdout, (c) the LIVE paper. This module
 # does (b) and arms (c). It NEVER touches / lowers the 0.95 Gate.
 #
 # THE RULE (monthly, signal at month-end t, trade t+1 — NO look-ahead):
@@ -347,7 +347,7 @@ def validate(lookback: int = LOOKBACK_MONTHS) -> dict:
     print(f"  (3) BEATS B&H SPY risk-adjusted (full cycle)?     {beats_risk_adj}  "
           f"[Sharpe {tsm_stats.ann_sharpe:+.2f} vs {bench_stats.ann_sharpe:+.2f} -> {beats_sharpe}; "
           f"maxDD {tsm_stats.max_dd:.1%} vs {bench_stats.max_dd:.1%} (~{tsm_stats.max_dd / bench_stats.max_dd:.0%}) -> {lower_dd}]")
-    print(f"  ==> {'DEPLOYABLE — arm the live forward-test' if deployable else 'NOT deployable on our data (honest FAIL)'}")
+    print(f"  ==> {'DEPLOYABLE — arm the live paper' if deployable else 'NOT deployable on our data (honest FAIL)'}")
     print("=" * 104)
 
     sig = current_signal(series, last_complete, lookback)

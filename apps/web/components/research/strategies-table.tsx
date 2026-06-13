@@ -21,8 +21,8 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { GaugeBar, SignedBar } from "@/components/ui/viz";
 import { cn, formatPct } from "@/lib/utils";
 
-// Real maturity threshold (apps/engine FORWARD_TEST_MIN_DAYS): a forward track is live-ready at 30 days.
-const FORWARD_TEST_MIN_DAYS = 30;
+// Real maturity threshold (apps/engine PAPER_MIN_DAYS): a paper track is live-ready at 30 days.
+const PAPER_MIN_DAYS = 30;
 // Reference scalars for the relative gauges — a deflated Sharpe of ~2 is "strong"; clamp the bar there so
 // the visual reads occupancy toward a good score without ever implying a value beyond the real number shown.
 const SHARPE_REF = 2;
@@ -36,12 +36,12 @@ const FAMILIES: { id: string; label: string }[] = [
   { id: "social", label: "Social" }
 ];
 
-// Map a raw engine status onto the lifecycle facet {lab → backtest → simulation → live → killed}.
-type LifeStatus = "lab" | "screened" | "forward" | "live" | "killed";
+// Map a raw engine status onto the lifecycle facet {lab → backtest → paper → live → killed}.
+type LifeStatus = "lab" | "screened" | "paper" | "live" | "killed";
 const STATUS_LABELS: Record<LifeStatus, string> = {
   lab: "Lab",
   screened: "Backtest",
-  forward: "Simulation",
+  paper: "Paper",
   live: "Live",
   killed: "Killed"
 };
@@ -49,14 +49,14 @@ function lifeStatusOf(status: string | null | undefined): LifeStatus {
   const s = (status ?? "").toLowerCase();
   if (s === "killed" || s === "dead" || s === "graveyard") return "killed";
   if (s === "live") return "live";
-  if (s === "forward_test" || s === "forward" || s === "paper") return "forward";
+  if (s === "paper" || s === "forward_test" || s === "forward") return "paper";
   if (s === "screening" || s === "screened" || s === "validating" || s === "optimizing") return "screened";
   return "lab";
 }
 const STATUS_VARIANT: Record<LifeStatus, "warn" | "iris" | "up" | "info" | "down"> = {
   lab: "warn",
   screened: "iris",
-  forward: "up",
+  paper: "up",
   live: "info",
   killed: "down"
 };
@@ -80,21 +80,21 @@ function facetDisplay(key: FacetKey, value: string): string {
 // Sortable numeric columns — each maps the operator's chosen lens onto a real row scalar. The default is
 // `score` (deflated Sharpe), the honest house ranking. `desc` is the natural reading for every column
 // here (biggest score / return / most trades first), so a fresh click on a column starts descending.
-type SortKey = "score" | "net" | "oos" | "pbo" | "forward";
+type SortKey = "score" | "net" | "oos" | "pbo" | "paper";
 const SORT_VALUE: Record<SortKey, (r: LeaderboardRow) => number> = {
   score: (r) => (Number.isFinite(r.deflated_sharpe) ? r.deflated_sharpe : -Infinity),
   net: (r) => r.net_pct,
   oos: (r) => r.track_return_pct,
   pbo: (r) => (Number.isFinite(r.pbo) ? r.pbo : Infinity),
-  forward: (r) => r.forward_age_days
+  paper: (r) => r.paper_age_days
 };
 
-export function StrategiesTable({ rows, context = "leaderboard" }: { rows: LeaderboardRow[]; context?: "leaderboard" | "simulation" }) {
+export function StrategiesTable({ rows, context = "leaderboard" }: { rows: LeaderboardRow[]; context?: "leaderboard" | "paper" }) {
   const router = useRouter();
-  // On the Simulation surface we surface the FORWARD clock as its own column, so a day-0 track's
-  // BACKTEST number can never be misread as forward performance (the operator's flag). The leaderboard
+  // On the Paper surface we surface the FORWARD clock as its own column, so a day-0 track's
+  // BACKTEST number can never be misread as paper performance (the operator's flag). The leaderboard
   // keeps its dense ranked view. Either way, the % columns are labelled "Backtest OOS" — never bare "Return".
-  const showForward = context === "simulation";
+  const showPaper = context === "paper";
   const [query, setQuery] = useState("");
   const [family, setFamily] = useState<string | "all">("all");
   // Each orthogonal facet holds a set of selected values (empty = no constraint).
@@ -292,13 +292,13 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
               <TH>Family · edge</TH>
               <TH>Status</TH>
               <TH>Class · venue · tf</TH>
-              {showForward ? (
+              {showPaper ? (
                 <SortableTH
-                  label="Forward"
-                  sortKey="forward"
+                  label="Paper"
+                  sortKey="paper"
                   sort={sort}
                   onToggle={toggleSort}
-                  tip="Live-data forward test SINCE the Gate funded this track (net of fees). This is the only number that proves the edge holds out-of-sample in real time. A just-funded track reads day 0 / — until it accrues forward history."
+                  tip="Live-data paper test SINCE the Gate funded this track (net of fees). This is the only number that proves the edge holds out-of-sample in real time. A just-funded track reads day 0 / — until it accrues paper history."
                 />
               ) : null}
               <SortableTH
@@ -306,7 +306,7 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
                 sortKey="oos"
                 sort={sort}
                 onToggle={toggleSort}
-                tip="Out-of-sample backtest return (gross). This is HISTORICAL — it is NOT forward performance. A day-0 forward track still shows its backtest number here."
+                tip="Out-of-sample backtest return (gross). This is HISTORICAL — it is NOT paper performance. A day-0 paper track still shows its backtest number here."
               />
               <SortableTH label="Net" sortKey="net" sort={sort} onToggle={toggleSort} tip="Net-of-fee return on this Version's standalone track. The signed bar reads sign + size relative to the cohort; the digits are the source of truth." />
               <SortableTH label="Score" sortKey="score" sort={sort} onToggle={toggleSort} tip="Deflated out-of-sample Sharpe — the risk-adjusted house ranking. The gauge fills toward a strong (~2) score." />
@@ -341,7 +341,7 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
                   <TD className="text-[11.5px] text-muted">
                     {row.asset_class} · {row.venue} · {row.timeframe}
                   </TD>
-                  {showForward ? <ForwardCell row={row} /> : null}
+                  {showPaper ? <PaperCell row={row} /> : null}
                   <TD className={cn("text-right tabular", row.track_return_pct >= 0 ? "text-up" : "text-down")}>
                     {formatPct(row.track_return_pct)}
                   </TD>
@@ -417,25 +417,25 @@ function SortableTH({
   );
 }
 
-// The Forward cell on the Simulation surface. HONEST by construction: the leaderboard contract carries the
-// forward-test CLOCK (forward_age_days / live_ready) AND the REAL marked forward return (forward_return_pct —
-// net of fees, since funding). We show the live forward % over the day clock; we NEVER borrow the backtest %
-// to stand in for forward performance. A just-funded / un-marked track has `forward_return_pct == null`, so it
+// The Paper cell on the Paper surface. HONEST by construction: the leaderboard contract carries the
+// paper CLOCK (paper_age_days / live_ready) AND the REAL marked paper return (paper_return_pct —
+// net of fees, since funding). We show the live paper % over the day clock; we NEVER borrow the backtest %
+// to stand in for paper performance. A just-funded / un-marked track has `paper_return_pct == null`, so it
 // reads "day 0 · 0%" (the honest day-0 truth) — never the rosy backtest. A flat/negative marked track shows
 // its TRUE (0 / negative) number.
-function ForwardCell({ row }: { row: LeaderboardRow }) {
-  const days = Number.isFinite(row.forward_age_days) ? row.forward_age_days : 0;
+function PaperCell({ row }: { row: LeaderboardRow }) {
+  const days = Number.isFinite(row.paper_age_days) ? row.paper_age_days : 0;
   const whole = Math.floor(days);
   // null/undefined = NO marked trajectory yet (day-0 / never marked). Show an honest 0%, NOT the backtest.
-  const marked = typeof row.forward_return_pct === "number" && Number.isFinite(row.forward_return_pct);
-  const fwd = marked ? (row.forward_return_pct as number) : 0;
+  const marked = typeof row.paper_return_pct === "number" && Number.isFinite(row.paper_return_pct);
+  const fwd = marked ? (row.paper_return_pct as number) : 0;
   if (days < 1) {
-    // Just funded: day 0, no forward history. The % is the honest 0 — never the backtest number.
+    // Just funded: day 0, no paper history. The % is the honest 0 — never the backtest number.
     return (
       <TD className="text-right">
         <div className="tabular text-quiet">day 0 · {formatPct(fwd)}</div>
-        <div className="text-[10.5px] uppercase tracking-wide text-quiet">no forward yet</div>
-        <GaugeBar value={0} max={FORWARD_TEST_MIN_DAYS} tone="muted" className="mt-1 ml-auto w-20" height={4} />
+        <div className="text-[10.5px] uppercase tracking-wide text-quiet">no paper yet</div>
+        <GaugeBar value={0} max={PAPER_MIN_DAYS} tone="muted" className="mt-1 ml-auto w-20" height={4} />
       </TD>
     );
   }
@@ -445,10 +445,10 @@ function ForwardCell({ row }: { row: LeaderboardRow }) {
       <div className={cn("text-[10.5px] uppercase tracking-wide", row.live_ready ? "text-up" : "text-quiet")}>
         {whole}d · {row.live_ready ? "matured" : "maturing"}
       </div>
-      {/* Forward-age progress toward the 30-day live-ready threshold — the bar reads maturity at a glance. */}
+      {/* Paper-age progress toward the 30-day live-ready threshold — the bar reads maturity at a glance. */}
       <GaugeBar
-        value={Math.min(whole, FORWARD_TEST_MIN_DAYS)}
-        max={FORWARD_TEST_MIN_DAYS}
+        value={Math.min(whole, PAPER_MIN_DAYS)}
+        max={PAPER_MIN_DAYS}
         tone={row.live_ready ? "up" : "iris"}
         className="mt-1 ml-auto w-20"
         height={4}

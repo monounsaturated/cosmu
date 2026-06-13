@@ -1,7 +1,7 @@
 "use client";
 
 // module: the strategy lifecycle stage strip. Renders on EVERY lifecycle page so you can move between
-// the 4 stages from anywhere. The mental model reads left-to-right: Discover → Backtest → Simulation →
+// the 4 stages from anywhere. The mental model reads left-to-right: Discover → Backtest → Paper →
 // Live. The current stage is highlighted; every tab is a working link.
 //
 // Relationship to the bottom/section nav: the section nav (Overview / Lab / Strategies / Live / …) is
@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 const STAGES = [
   { href: "/lab", label: "Discover", desc: "idea → spec", icon: Microscope, step: "1" },
   { href: "/strategies", label: "Backtest", desc: "historical data", icon: ListChecks, step: "2" },
-  { href: "/forward-test", label: "Simulation", desc: "live data, no money", icon: LineChart, step: "3" },
+  { href: "/paper", label: "Paper", desc: "live data, no money", icon: LineChart, step: "3" },
   { href: "/live", label: "Live", desc: "real capital", icon: Radio, gated: true, step: "4" }
 ];
 

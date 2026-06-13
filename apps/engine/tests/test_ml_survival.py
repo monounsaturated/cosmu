@@ -66,7 +66,7 @@ def _seed_labeled_outcomes(store: Store, n: int) -> None:
             sid = b.insert("strategies", {"name": f"s{i}", "thesis": "t", "origin": "seed", "created_at": utcnow()})
             vid = b.insert(
                 "strategy_versions",
-                {"strategy_id": sid, "spec": {}, "generated_code": "x", "code_hash": f"h{i}", "params": {}, "origin": "seed", "status": "forward_test" if strong else "killed", "created_at": utcnow()},
+                {"strategy_id": sid, "spec": {}, "generated_code": "x", "code_hash": f"h{i}", "params": {}, "origin": "seed", "status": "paper" if strong else "killed", "created_at": utcnow()},
             )
             b.insert(
                 "backtests",

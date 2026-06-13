@@ -59,7 +59,7 @@ Memory = working set · this = reasoning history · the one live plan (HANDOFF_N
 
 **2026-06-06 · "Spot-only wall" is SUSPECT** — The 2026-06-05 "powered FAILs → spot-only falsified" conclusion ran on a BROKEN harness (empty bars, fake netflow, bad funding). Re-run on the honest harness before treating spot-only as a wall. *Supersedes: 2026-06-05 spot-only-wall-confirmed.* *Status: live.*
 
-**2026-06-06 · Honest harness landed** — Killed fake tier-0 `exchange_netflow`, fixed funding accrual + FRED first-release vintage, added registry⊆routable guard, finder forward-test clock, usable-web route reconciliation. *Evidence:* PRs #130/#131/#132, main `3522c00`; full suite 942 green (`02ccf6a` hermetic-test fix). *Status: live.*
+**2026-06-06 · Honest harness landed** — Killed fake tier-0 `exchange_netflow`, fixed funding accrual + FRED first-release vintage, added registry⊆routable guard, finder paper clock, usable-web route reconciliation. *Evidence:* PRs #130/#131/#132, main `3522c00`; full suite 942 green (`02ccf6a` hermetic-test fix). *Status: live.*
 
 **2026-06-06 · Compute placement standard (LOCKED)** — Build/test → local worktree; heavy >10min compute + long services → Modal (live, secret synced); always-on/cron → Railway; orchestration/ultracode → the local session (surgical). *Evidence:* `memory/compute_placement.md`. *Status: live.*
 

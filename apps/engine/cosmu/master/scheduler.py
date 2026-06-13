@@ -3,7 +3,7 @@
 # is set, else the deterministic template, consulting long-term memory + skills) → run them through the
 # DETERMINISTIC FarmLoop gate/screen + flywheel (memory + curator, inside the loop) → REPLICATE the gate-passed
 # survivors (evolution.run_evolution_cohort: isolate each winning signal, graft/recombine it, route the cohort
-# back through the SAME gate + FDR) → size gate-passed survivors and open a standalone forward-test track per
+# back through the SAME gate + FDR) → size gate-passed survivors and open a standalone paper track per
 # survivor (orchestrator.fund_tracks_from_survivors) → emit human-facing recommendations. inputs: a Store (+ optional injectable ingest/market/llm seams); outputs:
 # a TickReport + persisted audit (events ledger) + recommendations rows. invariants: the scorer/Gate stay OUT of
 # every LLM path and alone decide survival + money; the LLM only PROPOSES; LIVE STAYS OFF (sim fills only) —
@@ -116,7 +116,7 @@ def autonomy_status(store: Store) -> AutonomyStatus:
         )
         last_action = (
             f"authored {summary.authored}, {summary.gated_passed} cleared the gate, "
-            f"funded {summary.funded} forward-test track(s), {summary.recommendations} recommendation(s)"
+            f"funded {summary.funded} paper track(s), {summary.recommendations} recommendation(s)"
         )
     next_action = "paused — resume to run the next tick" if paused else "run one bounded research+fund tick"
     return AutonomyStatus(
@@ -282,7 +282,7 @@ def run_tick(
         store.append_event(actor="master", kind="autonomy_evolution_failed", ref_type="autonomy", payload={"error": type(exc).__name__})
         notify_tick_error(notifier, kind="autonomy_evolution_failed", error=type(exc).__name__)
 
-    # 4) OPEN a standalone forward-test track per gate-passed survivor (sim fills only — live
+    # 4) OPEN a standalone paper track per gate-passed survivor (sim fills only — live
     # stays OFF inside fund_tracks_from_survivors). Best-effort + offline-safe; a market hiccup leaves it 0.
     funded = 0
     try:
@@ -361,7 +361,7 @@ def _emit_recommendations(store: Store, *, survivors: list[str], ingested: dict[
             "recommendations",
             {
                 "ts": utcnow(),
-                "kind": "forward_test_promotion_watch",
+                "kind": "paper_promotion_watch",
                 "body": body,
                 "state": "open",
                 "payload": {"version_name": name, "requires": ["4w_sim_survival", "regime_match", "caps_available"]},

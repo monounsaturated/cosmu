@@ -38,6 +38,8 @@ class CohortSummaryResponse(BaseModel):
     survivors: list[EvaluatedStrategy]
     graveyard: list[EvaluatedStrategy]
     pine_notes: list[str]
+    # Candidates skipped by the block-registry combo-hash dedup (same hypothesis already tested).
+    duplicates: int = 0
 
 
 class GraveyardRow(BaseModel):
@@ -50,7 +52,7 @@ class GraveyardRow(BaseModel):
 
 class PopulationResponse(BaseModel):
     total: int
-    forward_test: int   # forward-test + live (everything past the gate, funded)
+    paper: int   # paper + live (everything past the gate, funded)
     live: int           # of which armed on real capital
     killed: int
     by_origin: dict[str, int]
@@ -80,3 +82,35 @@ class PineSample(BaseModel):
 
 class PineSamplesResponse(BaseModel):
     samples: list[PineSample]
+
+
+class BlockStat(BaseModel):
+    """One row of the block leaderboard — OBSERVATIONAL ONLY (which building blocks keep appearing in
+    Gate-funded strategies). Never an input to the scorer/Gate/FDR."""
+
+    block_hash: str
+    kind: str            # 'signal' | 'filter' | 'setup' | 'exit' | 'sizing'
+    label: str
+    n_versions: int
+    n_funded: int
+    funded_rate: float
+
+
+class BlockLeaderboardResponse(BaseModel):
+    connected: bool = True
+    available: bool      # False until the 2026-06-11 strategy_blocks migration has been applied
+    rows: list[BlockStat]
+
+
+class SimilarVersion(BaseModel):
+    version_id: str
+    name: str
+    status: str
+    shared_blocks: int
+
+
+class VersionBlocksResponse(BaseModel):
+    version_id: str
+    available: bool
+    blocks: list[BlockStat]          # this version's blocks, with their population-wide stats
+    similar: list[SimilarVersion]    # versions sharing >=1 block, ranked by overlap

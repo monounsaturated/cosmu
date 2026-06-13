@@ -389,7 +389,7 @@ def _annualization(timeframe: str, rebalance: int) -> int:
 # out-of-sample (holdout net > 0) and beats its only honest hurdle (cash = 0; a dollar-neutral book has no beta
 # to ride), but it STOPS on the 0.95 in-sample Gate purely on DEPTH — too few non-overlapping rebalances drive the
 # deflated-Sharpe below 0.95 (n=16 -> DSR 0.367). That is the textbook two-lane mis-route the lane_router exists to
-# fix: a documented-style, positive-OOS, beats-benchmark edge belongs in the DEPLOY lane (forward-test it on real
+# fix: a documented-style, positive-OOS, beats-benchmark edge belongs in the DEPLOY lane (paper it on real
 # prices), NOT the in-sample overfitting Gate. We do NOT touch / lower the 0.95 Gate — this is a SEPARATE, honest
 # deployment bar, evaluated with a FINER rebalance + the FULL perp history so the non-overlapping n is as deep as
 # the data honestly allows (more independent periods => a fairer OOS read, NOT a softer one).
@@ -749,7 +749,7 @@ def _print_deploy(v: dict) -> None:
     print(f"  (1) REAL-HOLDOUT net>0 + DSR>=0 ?   {v['holdout_positive']}")
     print(f"  (2) BEATS cash hurdle (net>0, SR>0)?{v['beats_cash']}")
     print(f"  (3) robust (in-sample net>0)?       {v['robust']}")
-    print(f"  ==> {'DEPLOYABLE — arm the forward-test' if v['deployable'] else 'NOT deployable on this data'}")
+    print(f"  ==> {'DEPLOYABLE — arm the paper' if v['deployable'] else 'NOT deployable on this data'}")
     cs = v["current_signal"]
     print(f"  CURRENT book: LONG {cs['long']}  SHORT {cs['short']}")
     print(f"  note: {v['venue_note']}")

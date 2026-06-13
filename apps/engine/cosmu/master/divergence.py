@@ -1,6 +1,6 @@
-# intent: the SIM-vs-BACKTEST divergence signal per forward-test track — an EARLY WARNING that a funded track's
+# intent: the SIM-vs-BACKTEST divergence signal per paper track — an EARLY WARNING that a funded track's
 # REAL marked forward return has stopped tracking the backtest it was funded on (alpha-decay / regime-shift).
-# inputs: the track's marked forward return %, its forward-test age in days, the backtest OOS return % and the
+# inputs: the track's marked forward return %, its paper age in days, the backtest OOS return % and the
 # OOS window length in days; outputs: a status ("insufficient" | "tracking" | "diverging"), the signed gap in
 # percentage points, and the expected forward return over the marked window. invariants: fully deterministic +
 # LLM-free (pure arithmetic on returns + a clock); MONITORING ONLY — it NEVER gates, NEVER moves money, NEVER
@@ -31,7 +31,7 @@ DivergenceStatus = Literal["insufficient", "tracking", "diverging"]
 
 @dataclass(frozen=True)
 class Divergence:
-    """The SIM-vs-backtest divergence read-out for one standalone forward-test track.
+    """The SIM-vs-backtest divergence read-out for one standalone paper track.
 
     `status`:
       - "insufficient": the marked window is too short (< DIVERGENCE_MIN_DAYS) or an input is missing/degenerate —
@@ -41,11 +41,11 @@ class Divergence:
       - "diverging":     |gap| exceeds DIVERGENCE_GAP_PCT — an early warning of alpha-decay / regime-shift; the
         operator should look. This is SURFACED, NEVER ENFORCED.
 
-    `gap_pct`           = forward_return_pct - expected_return_pct (signed percentage points; negative = the live
+    `gap_pct`           = paper_return_pct - expected_return_pct (signed percentage points; negative = the live
                           track is UNDER-performing its backtest, the usual decay direction). 0.0 when insufficient.
     `expected_return_pct` = the backtest OOS return pro-rated to the marked forward window
                           (backtest_oos_return_pct * marked_days / backtest_oos_days). 0.0 when insufficient.
-    `marked_days`       = the forward-test days actually used for the comparison (clamped at >= 0).
+    `marked_days`       = the paper days actually used for the comparison (clamped at >= 0).
     """
 
     status: DivergenceStatus
@@ -71,15 +71,15 @@ def _finite(value: object) -> float | None:
 
 
 def divergence(
-    forward_return_pct: object,
-    forward_age_days: object,
+    paper_return_pct: object,
+    paper_age_days: object,
     backtest_oos_return_pct: object,
     backtest_oos_days: object,
     *,
     min_days: float = DIVERGENCE_MIN_DAYS,
     gap_threshold_pct: float = DIVERGENCE_GAP_PCT,
 ) -> Divergence:
-    """Compute the SIM-vs-backtest divergence for one forward-test track.
+    """Compute the SIM-vs-backtest divergence for one paper track.
 
     The honest comparison is RATE-BASED: a 5-day forward return can only be compared to the backtest by pro-rating
     the backtest's total OOS return to the SAME 5-day window. We compute the backtest's expected return over the
@@ -90,8 +90,8 @@ def divergence(
     inputs is missing/non-numeric/NaN/inf; or the backtest OOS window length is non-positive (can't pro-rate). This
     is a MONITORING read-out only — it never gates, never moves money, never touches the scorer/FDR/Gate path.
     """
-    fwd = _finite(forward_return_pct)
-    days = _finite(forward_age_days)
+    fwd = _finite(paper_return_pct)
+    days = _finite(paper_age_days)
     bt_return = _finite(backtest_oos_return_pct)
     bt_days = _finite(backtest_oos_days)
 

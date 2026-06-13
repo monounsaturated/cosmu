@@ -1,4 +1,4 @@
-# intent: SIM→LIVE VARIANCE ATTRIBUTION — decompose the divergence between a track's sim forward-test and its
+# intent: SIM→LIVE VARIANCE ATTRIBUTION — decompose the divergence between a track's sim paper and its
 # realized live results into named, signed buckets (fees · slippage · funding · signal-decay · regime) plus an
 # honest residual, so "the backtest was a lie" becomes "the backtest was a lie BECAUSE …". inputs: a sim reference
 # edge + a realized live edge + the per-leg sim/live cost basis + the regime mix + the live return series (for the

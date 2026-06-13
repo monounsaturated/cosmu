@@ -194,7 +194,7 @@ def test_arm_registers_control_plane_rows_and_seeds_track(monkeypatch):
     # SAME rows the finder writes
     assert store.row("SELECT 1 FROM strategies WHERE name=?", (arm.STRATEGY_NAME,)) is not None
     sv = store.row("SELECT status, origin, spec FROM strategy_versions WHERE id=?", (vid,))
-    assert sv["status"] == "forward_test" and sv["origin"] == "documented"
+    assert sv["status"] == "paper" and sv["origin"] == "documented"
     assert store.row("SELECT 1 FROM backtests WHERE strategy_version_id=? AND kind='screen'", (vid,)) is not None
     track = store.row("SELECT equity, return_pct FROM tracks WHERE strategy_version_id=?", (vid,))
     assert track is not None

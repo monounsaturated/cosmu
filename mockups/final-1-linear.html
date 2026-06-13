@@ -1,0 +1,1569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cosmu · F1 Linear</title>
+<style>
+/* ── Tokens: desaturated Geist-leaning chrome ── */
+:root {
+  --bg:        oklch(0.145 0.010 285);
+  --surf:      oklch(0.182 0.011 285);
+  --surf2:     oklch(0.215 0.012 285);
+  --surf3:     oklch(0.252 0.013 285);
+  --fg:        oklch(0.960 0.004 285);
+  --muted:     oklch(0.64  0.009 285);
+  --quiet:     oklch(0.48  0.008 285);
+  --hairline:  oklch(0.232 0.010 285);
+  --border:    oklch(0.268 0.011 285);
+  --border-s:  oklch(0.330 0.013 285);
+  --iris:      oklch(0.66  0.19  290);
+  --iris-s:    oklch(0.74  0.14  290);
+  --iris-dim:  oklch(0.66  0.19  290 / 0.13);
+  --iris-mid:  oklch(0.66  0.19  290 / 0.28);
+  --up:        oklch(0.76  0.15  160);
+  --up-dim:    oklch(0.76  0.15  160 / 0.13);
+  --down:      oklch(0.70  0.17   18);
+  --down-dim:  oklch(0.70  0.17   18 / 0.13);
+  --gold:      oklch(0.82  0.14   85);
+  --gold-dim:  oklch(0.82  0.14   85 / 0.13);
+  --warn:      oklch(0.82  0.14   85);
+  --sidebar-w: 192px;
+  --header-h:  48px;
+  --peek-w:    480px;
+  --r:         4px;
+  --r-sm:      3px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{color-scheme:dark;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+  background:var(--bg);
+  color:var(--fg);
+  -webkit-font-smoothing:antialiased;
+  font-feature-settings:"cv05" 1,"ss01" 1,"calt" 1;
+  letter-spacing:-0.005em;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+.mono{font-family:"SF Mono","Fira Code","Cascadia Code",ui-monospace,monospace;font-variant-numeric:tabular-nums slashed-zero}
+.tab{font-variant-numeric:tabular-nums slashed-zero}
+.up{color:var(--up)}.dn{color:var(--down)}.gold{color:var(--gold)}.iris{color:var(--iris-s)}.muted{color:var(--muted)}.quiet{color:var(--quiet)}
+
+/* ── Shell ── */
+.shell{display:flex;min-height:100vh}
+
+/* ── Sidebar ── */
+.sidebar{
+  position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;
+  background:var(--surf);border-right:1px solid var(--hairline);
+  display:flex;flex-direction:column;z-index:50;flex-shrink:0;
+}
+.sb-logo{
+  height:var(--header-h);display:flex;align-items:center;gap:9px;
+  padding:0 14px;border-bottom:1px solid var(--hairline);flex-shrink:0;
+}
+.sb-mark{
+  width:22px;height:22px;border-radius:5px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--iris) 0%,oklch(0.62 0.16 265) 100%);
+  display:flex;align-items:center;justify-content:center;
+}
+.sb-mark svg{width:12px;height:12px}
+.sb-name{font-size:13.5px;font-weight:700;letter-spacing:-0.02em;color:var(--fg)}
+.sb-sub{font-size:9px;color:var(--quiet);font-weight:500;letter-spacing:.07em;text-transform:uppercase}
+.sb-nav{flex:1;overflow-y:auto;padding:6px 6px 0}
+.nav-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:5px 10px;border-radius:var(--r-sm);
+  cursor:pointer;color:var(--muted);font-size:12.5px;font-weight:500;
+  transition:background 120ms,color 120ms;user-select:none;
+  border:none;background:transparent;width:100%;text-align:left;
+}
+.nav-item:hover{background:var(--surf2);color:var(--fg)}
+.nav-item.active{background:var(--iris-dim);color:var(--iris-s)}
+.nav-left{display:flex;align-items:center;gap:7px}
+.nav-item svg{width:14px;height:14px;flex-shrink:0;opacity:.65}
+.nav-item.active svg{opacity:1}
+.nav-count{
+  font-size:10px;font-weight:600;background:var(--surf3);color:var(--quiet);
+  border-radius:999px;padding:1px 5px;min-width:18px;text-align:center;
+  font-variant-numeric:tabular-nums;
+}
+.nav-item.active .nav-count{background:var(--iris-mid);color:var(--iris-s)}
+.sb-section-label{
+  font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--quiet);padding:10px 10px 3px;display:block;
+}
+.sb-footer{padding:6px;border-top:1px solid var(--hairline);flex-shrink:0}
+
+/* density toggle */
+.density-toggle{
+  display:flex;border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;width:100%;
+}
+.dt-btn{
+  flex:1;padding:4px 0;font-size:10.5px;font-weight:500;cursor:pointer;
+  border:none;background:transparent;color:var(--quiet);transition:background 100ms,color 100ms;
+  font-family:inherit;
+}
+.dt-btn.active{background:var(--surf3);color:var(--iris-s)}
+.dt-btn:hover:not(.active){background:var(--surf2);color:var(--muted)}
+
+/* ── Main ── */
+.main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-width:0}
+
+/* ── Header ── */
+.header{
+  position:sticky;top:0;height:var(--header-h);z-index:40;
+  background:var(--surf);border-bottom:1px solid var(--hairline);
+  display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;
+}
+.dash-strip{
+  display:flex;align-items:center;gap:1px;font-size:11.5px;color:var(--muted);
+  flex:1;overflow:hidden;white-space:nowrap;min-width:0;
+}
+.ds-item{display:flex;align-items:center;gap:3px;white-space:nowrap;flex-shrink:0}
+.ds-sep{color:var(--border-s);margin:0 4px;user-select:none}
+.ds-label{color:var(--quiet);font-size:11px}
+
+/* ── Pages ── */
+.page{display:none;flex:1;min-height:0;flex-direction:column}
+.page.active{display:flex}
+
+/* ── Toolbar ── */
+.toolbar{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 16px 0;flex-shrink:0;flex-wrap:wrap;
+}
+.chip-row{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.chip{
+  display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;
+  font-size:11.5px;font-weight:500;cursor:pointer;border:1px solid var(--border);
+  background:transparent;color:var(--muted);transition:all 120ms;white-space:nowrap;
+}
+.chip:hover{border-color:var(--border-s);color:var(--fg)}
+.chip.active{background:var(--iris-dim);border-color:var(--iris-mid);color:var(--iris-s)}
+.chip-dot{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.75}
+
+/* col picker */
+.col-picker-wrap{position:relative;margin-left:auto;flex-shrink:0}
+.btn-col-picker{
+  display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--r-sm);
+  font-size:11.5px;font-weight:500;cursor:pointer;border:1px solid var(--border);
+  background:transparent;color:var(--muted);transition:all 120ms;white-space:nowrap;
+}
+.btn-col-picker:hover{border-color:var(--border-s);color:var(--fg)}
+.col-picker-menu{
+  display:none;position:absolute;right:0;top:calc(100% + 5px);
+  background:var(--surf2);border:1px solid var(--border);border-radius:var(--r);
+  padding:6px;min-width:176px;z-index:70;
+  box-shadow:0 16px 36px -12px rgba(0,0,0,.8);
+}
+.col-picker-menu.open{display:block}
+.col-picker-item{
+  display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--r-sm);
+  cursor:pointer;font-size:11.5px;color:var(--muted);transition:background 100ms,color 100ms;user-select:none;
+}
+.col-picker-item:hover{background:var(--surf3);color:var(--fg)}
+.col-picker-item input[type=checkbox]{width:12px;height:12px;accent-color:var(--iris);cursor:pointer;flex-shrink:0}
+
+/* ── Table area ── */
+.tbl-area{flex:1;overflow-y:auto;padding:8px 16px 48px}
+
+/* Summary ribbon */
+.summary-ribbon{
+  display:flex;align-items:center;gap:20px;
+  background:var(--surf);border:1px solid var(--border);
+  border-radius:var(--r) var(--r) 0 0;border-bottom:none;
+  padding:0 14px;height:30px;font-size:11px;color:var(--muted);
+  flex-wrap:nowrap;overflow:hidden;margin-top:10px;
+}
+.ribbon-item{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.ribbon-label{color:var(--quiet);font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.06em}
+.ribbon-val{font-variant-numeric:tabular-nums;font-size:11.5px}
+
+/* Screener table */
+.screener-wrap{border:1px solid var(--border);border-radius:0 0 var(--r) var(--r);overflow:hidden}
+.screener-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
+.screener-table thead th{
+  position:sticky;top:0;z-index:10;
+  background:var(--surf);border-bottom:1px solid var(--border);
+  padding:0 10px;height:28px;
+  font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--quiet);white-space:nowrap;cursor:pointer;user-select:none;
+  text-align:left;vertical-align:middle;
+}
+.screener-table thead th:hover{color:var(--muted)}
+.th-inner{display:flex;align-items:center;gap:4px}
+.sort-ind{font-size:8px;opacity:.6}
+.sort-ind.asc::after{content:"▲"}
+.sort-ind.desc::after{content:"▼"}
+.screener-table tbody tr{cursor:pointer;transition:background 80ms}
+.screener-table tbody tr td{
+  padding:0 10px;border-bottom:1px solid var(--hairline);
+  vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+/* density modes */
+body.dense .screener-table tbody tr td{height:30px}
+body:not(.dense) .screener-table tbody tr td{height:38px}
+.screener-table tbody tr:last-child td{border-bottom:none}
+.screener-table tbody tr:hover td{background:oklch(0.66 0.19 290 / 0.05)}
+.screener-table tbody tr.sel td{background:oklch(0.66 0.19 290 / 0.09)!important}
+.screener-table tbody tr.row-killed td{opacity:.52}
+.screener-table tbody tr.row-queued td{opacity:.68}
+.screener-table tbody tr.row-backtest td{opacity:.68}
+
+/* col widths */
+.col-name{width:210px;min-width:160px}
+.col-stage{width:86px}
+.col-life{width:100px}
+.col-days{width:52px}
+.col-pnl{width:106px}
+.col-dsr{width:92px}
+.col-pbo{width:68px}
+.col-dd{width:84px}
+.col-oos{width:68px}
+.col-venue{width:72px}
+.col-hidden{display:none!important}
+
+/* cells */
+.cell-name{font-size:12.5px;font-weight:600;color:var(--fg)}
+.cell-sub{font-size:10px;color:var(--quiet);margin-top:1px}
+.stage-badge{
+  display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:3px;
+  font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:.02em;
+}
+.sb-live{background:var(--up-dim);color:var(--up);border:1px solid oklch(0.76 0.15 160 / 0.26)}
+.sb-paper{background:var(--iris-dim);color:var(--iris-s);border:1px solid var(--iris-mid)}
+.sb-gate{background:var(--up-dim);color:var(--up);border:1px solid oklch(0.76 0.15 160 / 0.26)}
+.sb-killed{background:var(--down-dim);color:var(--down);border:1px solid oklch(0.70 0.17 18 / 0.24)}
+.sb-queued{background:var(--gold-dim);color:var(--gold);border:1px solid oklch(0.82 0.14 85 / 0.24)}
+.sb-backtest{background:var(--surf3);color:var(--muted);border:1px solid var(--border)}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--up);animation:pulse 2s infinite;flex-shrink:0}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 oklch(0.76 0.15 160 / 0.5)}60%{box-shadow:0 0 0 4px transparent}}
+
+/* lifecycle glyph */
+.glyph{display:inline-flex;align-items:center;gap:2px}
+.g-dot{width:6px;height:6px;border-radius:50%;background:var(--surf3);border:1px solid var(--border);flex-shrink:0}
+.g-dot.done{background:var(--iris);border-color:var(--iris)}
+.g-dot.cur{background:var(--iris);border-color:var(--iris);box-shadow:0 0 0 2px var(--iris-dim)}
+.g-dot.gate-ok{background:var(--up);border-color:var(--up)}
+.g-dot.live-c{background:var(--up);border-color:var(--up);box-shadow:0 0 0 2px var(--up-dim)}
+.g-dot.dead{background:var(--down);border-color:var(--down)}
+.g-line{width:8px;height:1px;background:var(--border);flex-shrink:0}
+.g-line.done{background:var(--iris)}
+.g-line.gate{background:var(--up)}
+
+/* DSR bar */
+.dsr-wrap{display:flex;align-items:center;gap:6px}
+.dsr-track{width:44px;height:4px;background:var(--surf3);border-radius:2px;overflow:visible;position:relative;flex-shrink:0}
+.dsr-fill{height:100%;border-radius:2px}
+.dsr-thr{position:absolute;top:-3px;height:10px;width:1px;background:var(--border-s);z-index:1}
+.dsr-val{font-variant-numeric:tabular-nums;font-size:12px}
+
+/* MaxDD arc */
+.dd-wrap{display:flex;align-items:center;gap:5px}
+.dd-arc{width:22px;height:12px;flex-shrink:0}
+.dd-val{font-variant-numeric:tabular-nums;font-size:12px}
+
+/* P&L heat */
+.pnl-wrap{position:relative}
+.pnl-bg{position:absolute;inset:0;pointer-events:none}
+.pnl-val{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums;position:relative}
+.pnl-pct{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;position:relative}
+
+/* ── Peek pane ── */
+.peek-backdrop{
+  display:none;position:fixed;inset:0;z-index:60;
+  background:transparent;
+}
+.peek-backdrop.open{display:block}
+/* dim the main content */
+.peek-backdrop.open~.main .tbl-area,
+.main.peek-dimmed .tbl-area{opacity:.6;transition:opacity 200ms}
+.peek-pane{
+  position:fixed;top:0;right:0;width:var(--peek-w);height:100vh;z-index:61;
+  background:var(--surf);border-left:1px solid var(--border);
+  box-shadow:-8px 0 40px -8px rgba(0,0,0,.7);
+  display:flex;flex-direction:column;
+  transform:translateX(100%);
+  transition:transform 220ms cubic-bezier(0.16,1,0.3,1);
+  overflow:hidden;
+}
+.peek-pane.open{transform:translateX(0)}
+.peek-header{
+  height:var(--header-h);display:flex;align-items:center;gap:10px;
+  padding:0 16px;border-bottom:1px solid var(--hairline);flex-shrink:0;
+}
+.peek-nav{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.peek-nav-btn{
+  width:26px;height:26px;border-radius:var(--r-sm);border:1px solid var(--border);
+  background:transparent;color:var(--muted);cursor:pointer;font-size:13px;
+  display:flex;align-items:center;justify-content:center;transition:background 120ms,color 120ms;
+  font-family:inherit;
+}
+.peek-nav-btn:hover:not(:disabled){background:var(--surf2);color:var(--fg)}
+.peek-nav-btn:disabled{opacity:.3;cursor:default}
+.peek-close{
+  width:26px;height:26px;border-radius:var(--r-sm);border:1px solid var(--border);
+  background:transparent;color:var(--muted);cursor:pointer;font-size:14px;
+  display:flex;align-items:center;justify-content:center;transition:background 120ms,color 120ms;
+  font-family:inherit;margin-left:auto;
+}
+.peek-close:hover{background:var(--surf2);color:var(--fg)}
+.peek-title{font-size:13px;font-weight:600;color:var(--fg);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.peek-body{flex:1;overflow-y:auto;padding:16px}
+.peek-body::-webkit-scrollbar{width:4px}
+.peek-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* peek sections */
+.psec{margin-bottom:20px}
+.psec-title{
+  font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--quiet);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--hairline);
+}
+
+/* phase-continuous equity */
+.eq-wrap{
+  background:var(--surf2);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:8px;margin-bottom:8px;overflow:hidden;
+}
+.eq-legend{display:flex;gap:10px;font-size:10px;color:var(--muted);margin-bottom:6px;align-items:center;flex-wrap:wrap}
+.eq-swatch{width:18px;height:1.5px;display:inline-block;vertical-align:middle;margin-right:3px;border-radius:1px}
+.phase-chip{
+  display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:3px;
+  font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;
+  transition:opacity 130ms;border:1px solid transparent;
+}
+.phase-chip.bt{background:var(--surf3);color:var(--muted);border-color:var(--border)}
+.phase-chip.pa{background:var(--iris-dim);color:var(--iris-s);border-color:var(--iris-mid)}
+.phase-chip.li{background:var(--up-dim);color:var(--up);border-color:oklch(0.76 0.15 160 / 0.26)}
+.phase-chip.dim{opacity:.4}
+
+/* per-phase comparison table */
+.phase-tbl{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px}
+.phase-tbl th{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet);font-weight:600;padding:4px 8px;border-bottom:1px solid var(--hairline);text-align:right}
+.phase-tbl th:first-child{text-align:left}
+.phase-tbl td{padding:5px 8px;border-bottom:1px solid var(--hairline);font-variant-numeric:tabular-nums;text-align:right;color:var(--muted)}
+.phase-tbl td:first-child{text-align:left;color:var(--fg);font-weight:500;font-size:11px}
+.phase-tbl tr:last-child td{border-bottom:none}
+.phase-tbl th.cur-col,.phase-tbl td.cur-col{
+  background:var(--iris-dim);color:var(--iris-s);
+}
+.phase-tbl td.up{color:var(--up)}
+.phase-tbl td.dn{color:var(--down)}
+
+/* gate chips */
+.gate-chips{display:flex;flex-wrap:wrap;gap:6px}
+.gate-chip{
+  background:var(--surf2);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:6px 10px;cursor:help;transition:border-color 130ms;position:relative;min-width:96px;
+}
+.gate-chip:hover{border-color:var(--iris)}
+.gate-chip:hover .chip-tip{display:block}
+.gate-chip.pass{border-color:oklch(0.76 0.15 160 / 0.35);background:var(--up-dim)}
+.gate-chip.warn{border-color:oklch(0.82 0.14 85 / 0.35);background:var(--gold-dim)}
+.chip-name{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--quiet)}
+.chip-val{font-size:14px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+.chip-pass{color:var(--up)}
+.chip-warn{color:var(--gold)}
+.chip-explain{font-size:10px;color:var(--muted);margin-top:3px;line-height:1.4}
+.chip-tip{
+  display:none;position:absolute;bottom:calc(100% + 5px);left:0;
+  background:var(--surf3);border:1px solid var(--border);border-radius:var(--r-sm);
+  padding:6px 10px;width:220px;font-size:10px;color:var(--muted);
+  line-height:1.55;z-index:200;white-space:normal;box-shadow:0 6px 18px -4px rgba(0,0,0,.7);
+}
+
+/* blocks */
+.blocks{display:flex;flex-direction:column;gap:4px}
+.block-row{display:flex;gap:8px;font-size:11.5px;padding:4px 8px;border-radius:var(--r-sm);background:var(--surf2);border:1px solid var(--hairline)}
+.block-key{width:48px;flex-shrink:0;font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--quiet);padding-top:1px}
+.block-val{color:var(--muted);line-height:1.4;font-size:11px}
+.similar-note{font-size:10.5px;color:var(--quiet);margin-top:6px;padding:5px 8px;border:1px solid var(--hairline);border-radius:var(--r-sm)}
+
+/* feed */
+.feed-list{display:flex;flex-direction:column;gap:5px}
+.feed-row{display:flex;align-items:baseline;gap:6px;font-size:11px}
+.feed-bullet{width:5px;height:5px;border-radius:50%;background:var(--iris);flex-shrink:0;margin-top:3px}
+.feed-name{color:var(--fg);font-weight:500;flex:1}
+.feed-val{color:var(--muted);font-variant-numeric:tabular-nums}
+.feed-ago{color:var(--quiet);font-size:9.5px}
+
+/* trades mini table */
+.mini-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.mini-tbl th{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet);font-weight:600;text-align:left;padding:0 4px 4px;border-bottom:1px solid var(--hairline)}
+.mini-tbl th.r{text-align:right}
+.mini-tbl td{padding:4px 4px;border-bottom:1px solid var(--hairline);font-variant-numeric:tabular-nums;vertical-align:middle}
+.mini-tbl td.r{text-align:right}
+.mini-tbl tr:last-child td{border-bottom:none}
+.side-buy{color:var(--up);font-weight:600}
+.side-sell{color:var(--down);font-weight:600}
+
+/* activity */
+.act-list{display:flex;flex-direction:column}
+.act-row{
+  display:flex;gap:8px;align-items:flex-start;
+  padding:5px 0 5px 10px;
+  border-left:1px solid var(--hairline);margin-left:4px;position:relative;
+}
+.act-row::before{
+  content:'';position:absolute;left:-4px;top:9px;
+  width:6px;height:6px;border-radius:50%;
+  background:var(--surf3);border:1px solid var(--border);
+}
+.act-row.cur-ev::before{background:var(--iris);border-color:var(--iris)}
+.act-time{font-size:10px;color:var(--quiet);white-space:nowrap;width:80px;flex-shrink:0}
+.act-text{font-size:11.5px;color:var(--muted)}
+.act-text strong{color:var(--fg);font-weight:500}
+
+/* launch btn */
+.btn-launch{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;
+  border:1px solid var(--iris);border-radius:var(--r-sm);
+  background:var(--iris-dim);color:var(--iris-s);
+  transition:background 130ms;font-family:inherit;
+}
+.btn-launch:hover{background:var(--iris-mid)}
+
+/* ── Buttons ── */
+.btn{
+  display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:var(--r-sm);
+  font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border);
+  background:var(--surf2);color:var(--fg);transition:all 130ms;white-space:nowrap;font-family:inherit;
+}
+.btn:hover{background:var(--surf3);border-color:var(--border-s)}
+.btn-danger{background:var(--down-dim);border-color:oklch(0.70 0.17 18 / 0.35);color:var(--down)}
+.btn-danger:hover{background:oklch(0.70 0.17 18 / 0.22)}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn-ghost:hover{background:var(--surf2);border-color:var(--border);color:var(--fg)}
+.btn-sm{padding:3px 9px;font-size:11px}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:600;white-space:nowrap}
+.badge-up{background:var(--up-dim);color:var(--up);border:1px solid oklch(0.76 0.15 160 / 0.28)}
+.badge-dn{background:var(--down-dim);color:var(--down);border:1px solid oklch(0.70 0.17 18 / 0.28)}
+.badge-iris{background:var(--iris-dim);color:var(--iris-s);border:1px solid var(--iris-mid)}
+.badge-gold{background:var(--gold-dim);color:var(--gold);border:1px solid oklch(0.82 0.14 85 / 0.25)}
+.badge-muted{background:var(--surf3);color:var(--muted);border:1px solid var(--border)}
+
+/* ── Modal ── */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.overlay.open{display:flex;animation:fadein 150ms ease}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.modal{
+  background:var(--surf2);border:1px solid var(--border);border-radius:var(--r);
+  padding:22px 24px;max-width:420px;width:calc(100% - 32px);
+  box-shadow:0 24px 56px -20px rgba(0,0,0,.95);
+  animation:modalin 190ms cubic-bezier(.16,1,.3,1);
+}
+@keyframes modalin{from{opacity:0;transform:scale(.97) translateY(6px)}to{opacity:1;transform:none}}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:10px;letter-spacing:-.015em}
+.modal-body{font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:18px}
+.modal-body strong{color:var(--fg);font-weight:600}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+
+/* ── Paper / Live pages ── */
+.page-inner{padding:20px 16px 56px;max-width:960px;width:100%}
+.page-ey{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--quiet);margin-bottom:3px}
+.page-h{font-size:20px;font-weight:700;letter-spacing:-.02em;margin-bottom:14px}
+.card{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px}
+.card-hdr{padding:12px 16px 0;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-title{font-size:11.5px;font-weight:600;color:var(--fg)}
+.card-body{padding:12px 16px}
+
+/* hero equity chart area */
+.hero-eq{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:12px}
+.hero-eq svg{width:100%;display:block}
+.hero-legend{display:flex;gap:14px;font-size:10.5px;color:var(--muted);margin-top:6px}
+.hero-leg-item{display:flex;align-items:center;gap:5px}
+.hero-leg-sw{width:20px;height:2px;border-radius:1px}
+
+/* stat row */
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+@media(max-width:700px){.stat-row{grid-template-columns:1fr 1fr}}
+.stat-card{background:var(--surf);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px}
+.stat-label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--quiet);margin-bottom:3px}
+.stat-value{font-size:19px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stat-sub{font-size:10.5px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+
+/* live banner */
+.live-banner{
+  display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:var(--r);margin-bottom:12px;
+  border:1px solid oklch(0.70 0.17 18 / 0.32);background:oklch(0.70 0.17 18 / 0.07);
+}
+.live-pulse-big{width:8px;height:8px;border-radius:50%;background:var(--down);box-shadow:0 0 0 4px oklch(0.70 0.17 18 / 0.2);flex-shrink:0;animation:dpulse 2s infinite}
+@keyframes dpulse{0%,100%{box-shadow:0 0 0 0 oklch(0.70 0.17 18 / 0.5)}60%{box-shadow:0 0 0 5px transparent}}
+.armed-label{font-size:12.5px;font-weight:600;color:var(--down)}
+.armed-sub{font-size:11.5px;color:var(--muted);margin-left:6px}
+
+/* gauge */
+.gauge-track{height:5px;border-radius:999px;background:var(--surf3);overflow:hidden}
+.gauge-fill{height:100%;border-radius:999px}
+.gauge-row{display:flex;align-items:center;gap:10px;padding:5px 0}
+.gauge-label{font-size:11.5px;color:var(--muted);flex:1}
+.gauge-wrap{width:120px;flex-shrink:0}
+.gauge-val{font-size:11.5px;font-variant-numeric:tabular-nums;width:60px;text-align:right;color:var(--fg)}
+
+/* costs/commands */
+.cost-row{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--hairline)}
+.cost-row:last-child{border-bottom:none}
+.cost-label{font-size:12px;color:var(--muted);flex:1}
+.cost-bar-track{width:120px;height:4px;background:var(--surf3);border-radius:2px;overflow:hidden;flex-shrink:0}
+.cost-bar-fill{height:100%;border-radius:2px;background:var(--iris)}
+.cost-val{font-size:12px;color:var(--fg);font-variant-numeric:tabular-nums;width:58px;text-align:right}
+.cmd-row{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--hairline)}
+.cmd-row:last-child{border-bottom:none}
+.cmd-name{font-family:"SF Mono","Fira Code",ui-monospace,monospace;font-size:12px;color:var(--iris-s);width:200px;flex-shrink:0}
+.cmd-desc{font-size:12px;color:var(--muted)}
+.verdict-band{
+  display:flex;align-items:center;gap:14px;padding:12px 16px;
+  background:var(--up-dim);border:1px solid oklch(0.76 0.15 160 / 0.25);
+  border-radius:var(--r);margin-bottom:12px;
+}
+.verdict-val{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--up)}
+.verdict-label{font-size:12px;color:var(--muted)}
+
+/* ── Mockup badge ── */
+.mockup-badge{
+  position:fixed;bottom:12px;left:calc(var(--sidebar-w) + 12px);z-index:200;
+  background:var(--surf2);border:1px solid var(--border);border-radius:3px;
+  padding:3px 9px;font-size:9px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--quiet);
+  pointer-events:none;
+}
+
+@media(max-width:860px){
+  :root{--sidebar-w:0px;--peek-w:100vw}
+  .sidebar{transform:translateX(-100%)}
+}
+</style>
+</head>
+<body>
+
+<!-- Peek pane backdrop (dimmer) -->
+<div class="peek-backdrop" id="peekBackdrop" onclick="closePeek()"></div>
+
+<!-- Peek pane -->
+<div class="peek-pane" id="peekPane">
+  <div class="peek-header">
+    <div class="peek-nav">
+      <button class="peek-nav-btn" id="peekUp" onclick="peekMove(-1)" title="Previous (↑)">↑</button>
+      <button class="peek-nav-btn" id="peekDown" onclick="peekMove(1)" title="Next (↓)">↓</button>
+    </div>
+    <span class="peek-title" id="peekTitle">—</span>
+    <button class="peek-close" onclick="closePeek()">✕</button>
+  </div>
+  <div class="peek-body" id="peekBody"></div>
+</div>
+
+<!-- Liquidate modal -->
+<div class="overlay" id="liqModal">
+  <div class="modal">
+    <div class="modal-title" style="color:var(--down)">Liquidate all live positions?</div>
+    <div class="modal-body">
+      Sell all live positions to USDC and disarm live trading.<br>
+      <strong>$1,700 across 1 strategy</strong> will be market-sold.<br>
+      Paper tracks are not affected.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeLiq()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmLiq()">Confirm liquidate</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pause paper modal -->
+<div class="overlay" id="pauseModal">
+  <div class="modal">
+    <div class="modal-title">Pause all paper tracks?</div>
+    <div class="modal-body">All active paper strategies will stop receiving signals. No live capital is affected.</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="document.getElementById('pauseModal').classList.remove('open')">Cancel</button>
+      <button class="btn" onclick="document.getElementById('pauseModal').classList.remove('open')">Pause paper</button>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-mark">
+        <svg viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="1.6" stroke-linecap="round">
+          <path d="M2 9 L5 4 L8 7 L10 3"/>
+        </svg>
+      </div>
+      <div>
+        <div class="sb-name">Cosmu</div>
+        <div class="sb-sub">Quant Engine</div>
+      </div>
+    </div>
+    <nav class="sb-nav">
+      <span class="sb-section-label">Trading</span>
+      <button class="nav-item active" data-page="strategies" onclick="nav(this,'strategies')">
+        <span class="nav-left">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 10 L4 6 L7 8 L10 3 L13 5"/><circle cx="13" cy="5" r="1.2" fill="currentColor" stroke="none"/></svg>
+          Strategies
+        </span>
+        <span class="nav-count">12</span>
+      </button>
+      <button class="nav-item" data-page="paper" onclick="nav(this,'paper')">
+        <span class="nav-left">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="1" width="10" height="12" rx="1.5"/><path d="M4 5h6M4 7.5h4M4 10h3"/></svg>
+          Paper
+        </span>
+        <span class="nav-count">5</span>
+      </button>
+      <button class="nav-item" data-page="live" onclick="nav(this,'live')">
+        <span class="nav-left">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="5"/><circle cx="7" cy="7" r="2" fill="currentColor" stroke="none"/></svg>
+          Live
+        </span>
+        <span class="nav-count" style="color:var(--up)">1</span>
+      </button>
+      <span class="sb-section-label" style="margin-top:6px">System</span>
+      <button class="nav-item" data-page="costs" onclick="nav(this,'costs')">
+        <span class="nav-left">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 11 L5 8 L8 9 L12 4"/><path d="M9 4h3v3"/></svg>
+          Costs
+        </span>
+      </button>
+      <button class="nav-item" data-page="commands" onclick="nav(this,'commands')">
+        <span class="nav-left">
+          <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 4l3 3-3 3"/><path d="M8 10h4"/></svg>
+          Commands
+        </span>
+      </button>
+    </nav>
+    <div class="sb-footer">
+      <div style="font-size:9px;color:var(--quiet);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;padding:0 4px">Density</div>
+      <div class="density-toggle">
+        <button class="dt-btn active" id="dtComfort" onclick="setDensity('comfort')">Comfort</button>
+        <button class="dt-btn" id="dtDense" onclick="setDensity('dense')">Dense</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main" id="mainArea">
+    <!-- Header -->
+    <header class="header">
+      <div class="dash-strip">
+        <span class="ds-item"><span class="ds-label">Paper invested</span> <strong>$18,392</strong></span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Paper P&amp;L</span> <span class="up">+$1,392</span> <span class="up" style="font-size:11px">(+9.27%)</span></span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Live total</span> <strong>$9,000</strong></span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Free</span> $7,300</span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Invested</span> $1,700</span>
+        <span class="ds-sep">·</span>
+        <span class="ds-item"><span class="ds-label">Live P&amp;L</span> <span class="up">+$419</span> <span class="up" style="font-size:11px">(+21%)</span></span>
+      </div>
+    </header>
+
+    <!-- ══ STRATEGIES PAGE ══ -->
+    <div class="page active" id="page-strategies" style="overflow-y:auto">
+      <div style="padding:0 16px">
+        <div class="toolbar">
+          <div class="chip-row" id="filterChips">
+            <button class="chip active" data-filter="all" onclick="setFilter(this,'all')"><span class="chip-dot"></span>All</button>
+            <button class="chip" data-filter="live" onclick="setFilter(this,'live')"><span class="chip-dot" style="background:var(--up)"></span>Live</button>
+            <button class="chip" data-filter="paper" onclick="setFilter(this,'paper')"><span class="chip-dot" style="background:var(--iris-s)"></span>Paper</button>
+            <button class="chip" data-filter="gate" onclick="setFilter(this,'gate')"><span class="chip-dot" style="background:var(--up)"></span>Gate ✓</button>
+            <button class="chip" data-filter="killed" onclick="setFilter(this,'killed')"><span class="chip-dot" style="background:var(--down)"></span>Killed</button>
+            <button class="chip" data-filter="queued" onclick="setFilter(this,'queued')"><span class="chip-dot" style="background:var(--gold)"></span>Queued</button>
+          </div>
+          <div class="col-picker-wrap" style="margin-left:auto">
+            <button class="btn-col-picker" onclick="toggleColPicker()">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M1 3h10M3 6h6M5 9h2"/></svg>
+              Columns
+            </button>
+            <div class="col-picker-menu" id="colPickerMenu">
+              <div class="col-picker-item"><input type="checkbox" id="col-dsr" checked onchange="toggleCol('dsr',this.checked)"><label for="col-dsr">DSR</label></div>
+              <div class="col-picker-item"><input type="checkbox" id="col-pbo" checked onchange="toggleCol('pbo',this.checked)"><label for="col-pbo">PBO</label></div>
+              <div class="col-picker-item"><input type="checkbox" id="col-dd" checked onchange="toggleCol('dd',this.checked)"><label for="col-dd">Max DD</label></div>
+              <div class="col-picker-item"><input type="checkbox" id="col-oos" checked onchange="toggleCol('oos',this.checked)"><label for="col-oos">OOS</label></div>
+              <div class="col-picker-item"><input type="checkbox" id="col-venue" checked onchange="toggleCol('venue',this.checked)"><label for="col-venue">Venue</label></div>
+              <div class="col-picker-item"><input type="checkbox" id="col-days" checked onchange="toggleCol('days',this.checked)"><label for="col-days">Days</label></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary ribbon -->
+        <div class="summary-ribbon" id="summaryRibbon">
+          <span class="ribbon-item"><span class="ribbon-label">Σ Invested</span> <span class="ribbon-val">$18,392 paper · $1,700 live</span></span>
+          <span class="ribbon-item"><span class="ribbon-label">Med P&amp;L</span> <span class="ribbon-val up">+3.1%</span></span>
+          <span class="ribbon-item"><span class="ribbon-label">Med DSR</span> <span class="ribbon-val">1.05</span></span>
+          <span class="ribbon-item"><span class="ribbon-label">n</span> <span class="ribbon-val">1 live · 5 paper · 1 gate · 2 backtest · 3 killed</span></span>
+        </div>
+
+        <!-- Screener table -->
+        <div class="screener-wrap">
+          <table class="screener-table" id="screenerTable">
+            <colgroup>
+              <col class="col-name">
+              <col class="col-stage">
+              <col class="col-life">
+              <col class="col-days" id="th-days-col">
+              <col class="col-pnl">
+              <col class="col-dsr" id="th-dsr-col">
+              <col class="col-pbo" id="th-pbo-col">
+              <col class="col-dd" id="th-dd-col">
+              <col class="col-oos" id="th-oos-col">
+              <col class="col-venue" id="th-venue-col">
+            </colgroup>
+            <thead>
+              <tr>
+                <th onclick="sortBy('name')"><div class="th-inner">Strategy <span class="sort-ind" id="si-name"></span></div></th>
+                <th onclick="sortBy('stage')"><div class="th-inner">Stage <span class="sort-ind" id="si-stage"></span></div></th>
+                <th>Lifecycle</th>
+                <th class="col-days" id="th-days" onclick="sortBy('days')"><div class="th-inner">Days <span class="sort-ind" id="si-days"></span></div></th>
+                <th onclick="sortBy('pnl')"><div class="th-inner">P&amp;L <span class="sort-ind" id="si-pnl"></span></div></th>
+                <th class="col-dsr" id="th-dsr" onclick="sortBy('dsr')"><div class="th-inner">DSR <span class="sort-ind" id="si-dsr"></span></div></th>
+                <th class="col-pbo" id="th-pbo" onclick="sortBy('pbo')"><div class="th-inner">PBO <span class="sort-ind" id="si-pbo"></span></div></th>
+                <th class="col-dd" id="th-dd" onclick="sortBy('dd')"><div class="th-inner">Max DD <span class="sort-ind" id="si-dd"></span></div></th>
+                <th class="col-oos" id="th-oos"><div class="th-inner">OOS</div></th>
+                <th class="col-venue" id="th-venue"><div class="th-inner">Venue</div></th>
+              </tr>
+            </thead>
+            <tbody id="screenerBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ PAPER PAGE ══ -->
+    <div class="page" id="page-paper" style="overflow-y:auto">
+      <div class="page-inner">
+        <div class="page-ey">Tracking</div>
+        <div class="page-h">Paper</div>
+
+        <button class="btn btn-ghost btn-sm" style="margin-bottom:14px;border-color:var(--border)" onclick="document.getElementById('pauseModal').classList.add('open')">⏸ Pause all paper</button>
+
+        <!-- Cohort equity hero -->
+        <div class="hero-eq">
+          <div style="font-size:10.5px;color:var(--quiet);font-weight:600;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Paper cohort equity (5 strategies, combined)</div>
+          <svg id="paperHeroSvg" viewBox="0 0 700 110" preserveAspectRatio="none" style="height:110px"></svg>
+          <div class="hero-legend">
+            <span class="hero-leg-item"><span class="hero-leg-sw" style="background:var(--iris-s)"></span>Cohort equity</span>
+            <span style="color:var(--quiet);margin-left:auto;font-variant-numeric:tabular-nums">47d avg · +3.5% med</span>
+          </div>
+        </div>
+
+        <!-- Stats row -->
+        <div class="stat-row">
+          <div class="stat-card"><div class="stat-label">Invested</div><div class="stat-value">$18,392</div></div>
+          <div class="stat-card"><div class="stat-label">Total P&amp;L</div><div class="stat-value up">+$1,392</div><div class="stat-sub up">+9.27%</div></div>
+          <div class="stat-card"><div class="stat-label">Median DSR</div><div class="stat-value">1.03</div></div>
+          <div class="stat-card"><div class="stat-label">Strategies</div><div class="stat-value">5</div><div class="stat-sub">1 live-ready</div></div>
+        </div>
+
+        <!-- Paper screener -->
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--quiet);margin-bottom:6px">Strategies in paper</div>
+        <div class="summary-ribbon" style="margin-top:0">
+          <span class="ribbon-item"><span class="ribbon-label">Σ Invested</span><span class="ribbon-val">$18,392</span></span>
+          <span class="ribbon-item"><span class="ribbon-label">Med P&amp;L</span><span class="ribbon-val up">+2.9%</span></span>
+          <span class="ribbon-item"><span class="ribbon-label">Med DSR</span><span class="ribbon-val">1.03</span></span>
+          <span class="ribbon-item"><span class="ribbon-label">n</span><span class="ribbon-val">5 paper</span></span>
+        </div>
+        <div class="screener-wrap" id="paperScreenerWrap"></div>
+      </div>
+    </div>
+
+    <!-- ══ LIVE PAGE ══ -->
+    <div class="page" id="page-live" style="overflow-y:auto">
+      <div class="page-inner">
+        <div class="page-ey">Deployed</div>
+        <div class="page-h">Live</div>
+
+        <div class="live-banner">
+          <div class="live-pulse-big"></div>
+          <span class="armed-label">Armed</span>
+          <span class="armed-sub">Live trading active · 1 strategy · $1,700 deployed</span>
+          <button class="btn btn-danger btn-sm" style="margin-left:auto" onclick="document.getElementById('liqModal').classList.add('open')">Liquidate all</button>
+        </div>
+
+        <!-- Live equity hero -->
+        <div class="hero-eq">
+          <div style="font-size:10.5px;color:var(--quiet);font-weight:600;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Live equity</div>
+          <svg id="liveHeroSvg" viewBox="0 0 700 110" preserveAspectRatio="none" style="height:110px"></svg>
+          <div class="hero-legend">
+            <span class="hero-leg-item"><span class="hero-leg-sw" style="background:var(--up)"></span>Funding Carry BTC</span>
+            <span style="color:var(--quiet);margin-left:auto;font-variant-numeric:tabular-nums">18d · +$419 (+21%)</span>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stat-row">
+          <div class="stat-card"><div class="stat-label">Deployed</div><div class="stat-value">$1,700</div></div>
+          <div class="stat-card"><div class="stat-label">Live P&amp;L</div><div class="stat-value up">+$419</div><div class="stat-sub up">+21%</div></div>
+          <div class="stat-card"><div class="stat-label">Free Capital</div><div class="stat-value">$7,300</div></div>
+          <div class="stat-card"><div class="stat-label">Total Pool</div><div class="stat-value">$9,000</div></div>
+        </div>
+
+        <!-- Daily loss gauge -->
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">Risk caps</span></div>
+          <div class="card-body">
+            <div class="gauge-row">
+              <span class="gauge-label">Daily loss limit</span>
+              <div class="gauge-wrap"><div class="gauge-track"><div class="gauge-fill" style="width:28%;background:var(--up)"></div></div></div>
+              <span class="gauge-val up">$47 / $170</span>
+            </div>
+            <div class="gauge-row">
+              <span class="gauge-label">Max drawdown</span>
+              <div class="gauge-wrap"><div class="gauge-track"><div class="gauge-fill" style="width:12%;background:var(--up)"></div></div></div>
+              <span class="gauge-val up">$51 / $425</span>
+            </div>
+            <div class="gauge-row">
+              <span class="gauge-label">Max position</span>
+              <div class="gauge-wrap"><div class="gauge-track"><div class="gauge-fill" style="width:56%;background:var(--iris)"></div></div></div>
+              <span class="gauge-val">$1,700 / $3,000</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live screener -->
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--quiet);margin-bottom:6px;margin-top:4px">Strategies live</div>
+        <div class="summary-ribbon" style="margin-top:0">
+          <span class="ribbon-item"><span class="ribbon-label">Deployed</span><span class="ribbon-val">$1,700</span></span>
+          <span class="ribbon-item"><span class="ribbon-label">P&amp;L</span><span class="ribbon-val up">+$419 (+21%)</span></span>
+          <span class="ribbon-item"><span class="ribbon-label">n</span><span class="ribbon-val">1 live</span></span>
+        </div>
+        <div class="screener-wrap" id="liveScreenerWrap"></div>
+      </div>
+    </div>
+
+    <!-- ══ COSTS PAGE ══ -->
+    <div class="page" id="page-costs" style="overflow-y:auto">
+      <div class="page-inner">
+        <div class="page-ey">Economics</div>
+        <div class="page-h">Costs</div>
+        <div class="verdict-band">
+          <div><div class="verdict-val">+18.4%</div><div class="verdict-label">Net alpha after all fees (annualised, paper cohort)</div></div>
+        </div>
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">Cost breakdown — last 30d</span></div>
+          <div class="card-body">
+            <div class="cost-row"><span class="cost-label">Exchange trading fees</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:55%"></div></div><span class="cost-val">$182</span></div>
+            <div class="cost-row"><span class="cost-label">Funding rate paid</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:18%"></div></div><span class="cost-val">$61</span></div>
+            <div class="cost-row"><span class="cost-label">Slippage estimate</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:22%"></div></div><span class="cost-val">$74</span></div>
+            <div class="cost-row"><span class="cost-label">Data subscriptions</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:12%"></div></div><span class="cost-val">$40</span></div>
+            <div class="cost-row"><span class="cost-label">Compute / infra</span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:9%"></div></div><span class="cost-val">$29</span></div>
+            <div class="cost-row"><span class="cost-label"><strong>Total</strong></span><div class="cost-bar-track"><div class="cost-bar-fill" style="width:100%;background:var(--down)"></div></div><span class="cost-val"><strong>$386</strong></span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">Fee rates</span></div>
+          <div class="card-body" style="font-size:12px;color:var(--muted);display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <div>Binance maker <strong style="color:var(--fg)">0.02%</strong></div>
+            <div>Binance taker <strong style="color:var(--fg)">0.04%</strong></div>
+            <div>Bybit maker <strong style="color:var(--fg)">0.01%</strong></div>
+            <div>Bybit taker <strong style="color:var(--fg)">0.06%</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ COMMANDS PAGE ══ -->
+    <div class="page" id="page-commands" style="overflow-y:auto">
+      <div class="page-inner">
+        <div class="page-ey">Interface</div>
+        <div class="page-h">Commands</div>
+        <div class="card">
+          <div class="card-body">
+            <div class="cmd-row"><span class="cmd-name">cosmu gate run</span><span class="cmd-desc">Run the full Gate on all strategies in the inbox</span></div>
+            <div class="cmd-row"><span class="cmd-name">cosmu gate run --id &lt;id&gt;</span><span class="cmd-desc">Gate a specific strategy by ID</span></div>
+            <div class="cmd-row"><span class="cmd-name">cosmu paper start &lt;id&gt;</span><span class="cmd-desc">Start paper tracking for a gate-passed strategy</span></div>
+            <div class="cmd-row"><span class="cmd-name">cosmu live launch &lt;id&gt;</span><span class="cmd-desc">Deploy a gate-passed, paper-proven strategy live</span></div>
+            <div class="cmd-row"><span class="cmd-name">cosmu live close &lt;id&gt;</span><span class="cmd-desc">Close a live strategy and return capital to pool</span></div>
+            <div class="cmd-row"><span class="cmd-name">cosmu paper pause-all</span><span class="cmd-desc">Pause all active paper tracks</span></div>
+            <div class="cmd-row"><span class="cmd-name">cosmu liquidate-all</span><span class="cmd-desc">Market-sell all live positions to USDC and disarm</span></div>
+            <div class="cmd-row"><span class="cmd-name">cosmu status</span><span class="cmd-desc">Print current portfolio, P&amp;L, and risk caps</span></div>
+            <div class="cmd-row"><span class="cmd-name">cosmu data fetch</span><span class="cmd-desc">Pull latest bars and alt-data into the store</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<div class="mockup-badge">MOCKUP · synthetic data</div>
+
+<script>
+/* ═══════════════════════════════════════════════════
+   DATA
+═══════════════════════════════════════════════════ */
+const STRATEGIES = [
+  {
+    id:'funding-carry-btc', name:'Funding Carry BTC', stage:'live',
+    days:18, paperDays:47, pnlPct:21, pnlAbs:419,
+    dsr:1.12, pbo:0.31, dd:3.1, oos:'+8.2%', venue:'Binance',
+    killReason:null,
+    spark:[100,103,101,105,108,106,112,115,113,119,121,118,122,124,121,126,129,127,131],
+    phases:['bt','paper','live']
+  },
+  {
+    id:'xsect-momentum-top5', name:'Cross-Sectional Momentum Top-5', stage:'paper',
+    days:33, pnlPct:4.1, pnlAbs:null,
+    dsr:0.98, pbo:0.38, dd:8.4, oos:'+5.1%', venue:'Binance',
+    killReason:null,
+    spark:[100,101,100,102,103,102,104,103,105,104,106,105,107,106,108,107,109,108,110],
+    phases:['bt','paper']
+  },
+  {
+    id:'gtaa-monthly', name:'GTAA Monthly Rotation', stage:'gate',
+    days:41, pnlPct:2.9, pnlAbs:null,
+    dsr:1.08, pbo:0.29, dd:5.8, oos:'+6.7%', venue:'Binance',
+    killReason:null,
+    spark:[100,102,101,103,102,104,103,105,104,106,105,107,106,108,107,109,108,110,109],
+    phases:['bt','paper']
+  },
+  {
+    id:'fg-contrarian-eth', name:'Fear & Greed Contrarian ETH', stage:'paper',
+    days:12, pnlPct:-0.8, pnlAbs:null,
+    dsr:0.71, pbo:0.44, dd:4.2, oos:'+2.1%', venue:'Binance',
+    killReason:null,
+    spark:[100,99,100,98,99,97,98,97,99,98,97,99,98],
+    phases:['bt','paper']
+  },
+  {
+    id:'stablecoin-lead-eth', name:'Stablecoin Flows Lead ETH', stage:'paper',
+    days:8, pnlPct:1.2, pnlAbs:null,
+    dsr:0.88, pbo:0.41, dd:3.1, oos:'+3.4%', venue:'Bybit',
+    killReason:null,
+    spark:[100,101,100,102,101,102,101,102,103],
+    phases:['bt','paper']
+  },
+  {
+    id:'vol-regime-btc', name:'Vol-Regime Switch BTC', stage:'gate',
+    days:null, pnlPct:null, pnlAbs:null,
+    dsr:1.19, pbo:0.27, dd:9.1, oos:'+7.3%', venue:'Binance',
+    killReason:null,
+    spark:[100,102,104,103,106,105,108,107,109,110],
+    phases:['bt']
+  },
+  {
+    id:'orb-sol-4h', name:'ORB Breakout SOL 4h', stage:'killed',
+    days:null, pnlPct:null, pnlAbs:null,
+    dsr:0.62, pbo:0.58, dd:18.2, oos:'+1.1%', venue:'Bybit',
+    killReason:'Killed at gate (FDR control) · 2026-05-28',
+    spark:[100,101,99,100,98,99,97,96,97,95],
+    phases:['bt']
+  },
+  {
+    id:'wiki-zscore-btc', name:'Wikipedia Pageviews Z-Score BTC', stage:'killed',
+    days:null, pnlPct:null, pnlAbs:null,
+    dsr:0.44, pbo:0.61, dd:22.1, oos:'-2.4%', venue:'Binance',
+    killReason:'Killed · PBO 0.61',
+    spark:[100,98,97,96,95,94,96,94,93,92],
+    phases:['bt']
+  },
+  {
+    id:'reddit-spike-doge', name:'Reddit Volume Spike DOGE', stage:'killed',
+    days:null, pnlPct:null, pnlAbs:null,
+    dsr:0.31, pbo:0.72, dd:29.4, oos:'-5.2%', venue:'Bybit',
+    killReason:'Killed · holdout fail',
+    spark:[100,98,95,96,92,90,91,88,87,85],
+    phases:['bt']
+  },
+  {
+    id:'pm-riskon-overlay', name:'Polymarket Risk-On Overlay', stage:'backtest',
+    days:null, pnlPct:null, pnlAbs:null,
+    dsr:null, pbo:null, dd:null, oos:null, venue:'Binance',
+    killReason:null,
+    spark:[100,101,102,101,103],
+    phases:['bt']
+  },
+  {
+    id:'fvg-btc-1h', name:'FVG Retrace BTC 1h', stage:'queued',
+    days:null, pnlPct:null, pnlAbs:null,
+    dsr:null, pbo:null, dd:null, oos:null, venue:'Binance',
+    killReason:null,
+    spark:[],
+    phases:[]
+  },
+  {
+    id:'ma-trend-eth-1d', name:'MA Trend Filter ETH 1d', stage:'backtest',
+    days:null, pnlPct:null, pnlAbs:null,
+    dsr:null, pbo:null, dd:null, oos:null, venue:'Bybit',
+    killReason:null,
+    spark:[100,101,102,103,102,104],
+    phases:['bt']
+  }
+];
+
+/* sort state */
+let sortCol = null, sortDir = 1;
+let filterStage = 'all';
+let selectedIdx = -1; // index into visible rows
+let visibleIds = [];
+
+/* ═══ ROUTER ═══ */
+function nav(el, page) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  history.replaceState(null,'','#/' + page);
+  if (page !== 'strategies') closePeek();
+}
+window.addEventListener('hashchange', () => {
+  const h = location.hash.replace('#/','') || 'strategies';
+  const btn = document.querySelector('[data-page="' + h + '"]');
+  if (btn) nav(btn, h);
+});
+
+/* ═══ DENSITY ═══ */
+function setDensity(mode) {
+  document.body.classList.toggle('dense', mode === 'dense');
+  document.getElementById('dtComfort').classList.toggle('active', mode === 'comfort');
+  document.getElementById('dtDense').classList.toggle('active', mode === 'dense');
+}
+
+/* ═══ COL PICKER ═══ */
+function toggleColPicker() {
+  document.getElementById('colPickerMenu').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.col-picker-wrap')) {
+    document.getElementById('colPickerMenu').classList.remove('open');
+  }
+});
+function toggleCol(col, show) {
+  document.querySelectorAll('.' + 'col-' + col).forEach(el => el.classList.toggle('col-hidden', !show));
+  document.getElementById('th-' + col) && document.getElementById('th-' + col).classList.toggle('col-hidden', !show);
+}
+
+/* ═══ FILTER ═══ */
+function setFilter(el, f) {
+  filterStage = f;
+  document.querySelectorAll('#filterChips .chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderTable();
+  closePeek();
+}
+
+/* ═══ SORT ═══ */
+function sortBy(col) {
+  if (sortCol === col) sortDir *= -1; else { sortCol = col; sortDir = -1; }
+  document.querySelectorAll('.sort-ind').forEach(s => { s.className = 'sort-ind'; });
+  const ind = document.getElementById('si-' + col);
+  if (ind) ind.className = 'sort-ind ' + (sortDir === -1 ? 'desc' : 'asc');
+  renderTable();
+}
+
+/* ═══ SPARKLINE SVG ═══ */
+function sparkSvg(pts, color, w=64, h=22) {
+  if (!pts || pts.length < 2) return '<svg width="' + w + '" height="' + h + '"></svg>';
+  const mn = Math.min(...pts), mx = Math.max(...pts);
+  const range = mx - mn || 1;
+  const xs = pts.map((_,i) => (i/(pts.length-1))*w);
+  const ys = pts.map(p => h - ((p - mn)/range)*(h-3) - 1.5);
+  const d = xs.map((x,i) => (i===0?'M':'L') + x.toFixed(1) + ',' + ys[i].toFixed(1)).join(' ');
+  return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="' + d + '" stroke="' + color + '" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+
+/* ═══ DSR BAR ═══ */
+function dsrBar(v) {
+  if (v == null) return '<span class="muted">—</span>';
+  const thr = 0.95, max = 2.0;
+  const pct = Math.min(v/max, 1)*100;
+  const thrPct = (thr/max)*100;
+  const col = v >= thr ? 'var(--up)' : 'var(--warn)';
+  return '<div class="dsr-wrap"><div class="dsr-track"><div class="dsr-fill" style="width:' + pct.toFixed(1) + '%;background:' + col + '"></div><div class="dsr-thr" style="left:' + thrPct.toFixed(1) + '%"></div></div><span class="dsr-val ' + (v>=thr?'up':'gold') + '">' + v.toFixed(2) + '</span></div>';
+}
+
+/* ═══ DD ARC ═══ */
+function ddArc(v) {
+  if (v == null) return '<span class="muted">—</span>';
+  const limit = 25;
+  const frac = Math.min(v/limit, 1);
+  const col = frac < 0.5 ? 'var(--up)' : frac < 0.85 ? 'var(--warn)' : 'var(--down)';
+  const W=22, H=12, r=9, cx=11, cy=12;
+  const startA = Math.PI, endA = Math.PI + frac*Math.PI;
+  const x1 = cx + r*Math.cos(startA), y1 = cy + r*Math.sin(startA);
+  const x2 = cx + r*Math.cos(endA),   y2 = cy + r*Math.sin(endA);
+  const large = frac > 0.5 ? 1 : 0;
+  const track = 'M' + (cx-r).toFixed(1)+','+cy + ' A'+r+','+r+' 0 0 1 '+(cx+r).toFixed(1)+','+cy;
+  const fill  = 'M' + x1.toFixed(1)+','+y1.toFixed(1) + ' A'+r+','+r+' 0 '+large+' 1 '+x2.toFixed(1)+','+y2.toFixed(1);
+  return '<div class="dd-wrap"><svg class="dd-arc" viewBox="0 0 22 12"><path d="' + track + '" stroke="var(--surf3)" stroke-width="2.5" fill="none"/><path d="' + fill + '" stroke="' + col + '" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg><span class="dd-val ' + (frac<0.5?'up':frac<0.85?'gold':'dn') + '">' + v.toFixed(1) + '%</span></div>';
+}
+
+/* ═══ P&L CELL ═══ */
+function pnlCell(s) {
+  if (s.pnlPct == null && s.pnlAbs == null) return '<span class="muted" style="font-size:11px">—</span>';
+  const pos = s.pnlPct >= 0;
+  const cls = pos ? 'up' : 'dn';
+  const sign = pos ? '+' : '';
+  const hue = pos ? 'oklch(0.76 0.15 160 / ' : 'oklch(0.70 0.17 18 / ';
+  const alpha = Math.min(Math.abs(s.pnlPct||0)/25, 0.18);
+  const pctStr = (s.pnlPct != null) ? sign + s.pnlPct.toFixed(1) + '%' : '';
+  const absStr = (s.pnlAbs != null) ? (pos?'+':'') + '$' + Math.abs(s.pnlAbs) : '';
+  return '<div class="pnl-wrap"><div class="pnl-bg" style="background:' + hue + alpha + ')"></div>' +
+    '<div class="pnl-val ' + cls + '">' + pctStr + '</div>' +
+    (absStr ? '<div class="pnl-pct">' + absStr + '</div>' : '') + '</div>';
+}
+
+/* ═══ LIFECYCLE GLYPH ═══ */
+function lifetimeGlyph(s) {
+  const dots = [];
+  // backtest dot
+  const btDone = s.phases.includes('bt');
+  const btCur = s.stage === 'backtest' && btDone;
+  const gateOk = ['paper','gate','live'].includes(s.stage) && s.dsr != null;
+  const killed = s.stage === 'killed';
+
+  // BT dot
+  let btCls = btDone ? (btCur ? 'cur' : (killed ? 'dead' : 'done')) : '';
+  dots.push('<div class="g-dot ' + btCls + '" title="Backtest"></div>');
+
+  // line BT→Gate
+  dots.push('<div class="g-line ' + (btDone && !btCur ? (killed?'':'done') : '') + '"></div>');
+
+  // Gate dot
+  const gCls = gateOk ? 'gate-ok' : (killed ? 'dead' : '');
+  dots.push('<div class="g-dot ' + gCls + '" title="Gate"></div>');
+
+  // line Gate→Paper
+  const hasPaper = s.phases.includes('paper') || ['paper','gate','live'].includes(s.stage);
+  dots.push('<div class="g-line ' + (hasPaper && gateOk ? 'done' : '') + '"></div>');
+
+  // Paper dot
+  const pHas = s.phases.includes('paper') || s.stage === 'paper' || s.stage === 'live';
+  const pCur = s.stage === 'paper';
+  const pDot = pHas ? (pCur ? 'cur' : 'done') : '';
+  dots.push('<div class="g-dot ' + pDot + '" title="Paper"></div>');
+
+  // line Paper→Live
+  dots.push('<div class="g-line ' + (s.stage === 'live' ? 'gate' : '') + '"></div>');
+
+  // Live dot
+  const lDot = s.stage === 'live' ? 'live-c' : '';
+  dots.push('<div class="g-dot ' + lDot + '" title="Live"></div>');
+
+  return '<div class="glyph">' + dots.join('') + '</div>';
+}
+
+/* ═══ STAGE BADGE ═══ */
+function stageBadge(s) {
+  const map = {
+    live:     ['sb-live', '● Live'],
+    paper:    ['sb-paper', 'Paper'],
+    gate:     ['sb-gate', '✓ Gate'],
+    killed:   ['sb-killed', '✕ Killed'],
+    queued:   ['sb-queued', 'Queued'],
+    backtest: ['sb-backtest', 'Backtest'],
+  };
+  const [cls, label] = map[s.stage] || ['sb-backtest','—'];
+  return '<span class="stage-badge ' + cls + '">' + label + '</span>';
+}
+
+/* ═══ RENDER MAIN SCREENER ═══ */
+function filteredStrategies() {
+  let list = STRATEGIES.slice();
+  if (filterStage !== 'all') {
+    if (filterStage === 'gate') list = list.filter(s => s.stage === 'gate');
+    else if (filterStage === 'queued') list = list.filter(s => s.stage === 'queued');
+    else list = list.filter(s => s.stage === filterStage);
+  }
+  if (sortCol) {
+    list.sort((a,b) => {
+      let av = a[sortCol], bv = b[sortCol];
+      if (av == null) av = sortDir === -1 ? -Infinity : Infinity;
+      if (bv == null) bv = sortDir === -1 ? -Infinity : Infinity;
+      if (typeof av === 'string') return av.localeCompare(bv) * sortDir;
+      return (av - bv) * sortDir;
+    });
+  }
+  return list;
+}
+
+function renderTable() {
+  const list = filteredStrategies();
+  visibleIds = list.map(s => s.id);
+  const tbody = document.getElementById('screenerBody');
+  tbody.innerHTML = list.map((s, i) => {
+    const sparkColor = s.stage === 'live' ? 'var(--up)' : s.stage === 'killed' ? 'var(--down)' : 'var(--iris-s)';
+    const rowCls = ['row-' + s.stage].filter(Boolean).join(' ');
+    return '<tr class="' + rowCls + '" data-id="' + s.id + '" onclick="openPeek(\'' + s.id + '\')">' +
+      '<td><div class="cell-name">' + s.name + '</div>' + (s.killReason ? '<div class="cell-sub dn">' + s.killReason + '</div>' : '') + '</td>' +
+      '<td>' + stageBadge(s) + '</td>' +
+      '<td>' + lifetimeGlyph(s) + '</td>' +
+      '<td class="col-days tab">' + (s.days != null ? s.days + 'd' : s.stage === 'paper' && s.paperDays ? s.paperDays + 'd' : '—') + '</td>' +
+      '<td>' + pnlCell(s) + '</td>' +
+      '<td class="col-dsr">' + dsrBar(s.dsr) + '</td>' +
+      '<td class="col-pbo tab">' + (s.pbo != null ? '<span class="' + (s.pbo < 0.5 ? 'up' : 'dn') + '">' + s.pbo.toFixed(2) + '</span>' : '<span class="muted">—</span>') + '</td>' +
+      '<td class="col-dd">' + ddArc(s.dd) + '</td>' +
+      '<td class="col-oos tab">' + (s.oos ? '<span class="' + (s.oos.startsWith('+') ? 'up' : 'dn') + '">' + s.oos + '</span>' : '<span class="muted">—</span>') + '</td>' +
+      '<td class="col-venue muted" style="font-size:11px">' + (s.venue || '—') + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+/* ═══ PAPER / LIVE SUB-SCREENERS ═══ */
+function makeSubTable(stageFilter) {
+  const list = STRATEGIES.filter(s => s.stage === stageFilter);
+  if (!list.length) return '<div style="padding:12px 14px;color:var(--quiet);font-size:12px">No strategies</div>';
+  return '<table class="screener-table" style="border-radius:0"><colgroup><col class="col-name"><col class="col-stage"><col class="col-life"><col style="width:52px"><col class="col-pnl"><col class="col-dsr"><col class="col-dd"></colgroup>' +
+    '<thead><tr><th>Strategy</th><th>Stage</th><th>Lifecycle</th><th>Days</th><th>P&amp;L</th><th>DSR</th><th>Max DD</th></tr></thead>' +
+    '<tbody>' + list.map(s => {
+      const sc = s.stage === 'live' ? 'var(--up)' : 'var(--iris-s)';
+      return '<tr data-id="' + s.id + '" onclick="openPeek(\'' + s.id + '\')">' +
+        '<td><div class="cell-name">' + s.name + '</div></td>' +
+        '<td>' + stageBadge(s) + '</td>' +
+        '<td>' + lifetimeGlyph(s) + '</td>' +
+        '<td class="tab">' + (s.days != null ? s.days + 'd' : s.paperDays ? s.paperDays + 'd' : '—') + '</td>' +
+        '<td>' + pnlCell(s) + '</td>' +
+        '<td>' + dsrBar(s.dsr) + '</td>' +
+        '<td>' + ddArc(s.dd) + '</td>' +
+        (stageFilter === 'live' ? '<td><button class="btn btn-danger btn-sm" onclick="event.stopPropagation();alert(\'Close position confirm…\')">Close</button></td>' : '') +
+      '</tr>';
+    }).join('') + '</tbody></table>';
+}
+
+/* ═══ HERO EQUITY SVG ═══ */
+function makeHeroSvg(pts, color) {
+  const W=700, H=110, pad=6;
+  if (!pts || pts.length < 2) return '';
+  const mn = Math.min(...pts), mx = Math.max(...pts);
+  const rng = mx - mn || 1;
+  const xs = pts.map((_,i) => pad + (i/(pts.length-1))*(W-pad*2));
+  const ys = pts.map(p => H-pad - ((p-mn)/rng)*(H-pad*2));
+  const lineD = xs.map((x,i) => (i===0?'M':'L') + x.toFixed(1) + ',' + ys[i].toFixed(1)).join(' ');
+  const areaD = lineD + ' L' + xs[xs.length-1].toFixed(1)+','+(H-pad) + ' L'+xs[0].toFixed(1)+','+(H-pad)+' Z';
+  return '<defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + color + '" stop-opacity="0.18"/><stop offset="100%" stop-color="' + color + '" stop-opacity="0.01"/></linearGradient></defs>' +
+    '<path d="' + areaD + '" fill="url(#hg)"/>' +
+    '<path d="' + lineD + '" stroke="' + color + '" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
+}
+
+/* ═══ PEEK PANE ═══ */
+function openPeek(id) {
+  const s = STRATEGIES.find(x => x.id === id);
+  if (!s) return;
+  selectedIdx = visibleIds.indexOf(id);
+  highlightRow(id);
+  document.getElementById('peekTitle').textContent = s.name;
+  document.getElementById('peekBody').innerHTML = buildPeekContent(s);
+  document.getElementById('peekBackdrop').classList.add('open');
+  document.getElementById('peekPane').classList.add('open');
+  document.getElementById('mainArea').classList.add('peek-dimmed');
+  updatePeekNav();
+  // draw phase chart
+  drawPhaseChart(s);
+}
+
+function closePeek() {
+  document.getElementById('peekBackdrop').classList.remove('open');
+  document.getElementById('peekPane').classList.remove('open');
+  document.getElementById('mainArea').classList.remove('peek-dimmed');
+  // remove selected highlight
+  document.querySelectorAll('#screenerBody tr').forEach(r => r.classList.remove('sel'));
+  selectedIdx = -1;
+}
+
+function peekMove(dir) {
+  const newIdx = selectedIdx + dir;
+  if (newIdx < 0 || newIdx >= visibleIds.length) return;
+  openPeek(visibleIds[newIdx]);
+}
+
+function updatePeekNav() {
+  document.getElementById('peekUp').disabled = selectedIdx <= 0;
+  document.getElementById('peekDown').disabled = selectedIdx >= visibleIds.length - 1;
+}
+
+function highlightRow(id) {
+  document.querySelectorAll('#screenerBody tr').forEach(r => {
+    r.classList.toggle('sel', r.dataset.id === id);
+  });
+}
+
+/* ═══ PHASE CHART ═══ */
+function drawPhaseChart(s) {
+  const canvas = document.getElementById('peek-phase-chart-' + s.id);
+  if (!canvas) return;
+  const W = 420, H = 100, pad = 8;
+
+  // Build combined data
+  const phases = [];
+  if (s.phases.includes('bt')) {
+    // simulate OOS backtest portion
+    const bt = Array.from({length:20}, (_,i) => 100 + i*0.4 + (Math.sin(i)*0.8));
+    phases.push({label:'Backtest (OOS)', color:'var(--muted)', pts:bt, start:0});
+  }
+  if (s.phases.includes('paper')) {
+    const base = phases.length ? phases[phases.length-1].pts.slice(-1)[0] : 100;
+    const n = (s.paperDays || s.days || 30);
+    const ppts = Array.from({length:Math.min(n,20)}, (_,i) => base + i * (s.pnlPct||2)/20 + Math.sin(i*0.7)*0.4);
+    phases.push({label:'Paper', color:'var(--iris-s)', pts:ppts, start: phases.length ? phases[phases.length-1].pts.length : 0});
+  }
+  if (s.phases.includes('live') || s.stage === 'live') {
+    const base = phases.length ? phases[phases.length-1].pts.slice(-1)[0] : 100;
+    const lpts = Array.from({length:s.days||10}, (_,i) => base + i*1.2 + Math.sin(i*0.5)*0.3);
+    phases.push({label:'Live', color:'var(--up)', pts:lpts, start: phases.reduce((a,p)=>a+p.pts.length,0)});
+  }
+
+  const allPts = phases.flatMap(p => p.pts);
+  if (!allPts.length) return;
+  const mn = Math.min(...allPts), mx = Math.max(...allPts);
+  const rng = mx - mn || 1;
+  const total = allPts.length;
+
+  const toX = i => pad + (i/(total-1))*(W - pad*2);
+  const toY = v => H - pad - ((v-mn)/rng)*(H-pad*2);
+
+  let svgPaths = '';
+  let cumIdx = 0;
+  phases.forEach((ph, pi) => {
+    const pts = ph.pts;
+    const isCur = (pi === phases.length - 1);
+    const opac = isCur ? 1 : 0.4;
+    const coords = pts.map((_,i) => ({ x: toX(cumIdx + i), y: toY(pts[i]) }));
+    const d = coords.map((c,i) => (i===0?'M':'L') + c.x.toFixed(1)+','+c.y.toFixed(1)).join(' ');
+    const areaD = d + ' L'+coords[coords.length-1].x.toFixed(1)+','+(H-pad) + ' L'+coords[0].x.toFixed(1)+','+(H-pad)+' Z';
+    const gId = 'pg' + pi;
+    svgPaths += '<defs><linearGradient id="' + gId + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + ph.color + '" stop-opacity="'+(isCur?0.15:0.05)+'"/><stop offset="100%" stop-color="' + ph.color + '" stop-opacity="0"/></linearGradient></defs>';
+    svgPaths += '<path d="' + areaD + '" fill="url(#' + gId + ')" opacity="' + opac + '"/>';
+    svgPaths += '<path d="' + d + '" stroke="' + ph.color + '" stroke-width="' + (isCur?1.8:1.2) + '" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="' + opac + '"/>';
+
+    // phase boundary hairline
+    if (pi > 0) {
+      const bx = toX(cumIdx).toFixed(1);
+      svgPaths += '<line x1="' + bx + '" y1="' + pad + '" x2="' + bx + '" y2="' + (H-pad) + '" stroke="var(--border)" stroke-width="1" stroke-dasharray="2,2"/>';
+    }
+    cumIdx += pts.length;
+  });
+
+  canvas.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="height:100px">' + svgPaths + '</svg>';
+}
+
+/* ═══ PEEK CONTENT ═══ */
+function buildPeekContent(s) {
+  const isLive = s.stage === 'live';
+  const isPaper = s.stage === 'paper';
+  const isGate = s.stage === 'gate';
+  const isKilled = s.stage === 'killed';
+  const hasBT = s.phases.includes('bt');
+  const hasPaper = s.phases.includes('paper') || isLive;
+  const hasLive = s.stage === 'live';
+
+  let html = '';
+
+  /* — Stage badge + verdict — */
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">';
+  html += stageBadge(s);
+  if (isGate) html += '<span class="badge badge-gold">Live-ready · awaiting funding</span>';
+  if (isKilled && s.killReason) html += '<span class="badge badge-dn" style="font-size:10px;font-weight:400">' + s.killReason + '</span>';
+  if (isLive) html += '<button class="btn btn-danger btn-sm" onclick="document.getElementById(\'liqModal\').classList.add(\'open\')">Liquidate</button>';
+  if (isGate) html += '<button class="btn-launch" onclick="alert(\'Launching live…\')">↗ Launch live</button>';
+  html += '</div>';
+
+  /* — Phase-continuous equity chart — */
+  if (s.phases.length > 0) {
+    html += '<div class="psec">';
+    html += '<div class="psec-title">Phase-continuous equity</div>';
+    html += '<div class="eq-wrap">';
+    html += '<div class="eq-legend">';
+    if (hasBT) html += '<span><span class="eq-swatch" style="background:var(--muted);opacity:.6"></span>Backtest (OOS)</span>';
+    if (hasPaper) html += '<span><span class="eq-swatch" style="background:var(--iris-s)"></span>Paper</span>';
+    if (hasLive) html += '<span><span class="eq-swatch" style="background:var(--up)"></span>Live</span>';
+    html += '</div>';
+    html += '<div id="peek-phase-chart-' + s.id + '"></div>';
+    html += '</div>';
+
+    /* — Per-phase comparison table — */
+    const curCol = hasLive ? 2 : hasPaper ? 1 : 0;
+    html += '<table class="phase-tbl">';
+    html += '<thead><tr><th>Metric</th>' +
+      (hasBT ? '<th' + (curCol===0?' class="cur-col"':'') + '>Backtest</th>' : '') +
+      (hasPaper ? '<th' + (curCol===1?' class="cur-col"':'') + '>Paper</th>' : '') +
+      (hasLive ? '<th' + (curCol===2?' class="cur-col"':'') + '>Live</th>' : '') +
+      '</tr></thead><tbody>';
+
+    const rows = [
+      { label:'Return', bt: hasBT ? '+8.2%' : '—', paper: hasPaper ? (s.pnlPct != null ? (s.pnlPct>=0?'+':'')+s.pnlPct.toFixed(1)+'%' : '—') : null, live: hasLive ? '+21%' : null, btCls:'up', paCls: s.pnlPct>=0?'up':'dn', liCls:'up' },
+      { label:'Sharpe (DSR)', bt: hasBT ? '1.12' : '—', paper: hasPaper ? (s.dsr ? s.dsr.toFixed(2) : '—') : null, live: hasLive ? '1.18' : null },
+      { label:'Max DD', bt: hasBT ? '14%' : '—', paper: hasPaper ? (s.dd ? s.dd.toFixed(1)+'%' : '—') : null, live: hasLive ? '3.1%' : null, btCls:'', paCls:'', liCls:'' },
+      { label:'Trades', bt:'47', paper: hasPaper ? '31' : null, live: hasLive ? '9' : null },
+      { label:'Duration', bt:'OOS window', paper: hasPaper ? ((s.paperDays||s.days||'?')+'d') : null, live: hasLive ? (s.days+'d') : null },
+    ];
+
+    rows.forEach(row => {
+      html += '<tr><td>' + row.label + '</td>';
+      if (hasBT) html += '<td class="' + (curCol===0?'cur-col ':' ') + (row.btCls||'') + '">' + (row.bt || '—') + '</td>';
+      if (hasPaper) html += '<td class="' + (curCol===1?'cur-col ':' ') + (row.paCls||'') + '">' + (row.paper != null ? row.paper : '—') + '</td>';
+      if (hasLive) html += '<td class="' + (curCol===2?'cur-col ':' ') + (row.liCls||'') + '">' + (row.live != null ? row.live : '—') + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '</div>'; // /psec
+  }
+
+  /* — Gate chips — */
+  if (s.dsr != null) {
+    html += '<div class="psec">';
+    html += '<div class="psec-title">Gate criteria</div>';
+    html += '<div class="gate-chips">';
+    html += '<div class="gate-chip pass"><div class="chip-name">Deflated Sharpe</div><div class="chip-val chip-pass">' + s.dsr.toFixed(2) + '</div><div class="chip-explain">Edge after correcting for how many variants were tried</div><div class="chip-tip">Deflated Sharpe Ratio (DSR) penalises the Sharpe ratio for the number of strategy trials. Threshold: 0.95.</div></div>';
+    const pboCls = s.pbo < 0.5 ? 'chip-pass' : 'chip-warn';
+    html += '<div class="gate-chip ' + (s.pbo < 0.5 ? 'pass' : 'warn') + '"><div class="chip-name">PBO</div><div class="chip-val ' + pboCls + '">' + s.pbo.toFixed(2) + '</div><div class="chip-explain">Probability the backtest is overfit</div><div class="chip-tip">Probability of Backtest Overfitting (CSCV). Below 0.50 = edge is likely genuine. Limit: 0.50.</div></div>';
+    html += '<div class="gate-chip pass"><div class="chip-name">Max DD</div><div class="chip-val chip-pass">' + (s.dd||14).toFixed(1) + '%</div><div class="chip-explain">Peak-to-trough drawdown vs 25% limit</div><div class="chip-tip">Maximum drawdown observed in the OOS window. Must stay below 25%.</div></div>';
+    html += '<div class="gate-chip pass"><div class="chip-name">OOS Return</div><div class="chip-val chip-pass">' + (s.oos||'+8.2%') + '</div><div class="chip-explain">Out-of-sample: data the strategy never saw during fitting</div><div class="chip-tip">Return on the held-out OOS period. Must be positive.</div></div>';
+    html += '</div></div>';
+  }
+
+  /* — Building blocks — */
+  html += '<div class="psec">';
+  html += '<div class="psec-title">Building blocks</div>';
+  html += '<div class="blocks">';
+  if (s.id === 'funding-carry-btc') {
+    html += '<div class="block-row"><span class="block-key">Signal</span><span class="block-val">funding_rate below fitted threshold</span></div>';
+    html += '<div class="block-row"><span class="block-key">Filter</span><span class="block-val">MA-trend (50/200)</span></div>';
+    html += '<div class="block-row"><span class="block-key">Exit</span><span class="block-val">Stop 4% · Take 12% · Time-stop 14d</span></div>';
+    html += '<div class="block-row"><span class="block-key">Sizing</span><span class="block-val">Fixed fraction 0.10</span></div>';
+  } else {
+    html += '<div class="block-row"><span class="block-key">Signal</span><span class="block-val">' + s.name + ' momentum signal</span></div>';
+    html += '<div class="block-row"><span class="block-key">Filter</span><span class="block-val">Volatility regime filter</span></div>';
+    html += '<div class="block-row"><span class="block-key">Exit</span><span class="block-val">Stop 5% · Time-stop 21d</span></div>';
+    html += '<div class="block-row"><span class="block-key">Sizing</span><span class="block-val">Fixed fraction 0.08</span></div>';
+  }
+  html += '</div>';
+  html += '<div class="similar-note">Similar strategies share these blocks: ' + (s.id === 'funding-carry-btc' ? 'MA Trend Filter ETH 1d, Vol-Regime Switch BTC' : 'Funding Carry BTC') + '</div>';
+  html += '</div>';
+
+  /* — Data feeds — */
+  if (isLive || isPaper || isGate) {
+    html += '<div class="psec">';
+    html += '<div class="psec-title">Data sources · latest</div>';
+    html += '<div class="feed-list">';
+    if (s.id === 'funding-carry-btc') {
+      html += '<div class="feed-row"><div class="feed-bullet"></div><span class="feed-name">funding_rate</span><span class="feed-val">−0.018%</span><span class="feed-ago">2h ago · Binance</span></div>';
+      html += '<div class="feed-row"><div class="feed-bullet"></div><span class="feed-name">fear_greed</span><span class="feed-val">71 (greed)</span><span class="feed-ago">5h ago</span></div>';
+      html += '<div class="feed-row"><div class="feed-bullet"></div><span class="feed-name">BTC/USDT 1h bar</span><span class="feed-val">$67,241</span><span class="feed-ago">1h ago · Binance</span></div>';
+    } else {
+      html += '<div class="feed-row"><div class="feed-bullet"></div><span class="feed-name">OHLCV 1d bar</span><span class="feed-val">latest</span><span class="feed-ago">4h ago · ' + (s.venue||'Binance') + '</span></div>';
+      html += '<div class="feed-row"><div class="feed-bullet"></div><span class="feed-name">fear_greed</span><span class="feed-val">71</span><span class="feed-ago">5h ago</span></div>';
+    }
+    html += '</div></div>';
+  }
+
+  /* — Recent trades — */
+  if (isLive || isPaper) {
+    html += '<div class="psec">';
+    html += '<div class="psec-title">Recent trades</div>';
+    html += '<table class="mini-tbl"><thead><tr><th>Date</th><th>Side</th><th>Asset</th><th class="r">Size</th><th class="r">P&amp;L</th></tr></thead><tbody>';
+    const trades = isLive ? [
+      ['2026-06-10','BUY','BTC/USDT','0.025','—'],
+      ['2026-05-28','SELL','BTC/USDT','0.025','+$82'],
+      ['2026-05-14','BUY','BTC/USDT','0.025','—'],
+      ['2026-05-01','SELL','BTC/USDT','0.025','+$124'],
+    ] : [
+      ['2026-06-09','BUY',s.venue,'0.10','—'],
+      ['2026-05-27','SELL',s.venue,'0.10','+$34'],
+      ['2026-05-15','BUY',s.venue,'0.08','—'],
+      ['2026-05-03','SELL',s.venue,'0.08','+$18'],
+      ['2026-04-21','BUY',s.venue,'0.10','—'],
+      ['2026-04-09','SELL',s.venue,'0.10','+$29'],
+    ];
+    trades.forEach(([dt,side,asset,sz,pnl]) => {
+      html += '<tr><td style="color:var(--quiet)">' + dt + '</td>' +
+        '<td class="' + (side==='BUY'?'side-buy':'side-sell') + '">' + side + '</td>' +
+        '<td style="color:var(--muted)">' + asset + '</td>' +
+        '<td class="r">' + sz + '</td>' +
+        '<td class="r ' + (pnl.startsWith('+') ? 'up' : pnl === '—' ? 'muted' : 'dn') + '">' + pnl + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+
+  /* — Activity timeline — */
+  html += '<div class="psec">';
+  html += '<div class="psec-title">Activity</div>';
+  html += '<div class="act-list">';
+  const events = buildActivity(s);
+  events.forEach((ev, i) => {
+    html += '<div class="act-row' + (i===0?' cur-ev':'') + '"><span class="act-time">' + ev[0] + '</span><span class="act-text">' + ev[1] + '</span></div>';
+  });
+  html += '</div></div>';
+
+  return html;
+}
+
+function buildActivity(s) {
+  const ev = [];
+  if (s.stage === 'live') {
+    ev.push(['2026-05-24', '<strong>Went live</strong> · $1,700 deployed']);
+    ev.push(['2026-04-07', '<strong>Paper started</strong> · 47d track']);
+    ev.push(['2026-04-07', 'Gate passed · DSR 1.12 · PBO 0.31']);
+    ev.push(['2026-03-28', 'Backtest completed · OOS +8.2%']);
+    ev.push(['2026-03-20', 'Strategy proposed by LLM agent']);
+  } else if (s.stage === 'paper') {
+    ev.push(['2026-06-11', '<strong>Paper running</strong> · day ' + (s.days||'?')]);
+    ev.push(['2026-06-01', 'Gate passed · DSR ' + (s.dsr||'—') + ' · PBO ' + (s.pbo||'—')]);
+    ev.push(['2026-05-25', 'Backtest completed · OOS ' + (s.oos||'—')]);
+    ev.push(['2026-05-15', 'Strategy proposed by LLM agent']);
+  } else if (s.stage === 'gate') {
+    ev.push(['2026-06-10', '<strong>Gate passed</strong> · awaiting funding']);
+    ev.push(['2026-06-05', 'Backtest completed · OOS ' + (s.oos||'—')]);
+    ev.push(['2026-05-28', 'Strategy proposed by LLM agent']);
+  } else if (s.stage === 'killed') {
+    ev.push(['2026-05-28', '<strong class="dn">Killed</strong> · ' + (s.killReason||'gate failed')]);
+    ev.push(['2026-05-22', 'Backtest completed']);
+    ev.push(['2026-05-18', 'Strategy proposed by LLM agent']);
+  } else {
+    ev.push(['2026-06-11', 'In progress · ' + s.stage]);
+    ev.push(['2026-06-08', 'Strategy proposed by LLM agent']);
+  }
+  return ev;
+}
+
+/* ═══ MODAL HELPERS ═══ */
+function closeLiq() { document.getElementById('liqModal').classList.remove('open'); }
+function confirmLiq() {
+  closeLiq();
+  alert('Positions liquidated. Live trading disarmed.');
+}
+
+/* ═══ KEYBOARD ═══ */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closePeek(); return; }
+  if (!document.getElementById('peekPane').classList.contains('open')) return;
+  if (e.key === 'ArrowUp') { e.preventDefault(); peekMove(-1); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); peekMove(1); }
+});
+
+/* ═══ PAPER / LIVE HERO CHARTS ═══ */
+function initHeroCharts() {
+  // Paper cohort
+  const pPts = [100,101,102,101,103,104,103,105,106,105,107,106,108,107,109,108,110,109,111,110,112,111,113];
+  const svg = document.getElementById('paperHeroSvg');
+  if (svg) svg.innerHTML = makeHeroSvg(pPts, 'var(--iris-s)');
+
+  // Live
+  const lPts = [100,102,104,103,106,108,107,110,112,111,114,116,115,118,120,119,122,124,121];
+  const svg2 = document.getElementById('liveHeroSvg');
+  if (svg2) svg2.innerHTML = makeHeroSvg(lPts, 'var(--up)');
+}
+
+/* ═══ INIT ═══ */
+renderTable();
+initHeroCharts();
+document.getElementById('paperScreenerWrap').innerHTML = makeSubTable('paper');
+document.getElementById('liveScreenerWrap').innerHTML = makeSubTable('live');
+
+// hash routing on load
+const initHash = location.hash.replace('#/','') || 'strategies';
+if (initHash !== 'strategies') {
+  const btn = document.querySelector('[data-page="' + initHash + '"]');
+  if (btn) nav(btn, initHash);
+}
+
+// After peek content is rendered we need to draw the chart
+const origOpen = openPeek;
+// Already handled via drawPhaseChart call in openPeek
+</script>
+</body>
+</html>

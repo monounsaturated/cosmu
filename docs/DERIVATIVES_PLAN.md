@@ -7,7 +7,7 @@
 ## 0. Locked decisions (this cycle)
 
 - **Jurisdiction = France only (UAE deferred but kept in mind).** Build + prove + go live in **France**, on a MiFID-legal venue (OKX X-Perps / Kraken Futures, 2:1). **No relocation in this plan.** Keep the build **jurisdiction-portable** — venue, leverage cap, and fees are catalog/config facts, never hardcoded — so adding **UAE later is a config switch, not a rewrite**. The FR ceiling we accept for now: **2:1 retail leverage + ~30–62% tax** (an autonomous HFT system risks "professional" reclassification). UAE (0% tax, 5:1, all venues) stays the documented pressure-release valve if those bind.
-- **First instrument = perpetual futures.** Shorting + funding carry + market-neutral + ~3× faster forward-test convergence + ccxt-easy. Dated futures = Phase 2. **Options = deferred** (Phase 3, Deribit) — high ceiling, heavy build, not fast iteration.
+- **First instrument = perpetual futures.** Shorting + funding carry + market-neutral + ~3× faster paper convergence + ccxt-easy. Dated futures = Phase 2. **Options = deferred** (Phase 3, Deribit) — high ceiling, heavy build, not fast iteration.
 - **Capital posture = small + conservative.** ~$1–5k, ≤2× leverage. In Phase 0/1 **absolute profit is secondary to validation** — prove the edge and the live mechanics first.
 - **Deliverable = this doc.** Owner drives the build (no fan-out / specs generated this pass).
 
@@ -29,7 +29,7 @@ Net profit ≈ Capital × Leverage × Σ(edge × freq) × (1 − cost) × uptime
 ```
 
 - **Two of the biggest multipliers — leverage and tax — are jurisdiction, not code.** Staying in France caps both (2:1; ~30–62% tax). UAE later would be ≈ **2.6× kept profit** (FR-pro ~62% → 0%) — the size of the prize we're deferring, and exactly why the build stays portable.
-- **Market-neutral is also a research-velocity unlock:** killing the beta variance term tightens the t-stat by √(variance reduction) → significance in **~80 vs ~200 days** for the same edge. Faster forward-test = faster iteration to live.
+- **Market-neutral is also a research-velocity unlock:** killing the beta variance term tightens the t-stat by √(variance reduction) → significance in **~80 vs ~200 days** for the same edge. Faster paper = faster iteration to live.
 - **Funding carry** (long spot / short perp) is a **documented risk premium** (BIS WP 1087), uncorrelated to BTC direction, small-and-shrinking but real, and **beneath institutional notice** — our capacity niche. The most-likely-real edge in the whole system.
 
 ---
@@ -47,7 +47,7 @@ Net profit ≈ Capital × Leverage × Σ(edge × freq) × (1 − cost) × uptime
 - Derivatives in the data model: leverage, funding, liquidation, signed/short qty, expiry — none exist ([core/interfaces.py]).
 - Short entries in the spec DSL ([strategy/spec.py] is "Upside-only").
 - **Smart dynamic fees:** fees are static catalog constants ([spine/venue.py]); the gate uses one hardcoded `_FEE` ([research/gate.py:43]); the cost model has a single swap chokepoint ([execution/costopt.py] `FeeSchedule.from_venue`).
-- Two-leg (market-neutral) forward-test marking: marking is single-leg spot ([master/portfolio.py] `mark_to_market`, [orchestrator/loop.py] `mark_tracks`).
+- Two-leg (market-neutral) paper marking: marking is single-leg spot ([master/portfolio.py] `mark_to_market`, [orchestrator/loop.py] `mark_tracks`).
 - Perp/derivatives risk: margin, liquidation distance, short parity (the martingale ban must not block legit shorts), funding-flip unwind, basis-gap stop ([master/risk.py] `validate_order_full`).
 - **A FR-legal perp venue account.** Our only configured venue, **Binance, is geoblocked for FR-retail derivatives** → need **OKX or Kraken Futures** keys.
 

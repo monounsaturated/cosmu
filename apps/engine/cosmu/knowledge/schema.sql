@@ -474,3 +474,29 @@ CREATE INDEX IF NOT EXISTS idx_research_notes_created ON research_notes(created_
 CREATE INDEX IF NOT EXISTS idx_research_notes_kind ON research_notes(kind);
 CREATE INDEX IF NOT EXISTS idx_skills_pruned ON skills(pruned_at);
 
+
+-- Building-block registry (2026-06-11): every spec decomposed into content-hashed reusable blocks
+-- (signal · filter · setup · exit · sizing) + the whole-spec combo_hash. Powers: structural dedup
+-- (the same hypothesis is never re-screened — protects the multiple-testing budget), block-level
+-- observational stats (which ingredients keep surviving), and the "similar strategies" panel.
+-- OBSERVATIONAL ONLY — never consulted by the scorer/Gate/FDR.
+CREATE TABLE IF NOT EXISTS strategy_blocks (
+  block_hash TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,          -- 'signal' | 'filter' | 'setup' | 'exit' | 'sizing'
+  label TEXT NOT NULL,         -- human one-liner for UI/leaderboard
+  payload TEXT NOT NULL,       -- canonical JSON (param names → placeholders carrying their search ranges)
+  first_seen TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS version_blocks (
+  strategy_version_id TEXT NOT NULL,
+  block_hash TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  PRIMARY KEY (strategy_version_id, block_hash)
+);
+CREATE TABLE IF NOT EXISTS version_combos (
+  strategy_version_id TEXT PRIMARY KEY,
+  combo_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_version_blocks_hash ON version_blocks(block_hash);
+CREATE INDEX IF NOT EXISTS idx_version_combos_hash ON version_combos(combo_hash);
