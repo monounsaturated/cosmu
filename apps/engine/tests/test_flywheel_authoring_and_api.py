@@ -289,6 +289,39 @@ def test_leaderboard_forward_return_is_the_marked_trajectory(tmp_path, monkeypat
     assert math.isclose(row["track_return_pct"], 4.0, abs_tol=1e-6)
 
 
+def test_leaderboard_v18_money_columns_null_at_day0(tmp_path, monkeypatch):
+    # v18 adds value_usd / pnl_usd / pnl_pct. At day-0 (track opened, NOT marked) all three must be null —
+    # an un-marked track shows "—", never a fabricated $0 / -100% / the seeded backtest equity.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Day-0 money cols"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)  # opened with backtest-seeded equity, but no scope='track' snapshot yet
+    row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
+    assert row["value_usd"] is None and row["pnl_usd"] is None and row["pnl_pct"] is None
+
+
+def test_leaderboard_v18_money_columns_from_marked_trajectory(tmp_path, monkeypatch):
+    # Once marked, value_usd = marked equity, pnl_usd = value - starting_capital, and pnl_pct ALIASES the
+    # forward paper_return_pct (so $ and % can never disagree). Marked 101_500 on 100k => $101,500 / +$1,500 / +1.5%.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Marked money cols"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)
+    store.insert(
+        "portfolio_snapshots",
+        {
+            "scope": "track", "ref_id": vid, "ts": utcnow(), "equity": "101500.00", "cash": "0",
+            "positions_value": "101500.00", "pnl": "1500.00", "drawdown": "0",
+        },
+    )
+    row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
+    assert math.isclose(row["value_usd"], 101500.0, abs_tol=1e-6)
+    assert math.isclose(row["pnl_usd"], 1500.0, abs_tol=1e-6)
+    assert math.isclose(row["pnl_pct"], row["paper_return_pct"], abs_tol=1e-9)  # pnl_pct is an alias, never recomputed
+    # oos_window_days is a positive number or honest null — never negative/zero/NaN.
+    assert row["oos_window_days"] is None or row["oos_window_days"] > 0
+
+
 def test_leaderboard_forward_return_shows_true_negative(tmp_path, monkeypatch):
     # HONESTY: a losing paper run shows its TRUE negative number — never the rosy backtest, never floored at 0.
     client, store = _client(tmp_path, monkeypatch)

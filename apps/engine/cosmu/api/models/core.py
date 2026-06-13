@@ -54,6 +54,17 @@ class LeaderboardRow(BaseModel):
     # track is under-performing the backtest). MONITORING ONLY — never on the Gate/scorer/FDR/money path.
     divergence_status: Literal["insufficient", "tracking", "diverging"] = "insufficient"
     divergence_gap_pct: float | None = None
+    # v18 display columns — REAL marked money, net of fees, never fabricated. `value_usd` is the track's
+    # marked-to-market equity (latest scope='track' snapshot); `pnl_usd` = value_usd - starting_capital;
+    # `pnl_pct` ALIASES the already-computed `paper_return_pct` (the forward number) so the $ and % can never
+    # disagree and the rosy backtest is never surfaced. All `null` until the track is marked (day-0 truth) —
+    # the screener renders an honest "—", NOT 0 or a -100% loss. `oos_window_days` is the backtest OOS window
+    # length (from the YYYY-MM bounds), so the OOS % can be shown WITH its window ("+8.2% over ~2.4yr"); null
+    # when the bounds are missing/malformed.
+    value_usd: float | None = None
+    pnl_usd: float | None = None
+    pnl_pct: float | None = None
+    oos_window_days: float | None = None
     # Faceted taxonomy (cosmu/strategy/taxonomy.py), all DERIVED from the spec — never hand-tagged. The
     # Strategies surface filters on these real fields. `signal_family` is the primary filter (from the
     # named features the spec references); the rest are orthogonal facets.

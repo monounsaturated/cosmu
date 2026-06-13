@@ -36,6 +36,19 @@ def _oos_window_days(oos_start: object, oos_end: object) -> float | None:
     return months * _DAYS_PER_MONTH
 
 
+def _money_or_none(value: object) -> float | None:
+    """A real dollar figure, or None when it's missing/non-finite — so the v18 money columns (value_usd /
+    pnl_usd) carry an honest `null` for an un-marked track instead of a fabricated $0. Never coerces null→0
+    (unlike _metric), because for money a missing mark is "—", not zero."""
+    if value is None:
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
 def _paper_return_pct(tr_equity: object, starting_capital: object) -> float | None:
     """The real net-of-fee forward return % from the marked trajectory: (marked_equity / starting_capital - 1) * 100.
     Returns None when the track has no marked snapshot yet (day-0 / never marked) or its starting_capital is
@@ -109,12 +122,21 @@ def leaderboard() -> LeaderboardResponse:
         # mat.paper_age_days is the marked clock, and the OOS window length comes from the b.oos_start/end bounds).
         # Fails safe to the "insufficient" empty state when the marked window is too short or any input is missing —
         # so a fresh / un-marked track NEVER raises a false alarm. MONITORING ONLY, never on the Gate/money path.
+        # Hoisted once: the backtest OOS window length feeds BOTH the divergence pro-rating and the v18
+        # `oos_window_days` display column (so the OOS % is shown with its window). None when bounds are bad.
+        oos_window_days = _oos_window_days(row["oos_start"], row["oos_end"])
         div = forward_divergence(
             paper_return_pct,
             mat.paper_age_days,
             _metric(row["oos_return"]) * 100,
-            _oos_window_days(row["oos_start"], row["oos_end"]),
+            oos_window_days,
         )
+        # v18 money columns — REAL marked $ value + $ P&L, net of fees. None (not 0) until the track is marked,
+        # so a day-0 track shows "—", never a fabricated $0 / -100%. pnl_pct ALIASES paper_return_pct (the
+        # forward %) so $ and % can never disagree and the backtest is never surfaced as forward performance.
+        value_usd = _money_or_none(row["tr_equity"])
+        start_usd = _money_or_none(row["starting_capital"])
+        pnl_usd = (value_usd - start_usd) if (value_usd is not None and start_usd is not None) else None
         # Facets are DERIVED from the spec's named features (taxonomy.py) — no manual tagging — so the
         # Strategies filters always reflect the strategy's real inputs and structure.
         facets = derive_facets(_json(row["spec"]), row["origin"])
@@ -137,6 +159,10 @@ def leaderboard() -> LeaderboardResponse:
                 # renders a fabricated number for a track without enough marked history.
                 divergence_status=div.status,
                 divergence_gap_pct=div.gap_pct if div.status != "insufficient" else None,
+                value_usd=value_usd,
+                pnl_usd=pnl_usd,
+                pnl_pct=paper_return_pct,
+                oos_window_days=oos_window_days,
                 signal_family=facets.signal_family,
                 signal_family_label=facets.signal_family_label,
                 features=facets.features,

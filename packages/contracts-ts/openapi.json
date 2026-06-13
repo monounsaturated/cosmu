@@ -3242,6 +3242,17 @@
             "title": "Net Pct",
             "type": "number"
           },
+          "oos_window_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oos Window Days"
+          },
           "origin": {
             "title": "Origin",
             "type": "string"
@@ -3265,6 +3276,28 @@
             "title": "Pbo",
             "type": "number"
           },
+          "pnl_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Pct"
+          },
+          "pnl_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Usd"
+          },
           "signal_family": {
             "title": "Signal Family",
             "type": "string"
@@ -3284,6 +3317,17 @@
           "track_return_pct": {
             "title": "Track Return Pct",
             "type": "number"
+          },
+          "value_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Usd"
           },
           "venue": {
             "title": "Venue",
@@ -5615,13 +5659,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -7043,7 +7080,7 @@
     },
     "/overview": {
       "get": {
-        "description": "The aggregate read-out for the Overview surface \u2014 the \u03a3 of all standalone forward-test tracks. A pure\nread-out: there is NO pooled wallet and no cross-track allocation (each survivor proves on its own track).\n\nAll four reads share ONE autocommit Postgres connection (store.reading()) \u2014 without this each store.row()\nopens + closes a separate psycopg2 connection (~1s RTT \u00d7 5 \u2248 5\u20137s, over the 5s frontend budget).",
+        "description": "The aggregate read-out for the Overview surface \u2014 the \u03a3 of all standalone paper tracks. A pure\nread-out: there is NO pooled wallet and no cross-track allocation (each survivor proves on its own track).\n\nAll four reads share ONE autocommit Postgres connection (store.reading()) \u2014 without this each store.row()\nopens + closes a separate psycopg2 connection (~1s RTT \u00d7 5 \u2248 5\u20137s, over the 5s frontend budget).",
         "operationId": "overview_overview_get",
         "responses": {
           "200": {
