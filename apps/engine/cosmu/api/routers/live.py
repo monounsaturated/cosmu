@@ -1,4 +1,4 @@
-# intent: the live trading control-plane — arm/defund/launch + venue/jurisdiction reads; inputs: typed requests; outputs: live state; invariants: live stays off by default; arming needs confirm + keys + a passed gate + forward-test maturity + regime.
+# intent: the live trading control-plane — arm/defund/launch + venue/jurisdiction reads; inputs: typed requests; outputs: live state; invariants: live stays off by default; arming needs confirm + keys + a passed gate + paper maturity + regime.
 
 from __future__ import annotations
 
@@ -58,8 +58,8 @@ def _live_caps_row() -> dict[str, float]:
 
 
 def _eligible_strategies() -> list[EligibleStrategy]:
-    """Strategies eligible to be armed: forward-test survivors that (a) passed the gates, (b) have >=
-    FORWARD_TEST_MIN_DAYS of net-positive FORWARD evidence, AND (c) whose PROVEN regime set includes the CURRENT
+    """Strategies eligible to be armed: paper survivors that (a) passed the gates, (b) have >=
+    PAPER_MIN_DAYS of net-positive FORWARD evidence, AND (c) whose PROVEN regime set includes the CURRENT
     market regime. All three are HARD preconditions — a 0-day-old, underwater, or out-of-regime strategy is NOT
     eligible. Capability ≠ edge: eligibility only gates WHAT CAN be armed; a human still makes the final launch
     click, and even then an order is real only with the toggle ON + keys + caps + no kill-switch. Never promotes."""
@@ -82,7 +82,7 @@ def _eligible_strategies() -> list[EligibleStrategy]:
             continue
         seen.add(r["id"])
         if not live_eligibility_verdict(store, r["id"], reference).eligible:
-            continue  # blocked: not forward-proven (>= FORWARD_TEST_MIN_DAYS net-positive) or out-of-regime
+            continue  # blocked: not forward-proven (>= PAPER_MIN_DAYS net-positive) or out-of-regime
         out.append(EligibleStrategy(version_id=r["id"], name=r["name"]))
     return out
 
@@ -270,8 +270,8 @@ def live_venue_catalog() -> VenueCatalogResponse:
 def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
     """Strategy launch-live flow: arm one gate-passed strategy on a chosen venue + asset with a given budget.
     This is the ONLY path that launches a single strategy live — and the ONLY path that writes status='live'
-    (on a confirmed, eligible launch). Forward-test maturity is now a HARD precondition: the strategy must have
-    >= FORWARD_TEST_MIN_DAYS of net-positive forward evidence AND be in a proven regime to arm. `override_forward_test`
+    (on a confirmed, eligible launch). Paper maturity is now a HARD precondition: the strategy must have
+    >= PAPER_MIN_DAYS of net-positive forward evidence AND be in a proven regime to arm. `override_paper`
     (default OFF) lets a human arm an UNPROVEN strategy anyway, recorded with a loud `live_override_launch` warning;
     it never waives the regime gate. The 5 execution interlocks still apply in full at execute time (toggle ON +
     keys present + gate passed + caps available + no kill-switch). `confirm` must be true (two-click safety)."""
@@ -290,20 +290,20 @@ def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
             reason=f"venue '{request.venue_id}' has no API keys configured — add them to the server env first",
         )
 
-    # HARD live-eligibility gate: forward-test maturity (>= FORWARD_TEST_MIN_DAYS net-positive) AND regime.
-    # `override_forward_test` waives ONLY the forward-test precondition (logged below), never the regime gate.
-    from cosmu.master.live_eligibility import forward_clock_origin, live_eligibility_verdict
+    # HARD live-eligibility gate: paper maturity (>= PAPER_MIN_DAYS net-positive) AND regime.
+    # `override_paper` waives ONLY the paper precondition (logged below), never the regime gate.
+    from cosmu.master.live_eligibility import paper_clock_origin, live_eligibility_verdict
 
     reference = _brain_reference_bars()
-    verdict = live_eligibility_verdict(store, request.version_id, reference, override=request.override_forward_test)
-    ft_days = verdict.forward_age_days if forward_clock_origin(store, request.version_id) else None
+    verdict = live_eligibility_verdict(store, request.version_id, reference, override=request.override_paper)
+    ft_days = verdict.paper_age_days if paper_clock_origin(store, request.version_id) else None
     readiness = "proven" if verdict.forward_ready else "not yet proven"
 
     if not verdict.eligible:
         # Not forward-proven (and no override), underwater, or out-of-regime — refuse to arm. No status write.
         return LaunchActivateResponse(
             armed=False, version_id=request.version_id, venue_id=request.venue_id, symbol=request.symbol,
-            budget=request.budget, caps=caps, eligible=[], forward_test_days=ft_days,
+            budget=request.budget, caps=caps, eligible=[], paper_days=ft_days,
             readiness=readiness, overridden=False, reason=verdict.reason,  # type: ignore[arg-type]
         )
 
@@ -322,7 +322,7 @@ def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
         store.append_event(
             actor="human", kind="live_override_launch", ref_type="strategy_version", ref_id=request.version_id,
             payload={
-                "reason": verdict.reason, "forward_age_days": verdict.forward_age_days,
+                "reason": verdict.reason, "paper_age_days": verdict.paper_age_days,
                 "net_return_pct": verdict.net_return_pct, "min_days": verdict.min_days,
                 "venue_id": request.venue_id, "symbol": request.symbol,
             },
@@ -333,12 +333,12 @@ def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
         payload={
             "venue_id": request.venue_id, "symbol": request.symbol, "budget": request.budget,
             "per_strategy_cap": request.per_strategy_cap, "global_cap": request.global_cap,
-            "max_daily_loss": request.max_daily_loss, "forward_test_days": ft_days,
+            "max_daily_loss": request.max_daily_loss, "paper_days": ft_days,
             "readiness": readiness, "overridden": verdict.overridden,
         },
     )
     return LaunchActivateResponse(
         armed=True, version_id=request.version_id, venue_id=request.venue_id, symbol=request.symbol,
-        budget=request.budget, caps=caps, eligible=eligible, forward_test_days=ft_days,
+        budget=request.budget, caps=caps, eligible=eligible, paper_days=ft_days,
         readiness=readiness, overridden=verdict.overridden,  # type: ignore[arg-type]
     )

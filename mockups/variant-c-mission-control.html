@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cosmu · Mission Control</title>
+<style>
+/* ── Reset & base ──────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:          oklch(0.165 0.017 285);
+  --bg2:         oklch(0.20  0.017 285);
+  --bg3:         oklch(0.24  0.016 285);
+  --bg4:         oklch(0.29  0.015 285);
+  --border:      oklch(0.32  0.015 285);
+  --border-dim:  oklch(0.26  0.014 285);
+  --text:        oklch(0.92  0.010 285);
+  --text-dim:    oklch(0.60  0.010 285);
+  --text-dimmer: oklch(0.44  0.009 285);
+  --up:          oklch(0.72  0.17  145);
+  --dn:          oklch(0.65  0.20  25);
+  --gold:        oklch(0.82  0.14  85);
+  --gold-tint:   oklch(0.82  0.14  85 / 0.07);
+  --gold-border: oklch(0.82  0.14  85 / 0.30);
+  --iris:        oklch(0.66  0.19  290);
+  --iris-tint:   oklch(0.66  0.19  290 / 0.07);
+  --iris-border: oklch(0.66  0.19  290 / 0.30);
+  --accent:      oklch(0.66  0.19  290);
+  --radius:      4px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "SF Mono", "Fira Mono", "Consolas", monospace;
+}
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; line-height: 1.5; }
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; font-size: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+input, select { font-family: inherit; font-size: inherit; }
+
+/* ── Mono numbers ──────────────────────────────────────────────────── */
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.up { color: var(--up); }
+.dn { color: var(--dn); }
+.gold { color: var(--gold); }
+.iris { color: var(--iris); }
+.dim { color: var(--text-dim); }
+.dimmer { color: var(--text-dimmer); }
+
+/* ── Layout shell ──────────────────────────────────────────────────── */
+#shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+#topbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 16px; height: 44px; min-height: 44px;
+  background: var(--bg2); border-bottom: 1px solid var(--border-dim);
+  z-index: 10;
+}
+.logo { font-size: 15px; font-weight: 700; letter-spacing: 0.04em; color: var(--text); }
+.logo span { color: var(--iris); }
+nav { display: flex; gap: 2px; flex: 1; }
+nav a {
+  padding: 4px 10px; border-radius: var(--radius);
+  font-size: 12px; font-weight: 500; color: var(--text-dim);
+  transition: background 0.12s, color 0.12s;
+}
+nav a:hover { background: var(--bg3); color: var(--text); }
+nav a.active { background: var(--bg4); color: var(--text); }
+
+/* ── Status band ───────────────────────────────────────────────────── */
+#status-band {
+  display: flex; align-items: stretch; height: 34px; min-height: 34px;
+  border-bottom: 1px solid var(--border-dim);
+  background: var(--bg2); font-size: 11px;
+}
+.sb-live {
+  display: flex; align-items: center; gap: 12px; padding: 0 16px;
+  border-right: 1px solid var(--gold-border);
+  background: var(--gold-tint);
+}
+.sb-paper {
+  display: flex; align-items: center; gap: 12px; padding: 0 16px;
+}
+.sb-zone-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.12em;
+  text-transform: uppercase; opacity: 0.6;
+}
+.sb-live .sb-zone-label { color: var(--gold); }
+.sb-paper .sb-zone-label { color: var(--iris); }
+.sb-sep { width: 1px; background: var(--border-dim); margin: 6px 0; }
+.sb-item { display: flex; flex-direction: column; gap: 1px; }
+.sb-val { font-family: var(--mono); font-size: 12px; font-weight: 600; }
+.sb-key { font-size: 9px; color: var(--text-dimmer); letter-spacing: 0.04em; }
+
+/* ── Funnel strip ──────────────────────────────────────────────────── */
+#funnel-strip {
+  display: flex; align-items: center; gap: 0;
+  border-bottom: 1px solid var(--border-dim);
+  background: var(--bg2); padding: 0 16px; height: 32px; min-height: 32px;
+  overflow-x: auto; scrollbar-width: none;
+}
+#funnel-strip::-webkit-scrollbar { display: none; }
+.funnel-chip {
+  display: flex; align-items: center; gap: 5px; padding: 3px 12px 3px 10px;
+  font-size: 11px; font-weight: 500; color: var(--text-dim);
+  border-right: 1px solid var(--border-dim); cursor: pointer;
+  transition: background 0.1s, color 0.1s; white-space: nowrap;
+  position: relative;
+}
+.funnel-chip:first-child { padding-left: 0; }
+.funnel-chip:hover { background: var(--bg3); color: var(--text); }
+.funnel-chip.active { color: var(--text); background: var(--bg3); }
+.funnel-chip.active::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+  background: var(--iris);
+}
+.funnel-count {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  background: var(--bg4); border-radius: 2px;
+  padding: 1px 4px; color: var(--text-dim);
+}
+.funnel-chip.active .funnel-count { background: var(--iris); color: #fff; }
+.funnel-arrow { color: var(--text-dimmer); padding: 0 4px; font-size: 10px; }
+
+/* ── Main content area ─────────────────────────────────────────────── */
+#main { flex: 1; overflow: hidden; position: relative; display: flex; }
+
+/* ── Strategies view ───────────────────────────────────────────────── */
+#view-strategies { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+.view-header {
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px 8px;
+  border-bottom: 1px solid var(--border-dim); flex-wrap: wrap; gap: 8px;
+}
+.view-title { font-size: 13px; font-weight: 600; }
+.stats-strip {
+  font-size: 11px; color: var(--text-dim); display: flex; flex-wrap: wrap; gap: 0;
+  padding: 6px 16px; border-bottom: 1px solid var(--border-dim);
+  background: var(--bg2);
+}
+.stats-strip span { padding-right: 12px; }
+.stats-strip .sep { padding-right: 12px; color: var(--border); }
+
+.btn-danger {
+  background: oklch(0.40 0.18 25); color: #fff; border-radius: var(--radius);
+  padding: 4px 10px; font-size: 11px; font-weight: 600;
+  border: 1px solid oklch(0.50 0.20 25);
+  transition: background 0.12s;
+}
+.btn-danger:hover { background: oklch(0.45 0.20 25); }
+.btn-ghost {
+  background: transparent; color: var(--text-dim); border-radius: var(--radius);
+  padding: 4px 10px; font-size: 11px; font-weight: 500;
+  border: 1px solid var(--border);
+  transition: background 0.12s, color 0.12s;
+}
+.btn-ghost:hover { background: var(--bg3); color: var(--text); }
+.btn-primary {
+  background: var(--iris); color: #fff; border-radius: var(--radius);
+  padding: 4px 12px; font-size: 11px; font-weight: 600;
+  border: 1px solid transparent;
+  transition: opacity 0.12s;
+}
+.btn-primary:hover { opacity: 0.85; }
+.spacer { flex: 1; }
+
+/* ── Strategies table ──────────────────────────────────────────────── */
+.table-scroll { flex: 1; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  padding: 6px 12px; text-align: left; font-size: 10px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dimmer);
+  border-bottom: 1px solid var(--border-dim); background: var(--bg2);
+  position: sticky; top: 0; z-index: 2; white-space: nowrap;
+}
+thead th:first-child { padding-left: 16px; }
+tbody tr {
+  border-bottom: 1px solid var(--border-dim); cursor: pointer;
+  transition: background 0.08s;
+}
+tbody tr:hover { background: var(--bg3); }
+tbody tr.live-row { background: var(--gold-tint); }
+tbody tr.live-row:hover { background: oklch(0.82 0.14 85 / 0.12); }
+tbody td { padding: 7px 12px; font-size: 12px; white-space: nowrap; }
+tbody td:first-child { padding-left: 16px; }
+.row-name { font-weight: 500; }
+.row-thesis { color: var(--text-dim); font-size: 11px; }
+
+/* ── Lifecycle timeline (per row) ──────────────────────────────────── */
+.lc-track {
+  display: flex; align-items: center; gap: 2px;
+}
+.lc-seg {
+  width: 18px; height: 4px; border-radius: 2px;
+  background: var(--bg4);
+}
+.lc-seg.done { background: var(--iris); }
+.lc-seg.live-done { background: var(--gold); }
+.lc-seg.killed { background: var(--dn); width: 10px; }
+.lc-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--bg4); flex-shrink: 0;
+}
+.lc-dot.done { background: var(--iris); }
+.lc-dot.live-done { background: var(--gold); }
+.lc-dot.killed { background: var(--dn); }
+.lc-label { font-size: 10px; color: var(--text-dim); }
+
+/* ── Stage badges ──────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 2px;
+  letter-spacing: 0.04em; white-space: nowrap;
+}
+.badge-live { background: var(--gold-tint); color: var(--gold); border: 1px solid var(--gold-border); }
+.badge-paper { background: var(--iris-tint); color: var(--iris); border: 1px solid var(--iris-border); }
+.badge-gate { background: oklch(0.72 0.17 145 / 0.12); color: var(--up); border: 1px solid oklch(0.72 0.17 145 / 0.30); }
+.badge-killed { background: oklch(0.65 0.20 25 / 0.12); color: var(--dn); border: 1px solid oklch(0.65 0.20 25 / 0.25); }
+.badge-bt { background: var(--bg4); color: var(--text-dim); border: 1px solid var(--border); }
+.badge-queued { background: var(--bg4); color: var(--text-dimmer); border: 1px solid var(--border-dim); }
+.badge-ready { background: oklch(0.72 0.17 145 / 0.12); color: var(--up); border: 1px solid oklch(0.72 0.17 145 / 0.30); font-size: 9px; }
+
+/* ── Drawer ────────────────────────────────────────────────────────── */
+#drawer-overlay {
+  position: absolute; inset: 0; background: oklch(0 0 0 / 0.45);
+  z-index: 40; opacity: 0; pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+#drawer-overlay.open { opacity: 1; pointer-events: auto; }
+#drawer {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 640px; max-width: 100%;
+  background: var(--bg2); border-left: 1px solid var(--border);
+  z-index: 41; display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+  overflow: hidden;
+}
+#drawer.open { transform: translateX(0); }
+.drawer-header {
+  display: flex; align-items: flex-start; gap: 12px; padding: 16px;
+  border-bottom: 1px solid var(--border-dim); flex-shrink: 0;
+}
+.drawer-close {
+  margin-left: auto; padding: 4px 8px; border-radius: var(--radius);
+  color: var(--text-dim); font-size: 16px; line-height: 1;
+  transition: background 0.1s;
+}
+.drawer-close:hover { background: var(--bg4); color: var(--text); }
+.drawer-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; }
+
+/* ── Drawer sub-sections ───────────────────────────────────────────── */
+.section-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.10em;
+  text-transform: uppercase; color: var(--text-dimmer); margin-bottom: 8px;
+}
+.metric-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.metric-chip {
+  background: var(--bg3); border: 1px solid var(--border-dim);
+  border-radius: var(--radius); padding: 6px 10px;
+  display: flex; flex-direction: column; gap: 2px; min-width: 120px;
+}
+.mc-val { font-family: var(--mono); font-size: 13px; font-weight: 700; }
+.mc-key { font-size: 10px; font-weight: 600; color: var(--text-dim); }
+.mc-tip { font-size: 10px; color: var(--text-dimmer); margin-top: 2px; line-height: 1.4; }
+
+/* ── Inline SVG chart container ────────────────────────────────────── */
+.chart-wrap { background: var(--bg); border: 1px solid var(--border-dim); border-radius: var(--radius); padding: 8px; }
+.chart-legend { display: flex; gap: 12px; margin-bottom: 6px; font-size: 10px; }
+.legend-dot { width: 8px; height: 2px; display: inline-block; border-radius: 1px; margin-right: 3px; vertical-align: middle; }
+
+/* ── Building blocks ───────────────────────────────────────────────── */
+.blocks-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.block-item {
+  background: var(--bg3); border: 1px solid var(--border-dim);
+  border-radius: var(--radius); padding: 8px 10px;
+}
+.block-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dimmer); }
+.block-val { font-size: 12px; margin-top: 2px; }
+
+/* ── Data feed ─────────────────────────────────────────────────────── */
+.feed-row {
+  display: flex; align-items: center; gap: 8px; padding: 5px 0;
+  border-bottom: 1px solid var(--border-dim); font-size: 11px;
+}
+.feed-row:last-child { border-bottom: none; }
+.feed-val { font-family: var(--mono); font-weight: 600; }
+.feed-age { color: var(--text-dimmer); margin-left: auto; }
+.feed-src { color: var(--text-dimmer); font-size: 10px; }
+
+/* ── Trades table ──────────────────────────────────────────────────── */
+.mini-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.mini-table th {
+  padding: 4px 8px; text-align: left; color: var(--text-dimmer);
+  font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  border-bottom: 1px solid var(--border-dim);
+}
+.mini-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-dim); font-family: var(--mono); }
+.mini-table td.name-cell { font-family: var(--font); }
+.mini-table tr:last-child td { border-bottom: none; }
+
+/* ── Activity timeline ─────────────────────────────────────────────── */
+.timeline { display: flex; flex-direction: column; gap: 0; }
+.tl-item { display: flex; gap: 10px; padding: 6px 0; }
+.tl-spine { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; width: 12px; }
+.tl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--iris); flex-shrink: 0; margin-top: 3px; }
+.tl-line { flex: 1; width: 1px; background: var(--border-dim); margin-top: 3px; }
+.tl-item:last-child .tl-line { display: none; }
+.tl-date { font-family: var(--mono); font-size: 10px; color: var(--text-dimmer); flex-shrink: 0; width: 72px; }
+.tl-text { font-size: 11px; }
+
+/* ── Paper / Live control room ─────────────────────────────────────── */
+#view-control {
+  display: flex; flex: 1; overflow: hidden;
+}
+.zone {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+  transition: flex 0.25s ease;
+}
+.zone-live {
+  border-right: 1px solid var(--gold-border);
+  background: var(--gold-tint);
+}
+.zone-paper {
+  background: var(--iris-tint);
+}
+.zone.focused { flex: 2; }
+.zone-topbar {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border-bottom: 1px solid var(--border-dim); flex-shrink: 0;
+}
+.zone-name {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+.zone-live .zone-name { color: var(--gold); }
+.zone-paper .zone-name { color: var(--iris); }
+.zone-body { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; }
+
+/* ── Gauge bar ─────────────────────────────────────────────────────── */
+.gauge-wrap { background: var(--bg3); border-radius: var(--radius); height: 6px; overflow: hidden; }
+.gauge-fill { height: 100%; border-radius: var(--radius); background: var(--up); }
+.gauge-fill.warn { background: var(--dn); }
+
+/* ── Costs page ────────────────────────────────────────────────────── */
+#view-costs { flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; }
+.verdict-band {
+  border-radius: var(--radius); padding: 10px 14px; font-size: 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.verdict-ok { background: oklch(0.72 0.17 145 / 0.10); border: 1px solid oklch(0.72 0.17 145 / 0.30); }
+.verdict-icon { font-size: 18px; }
+.cost-bars { display: flex; flex-direction: column; gap: 8px; }
+.cost-row { display: flex; align-items: center; gap: 10px; font-size: 11px; }
+.cost-name { width: 160px; flex-shrink: 0; color: var(--text-dim); }
+.cost-bar-track { flex: 1; background: var(--bg3); border-radius: 2px; height: 6px; overflow: hidden; }
+.cost-bar-fill { height: 100%; border-radius: 2px; background: var(--iris); }
+.cost-amt { font-family: var(--mono); width: 60px; text-align: right; font-size: 11px; }
+
+/* ── Commands page ─────────────────────────────────────────────────── */
+#view-commands { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.cmd-list { display: flex; flex-direction: column; gap: 2px; max-width: 600px; }
+.cmd-item {
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 8px 10px; border-radius: var(--radius);
+  border: 1px solid transparent;
+  transition: background 0.1s, border-color 0.1s;
+}
+.cmd-item:hover { background: var(--bg3); border-color: var(--border-dim); }
+.cmd-name { font-family: var(--mono); font-size: 12px; color: var(--iris); flex-shrink: 0; width: 200px; }
+.cmd-desc { font-size: 11px; color: var(--text-dim); }
+
+/* ── Modal ─────────────────────────────────────────────────────────── */
+#modal-overlay {
+  position: fixed; inset: 0; background: oklch(0 0 0 / 0.6);
+  z-index: 100; display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.18s;
+}
+#modal-overlay.open { opacity: 1; pointer-events: auto; }
+.modal {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 24px; width: 420px; max-width: calc(100vw - 32px);
+  transform: scale(0.95); transition: transform 0.18s;
+}
+#modal-overlay.open .modal { transform: scale(1); }
+.modal-title { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+.modal-body { font-size: 12px; color: var(--text-dim); line-height: 1.6; margin-bottom: 20px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ── Toast ─────────────────────────────────────────────────────────── */
+#toast {
+  position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--bg4); border: 1px solid var(--border); border-radius: 4px;
+  padding: 8px 16px; font-size: 12px; color: var(--text);
+  opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; z-index: 200;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── MOCKUP badge ──────────────────────────────────────────────────── */
+#mockup-badge {
+  position: fixed; bottom: 10px; left: 10px; z-index: 300;
+  background: oklch(0.40 0.18 25 / 0.92); color: #fff;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.10em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 3px;
+  border: 1px solid oklch(0.55 0.20 25);
+}
+
+/* ── Views hidden by default ───────────────────────────────────────── */
+.view { display: none; flex: 1; overflow: hidden; }
+.view.active { display: flex; flex-direction: column; }
+
+/* ── Responsive ────────────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  #drawer { width: 100%; }
+  #view-control { flex-direction: column; }
+  .zone-live { border-right: none; border-bottom: 1px solid var(--gold-border); }
+  .blocks-grid { grid-template-columns: 1fr; }
+  #status-band { flex-wrap: wrap; height: auto; padding: 4px 8px; }
+  .sb-live, .sb-paper { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+<div id="shell">
+
+  <!-- ── Top bar ──────────────────────────────────────────────────── -->
+  <div id="topbar">
+    <div class="logo">cos<span>mu</span></div>
+    <nav id="main-nav">
+      <a href="#/strategies" data-route="strategies">Strategies</a>
+      <a href="#/paper"      data-route="paper">Paper</a>
+      <a href="#/live"       data-route="live">Live</a>
+      <a href="#/costs"      data-route="costs">Costs</a>
+      <a href="#/commands"   data-route="commands">Commands</a>
+    </nav>
+  </div>
+
+  <!-- ── Persistent status band ───────────────────────────────────── -->
+  <div id="status-band">
+    <div class="sb-live">
+      <span class="sb-zone-label">● Live</span>
+      <div class="sb-item"><div class="sb-val mono gold">$1,700</div><div class="sb-key">Invested</div></div>
+      <div class="sb-sep"></div>
+      <div class="sb-item"><div class="sb-val mono up">+$419</div><div class="sb-key">P&amp;L</div></div>
+      <div class="sb-item"><div class="sb-val mono up">+21.0%</div><div class="sb-key">Return</div></div>
+      <div class="sb-sep"></div>
+      <div class="sb-item"><div class="sb-val mono">$7,300</div><div class="sb-key">Free</div></div>
+    </div>
+    <div class="sb-paper">
+      <span class="sb-zone-label">◉ Paper</span>
+      <div class="sb-item"><div class="sb-val mono iris">$100,000</div><div class="sb-key">Sim capital</div></div>
+      <div class="sb-sep"></div>
+      <div class="sb-item"><div class="sb-val mono up">+$18,392</div><div class="sb-key">Invested</div></div>
+      <div class="sb-item"><div class="sb-val mono up">+$1,392</div><div class="sb-key">P&amp;L</div></div>
+      <div class="sb-item"><div class="sb-val mono up">+9.27%</div><div class="sb-key">Return</div></div>
+    </div>
+  </div>
+
+  <!-- ── Funnel strip ──────────────────────────────────────────────── -->
+  <div id="funnel-strip">
+    <div class="funnel-chip active" data-stage="all" onclick="setStage('all')">
+      All <span class="funnel-count">12</span>
+    </div>
+    <div class="funnel-arrow">›</div>
+    <div class="funnel-chip" data-stage="queued" onclick="setStage('queued')">
+      Queued <span class="funnel-count">1</span>
+    </div>
+    <div class="funnel-arrow">›</div>
+    <div class="funnel-chip" data-stage="backtesting" onclick="setStage('backtesting')">
+      Backtesting <span class="funnel-count">2</span>
+    </div>
+    <div class="funnel-arrow">›</div>
+    <div class="funnel-chip" data-stage="gate" onclick="setStage('gate')">
+      Gate ✓ <span class="funnel-count">6</span>
+    </div>
+    <div class="funnel-arrow">›</div>
+    <div class="funnel-chip" data-stage="paper" onclick="setStage('paper')">
+      Paper <span class="funnel-count">4</span>
+    </div>
+    <div class="funnel-arrow">›</div>
+    <div class="funnel-chip" data-stage="live" onclick="setStage('live')">
+      Live <span class="funnel-count">1</span>
+    </div>
+    <div class="funnel-arrow">·</div>
+    <div class="funnel-chip" data-stage="killed" onclick="setStage('killed')">
+      Killed <span class="funnel-count">3</span>
+    </div>
+  </div>
+
+  <!-- ── Views ────────────────────────────────────────────────────── -->
+  <div id="main">
+
+    <!-- ── STRATEGIES ───────────────────────────────────────────── -->
+    <div id="view-strategies" class="view active">
+      <div class="view-header">
+        <span class="view-title">Strategies</span>
+        <div class="spacer"></div>
+        <button class="btn-danger" onclick="openModal()">Liquidate all</button>
+      </div>
+      <div class="stats-strip mono">
+        <span>Paper invested <span class="up">$18,392</span></span>
+        <span class="sep">·</span>
+        <span>Paper P&amp;L <span class="up">+$1,392 (+9.27%)</span></span>
+        <span class="sep">·</span>
+        <span>Live total <span class="gold">$9,000</span></span>
+        <span class="sep">·</span>
+        <span>Free <span class="up">$7,300</span></span>
+        <span class="sep">·</span>
+        <span>Invested <span class="gold">$1,700</span></span>
+        <span class="sep">·</span>
+        <span>Live P&amp;L <span class="up">+$419 (+21%)</span></span>
+      </div>
+      <div class="table-scroll">
+        <table id="strat-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Stage</th>
+              <th>Lifecycle</th>
+              <th>Days</th>
+              <th>P&amp;L</th>
+              <th>Return</th>
+              <th>Gate metrics</th>
+            </tr>
+          </thead>
+          <tbody id="strat-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── PAPER + LIVE control room ────────────────────────────── -->
+    <div id="view-control" class="view">
+
+      <!-- LIVE zone -->
+      <div class="zone zone-live" id="zone-live">
+        <div class="zone-topbar">
+          <span class="zone-name">● Live</span>
+          <span class="badge badge-live mono" style="font-size:11px">Armed</span>
+          <span class="spacer"></span>
+          <button class="btn-danger" onclick="openModal()">Liquidate all</button>
+        </div>
+        <div class="zone-body">
+          <div>
+            <div class="section-label">Positions</div>
+            <table class="mini-table">
+              <thead><tr><th>Strategy</th><th>Asset</th><th>Invested</th><th>P&amp;L</th><th>Return</th><th></th></tr></thead>
+              <tbody>
+                <tr>
+                  <td class="name-cell">Funding Carry BTC</td>
+                  <td>BTC</td>
+                  <td class="gold">$1,700</td>
+                  <td class="up">+$419</td>
+                  <td class="up">+21.0%</td>
+                  <td><button class="btn-ghost" style="padding:2px 6px;font-size:10px">Close</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div>
+            <div class="section-label">Risk caps</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+                  <span class="dim" style="font-size:11px">Position cap</span>
+                  <span class="mono" style="font-size:11px">$1,700 / $2,500</span>
+                </div>
+                <div class="gauge-wrap"><div class="gauge-fill" style="width:68%"></div></div>
+              </div>
+              <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+                  <span class="dim" style="font-size:11px">Daily loss limit</span>
+                  <span class="mono" style="font-size:11px">$0 / $250</span>
+                </div>
+                <div class="gauge-wrap"><div class="gauge-fill" style="width:2%"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="section-label">Live equity</div>
+            <div class="chart-wrap">
+              <svg width="100%" height="80" viewBox="0 0 300 80" preserveAspectRatio="none">
+                <polyline points="0,70 40,66 80,58 120,52 160,45 200,41 240,35 300,28"
+                  fill="none" stroke="var(--gold)" stroke-width="1.5" stroke-linejoin="round"/>
+                <polygon points="0,70 40,66 80,58 120,52 160,45 200,41 240,35 300,28 300,80 0,80"
+                  fill="var(--gold)" opacity="0.07"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAPER zone -->
+      <div class="zone zone-paper" id="zone-paper">
+        <div class="zone-topbar">
+          <span class="zone-name">◉ Paper</span>
+          <span class="badge badge-paper mono" style="font-size:11px">4 tracks</span>
+          <span class="spacer"></span>
+          <button class="btn-ghost" onclick="showToast('All paper tracks paused')">Pause all paper</button>
+        </div>
+        <div class="zone-body">
+          <div>
+            <div class="section-label">Aggregate paper equity</div>
+            <div class="chart-wrap">
+              <svg width="100%" height="80" viewBox="0 0 300 80" preserveAspectRatio="none">
+                <polyline points="0,72 30,70 60,65 90,62 120,58 150,55 180,48 210,44 240,40 270,38 300,34"
+                  fill="none" stroke="var(--iris)" stroke-width="1.5" stroke-linejoin="round"/>
+                <polygon points="0,72 30,70 60,65 90,62 120,58 150,55 180,48 210,44 240,40 270,38 300,34 300,80 0,80"
+                  fill="var(--iris)" opacity="0.07"/>
+              </svg>
+            </div>
+          </div>
+
+          <div>
+            <div class="section-label">Tracks</div>
+            <table class="mini-table">
+              <thead><tr><th>Strategy</th><th>Days</th><th>P&amp;L</th><th>Return</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td class="name-cell" style="cursor:pointer;color:var(--iris)" onclick="navigate('strategy/funding-carry-btc')">Funding Carry BTC</td>
+                  <td>47</td><td class="up">+$9,300</td><td class="up">+9.3%</td>
+                  <td><span class="badge badge-ready">live-ready</span></td>
+                </tr>
+                <tr>
+                  <td class="name-cell" style="cursor:pointer;color:var(--iris)" onclick="navigate('strategy/xsect-momentum-top5')">Cross-Sec Momentum Top-5</td>
+                  <td>33</td><td class="up">+$4,100</td><td class="up">+4.1%</td>
+                  <td><span class="badge badge-ready">live-ready</span></td>
+                </tr>
+                <tr>
+                  <td class="name-cell" style="cursor:pointer;color:var(--iris)" onclick="navigate('strategy/gtaa-monthly')">GTAA Monthly Rotation</td>
+                  <td>41</td><td class="up">+$2,900</td><td class="up">+2.9%</td>
+                  <td><span class="badge badge-ready">live-ready</span></td>
+                </tr>
+                <tr>
+                  <td class="name-cell" style="cursor:pointer;color:var(--iris)" onclick="navigate('strategy/fg-contrarian-eth')">Fear &amp; Greed Contrarian ETH</td>
+                  <td>12</td><td class="dn">−$800</td><td class="dn">−0.8%</td>
+                  <td><span class="badge badge-paper">paper</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /view-control -->
+
+    <!-- ── COSTS ─────────────────────────────────────────────────── -->
+    <div id="view-costs" class="view">
+      <div class="view-header"><span class="view-title">Costs</span></div>
+      <div style="padding:20px 24px;display:flex;flex-direction:column;gap:20px;overflow-y:auto;flex:1">
+
+        <div class="verdict-band verdict-ok">
+          <span class="verdict-icon">✓</span>
+          <div>
+            <div style="font-weight:600;font-size:12px">Opex-to-equity: 0.31% / mo</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:2px">
+              Monthly costs $280 vs live equity $9,000. Well within the 1% threshold. No action needed.
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-label">Monthly total · <span class="mono up">$280</span></div>
+          <div class="cost-bars">
+            <div class="cost-row">
+              <span class="cost-name">LLM inference</span>
+              <div class="cost-bar-track"><div class="cost-bar-fill" style="width:50%"></div></div>
+              <span class="cost-amt mono">$140</span>
+            </div>
+            <div class="cost-row">
+              <span class="cost-name">Railway compute</span>
+              <div class="cost-bar-track"><div class="cost-bar-fill" style="width:25%;background:var(--gold)"></div></div>
+              <span class="cost-amt mono">$70</span>
+            </div>
+            <div class="cost-row">
+              <span class="cost-name">Vercel hosting</span>
+              <div class="cost-bar-track"><div class="cost-bar-fill" style="width:7%;background:var(--text-dim)"></div></div>
+              <span class="cost-amt mono">$20</span>
+            </div>
+            <div class="cost-row">
+              <span class="cost-name">Data feeds</span>
+              <div class="cost-bar-track"><div class="cost-bar-fill" style="width:14%;background:oklch(0.72 0.17 145)"></div></div>
+              <span class="cost-amt mono">$40</span>
+            </div>
+            <div class="cost-row">
+              <span class="cost-name">Misc / storage</span>
+              <div class="cost-bar-track"><div class="cost-bar-fill" style="width:3%;background:var(--text-dimmer)"></div></div>
+              <span class="cost-amt mono">$10</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-label">LLM spend detail (MTD)</div>
+          <table class="mini-table" style="max-width:480px">
+            <thead><tr><th>Model</th><th>Calls</th><th>Input tokens</th><th>Output tokens</th><th>Cost</th></tr></thead>
+            <tbody>
+              <tr><td class="name-cell">claude-opus-4</td><td>42</td><td>2.1M</td><td>380K</td><td class="up">$88</td></tr>
+              <tr><td class="name-cell">claude-sonnet-4</td><td>318</td><td>8.4M</td><td>620K</td><td>$44</td></tr>
+              <tr><td class="name-cell">claude-haiku-4</td><td>1,204</td><td>4.2M</td><td>1.1M</td><td>$8</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── COMMANDS ───────────────────────────────────────────────── -->
+    <div id="view-commands" class="view">
+      <div class="view-header"><span class="view-title">Slash Commands</span></div>
+      <div style="padding:20px 24px;overflow-y:auto;flex:1">
+        <div style="margin-bottom:14px;font-size:12px;color:var(--text-dim);max-width:480px">
+          Commands available in Claude Code sessions. Run via the CLI or web editor.
+        </div>
+        <div class="cmd-list">
+          <div class="cmd-item"><span class="cmd-name">/create-strategy</span><span class="cmd-desc">Author a new strategy spec and queue it for backtest</span></div>
+          <div class="cmd-item"><span class="cmd-name">/run-gate</span><span class="cmd-desc">Re-run the Gate on a specific strategy or the whole cohort</span></div>
+          <div class="cmd-item"><span class="cmd-name">/manage-data</span><span class="cmd-desc">Fetch, backfill or verify market bar and alt-data coverage</span></div>
+          <div class="cmd-item"><span class="cmd-name">/debug-strategy</span><span class="cmd-desc">Diagnose why a strategy produces zero trades or fails the Gate</span></div>
+          <div class="cmd-item"><span class="cmd-name">/evolve-strategy</span><span class="cmd-desc">Graft a winner's signal onto new assets, recombine with other survivors</span></div>
+          <div class="cmd-item"><span class="cmd-name">/import-pine</span><span class="cmd-desc">Translate a TradingView Pine Script into a typed StrategySpec</span></div>
+          <div class="cmd-item"><span class="cmd-name">/scan-signals</span><span class="cmd-desc">Score all alt-data sources for signal strength against current survivors</span></div>
+          <div class="cmd-item"><span class="cmd-name">/align-check</span><span class="cmd-desc">Strategic alignment review — measure recent work against the north star</span></div>
+          <div class="cmd-item"><span class="cmd-name">/deploy-check</span><span class="cmd-desc">Pre-push gate: run pnpm verify and confirm green before push</span></div>
+          <div class="cmd-item"><span class="cmd-name">/groom</span><span class="cmd-desc">Self-maintenance pass — prune dead code, graveyard stale strategies</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+
+</div><!-- /shell -->
+
+<!-- ── Drawer ────────────────────────────────────────────────────── -->
+<div id="drawer-overlay" onclick="closeDrawer()"></div>
+<div id="drawer">
+  <div class="drawer-header">
+    <div id="drawer-header-content"></div>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</div>
+
+<!-- ── Modal ─────────────────────────────────────────────────────── -->
+<div id="modal-overlay">
+  <div class="modal">
+    <div class="modal-title">Liquidate all live positions</div>
+    <div class="modal-body">
+      Sell all live positions to USDC and disarm live trading.<br>
+      <strong>$1,700 across 1 strategy will be market-sold.</strong><br><br>
+      Paper tracks are not affected. This action cannot be undone.
+    </div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn-danger" onclick="confirmLiquidate()">Confirm — Liquidate all</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ─────────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<!-- ── MOCKUP badge ───────────────────────────────────────────────── -->
+<div id="mockup-badge">MOCKUP · synthetic data</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   DATA
+═══════════════════════════════════════════════════════════════════ */
+const STRATEGIES = [
+  {
+    id: 'funding-carry-btc',
+    name: 'Funding Carry BTC',
+    thesis: 'Long BTC when funding rate is negative, capturing carry from short traders',
+    stage: 'live',
+    days: 47,
+    pnl: '+$419',
+    ret: '+21.0%',
+    retNum: 21.0,
+    dsr: '1.12', pbo: '0.31', dd: '14%', oos: '+8.2%', trades: '34 ✓',
+    lc: ['queued','backtest','gate','paper','live'],
+    killed: false,
+  },
+  {
+    id: 'xsect-momentum-top5',
+    name: 'Cross-Sectional Momentum Top-5',
+    thesis: 'Rank top-5 crypto by 30d return, rebalance weekly',
+    stage: 'paper',
+    days: 33,
+    pnl: '+$4,100',
+    ret: '+4.1%',
+    retNum: 4.1,
+    dsr: '0.98', pbo: '0.38', dd: '18%', oos: '+6.1%', trades: '41 ✓',
+    lc: ['queued','backtest','gate','paper'],
+    killed: false,
+  },
+  {
+    id: 'gtaa-monthly',
+    name: 'GTAA Monthly Rotation',
+    thesis: 'Monthly tactical rotation across BTC/ETH/stables based on momentum + trend filter',
+    stage: 'paper',
+    days: 41,
+    pnl: '+$2,900',
+    ret: '+2.9%',
+    retNum: 2.9,
+    dsr: '1.04', pbo: '0.34', dd: '11%', oos: '+7.4%', trades: '28 ✓',
+    lc: ['queued','backtest','gate','paper'],
+    killed: false,
+    liveReady: true,
+  },
+  {
+    id: 'fg-contrarian-eth',
+    name: 'Fear & Greed Contrarian ETH',
+    thesis: 'Buy ETH when fear/greed index is below 25, exit above 70',
+    stage: 'paper',
+    days: 12,
+    pnl: '−$800',
+    ret: '−0.8%',
+    retNum: -0.8,
+    dsr: '0.81', pbo: '0.42', dd: '9%', oos: '+2.1%', trades: '18 ✓',
+    lc: ['queued','backtest','gate','paper'],
+    killed: false,
+  },
+  {
+    id: 'stablecoin-lead-eth',
+    name: 'Stablecoin Flows Lead ETH',
+    thesis: 'Large stablecoin inflows to exchanges predict ETH upside 48h ahead',
+    stage: 'paper',
+    days: 8,
+    pnl: '+$1,200',
+    ret: '+1.2%',
+    retNum: 1.2,
+    dsr: '0.91', pbo: '0.35', dd: '7%', oos: '+3.8%', trades: '22 ✓',
+    lc: ['queued','backtest','gate','paper'],
+    killed: false,
+  },
+  {
+    id: 'vol-regime-btc',
+    name: 'Vol-Regime Switch BTC',
+    thesis: 'Shift between trend-following and mean-reversion based on realised vol regime',
+    stage: 'gate',
+    days: null,
+    pnl: '—',
+    ret: '—',
+    retNum: null,
+    dsr: '1.08', pbo: '0.29', dd: '12%', oos: '+9.1%', trades: '37 ✓',
+    lc: ['queued','backtest','gate'],
+    killed: false,
+  },
+  {
+    id: 'orb-sol-4h',
+    name: 'ORB Breakout SOL 4h',
+    thesis: 'Trade opening range breakouts on SOL 4h candles',
+    stage: 'killed',
+    killedAt: 'gate',
+    killedReason: 'FDR control',
+    killedDate: '2026-05-28',
+    days: null, pnl: '—', ret: '—', retNum: null,
+    dsr: '0.72', pbo: '0.55',
+    lc: ['queued','backtest','gate_kill'],
+    killed: true,
+  },
+  {
+    id: 'wiki-zscore-btc',
+    name: 'Wikipedia Pageviews Z-Score BTC',
+    thesis: 'Spike in BTC Wikipedia traffic precedes price move',
+    stage: 'killed',
+    killedAt: 'gate',
+    killedReason: 'PBO 0.61',
+    killedDate: '2026-05-20',
+    days: null, pnl: '—', ret: '—', retNum: null,
+    dsr: '0.63', pbo: '0.61',
+    lc: ['queued','backtest','gate_kill'],
+    killed: true,
+  },
+  {
+    id: 'reddit-spike-doge',
+    name: 'Reddit Volume Spike DOGE',
+    thesis: 'Large r/CryptoCurrency DOGE post volume spikes predict pump within 6h',
+    stage: 'killed',
+    killedAt: 'gate',
+    killedReason: 'holdout fail',
+    killedDate: '2026-05-14',
+    days: null, pnl: '—', ret: '—', retNum: null,
+    dsr: '0.55', pbo: '0.58',
+    lc: ['queued','backtest','gate_kill'],
+    killed: true,
+  },
+  {
+    id: 'pm-riskon-overlay',
+    name: 'Polymarket Risk-On Overlay',
+    thesis: 'Tilt exposure when Polymarket risk-on contracts show high confidence',
+    stage: 'backtesting',
+    days: null, pnl: '—', ret: '—', retNum: null,
+    lc: ['queued','backtest_active'],
+    killed: false,
+  },
+  {
+    id: 'fvg-btc-1h',
+    name: 'FVG Retrace BTC 1h',
+    thesis: 'Enter BTC longs on fair value gap retraces on 1h chart',
+    stage: 'queued',
+    days: null, pnl: '—', ret: '—', retNum: null,
+    lc: ['queued'],
+    killed: false,
+  },
+  {
+    id: 'ma-trend-eth-1d',
+    name: 'MA Trend Filter ETH 1d',
+    thesis: 'Follow ETH daily trend using dual MA cross with volatility filter',
+    stage: 'backtesting',
+    days: null, pnl: '—', ret: '—', retNum: null,
+    lc: ['queued','backtest_active'],
+    killed: false,
+  },
+];
+
+/* ═══════════════════════════════════════════════════════════════════
+   ROUTER
+═══════════════════════════════════════════════════════════════════ */
+let currentRoute = 'strategies';
+let currentStageFilter = 'all';
+
+function navigate(path) {
+  window.location.hash = '#/' + path;
+}
+
+function handleRoute() {
+  const hash = window.location.hash || '#/strategies';
+  const path = hash.replace('#/', '');
+  const parts = path.split('/');
+  const route = parts[0];
+
+  // Update nav
+  document.querySelectorAll('nav a').forEach(a => {
+    const r = a.getAttribute('data-route');
+    const isActive = r === route ||
+      (r === 'strategies' && route === 'strategy') ||
+      (r === 'paper' && route === 'paper') ||
+      (r === 'live' && route === 'live');
+    a.classList.toggle('active', isActive);
+  });
+
+  // Show views
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+
+  if (route === 'strategy' && parts[1]) {
+    document.getElementById('view-strategies').classList.add('active');
+    openDrawer(parts[1]);
+  } else if (route === 'strategies') {
+    closeDrawer(false);
+    document.getElementById('view-strategies').classList.add('active');
+  } else if (route === 'paper') {
+    closeDrawer(false);
+    document.getElementById('view-control').classList.add('active');
+    // Focus paper side
+    document.getElementById('zone-live').classList.remove('focused');
+    document.getElementById('zone-paper').classList.add('focused');
+    document.querySelector('[data-route="paper"]').classList.add('active');
+  } else if (route === 'live') {
+    closeDrawer(false);
+    document.getElementById('view-control').classList.add('active');
+    document.getElementById('zone-live').classList.add('focused');
+    document.getElementById('zone-paper').classList.remove('focused');
+    document.querySelector('[data-route="live"]').classList.add('active');
+  } else if (route === 'costs') {
+    closeDrawer(false);
+    document.getElementById('view-costs').classList.add('active');
+  } else if (route === 'commands') {
+    closeDrawer(false);
+    document.getElementById('view-commands').classList.add('active');
+  } else {
+    document.getElementById('view-strategies').classList.add('active');
+  }
+}
+
+window.addEventListener('hashchange', handleRoute);
+
+/* ═══════════════════════════════════════════════════════════════════
+   TABLE RENDER
+═══════════════════════════════════════════════════════════════════ */
+function stageOrder(s) {
+  return {live:0,paper:1,gate:2,backtesting:3,queued:4,killed:5}[s]??6;
+}
+
+function lcHtml(s) {
+  // stages: queued, backtest, gate (checkpoint ✓/✗), paper, live
+  const SEGS = ['Q','BT','Gate','Paper','Live'];
+  const stageMap = {
+    'live': 4,
+    'paper': 3,
+    'gate': 2,
+    'backtesting': 1,
+    'queued': 0,
+    'killed': -1,
+  };
+
+  const idx = stageMap[s.stage] ?? 0;
+  let html = '<div class="lc-track">';
+
+  if (s.killed) {
+    // Show progress up to kill point with red X
+    const killAt = {gate:2,paper:3,live:4}[s.killedAt]??2;
+    SEGS.forEach((seg, i) => {
+      if (i < killAt) {
+        const cls = i < 2 ? 'done' : 'done'; // all iris up to kill
+        html += `<div class="lc-seg ${cls}" title="${seg}"></div>`;
+        if (i < SEGS.length -1) html += '<div style="width:3px"></div>';
+      } else if (i === killAt) {
+        html += `<div class="lc-seg killed" title="Killed: ${s.killedReason}"></div>`;
+        html += '<span style="color:var(--dn);font-size:10px;margin-left:2px">✗</span>';
+        return;
+      }
+    });
+  } else {
+    SEGS.forEach((seg, i) => {
+      const isDone = i <= idx;
+      const isLive = isDone && s.stage === 'live' && i === 4;
+      const cls = isLive ? 'live-done' : (isDone ? 'done' : '');
+      // Gate is a checkpoint dot, not a bar
+      if (i === 2) {
+        html += `<div class="lc-dot ${cls}" title="${seg}${isDone?' ✓':''}"></div>`;
+      } else {
+        html += `<div class="lc-seg ${cls}" title="${seg}"></div>`;
+      }
+      if (i < SEGS.length -1) html += '<div style="width:3px"></div>';
+    });
+  }
+  html += '</div>';
+  return html;
+}
+
+function stageBadge(s) {
+  if (s.killed) return `<span class="badge badge-killed">Killed at ${s.killedAt}<br><span style="font-size:9px;opacity:0.8">${s.killedReason}</span></span>`;
+  if (s.stage === 'live') return `<span class="badge badge-live">● Live</span>`;
+  if (s.stage === 'paper') {
+    let b = `<span class="badge badge-paper">◉ Paper`;
+    if (s.liveReady) b += `</span> <span class="badge badge-ready">live-ready</span>`;
+    else b += `</span>`;
+    return b;
+  }
+  if (s.stage === 'gate') return `<span class="badge badge-gate">Gate ✓</span>`;
+  if (s.stage === 'backtesting') return `<span class="badge badge-bt">Backtesting</span>`;
+  if (s.stage === 'queued') return `<span class="badge badge-queued">Queued</span>`;
+  return '';
+}
+
+function renderTable(filter) {
+  const tbody = document.getElementById('strat-tbody');
+  let rows = [...STRATEGIES].sort((a,b) => stageOrder(a.stage) - stageOrder(b.stage));
+
+  if (filter !== 'all') {
+    rows = rows.filter(s => {
+      if (filter === 'killed') return s.killed;
+      if (filter === 'live') return s.stage === 'live';
+      if (filter === 'paper') return s.stage === 'paper';
+      if (filter === 'gate') return s.stage === 'gate';
+      if (filter === 'backtesting') return s.stage === 'backtesting';
+      if (filter === 'queued') return s.stage === 'queued';
+      return true;
+    });
+  }
+
+  tbody.innerHTML = rows.map(s => {
+    const retClass = s.retNum > 0 ? 'up' : s.retNum < 0 ? 'dn' : '';
+    const gateMetrics = s.dsr
+      ? `<span class="mono dimmer" style="font-size:10px">DSR ${s.dsr} · PBO ${s.pbo}</span>`
+      : '<span class="dimmer" style="font-size:10px">—</span>';
+    const daysStr = s.days ? `<span class="mono">${s.days}d</span>` : '<span class="dimmer">—</span>';
+    return `
+      <tr class="${s.stage==='live'?'live-row':''}" onclick="navigate('strategy/${s.id}')">
+        <td>
+          <div class="row-name">${s.name}</div>
+          <div class="row-thesis">${s.thesis}</div>
+        </td>
+        <td>${stageBadge(s)}</td>
+        <td>${lcHtml(s)}</td>
+        <td>${daysStr}</td>
+        <td class="mono ${retClass}">${s.pnl}</td>
+        <td class="mono ${retClass}">${s.ret}</td>
+        <td>${gateMetrics}</td>
+      </tr>`;
+  }).join('');
+}
+
+function setStage(stage) {
+  currentStageFilter = stage;
+  document.querySelectorAll('.funnel-chip').forEach(c => {
+    c.classList.toggle('active', c.getAttribute('data-stage') === stage);
+  });
+  renderTable(stage);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   DRAWER
+═══════════════════════════════════════════════════════════════════ */
+function openDrawer(id) {
+  const s = STRATEGIES.find(x => x.id === id);
+  if (!s) return;
+
+  const overlay = document.getElementById('drawer-overlay');
+  const drawer = document.getElementById('drawer');
+  const headerEl = document.getElementById('drawer-header-content');
+  const bodyEl = document.getElementById('drawer-body');
+
+  // Build header
+  const retClass = s.retNum > 0 ? 'up' : s.retNum < 0 ? 'dn' : '';
+  headerEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      ${stageBadge(s)}
+      ${s.liveReady ? '<span class="badge badge-ready">live-ready ≥30d</span>' : ''}
+    </div>
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px">${s.name}</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">${s.thesis}</div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      ${lcHtml(s)}
+      ${s.killed ? `<span class="mono dn" style="font-size:11px">✗ Killed at ${s.killedAt}: ${s.killedReason} · ${s.killedDate}</span>` : ''}
+    </div>
+  `;
+
+  // Full detail for funding-carry-btc; template for others
+  if (id === 'funding-carry-btc') {
+    bodyEl.innerHTML = renderFundingCarryDetail(s);
+  } else {
+    bodyEl.innerHTML = renderGenericDetail(s);
+  }
+
+  overlay.classList.add('open');
+  drawer.classList.add('open');
+}
+
+function closeDrawer(updateHash = true) {
+  document.getElementById('drawer-overlay').classList.remove('open');
+  document.getElementById('drawer').classList.remove('open');
+  if (updateHash && window.location.hash.startsWith('#/strategy/')) {
+    history.pushState(null, '', '#/strategies');
+    handleRoute();
+  }
+}
+
+function renderFundingCarryDetail(s) {
+  return `
+    <!-- Equity curve -->
+    <div>
+      <div class="section-label">Equity curve — gross vs net of fees</div>
+      <div class="chart-wrap">
+        <div class="chart-legend">
+          <span><span class="legend-dot" style="background:var(--up);width:20px;height:2px"></span>Gross</span>
+          <span><span class="legend-dot" style="background:var(--iris);width:20px;height:2px"></span>Net of fees</span>
+        </div>
+        <svg width="100%" height="120" viewBox="0 0 500 120" preserveAspectRatio="none" style="display:block">
+          <!-- Gross line -->
+          <polyline
+            points="0,110 40,105 80,95 120,88 150,80 180,72 210,65 250,55 290,46 330,40 370,33 410,25 500,18"
+            fill="none" stroke="var(--up)" stroke-width="1.5" stroke-linejoin="round"/>
+          <!-- Net line (slightly lower) -->
+          <polyline
+            points="0,110 40,107 80,98 120,92 150,84 180,77 210,71 250,62 290,53 330,48 370,41 410,33 500,26"
+            fill="none" stroke="var(--iris)" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4,2"/>
+          <!-- Net fill -->
+          <polygon
+            points="0,110 40,107 80,98 120,92 150,84 180,77 210,71 250,62 290,53 330,48 370,41 410,33 500,26 500,120 0,120"
+            fill="var(--iris)" opacity="0.06"/>
+          <!-- Entry/exit markers -->
+          <circle cx="80" cy="95" r="3" fill="var(--up)" opacity="0.9"/>
+          <circle cx="150" cy="80" r="3" fill="var(--dn)" opacity="0.9"/>
+          <circle cx="210" cy="65" r="3" fill="var(--up)" opacity="0.9"/>
+          <circle cx="330" cy="40" r="3" fill="var(--dn)" opacity="0.9"/>
+          <circle cx="410" cy="25" r="3" fill="var(--up)" opacity="0.9"/>
+          <!-- Labels -->
+          <text x="78" y="90" font-size="7" fill="var(--up)" font-family="monospace">B</text>
+          <text x="148" y="76" font-size="7" fill="var(--dn)" font-family="monospace">S</text>
+          <text x="208" y="61" font-size="7" fill="var(--up)" font-family="monospace">B</text>
+          <text x="328" y="36" font-size="7" fill="var(--dn)" font-family="monospace">S</text>
+          <text x="408" y="21" font-size="7" fill="var(--up)" font-family="monospace">B</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Gate metrics -->
+    <div>
+      <div class="section-label">Gate metrics</div>
+      <div class="metric-chips">
+        <div class="metric-chip">
+          <div class="mc-val up">1.12</div>
+          <div class="mc-key">Deflated Sharpe</div>
+          <div class="mc-tip">Edge after correcting for how many variants were tried. &gt;1 required.</div>
+        </div>
+        <div class="metric-chip">
+          <div class="mc-val up">0.31</div>
+          <div class="mc-key">PBO</div>
+          <div class="mc-tip">Probability the backtest is overfit. &lt;0.5 required (lower is better).</div>
+        </div>
+        <div class="metric-chip">
+          <div class="mc-val up">14%</div>
+          <div class="mc-key">Max drawdown</div>
+          <div class="mc-tip">Worst peak-to-trough. Hard limit 25% — passed.</div>
+        </div>
+        <div class="metric-chip">
+          <div class="mc-val up">+8.2%</div>
+          <div class="mc-key">OOS return</div>
+          <div class="mc-tip">Out-of-sample: data the strategy never saw during fitting. Positive = signal generalises.</div>
+        </div>
+        <div class="metric-chip">
+          <div class="mc-val up">34 ✓</div>
+          <div class="mc-key">Trade count</div>
+          <div class="mc-tip">Minimum 30 trades required for statistical credibility.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Building blocks -->
+    <div>
+      <div class="section-label">Building blocks</div>
+      <div class="blocks-grid">
+        <div class="block-item">
+          <div class="block-label">Signal</div>
+          <div class="block-val">funding_rate below fitted threshold (−0.02%)</div>
+        </div>
+        <div class="block-item">
+          <div class="block-label">Filter</div>
+          <div class="block-val">MA-trend: price above 20d MA</div>
+        </div>
+        <div class="block-item">
+          <div class="block-label">Exit</div>
+          <div class="block-val">Stop −4% / Take +12% / Time-stop 14d</div>
+        </div>
+        <div class="block-item">
+          <div class="block-label">Sizing</div>
+          <div class="block-val">Fixed fraction 2% of account per trade</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text-dim)">
+        Similar strategies sharing these blocks:
+        <a href="#/strategy/gtaa-monthly" style="color:var(--iris)">GTAA Monthly</a> ·
+        <a href="#/strategy/fg-contrarian-eth" style="color:var(--iris)">F&amp;G Contrarian ETH</a>
+      </div>
+    </div>
+
+    <!-- Data sources & feed -->
+    <div>
+      <div class="section-label">Data sources · latest received</div>
+      <div>
+        <div class="feed-row">
+          <span class="feed-val mono dn">funding_rate −0.018%</span>
+          <span class="feed-age">2h ago</span>
+          <span class="feed-src">Binance Perps</span>
+        </div>
+        <div class="feed-row">
+          <span class="feed-val mono">fear_greed 71 <span style="color:var(--gold)">(greed)</span></span>
+          <span class="feed-age">5h ago</span>
+          <span class="feed-src">Alternative.me</span>
+        </div>
+        <div class="feed-row">
+          <span class="feed-val mono">BTC/USDT OHLCV 1h</span>
+          <span class="feed-age">4m ago</span>
+          <span class="feed-src">Binance Spot</span>
+        </div>
+        <div class="feed-row">
+          <span class="feed-val mono">open_interest +2.3%</span>
+          <span class="feed-age">2h ago</span>
+          <span class="feed-src">Binance Perps</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent trades -->
+    <div>
+      <div class="section-label">Recent trades (last 6)</div>
+      <table class="mini-table">
+        <thead><tr><th>Date</th><th>Side</th><th>Qty BTC</th><th>Price</th><th>Fee</th><th>P&amp;L</th></tr></thead>
+        <tbody>
+          <tr><td>2026-06-09</td><td class="up">BUY</td><td>0.0182</td><td>$103,400</td><td>$1.88</td><td class="up">+$94</td></tr>
+          <tr><td>2026-06-01</td><td class="dn">SELL</td><td>0.0201</td><td>$101,200</td><td>$2.03</td><td class="up">+$148</td></tr>
+          <tr><td>2026-05-21</td><td class="up">BUY</td><td>0.0195</td><td>$98,700</td><td>$1.93</td><td class="up">+$72</td></tr>
+          <tr><td>2026-05-11</td><td class="dn">SELL</td><td>0.0188</td><td>$96,100</td><td>$1.81</td><td class="up">+$61</td></tr>
+          <tr><td>2026-04-29</td><td class="up">BUY</td><td>0.0210</td><td>$93,800</td><td>$1.97</td><td class="dn">−$18</td></tr>
+          <tr><td>2026-04-17</td><td class="dn">SELL</td><td>0.0210</td><td>$92,900</td><td>$1.95</td><td class="up">+$33</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Activity timeline -->
+    <div>
+      <div class="section-label">Activity timeline</div>
+      <div class="timeline">
+        <div class="tl-item">
+          <div class="tl-spine"><div class="tl-dot" style="background:var(--gold)"></div><div class="tl-line"></div></div>
+          <div class="tl-date">2026-06-02</div>
+          <div class="tl-text"><strong>Launched live</strong> — $1,700 allocated on Binance spot</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-spine"><div class="tl-dot"></div><div class="tl-line"></div></div>
+          <div class="tl-date">2026-05-30</div>
+          <div class="tl-text">Advisory <strong>live-ready</strong> badge earned (day 47 of paper)</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-spine"><div class="tl-dot"></div><div class="tl-line"></div></div>
+          <div class="tl-date">2026-04-16</div>
+          <div class="tl-text"><strong>Paper track started</strong> — $100k sim, day 1</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-spine"><div class="tl-dot" style="background:var(--up)"></div><div class="tl-line"></div></div>
+          <div class="tl-date">2026-04-15</div>
+          <div class="tl-text"><strong>Gate ✓ passed</strong> — DSR 1.12 · PBO 0.31 · OOS +8.2%</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-spine"><div class="tl-dot"></div><div class="tl-line"></div></div>
+          <div class="tl-date">2026-04-13</div>
+          <div class="tl-text"><strong>Backtested</strong> — 34 trades · 2018–2025 · 00:04:12</div>
+        </div>
+        <div class="tl-item">
+          <div class="tl-spine"><div class="tl-dot"></div></div>
+          <div class="tl-date">2026-04-12</div>
+          <div class="tl-text"><strong>Created</strong> — proposed by LLM cohort run #88</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Launch live button -->
+    <div style="padding-bottom:8px">
+      <button class="btn-primary" style="width:100%;padding:10px" onclick="showToast('Live launch queued — review in Live zone')">
+        Launch live ↗
+      </button>
+    </div>
+  `;
+}
+
+function renderGenericDetail(s) {
+  const isKilled = s.killed;
+  const hasGate = s.dsr != null;
+  return `
+    ${hasGate ? `
+    <div>
+      <div class="section-label">Gate metrics</div>
+      <div class="metric-chips">
+        <div class="metric-chip">
+          <div class="mc-val ${parseFloat(s.dsr)>=1?'up':'dn'}">${s.dsr}</div>
+          <div class="mc-key">Deflated Sharpe</div>
+          <div class="mc-tip">Edge after correcting for multiple-testing.</div>
+        </div>
+        <div class="metric-chip">
+          <div class="mc-val ${parseFloat(s.pbo)<0.5?'up':'dn'}">${s.pbo}</div>
+          <div class="mc-key">PBO</div>
+          <div class="mc-tip">Probability of overfit. Lower is better; &lt;0.5 required.</div>
+        </div>
+        ${s.dd ? `<div class="metric-chip">
+          <div class="mc-val up">${s.dd}</div>
+          <div class="mc-key">Max drawdown</div>
+          <div class="mc-tip">Hard limit 25%.</div>
+        </div>` : ''}
+        ${s.oos ? `<div class="metric-chip">
+          <div class="mc-val up">${s.oos}</div>
+          <div class="mc-key">OOS return</div>
+          <div class="mc-tip">Out-of-sample data.</div>
+        </div>` : ''}
+      </div>
+    </div>
+    ` : ''}
+
+    ${s.stage === 'paper' || s.stage === 'live' ? `
+    <div>
+      <div class="section-label">Paper equity curve</div>
+      <div class="chart-wrap">
+        <svg width="100%" height="80" viewBox="0 0 300 80" preserveAspectRatio="none">
+          <polyline points="0,75 50,72 100,68 150,64 200,60 250,56 300,52"
+            fill="none" stroke="var(--iris)" stroke-width="1.5" stroke-linejoin="round"/>
+          <polygon points="0,75 50,72 100,68 150,64 200,60 250,56 300,52 300,80 0,80"
+            fill="var(--iris)" opacity="0.07"/>
+        </svg>
+      </div>
+    </div>
+    ` : ''}
+
+    ${isKilled ? `
+    <div style="background:oklch(0.65 0.20 25/0.08);border:1px solid oklch(0.65 0.20 25/0.25);border-radius:4px;padding:12px">
+      <div class="section-label" style="color:var(--dn)">Kill record</div>
+      <div style="font-size:12px">Stage: <strong>${s.killedAt}</strong></div>
+      <div style="font-size:12px">Reason: <strong>${s.killedReason}</strong></div>
+      <div style="font-size:12px">Date: <span class="mono">${s.killedDate}</span></div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">
+        Killed strategies are kept for reference. No survivorship bias.
+      </div>
+    </div>
+    ` : ''}
+
+    <div style="color:var(--text-dimmer);font-size:11px;padding:8px 0">
+      Full building blocks, data feed, and trade history available once paper track completes day 7+.
+    </div>
+
+    ${!isKilled && (s.stage === 'gate' || (s.stage === 'paper' && s.liveReady)) ? `
+    <div>
+      <button class="btn-primary" style="width:100%;padding:10px" onclick="showToast('Live launch queued — review in Live zone')">
+        Launch live ↗
+      </button>
+    </div>
+    ` : ''}
+  `;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MODAL
+═══════════════════════════════════════════════════════════════════ */
+function openModal() {
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+function confirmLiquidate() {
+  closeModal();
+  showToast('All live positions liquidated — trading disarmed');
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════════════════════════ */
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════════════════ */
+renderTable('all');
+handleRoute();
+
+// Dismiss drawer on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('modal-overlay').classList.contains('open')) {
+      closeModal();
+    } else if (document.getElementById('drawer').classList.contains('open')) {
+      closeDrawer();
+    }
+  }
+});
+</script>
+</body>
+</html>

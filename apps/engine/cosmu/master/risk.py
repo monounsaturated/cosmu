@@ -22,7 +22,7 @@ class OrderIntent(BaseModel):
     sizing_basis: Literal["equity_vol_conviction"]
     data_fresh: bool = True
     # A reduce-only order CLOSES (part of) an existing position and can never open or grow exposure — the
-    # forward-test executor's exit leg. The gauntlet verifies it genuinely reduces (see validate_order_full)
+    # paper executor's exit leg. The gauntlet verifies it genuinely reduces (see validate_order_full)
     # and then EXEMPTS it from the entry-shaped checks (brackets, caps, kill-switch): risk checks exist to stop
     # ADDING risk, and an order that strictly reduces exposure must never be trapped behind them (a tripped
     # kill-switch that also blocked closes would lock in the very losses it exists to stop).

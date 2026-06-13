@@ -88,7 +88,7 @@ def test_taker_preferred_when_urgent_and_unlikely_to_fill():
     assert plan.order_type == "market"
 
 
-# --- per-track lifecycle (standalone forward-test, NO pooled wallet) -----------------------------
+# --- per-track lifecycle (standalone paper, NO pooled wallet) -----------------------------
 
 def test_decay_detection():
     assert is_decayed(Track("a", rolling_dsr=0.5))                              # dsr below floor

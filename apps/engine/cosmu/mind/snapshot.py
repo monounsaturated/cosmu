@@ -202,7 +202,7 @@ def _regime_coverage(store: Store) -> dict[str, Any]:
         rows = store.rows(
             "SELECT b.regime_label FROM strategy_versions sv "
             "JOIN backtests b ON b.strategy_version_id = sv.id "
-            "WHERE sv.status IN ('forward_test', 'live') AND b.passed_gates = 1"
+            "WHERE sv.status IN ('paper', 'forward_test', 'live') AND b.passed_gates = 1"
         )
     except Exception:  # noqa: BLE001
         rows = []

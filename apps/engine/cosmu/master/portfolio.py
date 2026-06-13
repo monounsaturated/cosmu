@@ -161,7 +161,7 @@ class Portfolio:
         qty — funding is the only carry term the price marks don't already capture."""
         funding_by_track = funding_by_track or {}
         positions = self.positions()
-        # Realized P&L lives on EVERY position row, including rows the forward-test executor has closed to
+        # Realized P&L lives on EVERY position row, including rows the paper executor has closed to
         # qty=0 — reading it off open positions only would make a closed trade's realized P&L vanish from
         # equity the moment it books (latent while nothing ever closed; live since exits exist).
         all_rows = [self._to_view(r) for r in self.store.rows("SELECT * FROM positions")]

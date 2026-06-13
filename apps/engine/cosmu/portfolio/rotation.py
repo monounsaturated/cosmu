@@ -1,4 +1,4 @@
-# intent: per-track lifecycle decisions for the standalone forward-test model — decide which proven tracks stay
+# intent: per-track lifecycle decisions for the standalone paper model — decide which proven tracks stay
 # funded and which have decayed (→ defund + close), and attribute net edge back to its data sources; inputs:
 # per-track live evidence + per-source attribution; outputs: the set of tracks to keep funded + per-source
 # marginal edge; invariants: NO pooled wallet and NO cross-track competition — each survivor proves itself on its
@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class Track:
-    """One strategy version's standalone forward-test track. It earns or loses on its OWN simulated capital —
+    """One strategy version's standalone paper track. It earns or loses on its OWN simulated capital —
     never a share of a pool. `rolling_dsr` is the rolling deflated-Sharpe prob (decays as edge dies);
     `sim_live_divergence` is |sim − live| net edge (large = the backtest was a lie); the drift fields are the
     anticipatory decay signals from master/drift."""
@@ -26,7 +26,7 @@ class Track:
 
 def is_decayed(track: Track, *, min_dsr: float = 0.90, max_divergence: float = 0.5, min_half_life: float = 4.0) -> bool:
     """A track is decayed (→ defund + close) if its rolling deflated-Sharpe has fallen below the floor, live
-    results diverge too far from its sim forward-test, the anticipatory drift monitor flagged it, OR its estimated
+    results diverge too far from its sim paper, the anticipatory drift monitor flagged it, OR its estimated
     edge half-life is below the floor (edge dying fast). The last two pull capital BEFORE realized P&L turns —
     crypto edges die in weeks; waiting for the reactive deflated-Sharpe snapshot to cross gives back the gains."""
     return (
@@ -72,7 +72,7 @@ def select_tracks(
         if vid in over_ceiling:
             verdicts.append(TrackVerdict(vid, False, "above concurrent-track ceiling (operational cap)"))
         else:
-            verdicts.append(TrackVerdict(vid, True, "live edge: standalone forward-test track"))
+            verdicts.append(TrackVerdict(vid, True, "live edge: standalone paper track"))
     _ = kept
     return verdicts
 

@@ -48,7 +48,7 @@ const GROUPS: Group[] = [
     stage: "Test & judge",
     blurb: "Let the deterministic Gate — never an LLM — be the judge.",
     cmds: [
-      { cmd: "/run-gate", icon: Gavel, what: "Run the real-data cross-asset Gate and report the verdict: fund a Simulation track, or kill with reasons.", when: "Checking whether an edge is real." },
+      { cmd: "/run-gate", icon: Gavel, what: "Run the real-data cross-asset Gate and report the verdict: fund a Paper track, or kill with reasons.", when: "Checking whether an edge is real." },
       { cmd: "/debug-strategy", icon: Bug, what: "Post-mortem on a dead or underperforming Version — why it died, what to learn.", when: "Understanding a loss." }
     ]
   },

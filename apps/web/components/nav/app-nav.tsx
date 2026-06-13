@@ -1,7 +1,7 @@
 "use client";
 
 // module: app navigation. Nine surfaces covering the full vibe loop (idea → spec → verdict), the
-// machine's experiment memory (Theories), the lifecycle stages (Backtest → Simulation → Live), and
+// machine's experiment memory (Theories), the lifecycle stages (Backtest → Paper → Live), and
 // the operator's main decisions. Desktop = a persistent rail grouped into a clear IA — Operate /
 // Pipeline / Knowledge (+ a More section) — so the column reads as sections, not one long list.
 // Mobile = a bottom tab bar (4 primary tabs + a More sheet with the rest).
@@ -33,33 +33,36 @@ type NavItem = { href: string; label: string; desc?: string; icon: typeof Layout
 // Primary surfaces — the full vibe loop + main operator decisions. Flat list is the canonical order
 // (mobile dock + overflow consume it directly); the desktop rail groups it into labeled sections via
 // NAV_GROUPS below, so the IA reads as Operate / Pipeline / Knowledge instead of one long column.
+// The v12 redesign IA: FIVE primary surfaces, sidebar order Live · Paper · Strategies · Costs · Commands,
+// default landing = Live (see app/page.tsx → /live). The rest of the old surfaces are reachable under "More"
+// while their content is progressively folded into these five.
 export const navItems: NavItem[] = [
-  { href: "/", label: "Overview", desc: "Status · theories · ideas", icon: LayoutDashboard },
-  { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal },
-  { href: "/lab", label: "Lab", desc: "Idea → spec → verdict", icon: FlaskConical },
-  { href: "/strategies", label: "Strategies", desc: "Backtest · ranked & faceted", icon: ListChecks },
-  { href: "/forward-test", label: "Simulation", desc: "Live data · no money", icon: LineChart },
-  { href: "/verdicts", label: "Theories", desc: "Every theory tested · Gate verdict", icon: ClipboardCheck },
-  { href: "/correlations", label: "Correlations", desc: "Signal scan · IC · FDR findings", icon: ScatterChart },
-  { href: "/explorer", label: "Explorer", desc: "Pick · chart · compare", icon: Telescope },
-  { href: "/mind", label: "Mind", desc: "What the agent knows & learned", icon: Brain },
-  { href: "/costs", label: "Costs", desc: "What is it costing?", icon: DollarSign }
+  { href: "/live", label: "Live", desc: "Positions · guardrails · caps", icon: Radio },
+  { href: "/paper", label: "Paper", desc: "Forward test · live data, no money", icon: LineChart },
+  { href: "/strategies", label: "Strategies", desc: "Ranked · faceted · the sheet", icon: ListChecks },
+  { href: "/costs", label: "Costs", desc: "Spend · run-rate · renewals", icon: DollarSign },
+  { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal }
 ];
 
-// Secondary deep-link utilities, tucked under "More" (desktop sidebar footer + mobile sheet).
+// Secondary surfaces, tucked under "More" (desktop sidebar footer + mobile sheet) — still reachable by URL,
+// not on the primary five. Folded into the five over the redesign increments.
 export const moreItems: NavItem[] = [
-  { href: "/live", label: "Live", desc: "Positions · caps", icon: Radio, gated: true },
-  { href: "/settings", label: "Settings", desc: "Keys · universe · data", icon: SlidersHorizontal },
-  { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal }
+  { href: "/overview", label: "Overview", desc: "Control room · status", icon: LayoutDashboard },
+  { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal },
+  { href: "/lab", label: "Lab", desc: "Idea → spec → verdict", icon: FlaskConical },
+  { href: "/verdicts", label: "Theories", desc: "Every theory · Gate verdict", icon: ClipboardCheck },
+  { href: "/correlations", label: "Correlations", desc: "Signal scan · IC · FDR", icon: ScatterChart },
+  { href: "/explorer", label: "Explorer", desc: "Pick · chart · compare", icon: Telescope },
+  { href: "/mind", label: "Mind", desc: "What the agent knows", icon: Brain },
+  { href: "/settings", label: "Settings", desc: "Keys · universe · data", icon: SlidersHorizontal }
 ];
 
 // Desktop rail grouping — a clear information architecture instead of a single undifferentiated
 // column. Each entry references navItems by href so the source of truth stays the flat list above.
 type NavGroup = { label: string; hrefs: string[] };
 const NAV_GROUPS: NavGroup[] = [
-  { label: "Operate", hrefs: ["/", "/console"] },
-  { label: "Pipeline", hrefs: ["/lab", "/strategies", "/forward-test"] },
-  { label: "Knowledge", hrefs: ["/verdicts", "/correlations", "/explorer", "/mind", "/costs"] }
+  // The v12 sidebar is a flat five (no group eyebrows) — one unlabeled group renders the primary surfaces.
+  { label: "", hrefs: ["/live", "/paper", "/strategies", "/costs", "/commands"] }
 ];
 
 const ITEM_BY_HREF = new Map(navItems.map((i) => [i.href, i]));
@@ -111,9 +114,9 @@ export function SideNavLinks({ onNavigate, collapsed = false }: { onNavigate?: (
         <div key={group.label} className="flex flex-col gap-0.5">
           {collapsed ? (
             <div className="mx-auto mb-0.5 h-px w-6 bg-hairline" aria-hidden />
-          ) : (
+          ) : group.label ? (
             <div className="label-eyebrow px-3 pb-1">{group.label}</div>
-          )}
+          ) : null}
           {group.hrefs.map((href) => {
             const item = ITEM_BY_HREF.get(href);
             return item ? <NavLink key={href} item={item} onNavigate={onNavigate} collapsed={collapsed} /> : null;

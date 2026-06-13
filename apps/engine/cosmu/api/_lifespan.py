@@ -59,14 +59,14 @@ async def lifespan(_: FastAPI):
 
 def _fund_tracks_on_startup() -> None:
     """Close the loop on boot: if gate-passed survivors exist with tracks but no sim positions are open yet, open
-    a standalone forward-test track for each so GET /overview reflects genuinely funded tracks (no fabricated
+    a standalone paper track for each so GET /overview reflects genuinely funded tracks (no fabricated
     numbers). Best-effort + offline-safe; never blocks startup."""
     try:
         from cosmu.orchestrator import fund_tracks_from_survivors
 
         if store.row("SELECT id FROM positions WHERE CAST(qty AS REAL) != 0 LIMIT 1"):
             return  # already funded — idempotent, don't double-open
-        if not store.row("SELECT sv.id FROM strategy_versions sv JOIN tracks tr ON tr.strategy_version_id = sv.id WHERE sv.status IN ('forward_test','live') LIMIT 1"):
+        if not store.row("SELECT sv.id FROM strategy_versions sv JOIN tracks tr ON tr.strategy_version_id = sv.id WHERE sv.status IN ('paper','forward_test','live') LIMIT 1"):
             return  # no survivors yet — honest empty state
         fund_tracks_from_survivors(store, bankroll=settings.sim_bankroll)
     except Exception:  # noqa: BLE001 — funding is best-effort; a data/network hiccup must not break boot

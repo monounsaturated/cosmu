@@ -4,7 +4,7 @@
 # Allocation" 2007, and the broad sector-rotation literature). This is externally documented, so it does NOT need our
 # in-sample Gate (which is an OVERFITTING guard for NOVEL mined edges). The appropriate validators are: (a) the
 # external literature, (b) a positive OOS-net-of-fees check on OUR data that BEATS buy-and-hold SPY risk-adjusted,
-# (c) the LIVE forward-test. This module does (b) (using the REAL purged+embargoed equity_holdout) and arms (c). It
+# (c) the LIVE paper. This module does (b) (using the REAL purged+embargoed equity_holdout) and arms (c). It
 # NEVER touches / lowers the 0.95 Gate.
 #
 # THE RULE (monthly, signal at month-end t, trade t+1 — NO look-ahead):
@@ -28,7 +28,7 @@
 #   holdout (cosmu.research.equity_holdout — NEVER stubbed), BEATS buy-and-hold SPY risk-adjusted (higher Sharpe
 #   AND/OR materially lower maxDD), robust across subperiods.
 #
-# ARM: register the validated strategy as a forward-test track (the SAME control-plane rows the finder writes), open
+# ARM: register the validated strategy as a paper track (the SAME control-plane rows the finder writes), open
 #   ONE real held sim position in the currently-signalled book, and mark it. SIM-only; live stays OFF (no real money).
 
 from __future__ import annotations
@@ -402,7 +402,7 @@ def validate(top_k: int = TOP_K, lookback: int = LOOKBACK_MONTHS, sma_days: int 
           f"maxDD {strat.max_dd:.1%} vs {spy.max_dd:.1%}{' [LOWER]' if lower_dd else ''})")
     print(f"  (3) robust across bear regimes (crash protect)?   {robust}  "
           f"(bear-regime edges: {[f'{e:+.0%}' for e in bear_edges]})")
-    print(f"  ==> {'DEPLOYABLE — arm the live forward-test' if deployable else 'NOT deployable on our data'}")
+    print(f"  ==> {'DEPLOYABLE — arm the live paper' if deployable else 'NOT deployable on our data'}")
     print("=" * 104)
 
     current_signal = _signal(series, me, last_complete, top_k=top_k, lookback=lookback, sma_days=sma_days)

@@ -3,7 +3,7 @@
 # Alternative for Term Deposits" (2016). Externally validated, published, widely replicated. Like GEM/VAA it is a
 # documented monthly cross-asset rotation; it does NOT need our in-sample Gate to "discover" it (the Gate is an
 # overfitting guard for NOVEL mined edges). The appropriate validators are (a) the external literature, (b) a positive
-# OOS-net-of-fees check on OUR total-return data that BEATS buy-and-hold SPY risk-adjusted, (c) the LIVE forward-test.
+# OOS-net-of-fees check on OUR total-return data that BEATS buy-and-hold SPY risk-adjusted, (c) the LIVE paper.
 # This module does (b) and (its sibling arm) does (c). It NEVER touches / lowers the 0.95 Gate.
 #
 # THE RULE (monthly; signal at month-end t from completed-month closes, trade t+1 — NO look-ahead):
@@ -35,7 +35,7 @@
 #   risk-adjusted (higher Sharpe AND/OR materially lower maxDD), robust across an IS/OOS purged temporal split + the
 #   major regime subperiods.
 #
-# Propose/measure-only — this module moves no money; the sibling `equity_paa_arm` arms a SIM forward-test (live OFF).
+# Propose/measure-only — this module moves no money; the sibling `equity_paa_arm` arms a SIM paper (live OFF).
 
 from __future__ import annotations
 
@@ -403,7 +403,7 @@ def validate(window: int = SMA_MONTHS) -> dict:
     print(f"  (3) FULL-cycle risk-adjusted beat vs B&H SPY?      {full_riskadj_beat}  "
           f"(Sharpe {paa_stats.ann_sharpe:+.2f} vs {spy_stats.ann_sharpe:+.2f} [{full_sharpe_beat}]; "
           f"maxDD {paa_stats.max_dd:.1%} vs {spy_stats.max_dd:.1%} [{full_dd_beat}])")
-    print(f"  ==> {'DEPLOYABLE — arm the live forward-test' if deployable else 'NOT deployable on our data'}")
+    print(f"  ==> {'DEPLOYABLE — arm the live paper' if deployable else 'NOT deployable on our data'}")
     print("  HONEST EXPECTATION: a crash-protection portfolio — deteriorating breadth (fewer assets above their 12m")
     print("  trend) pulls the book PROGRESSIVELY into Treasuries. It trades a slice of bull upside for a much shallower")
     print("  drawdown and lower volatility than buy-and-hold equities. That asymmetry IS the documented edge.")

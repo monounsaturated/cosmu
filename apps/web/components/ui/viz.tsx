@@ -105,7 +105,7 @@ export function Sparkline({
 // ─── GaugeBar ───────────────────────────────────────────────────────────────────────────────────
 // A horizontal progress/occupancy bar for "X of cap/limit/target". Clamps to [0,1] of its real
 // fraction; optional limit marker (e.g. the 25% drawdown line, or a maturity threshold). Used for caps
-// (deployed vs cap), daily-loss vs limit, forward-age toward live_ready, PBO quality, etc.
+// (deployed vs cap), daily-loss vs limit, paper-age toward live_ready, PBO quality, etc.
 
 export function GaugeBar({
   value,

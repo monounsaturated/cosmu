@@ -137,10 +137,10 @@ export function GlobalLiveToggle({
           <div className="leading-tight">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">arm live</span>
-              <Badge variant={enabled ? "up" : "info"}>{enabled ? "Live" : "Simulation"}</Badge>
+              <Badge variant={enabled ? "up" : "info"}>{enabled ? "Live" : "Paper"}</Badge>
             </div>
             <div className="mt-0.5 text-[15px] font-semibold tracking-tight text-foreground">
-              {enabled ? "Armed — real-money execution is on" : "Disarmed — everything runs in Simulation"}
+              {enabled ? "Armed — real-money execution is on" : "Disarmed — everything runs in Paper"}
             </div>
             <div className="text-[11.5px] text-quiet">
               {enabled ? "Within caps. Turn off any time — it is immediate." : "Off by default. Arming is a deliberate two-step confirm."}

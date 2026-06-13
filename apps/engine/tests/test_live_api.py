@@ -9,7 +9,7 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import cosmu.api.app as app_mod
-from cosmu.config.settings import FORWARD_TEST_MIN_DAYS, LiveSettings, Settings
+from cosmu.config.settings import PAPER_MIN_DAYS, LiveSettings, Settings
 from cosmu.knowledge.store import Store, utcnow
 
 
@@ -111,10 +111,10 @@ def test_no_secrets_in_responses(tmp_path, monkeypatch):
         assert "secret" not in text
 
 
-# ── Hard forward-test live-eligibility gate (P1) ────────────────────────────────────────────────
+# ── Hard paper live-eligibility gate (P1) ────────────────────────────────────────────────
 # /live/activate now excludes too-young survivors from `eligible`; /live/launch enforces the gate and is the
 # ONLY path that writes status='live'. Offline the engine reads regime 'chop', so seeds prove 'chop' to isolate
-# the FORWARD-TEST precondition (the regime gate is exercised in test_ml_regime / test_live_eligibility_gate).
+# the PAPER precondition (the regime gate is exercised in test_ml_regime / test_live_eligibility_gate).
 
 
 def _client_with_keys(tmp_path, monkeypatch):
@@ -131,17 +131,17 @@ def _client_with_keys(tmp_path, monkeypatch):
     store = Store(settings)
     monkeypatch.setattr(app_mod, "settings", settings)
     monkeypatch.setattr(app_mod, "store", store)
-    # Isolate the FORWARD-TEST precondition: pin the regime gate open here so the ambient offline regime
+    # Isolate the PAPER precondition: pin the regime gate open here so the ambient offline regime
     # (not 'chop' anymore) can't block these tests. The regime gate is exercised in test_ml_regime /
-    # test_live_eligibility_gate; here we assert only the forward-test maturity/override behaviour.
+    # test_live_eligibility_gate; here we assert only the paper maturity/override behaviour.
     monkeypatch.setattr("cosmu.master.live_eligibility.regime_eligible", lambda *a, **k: True)
     return TestClient(app_mod.app), store
 
 
 def _seed_survivor(store: Store, vid: str, *, age_days: float, net_pct: float, proven=("chop",)) -> None:
-    """A gate-passed forward-test survivor WITH a track: strategies + strategy_versions(forward_test) +
+    """A gate-passed paper survivor WITH a track: strategies + strategy_versions(paper) +
     backtests(passed_gates=1) + a tracks row (net-of-fee return) + a track_opened event whose ts is the
-    forward-test clock origin (backdated `age_days`) carrying the proven-regime passport."""
+    paper clock origin (backdated `age_days`) carrying the proven-regime passport."""
     now = datetime.now(tz=UTC)
     sid = store.insert("strategies", {"name": f"s-{vid}", "thesis": "t", "origin": "seed", "created_at": utcnow()})
     store.insert(
@@ -149,7 +149,7 @@ def _seed_survivor(store: Store, vid: str, *, age_days: float, net_pct: float, p
         {
             "id": vid, "strategy_id": sid, "parent_id": None, "spec": "{}", "generated_code": "x",
             "code_hash": "h", "params": "{}", "mutation_operator": None, "mutation_rationale": None,
-            "origin": "seed", "status": "forward_test", "created_at": utcnow(), "killed_at": None, "kill_reason": None,
+            "origin": "seed", "status": "paper", "created_at": utcnow(), "killed_at": None, "kill_reason": None,
         },
     )
     store.insert(
@@ -188,7 +188,7 @@ def _launch_body(vid: str, **over) -> dict:
 def test_activate_eligible_excludes_too_young_includes_matured(tmp_path, monkeypatch):
     c, store = _client_with_keys(tmp_path, monkeypatch)
     _seed_survivor(store, "v-young", age_days=1, net_pct=4.0)                      # 0-day clock
-    _seed_survivor(store, "v-ok", age_days=FORWARD_TEST_MIN_DAYS + 5, net_pct=4.0)  # matured + net-positive
+    _seed_survivor(store, "v-ok", age_days=PAPER_MIN_DAYS + 5, net_pct=4.0)  # matured + net-positive
 
     body = c.post("/live/activate", json={"per_strategy_cap": 1000, "global_cap": 5000, "max_daily_loss": 200, "confirm": True}).json()
     assert body["armed"] is True
@@ -199,7 +199,7 @@ def test_activate_eligible_excludes_too_young_includes_matured(tmp_path, monkeyp
 
 def test_launch_arms_and_writes_status_live_for_matured(tmp_path, monkeypatch):
     c, store = _client_with_keys(tmp_path, monkeypatch)
-    _seed_survivor(store, "v-ok", age_days=FORWARD_TEST_MIN_DAYS + 5, net_pct=4.0)
+    _seed_survivor(store, "v-ok", age_days=PAPER_MIN_DAYS + 5, net_pct=4.0)
 
     body = c.post("/live/launch", json=_launch_body("v-ok")).json()
     assert body["armed"] is True
@@ -216,17 +216,17 @@ def test_launch_refuses_unproven_without_override(tmp_path, monkeypatch):
     body = c.post("/live/launch", json=_launch_body("v-young")).json()
     assert body["armed"] is False
     assert body["readiness"] == "not yet proven"
-    assert "forward-test not proven" in body["reason"]
+    assert "paper not proven" in body["reason"]
     # Refused -> status must NOT have advanced to live.
-    assert store.row("SELECT status FROM strategy_versions WHERE id = ?", ("v-young",))["status"] == "forward_test"
+    assert store.row("SELECT status FROM strategy_versions WHERE id = ?", ("v-young",))["status"] == "paper"
 
 
 def test_launch_override_arms_unproven_and_logs_warning(tmp_path, monkeypatch):
     c, store = _client_with_keys(tmp_path, monkeypatch)
     _seed_survivor(store, "v-young", age_days=1, net_pct=4.0)
 
-    body = c.post("/live/launch", json=_launch_body("v-young", override_forward_test=True)).json()
-    assert body["armed"] is True          # override waives the forward-test precondition
+    body = c.post("/live/launch", json=_launch_body("v-young", override_paper=True)).json()
+    assert body["armed"] is True          # override waives the paper precondition
     assert body["overridden"] is True
     assert store.row("SELECT status FROM strategy_versions WHERE id = ?", ("v-young",))["status"] == "live"
     # The explicit, logged warning the owner-pending escape hatch must leave behind.

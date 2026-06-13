@@ -34,7 +34,7 @@ command = "python3 -m cosmu.research.loop --ingest"
 schedule = "0 */4 * * *"
 command = "python3 -m cosmu.master.scheduler"
 
-# FORWARD-TEST CLOCK: STEP then MARK. Step = the executor (orchestrator/forward_step.py) re-evaluates each
+# PAPER CLOCK: STEP then MARK. Step = the executor (orchestrator/paper_step.py) re-evaluates each
 # gate-lane track's OWN spec/params on the latest real bars and closes/re-opens through the one order path
 # (SIM fills only — live stays off); mark = re-mark every held SIM position against the latest REAL close,
 # routed by asset class (crypto -> Binance spot, equity/ETF -> Yahoo total-return). Daily at 22:10 UTC (after

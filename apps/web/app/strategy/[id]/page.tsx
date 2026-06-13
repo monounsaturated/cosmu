@@ -131,7 +131,7 @@ export default async function StrategyPage({ params }: { params: Promise<{ id: s
   const holdout = holdoutRows(strategy.holdout as Record<string, unknown>);
 
   // Glanceable summary, derived from REAL detail fields (no fabrication): the gate verdict from the
-  // backtests, venue/timeframe/thesis from the spec, and an honest forward-vs-backtest read so the
+  // backtests, venue/timeframe/thesis from the spec, and an honest paper-vs-backtest read so the
   // detail header answers "is this proven, where does it trade, and on what edge?" at a glance.
   const passed = strategy.backtests.some((bt: Backtest) => bt.passed_gates);
   const summary = strategySummary(strategy.spec, strategy.backtests);
@@ -209,7 +209,7 @@ function costsFromTrades(trades: Execution[]): { total: number; perTrade: number
   };
 }
 
-// ── Performance tab: the two faces of proof side by side — the Simulation equity track (forward, built
+// ── Performance tab: the two faces of proof side by side — the Paper equity track (forward, built
 // only from real fills) vs the out-of-sample backtest evidence by fold — plus the untouched holdout and
 // an honest costs read. The default, digestible view. ──
 function PerformanceTab({
@@ -231,8 +231,8 @@ function PerformanceTab({
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5">
-              Forward — Simulation track
-              <Tooltip content="Cumulative realized cash flow from this track's real simulation fills (sells add, buys and fees subtract). This is forward proof on live data — built only from real trades, not a fabricated curve." />
+              Forward — Paper track
+              <Tooltip content="Cumulative realized cash flow from this track's real paper fills (sells add, buys and fees subtract). This is forward proof on live data — built only from real trades, not a fabricated curve." />
             </CardTitle>
             <Badge variant="info">live data · no money</Badge>
           </CardHeader>
@@ -240,7 +240,7 @@ function PerformanceTab({
             {simCurve.length >= 2 ? (
               <TvChart points={simCurve} mode="sim" height={220} valueKind="usd" />
             ) : (
-              <ChartEmpty title="No forward track yet" hint="The Simulation equity curve renders once this track has at least two fills on live data." height={220} />
+              <ChartEmpty title="No paper track yet" hint="The Paper equity curve renders once this track has at least two fills on live data." height={220} />
             )}
           </CardContent>
         </Card>
@@ -248,7 +248,7 @@ function PerformanceTab({
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5">
               Backtest — out-of-sample by fold
-              <Tooltip content="Net return on each backtest fold (WFO, untouched holdout) — historical evidence the edge held out-of-sample. Green is positive OOS return, red negative. This is NOT forward performance." />
+              <Tooltip content="Net return on each backtest fold (WFO, untouched holdout) — historical evidence the edge held out-of-sample. Green is positive OOS return, red negative. This is NOT paper performance." />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -379,7 +379,7 @@ function TradesTab({ trades }: { trades: Execution[] }) {
     return (
       <Card>
         <CardContent className="pt-5">
-          <EmptyState title="No trades yet." hint="Fills appear here as this track trades in Simulation. Nothing is fabricated." />
+          <EmptyState title="No trades yet." hint="Fills appear here as this track trades in Paper. Nothing is fabricated." />
         </CardContent>
       </Card>
     );

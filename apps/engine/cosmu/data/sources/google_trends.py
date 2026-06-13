@@ -26,7 +26,7 @@
 #   - The docstring, low_confidence flag (confidence=0.2), and this comment block are
 #     the only safeguards. The Gate must earn OOS evidence before trusting this source.
 #   - profile-source verdict: REVIEW / likely NO-GO for backtest; acceptable for
-#     forward-test alerting (each bar you fetch only the CURRENT snapshot).
+#     paper alerting (each bar you fetch only the CURRENT snapshot).
 #
 # PIT contract (as honest as we can be given the vendor):
 #   ts         = the Monday of the weekly Trends bucket
@@ -95,7 +95,7 @@ class GoogleTrendsSource:
 
     REVISION-SAFETY: Trends rescales all historical values when the query window changes.
     This is a REVIEW / NO-GO source for backtesting (the Gate must earn OOS evidence).
-    It is acceptable for FORWARD-TEST alerting where each fetch is a fresh current snapshot.
+    It is acceptable for PAPER alerting where each fetch is a fresh current snapshot.
 
     PIT contract:
       ts         = Monday of the weekly bucket (the observation period)
@@ -116,7 +116,7 @@ class GoogleTrendsSource:
     prior: str = (
         "Retail search interest (Google Trends) spikes around attention-driven price moves; "
         "historically correlates with speculative inflows but is noisy and rescales on every "
-        "re-fetch (REVIEW/NO-GO for backtesting; forward-test alerting only until Gate validates). "
+        "re-fetch (REVIEW/NO-GO for backtesting; paper alerting only until Gate validates). "
         "Must earn OOS evidence before entering any live strategy."
     )
     transform_version: str = TRANSFORM_VERSION
@@ -185,7 +185,7 @@ class GoogleTrendsSource:
 
         Point-in-time guarantee: returns the most-recent fetched snapshot whose available_at
         <= as_of. If no snapshot has been ingested yet for a past as_of, returns value=None.
-        For the FORWARD-TEST use case, as_of ~ now() and the result is the current reading.
+        For the PAPER use case, as_of ~ now() and the result is the current reading.
         """
         del scope  # market-wide; scope is part of the DataSource protocol but unused here
         pts = self.fetch_series(limit=limit)

@@ -2,7 +2,7 @@
 # GLOBAL EQUITIES MOMENTUM (GEM / "Dual Momentum", 2014) is externally validated — decades of live + out-of-sample
 # evidence across markets, a published book + papers. Such a strategy does NOT need our in-sample Gate to "discover"
 # it (the Gate is an OVERFITTING guard for NOVEL mined edges). The appropriate validators are: (a) the external
-# literature, (b) a positive OOS-net-of-fees check on OUR data, (c) the LIVE forward-test. This module does (b) and
+# literature, (b) a positive OOS-net-of-fees check on OUR data, (c) the LIVE paper. This module does (b) and
 # arms (c). It NEVER touches / lowers the 0.95 Gate.
 #
 # THE RULE (monthly, signal at month-end t, trade t+1 — NO look-ahead):
@@ -24,11 +24,11 @@
 # VALIDATION (the DEPLOYMENT bar, not the 0.95 Gate): positive OOS net of real fees, BEATS buy-and-hold SPY
 #   risk-adjusted (higher Sharpe AND/OR materially lower maxDD), robust across an IS/OOS purged temporal split.
 #
-# ARM: register the validated strategy as a forward-test track (the SAME control-plane rows the finder writes —
-#   strategies + strategy_versions(forward_test) + backtests(screen) + tracks + a `track_opened` event), open ONE
-#   real held sim position in the currently-signalled ETF, and mark it. The forward-test clock (mark_tracks /
+# ARM: register the validated strategy as a paper track (the SAME control-plane rows the finder writes —
+#   strategies + strategy_versions(paper) + backtests(screen) + tracks + a `track_opened` event), open ONE
+#   real held sim position in the currently-signalled ETF, and mark it. The paper clock (mark_tracks /
 #   `python3 -m cosmu.orchestrator.loop`) then accrues honest daily P&L going forward. Propose/measure + arm-sim only;
-#   live stays OFF (no real orders) — arming a SIM forward-test never moves money.
+#   live stays OFF (no real orders) — arming a SIM paper never moves money.
 
 from __future__ import annotations
 
@@ -345,7 +345,7 @@ def validate(lookback: int = LOOKBACK_MONTHS) -> dict:
     # Robust across subperiods = it doesn't blow up in any regime and dominates in the crash it's built for. We
     # encode the minimal honest version: GEM's WORST-regime relative loss never exceeds a full B&H-SPY-style crash,
     # and it WINS the 2008 bear decisively (the +44pt edge above). Positive-OOS + full-cycle-half-drawdown +
-    # tied-Sharpe is the documented edge; we deploy on that and forward-test it. The bull-window OOS Sharpe gap is a
+    # tied-Sharpe is the documented edge; we deploy on that and paper it. The bull-window OOS Sharpe gap is a
     # disclosed caveat, NOT a veto (demanding GEM out-Sharpe an anomalous bull is demanding it beat the regime it is
     # designed to cede ground in).
     deployable = oos_positive and full_lower_dd and full_sharpe_tied_or_better
@@ -359,7 +359,7 @@ def validate(lookback: int = LOOKBACK_MONTHS) -> dict:
     print(f"      (disclosed caveat) OOS maxDD vs SPY OOS:       GEM {oos_gem.max_dd:.1%} vs SPY {oos_spy.max_dd:.1%} "
           f"— the 2016-2026 OOS had no deep bear, so de-risking's value (2008-style) didn't appear; the 2022 bond")
     print( "                                                     selloff is GEM's known weakness (stocks AND bonds fell).")
-    print(f"  ==> {'DEPLOYABLE — arm the live forward-test' if deployable else 'NOT deployable on our data'}")
+    print(f"  ==> {'DEPLOYABLE — arm the live paper' if deployable else 'NOT deployable on our data'}")
     print("  HONEST EXPECTATION: a MODEST real strategy — Sharpe ~0.75, CAGR ~9%, but ~half the drawdown of SPY.")
     print("  It trades crash protection for some bull-market upside; it shines in bears (see 2008 subperiod) and")
     print("  gives ground in uninterrupted bull runs (see OOS 2016-2026). That asymmetry IS the documented edge.")

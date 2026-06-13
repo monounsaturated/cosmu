@@ -1,7 +1,7 @@
 // module: PopulationStrip — the lead-with-the-answer summary for the Strategies surface. Before the
 // ranked table, the operator should see the SHAPE of the population in one glance: how many Versions
 // exist, how many cleared the Gate, and where the cohort sits across the lifecycle (Backtest →
-// Simulation → Live), plus how many were killed. Every number is COUNTED off the real leaderboard rows
+// Paper → Live), plus how many were killed. Every number is COUNTED off the real leaderboard rows
 // handed in — nothing fabricated. When there are no rows the page shows its honest empty state instead,
 // so this strip only renders for a non-empty cohort.
 
@@ -10,12 +10,12 @@ import { cn } from "@/lib/utils";
 
 // Map a raw engine status onto the lifecycle bucket — kept in lockstep with strategies-table.tsx so the
 // strip and the per-row Status badge always agree on what "Live" / "Killed" mean.
-type LifeStatus = "lab" | "screened" | "forward" | "live" | "killed";
+type LifeStatus = "lab" | "screened" | "paper" | "live" | "killed";
 function lifeStatusOf(status: string | null | undefined): LifeStatus {
   const s = (status ?? "").toLowerCase();
   if (s === "killed" || s === "dead" || s === "graveyard") return "killed";
   if (s === "live") return "live";
-  if (s === "forward_test" || s === "forward" || s === "paper") return "forward";
+  if (s === "paper" || s === "forward_test" || s === "forward") return "paper";
   if (s === "screening" || s === "screened" || s === "validating" || s === "optimizing") return "screened";
   return "lab";
 }
@@ -70,7 +70,7 @@ function Cell({
 
 export function PopulationStrip({ rows }: { rows: LeaderboardRow[] }) {
   const total = rows.length;
-  const counts: Record<LifeStatus, number> = { lab: 0, screened: 0, forward: 0, live: 0, killed: 0 };
+  const counts: Record<LifeStatus, number> = { lab: 0, screened: 0, paper: 0, live: 0, killed: 0 };
   let cleared = 0;
   for (const r of rows) {
     counts[lifeStatusOf(r.status)] += 1;
@@ -84,7 +84,7 @@ export function PopulationStrip({ rows }: { rows: LeaderboardRow[] }) {
       <Cell label="Versions" value={String(total)} sub={`${alive} alive`} emphasis />
       <Cell label="Cleared Gate" value={String(cleared)} sub={`${clearedPct}% of cohort`} tone={cleared > 0 ? "up" : "muted"} />
       <Cell label="Backtest" value={String(counts.screened + counts.lab)} sub="historical" tone="iris" />
-      <Cell label="Simulation" value={String(counts.forward)} sub="live data" tone="info" />
+      <Cell label="Paper" value={String(counts.paper)} sub="live data" tone="info" />
       <Cell label="Live" value={String(counts.live)} sub="real capital" tone={counts.live > 0 ? "up" : "muted"} />
       <Cell label="Killed" value={String(counts.killed)} sub="graveyard" tone={counts.killed > 0 ? "down" : "muted"} />
     </div>

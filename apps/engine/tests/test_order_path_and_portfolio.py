@@ -151,7 +151,7 @@ def test_averaging_down_after_loss_is_rejected(tmp_path):
 
 def test_sim_fill_pays_slippage_adverse_both_ways(tmp_path):
     """A SIM fill crosses the half-spread the ADVERSE way at the same 5 bps base the gate-lane backtest
-    charges: a buy fills ABOVE the mark, a sell BELOW — so forward-test P&L can never be flattered relative
+    charges: a buy fills ABOVE the mark, a sell BELOW — so paper P&L can never be flattered relative
     to the screen that funded the track. The recorded execution price is the slipped fill, not the mark."""
     store = _store(tmp_path)
     pf, _ = _run(store, [_ok_intent()], live_enabled=False)

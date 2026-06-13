@@ -41,7 +41,7 @@ def _persist_version(store: Store, spec, *, passed: bool) -> str:  # noqa: ANN00
             "strategy_id": sid, "parent_id": None, "spec": spec.model_dump(mode="json"),
             "generated_code": compiled.code, "code_hash": compiled.code_hash, "params": params,
             "mutation_operator": None, "mutation_rationale": None, "origin": "seed",
-            "status": "forward_test" if passed else "killed", "created_at": utcnow(),
+            "status": "paper" if passed else "killed", "created_at": utcnow(),
             "killed_at": None if passed else utcnow(), "kill_reason": None if passed else "pbo",
         },
     )
@@ -195,16 +195,16 @@ def test_leaderboard_never_emits_null_metrics_without_a_backtest(tmp_path, monke
 
 
 def test_leaderboard_surfaces_advisory_maturity_signal(tmp_path, monkeypatch):
-    # ADVISORY ONLY: the leaderboard exposes forward_age_days + live_ready per track, computed from the track's
-    # FIRST `track_opened` event (its forward-test clock origin). A matured + net-positive track is recommended;
-    # this NEVER gates — it's surfaced for the operator. Mirrors what feeds the web /forward-test page.
+    # ADVISORY ONLY: the leaderboard exposes paper_age_days + live_ready per track, computed from the track's
+    # FIRST `track_opened` event (its paper clock origin). A matured + net-positive track is recommended;
+    # this NEVER gates — it's surfaced for the operator. Mirrors what feeds the web /paper page.
     from datetime import UTC, datetime, timedelta
 
     client, store = _client(tmp_path, monkeypatch)
 
     spec = seed_momentum_spec(); spec.name = "Matured momentum"
     vid = _persist_version(store, spec, passed=True)
-    # The clock origin: a track_opened event 40 days ago (> FORWARD_TEST_MIN_DAYS). oos_return 0.04 -> net_pct > 0.
+    # The clock origin: a track_opened event 40 days ago (> PAPER_MIN_DAYS). oos_return 0.04 -> net_pct > 0.
     store.append_event(
         actor="master", kind="track_opened", ref_type="strategy_version", ref_id=vid,
         payload={"proven_regimes": ["bull"]},
@@ -215,27 +215,27 @@ def test_leaderboard_surfaces_advisory_maturity_signal(tmp_path, monkeypatch):
 
     rows = client.get("/leaderboard").json()["rows"]
     row = next(r for r in rows if r["version_id"] == vid)
-    assert "forward_age_days" in row and "live_ready" in row, "advisory maturity fields must be on the contract"
-    assert row["forward_age_days"] >= 30.0
+    assert "paper_age_days" in row and "live_ready" in row, "advisory maturity fields must be on the contract"
+    assert row["paper_age_days"] >= 30.0
     assert row["live_ready"] is True  # matured AND net-positive -> recommended (advisory)
 
 
 def test_leaderboard_live_ready_false_without_a_funded_clock(tmp_path, monkeypatch):
-    # No track_opened event => forward-test clock never started => age 0 => never live_ready, regardless of P&L.
+    # No track_opened event => paper clock never started => age 0 => never live_ready, regardless of P&L.
     # Fail-safe: an unfunded/un-marked track is never recommended.
     client, store = _client(tmp_path, monkeypatch)
     spec = seed_momentum_spec(); spec.name = "Unfunded momentum"
     vid = _persist_version(store, spec, passed=True)
 
     row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
-    assert row["forward_age_days"] == 0.0
+    assert row["paper_age_days"] == 0.0
     assert row["live_ready"] is False
 
 
 def _open_seeded_track(store: Store, vid: str) -> None:
     """Open a track the way the funder does: seed tracks.return_pct/equity with the BACKTEST number (oos 0.04 ->
     +4%) at funding time. NO marked snapshot yet => this is the day-0 state where the rosy backtest must NOT leak
-    into forward_return_pct."""
+    into paper_return_pct."""
     store.insert(
         "tracks",
         {
@@ -246,30 +246,30 @@ def _open_seeded_track(store: Store, vid: str) -> None:
 
 
 def test_leaderboard_forward_return_is_null_without_a_track(tmp_path, monkeypatch):
-    # No track row at all => no forward trajectory => forward_return_pct is honest null (not 0, not the backtest).
+    # No track row at all => no forward trajectory => paper_return_pct is honest null (not 0, not the backtest).
     client, store = _client(tmp_path, monkeypatch)
     spec = seed_momentum_spec(); spec.name = "No-track momentum"
     vid = _persist_version(store, spec, passed=True)
     row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
-    assert row["forward_return_pct"] is None
+    assert row["paper_return_pct"] is None
     # the BACKTEST OOS is still surfaced (relabeled), distinct from the (absent) forward number
     assert math.isclose(row["track_return_pct"], 4.0, abs_tol=1e-6)
 
 
 def test_leaderboard_forward_return_null_at_day0_never_the_backtest(tmp_path, monkeypatch):
     # The track is OPENED with the backtest number seeded into tracks.return_pct, but it has NOT been marked yet
-    # (no scope='track' portfolio_snapshot). forward_return_pct MUST be null — the rosy +4% backtest can NEVER
+    # (no scope='track' portfolio_snapshot). paper_return_pct MUST be null — the rosy +4% backtest can NEVER
     # leak in as a day-0 forward result.
     client, store = _client(tmp_path, monkeypatch)
     spec = seed_momentum_spec(); spec.name = "Just-funded momentum"
     vid = _persist_version(store, spec, passed=True)
     _open_seeded_track(store, vid)
     row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
-    assert row["forward_return_pct"] is None, "day-0 forward must be null, never the seeded backtest number"
+    assert row["paper_return_pct"] is None, "day-0 forward must be null, never the seeded backtest number"
 
 
 def test_leaderboard_forward_return_is_the_marked_trajectory(tmp_path, monkeypatch):
-    # Once the mark clock writes a scope='track' snapshot, forward_return_pct is the REAL net-of-fee return:
+    # Once the mark clock writes a scope='track' snapshot, paper_return_pct is the REAL net-of-fee return:
     # (marked_equity / starting_capital - 1) * 100. A marked equity of 101_500 on 100k => +1.50% forward —
     # the marked number, NOT the +4% backtest.
     client, store = _client(tmp_path, monkeypatch)
@@ -284,13 +284,13 @@ def test_leaderboard_forward_return_is_the_marked_trajectory(tmp_path, monkeypat
         },
     )
     row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
-    assert math.isclose(row["forward_return_pct"], 1.5, abs_tol=1e-6)
+    assert math.isclose(row["paper_return_pct"], 1.5, abs_tol=1e-6)
     # backtest OOS stays distinct at +4%
     assert math.isclose(row["track_return_pct"], 4.0, abs_tol=1e-6)
 
 
 def test_leaderboard_forward_return_shows_true_negative(tmp_path, monkeypatch):
-    # HONESTY: a losing forward test shows its TRUE negative number — never the rosy backtest, never floored at 0.
+    # HONESTY: a losing paper run shows its TRUE negative number — never the rosy backtest, never floored at 0.
     client, store = _client(tmp_path, monkeypatch)
     spec = seed_momentum_spec(); spec.name = "Losing momentum"
     vid = _persist_version(store, spec, passed=True)
@@ -303,7 +303,7 @@ def test_leaderboard_forward_return_shows_true_negative(tmp_path, monkeypatch):
         },
     )
     row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
-    assert math.isclose(row["forward_return_pct"], -3.0, abs_tol=1e-6)
+    assert math.isclose(row["paper_return_pct"], -3.0, abs_tol=1e-6)
 
 
 def test_leaderboard_metric_coercion_handles_nan_and_none():

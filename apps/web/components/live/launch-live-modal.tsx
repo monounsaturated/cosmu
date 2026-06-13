@@ -2,9 +2,9 @@
 
 // module: LaunchLiveModal — strategy-specific launch flow. Triggered from the /live page (per-strategy
 // row) or /strategy/[id] detail page. Fetches fees live from GET /live/venue-catalog, lets the operator
-// pick venue + asset, set a budget ($100 default, editable), and review the forward-test readiness
+// pick venue + asset, set a budget ($100 default, editable), and review the paper readiness
 // signal. Arming calls POST /live/launch (the existing interlock path). The 5 interlocks remain the
-// hard execution safety; forward-test maturity (>= FORWARD_TEST_MIN_DAYS net-positive) is now a HARD
+// hard execution safety; paper maturity (>= PAPER_MIN_DAYS net-positive) is now a HARD
 // precondition for arming — a "not yet proven" strategy is refused unless explicitly override-launched.
 //
 // Venue key-gating: venues whose `configured` flag is false are greyed-out and unselectable. The
@@ -228,7 +228,7 @@ export function LaunchLiveModal({ versionId, strategyName, onClose, onArmed }: P
 
             {/* Safety note */}
             <p className="rounded-md border border-border/60 bg-surface-2/40 px-3 py-2 text-[11.5px] leading-relaxed text-quiet">
-              Safety: the engine only submits a real order when live is on, execution keys are present, the gate has passed on real data, caps are available, and the kill-switch is clear. Otherwise it runs in Simulation.
+              Safety: the engine only submits a real order when live is on, execution keys are present, the gate has passed on real data, caps are available, and the kill-switch is clear. Otherwise it runs in Paper.
             </p>
           </div>
         )}
@@ -381,7 +381,7 @@ function LaunchOutcome({ result, strategyName }: { result: LaunchActivateRespons
         </div>
       )}
 
-      {/* Forward-test readiness — a HARD precondition for arming (refused unless override-launched) */}
+      {/* Paper readiness — a HARD precondition for arming (refused unless override-launched) */}
       <div className={cn(
         "flex items-start gap-2 rounded-md border px-3 py-2 text-[11.5px]",
         proven
@@ -390,12 +390,12 @@ function LaunchOutcome({ result, strategyName }: { result: LaunchActivateRespons
       )}>
         <Info className="mt-0.5 size-3.5 shrink-0" />
         <div>
-          <span className="font-medium">Simulation readiness: </span>
+          <span className="font-medium">Paper readiness: </span>
           {proven
-            ? `proven — ${result.forward_test_days?.toFixed(0) ?? "30"}+ days net-positive in Simulation`
-            : result.forward_test_days != null
-              ? `not yet proven — ${result.forward_test_days.toFixed(0)} days so far (needs net-positive past the Simulation threshold)`
-              : "no Simulation track yet — not eligible to arm"}
+            ? `proven — ${result.paper_days?.toFixed(0) ?? "30"}+ days net-positive in Paper`
+            : result.paper_days != null
+              ? `not yet proven — ${result.paper_days.toFixed(0)} days so far (needs net-positive past the Paper threshold)`
+              : "no Paper track yet — not eligible to arm"}
           <span className="ml-1 text-quiet opacity-80">· required to arm; the 5 interlocks remain the hard execution gate</span>
         </div>
       </div>

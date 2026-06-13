@@ -1,4 +1,4 @@
-# ASSET-AWARE forward-test clock (orchestrator.mark_tracks): every held SIM position is re-marked against the
+# ASSET-AWARE paper clock (orchestrator.mark_tracks): every held SIM position is re-marked against the
 # REAL close from the pricing source for ITS asset class — crypto → Binance spot, equity/ETF → Yahoo total-return.
 # Before this, the clock priced everything via Binance, so equity tracks (GEM dual-momentum, the TAA fleet) marked
 # to 0 / sat flat. These tests prove the router sends each leg to the right provider, marks BOTH, and SKIPS (never
@@ -114,7 +114,7 @@ def test_equity_track_return_pct_updates_off_zero(tmp_path):
         "strategy_versions",
         {"strategy_id": sv, "parent_id": None, "spec": {}, "generated_code": "", "code_hash": "taa-x",
          "params": {}, "mutation_operator": None, "mutation_rationale": "x", "origin": "documented",
-         "status": "forward_test", "created_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC).isoformat(),
+         "status": "paper", "created_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC).isoformat(),
          "killed_at": None, "kill_reason": None},
     )
     store.insert("tracks", {"strategy_version_id": vid, "starting_capital": "10000",

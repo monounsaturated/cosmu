@@ -44,14 +44,14 @@ export default async function LabPage() {
       {!anyConnected ? <NotConnectedBanner configured={engineConfigured} /> : null}
 
       {/* Next step nudge — surfaces when Gate survivors exist so the operator knows to check Backtest. */}
-      {connected && population.forward_test > 0 && (
+      {connected && population.paper > 0 && (
         <Link
           href="/strategies"
           className="flex items-center justify-between gap-3 rounded-lg border border-up/30 bg-up/[0.06] px-4 py-3 text-[12.5px] text-muted transition-colors hover:bg-up/10 hover:text-foreground"
         >
           <span>
-            <span className="font-medium text-foreground">{population.forward_test}</span> version
-            {population.forward_test !== 1 ? "s" : ""} cleared the Gate — review them in Backtest
+            <span className="font-medium text-foreground">{population.paper}</span> version
+            {population.paper !== 1 ? "s" : ""} cleared the Gate — review them in Backtest
           </span>
           <ChevronRight className="size-4 shrink-0 text-up" />
         </Link>
@@ -70,7 +70,7 @@ export default async function LabPage() {
       {/* KPIs — the population at a glance. */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard label="Versions tested" value={connected ? population.total : "—"} tone="iris" />
-        <MetricCard label="In simulation" value={connected ? population.forward_test : "—"} tone="up" />
+        <MetricCard label="In paper" value={connected ? population.paper : "—"} tone="up" />
         <MetricCard label="In graveyard" value={connected ? population.killed : "—"} tone="down" />
         <MetricCard
           label="Kill rate"
@@ -87,7 +87,7 @@ export default async function LabPage() {
             title={
               <span className="flex items-center gap-1.5 text-base">
                 Funnel
-                <Tooltip content="The full lifecycle: authored → Backtest → gate-passed → Simulation → Live, with how many were killed at each stage." />
+                <Tooltip content="The full lifecycle: authored → Backtest → gate-passed → Paper → Live, with how many were killed at each stage." />
               </span>
             }
           />

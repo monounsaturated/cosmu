@@ -1,5 +1,5 @@
 # intent: lean Slack notifications — post to a webhook on the few high-signal events only (gate
-# verdict / first forward-test survivor, deploy health change, autonomy-tick error). Never blocks
+# verdict / first paper survivor, deploy health change, autonomy-tick error). Never blocks
 # the caller (best-effort, all errors swallowed), no-op when SLACK_WEBHOOK_URL is unset,
 # offline-testable (inject _post for unit tests, never touches the network in tests).
 # inputs: the webhook URL (from settings or env), a message dict; outputs: a best-effort POST.
@@ -67,7 +67,7 @@ def notify_gate_verdict(
     authored: int,
     evolved: int = 0,
 ) -> None:
-    """Fire when the Gate runs and at least one survivor clears — the first forward-test seam.
+    """Fire when the Gate runs and at least one survivor clears — the first paper seam.
     Silently no-ops when the webhook is unset or survivors is empty."""
     if not survivors:
         return
@@ -78,7 +78,7 @@ def notify_gate_verdict(
         f":white_check_mark: *Gate passed* — {len(survivors)}/{authored} survived"
         f"{evolved_note}\n"
         f"Survivors: {names}{extra}\n"
-        f"Now watching in sim (forward-test clock running)."
+        f"Now watching in sim (paper clock running)."
     )
     notifier.send(text)
 

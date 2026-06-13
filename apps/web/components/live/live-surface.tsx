@@ -38,7 +38,7 @@ const DEFAULT_CAPS: Caps = { per_strategy_cap: 250, global_cap: 1000, max_daily_
 
 function modeBadge(mode: LiveMode) {
   const map: Record<LiveMode, { variant: "up" | "warn" | "info"; label: string }> = {
-    sim: { variant: "info", label: "Simulation" },
+    sim: { variant: "info", label: "Paper" },
     testnet: { variant: "warn", label: "testnet" },
     live: { variant: "up", label: "Live" }
   };
@@ -80,7 +80,7 @@ export function LiveSurface({
   // capital and must NEVER be presented as live-deployed money — that's the bug the operator caught.
   const isLive = armed && state.mode === "live";
   // The single money-state label for every $ on this surface: LIVE only when armed on the live
-  // venue, otherwise Simulation. There is no demo money state — offline shows an honest not-connected note.
+  // venue, otherwise Paper. There is no demo money state — offline shows an honest not-connected note.
   const money = moneyMode({ live: isLive });
   // LIVE-only money figures. The engine's /live/positions + /live/venues report SIM capital too (it has no
   // live/sim split today — flagged as a backend gap), so the UI gates them: $0 deployed / $0 daily loss
@@ -366,18 +366,18 @@ export function LiveSurface({
       </Card>
 
       {/* Positions — SCOPED + LABELLED by money state. When NOT live, the engine still returns the SIM
-          tracks' open positions; we label them Simulation so a paper position is never read as live capital. */}
+          tracks' open positions; we label them Paper so a paper position is never read as live capital. */}
       <Card>
         <CardHeader>
           <div>
             <CardTitle className="flex items-center gap-2">
               Open positions
-              <Badge variant={isLive ? "up" : "info"}>{isLive ? "Live" : "Simulation"}</Badge>
+              <Badge variant={isLive ? "up" : "info"}>{isLive ? "Live" : "Paper"}</Badge>
             </CardTitle>
             <CardDescription>
               {isLive
                 ? "Real capital at risk now. Defund returns capital to the reserve."
-                : "Simulation tracks — paper positions on live data, no real money. They do not count as live-deployed capital."}
+                : "Paper tracks — paper positions on live data, no real money. They do not count as live-deployed capital."}
             </CardDescription>
           </div>
           <Badge variant="muted">{state.positions.length} open</Badge>
@@ -609,7 +609,7 @@ function ActivationModal({
         <p className="mt-3 rounded-md border border-border/60 bg-surface-2/40 px-3 py-2 text-[11.5px] leading-relaxed text-quiet">
           A note on safety: the engine only submits a real order when live is on, execution keys are present, the
           cross-asset gate has passed on real data, caps are available, and the kill-switch is clear. Otherwise it
-          runs in Simulation and defaults to testnet. This capability is not proven profit.
+          runs in Paper and defaults to testnet. This capability is not proven profit.
         </p>
 
         <div className="mt-4 space-y-3">

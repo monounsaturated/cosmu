@@ -5,7 +5,7 @@
 # momentum), expressed on a higher-beta US equity proxy. We validate it HONESTLY on our own total-return data and
 # compare it head-to-head with the live SPY-based GEM. It is NOT routed through the 0.95 in-sample Gate (that guard is
 # for NOVEL mined edges); the appropriate validators are external literature (dual momentum) + positive OOS net of
-# real fees + a REAL purged/embargoed holdout + the live forward-test.
+# real fees + a REAL purged/embargoed holdout + the live paper.
 #
 # THE RULE (monthly, signal at month-end t, trade t+1 — NO look-ahead):
 #   1. ABSOLUTE momentum: is QQQ's trailing-12m total return > SHY's (short-Treasury hurdle)?
@@ -245,7 +245,7 @@ def validate(lookback: int = LOOKBACK_MONTHS) -> dict:
     print(f"  (3) FULL-cycle Sharpe tied-or-better?   {full_sharpe_tied_or_better}  "
           f"(VAR {var_stats.ann_sharpe:+.2f} vs SPY {bench_stats.ann_sharpe:+.2f})")
     print(f"  (4) REAL holdout DSR > 0?               {holdout_passed}  (holdout_dsr {holdout_dsr:+.4f})")
-    print(f"  ==> {'DEPLOYABLE — arm the live forward-test' if deployable else 'NOT deployable on our data (honest FAIL)'}")
+    print(f"  ==> {'DEPLOYABLE — arm the live paper' if deployable else 'NOT deployable on our data (honest FAIL)'}")
     print("=" * 100)
 
     current_signal = _signal(series, last_complete, lookback)

@@ -23,7 +23,7 @@ class FeeSchedule:
     @classmethod
     def from_venue(cls, venue: "Venue", volume_30d_usd: float = 0.0) -> "FeeSchedule":
         """The single bridge from a catalog Venue (real, volume-tiered fees) to the cost model — so a
-        backtest/forward-test prices the SAME fees the live venue would charge, per the account's volume."""
+        backtest/paper prices the SAME fees the live venue would charge, per the account's volume."""
         maker, taker = venue.effective_fee(volume_30d_usd)
         return cls(maker_bps=float(maker), taker_bps=float(taker))
 
@@ -39,7 +39,7 @@ class FeeSchedule:
         """Point-in-time fee schedule: read the snapshot from the alt_data store that was in effect
         at `as_of`, falling back to the volume-tiered catalog if no snapshot is available.
 
-        This is the seam that eliminates fee look-ahead in backtests and forward-tests: every order
+        This is the seam that eliminates fee look-ahead in backtests and papers: every order
         prices costs against the fee the account WOULD HAVE PAID at that timestamp, not the current rate.
         """
         from cosmu.data.altdata import read_pit_fee

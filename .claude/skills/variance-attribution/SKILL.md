@@ -5,14 +5,14 @@ description: Decompose a funded track's SIM→live divergence into named, signed
 
 # variance-attribution
 
-When a track's live results drift from its sim forward-test, `Track.sim_live_divergence` tells you *how much* the backtest missed — this skill tells you **why**. It decomposes the per-period divergence `(live − sim)` into five named, signed contributions plus a first-class **residual**, so you can tell a costs problem (fix execution) from an alpha problem (the edge is dead) from a luck problem (a different regime mix).
+When a track's live results drift from its sim paper, `Track.sim_live_divergence` tells you *how much* the backtest missed — this skill tells you **why**. It decomposes the per-period divergence `(live − sim)` into five named, signed contributions plus a first-class **residual**, so you can tell a costs problem (fix execution) from an alpha problem (the edge is dead) from a luck problem (a different regime mix).
 
 **Review-only.** It only *explains* — it never funds, defunds, sizes, or routes an order. It is out of the gate path and out of the money path; the deterministic lifecycle (`portfolio/rotation.py`), the anticipatory drift monitor (`master/drift.py`), and the live toggle alone dispose of capital.
 
 ## When to use
 - A funded track is underperforming its sim and you ask: *"is this fees/slippage I can fix, or a dead edge I should pull?"*
 - Post-mortem on a defunded track — attribute the shortfall before authoring the next variant.
-- Sanity-check before launching live: how much of the forward-test edge survives realistic costs?
+- Sanity-check before launching live: how much of the paper edge survives realistic costs?
 
 ## Run (from repo root; `PYTHONPATH=apps/engine`)
 ```bash

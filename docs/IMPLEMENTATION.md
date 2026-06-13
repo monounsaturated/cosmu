@@ -111,7 +111,7 @@ LLMs may help narrate, but the **deterministic Gate alone disposes of money** �
 
 ### Per-venue fee realism + jurisdiction (2026-06-03)
 - `spine/venue.py` — venues now carry **volume-tiered fee schedules** (`VenueFeeTier`), a `live_enabled` flag (data/paper venues can't move money), and `restricted_jurisdictions`. `Venue.effective_fee(volume_30d_usd)` picks the richest tier met; `Venue.live_legal_in(country)` and `VenueCatalog.live_legal_venues(country)` make live availability a venue+country fact, not a global toggle. Catalog gains **Kraken, Coinbase, Alpaca** alongside Binance/IBKR/Polymarket with realistic fees — encoding the finding that **US-legal crypto (Kraken ~26 / Coinbase ~60 bps taker) is worse than Binance (~10), while IBKR equities are <1 bp**. Binance/Polymarket are `restricted_jurisdictions=["US"]`; Alpaca is data/paper (`live_enabled=False`).
-- `execution/costopt.py` — `FeeSchedule.from_venue(venue, volume_30d_usd)` is the single bridge from the catalog to the cost model, so a backtest/forward-test prices the **same fees the live venue would charge** at the account's volume. `tests/test_venue_fees.py` locks all of this.
+- `execution/costopt.py` — `FeeSchedule.from_venue(venue, volume_30d_usd)` is the single bridge from the catalog to the cost model, so a backtest/paper prices the **same fees the live venue would charge** at the account's volume. `tests/test_venue_fees.py` locks all of this.
 - New skills: **`/scan-signals`** (unbiased cross-asset signal sweep → testable hypotheses with disconfirmers → the gate; propose-only) and **`/groom`** (self-maintenance: prune dead code, graveyard stale strategies, keep docs/memory lean, `pnpm verify` green). Registered in `AGENTS.md`.
 - *Note:* `universe.py` `VENUES_WITH_DATA` stays Binance-only — the new venues appear in the catalog and show "no data yet" until their data/exec adapters are wired (honest, not faked).
 
@@ -287,7 +287,7 @@ Canonical source of truth: `apps/web/components/nav/app-nav.tsx`. Nine primary s
 | `/console` | Decide · steer · arm (the control surface). |
 | `/lab` | Idea → spec → verdict: auto-running cohorts, funnel, survivors, graveyard, Pine inbox. |
 | `/strategies` | Backtest · ranked & faceted: search/browse any version, detail (`/strategies/{id}`), lineage, why it died. |
-| `/forward-test` Simulation | Live data, no money — per-strategy SIM tracks, forward-return vs backtest. |
+| `/paper` Simulation | Live data, no money — per-strategy SIM tracks, forward-return vs backtest. |
 | `/verdicts` Theories | Every theory tested + its honest Gate verdict (served by `GET /research/experiments`). |
 | `/explorer` | Pick · chart · compare data sources / strategies. |
 | `/mind` | What the agent knows, thinks, and has learned (the 24/7 committee). |

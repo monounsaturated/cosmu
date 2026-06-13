@@ -51,7 +51,7 @@ export default async function StrategiesPage() {
             <CardContent>
               <EmptyState
                 title="No Versions yet — the Lab hasn't produced any."
-                hint="Once the Lab authors a batch (or you drop an idea in the inbox) and Versions reach Simulation, they show up here grouped by stage."
+                hint="Once the Lab authors a batch (or you drop an idea in the inbox) and Versions reach Paper, they show up here grouped by stage."
               />
             </CardContent>
           </Card>

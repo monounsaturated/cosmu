@@ -94,7 +94,7 @@ class TrackFundingReport:
 
 
 def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Track, str, str]]:
-    """Read the real config-library / research survivors: forward-test/live versions that passed the gate and have
+    """Read the real config-library / research survivors: paper/live versions that passed the gate and have
     a track. ASSET-AWARE: each survivor is routed to its OWN asset class's funding venue + symbol (read from the
     persisted spec's `universe.asset_classes`), mirroring PricingRouter's mark routing — crypto → Binance,
     equity → IBKR. A survivor whose asset class has NO funding venue wired (or no tradable symbol there) is
@@ -107,7 +107,7 @@ def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Tra
         FROM strategy_versions sv
         JOIN tracks tr ON tr.strategy_version_id = sv.id
         JOIN backtests b ON b.strategy_version_id = sv.id AND b.kind = 'screen'
-        WHERE sv.status IN ('forward_test', 'live') AND b.passed_gates = 1 AND b.holdout_passed = 1
+        WHERE sv.status IN ('paper', 'forward_test', 'live') AND b.passed_gates = 1 AND b.holdout_passed = 1
         ORDER BY CAST(b.deflated_sharpe AS REAL) DESC
         LIMIT 12
         """
@@ -143,12 +143,12 @@ def fund_tracks_from_survivors(
     bankroll: Decimal = Decimal("100000"),
     router: PricingRouter | None = None,
 ) -> TrackFundingReport:
-    """Close the loop in the standalone-track model: open a STANDALONE forward-test track for each gate-passed
+    """Close the loop in the standalone-track model: open a STANDALONE paper track for each gate-passed
     survivor (its own fixed per-strategy capital — never a pooled share), open sim positions through the one order
     path, and mark-to-market. There is no cross-track competition or capital weighting. Live stays OFF (sim fills).
 
     ASSET-AWARE: each survivor is FUNDED on the venue/symbol for its OWN asset class (read from the spec —
-    crypto → Binance, equity → IBKR), and marked via the SAME router the forward-test clock uses, so an equity
+    crypto → Binance, equity → IBKR), and marked via the SAME router the paper clock uses, so an equity
     survivor opens a REAL equity position priced off Yahoo total-return instead of a mislabeled/mispriced Binance
     crypto symbol. A survivor whose asset class has no funding venue wired is SKIPPED (never forced onto crypto).
     `market_data` (kept for back-compat) overrides ONLY the crypto mark leg; pass `router` to control both legs."""
@@ -190,9 +190,9 @@ def fund_tracks_from_survivors(
     fundable = {v.version_id for v in select_tracks([t for _, t, _, _ in triples]) if v.funded}
 
     # A track that has EVER held a sim position is NOT re-opened here: re-funding a held track every tick would
-    # average a fresh same-bar entry into the basis and reset its forward-test clock, and re-funding a track the
-    # forward-test EXECUTOR closed would overwrite its strategy's own verdict with a static long. The funder
-    # funds each survivor ONCE; from then on the executor (orchestrator/forward_step.py) owns every entry/exit
+    # average a fresh same-bar entry into the basis and reset its paper clock, and re-funding a track the
+    # paper EXECUTOR closed would overwrite its strategy's own verdict with a static long. The funder
+    # funds each survivor ONCE; from then on the executor (orchestrator/paper_step.py) owns every entry/exit
     # by the track's own signals, and mark_tracks() accrues the honest P&L.
     already_funded = {
         r["strategy_version_id"]
@@ -316,9 +316,9 @@ def mark_tracks(
     catalog: VenueCatalog | None = None,
     router: PricingRouter | None = None,
 ) -> dict[str, Decimal]:
-    """THE FORWARD-TEST CLOCK. Re-mark every HELD sim position against the latest REAL close — without opening,
+    """THE PAPER CLOCK. Re-mark every HELD sim position against the latest REAL close — without opening,
     re-funding, or averaging anything — and write a portfolio_snapshot. This is what makes a track a genuine
-    forward test: a funded track lives across bars and reveals honest net-of-fee P&L over calendar time, instead
+    paper run: a funded track lives across bars and reveals honest net-of-fee P&L over calendar time, instead
     of the same-bar entry==mark snapshot the funding step produces. Cron-able (run on a schedule independent of
     the 4h author/fund tick); offline-safe (a missing mark just leaves that position at its last basis); live
     stays OFF (no orders — marks only).
@@ -346,10 +346,10 @@ def mark_tracks(
     funding_by_track = _accrue_neutral_funding(store, positions, marks)
     snapshot = portfolio.mark_to_market(marks, funding_by_track=funding_by_track)
     # Drive each track's tracks.return_pct from the LIVE marked trajectory (the per-track snapshot
-    # mark_to_market just wrote), so the forward-test net P&L — not a stale seed — is what the leaderboard +
+    # mark_to_market just wrote), so the paper net P&L — not a stale seed — is what the leaderboard +
     # master/live_eligibility read for live_ready. EVERY version with a position row updates, including
     # FLAT tracks the executor closed (their realized P&L must land in return_pct, not freeze pre-close).
-    # A flat/negative forward test can therefore never reach live_ready on a stale seed.
+    # A flat/negative paper run can therefore never reach live_ready on a stale seed.
     tracked = {
         r["strategy_version_id"]
         for r in store.rows("SELECT DISTINCT strategy_version_id FROM positions WHERE strategy_version_id IS NOT NULL")
@@ -441,7 +441,7 @@ _INTRADAY_BAR_SIZES = frozenset({"1h", "4h"})
 
 
 def _main(argv: list[str] | None = None) -> int:
-    """Railway cron entrypoint for the FORWARD-TEST CLOCK: first the EXECUTOR (forward_step.step_tracks — each
+    """Railway cron entrypoint for the PAPER CLOCK: first the EXECUTOR (paper_step.step_tracks — each
     gate-lane track's OWN spec/params decide exits and re-entries through the one order path, sim-only), then
     the MARK (re-mark every held sim position against the latest REAL close, routed by asset class — crypto →
     Binance, equity/ETF → Yahoo total-return). Step-then-mark so the snapshot reflects post-trade state.
@@ -454,7 +454,7 @@ def _main(argv: list[str] | None = None) -> int:
     import argparse
 
     from cosmu.config.settings import Settings
-    from cosmu.orchestrator.forward_step import step_tracks
+    from cosmu.orchestrator.paper_step import step_tracks
 
     parser = argparse.ArgumentParser(
         description="Run the forward-test executor (each track's own exits/entries, sim-only) then mark held positions to the latest real close, asset-aware."

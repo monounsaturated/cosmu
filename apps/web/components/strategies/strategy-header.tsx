@@ -2,7 +2,7 @@
 // back-arrow, no redundant stack of badges). It answers, in one read: is this PROVEN (the Gate
 // verdict), where does it trade (lane = asset-class · venue · timeframe), on what edge (the thesis),
 // and what is the headline number — labelled UNAMBIGUOUSLY as backtest out-of-sample, never bare
-// "return", so a historical number is never misread as forward performance.
+// "return", so a historical number is never misread as paper performance.
 //
 // Server component. Every value is passed in already-derived from REAL detail fields; this component
 // fabricates nothing and simply omits a chip when its value is null.
@@ -75,7 +75,7 @@ export function StrategyHeader({
               {bestOos >= 0 ? "+" : ""}
               {bestOos.toFixed(1)}%
             </span>{" "}
-            — historical, not forward. Forward proof accrues on the Simulation track below.
+            — historical, not live-data proof. Paper proof accrues on the paper track below.
           </span>
         ) : (
           <span className="text-quiet">No backtest yet — no historical number to show.</span>
