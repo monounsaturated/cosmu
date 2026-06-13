@@ -82,8 +82,14 @@ def build_alt_by_symbol(
 
 
 def resolve_alt_store(settings: object, store: object) -> object:
-    """Pick the alt-data store the SAME way ingest/api/the loop do: a Postgres URL → PgAltDataStore over the
-    knowledge Store, else the JSONL AltDataStore."""
+    """Pick the alt-data store the SAME way ingest/api/the loop do. COLD tier FIRST: alt_data_backend ==
+    "parquet" → the DuckDB/Parquet lake (local dir or R2) — the hot/cold data stack. Else HOT: a Postgres URL →
+    PgAltDataStore over the knowledge Store, else the JSONL AltDataStore. All three expose the same
+    append/read_asof/read_all interface, so the gate/finder/sweep stay backend-agnostic."""
+    if getattr(settings, "alt_data_backend", "pg") == "parquet":
+        from cosmu.data.providers.parquet_store import ParquetAltDataStore
+
+        return ParquetAltDataStore.from_settings(settings)
     url = getattr(settings, "database_url", "") or ""
     if url.startswith("postgres://") or url.startswith("postgresql://"):
         from cosmu.data.altdata import PgAltDataStore

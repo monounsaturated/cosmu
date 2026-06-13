@@ -33,6 +33,12 @@ dev = [
 remote = [
   "modal>=0.64",
 ]
+# The COLD data tier (hot/cold stack): DuckDB powers the Parquet lake (local or Cloudflare R2) behind
+# ParquetAltDataStore + export_alt_parquet. Opt-in (the default "pg" backend needs none of this), so the
+# Railway image stays lean. Install where you run the parquet backend / migration: pip install -e ".[lake]".
+lake = [
+  "duckdb>=1.1",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
