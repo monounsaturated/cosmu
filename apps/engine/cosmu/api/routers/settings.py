@@ -118,6 +118,15 @@ def _settings_key_rows() -> list[SettingsKeyRow]:
             where="Engine env (Railway)",
         ),
         SettingsKeyRow(
+            key="Railway",
+            env_var="RAILWAY_API_TOKEN",
+            configured=bool(settings.railway_api_token),
+            unlocks="Live Railway billing on the Costs page (real run-rate, not an estimate). Costs falls back to estimates without it.",
+            requirement="optional",
+            cost="free",
+            where="Engine env (Railway)",
+        ),
+        SettingsKeyRow(
             key="Cloudflare R2",
             env_var="R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET",
             configured=bool(

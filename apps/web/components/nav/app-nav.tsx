@@ -56,7 +56,7 @@ export const moreItems: NavItem[] = [
   { href: "/correlations", label: "Correlations", desc: "Signal scan · IC · FDR", icon: ScatterChart },
   { href: "/explorer", label: "Explorer", desc: "Pick · chart · compare", icon: Telescope },
   { href: "/mind", label: "Mind", desc: "What the agent knows", icon: Brain },
-  { href: "/settings", label: "Settings", desc: "Keys · universe · data", icon: SlidersHorizontal }
+  { href: "/settings", label: "Settings", desc: "Universe · jurisdiction · caps", icon: SlidersHorizontal }
 ];
 
 // Desktop rail grouping — a clear information architecture instead of a single undifferentiated
