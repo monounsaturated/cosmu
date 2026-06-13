@@ -182,6 +182,21 @@ class Settings(BaseSettings):
     api_secret_key: str | None = Field(default=None, repr=False)
     railway_api_token: str | None = Field(default=None, repr=False)
     slack_webhook_url: str | None = Field(default=None, repr=False)
+    # --- alt-data storage tier (hot/cold) ---------------------------------------------------------------
+    # "pg" (default, unchanged): alt_data rows live in Postgres (hot, transactional, the live-gate read path).
+    # "parquet": the COLD tier — alt-data is an append-only Parquet lake read via DuckDB (columnar, ~5-15x
+    # smaller, no per-row btrees), local for research / Cloudflare R2 for prod. Flip with ALT_DATA_BACKEND once
+    # the lake is backfilled (python -m cosmu.data.export_alt_parquet). See docs/epics/hot-cold-data-stack.md.
+    alt_data_backend: Literal["pg", "parquet"] = "pg"
+    alt_data_parquet_root: str = ".cosmu/altdata_parquet"
+    # Cloudflare R2 (S3-compatible object store, ~$0.36/mo/24GB, ZERO egress) for the prod Parquet lake. All
+    # four present → the cold tier writes/reads R2; absent → it uses the local dir (honest degradation, same
+    # keyless-fallback pattern as the Alpaca lane). Set R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
+    # / R2_BUCKET in .env.local (and on Railway for prod ingest).
+    r2_account_id: str | None = Field(default=None, repr=False)
+    r2_access_key_id: str | None = Field(default=None, repr=False)
+    r2_secret_access_key: str | None = Field(default=None, repr=False)
+    r2_bucket: str | None = Field(default=None)
     spend: SpendSettings = Field(default_factory=SpendSettings)
     gates: GateSettings = Field(default_factory=GateSettings)
     live: LiveSettings = Field(default_factory=LiveSettings)
