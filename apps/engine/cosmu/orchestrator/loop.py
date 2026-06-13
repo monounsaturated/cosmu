@@ -15,8 +15,13 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
+from cosmu.adapters.data.alpaca import AlpacaDailyBarsProvider
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider, YahooDailyBarsProvider
+
+if TYPE_CHECKING:
+    from cosmu.config.settings import Settings
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.drift import monitor_drift
 from cosmu.master.neutral import accrue_funding, neutral_tracks
@@ -149,9 +154,9 @@ def fund_tracks_from_survivors(
     `market_data` (kept for back-compat) overrides ONLY the crypto mark leg; pass `router` to control both legs."""
     cat = catalog or default_catalog()
     # ASSET-AWARE marks: the funder marks each new fill via the SAME router the forward-test clock uses, so a crypto
-    # fill prices off Binance and an equity fill off Yahoo total-return — never marking an equity to 0 against a
-    # Binance symbol. `market_data` (kept for back-compat) overrides only the crypto leg.
-    pricer = router or PricingRouter(cat, crypto=market_data)
+    # fill prices off Binance and an equity fill off Alpaca-when-keyed-else-Yahoo total-return — never marking an
+    # equity to 0 against a Binance symbol. `market_data` (kept for back-compat) overrides only the crypto leg.
+    pricer = router or PricingRouter(cat, crypto=market_data, settings=store.settings)
     portfolio = Portfolio(store, bankroll=bankroll)
 
     triples = _survivor_tracks(store, cat)
@@ -237,18 +242,34 @@ def fund_tracks_from_survivors(
     return report
 
 
+def _default_equity_provider(settings: Settings | None) -> MarketDataProvider:
+    """The equity mark source when none is injected: prefer Alpaca daily bars (IEX, adjustment=all — dividend-
+    adjusted, with the closed-candle guard + stale-cache refetch the keyless equity providers lack) when ALPACA
+    keys are configured, else the keyless Yahoo v8 total-return path. AlpacaDailyBarsProvider.from_settings
+    returns None without keys, so this degrades HONESTLY to Yahoo — never a fabricated bar. (The Alpaca DATA
+    lane shipped key-gated in #172; this is the wiring that actually selects it for the forward-test clock once
+    keys land — both providers price the same total-return closes, so a track's P&L is consistent either way.)"""
+    if settings is not None:
+        alpaca = AlpacaDailyBarsProvider.from_settings(settings)
+        if alpaca is not None:
+            return alpaca
+    return YahooDailyBarsProvider()
+
+
 class PricingRouter:
     """ASSET-AWARE mark source for the forward-test clock. One router routes each held position to the REAL
-    pricing source for its asset class — crypto → Binance spot, equity/ETF → Yahoo v8 total-return — so an
-    equity (GEM, the TAA fleet) accrues honest P&L instead of marking to 0 against a Binance symbol that does
-    not exist. The asset class is read from the instrument the position references in the catalog (looked up by
-    (symbol, venue)); an unknown instrument falls back to the venue's declared kind. NO synthetic/zero-fill: a
-    genuinely unavailable close (offline, gap day, unknown symbol) returns 0 and the caller SKIPS that position,
-    leaving it at its last basis. Deterministic for a fixed catalog + provider responses; offline-safe.
+    pricing source for its asset class — crypto → Binance spot, equity/ETF → Alpaca (IEX, dividend-adjusted) when
+    ALPACA keys are set else keyless Yahoo total-return — so an equity (GEM, the TAA fleet) accrues honest P&L
+    instead of marking to 0 against a Binance symbol that does not exist. The asset class is read from the
+    instrument the position references in the catalog (looked up by (symbol, venue)); an unknown instrument falls
+    back to the venue's declared kind. NO synthetic/zero-fill: a genuinely unavailable close (offline, gap day,
+    unknown symbol) returns 0 and the caller SKIPS that position, leaving it at its last basis. Deterministic for
+    a fixed catalog + provider responses; offline-safe.
 
     The crypto and equity providers are constructed lazily and reused across every position in one run (one cache
     each), and either can be injected for tests/alternate venues — there is no per-call-site provider, this is the
-    single pricing-router for the clock."""
+    single pricing-router for the clock. Pass `settings` to let the equity leg pick Alpaca-when-keyed (an injected
+    `equity` provider always wins)."""
 
     def __init__(
         self,
@@ -256,12 +277,13 @@ class PricingRouter:
         *,
         crypto: MarketDataProvider | None = None,
         equity: MarketDataProvider | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self.catalog = catalog
         self._crypto = crypto or BinanceSpotOHLCVProvider()
-        # Yahoo v8 prices on TOTAL-RETURN closes — the same source the working equity_dual_momentum_arm mark uses
-        # (keyless, certifi SSL). Reused so a multi-leg equity track shares one cache per run.
-        self._equity = equity or YahooDailyBarsProvider()
+        # Equity leg: an injected provider always wins (tests / alternate venues); otherwise prefer Alpaca when
+        # keyed, else keyless Yahoo total-return — the same total-return closes the equity_dual_momentum_arm uses.
+        self._equity = equity or _default_equity_provider(settings)
 
     def _asset_class(self, symbol: str, venue: str) -> str:
         """The asset class to price `symbol`@`venue` against. Prefer the instrument's own asset_class; if the
@@ -305,7 +327,7 @@ def mark_tracks(
     equity/ETF → Yahoo total-return — so equity tracks (GEM, the TAA fleet) accrue P&L instead of sitting flat.
     `market_data` (kept for back-compat) overrides ONLY the crypto leg; pass `router` to control both legs."""
     cat = catalog or default_catalog()
-    pricer = router or PricingRouter(cat, crypto=market_data)
+    pricer = router or PricingRouter(cat, crypto=market_data, settings=store.settings)
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
     positions = [p for p in portfolio.positions() if p.qty != 0]
     marks: dict[str, Decimal] = {}

@@ -7,10 +7,19 @@ from typing import Any
 from cosmu.knowledge.store import Store
 from cosmu.spine.venue import default_catalog
 
-# Venues/asset classes that have a real data + execution path wired today. The rest are
-# modelled in the catalog but cannot trade yet, so the UI shows them as "no data yet".
-VENUES_WITH_DATA: frozenset[str] = frozenset({"binance"})
-CLASSES_WITH_DATA: frozenset[str] = frozenset({"crypto"})
+# Venues/asset classes with a real, ALWAYS-AVAILABLE data path wired today (drives the /universe "has data"
+# badge). binance: crypto spot. alpaca: US equities — the equity mark leg is keyless Yahoo total-return by
+# default and prefers Alpaca IEX when keys are set (orchestrator.loop.PricingRouter), so an equity position
+# always marks; equities are NOT a "no data yet" class. The rest are modelled in the catalog but can't trade
+# yet. NOTE: membership here means "a keyless/always-available data path exists" — never add a venue on
+# key-presence alone (a key-gated-ONLY venue would make has_data a lie when keys are absent). The crypto
+# Finder/cohort gate is `has_live_data` below (a separate, crypto-specific check), NOT this display set.
+VENUES_WITH_DATA: frozenset[str] = frozenset({"binance", "alpaca"})
+CLASSES_WITH_DATA: frozenset[str] = frozenset({"crypto", "equity"})
+# Venues with a real CRYPTO data path. has_live_data() gates the crypto-specific ORB/FVG Finder + cohort seed,
+# so it asks SPECIFICALLY whether a crypto data venue is live — widening VENUES_WITH_DATA for equity UI honesty
+# must not let the crypto Finder fire on an empty crypto universe (audit 2026-06-13).
+_CRYPTO_VENUES_WITH_DATA: frozenset[str] = frozenset({"binance"})
 
 CLASS_LABELS: dict[str, str] = {
     "crypto": "Crypto",
@@ -65,9 +74,12 @@ def set_class_active(store: Store, kind: str, active: bool) -> None:
 
 
 def has_live_data(store: Store) -> bool:
-    """True when at least one enabled venue can actually fetch bars / trade today."""
+    """True when at least one enabled CRYPTO data venue can actually fetch bars today — this gates the
+    crypto-specific ORB/FVG Finder + cohort seed, so it deliberately checks `_CRYPTO_VENUES_WITH_DATA`, NOT the
+    wider VENUES_WITH_DATA display set (which now includes equity venues marked via keyless Yahoo). Keeping it
+    crypto-specific means enabling only equities never starts the crypto Finder against an empty universe."""
     venues, _ = enabled_universe(store)
-    return bool(venues & VENUES_WITH_DATA)
+    return bool(venues & _CRYPTO_VENUES_WITH_DATA)
 
 
 def set_venue_enabled(store: Store, venue_id: str, enabled: bool) -> list[dict[str, Any]]:

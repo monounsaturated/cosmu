@@ -222,7 +222,8 @@ def step_tracks(
     (the daily full clock; unchanged behaviour). Re-running on the same closed bar is a no-op either way — the
     client_order_id is stamped with the decision bar."""
     cat = catalog or default_catalog()
-    pricer = router or PricingRouter(cat)
+    # settings → the equity mark leg prefers Alpaca when keyed, else keyless Yahoo (see PricingRouter).
+    pricer = router or PricingRouter(cat, settings=store.settings)
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
     now = now or datetime.now(tz=UTC)
 
