@@ -7,10 +7,13 @@
 
 ## 1. The locked design
 
-**`mockups/cosmu-final-v12.html`** is the reference (self-contained HTML; open in Chrome).
+**`mockups/cosmu-final-v13.html`** is the reference (self-contained HTML; open in Chrome).
 It is the consolidation of the whole session. Key decisions already baked in:
 
-- **5 pages**, sidebar order **Live · Paper · Strategies · Costs · Commands**, default landing = **Live**.
+- **6 pages**, sidebar order **Live · Paper · Strategies · Costs · Commands · Keys**, default landing = **Live**.
+- **Keys** is a view-only index of every `.env` service (status colour, what it powers, host, masked
+  vars) — table layout. Real build: back it with one `GET /services` (vars-present + a light live-ping),
+  not a hand-kept list.
 - Obsidian-Iris tokens (purple). Brand name still "Cosmu" in this file; name/colour exploration lives in
   `mockups/brand-*.html` (grovepool / thorow × green/orange/steel/iris/mocha/darkred/navy/black/revolut)
   — pick one before building if a rebrand is wanted.
