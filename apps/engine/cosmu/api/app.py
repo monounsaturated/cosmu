@@ -38,6 +38,7 @@ from cosmu.api.routers import (
     mind,
     overview,
     population,
+    realtime,
     recommendations,
     research,
     scores,
@@ -113,6 +114,7 @@ for _module in (
     intelligence,
     verdicts,
     correlations,
+    realtime,
 ):
     app.include_router(_module.router)
 

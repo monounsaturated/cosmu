@@ -1,4 +1,5 @@
 import type {
+  RealtimeStatusResponse,
   LeaderboardResponse,
   OverviewResponse,
   PopulationResponse,
@@ -49,6 +50,17 @@ export async function getOverview(): Promise<{ overview: OverviewResponse; conne
 export async function getLeaderboard(): Promise<{ leaderboard: LeaderboardResponse; connected: boolean }> {
   const { data, connected } = await getJson("/leaderboard", emptyLeaderboard);
   return { leaderboard: data, connected };
+}
+
+// Realtime worker pulse (realtime-data-lane P3): drives the Strategies-page staleness badge. Honest
+// fallback = the worker is OFF (the engine default) — never a fabricated freshness.
+export async function getRealtimeStatus(): Promise<{ realtime: RealtimeStatusResponse; connected: boolean }> {
+  const { data, connected } = await getJson("/realtime/status", {
+    enabled: false,
+    status: "off",
+    stale_after_seconds: 300,
+  } as RealtimeStatusResponse);
+  return { realtime: data, connected };
 }
 
 export async function getStrategy(id: string): Promise<{ strategy: StrategyDetailResponse; connected: boolean }> {

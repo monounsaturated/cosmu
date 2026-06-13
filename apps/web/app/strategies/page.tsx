@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { ChartCandlestick, Inbox, Microscope, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { engineConfigured, getLeaderboard } from "../data";
+import { engineConfigured, getLeaderboard, getRealtimeStatus } from "../data";
+import { RealtimeBadge } from "@/components/strategies/realtime-badge";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +19,7 @@ import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 // derived from referenced features) + asset class · venue · timeframe · status · origin · edge-type.
 // Rows link to per-Version detail. No pooled wallet, no demo rows.
 export default async function StrategiesPage() {
-  const { leaderboard, connected } = await getLeaderboard();
+  const [{ leaderboard, connected }, { realtime }] = await Promise.all([getLeaderboard(), getRealtimeStatus()]);
   const rows = leaderboard.rows as LeaderboardRow[];
 
   return (
@@ -27,9 +28,12 @@ export default async function StrategiesPage() {
         eyebrow="backtest · strategies"
         title="Every Version, ranked & faceted"
         aside={
-          <Badge variant="iris">
-            <ChartCandlestick className="size-3" /> ranked by risk-adjusted %
-          </Badge>
+          <span className="flex items-center gap-2">
+            <RealtimeBadge realtime={realtime} />
+            <Badge variant="iris">
+              <ChartCandlestick className="size-3" /> ranked by risk-adjusted %
+            </Badge>
+          </span>
         }
       />
 

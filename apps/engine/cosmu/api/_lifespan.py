@@ -13,6 +13,7 @@ from cosmu.spine.universe import has_live_data
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    import asyncio
     import threading
 
     from cosmu.notify.slack import SlackNotifier, notify_health_change
@@ -32,9 +33,27 @@ async def lifespan(_: FastAPI):
             pass
 
     threading.Thread(target=_boot, daemon=True).start()
+
+    # Realtime recording worker (realtime-data-lane P3) — IN-PROCESS, OFF by default (the operator's
+    # lean-infra decision: no second Railway service; REALTIME_WORKER_ENABLED=1 activates). It records
+    # only (WS bars / events / heartbeat) — a worker failure degrades freshness to the cron lane, and the
+    # supervised task can never crash the API.
+    worker_stop: asyncio.Event | None = None
+    worker_task: asyncio.Task | None = None
+    if getattr(settings, "realtime_worker_enabled", False):
+        from cosmu.realtime.worker import run_worker
+
+        worker_stop = asyncio.Event()
+        worker_task = asyncio.create_task(run_worker(store, settings=settings, stop=worker_stop))
     try:
         yield
     finally:
+        if worker_stop is not None and worker_task is not None:
+            worker_stop.set()
+            try:
+                await asyncio.wait_for(worker_task, timeout=10)
+            except (TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001 — shutdown is best-effort
+                worker_task.cancel()
         notify_health_change(notifier, status="down", detail="cosmu-engine shutting down")
 
 

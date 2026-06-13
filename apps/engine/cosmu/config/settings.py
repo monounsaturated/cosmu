@@ -155,6 +155,10 @@ class Settings(BaseSettings):
     # CryptoPanic news-vote source: key-gated (free tier). No key → the provider returns [] (honest
     # degradation, never fabricates). Reddit-volume uses REDDIT_CLIENT_ID/SECRET read directly from env.
     cryptopanic_api_key: str | None = Field(default=None, repr=False)
+    # The in-process realtime recording worker (realtime-data-lane P3): OFF by default — the operator
+    # activates with REALTIME_WORKER_ENABLED=1 after local testing (decision 2026-06-11). When off, the
+    # Tier-1 crons remain the (slower) data lane; nothing else changes. The worker RECORDS only.
+    realtime_worker_enabled: bool = False
     # Ops toggles (match the existing Railway variable names): the in-process scheduler/autonomy loop
     # and the deterministic risk guardian. Default on; flip to false to freeze the machine.
     scheduler_enabled: bool = True

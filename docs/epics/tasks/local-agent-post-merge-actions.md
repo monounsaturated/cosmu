@@ -5,11 +5,12 @@
 > Read `docs/epics/realtime-data-lane.md` first. Work top to bottom; each step is independent and idempotent.
 
 ## 1. Apply the new Postgres DDL on Supabase (REQUIRED — prod tables don't exist until this runs)
-The PG schema applies out-of-band. Run the three new blocks from
+The PG schema applies out-of-band. Run the four new blocks from
 `apps/engine/cosmu/knowledge/schema_postgres.sql` against the production Supabase DB:
 - `market_events` (+ its two indexes)
 - `voice_claims` (+ its index)
 - `voice_scoreboard`
+- `bars_intraday` (+ its index — the realtime worker's durable 1m store)
 
 Either paste them in the Supabase SQL editor, or run them via psql with the `DATABASE_URL` from
 `.env.local`. All are `create table if not exists` — re-running is safe. VERIFY:
@@ -54,7 +55,20 @@ After the merge deploys: ingest `*/15` · forward-test clock `10 0` + `10 22` ·
 older than ~70 min. Also confirm the paid-LLM throttle works: `xai` / `llm_index` rows in
 `alt_data_provider_summary` should advance ~hourly, NOT every 15 min.
 
-## 6. Optional same-session: Polymarket CLOB backfill (event experiment 2 prerequisite)
+## 6. Test then ACTIVATE the realtime worker (P3 — ships OFF by default)
+Local smoke test first (needs network to stream.binance.com):
+```bash
+cd apps/engine && REALTIME_WORKER_ENABLED=1 PYTHONPATH=. python3 -m cosmu.realtime.worker
+# watch ~3 minutes: heartbeats print nothing but `SELECT COUNT(*) FROM bars_intraday` grows ~10 rows/min
+# and `SELECT payload FROM events WHERE kind='realtime_heartbeat' ORDER BY id DESC LIMIT 1` shows lag_s < 90.
+# Ctrl-C to stop.
+```
+If healthy: set `REALTIME_WORKER_ENABLED=1` on the Railway service (no redeploy needed beyond the restart)
+→ the worker runs IN-PROCESS inside the API. Verify on the web: the Strategies page shows the green
+"realtime live" badge (amber "realtime stale" = it's wedged; check Railway logs). `/realtime/status` is
+the raw read. Kill switch: set the var back to 0.
+
+## 7. Optional same-session: Polymarket CLOB backfill (event experiment 2 prerequisite)
 ```bash
 cd apps/engine && PYTHONPATH=. python3 -m cosmu.ingest.run --provider polymarket_clob --backfill-days 365
 ```

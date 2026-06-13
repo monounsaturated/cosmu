@@ -354,6 +354,27 @@ create table if not exists voice_claims (
 );
 create index if not exists idx_voice_claims_handle on voice_claims (handle, ts);
 
+-- INTRADAY bar store (realtime-data-lane epic P3): closed 1m/5m candles recorded LIVE by the in-process
+-- realtime worker (Binance WS). Postgres-first because the Railway filesystem is ephemeral — the recorded
+-- history must survive restarts. Retention: 1m rows are rolled up to 5m then deleted after RETENTION_DAYS
+-- (epic §6 keeps the table bounded at ~1.3M rows/mo for ~30 symbols). A bar is inserted only AFTER its
+-- close (closed-candle invariant); UNIQUE makes reconnect/replay idempotent.
+create table if not exists bars_intraday (
+  id bigint generated always as identity primary key,
+  venue text not null,
+  symbol text not null,
+  timeframe text not null,            -- '1m' (live) | '5m' (rollup)
+  ts text not null,                   -- bar OPEN time (UTC ISO)
+  open numeric not null,
+  high numeric not null,
+  low numeric not null,
+  close numeric not null,
+  volume numeric not null,
+  ingested_at text not null default (now()::text),
+  unique (venue, symbol, timeframe, ts)
+);
+create index if not exists idx_bars_intraday_lookup on bars_intraday (symbol, timeframe, ts);
+
 create table if not exists voice_scoreboard (
   handle text not null,
   platform text not null,

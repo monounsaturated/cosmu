@@ -4499,6 +4499,64 @@
         "title": "PopulationResponse",
         "type": "object"
       },
+      "RealtimeStatusResponse": {
+        "description": "The worker's visible pulse. `enabled` mirrors the env toggle; `status` is derived server-side:\n'off' (disabled, no expectation of beats) \u00b7 'fresh' (last beat within the stale threshold) \u00b7\n'stale' (enabled but the last beat is old \u2014 the badge state) \u00b7 'never' (enabled, no beat recorded).",
+        "properties": {
+          "consumers": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumers"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "last_heartbeat_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Heartbeat At"
+          },
+          "seconds_since_heartbeat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seconds Since Heartbeat"
+          },
+          "stale_after_seconds": {
+            "title": "Stale After Seconds",
+            "type": "number"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "status",
+          "stale_after_seconds"
+        ],
+        "title": "RealtimeStatusResponse",
+        "type": "object"
+      },
       "Recommendation": {
         "properties": {
           "body": {
@@ -6829,6 +6887,24 @@
           }
         },
         "summary": "Population"
+      }
+    },
+    "/realtime/status": {
+      "get": {
+        "operationId": "realtime_status_realtime_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtimeStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Realtime Status"
       }
     },
     "/recommendations": {
