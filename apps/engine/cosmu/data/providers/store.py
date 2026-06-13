@@ -116,10 +116,15 @@ class PgAltDataStore:
             )
 
     def read_asof(self, provider: str, symbol: str, metric: str, as_of: datetime) -> list[AltDataPoint]:
+        # Latest-revision row (max id) per ts among rows available by `as_of`, ordered by ts. Uses a window
+        # function instead of Postgres-only `DISTINCT ON (ts)` so it runs IDENTICALLY on SQLite — the old
+        # `DISTINCT ON` errored on SQLite, which made read_pit_fee silently return its fallback for every local/
+        # test fee read (prod/Postgres was unaffected). On Postgres the result is unchanged (max-id per ts).
         rows = self.store.rows(
-            "SELECT DISTINCT ON (ts) ts, available_at, value FROM alt_data "
-            "WHERE provider = ? AND symbol = ? AND metric = ? AND available_at <= ? "
-            "ORDER BY ts, id DESC",
+            "SELECT ts, available_at, value FROM ("
+            "  SELECT ts, available_at, value, row_number() OVER (PARTITION BY ts ORDER BY id DESC) AS rn "
+            "  FROM alt_data WHERE provider = ? AND symbol = ? AND metric = ? AND available_at <= ?"
+            ") t WHERE rn = 1 ORDER BY ts",
             (provider, symbol, metric, as_of.isoformat()),
         )
         return [AltDataPoint(ts=datetime.fromisoformat(r["ts"]), available_at=datetime.fromisoformat(r["available_at"]), value=float(r["value"])) for r in rows]

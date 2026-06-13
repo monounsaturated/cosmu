@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 
-from cosmu.data.altdata import AltDataProvider, NewsProvider, read_pit_fee, rolling_zscore
+from cosmu.data.altdata import AltDataProvider, NewsProvider, read_pit_fee, read_pit_fee_resolver, rolling_zscore
 from cosmu.data.market import Bar
 from cosmu.data.sources.multiasset import MULTIASSET_METRICS
 from cosmu.experiments import ExperimentRecord, data_version, log_experiments
@@ -53,6 +53,24 @@ def _pit_fee(store: Store, venue_id: str, symbol: str, as_of: "datetime") -> flo
     so the gate never crashes without a fee snapshot."""
     bps = read_pit_fee(store, venue_id, symbol, "venue_fees_taker", as_of, fallback_bps=_FEE_FALLBACK_BPS)
     return (bps if bps is not None else _FEE_FALLBACK_BPS) / 10000.0
+
+
+def _pit_fee_fn(store: "Store | None", venue_id: str, symbol: str):
+    """A per-bar taker-fee FRACTION resolver that reads the venue_fees series ONCE (not per bar) — PIT-IDENTICAL
+    to calling `_pit_fee(store, venue_id, symbol, ts)` for each bar's ts, but without a DB round-trip per bar.
+    The per-bar `_pit_fee` opened a fresh SQLite/PG connection for every bar of every simulation, which made the
+    cross-asset ablation open thousands of connections and hang the engine suite under parallel I/O. Build this
+    ONCE before a per-bar loop; the resolved fee values are unchanged (the gate's cost model is untouched)."""
+    if store is None:
+        frac = _FEE_FALLBACK_BPS / 10000.0
+        return lambda _ts: frac
+    resolve_bps = read_pit_fee_resolver(store, venue_id, symbol, "venue_fees_taker", fallback_bps=_FEE_FALLBACK_BPS)
+
+    def fee(ts: "datetime") -> float:
+        bps = resolve_bps(ts)
+        return (bps if bps is not None else _FEE_FALLBACK_BPS) / 10000.0
+
+    return fee
 
 
 @dataclass(frozen=True)
@@ -308,9 +326,12 @@ def _simulate(
     entry_idx = 0
     equity: list[float] = []
     trades: list[tuple[float, str, float]] = []
+    # Read the PIT fee series ONCE (not per bar): per-bar `_pit_fee` opened a DB connection every bar — thousands
+    # per ablation — which hung the suite. `fee_fn(ts)` is PIT-identical to `_pit_fee(store,…,ts)`, in memory.
+    fee_fn = _pit_fee_fn(store, venue_id, symbol)
     for i in range(1, len(bars)):
         b = bars[i]
-        fee = _pit_fee(store, venue_id, symbol, b.ts) if store is not None else _FEE_FALLBACK_BPS / 10000.0
+        fee = fee_fn(b.ts)
         if pos > 0:
             stop_p = entry * (1 - _STOP)
             take_p = entry * (1 + _TAKE)
@@ -340,7 +361,7 @@ def _simulate(
             entry_idx = i
         equity.append(cash + pos * closes[i])
     if pos > 0:
-        fee = _pit_fee(store, venue_id, symbol, bars[-1].ts) if store is not None else _FEE_FALLBACK_BPS / 10000.0
+        fee = fee_fn(bars[-1].ts)
         xp = closes[-1] * (1 - _SLIP)
         cash += pos * xp * (1 - fee)
         net_pnl = (xp * (1 - fee) - entry * (1 + entry_fee)) / entry
