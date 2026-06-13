@@ -10,13 +10,17 @@ import type { ReactNode } from "react";
 export function NotConnected({ configured = false, what }: { configured?: boolean; what?: ReactNode }) {
   return (
     <div className="card">
-      <div className="card-body" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "44px 16px", textAlign: "center" }}>
+      <div className="card-body" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 11, padding: "52px 16px", textAlign: "center" }}>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--quiet)" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <line x1="6.2" y1="6.2" x2="17.8" y2="17.8" />
+        </svg>
         <div className="kpi-label" style={{ color: "var(--quiet)" }}>Engine not connected</div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)", letterSpacing: "-0.01em" }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--muted)", maxWidth: 480, lineHeight: 1.6 }}>
           {what ?? "This surface shows real engine data. Nothing is fabricated here."}
         </div>
         {!configured ? (
-          <code style={{ fontFamily: '"SF Mono","Fira Code",ui-monospace,monospace', fontSize: 11.5, color: "var(--iris-s)", background: "var(--surf3)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "5px 9px" }}>
+          <code style={{ fontFamily: '"SF Mono","Fira Code",ui-monospace,monospace', fontSize: 11.5, color: "var(--iris-s)", background: "var(--surf3)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "5px 9px", marginTop: 2 }}>
             set API_BASE_URL to your engine
           </code>
         ) : (
