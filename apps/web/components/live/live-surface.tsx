@@ -19,21 +19,15 @@
 
 import { useState, type ReactNode } from "react";
 import type { Point, PortfolioSummaryResponse, RulesResponse } from "@cosmu/contracts-ts";
-import type { LiveMode, PositionsResponse } from "./contracts";
+import type { PositionsResponse } from "./contracts";
 import { RulesModal } from "./rules-modal";
-import { GlobalLiveToggle } from "./global-live-toggle";
 import { GuardTile } from "./guard-tile";
 import { EquityHero } from "./equity-hero";
 import { Page, Toolbar } from "@/components/ui/toolbar";
-import { StrategyStages } from "@/components/nav/strategy-stages";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/honest-state";
 import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn, formatPct, formatSigned, formatUsd } from "@/lib/utils";
-
-function modeLabel(mode: LiveMode): string {
-  return mode === "live" ? "Live" : mode === "testnet" ? "testnet" : "Paper";
-}
 
 // One bento money KPI box. "—" is the honesty contract — live figures are null until capital is routed live.
 function MoneyBox({ label, value, sub, tone }: { label: string; value: string; sub?: ReactNode; tone?: "up" | "dn" }) {
@@ -175,7 +169,8 @@ export function LiveSurface({
 
   return (
     <Page>
-      {/* Toolbar — Running badge (when armed) + grey Rules button + danger Stop (left → right). */}
+      {/* Toolbar (v18 page-live) — Running/Idle badge on the left; the grey Rules button + danger Stop on the
+          right. Live is launched via the CLI (Commands · `cosmu live launch`), so there is no in-UI arm flow. */}
       <Toolbar
         title="Live"
         left={
@@ -184,13 +179,11 @@ export function LiveSurface({
               <span className="run-dot" /> Running
             </span>
           ) : (
-            <span className="badge badge-iris">Disarmed</span>
+            <span className="badge badge-muted">Idle</span>
           )
         }
         right={
           <>
-            <span className="badge badge-muted" data-tip="The execution mode the engine reports">mode · {modeLabel(state.mode)}</span>
-            {!connected ? <span className="badge badge-gold">engine not connected</span> : null}
             <button className="btn btn-sm" onClick={() => setRulesOpen(true)}>
               Rules
             </button>
@@ -202,8 +195,6 @@ export function LiveSurface({
           </>
         }
       />
-
-      <StrategyStages />
 
       {note ? <div style={{ color: "var(--down)", fontSize: 12, marginBottom: 12 }}>{note}</div> : null}
 
@@ -345,11 +336,6 @@ export function LiveSurface({
           </div>
         </div>
 
-        {/* The global ARM console — the two-click arm/disarm, only relevant while disarmed (when armed the
-            toolbar Stop is the lever). Kept below the dashboard so the money read leads. */}
-        {!armed ? (
-          <GlobalLiveToggle initialEnabled={armed} connected={connected} onArmedChange={() => void refreshAll()} />
-        ) : null}
       </div>
 
       {/* Rules modal — the hard-limit caps editor. */}

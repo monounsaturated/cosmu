@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
-import { cn, formatPct, formatUsd } from "@/lib/utils";
+import { cn, formatPct, formatUsd, numOrNull } from "@/lib/utils";
 
 // The Paper cohort KPI strip (Iris Bento `.kpi-grid`, mirrors the mockup's kpiPaper/kbox). Four honest,
 // money-first read-outs over the REAL tracks the Gate has funded — it sits between the equity hero and the
@@ -15,10 +15,8 @@ import { cn, formatPct, formatUsd } from "@/lib/utils";
 // in a `.quiet` span, never a fabricated 0. The divergence split rides in the P&L sub-line.
 const LIVE_READY_DAYS = 30;
 
-// A finite-number guard — null / NaN / non-finite never enters an aggregate.
-function num(v: number | null | undefined): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
-}
+// A finite-number guard (the shared honest-"—" helper) — null / NaN / non-finite never enters an aggregate.
+const num = numOrNull;
 
 // One bento KPI box. `cls` tones the value (up / gold / dn); the sub-line falls back to muted.
 function KBox({ label, value, sub, cls }: { label: string; value: ReactNode; sub: ReactNode; cls?: string }) {

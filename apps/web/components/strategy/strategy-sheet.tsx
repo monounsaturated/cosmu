@@ -247,7 +247,6 @@ export function StrategySheet({ strategy }: { strategy: StrategyDetailResponse }
   const trades = strategy.trades;
   const simCurve = simCurveFromTrades(trades);
   const ledger = ledgerFromTrades(trades);
-  const passed = strategy.backtests.some((bt) => bt.passed_gates);
   const stage = deriveStage(trades, strategy.backtests);
   const ageDays = trackAgeDays(trades);
   const headlineBt = headlineBacktest(strategy.backtests);
@@ -266,7 +265,7 @@ export function StrategySheet({ strategy }: { strategy: StrategyDetailResponse }
 
   return (
     <>
-      <StageControl stage={stage} ageDays={ageDays} strategyName={strategy.name} gatePassed={passed} versionId={strategy.version_id} />
+      <StageControl stage={stage} ageDays={ageDays} strategyName={strategy.name} />
 
       <MoneyBand data={money} />
 

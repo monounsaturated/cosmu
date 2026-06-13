@@ -13,13 +13,12 @@ import { useState } from "react";
 import Link from "next/link";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
 import { EmptyState } from "@/components/ui/honest-state";
-import { cn, formatPct, formatUsd } from "@/lib/utils";
+import { cn, formatPct, formatUsd, numOrNull } from "@/lib/utils";
 
 const LIM = 4;
 
-function num(v: number | null | undefined): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
-}
+// finite-number guard (the shared honest-"—" helper).
+const num = numOrNull;
 
 export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
   const [open, setOpen] = useState(false);

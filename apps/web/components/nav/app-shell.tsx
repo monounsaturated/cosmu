@@ -13,14 +13,9 @@ import { CosmuMark } from "@/components/brand/logo";
 import { SideNav, type NavCounts } from "@/components/nav/app-nav";
 import { TipLayer } from "@/components/ui/tip-layer";
 import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
-import { cn } from "@/lib/utils";
+import { cn, isPaper } from "@/lib/utils";
 
 type DotState = "on" | "off" | "warn";
-
-function isPaper(status: string | null | undefined): boolean {
-  const s = (status ?? "").toLowerCase();
-  return s === "paper" || s === "forward_test" || s === "forward";
-}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);

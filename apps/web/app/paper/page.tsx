@@ -14,19 +14,18 @@ import { Suspense } from "react";
 import { engineConfigured, getLeaderboard, getOverview } from "../data";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
 import { Page, Toolbar } from "@/components/ui/toolbar";
-import { StrategyStages } from "@/components/nav/strategy-stages";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
 import { EquityHero } from "@/components/live/equity-hero";
 import { SimSummary } from "@/components/paper/sim-summary";
 import { PaperPositions } from "@/components/paper/track-card";
 import { TrackLedger } from "@/components/paper/track-ledger";
 import { StopPaperButton } from "@/components/paper/stop-paper-button";
+import { isPaper } from "@/lib/utils";
 
 export default function PaperPage() {
   return (
     <Page>
       <Toolbar title="Paper" right={<StopPaperButton />} />
-      <StrategyStages />
       <Suspense fallback={<div className="skel" style={{ height: 360 }} />}>
         <PaperData />
       </Suspense>
@@ -41,10 +40,7 @@ async function PaperData() {
   const allRows = leaderboard.rows as LeaderboardRow[];
 
   // Filter to paper-stage strategies (status = forward / forward_test / paper).
-  const simRows = allRows.filter((r) => {
-    const s = (r.status ?? "").toLowerCase();
-    return s === "paper" || s === "forward_test" || s === "forward";
-  });
+  const simRows = allRows.filter((r) => isPaper(r.status));
 
   if (!connected) {
     return (

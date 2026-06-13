@@ -26,6 +26,26 @@ export function formatSigned(value: number) {
   return `${value >= 0 ? "+" : "-"}${formatUsd(Math.abs(value))}`;
 }
 
+// Signed USD with NO sign on zero ("+$419" / "-$81" / "$0"). Distinct from formatSigned, which always
+// emits a sign (formatSigned(0) === "+$0"). Canonical home for the +/-abs money construction.
+export function signedUsd(value: number): string {
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${formatUsd(Math.abs(value))}`;
+}
+
+// Finite-number guard — returns the number only when it is a real finite value, else null. Used wherever a
+// nullable engine money/metric field renders an honest "—" instead of 0.
+export function numOrNull(v: number | null | undefined): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+// The canonical paper-stage predicate (paper / forward_test / forward). ONE taxonomy, imported everywhere
+// (screener, dashboards, sidebar counts) so the cohort never drifts between surfaces.
+export function isPaper(status: string | null | undefined): boolean {
+  const s = (status ?? "").toLowerCase();
+  return s === "paper" || s === "forward_test" || s === "forward";
+}
+
 // Compact "how long ago" for timestamps (last tick, last event). Returns null for a null/unparseable
 // input so callers render an honest "—" rather than a fabricated time. Tense-free, terse: "3m", "2h", "5d".
 export function timeAgo(ts: string | null | undefined): string | null {

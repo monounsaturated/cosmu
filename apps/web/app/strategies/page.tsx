@@ -8,16 +8,14 @@
 
 import { Suspense } from "react";
 import type { LeaderboardRow, PortfolioSummaryResponse } from "@cosmu/contracts-ts";
-import { engineConfigured, getLeaderboard, getRealtimeStatus } from "../data";
+import { engineConfigured, getLeaderboard } from "../data";
 // getPortfolioSummary is ambiguous through the barrel — import it from its canonical module to bind the
 // live MONEY SPLIT into the ribbon.
 import { getPortfolioSummary } from "../data/portfolio";
 import { Page, Toolbar } from "@/components/ui/toolbar";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
-import { RealtimeBadge } from "@/components/strategies/realtime-badge";
-import { PopulationStrip } from "@/components/strategies/population-strip";
 import { StrategiesTable } from "@/components/research/strategies-table";
-import { cn, formatPct, formatUsd } from "@/lib/utils";
+import { cn, formatPct, formatUsd, isPaper, numOrNull, signedUsd } from "@/lib/utils";
 
 // Always render on-demand with fresh engine data — never statically pre-render (the engine may be offline
 // at build time; on-demand lets the honest not-connected state handle it).
@@ -35,11 +33,7 @@ export default function StrategiesPage() {
 }
 
 async function StrategiesData() {
-  const [{ leaderboard, connected }, { realtime }, { summary }] = await Promise.all([
-    getLeaderboard(),
-    getRealtimeStatus(),
-    getPortfolioSummary()
-  ]);
+  const [{ leaderboard, connected }, { summary }] = await Promise.all([getLeaderboard(), getPortfolioSummary()]);
   const rows = leaderboard.rows as LeaderboardRow[];
 
   if (!connected) {
@@ -64,18 +58,13 @@ async function StrategiesData() {
     );
   }
 
+  // v18 page-strategies: the `.summary-ribbon` bento cell, then the screener (its own toolbar-row + table
+  // bento cells) — nothing else. No population strip, no realtime badge (the sidebar engine dot carries
+  // liveness); none of those are in the reference.
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <RealtimeBadge realtime={realtime} />
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <SummaryRibbon summary={summary} rows={rows} />
-      <PopulationStrip rows={rows} />
-      <div className="card">
-        <div className="card-body">
-          <StrategiesTable rows={rows} />
-        </div>
-      </div>
+      <StrategiesTable rows={rows} />
     </div>
   );
 }
@@ -148,18 +137,4 @@ function SummaryRibbon({ summary, rows }: { summary: PortfolioSummaryResponse; r
       </div>
     </div>
   );
-}
-
-function numOrNull(v: number | null | undefined): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
-}
-
-function signedUsd(v: number): string {
-  const sign = v > 0 ? "+" : v < 0 ? "-" : "";
-  return `${sign}${formatUsd(Math.abs(v))}`;
-}
-
-function isPaper(status: string | null | undefined): boolean {
-  const s = (status ?? "").toLowerCase();
-  return s === "paper" || s === "forward_test" || s === "forward";
 }

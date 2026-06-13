@@ -26,9 +26,10 @@ import type { LeaderboardRow, StrategyDetailResponse } from "@cosmu/contracts-ts
 import { SidePanel } from "@/components/ui/side-panel";
 import { StrategySheet } from "@/components/strategy/strategy-sheet";
 import { engineFetch } from "@/lib/engine";
-import { cn, formatUsd } from "@/lib/utils";
+import { cn, formatUsd, numOrNull, signedUsd } from "@/lib/utils";
 
-// ── Lifecycle mapping (kept in lockstep with population-strip.tsx) ──
+// ── Lifecycle mapping — the screener's local lifecycle normalizer (the canonical paper predicate is the
+// shared isPaper in lib/utils; this maps the full engine status onto the 5-stage lifecycle/filter lanes). ──
 type LifeStatus = "lab" | "screened" | "paper" | "live" | "killed";
 // The screener's filter buckets map onto the 5 chips; "lab"+"screened" both read as the Backtest/Queued lanes.
 type FilterKey = "all" | "live" | "paper" | "killed" | "queued";
@@ -64,10 +65,6 @@ const STAGE_RANK: Record<LifeStatus, number> = { live: 5, paper: 4, screened: 3,
 const SHARPE_REF = 2;
 const DSR_STRONG = 0.95;
 const PBO_CEILING = 0.5;
-
-function numOrNull(v: number | null | undefined): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
-}
 
 // ── COLS — each column a lens onto a REAL row field. `sort` makes the header click-to-sort; `defaultOn:
 // false` columns start hidden (the v18 opt-ins). `min` feeds the colgroup so columns size correctly. ──
@@ -115,11 +112,6 @@ function formatWindow(days: number | null | undefined): string {
   const months = Math.round(days / 30);
   if (months >= 1) return `${months}mo`;
   return `${Math.round(days)}d`;
-}
-
-function signedUsd(v: number): string {
-  const sign = v > 0 ? "+" : v < 0 ? "-" : "";
-  return `${sign}${formatUsd(Math.abs(v))}`;
 }
 
 export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {

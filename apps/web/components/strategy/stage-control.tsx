@@ -1,20 +1,18 @@
 "use client";
 
 // module: StageControl — the v18 strat-sheet top bar (Iris Bento `.psec.panel-top`): a lifecycle
-// `.stage-badge` on the left and the matching action(s) on the right. The stage is DERIVED honestly
-// upstream from the real detail response (see deriveStage in the page) — backtest / paper / live / killed
-// / queued — never fabricated. The action mirrors the stage:
-//   • paper / live          → "Stop" (opens an honest confirm; plain about whether real money moves)
-//   • backtest (gate passed) → "Launch live →" (links to the Live surface, where the armed launch flow +
-//     its 5 interlocks live; we never arm money from here)
-//   • otherwise              → no action (queued / killed have nothing to start or stop)
+// `.stage-badge` on the left and the matching action on the right. The stage is DERIVED honestly upstream
+// from the real detail response (see deriveStage in the page) — backtest / paper / live / killed / queued —
+// never fabricated. The action mirrors the stage:
+//   • paper / live → "Stop" (opens an honest confirm; plain about whether real money moves)
+//   • otherwise    → no action. Promotion to paper/live is NOT a manual UI action — the Gate auto-promotes
+//     survivors, and live is launched via the CLI (Commands · `cosmu live launch`).
 //
 // The Stop confirm is presentational + honest: it surfaces the affordance and a plain-language dialog. When
 // no real mutation path is wired it stays a clearly-labelled affordance, so we never pretend an action
 // happened that did not.
 
 import { useState } from "react";
-import Link from "next/link";
 import { Modal } from "@/components/ui/modal";
 
 export type Stage = "queued" | "backtest" | "paper" | "live" | "killed";
@@ -37,19 +35,14 @@ const STAGE_LABEL: Record<Stage, string> = {
 export function StageControl({
   stage,
   ageDays,
-  strategyName,
-  gatePassed,
-  versionId
+  strategyName
 }: {
   stage: Stage;
   ageDays: number | null;
   strategyName: string;
-  gatePassed: boolean;
-  versionId: string;
 }) {
   const [confirming, setConfirming] = useState(false);
   const canStop = stage === "paper" || stage === "live";
-  const canLaunch = stage === "backtest" && gatePassed;
   const live = stage === "live";
 
   return (
@@ -61,15 +54,6 @@ export function StageControl({
         </span>
       </div>
       <div className="panel-actions">
-        {canLaunch ? (
-          <Link
-            href={`/live?launch=${encodeURIComponent(versionId)}`}
-            className="btn btn-iris btn-sm"
-            data-tip="Arming real capital happens on the Live surface, behind its 5 interlocks. This never moves money from here."
-          >
-            Launch live →
-          </Link>
-        ) : null}
         {canStop ? (
           <button type="button" className="btn btn-danger btn-xs" onClick={() => setConfirming(true)}>
             Stop
