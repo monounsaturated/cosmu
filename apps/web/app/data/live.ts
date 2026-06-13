@@ -1,4 +1,4 @@
-import type { AutonomyStatusResponse } from "@cosmu/contracts-ts";
+import type { AutonomyStatusResponse, RulesResponse } from "@cosmu/contracts-ts";
 import type { PositionsResponse, LiveVenuesResponse } from "@/components/live/contracts";
 import { getJson } from "./client";
 
@@ -44,4 +44,13 @@ export async function getLivePositions(): Promise<PositionsResponse & { connecte
 export async function getLiveVenues(): Promise<LiveVenuesResponse & { connected: boolean }> {
   const { data, connected } = await getJson<LiveVenuesResponse>("/live/venues", emptyVenues);
   return { ...data, connected };
+}
+
+// GET /live/rules — the live-trading Rules (hard global $ blocker + daily-loss + per-venue caps + each
+// venue's real deployed/headroom). `connected:false` → honest zero/empty, never a fabricated cap.
+const emptyRules: RulesResponse = { global_max_notional: 0, max_daily_loss: 0, per_strategy_cap: 0, venues: [] };
+
+export async function getRules(): Promise<{ rules: RulesResponse; connected: boolean }> {
+  const { data, connected } = await getJson<RulesResponse>("/live/rules", emptyRules);
+  return { rules: data, connected };
 }

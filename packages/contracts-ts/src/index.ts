@@ -976,6 +976,19 @@ export interface RegimeCoverage {
   total: number;
 }
 
+export interface RulesRequest {
+  global_max_notional?: number | null;
+  max_daily_loss?: number | null;
+  venues?: VenueRuleSet[];
+}
+
+export interface RulesResponse {
+  global_max_notional: number;
+  max_daily_loss: number;
+  per_strategy_cap: number;
+  venues: VenueRule[];
+}
+
 export interface ScoreCategory {
   connected: boolean;
   freshness_label: string;
@@ -1191,6 +1204,19 @@ export interface VenueInstrumentInfo {
   min_notional: number;
   symbol: string;
   venue_id: string;
+}
+
+export interface VenueRule {
+  available_usd?: number | null;
+  deployed_usd: number;
+  max_notional?: number | null;
+  name: string;
+  venue: string;
+}
+
+export interface VenueRuleSet {
+  max_notional?: number | null;
+  venue: string;
 }
 
 export interface VenueState {

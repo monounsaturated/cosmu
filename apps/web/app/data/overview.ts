@@ -3,6 +3,7 @@ import type {
   LeaderboardResponse,
   OverviewResponse,
   PopulationResponse,
+  PortfolioSummaryResponse,
   StrategyDetailResponse,
 } from "@cosmu/contracts-ts";
 import { getJson } from "./client";
@@ -45,6 +46,29 @@ const emptyStrategy: StrategyDetailResponse = {
 export async function getOverview(): Promise<{ overview: OverviewResponse; connected: boolean }> {
   const { data, connected } = await getJson("/overview", emptyOverview);
   return { overview: data, connected };
+}
+
+// GET /portfolio/summary — the honest live-vs-sim money split (LIVE $ · Free · Invested · P&L). When
+// nothing is routed live, the live_* fields are null and render "—" — never SIM capital labelled live.
+const emptyPortfolioSummary: PortfolioSummaryResponse = {
+  has_live: false,
+  live_armed: false,
+  live_mode: "sim",
+  sim_equity: 0,
+  sim_pnl_net: 0,
+  live_equity: null,
+  live_invested: null,
+  live_free: null,
+  live_pnl_net: null,
+  live_unrealized: null,
+  live_realized: null,
+  live_global_cap: 0,
+  positions_count_live: 0,
+};
+
+export async function getPortfolioSummary(): Promise<{ summary: PortfolioSummaryResponse; connected: boolean }> {
+  const { data, connected } = await getJson("/portfolio/summary", emptyPortfolioSummary);
+  return { summary: data, connected };
 }
 
 export async function getLeaderboard(): Promise<{ leaderboard: LeaderboardResponse; connected: boolean }> {

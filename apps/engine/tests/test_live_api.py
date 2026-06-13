@@ -79,6 +79,33 @@ def test_portfolio_summary_live_split_excludes_sim(tmp_path, monkeypatch):
     assert body["live_free"] == body["live_global_cap"] - 2000.0  # budget headroom, not exchange cash
 
 
+def test_live_rules_round_trip_global_and_per_venue(tmp_path, monkeypatch):
+    # The Rules modal backend: GET reads global + per-venue caps; POST sets them (global hard blocker +
+    # a per-venue cap), and a None per-venue cap clears it. Setting caps never arms live.
+    c = _client(tmp_path, monkeypatch)
+    before = c.get("/live/rules").json()
+    assert "global_max_notional" in before and isinstance(before["venues"], list)
+
+    set_resp = c.post("/live/rules", json={"global_max_notional": 1000, "max_daily_loss": 50,
+                                           "venues": [{"venue": "binance", "max_notional": 500}]}).json()
+    assert set_resp["global_max_notional"] == 1000.0 and set_resp["max_daily_loss"] == 50.0
+    binance = next(v for v in set_resp["venues"] if v["venue"] == "binance")
+    assert binance["max_notional"] == 500.0
+    assert binance["available_usd"] == 500.0  # headroom = cap - deployed(0), NOT exchange cash
+
+    # Clearing the per-venue cap (None) removes it.
+    cleared = c.post("/live/rules", json={"venues": [{"venue": "binance", "max_notional": None}]}).json()
+    assert next(v for v in cleared["venues"] if v["venue"] == "binance")["max_notional"] is None
+    # global persisted across the second POST (omitted fields keep their value).
+    assert cleared["global_max_notional"] == 1000.0
+
+
+def test_live_rules_set_does_not_arm_live(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    c.post("/live/rules", json={"global_max_notional": 1000})
+    assert c.get("/live/positions").json()["armed"] is False  # caps are not the arm switch
+
+
 def test_live_venues_excludes_jurisdiction_restricted(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
