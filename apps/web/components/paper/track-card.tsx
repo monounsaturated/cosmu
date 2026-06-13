@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
 import { GaugeBar } from "@/components/ui/viz";
 import { DivergenceBadge } from "@/components/paper/divergence-badge";
-import { cn, formatPct } from "@/lib/utils";
+import { cn, formatPct, formatUsd } from "@/lib/utils";
 
 // The Paper track card — the hero of this surface. ONE funded track, read top-to-bottom:
 //   1. Identity: name + asset / venue / timeframe, and a link to the full strategy detail.
@@ -27,6 +27,9 @@ export function TrackCard({ row }: { row: LeaderboardRow }) {
   const marked = typeof row.paper_return_pct === "number" && Number.isFinite(row.paper_return_pct);
   const fwd = marked ? (row.paper_return_pct as number) : 0;
   const fwdTone = !marked ? "text-quiet" : fwd > 0 ? "text-up" : fwd < 0 ? "text-down" : "text-muted";
+  // Dollar P&L since funding — the always-show-$ companion to the forward %. null = no marked dollar
+  // value yet → an honest "—", never a fabricated figure.
+  const pnlUsd = typeof row.pnl_usd === "number" && Number.isFinite(row.pnl_usd) ? row.pnl_usd : null;
 
   return (
     <div className="card-grad rounded-lg border border-border/70 p-4 shadow-card sm:p-5">
@@ -62,6 +65,11 @@ export function TrackCard({ row }: { row: LeaderboardRow }) {
           </div>
           <div className={cn("mt-1 text-3xl font-semibold tracking-tight tabular", fwdTone)}>
             {marked ? formatPct(fwd) : "+0.00%"}
+          </div>
+          {/* Dollar P&L since funding — always show $ alongside the %. "—" when unmarked, never a fake 0. */}
+          <div className={cn("mt-0.5 text-[12.5px] font-medium tabular", pnlUsd === null ? "text-quiet" : pnlUsd >= 0 ? "text-up" : "text-down")}>
+            {pnlUsd === null ? "—" : formatUsd(pnlUsd)}
+            <span className="ml-1 text-[11px] font-normal text-quiet">net P&amp;L</span>
           </div>
         </div>
         {/* Backtest OOS — quiet, demoted, explicitly historical */}

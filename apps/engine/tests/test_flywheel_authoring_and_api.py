@@ -289,6 +289,26 @@ def test_leaderboard_forward_return_is_the_marked_trajectory(tmp_path, monkeypat
     assert math.isclose(row["track_return_pct"], 4.0, abs_tol=1e-6)
 
 
+def test_leaderboard_dedups_a_version_with_multiple_backtests(tmp_path, monkeypatch):
+    # A Version with >1 backtest fans out the LEFT JOIN — the leaderboard must still show it ONCE (the
+    # strongest backtest, since rows are ordered by deflated_sharpe DESC), not duplicate it / inflate counts.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Two-backtest version"
+    vid = _persist_version(store, spec, passed=True)  # seeds backtest #1 (deflated_sharpe 0.6)
+    store.insert(
+        "backtests",
+        {
+            "strategy_version_id": vid, "kind": "screen", "oos_return": "0.03", "sharpe": "1", "sortino": "1",
+            "deflated_sharpe": "0.4", "max_dd": "0.1", "win_rate": "0.5", "num_trades": 30, "pbo": "0.3",
+            "trials_counted": 1, "regime_label": "mixed", "folds_positive": 3,
+            "passed_gates": 1, "holdout_passed": 1, "created_at": utcnow(),
+        },
+    )
+    rows = client.get("/leaderboard").json()["rows"]
+    matches = [r for r in rows if r["version_id"] == vid]
+    assert len(matches) == 1, "a multi-backtest Version must appear exactly once"
+
+
 def test_leaderboard_v18_money_columns_null_at_day0(tmp_path, monkeypatch):
     # v18 adds value_usd / pnl_usd / pnl_pct. At day-0 (track opened, NOT marked) all three must be null —
     # an un-marked track shows "—", never a fabricated $0 / -100% / the seeded backtest equity.

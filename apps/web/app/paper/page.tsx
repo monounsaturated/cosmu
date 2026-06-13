@@ -11,6 +11,7 @@ import { ExpandableSection } from "@/components/ui/expandable-section";
 import { StrategiesTable } from "@/components/research/strategies-table";
 import { SimSummary } from "@/components/paper/sim-summary";
 import { TrackCard } from "@/components/paper/track-card";
+import { TrackLedger } from "@/components/paper/track-ledger";
 import { TvChart } from "@/components/charts/tv-chart";
 import { cn, formatUsd } from "@/lib/utils";
 
@@ -90,6 +91,10 @@ export default async function PaperPage() {
               <TrackCard key={row.version_id} row={row} />
             ))}
           </div>
+
+          {/* Per-track P&L roll-up (v18 trades card) — REAL deployed/value/net-of-fee P&L in $ + %, with an
+              honest empty when no track carries a dollar mark. The per-fill blotter lives on each sheet. */}
+          <TrackLedger rows={simRows} />
 
           {/* Progressive disclosure: the full sortable/filterable table for a denser read. */}
           <ExpandableSection
