@@ -306,7 +306,7 @@ A thin spine is laid hour-zero (engine + fresh schema + tool bus), then these wo
 - the **4-surface UI** with the **chat + voice Console**, recommendation inbox, and the global live toggle.
 Result: fully autonomous, fully SIM (paper), realistic — flip a switch away from live.
 
-**V2 — live & scale.** Turn the toggle on with real capital + scaling on live-proven survivors; more venues, FX/options, deeper arbitrage, heavier ingestion/ML. *Earning mode: double down on what works live.* *(Optional extra leverage: submit our best signals to **Numerai Signals** for NMR — a side revenue stream on the same research.)*
+**V2 — live & scale.** Turn the toggle on with real capital + scaling on live-proven survivors; more venues, FX/options, deeper arbitrage, heavier ingestion/ML. *Earning mode: double down on what works live.*
 
 ---
 
