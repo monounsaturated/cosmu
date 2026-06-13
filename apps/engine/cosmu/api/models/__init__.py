@@ -169,6 +169,7 @@ from cosmu.api.models.scores import (  # noqa: F401
     ScoresResponse,
 )
 from cosmu.api.models.settings import (  # noqa: F401
+    KeyPresence,
     SettingsKeyRow,
     SettingsKeysResponse,
 )
@@ -342,6 +343,7 @@ __all__ = [
     "ScoresResponse",
     "ScoreSourceRow",
     # settings
+    "KeyPresence",
     "SettingsKeyRow",
     "SettingsKeysResponse",
     # news

@@ -47,7 +47,10 @@ def test_secret_set_requires_matching_header_on_every_route_but_health(tmp_path,
     assert client.get("/settings/keys", headers={"x-api-key": "s3cret-key-very-long"}).status_code == 200
 
 
-_KEY_ROW_FIELDS = {"key", "env_var", "configured", "unlocks", "requirement", "cost", "where"}
+_KEY_ROW_FIELDS = {
+    "key", "env_var", "configured", "unlocks", "where",
+    "name", "service", "description", "host", "present", "status", "requirement", "cost",
+}
 
 
 def test_settings_keys_shape_and_never_leaks_values(tmp_path, monkeypatch):
@@ -60,8 +63,23 @@ def test_settings_keys_shape_and_never_leaks_values(tmp_path, monkeypatch):
         assert isinstance(row["configured"], bool)
         assert row["requirement"] in ("required", "optional", "live-only")
         assert row["cost"] in ("free", "paid")
+        assert row["status"] in ("connected", "unverified", "missing", "unset")
+        assert row["host"] in ("railway", "vercel", "local", "none")
+        # present.local / present.host are each bool|None — and exactly ONE side is observable (the process's
+        # own env), so the unobservable side is honest None, never fabricated. The test runs LOCAL → host None.
+        assert set(row["present"]) == {"local", "host"}
+        assert row["present"]["host"] is None, "a local engine cannot see the deployed host's env — must be None"
+        assert isinstance(row["present"]["local"], bool)
+        assert row["name"] == row["env_var"]  # one row PER env var, keyed on the bare name
         # SECURITY: the actual secret value must never appear anywhere in the payload.
         assert "s3cret-key-very-long" not in str(row)
     by_env = {r["env_var"]: r for r in rows}
+    # Composite secrets are split into per-env-var rows.
     assert by_env["API_SECRET_KEY"]["configured"] is True
+    assert by_env["API_SECRET_KEY"]["status"] == "connected"
     assert by_env["LUNARCRUSH_API_KEY"]["configured"] is False
+    assert by_env["LUNARCRUSH_API_KEY"]["status"] == "unset"  # optional + absent
+    assert by_env["BINANCE_API_KEY"]["service"] == "Binance (live)"  # split from the old composite row
+    assert by_env["BINANCE_API_SECRET"]["service"] == "Binance (live)"
+    # A required/live-only var that is absent reads 'missing', never 'unset'.
+    assert by_env["BINANCE_API_KEY"]["status"] == "missing"
