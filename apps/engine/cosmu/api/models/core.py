@@ -213,6 +213,41 @@ class LiveCaps(BaseModel):
     max_daily_loss: float
 
 
+class VenueRule(BaseModel):
+    """A venue row in the Rules modal: its hard per-venue notional cap (None = uncapped) and the REAL capital
+    deployed on it now (so the operator sees headroom = cap − deployed). `available_usd` is the deployed
+    figure's complement under the cap (cap − deployed), or None when the venue is uncapped — it is budget
+    headroom, NOT a fetched exchange balance."""
+
+    venue: str
+    name: str
+    max_notional: float | None = None
+    deployed_usd: float
+    available_usd: float | None = None
+
+
+class RulesResponse(BaseModel):
+    """The live-trading Rules: the hard global $ blocker + daily-loss + per-venue caps. Enforced
+    deterministically in the order gauntlet (per-venue caps only when live is armed; the SIM lane is never
+    constrained). Read-only here; POST /live/rules sets them."""
+
+    global_max_notional: float
+    max_daily_loss: float
+    per_strategy_cap: float
+    venues: list[VenueRule]
+
+
+class VenueRuleSet(BaseModel):
+    venue: str
+    max_notional: float | None = None  # None clears the per-venue cap
+
+
+class RulesRequest(BaseModel):
+    global_max_notional: float | None = None
+    max_daily_loss: float | None = None
+    venues: list[VenueRuleSet] = []
+
+
 class EligibleStrategy(BaseModel):
     version_id: str
     name: str

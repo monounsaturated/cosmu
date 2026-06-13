@@ -4966,6 +4966,74 @@
         "title": "RegimeCoverage",
         "type": "object"
       },
+      "RulesRequest": {
+        "properties": {
+          "global_max_notional": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Global Max Notional"
+          },
+          "max_daily_loss": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Daily Loss"
+          },
+          "venues": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/VenueRuleSet"
+            },
+            "title": "Venues",
+            "type": "array"
+          }
+        },
+        "title": "RulesRequest",
+        "type": "object"
+      },
+      "RulesResponse": {
+        "description": "The live-trading Rules: the hard global $ blocker + daily-loss + per-venue caps. Enforced\ndeterministically in the order gauntlet (per-venue caps only when live is armed; the SIM lane is never\nconstrained). Read-only here; POST /live/rules sets them.",
+        "properties": {
+          "global_max_notional": {
+            "title": "Global Max Notional",
+            "type": "number"
+          },
+          "max_daily_loss": {
+            "title": "Max Daily Loss",
+            "type": "number"
+          },
+          "per_strategy_cap": {
+            "title": "Per Strategy Cap",
+            "type": "number"
+          },
+          "venues": {
+            "items": {
+              "$ref": "#/components/schemas/VenueRule"
+            },
+            "title": "Venues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "global_max_notional",
+          "max_daily_loss",
+          "per_strategy_cap",
+          "venues"
+        ],
+        "title": "RulesResponse",
+        "type": "object"
+      },
       "ScoreCategory": {
         "description": "A cockpit category (crypto \u00b7 social \u00b7 macro \u00b7 OSINT \u00b7 metals/forex) with a composite INDEX over the\nsources that actually have data. `index_score` is null when nothing is live (honest offline).",
         "properties": {
@@ -6059,6 +6127,76 @@
         "title": "VenueInstrumentInfo",
         "type": "object"
       },
+      "VenueRule": {
+        "description": "A venue row in the Rules modal: its hard per-venue notional cap (None = uncapped) and the REAL capital\ndeployed on it now (so the operator sees headroom = cap \u2212 deployed). `available_usd` is the deployed\nfigure's complement under the cap (cap \u2212 deployed), or None when the venue is uncapped \u2014 it is budget\nheadroom, NOT a fetched exchange balance.",
+        "properties": {
+          "available_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Usd"
+          },
+          "deployed_usd": {
+            "title": "Deployed Usd",
+            "type": "number"
+          },
+          "max_notional": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Notional"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          }
+        },
+        "required": [
+          "venue",
+          "name",
+          "deployed_usd"
+        ],
+        "title": "VenueRule",
+        "type": "object"
+      },
+      "VenueRuleSet": {
+        "properties": {
+          "max_notional": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Notional"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          }
+        },
+        "required": [
+          "venue"
+        ],
+        "title": "VenueRuleSet",
+        "type": "object"
+      },
       "VenueState": {
         "properties": {
           "effective": {
@@ -7096,6 +7234,62 @@
           }
         },
         "summary": "Live Positions"
+      }
+    },
+    "/live/rules": {
+      "get": {
+        "description": "The live-trading Rules the operator edits: the hard global $ blocker + daily-loss + per-venue caps,\nwith each legal venue's real deployed capital + headroom. The per-venue caps are enforced deterministically\nin the order gauntlet (only when live is armed \u2014 the SIM/forward-test lane is never constrained).",
+        "operationId": "live_rules_live_rules_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Live Rules"
+      },
+      "post": {
+        "description": "Set the live Rules: the global hard cap + daily-loss (the deterministic blocker) and per-venue caps.\nA per-venue cap of None CLEARS that venue's cap. Provided global fields update in place; omitted ones keep\ntheir current value. Audited. Setting caps NEVER arms live \u2014 the toggle/keys/gate interlocks still apply.",
+        "operationId": "set_live_rules_live_rules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RulesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Live Rules"
       }
     },
     "/live/venue-catalog": {

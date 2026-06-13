@@ -23,7 +23,10 @@ from cosmu.api.models import (
     LivePositionsResponse,
     LiveVenue,
     LiveVenuesResponse,
+    RulesRequest,
+    RulesResponse,
     SetJurisdictionRequest,
+    VenueRule,
     VenueCatalogResponse,
     VenueFeeInfo,
     VenueFeeTierInfo,
@@ -223,6 +226,82 @@ def live_venues() -> LiveVenuesResponse:
     ]
     total = round(sum(v.deployed_usd for v in venues), 2)
     return LiveVenuesResponse(jurisdiction=country, global_cap=caps.global_cap, total_deployed_usd=total, venues=venues)
+
+
+def _venue_cap_rows() -> dict[str, float]:
+    """The per-venue hard caps the operator set in the Rules modal (live_caps rows scope='venue')."""
+    return {str(r["ref_id"]): float(r["max_notional"]) for r in store.rows("SELECT ref_id, max_notional FROM live_caps WHERE scope = 'venue'")}
+
+
+@router.get("/live/rules", response_model=RulesResponse)
+def live_rules() -> RulesResponse:
+    """The live-trading Rules the operator edits: the hard global $ blocker + daily-loss + per-venue caps,
+    with each legal venue's real deployed capital + headroom. The per-venue caps are enforced deterministically
+    in the order gauntlet (only when live is armed — the SIM/forward-test lane is never constrained)."""
+    catalog = default_catalog()
+    with store.reading():
+        country = _current_jurisdiction()
+        caps = _live_caps_row()
+        venue_caps = _venue_cap_rows()
+        deployed: dict[str, float] = {}
+        for p in _portfolio().positions():
+            deployed[p.venue] = deployed.get(p.venue, 0.0) + abs(_metric(p.qty)) * _metric(p.avg_price)
+    venues: list[VenueRule] = []
+    for v in catalog.live_legal_venues(country):
+        cap = venue_caps.get(v.id)
+        dep = round(_metric(deployed.get(v.id, 0.0)), 2)
+        venues.append(
+            VenueRule(
+                venue=v.id,
+                name=v.name,
+                max_notional=cap,
+                deployed_usd=dep,
+                available_usd=round(cap - dep, 2) if cap is not None else None,  # headroom under the cap, not exchange cash
+            )
+        )
+    return RulesResponse(
+        global_max_notional=caps["global_cap"],
+        max_daily_loss=caps["max_daily_loss"],
+        per_strategy_cap=caps["per_strategy_cap"],
+        venues=venues,
+    )
+
+
+@router.post("/live/rules", response_model=RulesResponse)
+def set_live_rules(request: RulesRequest) -> RulesResponse:
+    """Set the live Rules: the global hard cap + daily-loss (the deterministic blocker) and per-venue caps.
+    A per-venue cap of None CLEARS that venue's cap. Provided global fields update in place; omitted ones keep
+    their current value. Audited. Setting caps NEVER arms live — the toggle/keys/gate interlocks still apply."""
+    cur = _live_caps_row()
+    gmax = request.global_max_notional if request.global_max_notional is not None else cur["global_cap"]
+    gdl = request.max_daily_loss if request.max_daily_loss is not None else cur["max_daily_loss"]
+    store.rows(
+        """
+        INSERT INTO live_caps(id, scope, ref_id, max_notional, max_daily_loss) VALUES ('global', 'pool', 'global', ?, ?)
+        ON CONFLICT (id) DO UPDATE SET max_notional = excluded.max_notional, max_daily_loss = excluded.max_daily_loss
+        """,
+        (str(gmax), str(gdl)),
+    )
+    for vr in request.venues:
+        row_id = f"venue:{vr.venue}"
+        if vr.max_notional is None:
+            store.rows("DELETE FROM live_caps WHERE id = ?", (row_id,))
+        else:
+            store.rows(
+                """
+                INSERT INTO live_caps(id, scope, ref_id, max_notional, max_daily_loss) VALUES (?, 'venue', ?, ?, '0')
+                ON CONFLICT (id) DO UPDATE SET max_notional = excluded.max_notional
+                """,
+                (row_id, vr.venue, str(vr.max_notional)),
+            )
+    store.append_event(
+        actor="human",
+        kind="live_rules_set",
+        ref_type="live_caps",
+        ref_id="global",
+        payload={"global_max_notional": gmax, "max_daily_loss": gdl, "venues": [{"venue": vr.venue, "max_notional": vr.max_notional} for vr in request.venues]},
+    )
+    return live_rules()
 
 
 @router.get("/live/venue-catalog", response_model=VenueCatalogResponse)
