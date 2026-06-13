@@ -1,278 +1,165 @@
 "use client";
 
-// module: the unified, faceted Strategies SCREENER (v18, docs/PRODUCT.md Epic B; VISION §1.2, §5). Every
-// strategy-version runs on its own standalone $100k track and is ranked by RISK-ADJUSTED % (deflated OOS
-// Sharpe / "DSR"), with net dollars and % shown alongside. The PRIMARY family filter — {Social · News/Events ·
-// Math/Price · Macro/Positioning · On-chain/Flow} — is DERIVED from the features the spec references (engine
-// taxonomy.py), never hand-tagged. Orthogonal facets refine it: asset class · venue · timeframe · status ·
-// origin · edge-type.
+// module: the unified Strategies SCREENER (v18 "Iris Bento", docs/PRODUCT.md Epic B). A faithful port of
+// the reference mockup's `renderScreener` mechanics into React, bound to REAL leaderboard rows. Every
+// Version runs on its own standalone track and is ranked by RISK-ADJUSTED % (deflated OOS Sharpe / "DSR"),
+// with net dollars and % shown alongside.
 //
-// The TABLE itself is a JS-rendered, sortable screener over a COLS config: a column-header click sorts
-// (cycling desc → asc → back to the default DSR ranking), and a column PICKER (checkbox menu with
-// Reset-to-default) toggles which lenses show. Venue · Fees · Origin are OFF by default. The whole row is
-// clickable and opens the per-Version strat sheet (/strategy/{id}); the table scrolls horizontally when wide.
+// MECHANICS reproduced verbatim from the mockup:
+//   • filter chips  (All / Live / Paper / Killed / Queued) — bento `.chip-row` / `.chip` / `.chip-dot`.
+//   • text search   (`.search-input`) over name + features + edge.
+//   • sortable headers with the `.sort-ind` ▲/▼ indicator; click cycles dir then back to the DSR default.
+//   • column picker (`.col-picker-*`) — toggle columns via `.cp-ind` checkmark, drag-reorder the headers
+//     (`draggable` + `.drag-over`), "Reset to default view". Venue / Fees / Origin are OFF by default.
+//   • lifecycle `.glyph` dots, the `.dsr-wrap` bar, the `.dd-arc` SVG (LeaderboardRow has NO max-dd, so the
+//     DD cell honestly reads "—"), the `.pnl-wrap` two-line P&L.
+//   • the whole table scrolls horizontally inside `.screener-wrap`; a colgroup sizes the columns.
+//   • row click → opens the right `SidePanel` with the full per-Version sheet (fetched client-side).
 //
-// HONESTY CONTRACT (the binding rule): every cell renders ONLY a real field off the leaderboard row. A null
-// money field (value_usd / pnl_usd / pnl_pct) reads an explicit "—", NEVER 0. P&L is TWO columns — dollars
-// (e.g. +$419) and % (e.g. +21%), each sortable, each coloured up/down. OOS shows the out-of-sample backtest
-// return with its window (e.g. "+8.2% · 2.4y"). The leaderboard contract carries no max-drawdown or fee
-// field, so we do NOT fabricate one: "Fees" is an opt-in column that reads "—" until the engine carries it.
-// Nothing fabricated; the honest empty/offline states live on the page.
+// HONESTY: every cell renders ONLY a real field; a null money field (value_usd / pnl_usd / pnl_pct) reads
+// an explicit "—" in a `.quiet` span, NEVER 0. The leaderboard contract carries no max-drawdown or fee
+// field, so "Max DD" and "Fees" honestly read "—" until the engine surfaces them — never a fabricated arc
+// or cost.
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, ArrowUpDown, Columns3, Filter, RotateCcw, X } from "lucide-react";
-import type { LeaderboardRow } from "@cosmu/contracts-ts";
-import { Badge } from "@/components/ui/badge";
-import { SearchInput } from "@/components/ui/input";
-import { Tooltip } from "@/components/ui/tooltip";
-import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { GaugeBar } from "@/components/ui/viz";
-import { cn, formatPct, formatUsd } from "@/lib/utils";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { LeaderboardRow, StrategyDetailResponse } from "@cosmu/contracts-ts";
+import { SidePanel } from "@/components/ui/side-panel";
+import { StrategySheet } from "@/components/strategy/strategy-sheet";
+import { engineFetch } from "@/lib/engine";
+import { cn, formatUsd } from "@/lib/utils";
 
-// Real maturity threshold (apps/engine PAPER_MIN_DAYS): a paper track is live-ready at 30 days.
-const PAPER_MIN_DAYS = 30;
-// Reference scalars for the relative gauges — a deflated Sharpe of ~2 is "strong"; clamp the bar there so
-// the visual reads occupancy toward a good score without ever implying a value beyond the real number shown.
-const SHARPE_REF = 2;
-// The Gate's deflated-Sharpe live-ready threshold (the green line on the DSR gauge) and PBO ceiling.
-const DSR_STRONG = 0.95;
-const PBO_CEILING = 0.5;
-
-// The five signal-families, in a fixed display order (matches the engine taxonomy).
-const FAMILIES: { id: string; label: string }[] = [
-  { id: "onchain_flow", label: "On-chain/Flow" },
-  { id: "macro_positioning", label: "Macro/Positioning" },
-  { id: "math_price", label: "Math/Price" },
-  { id: "news_events", label: "News/Events" },
-  { id: "social", label: "Social" }
-];
-
-// Map a raw engine status onto the lifecycle facet {lab → backtest → paper → live → killed}.
+// ── Lifecycle mapping (kept in lockstep with population-strip.tsx) ──
 type LifeStatus = "lab" | "screened" | "paper" | "live" | "killed";
-const STATUS_LABELS: Record<LifeStatus, string> = {
-  lab: "Lab",
-  screened: "Backtest",
-  paper: "Paper",
-  live: "Live",
-  killed: "Killed"
-};
+// The screener's filter buckets map onto the 5 chips; "lab"+"screened" both read as the Backtest/Queued lanes.
+type FilterKey = "all" | "live" | "paper" | "killed" | "queued";
+
 function lifeStatusOf(status: string | null | undefined): LifeStatus {
   const s = (status ?? "").toLowerCase();
   if (s === "killed" || s === "dead" || s === "graveyard") return "killed";
   if (s === "live") return "live";
   if (s === "paper" || s === "forward_test" || s === "forward") return "paper";
   if (s === "screening" || s === "screened" || s === "validating" || s === "optimizing") return "screened";
-  if (s === "queued" || s === "pending") return "lab";
   return "lab";
 }
-const STATUS_VARIANT: Record<LifeStatus, "warn" | "iris" | "up" | "info" | "down" | "muted"> = {
-  lab: "warn",
-  screened: "info",
-  paper: "iris",
-  live: "down", // live = real capital at risk → the strongest signal colour (matches the v18 ribbon LIVE accent)
-  killed: "muted"
+function filterBucketOf(status: string | null | undefined): FilterKey {
+  const life = lifeStatusOf(status);
+  if (life === "live") return "live";
+  if (life === "paper") return "paper";
+  if (life === "killed") return "killed";
+  return "queued"; // lab + screened (backtest/queued lane)
+}
+
+const STAGE_LABEL: Record<LifeStatus, string> = { lab: "Queued", screened: "Backtest", paper: "Paper", live: "Live", killed: "Killed" };
+const STAGE_BADGE_CLASS: Record<LifeStatus, string> = {
+  lab: "stage-badge sb-queued",
+  screened: "stage-badge sb-backtest-stage",
+  paper: "stage-badge sb-paper",
+  live: "stage-badge sb-live",
+  killed: "stage-badge sb-killed"
 };
 // Pipeline order for the default "Stage" sort (top-to-bottom by lifecycle maturity).
 const STAGE_RANK: Record<LifeStatus, number> = { live: 5, paper: 4, screened: 3, lab: 2, killed: 1 };
 
-// Orthogonal facets, each backed by a real field on the row. `valueOf` extracts the facet value.
-type FacetKey = "asset_class" | "venue" | "timeframe" | "status" | "origin" | "edge_type";
-const FACETS: { key: FacetKey; label: string; valueOf: (r: LeaderboardRow) => string }[] = [
-  { key: "asset_class", label: "Asset class", valueOf: (r) => r.asset_class },
-  { key: "venue", label: "Venue", valueOf: (r) => r.venue },
-  { key: "timeframe", label: "Timeframe", valueOf: (r) => r.timeframe },
-  { key: "status", label: "Status", valueOf: (r) => lifeStatusOf(r.status) },
-  { key: "origin", label: "Origin", valueOf: (r) => r.origin },
-  { key: "edge_type", label: "Edge type", valueOf: (r) => r.edge_type }
-];
-
-function facetDisplay(key: FacetKey, value: string): string {
-  if (key === "status") return STATUS_LABELS[value as LifeStatus] ?? value;
-  return value;
-}
-
-// ─── COLS config — the screener's columns, each a lens onto a REAL row field ─────────────────────────
-// `key` is the stable id; `sort` (when present) makes the header click-to-sort and supplies the value
-// extractor + the natural reading direction. `defaultOn:false` columns start hidden (the v18 opt-ins).
-type SortDir = "asc" | "desc";
-type ColKey = "name" | "stage" | "life" | "days" | "value" | "pnl" | "pnlpct" | "dsr" | "pbo" | "oos" | "venue" | "fees" | "origin";
-
-type ColDef = {
-  key: ColKey;
-  label: string;
-  pickerLabel?: string; // label shown in the column-picker menu (defaults to `label`)
-  align?: "right";
-  defaultOn?: boolean; // default true
-  // When sortable, `value` returns a number|string|null (null sorts to the bottom regardless of direction),
-  // and `dir` is the natural first-click reading (biggest score / most recent first, lowest PBO first).
-  sort?: { dir: SortDir; value: (r: LeaderboardRow) => number | string | null };
-  tip?: string;
-};
-
-const COLS: ColDef[] = [
-  { key: "name", label: "Version", sort: { dir: "asc", value: (r) => r.name.toLowerCase() } },
-  { key: "stage", label: "Stage", sort: { dir: "desc", value: (r) => STAGE_RANK[lifeStatusOf(r.status)] } },
-  { key: "life", label: "Lifecycle" },
-  {
-    key: "days",
-    label: "Days",
-    align: "right",
-    sort: { dir: "desc", value: (r) => (Number.isFinite(r.paper_age_days) ? r.paper_age_days : null) },
-    tip: "Days on a live-data paper track since the Gate funded it. A backtest-only Version has no paper clock yet."
-  },
-  {
-    key: "value",
-    label: "Value",
-    align: "right",
-    sort: { dir: "desc", value: (r) => numOrNull(r.value_usd) },
-    tip: "Current mark of this Version's standalone track (its own $100k start, net of fees). Backtest-only Versions have no funded value yet."
-  },
-  {
-    key: "pnl",
-    label: "P&L",
-    align: "right",
-    sort: { dir: "desc", value: (r) => numOrNull(r.pnl_usd) },
-    tip: "Net profit/loss in dollars on this Version's standalone track, net of fees. Shown with its % alongside."
-  },
-  {
-    key: "pnlpct",
-    label: "P&L %",
-    align: "right",
-    sort: { dir: "desc", value: (r) => numOrNull(r.pnl_pct) },
-    tip: "Net-of-fee return on this Version's track, as a percent."
-  },
-  {
-    key: "dsr",
-    label: "DSR",
-    align: "right",
-    sort: { dir: "desc", value: (r) => (Number.isFinite(r.deflated_sharpe) ? r.deflated_sharpe : null) },
-    tip: "Deflated out-of-sample Sharpe — the risk-adjusted house ranking and the default sort. The gauge fills toward a strong (~2) score; the line marks the 0.95 live-ready bar."
-  },
-  {
-    key: "pbo",
-    label: "PBO",
-    align: "right",
-    sort: { dir: "asc", value: (r) => (Number.isFinite(r.pbo) ? r.pbo : null) },
-    tip: "Probability of backtest overfitting. Lower is better; the Gate blocks above 0.50 (shown in gold near the ceiling)."
-  },
-  {
-    key: "oos",
-    label: "OOS",
-    align: "right",
-    sort: { dir: "desc", value: (r) => (Number.isFinite(r.track_return_pct) ? r.track_return_pct : null) },
-    tip: "Out-of-sample backtest return (gross), with its window (e.g. 2.4y). HISTORICAL — this is NOT paper performance."
-  },
-  { key: "venue", label: "Venue", defaultOn: false, sort: { dir: "asc", value: (r) => r.venue } },
-  {
-    key: "fees",
-    label: "Fees",
-    pickerLabel: "Fees paid",
-    align: "right",
-    defaultOn: false,
-    tip: "Cumulative fees paid on this track. The leaderboard contract does not yet carry a per-Version fee total, so this reads an honest — until the engine surfaces it."
-  },
-  { key: "origin", label: "Origin", defaultOn: false, sort: { dir: "asc", value: (r) => r.origin } }
-];
+// The Gate's reference scalars (the green threshold line on the DSR bar; the PBO gold ceiling).
+const SHARPE_REF = 2;
+const DSR_STRONG = 0.95;
+const PBO_CEILING = 0.5;
 
 function numOrNull(v: number | null | undefined): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
+// ── COLS — each column a lens onto a REAL row field. `sort` makes the header click-to-sort; `defaultOn:
+// false` columns start hidden (the v18 opt-ins). `min` feeds the colgroup so columns size correctly. ──
+type SortDir = "asc" | "desc";
+type ColKey = "name" | "stage" | "life" | "days" | "value" | "pnl" | "pnlpct" | "dsr" | "pbo" | "dd" | "oos" | "venue" | "fees" | "origin";
+type ColDef = {
+  key: ColKey;
+  label: string;
+  pickerLabel?: string;
+  width: number;
+  defaultOn?: boolean;
+  // togglable in the picker (name is the identity — never togglable)
+  pickable?: boolean;
+  sort?: { dir: SortDir; value: (r: LeaderboardRow) => number | string | null };
+};
+
+const COLS: ColDef[] = [
+  { key: "name", label: "Name", width: 200, sort: { dir: "asc", value: (r) => r.name.toLowerCase() } },
+  { key: "stage", label: "Stage", width: 90, pickable: true, sort: { dir: "desc", value: (r) => STAGE_RANK[lifeStatusOf(r.status)] } },
+  { key: "life", label: "Lifecycle", width: 96, pickable: true },
+  { key: "days", label: "Days", width: 56, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.paper_age_days) ? r.paper_age_days : null) } },
+  { key: "value", label: "Value", width: 84, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.value_usd) } },
+  { key: "pnl", label: "P&L", width: 84, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_usd) } },
+  { key: "pnlpct", label: "P&L %", width: 72, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_pct) } },
+  { key: "dsr", label: "DSR", width: 94, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.deflated_sharpe) ? r.deflated_sharpe : null) } },
+  { key: "pbo", label: "PBO", width: 64, pickable: true, sort: { dir: "asc", value: (r) => (Number.isFinite(r.pbo) ? r.pbo : null) } },
+  { key: "dd", label: "Max DD", width: 80, pickable: true },
+  { key: "oos", label: "OOS", width: 70, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.track_return_pct) ? r.track_return_pct : null) } },
+  { key: "venue", label: "Venue", width: 72, defaultOn: false, pickable: true, sort: { dir: "asc", value: (r) => r.venue } },
+  { key: "fees", label: "Fees", pickerLabel: "Fees paid", width: 74, defaultOn: false, pickable: true },
+  { key: "origin", label: "Origin", width: 82, defaultOn: false, pickable: true, sort: { dir: "asc", value: (r) => r.origin } }
+];
+
+const DEFAULT_ORDER: ColKey[] = COLS.map((c) => c.key);
 const DEFAULT_VISIBLE: Record<ColKey, boolean> = COLS.reduce(
   (acc, c) => ({ ...acc, [c.key]: c.defaultOn !== false }),
   {} as Record<ColKey, boolean>
 );
+const COL_BY_KEY: Record<ColKey, ColDef> = COLS.reduce((acc, c) => ({ ...acc, [c.key]: c }), {} as Record<ColKey, ColDef>);
 
-export function StrategiesTable({ rows, context = "leaderboard" }: { rows: LeaderboardRow[]; context?: "leaderboard" | "paper" }) {
-  void context; // the screener layout is identical on both surfaces; kept for call-site compatibility
-  const router = useRouter();
+// Compact OOS window from days: "2.4y" / "18mo" / "9mo". null/absent → "".
+function formatWindow(days: number | null | undefined): string {
+  if (typeof days !== "number" || !Number.isFinite(days) || days <= 0) return "";
+  if (days >= 365) return `${(days / 365).toFixed(1)}y`;
+  const months = Math.round(days / 30);
+  if (months >= 1) return `${months}mo`;
+  return `${Math.round(days)}d`;
+}
+
+function signedUsd(v: number): string {
+  const sign = v > 0 ? "+" : v < 0 ? "-" : "";
+  return `${sign}${formatUsd(Math.abs(v))}`;
+}
+
+export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
   const [query, setQuery] = useState("");
-  const [family, setFamily] = useState<string | "all">("all");
-  // Each orthogonal facet holds a set of selected values (empty = no constraint).
-  const [selected, setSelected] = useState<Record<FacetKey, Set<string>>>(() => ({
-    asset_class: new Set(),
-    venue: new Set(),
-    timeframe: new Set(),
-    status: new Set(),
-    origin: new Set(),
-    edge_type: new Set()
-  }));
-  const [showFilters, setShowFilters] = useState(false);
-  // Column visibility (the picker) — starts at the v18 default view; Reset restores it.
-  const [visible, setVisible] = useState<Record<ColKey, boolean>>(() => ({ ...DEFAULT_VISIBLE }));
-  const [showCols, setShowCols] = useState(false);
-  // Sort state — default to the house ranking (deflated Sharpe, descending). Clicking a sortable header
-  // selects it in its natural direction; clicking the active one flips; a third click restores the default.
-  const [sort, setSort] = useState<{ key: ColKey; dir: SortDir }>({ key: "dsr", dir: "desc" });
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const [order, setOrder] = useState<ColKey[]>([...DEFAULT_ORDER]);
+  const [visible, setVisible] = useState<Record<ColKey, boolean>>({ ...DEFAULT_VISIBLE });
+  const [showPicker, setShowPicker] = useState(false);
+  const [sort, setSort] = useState<{ key: ColKey; dir: SortDir }>({ key: "stage", dir: "desc" });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const dragKey = useRef<ColKey | null>(null);
 
   // Close the column picker on an outside click (the v18 menu behaviour).
-  const colWrapRef = useRef<HTMLDivElement>(null);
+  const pickerWrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!showCols) return;
+    if (!showPicker) return;
     function onDoc(e: MouseEvent) {
-      if (colWrapRef.current && !colWrapRef.current.contains(e.target as Node)) setShowCols(false);
+      if (pickerWrapRef.current && !pickerWrapRef.current.contains(e.target as Node)) setShowPicker(false);
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
-  }, [showCols]);
+  }, [showPicker]);
 
-  // Search scope (name / feature / edge) — drives the per-family chip counts.
-  const searched = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.features.some((f) => f.toLowerCase().includes(q)) ||
-        r.edge_type.toLowerCase().includes(q)
-    );
-  }, [rows, query]);
-
-  const familyCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const r of searched) counts[r.signal_family] = (counts[r.signal_family] ?? 0) + 1;
-    return counts;
-  }, [searched]);
-
-  // Available facet values (from the search + family scope), so we never offer an empty facet.
-  const facetValues = useMemo(() => {
-    const scope = family === "all" ? searched : searched.filter((r) => r.signal_family === family);
-    const out: Record<FacetKey, string[]> = {
-      asset_class: [],
-      venue: [],
-      timeframe: [],
-      status: [],
-      origin: [],
-      edge_type: []
-    };
-    for (const facet of FACETS) {
-      const set = new Set<string>();
-      for (const r of scope) set.add(facet.valueOf(r));
-      out[facet.key] = [...set].filter((v) => v && v !== "—").sort();
-    }
-    return out;
-  }, [searched, family]);
-
-  // Final filtered + sorted rows: family (single) AND each facet (OR within). Sorted by the operator's
-  // chosen column; nulls sink to the bottom; ties (and the default) fall back to DSR so order is stable.
+  // ── search → filter → sort ──
   const filtered = useMemo(() => {
-    const result = searched.filter((r) => {
-      if (family !== "all" && r.signal_family !== family) return false;
-      for (const facet of FACETS) {
-        const sel = selected[facet.key];
-        if (sel.size > 0 && !sel.has(facet.valueOf(r))) return false;
+    const q = query.trim().toLowerCase();
+    const searched = rows.filter((r) => {
+      if (q && !(r.name.toLowerCase().includes(q) || r.features.some((f) => f.toLowerCase().includes(q)) || r.edge_type.toLowerCase().includes(q))) {
+        return false;
       }
-      return true;
+      if (filter === "all") return true;
+      return filterBucketOf(r.status) === filter;
     });
-    const col = COLS.find((c) => c.key === sort.key);
+    const col = COL_BY_KEY[sort.key];
     const getter = col?.sort?.value;
     const sign = sort.dir === "asc" ? 1 : -1;
-    return result.slice().sort((a, b) => {
+    return searched.slice().sort((a, b) => {
       if (getter) {
         const va = getter(a);
         const vb = getter(b);
-        // Nulls always sink, regardless of direction (an honest "no value yet" never tops the table).
         const an = va === null || va === undefined;
         const bn = vb === null || vb === undefined;
         if (an && bn) return tieByDsr(a, b);
@@ -288,468 +175,344 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
       }
       return tieByDsr(a, b);
     });
-  }, [searched, family, selected, sort]);
+  }, [rows, query, filter, sort]);
 
-  // Reference magnitude for the P&L signed-tone read — kept implicit; the digits are the source of truth.
-  const activeFacetCount = (Object.keys(selected) as FacetKey[]).reduce((n, k) => n + selected[k].size, 0);
-  const visibleCols = COLS.filter((c) => visible[c.key]);
+  const visibleCols = useMemo(() => order.map((k) => COL_BY_KEY[k]).filter((c) => visible[c.key]), [order, visible]);
+  const minWidth = useMemo(() => visibleCols.reduce((sum, c) => sum + c.width, 0), [visibleCols]);
 
-  function toggleFacet(key: FacetKey, value: string) {
-    setSelected((prev) => {
-      const next = new Set(prev[key]);
-      if (next.has(value)) next.delete(value);
-      else next.add(value);
-      return { ...prev, [key]: next };
-    });
-  }
-
-  // Cycle a sortable header: inactive → its natural dir → flip → back to the default (DSR, desc).
-  function toggleSort(col: ColDef) {
+  // Cycle a sortable header: inactive → natural dir → flip → back to the house default (DSR-ranked Stage).
+  const toggleSort = useCallback((col: ColDef) => {
     if (!col.sort) return;
     setSort((prev) => {
       if (prev.key !== col.key) return { key: col.key, dir: col.sort!.dir };
       const flipped: SortDir = prev.dir === "asc" ? "desc" : "asc";
-      // Third click (back to natural dir) restores the house default.
-      if (flipped === col.sort!.dir) return { key: "dsr", dir: "desc" };
+      if (flipped === col.sort!.dir) return { key: "stage", dir: "desc" };
       return { key: col.key, dir: flipped };
     });
-  }
+  }, []);
 
   function toggleCol(key: ColKey) {
     setVisible((prev) => ({ ...prev, [key]: !prev[key] }));
   }
-
   function resetCols() {
+    setOrder([...DEFAULT_ORDER]);
     setVisible({ ...DEFAULT_VISIBLE });
   }
 
-  function clearAll() {
-    setFamily("all");
-    setSelected({
-      asset_class: new Set(),
-      venue: new Set(),
-      timeframe: new Set(),
-      status: new Set(),
-      origin: new Set(),
-      edge_type: new Set()
+  // ── header drag-reorder ──
+  const [dragOver, setDragOver] = useState<ColKey | null>(null);
+  function onDrop(targetKey: ColKey) {
+    const from = dragKey.current;
+    setDragOver(null);
+    if (!from || from === targetKey) return;
+    setOrder((prev) => {
+      const next = [...prev];
+      const fi = next.indexOf(from);
+      const ti = next.indexOf(targetKey);
+      if (fi < 0 || ti < 0) return prev;
+      next.splice(ti, 0, next.splice(fi, 1)[0]);
+      return next;
     });
+    dragKey.current = null;
   }
 
   return (
-    <div className="space-y-4">
-      {/* Toolbar: search · facets toggle · column picker · ranking note */}
-      <div className="flex flex-wrap items-center gap-2">
-        <SearchInput
+    <>
+      {/* ── toolbar controls (the left/right of the page Toolbar are passed by the page; this is the
+            screener's own filter row used inside the table cell). ── */}
+      <div className="toolbar-row" style={{ marginBottom: 8 }}>
+        <div className="chip-row" id="filter-chips">
+          <FilterChip label="All" active={filter === "all"} onClick={() => setFilter("all")} />
+          <FilterChip label="Live" dot="var(--down)" active={filter === "live"} onClick={() => setFilter("live")} />
+          <FilterChip label="Paper" dot="var(--iris)" active={filter === "paper"} onClick={() => setFilter("paper")} />
+          <FilterChip label="Killed" active={filter === "killed"} onClick={() => setFilter("killed")} />
+          <FilterChip label="Queued" active={filter === "queued"} onClick={() => setFilter("queued")} />
+        </div>
+        <input
+          className="search-input"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onClear={() => setQuery("")}
-          placeholder="Search name, feature, edge…"
+          placeholder="Search strategies…"
+          aria-label="Search strategies"
         />
-        <button
-          type="button"
-          onClick={() => setShowFilters((v) => !v)}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12px] font-medium transition-colors",
-            showFilters || activeFacetCount > 0
-              ? "border-iris/50 bg-iris/10 text-foreground"
-              : "border-border/70 bg-surface-2/30 text-muted hover:border-border hover:text-foreground"
-          )}
-        >
-          <Filter className="size-3.5" /> Facets
-          {activeFacetCount > 0 ? <span className="tabular text-iris-soft">{activeFacetCount}</span> : null}
-        </button>
-
-        {/* Column picker — checkbox menu with Reset-to-default (v18). */}
-        <div ref={colWrapRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setShowCols((v) => !v)}
-            aria-expanded={showCols}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12px] font-medium transition-colors",
-              showCols
-                ? "border-iris/50 bg-iris/10 text-foreground"
-                : "border-border/70 bg-surface-2/30 text-muted hover:border-border hover:text-foreground"
-            )}
-          >
-            <Columns3 className="size-3.5" /> Columns
+        <div className="col-picker-wrap" ref={pickerWrapRef}>
+          <button type="button" className="btn-col-picker" onClick={() => setShowPicker((v) => !v)} aria-expanded={showPicker}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <line x1="1" y1="3" x2="11" y2="3" />
+              <line x1="1" y1="6" x2="11" y2="6" />
+              <line x1="1" y1="9" x2="11" y2="9" />
+            </svg>
+            Columns
           </button>
-          {showCols ? (
-            <div className="absolute right-0 z-30 mt-1.5 w-56 rounded-lg border border-border/70 bg-surface-2 p-1.5 shadow-card">
-              <div className="flex items-center justify-between px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-quiet">
-                Show columns <span className="font-medium normal-case tracking-normal text-quiet/80">click a row</span>
-              </div>
-              <div className="max-h-72 overflow-y-auto">
-                {COLS.map((c) => {
-                  // The Version name is the row's identity — always present, never togglable.
-                  if (c.key === "name") return null;
-                  const on = visible[c.key];
-                  return (
-                    <button
-                      key={c.key}
-                      type="button"
-                      onClick={() => toggleCol(c.key)}
-                      className={cn(
-                        "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12.5px] transition-colors",
-                        on ? "bg-iris/10 text-foreground" : "text-muted hover:bg-surface-3 hover:text-foreground"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "grid size-3.5 shrink-0 place-items-center rounded border transition-colors",
-                          on ? "border-iris bg-iris text-iris-ink" : "border-border-strong"
-                        )}
-                        aria-hidden
-                      >
-                        {on ? <CheckMark /> : null}
-                      </span>
-                      <span className="flex-1">{c.pickerLabel ?? c.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="my-1.5 h-px bg-hairline" />
-              <button
-                type="button"
-                onClick={resetCols}
-                className="inline-flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-medium text-iris-soft transition-colors hover:bg-surface-3"
-              >
-                <RotateCcw className="size-3" /> Reset to default view
-              </button>
+          <div className={cn("col-picker-menu cp-1", showPicker && "open")} id="col-picker-menu">
+            <div className="cp-head">
+              Show columns <span className="cp-hint">click a row</span>
             </div>
-          ) : null}
+            {COLS.filter((c) => c.pickable).map((c, i) => {
+              // a divider before the opt-in (default-off) group, matching the mockup
+              const isFirstOptIn = c.defaultOn === false && COLS.filter((x) => x.pickable).findIndex((x) => x.defaultOn === false) === i;
+              return (
+                <div key={c.key}>
+                  {isFirstOptIn ? <div className="col-picker-divider" /> : null}
+                  <div className={cn("col-picker-item", visible[c.key] && "on")} onClick={() => toggleCol(c.key)}>
+                    <span className="cp-ind" />
+                    <span className="cp-label">{c.pickerLabel ?? c.label}</span>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="col-picker-divider" />
+            <button type="button" className="cp-reset" onClick={resetCols}>
+              Reset to default view
+            </button>
+          </div>
         </div>
-
-        <span className="ml-auto inline-flex items-center gap-1 text-[11.5px] text-quiet">
-          ranked by deflated OOS Sharpe
-          <Tooltip content="The single risk-adjusted ranking scalar (VISION §5) — the default sort. Net dollars and % are shown alongside; we rank robustly and show the figures." />
-          · {filtered.length} of {rows.length}
+        <span className="quiet" style={{ marginLeft: "auto", fontSize: 11 }}>
+          {filtered.length} of {rows.length} · ranked by deflated OOS Sharpe
         </span>
       </div>
 
-      {/* PRIMARY filter — signal-family, derived from referenced features (no manual tagging). */}
-      <div className="space-y-1.5">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-quiet">Signal family</div>
-        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filter by signal family">
-          <FilterChip label="All families" count={searched.length} active={family === "all"} onClick={() => setFamily("all")} />
-          {FAMILIES.map((f) => (
-            <FilterChip
-              key={f.id}
-              label={f.label}
-              count={familyCounts[f.id] ?? 0}
-              active={family === f.id}
-              onClick={() => setFamily(family === f.id ? "all" : f.id)}
-            />
-          ))}
-        </div>
+      {/* ── ranked screener — horizontal scroll on overflow ── */}
+      <div className="screener-wrap">
+        {filtered.length === 0 ? (
+          <p className="quiet" style={{ fontSize: 12, padding: "24px 4px", textAlign: "center" }}>No versions match these filters.</p>
+        ) : (
+          <table className="screener-table" style={{ minWidth }}>
+            <colgroup>
+              {visibleCols.map((c) => (
+                <col key={c.key} style={{ width: c.width }} />
+              ))}
+            </colgroup>
+            <thead>
+              <tr>
+                {visibleCols.map((c) => {
+                  const active = sort.key === c.key;
+                  return (
+                    <th
+                      key={c.key}
+                      draggable
+                      onDragStart={() => (dragKey.current = c.key)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragOver(c.key);
+                      }}
+                      onDragLeave={() => setDragOver((k) => (k === c.key ? null : k))}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        onDrop(c.key);
+                      }}
+                      onDragEnd={() => setDragOver(null)}
+                      className={dragOver === c.key ? "drag-over" : undefined}
+                      onClick={c.sort ? () => toggleSort(c) : undefined}
+                      style={c.sort ? { cursor: "pointer" } : undefined}
+                    >
+                      <div className="th-inner">
+                        {c.label}
+                        {c.sort ? <span className={cn("sort-ind", active && (sort.dir === "asc" ? "asc" : "desc"))} /> : null}
+                      </div>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((row, i) => {
+                const life = lifeStatusOf(row.status);
+                const rowClass = cn(
+                  life === "killed" && "row-killed",
+                  filterBucketOf(row.status) === "queued" && life === "lab" && "row-queued",
+                  life === "screened" && "row-backtest",
+                  row.version_id === selectedId && "sel"
+                );
+                return (
+                  <tr key={`${row.version_id}-${i}`} className={rowClass || undefined} onClick={() => setSelectedId(row.version_id)}>
+                    {visibleCols.map((c) => (
+                      <td key={c.key}>
+                        <Cell col={c.key} row={row} life={life} />
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
 
-      {/* Orthogonal facets */}
-      {showFilters ? (
-        <div className="space-y-3 rounded-lg border border-border/60 bg-surface-2/20 p-3.5">
-          {FACETS.map((facet) => {
-            const values = facetValues[facet.key];
-            if (values.length === 0) return null;
-            return (
-              <div key={facet.key} className="space-y-1.5">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-quiet">{facet.label}</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {values.map((v) => (
-                    <FilterChip
-                      key={v}
-                      label={facetDisplay(facet.key, v)}
-                      active={selected[facet.key].has(v)}
-                      onClick={() => toggleFacet(facet.key, v)}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-          {activeFacetCount > 0 ? (
-            <button type="button" onClick={clearAll} className="inline-flex items-center gap-1 text-[11.5px] font-medium text-iris-soft hover:underline">
-              <X className="size-3" /> Clear all filters
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Ranked screener — horizontal scroll on overflow (Table wraps in overflow-x-auto). */}
-      {filtered.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-[12px] text-quiet">
-          No versions match these filters.
-        </div>
-      ) : (
-        <Table className="min-w-[760px]">
-          <THead>
-            <TR>
-              {visibleCols.map((c) => (
-                <HeaderCell key={c.key} col={c} sort={sort} onToggle={toggleSort} />
-              ))}
-            </TR>
-          </THead>
-          <TBody>
-            {filtered.map((row, i) => {
-              const status = lifeStatusOf(row.status);
-              const dimmed = status === "killed" || status === "lab" || status === "screened";
-              return (
-                <TR
-                  // Defensive unique key: the leaderboard can carry the same version_id twice (a Version with
-                  // >1 backtest fans out the JOIN); index-suffix so React never collides/omits a row. The
-                  // engine-side dedup is the root fix.
-                  key={`${row.version_id}-${i}`}
-                  className={cn("cursor-pointer transition-colors hover:bg-surface-2/50", dimmed && "opacity-65")}
-                  onClick={() => router.push(`/strategy/${row.version_id}`)}
-                >
-                  {visibleCols.map((c) => (
-                    <TD key={c.key} className={cn(c.align === "right" && "text-right", "whitespace-nowrap")}>
-                      <Cell col={c.key} row={row} status={status} />
-                    </TD>
-                  ))}
-                </TR>
-              );
-            })}
-          </TBody>
-        </Table>
-      )}
-    </div>
+      <SheetPanel id={selectedId} onClose={() => setSelectedId(null)} />
+    </>
   );
 }
 
-// Stable tie-break: a higher deflated Sharpe ranks first (the house default), with nulls last.
 function tieByDsr(a: LeaderboardRow, b: LeaderboardRow): number {
   const da = Number.isFinite(a.deflated_sharpe) ? a.deflated_sharpe : -Infinity;
   const db = Number.isFinite(b.deflated_sharpe) ? b.deflated_sharpe : -Infinity;
   return db - da;
 }
 
-// A click-to-sort table header. Neutral two-way arrow when inactive; a directional iris arrow when active.
-function HeaderCell({
-  col,
-  sort,
-  onToggle
-}: {
-  col: ColDef;
-  sort: { key: ColKey; dir: SortDir };
-  onToggle: (col: ColDef) => void;
-}) {
-  const active = sort.key === col.key;
-  const inner = (
-    <span className={cn("inline-flex items-center gap-1", col.align === "right" && "ml-auto")}>
-      {col.label}
-      {col.sort ? (
-        active ? (
-          sort.dir === "asc" ? (
-            <ArrowUp className="size-3 text-iris-soft" />
-          ) : (
-            <ArrowDown className="size-3 text-iris-soft" />
-          )
-        ) : (
-          <ArrowUpDown className="size-3 opacity-40" />
-        )
-      ) : null}
-      {col.tip ? <Tooltip content={col.tip} /> : null}
-    </span>
-  );
-  return (
-    <TH className={cn(col.align === "right" && "text-right")}>
-      {col.sort ? (
-        <button
-          type="button"
-          onClick={() => onToggle(col)}
-          aria-label={`Sort by ${col.label}`}
-          className={cn(
-            "inline-flex items-center gap-1 transition-colors hover:text-foreground",
-            col.align === "right" && "ml-auto",
-            active && "text-foreground"
-          )}
-        >
-          {inner}
-        </button>
-      ) : (
-        inner
-      )}
-    </TH>
-  );
-}
-
-// A single screener cell — renders ONLY the real field for `col`, with the honest "—" for null money.
-function Cell({ col, row, status }: { col: ColKey; row: LeaderboardRow; status: LifeStatus }) {
+// ── one screener cell — renders ONLY the real field for `col`; honest "—" for null money / absent field. ──
+function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: LifeStatus }) {
   switch (col) {
     case "name":
       return (
-        <div>
-          <div className="font-medium text-foreground">{row.name}</div>
-          <div className="truncate text-[11px] text-quiet">
-            {row.features.length > 0 ? row.features.slice(0, 3).join(" · ") : row.lineage}
-            {row.features.length > 3 ? ` +${row.features.length - 3}` : ""}
-          </div>
+        <div className="cell-name" title={row.name}>
+          {row.name}
         </div>
       );
     case "stage":
-      return <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABELS[status]}</Badge>;
+      return <span className={STAGE_BADGE_CLASS[life]}>{STAGE_LABEL[life]}</span>;
     case "life":
-      return <LifecycleGlyph status={status} />;
+      return <LifecycleGlyph life={life} />;
     case "days": {
       const days = Number.isFinite(row.paper_age_days) ? Math.floor(row.paper_age_days) : 0;
-      if (days <= 0) return <Dash />;
-      return (
-        <div className="ml-auto w-fit">
-          <span className={cn("tabular", row.live_ready ? "text-up" : "text-foreground")}>{days}d</span>
-          <GaugeBar
-            value={Math.min(days, PAPER_MIN_DAYS)}
-            max={PAPER_MIN_DAYS}
-            tone={row.live_ready ? "up" : "iris"}
-            className="mt-1 w-14"
-            height={3}
-          />
-        </div>
-      );
+      return days > 0 ? <span className="tab">{days}</span> : <Dash />;
     }
     case "value": {
       const v = numOrNull(row.value_usd);
-      return v === null ? <Dash /> : <span className="tabular text-foreground">{formatUsd(v)}</span>;
+      return v === null ? <Dash /> : <span className="tab">{formatUsd(v)}</span>;
     }
-    case "pnl": {
-      const v = numOrNull(row.pnl_usd);
-      if (v === null) return <Dash />;
-      return <span className={cn("tabular font-medium", v > 0 ? "text-up" : v < 0 ? "text-down" : "text-muted")}>{signedUsd(v)}</span>;
-    }
+    case "pnl":
     case "pnlpct": {
+      // The two-line P&L wrap (dollars over %). Each of the two columns shows ONE line; honest "—" when null.
+      if (col === "pnl") {
+        const v = numOrNull(row.pnl_usd);
+        if (v === null) return <Dash />;
+        return (
+          <div className="pnl-wrap">
+            <div className={cn("pnl-val tab", v > 0 ? "up" : v < 0 ? "dn" : "")}>{signedUsd(v)}</div>
+          </div>
+        );
+      }
       const v = numOrNull(row.pnl_pct);
       if (v === null) return <Dash />;
-      return <span className={cn("tabular", v > 0 ? "text-up" : v < 0 ? "text-down" : "text-muted")}>{formatPct(v, 0)}</span>;
+      return <span className={cn("tab", v > 0 ? "up" : v < 0 ? "dn" : "")}>{`${v >= 0 ? "+" : ""}${v.toFixed(0)}%`}</span>;
     }
     case "dsr": {
       const dsr = Number.isFinite(row.deflated_sharpe) ? row.deflated_sharpe : null;
-      if (dsr === null) return <Dash />;
-      return (
-        <div className="ml-auto w-fit">
-          <span className="tabular text-foreground">{dsr.toFixed(2)}</span>
-          <GaugeBar
-            value={Math.max(0, dsr)}
-            max={SHARPE_REF}
-            marker={DSR_STRONG / SHARPE_REF}
-            tone={dsr >= DSR_STRONG ? "up" : dsr > 0 ? "iris" : "down"}
-            className="mt-1 w-14"
-            height={4}
-          />
-        </div>
-      );
+      return <DsrBar dsr={dsr} />;
     }
     case "pbo": {
       const pbo = Number.isFinite(row.pbo) ? row.pbo : null;
       if (pbo === null) return <Dash />;
-      return <span className={cn("tabular", pbo > PBO_CEILING - 0.05 ? "text-gold" : "text-muted")}>{pbo.toFixed(2)}</span>;
+      return <span className={cn("tab", pbo > PBO_CEILING - 0.05 ? "gold" : "")}>{pbo.toFixed(2)}</span>;
     }
+    case "dd":
+      // LeaderboardRow carries NO max-drawdown — render an honest "—", never a fabricated arc.
+      return <Dash />;
     case "oos": {
       const oos = Number.isFinite(row.track_return_pct) ? row.track_return_pct : null;
       if (oos === null) return <Dash />;
       const win = formatWindow(row.oos_window_days);
       return (
-        <div className="ml-auto w-fit leading-tight">
-          <span className={cn("tabular", oos >= 0 ? "text-up" : "text-down")}>{formatPct(oos, 1)}</span>
-          {win ? <div className="text-[10px] tabular text-quiet">{win}</div> : null}
+        <div style={{ lineHeight: 1.1 }}>
+          <span className={cn("tab", oos >= 0 ? "up" : "dn")}>{`${oos >= 0 ? "+" : ""}${oos.toFixed(1)}%`}</span>
+          {win ? <span className="oos-win">{win}</span> : null}
         </div>
       );
     }
     case "venue":
-      return <span className="text-[11.5px] text-muted">{row.venue || "—"}</span>;
+      return <span className="muted" style={{ fontSize: 11 }}>{row.venue || "—"}</span>;
     case "fees":
-      // No per-Version fee total on the leaderboard contract — render an honest "—", never a fabricated cost.
+      // No per-Version fee total on the leaderboard contract — honest "—", never a fabricated cost.
       return <Dash />;
     case "origin":
-      return <span className="text-[11px] capitalize text-muted">{row.origin || "—"}</span>;
+      return <span className="muted" style={{ fontSize: 10.5, textTransform: "capitalize" }}>{row.origin || "—"}</span>;
     default:
       return null;
   }
 }
 
 function Dash() {
-  return <span className="text-quiet">—</span>;
+  return <span className="quiet">—</span>;
 }
 
-// "+$419" / "-$81" — always a $ on dollar P&L, signed.
-function signedUsd(v: number): string {
-  const sign = v > 0 ? "+" : v < 0 ? "-" : "";
-  return `${sign}${formatUsd(Math.abs(v))}`;
-}
-
-// Compact OOS window from days: "2.4y" / "18mo" / "9mo". null/absent → "" (the OOS % shows without a window).
-function formatWindow(days: number | null | undefined): string {
-  if (typeof days !== "number" || !Number.isFinite(days) || days <= 0) return "";
-  if (days >= 365) return `${(days / 365).toFixed(1)}y`;
-  const months = Math.round(days / 30);
-  if (months >= 1) return `${months}mo`;
-  return `${Math.round(days)}d`;
-}
-
-// A tiny 3-node lifecycle glyph (Backtest → Paper → Live) — the v18 "Lifecycle" cell, reading the row's
-// real stage. Filled nodes = stages reached; the current stage glows; killed shows a red final node.
-function LifecycleGlyph({ status }: { status: LifeStatus }) {
-  // node states: "done" | "cur" | "off" | "dead"
-  let nodes: ("done" | "cur" | "off" | "dead")[];
-  if (status === "live") nodes = ["done", "done", "cur"];
-  else if (status === "paper") nodes = ["done", "cur", "off"];
-  else if (status === "screened") nodes = ["cur", "off", "off"];
-  else if (status === "killed") nodes = ["done", "dead", "off"];
-  else nodes = ["off", "off", "off"]; // lab / queued
-  const dotClass = (n: "done" | "cur" | "off" | "dead") =>
-    n === "done"
-      ? "bg-iris border-iris"
-      : n === "cur"
-      ? "bg-iris border-iris ring-2 ring-iris/25"
-      : n === "dead"
-      ? "bg-down border-down"
-      : "bg-surface-3 border-border";
+// ── DSR bar (`.dsr-wrap`) — the bar fills toward a strong (~2) score; the threshold tick marks the 0.95
+// live-ready bar. Honest "—" when no DSR. ──
+function DsrBar({ dsr }: { dsr: number | null }) {
+  if (dsr === null) return <Dash />;
+  const pct = Math.min((Math.max(0, dsr) / SHARPE_REF) * 100, 100);
+  const col = dsr >= DSR_STRONG ? "var(--up)" : dsr >= 0.8 ? "var(--iris)" : "var(--muted)";
   return (
-    <span className="inline-flex items-center gap-1" aria-label={`lifecycle ${status}`}>
+    <div className="dsr-wrap">
+      <div className="dsr-track">
+        <div className="dsr-fill" style={{ width: `${pct}%`, background: col }} />
+        <div className="dsr-thr" style={{ left: `${(DSR_STRONG / SHARPE_REF) * 100}%` }} />
+      </div>
+      <span className="dsr-val tab">{dsr.toFixed(2)}</span>
+    </div>
+  );
+}
+
+// ── lifecycle `.glyph` dots — filled = stages reached; the current glows; killed shows a red node. ──
+function LifecycleGlyph({ life }: { life: LifeStatus }) {
+  // mirrors the mockup's lifGlyph: dot/line classes for a 3-node Backtest → Paper → Live track.
+  let nodes: { dot: string; line: string }[];
+  if (life === "live") nodes = [{ dot: "done", line: "done" }, { dot: "done", line: "live" }, { dot: "live-c", line: "" }];
+  else if (life === "paper") nodes = [{ dot: "done", line: "done" }, { dot: "cur", line: "" }, { dot: "", line: "" }];
+  else if (life === "screened") nodes = [{ dot: "cur", line: "" }, { dot: "", line: "" }, { dot: "", line: "" }];
+  else if (life === "killed") nodes = [{ dot: "done", line: "done" }, { dot: "dead", line: "" }, { dot: "", line: "" }];
+  else nodes = [{ dot: "", line: "" }, { dot: "", line: "" }, { dot: "", line: "" }]; // lab / queued
+  return (
+    <span className="glyph" aria-label={`lifecycle ${life}`}>
       {nodes.map((n, i) => (
-        <span key={i} className="inline-flex items-center gap-1">
-          <span className={cn("size-1.5 rounded-full border", dotClass(n))} aria-hidden />
-          {i < nodes.length - 1 ? (
-            <span className={cn("h-px w-2", nodes[i] === "done" ? "bg-iris" : "bg-border")} aria-hidden />
-          ) : null}
+        <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+          <span className={cn("g-dot", n.dot)} />
+          {i < nodes.length - 1 ? <span className={cn("g-line", n.line)} /> : null}
         </span>
       ))}
     </span>
   );
 }
 
-function CheckMark() {
+function FilterChip({ label, dot, active, onClick }: { label: string; dot?: string; active: boolean; onClick: () => void }) {
   return (
-    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M2.5 6.5 L5 9 L9.5 3.5" />
-    </svg>
+    <button type="button" className={cn("chip", active && "active")} onClick={onClick}>
+      {dot ? <span className="chip-dot" style={{ background: dot }} /> : label === "All" ? <span className="chip-dot" /> : null}
+      {label}
+    </button>
   );
 }
 
-function FilterChip({
-  label,
-  count,
-  active,
-  onClick
-}: {
-  label: string;
-  count?: number;
-  active: boolean;
-  onClick: () => void;
-}) {
+// ── the right detail sheet — fetches the full Version detail client-side (via the same-origin proxy) and
+// renders the SHARED StrategySheet. Honest loading + error states. ──
+function SheetPanel({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const [detail, setDetail] = useState<StrategyDetailResponse | null>(null);
+  const [state, setState] = useState<"idle" | "loading" | "error">("idle");
+
+  useEffect(() => {
+    if (!id) {
+      setDetail(null);
+      setState("idle");
+      return;
+    }
+    let cancelled = false;
+    setState("loading");
+    setDetail(null);
+    engineFetch(`/strategies/${id}`)
+      .then((r) => (r.ok ? (r.json() as Promise<StrategyDetailResponse>) : Promise.reject(new Error(String(r.status)))))
+      .then((d) => {
+        if (!cancelled) {
+          setDetail(d);
+          setState("idle");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
   return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
-        active
-          ? "border-iris/50 bg-iris/10 text-foreground"
-          : "border-border/70 bg-surface-2/30 text-muted hover:border-border hover:bg-surface-2/55 hover:text-foreground"
-      )}
-    >
-      {label}
-      {count !== undefined ? <span className={cn("tabular text-[11px]", active ? "text-iris-soft" : "text-quiet")}>{count}</span> : null}
-    </button>
+    <SidePanel open={!!id} onClose={onClose} title={detail?.name ?? (id ? "Loading…" : "—")}>
+      {state === "loading" ? (
+        <div className="skel" style={{ height: 320 }} />
+      ) : state === "error" ? (
+        <p className="quiet" style={{ fontSize: 12, padding: "20px 4px" }}>Could not load this Version&apos;s detail — the engine did not respond.</p>
+      ) : detail ? (
+        <StrategySheet strategy={detail} />
+      ) : null}
+    </SidePanel>
   );
 }

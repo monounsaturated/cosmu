@@ -1,70 +1,52 @@
-// module: honest empty/connect states. The product NEVER fabricates a track record. When a surface
-// has no real engine data it shows one of two honest states instead of numbers:
-//   <NotConnected/> — the engine is unreachable. Tells the operator EXACTLY what to set.
-//   <EmptyState/>   — the engine IS connected but has nothing yet (no survivors, no trades, …).
-// Both are deliberately calm and informative, never alarmist and never a "demo".
+// module: honest empty/connect states (Iris Bento). The product NEVER fabricates a track record.
+// When a surface has no real engine data it shows one of these honest states instead of numbers:
+//   <NotConnected/>       — the engine is unreachable. Tells the operator EXACTLY what to set.
+//   <EmptyState/>         — the engine IS connected but has nothing yet (no survivors, no trades, …).
+//   <NotConnectedBanner/> — a slim inline banner so the rest of a page can render its own sub-states.
+// Calm and informative, never alarmist, never a "demo".
 
 import type { ReactNode } from "react";
-import { PlugZap, Inbox } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 
-// Shown when API_BASE_URL is unset or the engine fetch failed. `configured` distinguishes
-// "you haven't pointed the app at an engine" from "the engine is down right now".
 export function NotConnected({ configured = false, what }: { configured?: boolean; what?: ReactNode }) {
   return (
-    <Card>
-      <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-        <div className="ring-etch flex size-11 items-center justify-center rounded-full border border-border/70 bg-surface-2/50 text-quiet">
-          <PlugZap className="size-5" />
-        </div>
-        <div className="space-y-1">
-          <div className="text-[14px] font-medium text-foreground">Engine not connected</div>
-          <p className="mx-auto max-w-md text-[12.5px] leading-relaxed text-muted">
-            {what ?? "This surface shows real engine data. Nothing is fabricated here."}
-          </p>
+    <div className="card">
+      <div className="card-body" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "44px 16px", textAlign: "center" }}>
+        <div className="kpi-label" style={{ color: "var(--quiet)" }}>Engine not connected</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)", letterSpacing: "-0.01em" }}>
+          {what ?? "This surface shows real engine data. Nothing is fabricated here."}
         </div>
         {!configured ? (
-          <code className="rounded-md border border-border/70 bg-background/60 px-2.5 py-1.5 font-mono text-[11.5px] text-iris-soft">
+          <code style={{ fontFamily: '"SF Mono","Fira Code",ui-monospace,monospace', fontSize: 11.5, color: "var(--iris-s)", background: "var(--surf3)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "5px 9px" }}>
             set API_BASE_URL to your engine
           </code>
         ) : (
-          <p className="text-[11.5px] text-quiet">The engine is configured but did not respond. Once it is up, real data appears here.</p>
+          <p className="quiet" style={{ fontSize: 11.5, maxWidth: 420, lineHeight: 1.5 }}>
+            The engine is configured but did not respond. Once it is up, real data appears here.
+          </p>
         )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// Shown when the engine is connected but the answer is genuinely empty (no data yet).
-export function EmptyState({
-  title,
-  hint,
-  icon
-}: {
-  title: string;
-  hint?: ReactNode;
-  icon?: ReactNode;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-      <div className="text-quiet">{icon ?? <Inbox className="size-5" />}</div>
-      <div className="text-[13px] text-muted">{title}</div>
-      {hint ? <div className="mx-auto max-w-md text-[11.5px] leading-relaxed text-quiet">{hint}</div> : null}
+      </div>
     </div>
   );
 }
 
-// A slim inline banner for the top of a surface when not connected, so the rest of the page can
-// still render its own honest empty sub-states underneath.
+export function EmptyState({ title, hint, icon }: { title: string; hint?: ReactNode; icon?: ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "40px 16px", textAlign: "center" }}>
+      {icon ? <div className="quiet">{icon}</div> : null}
+      <div style={{ fontSize: 13, color: "var(--muted)" }}>{title}</div>
+      {hint ? <div className="quiet" style={{ fontSize: 11.5, maxWidth: 440, lineHeight: 1.5 }}>{hint}</div> : null}
+    </div>
+  );
+}
+
 export function NotConnectedBanner({ configured = false }: { configured?: boolean }) {
   return (
-    <div className="flex items-center gap-2 rounded-md border border-border/70 bg-surface-2/40 px-3 py-2 text-[12px] text-muted">
-      <PlugZap className="size-3.5 shrink-0 text-quiet" />
-      <span>
+    <div className="live-banner" style={{ background: "var(--surf2)", borderColor: "var(--border)" }}>
+      <span className="quiet" style={{ fontSize: 12 }}>
         Engine not connected — showing honest empty states, not fabricated numbers.
         {!configured ? (
           <>
-            {" "}Set <code className="font-mono text-iris-soft">API_BASE_URL</code>.
+            {" "}Set <code className="mono" style={{ color: "var(--iris-s)" }}>API_BASE_URL</code>.
           </>
         ) : null}
       </span>

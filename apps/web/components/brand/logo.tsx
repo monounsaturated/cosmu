@@ -1,5 +1,3 @@
-import { cn } from "@/lib/utils";
-
 /**
  * Cosmu mark — an orbit (the strategy population) circling the deterministic core, one bright
  * node mid-orbit. The tile is filled with the iris gradient so it reads on BOTH light and dark
@@ -19,17 +17,5 @@ export function CosmuMark({ className, size = 32 }: { className?: string; size?:
       <circle cx="20" cy="20" r="3.4" fill="white" />
       <circle cx="30.4" cy="14.8" r="2.3" fill="#f3c948" />
     </svg>
-  );
-}
-
-export function CosmuWordmark({ subtitle = "" }: { subtitle?: string }) {
-  return (
-    <div className="flex items-center gap-2.5">
-      <CosmuMark />
-      <div className="leading-tight">
-        <div className="text-[15px] font-semibold tracking-tight text-foreground">Cosmu</div>
-        {subtitle ? <div className={cn("text-[11px] text-quiet")}>{subtitle}</div> : null}
-      </div>
-    </div>
   );
 }

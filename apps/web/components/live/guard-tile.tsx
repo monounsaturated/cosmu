@@ -1,21 +1,24 @@
-// module: GuardTile — the v18 "guardrail folded into the KPI line" tile. A small KPI box that reads a
-// real used/cap guardrail (Daily loss, Max drawdown, Exposure) as a used value, its cap, and a half-arc
-// gauge that fills toward the cap. Pure presentation over REAL numbers — it renders only what it is
-// handed and never fabricates a reading. Colour escalates with occupancy (mockup `gcol`): ≥85% red,
-// ≥60% gold, else up-green — matching the strats-table drawdown arc so the operator reads risk at a glance.
-//
-// Server-safe (no hooks). The Live page passes the engine's real used/cap; when nothing is live the page
-// passes 0 / cap (the honest safe state — every guardrail sits at 0% while disarmed).
+"use client";
 
-import { cn } from "@/lib/utils";
+// GuardTile — the Iris Bento "guardrail folded into the KPI line" box (mirrors the mockup's guardBox +
+// editCap). A `.kpi-box.guard-mini` that reads ONE real used/cap guardrail (Daily loss / Max DD / Exposure)
+// as a used value coloured by occupancy, with an editable `.gm-cap` (click → `.cap-in` input) and a thin
+// `.gm-bar` fill. Colour escalates with occupancy (mockup `gcol`): ≥85% red, ≥60% gold, else up-green.
+//
+// HONESTY: it renders ONLY what it is handed and never fabricates a reading. The Live surface passes the
+// engine's real used/cap; when nothing is live it passes 0 / cap (the honest safe state — every guardrail
+// sits at 0% while disarmed). When `used` is null (no live metric source — e.g. Max DD), it renders "—" for
+// the used value rather than a fabricated 0.
+
+import { useState } from "react";
 
 export type GuardUnit = "usd" | "pct";
 
-// Occupancy → semantic colour. Mirrors the mockup's gcol thresholds exactly.
-function toneOf(frac: number): { stroke: string; text: string } {
-  if (frac >= 0.85) return { stroke: "var(--color-down)", text: "text-down" };
-  if (frac >= 0.6) return { stroke: "var(--color-gold)", text: "text-gold" };
-  return { stroke: "var(--color-up)", text: "text-up" };
+// Occupancy → semantic colour var. Mirrors the mockup's gcol thresholds exactly.
+function gcol(frac: number): string {
+  if (frac >= 0.85) return "var(--down)";
+  if (frac >= 0.6) return "var(--gold)";
+  return "var(--up)";
 }
 
 function fmtVal(v: number, unit: GuardUnit): string {
@@ -23,62 +26,72 @@ function fmtVal(v: number, unit: GuardUnit): string {
   return `${(Math.round(v * 10) / 10).toLocaleString("en-US")}%`;
 }
 
-// A 44×24 half-arc gauge filling left→right toward the cap. Same geometry as the mockup's `arc()`.
-function Arc({ frac, stroke }: { frac: number; stroke: string }) {
-  const W = 44;
-  const H = 24;
-  const cx = 22;
-  const cy = 21;
-  const rad = 17;
-  const r = Math.min(Math.max(frac, 0), 1);
-  const a = Math.PI - r * Math.PI;
-  const ax = (cx + rad * Math.cos(a)).toFixed(1);
-  const ay = (cy - rad * Math.sin(a)).toFixed(1);
-  const largeArc = r > 0.5 ? 1 : 0;
-  return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden>
-      <path
-        d={`M${cx - rad},${cy} A${rad},${rad} 0 0 1 ${cx + rad},${cy}`}
-        fill="none"
-        stroke="var(--color-surface-3)"
-        strokeWidth={3.5}
-        strokeLinecap="round"
-      />
-      {r > 0 ? (
-        <path
-          d={`M${cx - rad},${cy} A${rad},${rad} 0 ${largeArc} 1 ${ax},${ay}`}
-          fill="none"
-          stroke={stroke}
-          strokeWidth={3.5}
-          strokeLinecap="round"
-        />
-      ) : null}
-    </svg>
-  );
-}
-
 export function GuardTile({
   label,
   used,
   cap,
-  unit
+  unit,
+  editable = true,
+  onCapChange
 }: {
   label: string;
-  used: number;
+  /** The real used amount, or null when there is no live metric source yet (renders "—"). */
+  used: number | null;
   cap: number;
   unit: GuardUnit;
+  /** When false, the cap is read-only (no inline edit). */
+  editable?: boolean;
+  /** Called with the new cap when the operator edits it inline (committed on blur / Enter). */
+  onCapChange?: (next: number) => void;
 }) {
-  const frac = cap > 0 ? Math.min(used / cap, 1) : 0;
-  const tone = toneOf(frac);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(cap));
+
+  const frac = used !== null && cap > 0 ? Math.min(used / cap, 1) : 0;
+  const col = gcol(frac);
+
+  function commit() {
+    const n = parseFloat(draft);
+    setEditing(false);
+    if (!Number.isNaN(n) && n > 0) onCapChange?.(n);
+    else setDraft(String(cap));
+  }
+
   return (
-    <div className="card-grad relative overflow-hidden rounded-lg border border-border/70 p-4 shadow-card">
-      <div className="label-eyebrow">{label}</div>
-      <div className="mt-2 flex items-center gap-2">
-        <span className={cn("text-lg font-bold tabular leading-none", tone.text)}>{fmtVal(used, unit)}</span>
-        <span className="whitespace-nowrap text-[11px] text-quiet">/ {fmtVal(cap, unit)}</span>
-        <span className="ml-auto shrink-0">
-          <Arc frac={frac} stroke={tone.stroke} />
-        </span>
+    <div className="kpi-box guard-mini">
+      <div className="kpi-label">{label}</div>
+      <div className="gm-val">
+        <span style={{ color: used === null ? "var(--quiet)" : col }}>
+          {used === null ? "—" : fmtVal(used, unit)}
+        </span>{" "}
+        {editing ? (
+          <input
+            className="cap-in"
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") {
+                setDraft(String(cap));
+                setEditing(false);
+              }
+            }}
+            aria-label={`${label} cap`}
+          />
+        ) : (
+          <span
+            className="gm-cap"
+            data-tip={editable ? "Click to edit the limit" : undefined}
+            onClick={editable ? () => { setDraft(String(cap)); setEditing(true); } : undefined}
+          >
+            / {fmtVal(cap, unit)}
+          </span>
+        )}
+      </div>
+      <div className="gm-bar">
+        <div className="gm-fill" style={{ width: `${(frac * 100).toFixed(0)}%`, background: col }} />
       </div>
     </div>
   );

@@ -1,8 +1,9 @@
 import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
 
+// Conditional class joiner. The app is styled with the hand-written Iris Bento CSS (app/globals.css),
+// NOT Tailwind utilities, so plain clsx is all we need — no tailwind-merge collapsing.
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+  return clsx(inputs);
 }
 
 export function formatUsd(value: number, fractionDigits = 0) {

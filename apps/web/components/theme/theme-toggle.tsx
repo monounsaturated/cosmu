@@ -1,18 +1,11 @@
 "use client";
 
-// Light/dark toggle. Flips the `.light` class on <html> and persists to localStorage. A tiny inline
-// script in the root layout applies the stored choice before paint, so there is no flash.
-
-import { useEffect, useState } from "react";
-import { Moon, Sun } from "lucide-react";
+// Light/dark toggle (Iris Bento `.theme-btn`). Flips the `.light` class on <html> and persists to
+// localStorage. A tiny inline script in the root layout applies the stored choice before paint, so
+// there is no flash. The moon/sun glyphs swap purely via CSS (`html.light .ic-moon{display:none}` …),
+// so this button is theme-agnostic — it just toggles the class.
 
 export function ThemeToggle() {
-  const [light, setLight] = useState(false);
-
-  useEffect(() => {
-    setLight(document.documentElement.classList.contains("light"));
-  }, []);
-
   function toggle() {
     const isLight = document.documentElement.classList.toggle("light");
     try {
@@ -20,18 +13,17 @@ export function ThemeToggle() {
     } catch {
       /* ignore */
     }
-    setLight(isLight);
   }
 
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      aria-label={light ? "Switch to dark theme" : "Switch to light theme"}
-      title={light ? "Switch to dark theme" : "Switch to light theme"}
-      className="inline-flex size-9 items-center justify-center rounded-md border border-border/70 text-muted transition-colors hover:bg-surface-2/60 hover:text-foreground"
-    >
-      {light ? <Moon className="size-[18px]" /> : <Sun className="size-[18px]" />}
+    <button className="theme-btn" onClick={toggle} title="Light / dark mode" aria-label="Toggle theme" type="button">
+      <svg className="ic-moon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+        <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+      </svg>
+      <svg className="ic-sun" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </svg>
     </button>
   );
 }
