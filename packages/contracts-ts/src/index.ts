@@ -646,15 +646,19 @@ export interface LeaderboardRow {
   live_ready: boolean;
   name: string;
   net_pct: number;
+  oos_window_days?: number | null;
   origin: string;
   paper_age_days: number;
   paper_return_pct?: number | null;
   pbo: number;
+  pnl_pct?: number | null;
+  pnl_usd?: number | null;
   signal_family: string;
   signal_family_label: string;
   status: string;
   timeframe: string;
   track_return_pct: number;
+  value_usd?: number | null;
   venue: string;
   version_id: string;
 }
@@ -1118,8 +1122,6 @@ export interface UniverseResponse {
 }
 
 export interface ValidationError {
-  ctx?: Record<string, unknown>;
-  input?: string;
   loc: string | number[];
   msg: string;
   type: string;
