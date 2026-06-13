@@ -248,11 +248,19 @@ export async function getSupplierCosts(): Promise<SupplierCostsResult> {
 
   const now = new Date().toISOString();
 
-  // Fire live fetches in parallel
+  // Fire live billing fetches in parallel — but never let a slow vendor API block SSR. Each is
+  // capped at SUPPLIER_TIMEOUT_MS; on timeout we fall back to its est value so the page paints fast
+  // (worst case ~3s instead of up to ~15s when several billing APIs hang).
+  const SUPPLIER_TIMEOUT_MS = 3000;
+  const cap = <T,>(p: Promise<T>, fallback: T): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<T>((resolve) => setTimeout(() => resolve(fallback), SUPPLIER_TIMEOUT_MS)),
+    ]);
   const [railway, openrouter, vercel] = await Promise.all([
-    fetchRailway(),
-    fetchOpenRouter(),
-    fetchVercel(),
+    cap(fetchRailway(), { amount_usd: 20, ok: false }),
+    cap(fetchOpenRouter(), { amount_usd: 0, ok: false }),
+    cap(fetchVercel(), { amount_usd: 0, ok: false }),
   ]);
 
   const liveRows: SupplierRow[] = [

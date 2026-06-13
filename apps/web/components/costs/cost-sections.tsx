@@ -376,7 +376,9 @@ export function LlmCallsSummary({
       />
     );
   }
-  const tasks = Object.entries(byTask)
+  // Guard: a deployed engine on an older/edge shape may send by_task as null; Object.entries(null)
+  // would throw and crash the Costs page. Coerce to an empty record.
+  const tasks = Object.entries(byTask ?? {})
     .map(([task, count]) => ({ task, count: Number(count) }))
     .sort((a, b) => b.count - a.count);
   const top = Math.max(1, ...tasks.map((t) => t.count));

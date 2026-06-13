@@ -15,12 +15,10 @@
     "@tailwindcss/postcss": "^4.3.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lightweight-charts": "^5.2.0",
     "lucide-react": "^1.14.0",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "recharts": "^3.8.1",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0",
     "tailwindcss-animate": "^1.0.7"
