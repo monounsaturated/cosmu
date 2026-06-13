@@ -1,7 +1,7 @@
 import { LineChart, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { engineConfigured, getLeaderboard } from "../data";
-import type { LeaderboardRow } from "@cosmu/contracts-ts";
+import { engineConfigured, getLeaderboard, getOverview } from "../data";
+import type { LeaderboardRow, Point } from "@cosmu/contracts-ts";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/ui/section";
@@ -11,13 +11,17 @@ import { ExpandableSection } from "@/components/ui/expandable-section";
 import { StrategiesTable } from "@/components/research/strategies-table";
 import { SimSummary } from "@/components/paper/sim-summary";
 import { TrackCard } from "@/components/paper/track-card";
+import { TvChart } from "@/components/charts/tv-chart";
+import { cn, formatUsd } from "@/lib/utils";
 
 // Paper is stage 3 in the lifecycle: strategies that have cleared the Gate run here on
 // live data with no real money. Each track is held and marked-to-market across real bars. The
 // per-track equity-since-funding is the hero; ≥ 30 paper days of net-of-fee proof is the
 // recommended readiness signal before going Live. Every number is real or an honest zero/empty.
 export default async function PaperPage() {
-  const { leaderboard, connected } = await getLeaderboard();
+  // Leaderboard drives the track list + the connected gate; /overview supplies the aggregate Paper equity
+  // curve (Σ of all standalone paper tracks, net of fees) for the hero. Fetch both in parallel.
+  const [{ leaderboard, connected }, { overview }] = await Promise.all([getLeaderboard(), getOverview()]);
   const allRows = leaderboard.rows as LeaderboardRow[];
 
   // Filter to paper-stage strategies (status = forward / forward_test / paper).
@@ -72,6 +76,12 @@ export default async function PaperPage() {
         </Card>
       ) : (
         <>
+          {/* Hero (v13 dashboard pattern): the aggregate Paper equity curve — the Σ of all standalone paper
+              tracks, net of fees — with the headline net P&L. The interactive TvChart (range selector +
+              crosshair scrub) is the same chart the strat sheet uses; it draws an honest empty state on
+              day 0, never a fabricated line. */}
+          <PaperEquityHero curve={overview.equity_curve} pnlNet={overview.pnl_net} />
+
           <SimSummary rows={simRows} />
 
           {/* Hero: per-track live equity since funding, paper age toward live-ready, divergence integrated. */}
@@ -98,6 +108,33 @@ export default async function PaperPage() {
         </>
       )}
     </div>
+  );
+}
+
+// The aggregate Paper equity hero — the one interactive chart at the top of the surface. Fed by the real
+// /overview equity curve (Σ across every funded paper track, net of fees) and the net-P&L headline; always
+// renders the $ figure (the operator's always-show-$ bar). On day 0 the chart shows TvChart's honest empty
+// state — never a fabricated line.
+function PaperEquityHero({ curve, pnlNet }: { curve: Point[]; pnlNet: number }) {
+  const tone = pnlNet > 0 ? "text-up" : pnlNet < 0 ? "text-down" : "text-foreground";
+  return (
+    <Card>
+      <CardContent className="pt-5">
+        <div className="mb-3 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-quiet">Paper equity</span>
+          <span className={cn("tabular text-[15px] font-semibold leading-none", tone)}>{formatUsd(pnlNet)}</span>
+          <span className="text-[11px] text-quiet">net P&amp;L · net of fees · across all paper tracks</span>
+        </div>
+        <TvChart
+          points={curve}
+          mode="sim"
+          height={260}
+          valueKind="usd"
+          emptyTitle="No paper equity yet"
+          emptyHint="The curve renders once a funded track accrues net-of-fee history. Nothing here is fabricated."
+        />
+      </CardContent>
+    </Card>
   );
 }
 
