@@ -6,10 +6,11 @@
 //
 // Suppliers:
 //   LIVE (API fetch): Railway (GraphQL), OpenRouter (REST)
-//   ESTIMATED:        Vercel (token often absent), Supabase, Modal,
+//   ESTIMATED:        Vercel (token often absent), Supabase, Modal, Cloudflare R2,
 //                     LunarCrush, GitHub Actions, Anthropic/Claude
 //
-// No Fly.io.
+// No Fly.io. Cloudflare R2 is the cold-data lake — built but default-OFF, so it honestly bills $0 until
+// cold history migrates off Postgres (it appears on the register at $0 so the planned infra is visible).
 
 export type SupplierRow = {
   /** Display name */
@@ -65,6 +66,13 @@ const STATIC_ESTIMATES: Omit<SupplierRow, "fetched_at">[] = [
     amount_usd: 5,
     source: "est",
     role: "Scale-to-zero heavy-compute lane (gate sweeps, ML train)",
+    category: "infra",
+  },
+  {
+    name: "Cloudflare R2",
+    amount_usd: 0,
+    source: "est",
+    role: "Cold-data lake (Parquet) — zero-egress object storage. Built but default-OFF; $0 until cold history moves off Postgres.",
     category: "infra",
   },
   {
