@@ -15,6 +15,7 @@ import {
   ClipboardCheck,
   DollarSign,
   FlaskConical,
+  KeyRound,
   LayoutDashboard,
   LineChart,
   ListChecks,
@@ -41,7 +42,8 @@ export const navItems: NavItem[] = [
   { href: "/paper", label: "Paper", desc: "Forward test · live data, no money", icon: LineChart },
   { href: "/strategies", label: "Strategies", desc: "Ranked · faceted · the sheet", icon: ListChecks },
   { href: "/costs", label: "Costs", desc: "Spend · run-rate · renewals", icon: DollarSign },
-  { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal }
+  { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal },
+  { href: "/keys", label: "Keys", desc: "Services · what's connected", icon: KeyRound }
 ];
 
 // Secondary surfaces, tucked under "More" (desktop sidebar footer + mobile sheet) — still reachable by URL,
@@ -62,7 +64,7 @@ export const moreItems: NavItem[] = [
 type NavGroup = { label: string; hrefs: string[] };
 const NAV_GROUPS: NavGroup[] = [
   // The v12 sidebar is a flat five (no group eyebrows) — one unlabeled group renders the primary surfaces.
-  { label: "", hrefs: ["/live", "/paper", "/strategies", "/costs", "/commands"] }
+  { label: "", hrefs: ["/live", "/paper", "/strategies", "/costs", "/commands", "/keys"] }
 ];
 
 const ITEM_BY_HREF = new Map(navItems.map((i) => [i.href, i]));

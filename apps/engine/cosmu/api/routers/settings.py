@@ -117,6 +117,45 @@ def _settings_key_rows() -> list[SettingsKeyRow]:
             cost="free",
             where="Engine env (Railway)",
         ),
+        SettingsKeyRow(
+            key="Cloudflare R2",
+            env_var="R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET",
+            configured=bool(
+                settings.r2_account_id and settings.r2_access_key_id
+                and settings.r2_secret_access_key and settings.r2_bucket
+            ),
+            unlocks="The cold-data lake — alt-data history as Parquet on R2 (cheap, zero-egress), queried by DuckDB. Flip ALT_DATA_BACKEND=parquet to use it as the store.",
+            requirement="optional",
+            cost="paid",
+            where="Engine env (Railway) + .env.local",
+        ),
+        SettingsKeyRow(
+            key="Modal",
+            env_var="MODAL_TOKEN_ID / MODAL_TOKEN_SECRET",
+            configured=bool(os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET")),
+            unlocks="Heavy compute offload (backtests / ML / matrix sweeps) on Modal's scale-to-zero workers.",
+            requirement="optional",
+            cost="paid",
+            where="Local / CI env (laptop) — never the Railway image",
+        ),
+        SettingsKeyRow(
+            key="CryptoPanic",
+            env_var="CRYPTOPANIC_API_KEY",
+            configured=bool(settings.cryptopanic_api_key),
+            unlocks="News-vote sentiment per symbol (free tier). Degrades to [] without it.",
+            requirement="optional",
+            cost="free",
+            where="Engine env (Railway)",
+        ),
+        SettingsKeyRow(
+            key="Reddit",
+            env_var="REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET",
+            configured=bool(os.environ.get("REDDIT_CLIENT_ID") and os.environ.get("REDDIT_CLIENT_SECRET")),
+            unlocks="Reddit post / comment volume features. Keyless-degrades to [] without it.",
+            requirement="optional",
+            cost="free",
+            where="Engine env (Railway)",
+        ),
     ]
 
 
