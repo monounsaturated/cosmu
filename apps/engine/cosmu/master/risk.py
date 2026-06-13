@@ -53,6 +53,13 @@ class PortfolioRiskState(BaseModel):
     last_trade_was_loss: bool = False  # the prior trade on THIS instrument closed at a loss
     avg_entry_price: Decimal | None = None  # existing position avg price (averaging-down detector)
     existing_qty: Decimal = Decimal("0")  # existing position qty on this instrument (signed by entry side)
+    # Per-venue hard cap (the Rules modal's "max $ per venue"). `venue_open_notional` is the gross notional
+    # already deployed on THIS order's venue; `venue_max_notional` is the configured cap, or None when no
+    # per-venue cap applies (e.g. the order is not live-armed) — None means the check is skipped entirely, so
+    # absent config == today's behavior exactly. The caller only sets the cap for live-armed orders, never for
+    # the SIM/forward-test lane.
+    venue_open_notional: Decimal = Decimal("0")
+    venue_max_notional: Decimal | None = None
 
 
 def validate_order(order: OrderIntent, venue: Venue, instrument: Instrument, risk: RiskSettings) -> RiskDecision:
@@ -110,6 +117,11 @@ def validate_order_full(
         issues.append("global_cap")
     if state.strategy_open_notional + order.notional > risk.per_strategy_cap:
         issues.append("per_strategy_cap_exceeded")
+    # Per-venue hard cap (Rules modal). Additive + gated on a configured cap: None → skipped (today's
+    # behavior). Inside the non-reduce_only block, so a close is never trapped behind it. A deterministic
+    # reject — the order can never push this venue's deployed notional past the operator's per-venue limit.
+    if state.venue_max_notional is not None and state.venue_open_notional + order.notional > state.venue_max_notional:
+        issues.append("venue_cap")
     if order.side == "buy" and (state.cash - order.notional) < risk.min_cash_reserve:
         issues.append("min_cash_reserve")
     if state.drawdown_pct >= risk.drawdown_killswitch_pct:

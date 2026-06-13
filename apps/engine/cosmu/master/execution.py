@@ -96,6 +96,10 @@ def execute_orders(
     outcomes: list[OrderOutcome] = []
     run_id = _run_id(store)
     daily = portfolio.daily_loss()
+    # Per-venue hard caps (Rules modal) apply ONLY when live is armed — so the SIM/forward-test lane (live off,
+    # the default) is NEVER constrained by a live $-cap (which would silently distort the forward-test). Read
+    # once per batch; enforced deterministically in the gauntlet via venue_max_notional.
+    venue_caps = _venue_caps(store) if live_enabled else {}
 
     for intent in intents:
         venue = catalog.venue(intent.venue_id)
@@ -137,6 +141,10 @@ def execute_orders(
             last_trade_was_loss=state_held.last_was_loss if state_held else False,
             avg_entry_price=state_held.avg_price if state_held and state_held.qty != 0 else None,
             existing_qty=state_held.qty if state_held else Decimal("0"),
+            # Per-venue cap context — only populated when live is armed (else None → check skipped, SIM lane
+            # unconstrained). venue_open_notional is what's already deployed on this order's venue.
+            venue_open_notional=_open_notional(portfolio, venue=intent.venue_id) if live_enabled else Decimal("0"),
+            venue_max_notional=venue_caps.get(intent.venue_id) if live_enabled else None,
         )
         decision = validate_order_full(order_intent, venue, instrument, risk, state)
         if not decision.accepted:
@@ -259,13 +267,27 @@ def _live_venue(adapter) -> str:
     return mode if mode in ("testnet", "live") else "sim"
 
 
-def _open_notional(portfolio: Portfolio, *, strategy_version_id: str | None = None) -> Decimal:
+def _open_notional(portfolio: Portfolio, *, strategy_version_id: str | None = None, venue: str | None = None) -> Decimal:
     total = Decimal("0")
     for p in portfolio.positions():
         if strategy_version_id is not None and p.strategy_version_id != strategy_version_id:
             continue
+        if venue is not None and p.venue != venue:
+            continue
         total += abs(p.qty) * p.avg_price
     return total
+
+
+def _venue_caps(store: Store) -> dict[str, Decimal]:
+    """The per-venue hard caps the Rules modal persists (live_caps rows scope='venue', ref_id=venue). Read once
+    per execution batch. Malformed rows are skipped (never crash the money path)."""
+    caps: dict[str, Decimal] = {}
+    for r in store.rows("SELECT ref_id, max_notional FROM live_caps WHERE scope = 'venue'"):
+        try:
+            caps[str(r["ref_id"])] = Decimal(str(r["max_notional"]))
+        except Exception:  # noqa: BLE001 — a malformed cap row must never break execution.
+            continue
+    return caps
 
 
 def _already_filled(store: Store, coid: str) -> bool:
