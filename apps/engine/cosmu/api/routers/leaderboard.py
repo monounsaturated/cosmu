@@ -102,7 +102,13 @@ def leaderboard() -> LeaderboardResponse:
     if not rows:
         return LeaderboardResponse(rows=[])
     out: list[LeaderboardRow] = []
+    seen_versions: set[str] = set()  # one row per Version: a Version with >1 backtest fans out the LEFT JOIN
     for row in rows:
+      # Dedup to a single row per Version — keep the FIRST (rows are ordered by deflated_sharpe DESC, so the
+      # strongest backtest wins). Without this a multi-backtest Version appears twice (and inflates the count).
+      if row["id"] in seen_versions:
+          continue
+      seen_versions.add(row["id"])
       # Defense-in-depth: one malformed row must NEVER 500 the whole floor leaderboard. A row that can't be
       # built is skipped (logged), so the rest of the floor still renders. (derive_facets is also bulletproof.)
       try:

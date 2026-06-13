@@ -1,18 +1,26 @@
 "use client";
 
-// module: Live trading surface. The gated, dimmed-until-armed money screen. A 2-CLICK
-// activation flow (Go live -> modal showing EXACTLY what will trade -> Confirm arms it),
-// a real positions table, defund controls, daily-loss vs cap, and the current mode.
+// module: Live trading surface (v18 dashboard). The gated, dimmed-until-armed money screen. The header
+// carries the global ARM state + a grey "Rules" button (opens the hard-limit Rules modal) + the Stop /
+// Defund-all control. Below: an interactive equity chart, a KPI row that FOLDS the guardrails (Daily
+// loss / Exposure / Max DD) as small arc-gauge boxes into the live-vs-sim money line, then [Open
+// positions | Recent trades] side by side. The 2-CLICK activation flow (Go live → modal → Confirm) and
+// the per-strategy Launch flow are preserved.
 //
-// SAFETY (real money): LIVE IS OFF BY DEFAULT. This component never decides whether an order
-// is real — the engine does, only when toggle ON + keys present + gate PASSED + caps available
-// + not kill-switched; otherwise it paper-simulates and defaults to testnet. We send confirm
-// only on the explicit second click. Offline -> a clearly-labelled paper demo, never armed.
+// SAFETY (real money): LIVE IS OFF BY DEFAULT. This component never decides whether an order is real —
+// the engine does, only when toggle ON + keys present + gate PASSED + caps available + not kill-switched.
+// We send confirm only on the explicit second click. Offline → an honest not-connected note, never armed.
 //
-// Types mirror the shared contract (see ./contracts) — locally typed until @cosmu/contracts-ts ships them.
+// HONESTY: the KPI row reads the engine's live-vs-sim SPLIT (getPortfolioSummary). When nothing is routed
+// live (`has_live` false) every live money figure is null and renders an explicit "—" — NEVER 0 and NEVER
+// the SIM number. The guardrails sit at 0% while disarmed (the honest safe state). Max DD has no live
+// metric yet, so it renders an honest "—" rather than a fabricated reading.
+//
+// Types mirror the shared contract (see ./contracts) + the live-portfolio adapters (@/app/data/portfolio).
 
-import { useState } from "react";
-import { AlertTriangle, Building2, Lock, Power, Rocket, ShieldCheck, Unlock, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { AlertTriangle, Building2, Lock, Power, Rocket, ShieldCheck, SlidersHorizontal, Unlock, X } from "lucide-react";
+import type { Point, PortfolioSummaryResponse, RulesResponse } from "@cosmu/contracts-ts";
 import {
   type ActivateResponse,
   type Caps,
@@ -23,15 +31,17 @@ import {
   type PositionsResponse
 } from "./contracts";
 import { LaunchLiveModal } from "./launch-live-modal";
+import { RulesModal } from "./rules-modal";
+import { GuardTile } from "./guard-tile";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MetricCard, GaugeBar } from "@/components/ui/viz";
 import { MoneyInput } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { MoneyState, moneyMode } from "@/components/ui/money-state";
+import { TvChart } from "@/components/charts/tv-chart";
 import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
-import { cn, formatSigned, formatUsd } from "@/lib/utils";
+import { cn, formatPct, formatSigned, formatUsd } from "@/lib/utils";
 
 const DEFAULT_CAPS: Caps = { per_strategy_cap: 250, global_cap: 1000, max_daily_loss: 100 };
 
@@ -44,17 +54,50 @@ function modeBadge(mode: LiveMode) {
   return map[mode];
 }
 
+// A money KPI tile: a label, a primary $ value (or "—" when honestly absent), and a sub-line. The
+// "—" path is the honesty contract — live figures are null until capital is actually routed live.
+function MoneyTile({
+  label,
+  value,
+  sub,
+  tone = "muted"
+}: {
+  label: string;
+  value: string;
+  sub?: ReactNode;
+  tone?: "muted" | "up" | "down";
+}) {
+  const valueTone = tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-foreground";
+  const subTone = tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-quiet";
+  return (
+    <div className="card-grad relative overflow-hidden rounded-lg border border-border/70 p-4 shadow-card">
+      <div className="label-eyebrow">{label}</div>
+      <div className={cn("mt-2 text-2xl font-semibold tabular", valueTone)}>{value}</div>
+      {sub ? <div className={cn("mt-1 text-[12px]", subTone)}>{sub}</div> : null}
+    </div>
+  );
+}
+
 export function LiveSurface({
   initial,
-  initialVenues
+  initialVenues,
+  initialSummary,
+  initialRules,
+  equityCurve
 }: {
   initial: PositionsResponse & { connected: boolean };
   initialVenues: LiveVenuesResponse & { connected: boolean };
+  initialSummary: PortfolioSummaryResponse & { connected: boolean };
+  initialRules: RulesResponse & { connected: boolean };
+  equityCurve: Point[];
 }) {
   const [state, setState] = useState<PositionsResponse>(initial);
   const [connected, setConnected] = useState(initial.connected);
   const [venues, setVenues] = useState<LiveVenuesResponse>(initialVenues);
+  const [summary, setSummary] = useState<PortfolioSummaryResponse>(initialSummary);
+  const [rules, setRules] = useState<RulesResponse>(initialRules);
   const [modalOpen, setModalOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [caps, setCaps] = useState<Caps>(initial.caps ?? DEFAULT_CAPS);
   const [eligible, setEligible] = useState<EligibleStrategy[]>([]);
   const [note, setNote] = useState<string | null>(null);
@@ -81,12 +124,24 @@ export function LiveSurface({
   // The single money-state label for every $ on this surface: LIVE only when armed on the live
   // venue, otherwise Paper. There is no demo money state — offline shows an honest not-connected note.
   const money = moneyMode({ live: isLive });
-  // LIVE-only money figures. The engine's /live/positions + /live/venues report SIM capital too (it has no
-  // live/sim split today — flagged as a backend gap), so the UI gates them: $0 deployed / $0 daily loss
-  // until truly armed-and-live. This is the fix for "$10,000 / $5,000 deployed" reading the SIM aggregate.
-  const liveDeployed = isLive ? venues.total_deployed_usd : 0;
-  const liveDailyLoss = isLive ? state.daily_loss : 0;
-  const dailyLossPct = isLive && state.caps.max_daily_loss > 0 ? Math.min(100, (state.daily_loss / state.caps.max_daily_loss) * 100) : 0;
+
+  // The live-vs-sim MONEY SPLIT (getPortfolioSummary). The honesty discriminator: when no position is
+  // routed live (`has_live` false), every live_* money field is null → the UI renders "—", never 0 and
+  // never the SIM number. `live_free` is BUDGET HEADROOM (global_cap − invested), NOT exchange cash.
+  const hasLive = summary.has_live;
+  const usd = (v: number | null | undefined) => (typeof v === "number" ? formatUsd(v) : "—");
+  const liveEquity = summary.live_equity;
+  const liveInvested = summary.live_invested;
+  const liveFree = summary.live_free;
+  const livePnl = summary.live_pnl_net;
+  const globalCap = rules.global_max_notional || summary.live_global_cap || state.caps.global_cap;
+
+  // Guardrails folded into the KPI line — REAL used/cap only. While disarmed they sit at 0 (the honest
+  // safe state). Exposure = live invested vs the global hard cap; Daily loss vs its cap. Max DD has no
+  // live metric source yet, so its tile renders an honest "—" rather than a fabricated reading.
+  const dailyLossUsed = hasLive ? state.daily_loss : 0;
+  const dailyLossCap = rules.max_daily_loss || state.caps.max_daily_loss;
+  const exposureUsed = hasLive && typeof liveInvested === "number" ? liveInvested : 0;
 
   async function refreshVenues() {
     if (!ENGINE_CONFIGURED) return;
@@ -95,6 +150,16 @@ export function LiveSurface({
       if (res.ok) setVenues((await res.json()) as LiveVenuesResponse);
     } catch {
       /* leave last-known venues; the connected badge already reflects engine reachability */
+    }
+  }
+
+  async function refreshSummary() {
+    if (!ENGINE_CONFIGURED) return;
+    try {
+      const res = await engineFetch("/portfolio/summary");
+      if (res.ok) setSummary((await res.json()) as PortfolioSummaryResponse);
+    } catch {
+      /* leave last-known split; the connected badge reflects engine reachability */
     }
   }
 
@@ -110,7 +175,7 @@ export function LiveSurface({
       setState(data);
       setCaps(data.caps);
       setConnected(true);
-      await refreshVenues();
+      await Promise.all([refreshVenues(), refreshSummary()]);
     } catch {
       setConnected(false);
     }
@@ -260,7 +325,7 @@ export function LiveSurface({
   return (
     // The page owns the max-width column + responsive padding; the surface only owns its own vertical rhythm.
     <div className="space-y-6 lg:space-y-7">
-      {/* Header: armed state + mode + the always-on "off by default" reassurance */}
+      {/* Header: armed state + mode + the Rules button (left of Stop) + the global ARM / Stop control. */}
       <section className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-iris-soft">live trading</div>
@@ -279,13 +344,17 @@ export function LiveSurface({
             <ShieldCheck className="size-3" /> mode · {mode.label}
           </Badge>
           {!connected ? <Badge variant="warn">engine not connected</Badge> : null}
+          {/* The grey Rules button sits LEFT of the Stop / Go-live control. */}
+          <Button variant="secondary" size="md" onClick={() => setRulesOpen(true)}>
+            <SlidersHorizontal className="size-4" /> Rules
+          </Button>
           {!armed ? (
             <Button variant="primary" size="md" onClick={openGoLive} disabled={goLivePending}>
               <Power className="size-4" /> Go live
             </Button>
           ) : (
             <Button variant="outline" size="md" onClick={() => defund("all")} disabled={defundAllPending}>
-              <X className="size-4" /> Defund all
+              <X className="size-4" /> Stop &amp; defund all
             </Button>
           )}
         </div>
@@ -298,134 +367,111 @@ export function LiveSurface({
         </div>
       ) : null}
 
-      {/* Caps + live-deployed as gauges. The "Deployed" tile is the headline honesty fix: it shows
-          LIVE-deployed capital, which is $0 until armed-and-live — never the SIM aggregate the engine
-          also tracks. Each gauge reads occupancy vs its cap/limit at a glance. */}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard
-          label="Live deployed"
-          tone="iris"
-          value={
-            <span className={liveDeployed > 0 ? "text-foreground" : "text-muted"}>
-              {formatUsd(liveDeployed)} <span className="text-[12px] font-normal text-quiet">/ {formatUsd(state.caps.global_cap)}</span>
-            </span>
-          }
-          hint={
-            <div className="space-y-1.5">
-              <GaugeBar value={liveDeployed} max={state.caps.global_cap} marker={1} tone="iris" />
-              <span className="text-quiet">{isLive ? "real capital at risk now" : "nothing live — disarmed"}</span>
-            </div>
+      {/* Interactive equity chart on top — the live equity curve with its own range selector + crosshair.
+          The TvChart renders its own honest empty state when there is no real track record. */}
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Live equity</CardTitle>
+            <CardDescription>
+              {hasLive
+                ? "Real capital at risk now — value and cumulative return at the crosshair."
+                : "Nothing routed live yet. The curve renders once the engine has a real live track record."}
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <TvChart
+            points={equityCurve}
+            mode={money}
+            valueKind="usd"
+            height={260}
+            emptyTitle="No live equity yet"
+            emptyHint="Live equity renders once capital is armed and the engine has a real track record. Nothing here is fabricated."
+          />
+        </CardContent>
+      </Card>
+
+      {/* KPI row that FOLDS the guardrails into the live-vs-sim money line. Money tiles render "—" for
+          every live figure until capital is actually routed live (the honesty contract). Guardrails sit
+          at 0 while disarmed; Max DD has no live metric source yet, so it renders an honest "—". */}
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+        <MoneyTile
+          label="Live equity"
+          value={usd(liveEquity)}
+          sub={hasLive ? "real capital" : "nothing live"}
+        />
+        <MoneyTile
+          label="Invested"
+          value={usd(liveInvested)}
+          sub={
+            typeof liveInvested === "number"
+              ? `${summary.positions_count_live} strateg${summary.positions_count_live === 1 ? "y" : "ies"}`
+              : "—"
           }
         />
-        <MetricCard label="Per-strategy cap" tone="iris" value={formatUsd(state.caps.per_strategy_cap)} hint="max into any one strategy" />
-        <MetricCard label="Max daily loss" tone="warn" value={formatUsd(state.caps.max_daily_loss)} hint="auto-disarm threshold" />
-        <MetricCard
-          label="Daily loss so far"
-          tone={dailyLossPct >= 100 ? "down" : "warn"}
-          value={<span className={liveDailyLoss > 0 ? "text-down" : "text-muted"}>{formatUsd(liveDailyLoss)}</span>}
-          hint={
-            <div className="space-y-1.5">
-              <GaugeBar value={liveDailyLoss} max={state.caps.max_daily_loss} marker={1} tone={dailyLossPct >= 100 ? "down" : "warn"} />
-              <span className="text-quiet">{isLive ? `${dailyLossPct.toFixed(0)}% of cap` : "no live loss while disarmed"}</span>
-            </div>
+        <MoneyTile
+          label="Free"
+          value={usd(liveFree)}
+          sub={
+            typeof liveFree === "number" && typeof liveInvested === "number" && globalCap > 0
+              ? `${Math.round((liveFree / globalCap) * 100)}% headroom`
+              : "budget headroom"
           }
         />
+        <MoneyTile
+          label="P&L"
+          value={typeof livePnl === "number" ? formatSigned(livePnl) : "—"}
+          tone={typeof livePnl === "number" ? (livePnl >= 0 ? "up" : "down") : "muted"}
+          sub={
+            typeof livePnl === "number" && typeof liveInvested === "number" && liveInvested > 0
+              ? formatPct((livePnl / liveInvested) * 100)
+              : "net of costs"
+          }
+        />
+        {/* Guardrails folded as small arc-gauge boxes. */}
+        <GuardTile label="Daily loss" used={dailyLossUsed} cap={dailyLossCap} unit="usd" />
+        <GuardTile label="Exposure" used={exposureUsed} cap={globalCap} unit="usd" />
       </section>
+
+      {/* A thin guardrails strip the KPI fold can't fully carry — the auto-halt note + the Max-DD honest
+          "—" (no live drawdown metric yet) so the operator sees the third guardrail without fabrication. */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-lg border border-border/60 bg-surface-2/30 px-3.5 py-2.5 text-[12px]">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-quiet">Guardrails · auto-halt if breached</span>
+        <span className="text-muted">
+          Max drawdown <span className="tabular text-quiet">— </span>
+          <span className="text-quiet">no live metric yet</span>
+        </span>
+        <span className="text-muted">
+          Daily loss{" "}
+          <span className="tabular text-foreground">
+            {usd(dailyLossUsed)} / {usd(dailyLossCap)}
+          </span>
+        </span>
+        <span className="text-muted">
+          Exposure{" "}
+          <span className="tabular text-foreground">
+            {usd(exposureUsed)} / {usd(globalCap)}
+          </span>
+        </span>
+        <button onClick={() => setRulesOpen(true)} className="ml-auto text-iris-soft hover:underline">
+          Edit rules
+        </button>
+      </div>
 
       <VenuesCard venues={venues} connected={connected} isLive={isLive} togglingVenue={togglingVenue} onToggle={toggleVenue} />
 
-      {/* Caps at a glance — two gauges that read the live-risk headroom: deployed vs the global cap, and
-          daily loss vs the auto-disarm limit. Both are $0 / 0% while disarmed (the honest safe state). */}
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Caps at a glance</CardTitle>
-            <CardDescription>
-              {isLive ? "The engine auto-disarms for the day when daily loss reaches the cap." : "Live-risk gauges sit at 0 while disarmed — nothing is deployed."}
-            </CardDescription>
-          </div>
-          <Badge variant={dailyLossPct >= 100 ? "down" : "muted"}>{dailyLossPct.toFixed(0)}% daily-loss cap</Badge>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <CapGauge
-            label="Deployed vs global cap"
-            value={liveDeployed}
-            max={state.caps.global_cap}
-            tone="iris"
-            valueLabel={`${formatUsd(liveDeployed)} / ${formatUsd(state.caps.global_cap)}`}
-          />
-          <CapGauge
-            label="Daily loss vs limit"
-            value={liveDailyLoss}
-            max={state.caps.max_daily_loss}
-            tone={dailyLossPct >= 100 ? "down" : "warn"}
-            valueLabel={`${formatUsd(liveDailyLoss)} / ${formatUsd(state.caps.max_daily_loss)}`}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Positions — SCOPED + LABELLED by money state. When NOT live, the engine still returns the SIM
-          tracks' open positions; we label them Paper so a paper position is never read as live capital. */}
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              Open positions
-              <Badge variant={isLive ? "up" : "info"}>{isLive ? "Live" : "Paper"}</Badge>
-            </CardTitle>
-            <CardDescription>
-              {isLive
-                ? "Real capital at risk now. Defund returns capital to the reserve."
-                : "Paper tracks — paper positions on live data, no real money. They do not count as live-deployed capital."}
-            </CardDescription>
-          </div>
-          <Badge variant="muted">{state.positions.length} open</Badge>
-        </CardHeader>
-        <CardContent>
-          {state.positions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-1.5 py-10 text-center">
-              <Lock className="size-5 text-quiet" />
-              <div className="text-[13px] text-muted">No open positions</div>
-              <div className="max-w-sm text-[11.5px] text-quiet">
-                {isLive
-                  ? "Armed, but nothing is filled yet. Positions appear here as the engine trades within its caps."
-                  : "Nothing is at risk live while disarmed. This is the honest empty state — no fabricated positions."}
-              </div>
-            </div>
-          ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH className="sticky-col">Symbol</TH>
-                  <TH>Venue</TH>
-                  <TH className="text-right">Qty</TH>
-                  <TH className="text-right">Avg price</TH>
-                  <TH className="text-right">Unrealized P&amp;L</TH>
-                  <TH className="text-right">Defund</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {state.positions.map((p) => (
-                  <TR key={p.instrument_id}>
-                    <TD className="sticky-col font-medium text-foreground">{p.symbol}</TD>
-                    <TD className="text-muted">{p.venue}</TD>
-                    <TD className="text-right tabular text-muted">{p.qty}</TD>
-                    <TD className="text-right tabular text-muted">{formatUsd(p.avg_price)}</TD>
-                    <TD className={cn("text-right tabular", p.unrealized_pnl >= 0 ? "text-up" : "text-down")}>
-                      {formatSigned(p.unrealized_pnl)}
-                    </TD>
-                    <TD className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => defund("strategy", p.instrument_id)} disabled={defundingPosition === p.instrument_id}>
-                        <X className="size-3.5" /> Close
-                      </Button>
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* [Open positions | Recent trades] side by side — each its own card with a "See all", aligned to
+          the top (items-start) so a tall positions list never stretches the trades card. */}
+      <section className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2 lg:gap-5">
+        <PositionsCard
+          state={state}
+          isLive={isLive}
+          defundingPosition={defundingPosition}
+          onDefund={(id) => defund("strategy", id)}
+        />
+        <RecentTradesCard connected={connected} />
+      </section>
 
       {modalOpen ? (
         <ActivationModal
@@ -438,6 +484,18 @@ export function LiveSurface({
           onConfirm={confirmActivate}
           onClose={() => setModalOpen(false)}
           onLaunchStrategy={(s) => setLaunchTarget({ versionId: s.version_id, name: s.name })}
+        />
+      ) : null}
+
+      {rulesOpen ? (
+        <RulesModal
+          rules={rules}
+          connected={connected}
+          onClose={() => setRulesOpen(false)}
+          onSaved={(next) => {
+            setRules(next);
+            void refreshSummary();
+          }}
         />
       ) : null}
 
@@ -456,29 +514,111 @@ export function LiveSurface({
   );
 }
 
-// A labelled cap gauge row: title + the real value/limit on the right, and a marker-tipped bar that fills
-// toward 100% of its cap. Pure presentation over real numbers — never a fabricated reading.
-function CapGauge({
-  label,
-  value,
-  max,
-  tone,
-  valueLabel
+// Open positions — SCOPED + LABELLED by money state. When NOT live, the engine still returns the SIM
+// tracks' open positions; we label them Paper so a paper position is never read as live capital. The
+// table scrolls horizontally on overflow (the Table primitive wraps in overflow-x-auto; cells nowrap).
+function PositionsCard({
+  state,
+  isLive,
+  defundingPosition,
+  onDefund
 }: {
-  label: string;
-  value: number;
-  max: number;
-  tone: "iris" | "warn" | "down";
-  valueLabel: string;
+  state: PositionsResponse;
+  isLive: boolean;
+  defundingPosition: string | null;
+  onDefund: (instrumentId: string) => void;
 }) {
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-[12px]">
-        <span className="text-muted">{label}</span>
-        <span className="tabular font-medium text-foreground">{valueLabel}</span>
-      </div>
-      <GaugeBar value={value} max={max} marker={1} tone={tone} height={8} />
-    </div>
+    <Card>
+      <CardHeader>
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            Open positions
+            <Badge variant={isLive ? "up" : "info"}>{isLive ? "Live" : "Paper"}</Badge>
+          </CardTitle>
+          <CardDescription>
+            {isLive
+              ? "Real capital at risk now. Close returns capital to the reserve."
+              : "Paper positions on live data — no real money. They do not count as live-deployed capital."}
+          </CardDescription>
+        </div>
+        <Badge variant="muted">{state.positions.length} open</Badge>
+      </CardHeader>
+      <CardContent>
+        {state.positions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-1.5 py-10 text-center">
+            <Lock className="size-5 text-quiet" />
+            <div className="text-[13px] text-muted">No open positions</div>
+            <div className="max-w-sm text-[11.5px] text-quiet">
+              {isLive
+                ? "Armed, but nothing is filled yet. Positions appear here as the engine trades within its caps."
+                : "Nothing is at risk live while disarmed. This is the honest empty state — no fabricated positions."}
+            </div>
+          </div>
+        ) : (
+          <Table>
+            <THead>
+              <TR>
+                <TH className="whitespace-nowrap">Symbol</TH>
+                <TH className="whitespace-nowrap">Venue</TH>
+                <TH className="whitespace-nowrap text-right">Qty</TH>
+                <TH className="whitespace-nowrap text-right">Avg price</TH>
+                <TH className="whitespace-nowrap text-right">Unrealized P&amp;L</TH>
+                <TH className="whitespace-nowrap text-right">Close</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {state.positions.map((p, i) => (
+                // Defensive unique key: the same instrument can be held on one venue by more than one
+                // strategy, so instrument_id alone can collide — index-suffix so no row is dropped.
+                <TR key={`${p.instrument_id}-${p.venue}-${i}`}>
+                  <TD className="whitespace-nowrap font-medium text-foreground">{p.symbol}</TD>
+                  <TD className="whitespace-nowrap text-muted">{p.venue}</TD>
+                  <TD className="whitespace-nowrap text-right tabular text-muted">{p.qty}</TD>
+                  <TD className="whitespace-nowrap text-right tabular text-muted">{formatUsd(p.avg_price)}</TD>
+                  <TD className={cn("whitespace-nowrap text-right tabular", p.unrealized_pnl >= 0 ? "text-up" : "text-down")}>
+                    {formatSigned(p.unrealized_pnl)}
+                  </TD>
+                  <TD className="whitespace-nowrap text-right">
+                    <Button variant="ghost" size="sm" onClick={() => onDefund(p.instrument_id)} disabled={defundingPosition === p.instrument_id}>
+                      <X className="size-3.5" /> Close
+                    </Button>
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Recent trades — the live fills feed. The engine exposes no live recent-trades endpoint yet, so this
+// renders an HONEST "no live trades yet" state rather than fabricating fills or reusing SIM trades.
+// (Wiring note: bind to GET /live/recent once the engine ships it; the See-all is a no-op until then.)
+function RecentTradesCard({ connected }: { connected: boolean }) {
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <CardTitle>Recent trades</CardTitle>
+          <CardDescription>Live fills as the engine executes within its caps.</CardDescription>
+        </div>
+        <span className="text-[11px] text-quiet">See all →</span>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col items-center justify-center gap-1.5 py-10 text-center">
+          <Lock className="size-5 text-quiet" />
+          <div className="text-[13px] text-muted">No live trades yet</div>
+          <div className="max-w-sm text-[11.5px] text-quiet">
+            {connected
+              ? "Live fills appear here once the engine executes a real order. Nothing here is fabricated — paper trades are not shown as live."
+              : "Engine not connected — recent live fills appear here once it is reachable."}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -663,4 +803,3 @@ function ActivationModal({
     </div>
   );
 }
-

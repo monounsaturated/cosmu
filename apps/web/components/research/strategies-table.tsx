@@ -1,31 +1,43 @@
 "use client";
 
-// module: the unified, faceted Strategies leaderboard (docs/PRODUCT.md Epic B; VISION §1.2, §5). Every
+// module: the unified, faceted Strategies SCREENER (v18, docs/PRODUCT.md Epic B; VISION §1.2, §5). Every
 // strategy-version runs on its own standalone $100k track and is ranked by RISK-ADJUSTED % (deflated OOS
-// Sharpe), with net % shown prominently. The PRIMARY filter is signal-family — {Social · News/Events ·
-// Math/Price · Macro/Positioning · On-chain/Flow} — DERIVED from the features the spec references (engine
-// taxonomy.py), never hand-tagged. Orthogonal facets refine it: asset class · venue · timeframe · status
-// (lifecycle) · origin · edge-type. Facets compose (AND across facets, OR within a facet) and read REAL
-// fields off the leaderboard row. The numeric columns are click-to-sort (the operator picks the lens —
-// risk-adjusted score, net %, OOS, PBO, trades-derived); the default is deflated Sharpe, the honest
-// house ranking. Nothing fabricated; the honest empty/offline states live on the page.
+// Sharpe / "DSR"), with net dollars and % shown alongside. The PRIMARY family filter — {Social · News/Events ·
+// Math/Price · Macro/Positioning · On-chain/Flow} — is DERIVED from the features the spec references (engine
+// taxonomy.py), never hand-tagged. Orthogonal facets refine it: asset class · venue · timeframe · status ·
+// origin · edge-type.
+//
+// The TABLE itself is a JS-rendered, sortable screener over a COLS config: a column-header click sorts
+// (cycling desc → asc → back to the default DSR ranking), and a column PICKER (checkbox menu with
+// Reset-to-default) toggles which lenses show. Venue · Fees · Origin are OFF by default. The whole row is
+// clickable and opens the per-Version strat sheet (/strategy/{id}); the table scrolls horizontally when wide.
+//
+// HONESTY CONTRACT (the binding rule): every cell renders ONLY a real field off the leaderboard row. A null
+// money field (value_usd / pnl_usd / pnl_pct) reads an explicit "—", NEVER 0. P&L is TWO columns — dollars
+// (e.g. +$419) and % (e.g. +21%), each sortable, each coloured up/down. OOS shows the out-of-sample backtest
+// return with its window (e.g. "+8.2% · 2.4y"). The leaderboard contract carries no max-drawdown or fee
+// field, so we do NOT fabricate one: "Fees" is an opt-in column that reads "—" until the engine carries it.
+// Nothing fabricated; the honest empty/offline states live on the page.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, ArrowUpDown, Filter, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Columns3, Filter, RotateCcw, X } from "lucide-react";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
 import { Badge } from "@/components/ui/badge";
 import { SearchInput } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { GaugeBar, SignedBar } from "@/components/ui/viz";
-import { cn, formatPct } from "@/lib/utils";
+import { GaugeBar } from "@/components/ui/viz";
+import { cn, formatPct, formatUsd } from "@/lib/utils";
 
 // Real maturity threshold (apps/engine PAPER_MIN_DAYS): a paper track is live-ready at 30 days.
 const PAPER_MIN_DAYS = 30;
 // Reference scalars for the relative gauges — a deflated Sharpe of ~2 is "strong"; clamp the bar there so
 // the visual reads occupancy toward a good score without ever implying a value beyond the real number shown.
 const SHARPE_REF = 2;
+// The Gate's deflated-Sharpe live-ready threshold (the green line on the DSR gauge) and PBO ceiling.
+const DSR_STRONG = 0.95;
+const PBO_CEILING = 0.5;
 
 // The five signal-families, in a fixed display order (matches the engine taxonomy).
 const FAMILIES: { id: string; label: string }[] = [
@@ -51,15 +63,18 @@ function lifeStatusOf(status: string | null | undefined): LifeStatus {
   if (s === "live") return "live";
   if (s === "paper" || s === "forward_test" || s === "forward") return "paper";
   if (s === "screening" || s === "screened" || s === "validating" || s === "optimizing") return "screened";
+  if (s === "queued" || s === "pending") return "lab";
   return "lab";
 }
-const STATUS_VARIANT: Record<LifeStatus, "warn" | "iris" | "up" | "info" | "down"> = {
+const STATUS_VARIANT: Record<LifeStatus, "warn" | "iris" | "up" | "info" | "down" | "muted"> = {
   lab: "warn",
-  screened: "iris",
-  paper: "up",
-  live: "info",
-  killed: "down"
+  screened: "info",
+  paper: "iris",
+  live: "down", // live = real capital at risk → the strongest signal colour (matches the v18 ribbon LIVE accent)
+  killed: "muted"
 };
+// Pipeline order for the default "Stage" sort (top-to-bottom by lifecycle maturity).
+const STAGE_RANK: Record<LifeStatus, number> = { live: 5, paper: 4, screened: 3, lab: 2, killed: 1 };
 
 // Orthogonal facets, each backed by a real field on the row. `valueOf` extracts the facet value.
 type FacetKey = "asset_class" | "venue" | "timeframe" | "status" | "origin" | "edge_type";
@@ -77,24 +92,101 @@ function facetDisplay(key: FacetKey, value: string): string {
   return value;
 }
 
-// Sortable numeric columns — each maps the operator's chosen lens onto a real row scalar. The default is
-// `score` (deflated Sharpe), the honest house ranking. `desc` is the natural reading for every column
-// here (biggest score / return / most trades first), so a fresh click on a column starts descending.
-type SortKey = "score" | "net" | "oos" | "pbo" | "paper";
-const SORT_VALUE: Record<SortKey, (r: LeaderboardRow) => number> = {
-  score: (r) => (Number.isFinite(r.deflated_sharpe) ? r.deflated_sharpe : -Infinity),
-  net: (r) => r.net_pct,
-  oos: (r) => r.track_return_pct,
-  pbo: (r) => (Number.isFinite(r.pbo) ? r.pbo : Infinity),
-  paper: (r) => r.paper_age_days
+// ─── COLS config — the screener's columns, each a lens onto a REAL row field ─────────────────────────
+// `key` is the stable id; `sort` (when present) makes the header click-to-sort and supplies the value
+// extractor + the natural reading direction. `defaultOn:false` columns start hidden (the v18 opt-ins).
+type SortDir = "asc" | "desc";
+type ColKey = "name" | "stage" | "life" | "days" | "value" | "pnl" | "pnlpct" | "dsr" | "pbo" | "oos" | "venue" | "fees" | "origin";
+
+type ColDef = {
+  key: ColKey;
+  label: string;
+  pickerLabel?: string; // label shown in the column-picker menu (defaults to `label`)
+  align?: "right";
+  defaultOn?: boolean; // default true
+  // When sortable, `value` returns a number|string|null (null sorts to the bottom regardless of direction),
+  // and `dir` is the natural first-click reading (biggest score / most recent first, lowest PBO first).
+  sort?: { dir: SortDir; value: (r: LeaderboardRow) => number | string | null };
+  tip?: string;
 };
 
+const COLS: ColDef[] = [
+  { key: "name", label: "Version", sort: { dir: "asc", value: (r) => r.name.toLowerCase() } },
+  { key: "stage", label: "Stage", sort: { dir: "desc", value: (r) => STAGE_RANK[lifeStatusOf(r.status)] } },
+  { key: "life", label: "Lifecycle" },
+  {
+    key: "days",
+    label: "Days",
+    align: "right",
+    sort: { dir: "desc", value: (r) => (Number.isFinite(r.paper_age_days) ? r.paper_age_days : null) },
+    tip: "Days on a live-data paper track since the Gate funded it. A backtest-only Version has no paper clock yet."
+  },
+  {
+    key: "value",
+    label: "Value",
+    align: "right",
+    sort: { dir: "desc", value: (r) => numOrNull(r.value_usd) },
+    tip: "Current mark of this Version's standalone track (its own $100k start, net of fees). Backtest-only Versions have no funded value yet."
+  },
+  {
+    key: "pnl",
+    label: "P&L",
+    align: "right",
+    sort: { dir: "desc", value: (r) => numOrNull(r.pnl_usd) },
+    tip: "Net profit/loss in dollars on this Version's standalone track, net of fees. Shown with its % alongside."
+  },
+  {
+    key: "pnlpct",
+    label: "P&L %",
+    align: "right",
+    sort: { dir: "desc", value: (r) => numOrNull(r.pnl_pct) },
+    tip: "Net-of-fee return on this Version's track, as a percent."
+  },
+  {
+    key: "dsr",
+    label: "DSR",
+    align: "right",
+    sort: { dir: "desc", value: (r) => (Number.isFinite(r.deflated_sharpe) ? r.deflated_sharpe : null) },
+    tip: "Deflated out-of-sample Sharpe — the risk-adjusted house ranking and the default sort. The gauge fills toward a strong (~2) score; the line marks the 0.95 live-ready bar."
+  },
+  {
+    key: "pbo",
+    label: "PBO",
+    align: "right",
+    sort: { dir: "asc", value: (r) => (Number.isFinite(r.pbo) ? r.pbo : null) },
+    tip: "Probability of backtest overfitting. Lower is better; the Gate blocks above 0.50 (shown in gold near the ceiling)."
+  },
+  {
+    key: "oos",
+    label: "OOS",
+    align: "right",
+    sort: { dir: "desc", value: (r) => (Number.isFinite(r.track_return_pct) ? r.track_return_pct : null) },
+    tip: "Out-of-sample backtest return (gross), with its window (e.g. 2.4y). HISTORICAL — this is NOT paper performance."
+  },
+  { key: "venue", label: "Venue", defaultOn: false, sort: { dir: "asc", value: (r) => r.venue } },
+  {
+    key: "fees",
+    label: "Fees",
+    pickerLabel: "Fees paid",
+    align: "right",
+    defaultOn: false,
+    tip: "Cumulative fees paid on this track. The leaderboard contract does not yet carry a per-Version fee total, so this reads an honest — until the engine surfaces it."
+  },
+  { key: "origin", label: "Origin", defaultOn: false, sort: { dir: "asc", value: (r) => r.origin } }
+];
+
+function numOrNull(v: number | null | undefined): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+const DEFAULT_VISIBLE: Record<ColKey, boolean> = COLS.reduce(
+  (acc, c) => ({ ...acc, [c.key]: c.defaultOn !== false }),
+  {} as Record<ColKey, boolean>
+);
+
 export function StrategiesTable({ rows, context = "leaderboard" }: { rows: LeaderboardRow[]; context?: "leaderboard" | "paper" }) {
+  void context; // the screener layout is identical on both surfaces; kept for call-site compatibility
   const router = useRouter();
-  // On the Paper surface we surface the FORWARD clock as its own column, so a day-0 track's
-  // BACKTEST number can never be misread as paper performance (the operator's flag). The leaderboard
-  // keeps its dense ranked view. Either way, the % columns are labelled "Backtest OOS" — never bare "Return".
-  const showPaper = context === "paper";
   const [query, setQuery] = useState("");
   const [family, setFamily] = useState<string | "all">("all");
   // Each orthogonal facet holds a set of selected values (empty = no constraint).
@@ -107,11 +199,25 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
     edge_type: new Set()
   }));
   const [showFilters, setShowFilters] = useState(false);
+  // Column visibility (the picker) — starts at the v18 default view; Reset restores it.
+  const [visible, setVisible] = useState<Record<ColKey, boolean>>(() => ({ ...DEFAULT_VISIBLE }));
+  const [showCols, setShowCols] = useState(false);
   // Sort state — default to the house ranking (deflated Sharpe, descending). Clicking a sortable header
-  // selects it descending; clicking the active one flips to ascending; a third click restores the default.
-  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "score", dir: "desc" });
+  // selects it in its natural direction; clicking the active one flips; a third click restores the default.
+  const [sort, setSort] = useState<{ key: ColKey; dir: SortDir }>({ key: "dsr", dir: "desc" });
 
-  // Per-family counts (over the search-filtered rows) for the primary chip row.
+  // Close the column picker on an outside click (the v18 menu behaviour).
+  const colWrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showCols) return;
+    function onDoc(e: MouseEvent) {
+      if (colWrapRef.current && !colWrapRef.current.contains(e.target as Node)) setShowCols(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [showCols]);
+
+  // Search scope (name / feature / edge) — drives the per-family chip counts.
   const searched = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
@@ -149,7 +255,7 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
   }, [searched, family]);
 
   // Final filtered + sorted rows: family (single) AND each facet (OR within). Sorted by the operator's
-  // chosen column; ties (and the default) fall back to deflated Sharpe so the order is always stable.
+  // chosen column; nulls sink to the bottom; ties (and the default) fall back to DSR so order is stable.
   const filtered = useMemo(() => {
     const result = searched.filter((r) => {
       if (family !== "all" && r.signal_family !== family) return false;
@@ -159,20 +265,34 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
       }
       return true;
     });
-    const value = SORT_VALUE[sort.key];
+    const col = COLS.find((c) => c.key === sort.key);
+    const getter = col?.sort?.value;
     const sign = sort.dir === "asc" ? 1 : -1;
-    return result.sort((a, b) => {
-      const d = value(a) - value(b);
-      if (d !== 0) return sign * d;
-      return b.deflated_sharpe - a.deflated_sharpe;
+    return result.slice().sort((a, b) => {
+      if (getter) {
+        const va = getter(a);
+        const vb = getter(b);
+        // Nulls always sink, regardless of direction (an honest "no value yet" never tops the table).
+        const an = va === null || va === undefined;
+        const bn = vb === null || vb === undefined;
+        if (an && bn) return tieByDsr(a, b);
+        if (an) return 1;
+        if (bn) return -1;
+        if (typeof va === "string" || typeof vb === "string") {
+          const d = String(va).localeCompare(String(vb));
+          if (d !== 0) return sign * d;
+          return tieByDsr(a, b);
+        }
+        const d = (va as number) - (vb as number);
+        if (d !== 0) return sign * d;
+      }
+      return tieByDsr(a, b);
     });
   }, [searched, family, selected, sort]);
 
-  // Reference magnitude for the net-% signed bars: the largest |net%| in the filtered cohort, so each bar's
-  // length is meaningful RELATIVE to its peers (the digits remain the source of truth).
-  const netRef = useMemo(() => Math.max(1, ...filtered.map((r) => Math.abs(r.net_pct))), [filtered]);
-
+  // Reference magnitude for the P&L signed-tone read — kept implicit; the digits are the source of truth.
   const activeFacetCount = (Object.keys(selected) as FacetKey[]).reduce((n, k) => n + selected[k].size, 0);
+  const visibleCols = COLS.filter((c) => visible[c.key]);
 
   function toggleFacet(key: FacetKey, value: string) {
     setSelected((prev) => {
@@ -183,13 +303,24 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
     });
   }
 
-  // Cycle a sortable header: inactive → desc → asc → back to the default (score, desc).
-  function toggleSort(key: SortKey) {
+  // Cycle a sortable header: inactive → its natural dir → flip → back to the default (DSR, desc).
+  function toggleSort(col: ColDef) {
+    if (!col.sort) return;
     setSort((prev) => {
-      if (prev.key !== key) return { key, dir: "desc" };
-      if (prev.dir === "desc") return { key, dir: "asc" };
-      return { key: "score", dir: "desc" };
+      if (prev.key !== col.key) return { key: col.key, dir: col.sort!.dir };
+      const flipped: SortDir = prev.dir === "asc" ? "desc" : "asc";
+      // Third click (back to natural dir) restores the house default.
+      if (flipped === col.sort!.dir) return { key: "dsr", dir: "desc" };
+      return { key: col.key, dir: flipped };
     });
+  }
+
+  function toggleCol(key: ColKey) {
+    setVisible((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function resetCols() {
+    setVisible({ ...DEFAULT_VISIBLE });
   }
 
   function clearAll() {
@@ -206,7 +337,7 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
 
   return (
     <div className="space-y-4">
-      {/* Search + filter toggle */}
+      {/* Toolbar: search · facets toggle · column picker · ranking note */}
       <div className="flex flex-wrap items-center gap-2">
         <SearchInput
           value={query}
@@ -227,8 +358,72 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
           <Filter className="size-3.5" /> Facets
           {activeFacetCount > 0 ? <span className="tabular text-iris-soft">{activeFacetCount}</span> : null}
         </button>
+
+        {/* Column picker — checkbox menu with Reset-to-default (v18). */}
+        <div ref={colWrapRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setShowCols((v) => !v)}
+            aria-expanded={showCols}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12px] font-medium transition-colors",
+              showCols
+                ? "border-iris/50 bg-iris/10 text-foreground"
+                : "border-border/70 bg-surface-2/30 text-muted hover:border-border hover:text-foreground"
+            )}
+          >
+            <Columns3 className="size-3.5" /> Columns
+          </button>
+          {showCols ? (
+            <div className="absolute right-0 z-30 mt-1.5 w-56 rounded-lg border border-border/70 bg-surface-2 p-1.5 shadow-card">
+              <div className="flex items-center justify-between px-2 py-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-quiet">
+                Show columns <span className="font-medium normal-case tracking-normal text-quiet/80">click a row</span>
+              </div>
+              <div className="max-h-72 overflow-y-auto">
+                {COLS.map((c) => {
+                  // The Version name is the row's identity — always present, never togglable.
+                  if (c.key === "name") return null;
+                  const on = visible[c.key];
+                  return (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => toggleCol(c.key)}
+                      className={cn(
+                        "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12.5px] transition-colors",
+                        on ? "bg-iris/10 text-foreground" : "text-muted hover:bg-surface-3 hover:text-foreground"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "grid size-3.5 shrink-0 place-items-center rounded border transition-colors",
+                          on ? "border-iris bg-iris text-iris-ink" : "border-border-strong"
+                        )}
+                        aria-hidden
+                      >
+                        {on ? <CheckMark /> : null}
+                      </span>
+                      <span className="flex-1">{c.pickerLabel ?? c.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="my-1.5 h-px bg-hairline" />
+              <button
+                type="button"
+                onClick={resetCols}
+                className="inline-flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] font-medium text-iris-soft transition-colors hover:bg-surface-3"
+              >
+                <RotateCcw className="size-3" /> Reset to default view
+              </button>
+            </div>
+          ) : null}
+        </div>
+
         <span className="ml-auto inline-flex items-center gap-1 text-[11.5px] text-quiet">
-          ranked by deflated OOS Sharpe <Tooltip content="The single risk-adjusted ranking scalar (VISION §5). Net % is shown prominently; we rank robustly and show the %." /> · {filtered.length} of {rows.length}
+          ranked by deflated OOS Sharpe
+          <Tooltip content="The single risk-adjusted ranking scalar (VISION §5) — the default sort. Net dollars and % are shown alongside; we rank robustly and show the figures." />
+          · {filtered.length} of {rows.length}
         </span>
       </div>
 
@@ -279,91 +474,38 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
         </div>
       ) : null}
 
-      {/* Ranked table */}
+      {/* Ranked screener — horizontal scroll on overflow (Table wraps in overflow-x-auto). */}
       {filtered.length === 0 ? (
         <div className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-[12px] text-quiet">
           No versions match these filters.
         </div>
       ) : (
-        <Table>
+        <Table className="min-w-[760px]">
           <THead>
             <TR>
-              <TH className="sticky-col">Version</TH>
-              <TH>Family · edge</TH>
-              <TH>Status</TH>
-              <TH>Class · venue · tf</TH>
-              {showPaper ? (
-                <SortableTH
-                  label="Paper"
-                  sortKey="paper"
-                  sort={sort}
-                  onToggle={toggleSort}
-                  tip="Live-data paper test SINCE the Gate funded this track (net of fees). This is the only number that proves the edge holds out-of-sample in real time. A just-funded track reads day 0 / — until it accrues paper history."
-                />
-              ) : null}
-              <SortableTH
-                label="Backtest OOS"
-                sortKey="oos"
-                sort={sort}
-                onToggle={toggleSort}
-                tip="Out-of-sample backtest return (gross). This is HISTORICAL — it is NOT paper performance. A day-0 paper track still shows its backtest number here."
-              />
-              <SortableTH label="Net" sortKey="net" sort={sort} onToggle={toggleSort} tip="Net-of-fee return on this Version's standalone track. The signed bar reads sign + size relative to the cohort; the digits are the source of truth." />
-              <SortableTH label="Score" sortKey="score" sort={sort} onToggle={toggleSort} tip="Deflated out-of-sample Sharpe — the risk-adjusted house ranking. The gauge fills toward a strong (~2) score." />
-              <SortableTH label="PBO" sortKey="pbo" sort={sort} onToggle={toggleSort} tip="Probability of backtest overfitting. Lower is better; the Gate blocks above 0.50." />
+              {visibleCols.map((c) => (
+                <HeaderCell key={c.key} col={c} sort={sort} onToggle={toggleSort} />
+              ))}
             </TR>
           </THead>
           <TBody>
-            {filtered.map((row) => {
+            {filtered.map((row, i) => {
               const status = lifeStatusOf(row.status);
+              const dimmed = status === "killed" || status === "lab" || status === "screened";
               return (
                 <TR
-                  key={row.version_id}
-                  className="cursor-pointer transition-colors hover:bg-surface-2/50"
+                  // Defensive unique key: the leaderboard can carry the same version_id twice (a Version with
+                  // >1 backtest fans out the JOIN); index-suffix so React never collides/omits a row. The
+                  // engine-side dedup is the root fix.
+                  key={`${row.version_id}-${i}`}
+                  className={cn("cursor-pointer transition-colors hover:bg-surface-2/50", dimmed && "opacity-65")}
                   onClick={() => router.push(`/strategy/${row.version_id}`)}
                 >
-                  <TD className="sticky-col">
-                    <div className="font-medium text-foreground">{row.name}</div>
-                    <div className="truncate text-[11px] text-quiet">
-                      {row.features.length > 0 ? row.features.slice(0, 3).join(" · ") : row.lineage}
-                      {row.features.length > 3 ? ` +${row.features.length - 3}` : ""}
-                    </div>
-                  </TD>
-                  <TD>
-                    <div className="flex flex-wrap items-center gap-1">
-                      <Badge variant="iris">{row.signal_family_label}</Badge>
-                      <span className="text-[11px] text-quiet">{row.edge_type}</span>
-                    </div>
-                  </TD>
-                  <TD>
-                    <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABELS[status]}</Badge>
-                  </TD>
-                  <TD className="text-[11.5px] text-muted">
-                    {row.asset_class} · {row.venue} · {row.timeframe}
-                  </TD>
-                  {showPaper ? <PaperCell row={row} /> : null}
-                  <TD className={cn("text-right tabular", row.track_return_pct >= 0 ? "text-up" : "text-down")}>
-                    {formatPct(row.track_return_pct)}
-                  </TD>
-                  {/* Net % — the figure stays the source of truth; the signed bar makes sign + relative size glanceable. */}
-                  <TD className="text-right">
-                    <div className={cn("tabular", row.net_pct >= 0 ? "text-up" : "text-down")}>{formatPct(row.net_pct)}</div>
-                    <SignedBar value={row.net_pct} max={netRef} className="mt-1 ml-auto w-16" />
-                  </TD>
-                  {/* Score (deflated Sharpe) + an occupancy gauge toward a strong (~2) score. */}
-                  <TD className="text-right">
-                    <div className="tabular text-foreground">{Number.isFinite(row.deflated_sharpe) ? row.deflated_sharpe.toFixed(2) : "—"}</div>
-                    {Number.isFinite(row.deflated_sharpe) ? (
-                      <GaugeBar
-                        value={Math.max(0, row.deflated_sharpe)}
-                        max={SHARPE_REF}
-                        tone={row.deflated_sharpe > 0 ? "iris" : "down"}
-                        className="mt-1 ml-auto w-16"
-                        height={4}
-                      />
-                    ) : null}
-                  </TD>
-                  <TD className="text-right tabular text-muted">{Number.isFinite(row.pbo) ? row.pbo.toFixed(2) : "—"}</TD>
+                  {visibleCols.map((c) => (
+                    <TD key={c.key} className={cn(c.align === "right" && "text-right", "whitespace-nowrap")}>
+                      <Cell col={c.key} row={row} status={status} />
+                    </TD>
+                  ))}
                 </TR>
               );
             })}
@@ -374,35 +516,29 @@ export function StrategiesTable({ rows, context = "leaderboard" }: { rows: Leade
   );
 }
 
-// A right-aligned, click-to-sort numeric header. Shows a neutral two-way arrow when inactive and a
-// directional arrow (in brand iris) when this column is the active sort — the Linear/Stripe table feel.
-function SortableTH({
-  label,
-  sortKey,
+// Stable tie-break: a higher deflated Sharpe ranks first (the house default), with nulls last.
+function tieByDsr(a: LeaderboardRow, b: LeaderboardRow): number {
+  const da = Number.isFinite(a.deflated_sharpe) ? a.deflated_sharpe : -Infinity;
+  const db = Number.isFinite(b.deflated_sharpe) ? b.deflated_sharpe : -Infinity;
+  return db - da;
+}
+
+// A click-to-sort table header. Neutral two-way arrow when inactive; a directional iris arrow when active.
+function HeaderCell({
+  col,
   sort,
-  onToggle,
-  tip
+  onToggle
 }: {
-  label: string;
-  sortKey: SortKey;
-  sort: { key: SortKey; dir: "asc" | "desc" };
-  onToggle: (key: SortKey) => void;
-  tip: string;
+  col: ColDef;
+  sort: { key: ColKey; dir: SortDir };
+  onToggle: (col: ColDef) => void;
 }) {
-  const active = sort.key === sortKey;
-  return (
-    <TH className="text-right">
-      <button
-        type="button"
-        onClick={() => onToggle(sortKey)}
-        className={cn(
-          "ml-auto inline-flex items-center gap-1 transition-colors hover:text-foreground",
-          active ? "text-foreground" : ""
-        )}
-        aria-label={`Sort by ${label}`}
-      >
-        {label}
-        {active ? (
+  const active = sort.key === col.key;
+  const inner = (
+    <span className={cn("inline-flex items-center gap-1", col.align === "right" && "ml-auto")}>
+      {col.label}
+      {col.sort ? (
+        active ? (
           sort.dir === "asc" ? (
             <ArrowUp className="size-3 text-iris-soft" />
           ) : (
@@ -410,50 +546,181 @@ function SortableTH({
           )
         ) : (
           <ArrowUpDown className="size-3 opacity-40" />
-        )}
-      </button>
-      <Tooltip content={tip} />
+        )
+      ) : null}
+      {col.tip ? <Tooltip content={col.tip} /> : null}
+    </span>
+  );
+  return (
+    <TH className={cn(col.align === "right" && "text-right")}>
+      {col.sort ? (
+        <button
+          type="button"
+          onClick={() => onToggle(col)}
+          aria-label={`Sort by ${col.label}`}
+          className={cn(
+            "inline-flex items-center gap-1 transition-colors hover:text-foreground",
+            col.align === "right" && "ml-auto",
+            active && "text-foreground"
+          )}
+        >
+          {inner}
+        </button>
+      ) : (
+        inner
+      )}
     </TH>
   );
 }
 
-// The Paper cell on the Paper surface. HONEST by construction: the leaderboard contract carries the
-// paper CLOCK (paper_age_days / live_ready) AND the REAL marked paper return (paper_return_pct —
-// net of fees, since funding). We show the live paper % over the day clock; we NEVER borrow the backtest %
-// to stand in for paper performance. A just-funded / un-marked track has `paper_return_pct == null`, so it
-// reads "day 0 · 0%" (the honest day-0 truth) — never the rosy backtest. A flat/negative marked track shows
-// its TRUE (0 / negative) number.
-function PaperCell({ row }: { row: LeaderboardRow }) {
-  const days = Number.isFinite(row.paper_age_days) ? row.paper_age_days : 0;
-  const whole = Math.floor(days);
-  // null/undefined = NO marked trajectory yet (day-0 / never marked). Show an honest 0%, NOT the backtest.
-  const marked = typeof row.paper_return_pct === "number" && Number.isFinite(row.paper_return_pct);
-  const fwd = marked ? (row.paper_return_pct as number) : 0;
-  if (days < 1) {
-    // Just funded: day 0, no paper history. The % is the honest 0 — never the backtest number.
-    return (
-      <TD className="text-right">
-        <div className="tabular text-quiet">day 0 · {formatPct(fwd)}</div>
-        <div className="text-[10.5px] uppercase tracking-wide text-quiet">no paper yet</div>
-        <GaugeBar value={0} max={PAPER_MIN_DAYS} tone="muted" className="mt-1 ml-auto w-20" height={4} />
-      </TD>
-    );
+// A single screener cell — renders ONLY the real field for `col`, with the honest "—" for null money.
+function Cell({ col, row, status }: { col: ColKey; row: LeaderboardRow; status: LifeStatus }) {
+  switch (col) {
+    case "name":
+      return (
+        <div>
+          <div className="font-medium text-foreground">{row.name}</div>
+          <div className="truncate text-[11px] text-quiet">
+            {row.features.length > 0 ? row.features.slice(0, 3).join(" · ") : row.lineage}
+            {row.features.length > 3 ? ` +${row.features.length - 3}` : ""}
+          </div>
+        </div>
+      );
+    case "stage":
+      return <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABELS[status]}</Badge>;
+    case "life":
+      return <LifecycleGlyph status={status} />;
+    case "days": {
+      const days = Number.isFinite(row.paper_age_days) ? Math.floor(row.paper_age_days) : 0;
+      if (days <= 0) return <Dash />;
+      return (
+        <div className="ml-auto w-fit">
+          <span className={cn("tabular", row.live_ready ? "text-up" : "text-foreground")}>{days}d</span>
+          <GaugeBar
+            value={Math.min(days, PAPER_MIN_DAYS)}
+            max={PAPER_MIN_DAYS}
+            tone={row.live_ready ? "up" : "iris"}
+            className="mt-1 w-14"
+            height={3}
+          />
+        </div>
+      );
+    }
+    case "value": {
+      const v = numOrNull(row.value_usd);
+      return v === null ? <Dash /> : <span className="tabular text-foreground">{formatUsd(v)}</span>;
+    }
+    case "pnl": {
+      const v = numOrNull(row.pnl_usd);
+      if (v === null) return <Dash />;
+      return <span className={cn("tabular font-medium", v > 0 ? "text-up" : v < 0 ? "text-down" : "text-muted")}>{signedUsd(v)}</span>;
+    }
+    case "pnlpct": {
+      const v = numOrNull(row.pnl_pct);
+      if (v === null) return <Dash />;
+      return <span className={cn("tabular", v > 0 ? "text-up" : v < 0 ? "text-down" : "text-muted")}>{formatPct(v, 0)}</span>;
+    }
+    case "dsr": {
+      const dsr = Number.isFinite(row.deflated_sharpe) ? row.deflated_sharpe : null;
+      if (dsr === null) return <Dash />;
+      return (
+        <div className="ml-auto w-fit">
+          <span className="tabular text-foreground">{dsr.toFixed(2)}</span>
+          <GaugeBar
+            value={Math.max(0, dsr)}
+            max={SHARPE_REF}
+            marker={DSR_STRONG / SHARPE_REF}
+            tone={dsr >= DSR_STRONG ? "up" : dsr > 0 ? "iris" : "down"}
+            className="mt-1 w-14"
+            height={4}
+          />
+        </div>
+      );
+    }
+    case "pbo": {
+      const pbo = Number.isFinite(row.pbo) ? row.pbo : null;
+      if (pbo === null) return <Dash />;
+      return <span className={cn("tabular", pbo > PBO_CEILING - 0.05 ? "text-gold" : "text-muted")}>{pbo.toFixed(2)}</span>;
+    }
+    case "oos": {
+      const oos = Number.isFinite(row.track_return_pct) ? row.track_return_pct : null;
+      if (oos === null) return <Dash />;
+      const win = formatWindow(row.oos_window_days);
+      return (
+        <div className="ml-auto w-fit leading-tight">
+          <span className={cn("tabular", oos >= 0 ? "text-up" : "text-down")}>{formatPct(oos, 1)}</span>
+          {win ? <div className="text-[10px] tabular text-quiet">{win}</div> : null}
+        </div>
+      );
+    }
+    case "venue":
+      return <span className="text-[11.5px] text-muted">{row.venue || "—"}</span>;
+    case "fees":
+      // No per-Version fee total on the leaderboard contract — render an honest "—", never a fabricated cost.
+      return <Dash />;
+    case "origin":
+      return <span className="text-[11px] capitalize text-muted">{row.origin || "—"}</span>;
+    default:
+      return null;
   }
+}
+
+function Dash() {
+  return <span className="text-quiet">—</span>;
+}
+
+// "+$419" / "-$81" — always a $ on dollar P&L, signed.
+function signedUsd(v: number): string {
+  const sign = v > 0 ? "+" : v < 0 ? "-" : "";
+  return `${sign}${formatUsd(Math.abs(v))}`;
+}
+
+// Compact OOS window from days: "2.4y" / "18mo" / "9mo". null/absent → "" (the OOS % shows without a window).
+function formatWindow(days: number | null | undefined): string {
+  if (typeof days !== "number" || !Number.isFinite(days) || days <= 0) return "";
+  if (days >= 365) return `${(days / 365).toFixed(1)}y`;
+  const months = Math.round(days / 30);
+  if (months >= 1) return `${months}mo`;
+  return `${Math.round(days)}d`;
+}
+
+// A tiny 3-node lifecycle glyph (Backtest → Paper → Live) — the v18 "Lifecycle" cell, reading the row's
+// real stage. Filled nodes = stages reached; the current stage glows; killed shows a red final node.
+function LifecycleGlyph({ status }: { status: LifeStatus }) {
+  // node states: "done" | "cur" | "off" | "dead"
+  let nodes: ("done" | "cur" | "off" | "dead")[];
+  if (status === "live") nodes = ["done", "done", "cur"];
+  else if (status === "paper") nodes = ["done", "cur", "off"];
+  else if (status === "screened") nodes = ["cur", "off", "off"];
+  else if (status === "killed") nodes = ["done", "dead", "off"];
+  else nodes = ["off", "off", "off"]; // lab / queued
+  const dotClass = (n: "done" | "cur" | "off" | "dead") =>
+    n === "done"
+      ? "bg-iris border-iris"
+      : n === "cur"
+      ? "bg-iris border-iris ring-2 ring-iris/25"
+      : n === "dead"
+      ? "bg-down border-down"
+      : "bg-surface-3 border-border";
   return (
-    <TD className="text-right">
-      <div className={cn("tabular", marked ? (fwd >= 0 ? "text-up" : "text-down") : "text-quiet")}>{formatPct(fwd)}</div>
-      <div className={cn("text-[10.5px] uppercase tracking-wide", row.live_ready ? "text-up" : "text-quiet")}>
-        {whole}d · {row.live_ready ? "matured" : "maturing"}
-      </div>
-      {/* Paper-age progress toward the 30-day live-ready threshold — the bar reads maturity at a glance. */}
-      <GaugeBar
-        value={Math.min(whole, PAPER_MIN_DAYS)}
-        max={PAPER_MIN_DAYS}
-        tone={row.live_ready ? "up" : "iris"}
-        className="mt-1 ml-auto w-20"
-        height={4}
-      />
-    </TD>
+    <span className="inline-flex items-center gap-1" aria-label={`lifecycle ${status}`}>
+      {nodes.map((n, i) => (
+        <span key={i} className="inline-flex items-center gap-1">
+          <span className={cn("size-1.5 rounded-full border", dotClass(n))} aria-hidden />
+          {i < nodes.length - 1 ? (
+            <span className={cn("h-px w-2", nodes[i] === "done" ? "bg-iris" : "bg-border")} aria-hidden />
+          ) : null}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function CheckMark() {
+  return (
+    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M2.5 6.5 L5 9 L9.5 3.5" />
+    </svg>
   );
 }
 

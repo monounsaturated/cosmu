@@ -1,16 +1,24 @@
 // Costs — the one question: is the machine's alpha worth more than what it costs to run?
 //
-// Structure (one verdict, then supporting context, progressive disclosure):
+// v18 shape (expense-tracker): the SAME interactive equity-style chart that fronts the dashboards
+// (TvChart) sits on top, fed a CUMULATIVE-SPEND series. The CostsResponse contract carries no dated
+// spend ledger today, so the hero renders TvChart's HONEST empty state (never a fabricated curve) and
+// the verdict band + category / vendor / supplier / ROI / LLM sections carry the real figures beneath.
+//
+// Structure (chart on top, then verdict, then supporting context — progressive disclosure):
+//   0. Cumulative-spend chart — TvChart hero (honest empty until the engine reports a dated spend series).
 //   1. Verdict band — opex-vs-equity ratio as a trust read-out + total monthly opex + LLM spend.
 //   2. Where the money goes — proportional category breakdown.
 //   3. Vendor actuals — real actual-vs-budget per vendor (when the engine reports it).
 //   4. Supplier spend — top suppliers (live vs estimated), full sortable ledger one click away.
-//   5. LLM calls — compact summary, full ledger one click away.
+//   5. Per-strategy ROI — opex vs net P&L at the strategy grain.
+//   6. LLM calls — compact summary, full ledger one click away.
 //
 // HONESTY: NotConnected when the engine is unreachable (supplier billing still renders — it doesn't
 // need the engine). Live supplier figures are marked "live"; estimates are marked "est." — nothing is
 // fabricated. Empty / zero states say so plainly.
 
+import type { Point } from "@cosmu/contracts-ts";
 import { Bot } from "lucide-react";
 import { engineConfigured, getCosts } from "../data";
 import { getSupplierCosts } from "../data/supplier-costs";
@@ -20,6 +28,7 @@ import { SectionHeader } from "@/components/ui/section";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
 import { DataPreview } from "@/components/ui/data-preview";
 import { GaugeBar } from "@/components/ui/viz";
+import { TvChart } from "@/components/charts/tv-chart";
 import {
   CostSection,
   CategoryBreakdown,
@@ -31,12 +40,22 @@ import {
 } from "@/components/costs/cost-sections";
 import { cn, formatUsd } from "@/lib/utils";
 
+// The CostsResponse contract exposes no dated cumulative-spend series yet (only `total_usd`, a category
+// split, vendor actuals, infra lines and an LLM summary — all point-in-time). When the engine starts
+// reporting a dated spend ledger, surface it here as a Point[] and the hero chart lights up; until then
+// the hero falls through to TvChart's honest empty. Never derive a curve from a single total — that
+// would fabricate a trend.
+function spendSeries(): Point[] {
+  return [];
+}
+
 export default async function CostsPage() {
   const [supplierResult, engineResult] = await Promise.all([getSupplierCosts(), getCosts()]);
   const { costs, connected } = engineResult;
   const { rows: supplierRows, total_usd: supplierTotal, computed_at } = supplierResult;
 
   const liveCount = supplierRows.filter((r) => r.source === "live").length;
+  const spend = spendSeries();
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-7 px-4 py-6 sm:px-5 sm:py-7 lg:px-7">
@@ -49,6 +68,10 @@ export default async function CostsPage() {
           ) : null
         }
       />
+
+      {/* 0 · Cumulative-spend chart — the same interactive equity-style chart that fronts the dashboards,
+          fed a cumulative-spend series. No dated series in the contract yet → TvChart's honest empty. */}
+      <SpendChartHero points={spend} totalToDate={connected ? costs.total_usd : null} />
 
       {/* 1 · Verdict band — always rendered (supplier opex needs no engine). The opex-vs-equity ratio is
           the trust read-out; it only resolves when the engine reports equity, else an honest "—". */}
@@ -128,6 +151,38 @@ export default async function CostsPage() {
         </>
       )}
     </div>
+  );
+}
+
+// ─── Cumulative-spend chart hero ──────────────────────────────────────────────────
+// The expense-tracker analogue of the dashboard equity hero: the SAME interactive TvChart (1M/3M/6M/All
+// range selector, crosshair scrub, theme-reactive). Cumulative spend RISES, so it reads in the "live"
+// money frame but is just a $ ledger — no P&L claim. With no dated series in the contract yet, TvChart
+// shows its built-in honest empty (never a fabricated line); `totalToDate` is the one real figure we can
+// state — the spend booked so far — so we surface it in the legend strip without inventing a curve.
+function SpendChartHero({ points, totalToDate }: { points: Point[]; totalToDate: number | null }) {
+  return (
+    <Card>
+      <CardContent className="pt-5">
+        <div className="mb-3 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-quiet">Cumulative spend</span>
+          {totalToDate !== null ? (
+            <span className="tabular text-[15px] font-semibold leading-none text-foreground">
+              {formatUsd(totalToDate)}
+            </span>
+          ) : null}
+          <span className="text-[11px] text-quiet">booked to date · every fee, fill &amp; vendor share</span>
+        </div>
+        <TvChart
+          points={points}
+          mode="live"
+          height={260}
+          valueKind="usd"
+          emptyTitle="No dated spend ledger yet"
+          emptyHint="The cumulative-spend curve renders once the engine reports a dated spend series. The verdict band and per-vendor figures below are real point-in-time totals — nothing here is fabricated."
+        />
+      </CardContent>
+    </Card>
   );
 }
 
