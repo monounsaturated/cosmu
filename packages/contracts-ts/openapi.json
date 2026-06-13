@@ -4613,6 +4613,121 @@
         "title": "PopulationResponse",
         "type": "object"
       },
+      "PortfolioSummaryResponse": {
+        "description": "The live-vs-sim money split for the v18 dashboards/ribbon \u2014 the one read-out that must NEVER label SIM\ncapital as live. The ONLY honest position-row discriminator is `venue != 'sim'` (positions carry no mode\ncolumn), so the live figures are reconstructed from those rows.\n\nHONESTY CONTRACT: when no position is routed live (`has_live` False) every `live_*` money figure is `None`\nso the UI renders an explicit \"\u2014\", never 0 and never the SIM number. `live_free` is BUDGET HEADROOM\n(`live_global_cap \u2212 live_invested`), NOT a fetched exchange cash balance (the engine never reads broker\ncash). `live_equity` is `None` until a real live portfolio snapshot is persisted (none is today).",
+        "properties": {
+          "has_live": {
+            "title": "Has Live",
+            "type": "boolean"
+          },
+          "live_armed": {
+            "title": "Live Armed",
+            "type": "boolean"
+          },
+          "live_equity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Equity"
+          },
+          "live_free": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Free"
+          },
+          "live_global_cap": {
+            "title": "Live Global Cap",
+            "type": "number"
+          },
+          "live_invested": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Invested"
+          },
+          "live_mode": {
+            "enum": [
+              "testnet",
+              "live",
+              "sim"
+            ],
+            "title": "Live Mode",
+            "type": "string"
+          },
+          "live_pnl_net": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Pnl Net"
+          },
+          "live_realized": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Realized"
+          },
+          "live_unrealized": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Unrealized"
+          },
+          "positions_count_live": {
+            "title": "Positions Count Live",
+            "type": "integer"
+          },
+          "sim_equity": {
+            "title": "Sim Equity",
+            "type": "number"
+          },
+          "sim_pnl_net": {
+            "title": "Sim Pnl Net",
+            "type": "number"
+          }
+        },
+        "required": [
+          "has_live",
+          "live_armed",
+          "live_mode",
+          "sim_equity",
+          "sim_pnl_net",
+          "live_global_cap",
+          "positions_count_live"
+        ],
+        "title": "PortfolioSummaryResponse",
+        "type": "object"
+      },
       "RealtimeStatusResponse": {
         "description": "The worker's visible pulse. `enabled` mirrors the env toggle; `status` is derived server-side:\n'off' (disabled, no expectation of beats) \u00b7 'fresh' (last beat within the stale threshold) \u00b7\n'stale' (enabled but the last beat is old \u2014 the badge state) \u00b7 'never' (enabled, no beat recorded).",
         "properties": {
@@ -7113,6 +7228,25 @@
           }
         },
         "summary": "Population"
+      }
+    },
+    "/portfolio/summary": {
+      "get": {
+        "description": "The live-vs-sim money split for the v18 Live dashboard + ribbon. A pure additive read-out: it writes\nnothing, touches no schema, and never sizes/routes an order (the deterministic risk gauntlet stays the sole\nenforcer). HONESTY: the live figures are reconstructed ONLY from positions whose `venue != 'sim'`; when none\nare routed live every `live_*` money figure is None so the UI renders \"\u2014\", never SIM capital labelled live.\n`live_free` is BUDGET HEADROOM (global_cap \u2212 invested), NOT exchange cash; `live_equity` is None until a\nlive portfolio snapshot exists (none does yet). One connection for all reads (remote-Postgres latency).",
+        "operationId": "portfolio_summary_portfolio_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Portfolio Summary"
       }
     },
     "/realtime/status": {

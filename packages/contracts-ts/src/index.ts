@@ -913,6 +913,22 @@ export interface PopulationResponse {
   total: number;
 }
 
+export interface PortfolioSummaryResponse {
+  has_live: boolean;
+  live_armed: boolean;
+  live_equity?: number | null;
+  live_free?: number | null;
+  live_global_cap: number;
+  live_invested?: number | null;
+  live_mode: "testnet" | "live" | "sim";
+  live_pnl_net?: number | null;
+  live_realized?: number | null;
+  live_unrealized?: number | null;
+  positions_count_live: number;
+  sim_equity: number;
+  sim_pnl_net: number;
+}
+
 export interface RealtimeStatusResponse {
   consumers?: Record<string, unknown> | null;
   enabled: boolean;

@@ -50,6 +50,35 @@ def test_live_venues_jurisdiction_and_honest_connection(tmp_path, monkeypatch):
     assert "secret" not in c.get("/live/venues").text.lower()  # no secret ever leaks
 
 
+def test_portfolio_summary_empty_state_never_labels_sim_as_live(tmp_path, monkeypatch):
+    # No live position → has_live False, every live_* money figure is None (renders "—"), and sim_equity
+    # mirrors the bankroll. The ribbon can NEVER show SIM capital under a live label.
+    c = _client(tmp_path, monkeypatch)
+    body = c.get("/portfolio/summary").json()
+    assert body["has_live"] is False
+    assert body["live_invested"] is None and body["live_free"] is None and body["live_pnl_net"] is None
+    assert body["live_equity"] is None  # no live snapshot is ever fabricated
+    assert body["sim_equity"] == 100000.0 and body["live_mode"] == "sim"
+    assert body["positions_count_live"] == 0
+
+
+def test_portfolio_summary_live_split_excludes_sim(tmp_path, monkeypatch):
+    # A position routed live (venue != 'sim') drives the live figures; a SIM position never leaks in.
+    c = _client(tmp_path, monkeypatch)
+    store = app_mod.store
+    store.insert("positions", {"strategy_version_id": "v-live", "instrument_id": "i1", "symbol": "BTCUSDT",
+                                "venue": "binance", "qty": "0.1", "avg_price": "20000", "realized_pnl": "100",
+                                "last_was_loss": 0, "updated_at": utcnow()})
+    store.insert("positions", {"strategy_version_id": "v-sim", "instrument_id": "i2", "symbol": "ETHUSDT",
+                                "venue": "sim", "qty": "5", "avg_price": "3000", "realized_pnl": "999",
+                                "last_was_loss": 0, "updated_at": utcnow()})
+    body = c.get("/portfolio/summary").json()
+    assert body["has_live"] is True and body["positions_count_live"] == 1
+    assert body["live_invested"] == 2000.0  # 0.1 * 20000 — the SIM 5*3000 is excluded
+    assert body["live_realized"] == 100.0    # the SIM realized 999 is excluded
+    assert body["live_free"] == body["live_global_cap"] - 2000.0  # budget headroom, not exchange cash
+
+
 def test_live_venues_excludes_jurisdiction_restricted(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 

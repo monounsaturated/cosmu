@@ -26,6 +26,31 @@ class OverviewResponse(BaseModel):
     opex_vs_alpha: float
 
 
+class PortfolioSummaryResponse(BaseModel):
+    """The live-vs-sim money split for the v18 dashboards/ribbon — the one read-out that must NEVER label SIM
+    capital as live. The ONLY honest position-row discriminator is `venue != 'sim'` (positions carry no mode
+    column), so the live figures are reconstructed from those rows.
+
+    HONESTY CONTRACT: when no position is routed live (`has_live` False) every `live_*` money figure is `None`
+    so the UI renders an explicit "—", never 0 and never the SIM number. `live_free` is BUDGET HEADROOM
+    (`live_global_cap − live_invested`), NOT a fetched exchange cash balance (the engine never reads broker
+    cash). `live_equity` is `None` until a real live portfolio snapshot is persisted (none is today)."""
+
+    has_live: bool
+    live_armed: bool
+    live_mode: Literal["testnet", "live", "sim"]
+    sim_equity: float
+    sim_pnl_net: float
+    live_equity: float | None = None
+    live_invested: float | None = None
+    live_free: float | None = None  # budget headroom (global_cap − invested), NOT exchange cash
+    live_pnl_net: float | None = None
+    live_unrealized: float | None = None
+    live_realized: float | None = None
+    live_global_cap: float
+    positions_count_live: int
+
+
 class LeaderboardRow(BaseModel):
     version_id: str
     name: str
