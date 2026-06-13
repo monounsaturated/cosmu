@@ -5,9 +5,9 @@
   sheet) is authored with these classes. Do not re-introduce Tailwind utilities or shadcn primitives.
 
   Port notes vs the reference:
-    - The reference used `zoom:1.15` for density; we drop it (per directive: scale via tokens, not
-      css zoom) and render at natural scale — identical proportions, ~13% larger absolute sizing.
-    - Every `calc(100vh/1.15)` zoom-workaround becomes `100dvh`.
+    - The reference used `zoom:1.15` for density; we keep it (operator-confirmed: the denser scale
+      reads as the intended v18). `zoom` is broadly supported now (Chrome/Safari always, Firefox 126+).
+    - Every functional full-height rule uses `calc(100dvh/1.15)` so the zoom doesn't overflow dvh.
     - The "MOCKUP · synthetic data" badge is removed; we bind REAL engine data with honest empty
       states ("—" for nulls, "not connected" when the engine is unreachable). Never fabricate.
 
@@ -68,7 +68,8 @@ body{
   -webkit-font-smoothing:antialiased;
   font-feature-settings:"cv05" 1,"ss01" 1,"calt" 1;
   letter-spacing:-0.006em;
-  min-height:100dvh;
+  zoom:1.15;
+  min-height:calc(100dvh/1.15);
   overflow-x:hidden;
   font-size:13px;
 }
@@ -78,11 +79,11 @@ body{
 :focus-visible{outline:2px solid var(--iris);outline-offset:2px;border-radius:var(--r-xs)}
 
 /* ── Shell ── */
-.shell{display:flex;min-height:100dvh}
+.shell{display:flex;min-height:calc(100dvh/1.15)}
 
 /* ── Sidebar ── */
 .sidebar{
-  position:fixed;top:0;left:0;width:var(--sidebar-w);height:100dvh;
+  position:fixed;top:0;left:0;width:var(--sidebar-w);height:calc(100dvh/1.15);
   background:color-mix(in oklab,var(--surf) 92%,transparent);
   backdrop-filter:blur(20px) saturate(1.4);
   border-right:1px solid var(--hairline);
@@ -330,7 +331,7 @@ body{
 .badge-muted{background:color-mix(in oklab,var(--surf3) 60%,transparent);color:var(--muted);border:1px solid var(--border)}
 
 /* ── Modal ── */
-.overlay{display:none;position:fixed;left:0;right:0;top:0;height:100dvh;background:rgba(0,0,0,.60);z-index:120;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.overlay{display:none;position:fixed;left:0;right:0;top:0;height:calc(100dvh/1.15);background:rgba(0,0,0,.60);z-index:120;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
 .overlay.open{display:flex;animation:fadein 150ms ease}
 @keyframes fadein{from{opacity:0}to{opacity:1}}
 .modal{
@@ -386,7 +387,7 @@ body{
 
 /* ── Side panel ── */
 .side-panel{
-  position:fixed;top:0;right:0;width:var(--panel-w);max-width:54vw;height:100dvh;z-index:61;
+  position:fixed;top:0;right:0;width:var(--panel-w);max-width:54vw;height:calc(100dvh/1.15);z-index:61;
   background:var(--surf);border-left:1px solid var(--border);
   display:flex;flex-direction:column;
   transform:translateX(100%);

@@ -139,6 +139,7 @@ async function fetchRailway(): Promise<{ amount_usd: number; ok: boolean }> {
       },
       body: JSON.stringify({ query }),
       cache: "no-store",
+      signal: AbortSignal.timeout(3000),
     });
 
     if (!res.ok) return { amount_usd: 20, ok: false };
@@ -171,6 +172,7 @@ async function fetchRailway(): Promise<{ amount_usd: number; ok: boolean }> {
         `,
       }),
       cache: "no-store",
+      signal: AbortSignal.timeout(3000),
     });
 
     if (!usageRes.ok) return { amount_usd: 20, ok: false };
@@ -207,6 +209,7 @@ async function fetchOpenRouter(): Promise<{ amount_usd: number; ok: boolean }> {
     const res = await fetch("https://openrouter.ai/api/v1/auth/key", {
       headers: { Authorization: `Bearer ${key}` },
       cache: "no-store",
+      signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return { amount_usd: 0, ok: false };
     const body = await res.json();
@@ -231,6 +234,7 @@ async function fetchVercel(): Promise<{ amount_usd: number; ok: boolean }> {
     const res = await fetch("https://api.vercel.com/v2/billing", {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
+      signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return { amount_usd: 0, ok: false };
     const body = await res.json();
