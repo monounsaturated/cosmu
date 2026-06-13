@@ -1,29 +1,23 @@
 "use client";
 
-// module: app navigation. Nine surfaces covering the full vibe loop (idea → spec → verdict), the
-// machine's experiment memory (Theories), the lifecycle stages (Backtest → Paper → Live), and
-// the operator's main decisions. Desktop = a persistent rail grouped into a clear IA — Operate /
-// Pipeline / Knowledge (+ a More section) — so the column reads as sections, not one long list.
-// Mobile = a bottom tab bar (4 primary tabs + a More sheet with the rest).
+// module: app navigation. The v18 redesign IS the whole frontend — SIX surfaces, no more: the
+// lifecycle (Strategies → Paper → Live), the money (Costs), and the operator's two utility surfaces
+// (Keys, Commands). The old research/knowledge/ops pages were folded (redirected in next.config.ts).
+// Desktop = a flat persistent rail; mobile = a bottom tab bar (4 primary tabs + a More sheet for the
+// 2 overflow items). Default landing = Strategies (app/page.tsx → /strategies).
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  Brain,
-  ClipboardCheck,
   DollarSign,
-  FlaskConical,
   KeyRound,
   LayoutDashboard,
   LineChart,
   ListChecks,
   MoreHorizontal,
   Radio,
-  ScatterChart,
-  SlidersHorizontal,
-  Telescope,
   Terminal,
   X
 } from "lucide-react";
@@ -31,40 +25,22 @@ import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; desc?: string; icon: typeof LayoutDashboard; gated?: boolean };
 
-// Primary surfaces — the full vibe loop + main operator decisions. Flat list is the canonical order
-// (mobile dock + overflow consume it directly); the desktop rail groups it into labeled sections via
-// NAV_GROUPS below, so the IA reads as Operate / Pipeline / Knowledge instead of one long column.
-// The v12 redesign IA: FIVE primary surfaces, sidebar order Live · Paper · Strategies · Costs · Commands,
-// default landing = Live (see app/page.tsx → /live). The rest of the old surfaces are reachable under "More"
-// while their content is progressively folded into these five.
+// The SIX primary surfaces — the entire app. Flat list is the canonical order (desktop rail + mobile
+// dock both consume it directly). Sidebar order: Strategies · Paper · Live · Costs · Keys · Commands.
 export const navItems: NavItem[] = [
-  { href: "/live", label: "Live", desc: "Positions · guardrails · caps", icon: Radio },
-  { href: "/paper", label: "Paper", desc: "Forward test · live data, no money", icon: LineChart },
   { href: "/strategies", label: "Strategies", desc: "Ranked · faceted · the sheet", icon: ListChecks },
+  { href: "/paper", label: "Paper", desc: "Forward test · live data, no money", icon: LineChart },
+  { href: "/live", label: "Live", desc: "Positions · guardrails · rules", icon: Radio },
   { href: "/costs", label: "Costs", desc: "Spend · run-rate · renewals", icon: DollarSign },
-  { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal },
-  { href: "/keys", label: "Keys", desc: "Services · what's connected", icon: KeyRound }
+  { href: "/keys", label: "Keys", desc: "Services · what's connected", icon: KeyRound },
+  { href: "/commands", label: "Commands", desc: "Run from Claude Code", icon: Terminal }
 ];
 
-// Secondary surfaces, tucked under "More" (desktop sidebar footer + mobile sheet) — still reachable by URL,
-// not on the primary five. Folded into the five over the redesign increments.
-export const moreItems: NavItem[] = [
-  { href: "/overview", label: "Overview", desc: "Control room · status", icon: LayoutDashboard },
-  { href: "/console", label: "Console", desc: "Decide · steer · arm", icon: Terminal },
-  { href: "/lab", label: "Lab", desc: "Idea → spec → verdict", icon: FlaskConical },
-  { href: "/verdicts", label: "Theories", desc: "Every theory · Gate verdict", icon: ClipboardCheck },
-  { href: "/correlations", label: "Correlations", desc: "Signal scan · IC · FDR", icon: ScatterChart },
-  { href: "/explorer", label: "Explorer", desc: "Pick · chart · compare", icon: Telescope },
-  { href: "/mind", label: "Mind", desc: "What the agent knows", icon: Brain },
-  { href: "/settings", label: "Settings", desc: "Universe · jurisdiction · caps", icon: SlidersHorizontal }
-];
-
-// Desktop rail grouping — a clear information architecture instead of a single undifferentiated
-// column. Each entry references navItems by href so the source of truth stays the flat list above.
+// Desktop rail grouping — one flat unlabeled group renders all six surfaces (no eyebrows; the app is
+// small enough to read as a single column). Each entry references navItems by href.
 type NavGroup = { label: string; hrefs: string[] };
 const NAV_GROUPS: NavGroup[] = [
-  // The v12 sidebar is a flat five (no group eyebrows) — one unlabeled group renders the primary surfaces.
-  { label: "", hrefs: ["/live", "/paper", "/strategies", "/costs", "/commands", "/keys"] }
+  { label: "", hrefs: ["/strategies", "/paper", "/live", "/costs", "/keys", "/commands"] }
 ];
 
 const ITEM_BY_HREF = new Map(navItems.map((i) => [i.href, i]));
@@ -125,17 +101,6 @@ export function SideNavLinks({ onNavigate, collapsed = false }: { onNavigate?: (
           })}
         </div>
       ))}
-
-      <div className="flex flex-col gap-0.5">
-        {collapsed ? (
-          <div className="mx-auto mb-0.5 h-px w-6 bg-hairline" aria-hidden />
-        ) : (
-          <div className="label-eyebrow px-3 pb-1">More</div>
-        )}
-        {moreItems.map((item) => (
-          <NavLink key={item.href} item={item} onNavigate={onNavigate} collapsed={collapsed} />
-        ))}
-      </div>
     </nav>
   );
 }
@@ -221,7 +186,7 @@ export function BottomNav() {
         ))}
         <DockTab
           item={{ label: "More", icon: MoreHorizontal }}
-          active={sheetOpen || overflowActive || moreItems.some((i) => isActive(pathname, i.href))}
+          active={sheetOpen || overflowActive}
           onClick={() => setSheetOpen(true)}
         />
       </nav>
@@ -252,7 +217,7 @@ function MoreSheet({
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;
 
-  const allItems = [...overflowItems, ...moreItems];
+  const allItems = overflowItems;
 
   return createPortal(
     <div className={cn("fixed inset-0 z-40 lg:hidden", open ? "pointer-events-auto" : "pointer-events-none")} aria-hidden={!open}>
