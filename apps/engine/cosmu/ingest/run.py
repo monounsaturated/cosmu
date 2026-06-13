@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 from cosmu.config.settings import get_settings
 from cosmu.data.altdata import (
@@ -223,6 +224,24 @@ def _safe(source: str, fn: Callable[[], int]) -> int:
         return 0
 
 
+def _llm_source_fresh(store, provider: str, metric: str, min_interval_minutes: int) -> bool:  # noqa: ANN001
+    """True when a PAID LLM-backed source's newest stored point is younger than the throttle interval — the
+    pass then SKIPS it (count 0) instead of re-spending. The Tier-1 15-min ingest cron multiplied pass
+    frequency ×24; without this, xAI LiveSearch + llm_index rubric calls would scale with cron cadence
+    instead of with data freshness. Free/numeric sources never route through here. Honest degradation: an
+    unreadable/empty store → NOT fresh → the source runs (its own key-gating still applies)."""
+    if min_interval_minutes <= 0:
+        return False
+    try:
+        points = store.read_asof(provider, "MARKET", metric, datetime.now(UTC))
+    except Exception:  # noqa: BLE001 — a store hiccup must never block ingest; run the source
+        return False
+    if not points:
+        return False
+    age = datetime.now(UTC) - points[-1].available_at
+    return age < timedelta(minutes=min_interval_minutes)
+
+
 def run_once(store=None, *, symbols: list[str] | None = None, providers: Providers | None = None) -> dict[str, int]:  # noqa: ANN001
     """ONE append-only, point-in-time pass over the free sources into the alt-data store, composing the
     existing ingest_* primitives. Returns per-source append counts. Per-source failure → a 0 count, never
@@ -376,18 +395,19 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
         "galaxy_score", lambda: ingest_numeric(store, p.lunarcrush, symbols, "galaxy_score", provider_name="lunarcrush")
     )
     # xAI/Grok Twitter sentiment (key-gated: no-op without XAI_API_KEY; market-wide, LLM scores text only).
-    counts["twitter_sentiment"] = _safe(
-        "twitter_sentiment",
-        lambda: ingest_market_wide_numeric(
-            store, p.xai_twitter, source_metric="twitter_sentiment", stored_metric="twitter_sentiment", provider_name="xai"
-        ),
-    )
-    counts["twitter_influencer_sentiment"] = _safe(
-        "twitter_influencer_sentiment",
-        lambda: ingest_market_wide_numeric(
-            store, p.xai_twitter, source_metric="twitter_influencer_sentiment", stored_metric="twitter_influencer_sentiment", provider_name="xai"
-        ),
-    )
+    # PAID-call throttle: skipped while the stored series is fresher than llm_source_min_interval_minutes —
+    # the 15-min cron must not turn LiveSearch+scoring into 96 paid pulls/day.
+    llm_min_iv = get_settings().llm_source_min_interval_minutes
+    for _tw_metric in ("twitter_sentiment", "twitter_influencer_sentiment"):
+        if _llm_source_fresh(store, "xai", _tw_metric, llm_min_iv):
+            counts[_tw_metric] = 0
+            continue
+        counts[_tw_metric] = _safe(
+            _tw_metric,
+            lambda m=_tw_metric: ingest_market_wide_numeric(
+                store, p.xai_twitter, source_metric=m, stored_metric=m, provider_name="xai"
+            ),
+        )
     # Event/news scorer: typed, dated, point-in-time signal (sign × magnitude). The LLM standardizes text
     # ONLY at ingest (cached); the offline lexicon is used when no LLM key is set.
     counts["news_event_score"] = _safe(
@@ -407,6 +427,9 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     # its own SEMANTIC name. Key-gated (no LLM key → the provider returns [] → counted 0, never an abort). The
     # LLM only proposes the rubric-anchored number at ingest; the deterministic Gate alone disposes.
     for _index in INDEX_RUBRICS:
+        if _llm_source_fresh(store, "llm_index", _index, llm_min_iv):
+            counts[_index] = 0  # fresh enough — don't re-spend a paid rubric call this pass
+            continue
         counts[_index] = _safe(
             _index,
             lambda m=_index: ingest_market_wide_numeric(

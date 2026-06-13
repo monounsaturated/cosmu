@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -43,6 +44,46 @@ def read_pit_fee(
     if points:
         return points[-1].value
     return fallback_bps
+
+
+def read_pit_fee_resolver(
+    store: Any, venue_id: str, symbol: str, metric: str, *, fallback_bps: float | None = None,
+) -> Callable[[datetime], float | None]:
+    """Return a callable ``as_of -> fee_bps`` that reads the venue_fees series ONCE and resolves each as_of in
+    memory with `read_pit_fee`'s EXACT point-in-time semantics — for hot per-bar loops (gate `_simulate`) that
+    would otherwise open one DB connection PER BAR (the source of the engine-suite hang). For any as_of the
+    returned callable yields the IDENTICAL value to
+    ``read_pit_fee(store, venue_id, symbol, metric, as_of, fallback_bps=fallback_bps)``.
+
+    PIT fidelity: `read_asof` returns, per ts with available_at <= as_of, the latest-revision row (max id),
+    sorted by ts; `read_pit_fee` then takes the value at the latest ts. We read the full revision history once
+    (`read_all`, ordered ascending by (available_at, id) — the same rows read_asof draws from) and replicate
+    that collapse in memory: the LAST row seen per ts is read_asof's max-id pick for in-order ingestion (the
+    only way fees are ever written), so the resolved value matches read_pit_fee bar-for-bar (parity-tested)."""
+    alt_store = store
+    if not hasattr(store, "read_asof"):
+        try:
+            alt_store = PgAltDataStore(store)
+        except Exception:  # noqa: BLE001 — mirror read_pit_fee: an unwrappable store -> fallback
+            return lambda _as_of: fallback_bps
+    store_symbol = f"{venue_id}:{symbol}"
+    try:
+        points = alt_store.read_all("venue_fees", store_symbol, metric)
+    except Exception:  # noqa: BLE001 — mirror read_pit_fee's except: never crash a sim over a fee read
+        return lambda _as_of: fallback_bps
+    if not points:
+        return lambda _as_of: fallback_bps
+
+    def resolve(as_of: datetime) -> float | None:
+        latest_per_ts: dict[datetime, float] = {}
+        for p in points:
+            if p.available_at <= as_of:
+                latest_per_ts[p.ts] = p.value  # last-seen-per-ts == read_asof's DISTINCT-ON(ts) max-id pick
+        if not latest_per_ts:
+            return fallback_bps
+        return latest_per_ts[max(latest_per_ts)]  # value at the latest ts == read_pit_fee's points[-1]
+
+    return resolve
 
 
 class VenueFeesProvider:

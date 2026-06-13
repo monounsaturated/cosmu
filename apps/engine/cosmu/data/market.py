@@ -1,4 +1,8 @@
-# intent: fetch and cache Binance spot OHLCV bars; inputs: symbol/timeframe requests; outputs: ordered Bar records; invariants: secrets are never needed, cached bars remain exchange-sourced, and tests can inject a provider.
+# intent: fetch and cache Binance spot OHLCV bars; inputs: symbol/timeframe requests; outputs: ordered Bar records;
+# invariants: secrets are never needed, cached bars remain exchange-sourced, tests can inject a provider, and the
+# crypto providers serve only CLOSED candles — the in-progress candle is dropped before caching, a cache whose
+# newest bar is no longer the latest closed bar is refetched, and a fetched row replaces a cached row on ts
+# collision (a row cached while its candle was still forming must not freeze the executor's view forever).
 
 from __future__ import annotations
 
@@ -9,7 +13,7 @@ import tempfile
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Protocol
@@ -30,21 +34,73 @@ class MarketDataProvider(Protocol):
         """Return ascending OHLCV bars for one venue symbol."""
 
 
-class BinanceSpotOHLCVProvider:
-    """Binance spot OHLCV provider with a ccxt path and a stdlib REST fallback."""
+# Timeframe → period seconds for the closed-bar / freshness math. An unknown timeframe maps to None and
+# keeps the legacy cache behaviour (no freshness check) rather than guessing a period.
+_TIMEFRAME_SECONDS: dict[str, int] = {
+    "1m": 60, "5m": 300, "15m": 900, "30m": 1800,
+    "1h": 3_600, "4h": 14_400, "1d": 86_400, "1w": 604_800,
+}
 
-    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/binance") -> None:
+
+def _drop_unclosed(bars: list[Bar], timeframe: str, now: datetime) -> list[Bar]:
+    """Drop trailing bars whose candle has not CLOSED yet (close time = ts + period > now). Exchange kline
+    endpoints return the live in-progress candle as the last row; caching it freezes a mid-bar snapshot as if
+    it were a final close — the executor-freshness trap. Unknown timeframe → unchanged (no period to judge by)."""
+    period = _TIMEFRAME_SECONDS.get(timeframe)
+    if period is None:
+        return bars
+    cutoff = now.timestamp() - period
+    out = list(bars)
+    while out and out[-1].ts.timestamp() > cutoff:
+        out.pop()
+    return out
+
+
+def _cache_is_fresh(cached: list[Bar], timeframe: str, now: datetime) -> bool:
+    """True when the cache's newest bar IS the latest closed candle (newest.ts + 2*period > now) — then a
+    network fetch can add nothing. False forces a refetch even when the cache covers the requested limit.
+    Unknown timeframe → treated as fresh (legacy behaviour: serve the covering cache)."""
+    period = _TIMEFRAME_SECONDS.get(timeframe)
+    if period is None:
+        return True
+    if not cached:
+        return False
+    return now.timestamp() < cached[-1].ts.timestamp() + 2 * period
+
+
+class BinanceSpotOHLCVProvider:
+    """Binance spot OHLCV provider with a ccxt path and a stdlib REST fallback. Serves CLOSED candles only:
+    the in-progress candle is dropped before caching, and a covering-but-stale cache is refetched rather than
+    served (`now_fn` is injectable so tests pin the clock)."""
+
+    def __init__(
+        self,
+        cache_dir: Path | str = ".cosmu/market_data/binance",
+        *,
+        now_fn=None,  # noqa: ANN001 — Callable[[], datetime]; injected by tests to pin the clock
+    ) -> None:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._now_fn = now_fn or (lambda: datetime.now(tz=UTC))
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        now = self._now_fn()
         cached = self._read_cache(symbol, timeframe)
-        if len(cached) >= limit:
+        if len(cached) >= limit and _cache_is_fresh(cached, timeframe, now):
             return cached[-limit:]
 
-        bars = self._fetch_with_ccxt(symbol, timeframe, limit)
+        # +1 so dropping the in-progress last candle still leaves `limit` closed bars (page cap 1000).
+        page = min(limit + 1, 1000)
+        try:
+            bars = self._fetch_with_ccxt(symbol, timeframe, page)
+        except Exception:  # noqa: BLE001 — a ccxt transport error must still fall through to the REST path
+            bars = []
         if not bars:
-            bars = self._fetch_with_rest(symbol, timeframe, limit)
+            try:
+                bars = self._fetch_with_rest(symbol, timeframe, page)
+            except Exception:  # noqa: BLE001 — offline/refused: a covering-but-stale cache still serves
+                bars = []      # (degrade, never raise where the pre-freshness code served the cache silently)
+        bars = _drop_unclosed(bars, timeframe, now)
         if not bars:
             return cached[-limit:]  # network empty → never shrink; serve what we have
         # A single REST/ccxt page caps at 1000 bars; merge into (never overwrite) the cache so a
@@ -93,25 +149,68 @@ class BinanceSpotOHLCVProvider:
         return merged
 
 
+_US_EQUITY_CLOSE_UTC = time(21, 5)  # 16:00 ET close; 21:05 UTC is exact+buffer in winter, ~1h conservative in summer
+
+
+def _drop_unclosed_us_daily(bars: list[Bar], now: datetime) -> list[Bar]:
+    """Drop trailing daily bar(s) whose US cash session has not CLOSED yet (a daily bar dated D is final only
+    once `now` ≥ D 21:05 UTC). The keyless equity vendors include today's in-progress bar mid-session; caching
+    it would freeze a partial close as final (the deep review's M3). Conservative by ≤1h in summer DST —
+    the 22:10 UTC equity clock still sees today's close either way."""
+    out = list(bars)
+    while out and now < datetime.combine(out[-1].ts.date(), _US_EQUITY_CLOSE_UTC, tzinfo=UTC):
+        out.pop()
+    return out
+
+
+def _latest_expected_us_session(now: datetime) -> date:
+    """The most recent US cash-session DATE whose close has passed — weekends skipped. Holidays are NOT
+    modeled: on a holiday the expected bar is missing, so freshness fails and the provider refetches (a
+    harmless no-op merge), never serves a frozen cache."""
+    d = now.date()
+    if now < datetime.combine(d, _US_EQUITY_CLOSE_UTC, tzinfo=UTC):
+        d -= timedelta(days=1)
+    while d.weekday() >= 5:  # Sat/Sun
+        d -= timedelta(days=1)
+    return d
+
+
+def _equity_cache_is_fresh(cached: list[Bar], now: datetime) -> bool:
+    """Fresh ⇔ the cache already holds the latest EXPECTED closed US session — then a fetch adds nothing.
+    Anything older forces a refetch: the pre-fix behaviour served ANY existing cache forever, silently
+    freezing equity marks (and rotation inputs) at whenever the cache file happened to be created."""
+    return bool(cached) and cached[-1].ts.date() >= _latest_expected_us_session(now)
+
+
 class StooqDailyBarsProvider:
     """Free daily equity bars via Stooq CSV (no key). Known limit: Stooq lists only CURRENTLY-traded
     symbols — it is SURVIVORSHIP-BIASED (delisted names are absent). Declared, not hidden: this proves
-    signal *presence* cross-asset, not deployable capacity. Norgate replaces it at the live phase."""
+    signal *presence* cross-asset, not deployable capacity. Norgate replaces it at the live phase.
+    Serves only CLOSED US sessions; a cache missing the latest expected session is refetched (never served
+    forever), and offline it degrades to the cache."""
 
     survivorship_complete = False  # free bars have no delisted names — see class docstring
 
-    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/stooq") -> None:
+    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/stooq", *, now_fn=None) -> None:  # noqa: ANN001
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._now_fn = now_fn or (lambda: datetime.now(tz=UTC))
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        now = self._now_fn()
         cached = self._read_cache(symbol)
-        if cached:
+        if len(cached) >= limit and _equity_cache_is_fresh(cached, now):
             return cached[-limit:]
-        bars = self._fetch_csv(symbol)
-        if bars:
-            self._write_cache(symbol, bars)
-        return bars[-limit:]
+        try:
+            fetched = self._fetch_csv(symbol)
+        except Exception:  # noqa: BLE001 — offline/blocked: degrade to the cache, never crash the caller
+            return cached[-limit:]
+        fetched = _drop_unclosed_us_daily(fetched, now)
+        if not fetched:
+            return cached[-limit:]
+        merged = _merge_bars(cached, fetched)
+        self._write_cache(symbol, merged)
+        return merged[-limit:]
 
     def _fetch_csv(self, symbol: str) -> list[Bar]:
         # Stooq US tickers are suffixed ".us" (e.g. spy.us); pass-through if already qualified.
@@ -154,15 +253,26 @@ class KrakenSpotOHLCVProvider:
     # Kraken takes the interval in MINUTES; map the common timeframe strings we use.
     _INTERVAL_MINUTES = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440, "1w": 10080}
 
-    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/kraken") -> None:
+    def __init__(
+        self,
+        cache_dir: Path | str = ".cosmu/market_data/kraken",
+        *,
+        now_fn=None,  # noqa: ANN001 — Callable[[], datetime]; injected by tests to pin the clock
+    ) -> None:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._now_fn = now_fn or (lambda: datetime.now(tz=UTC))
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        now = self._now_fn()
         cached = self._read_cache(symbol, timeframe)
-        if len(cached) >= limit:
+        if len(cached) >= limit and _cache_is_fresh(cached, timeframe, now):
             return cached[-limit:]
-        bars = self._fetch_rest(symbol, timeframe)
+        try:
+            fetched = self._fetch_rest(symbol, timeframe)
+        except Exception:  # noqa: BLE001 — offline/refused: a covering-but-stale cache still serves (degrade)
+            fetched = []
+        bars = _drop_unclosed(fetched, timeframe, now)
         if not bars:
             return cached[-limit:]  # network empty → never shrink; serve what we have
         return self._write_cache(symbol, timeframe, bars)[-limit:]
@@ -201,15 +311,26 @@ class BybitSpotOHLCVProvider:
     # Bybit v5 interval codes (minutes as strings, D/W/M for higher frames).
     _INTERVAL = {"1m": "1", "5m": "5", "15m": "15", "30m": "30", "1h": "60", "4h": "240", "1d": "D", "1w": "W"}
 
-    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/bybit") -> None:
+    def __init__(
+        self,
+        cache_dir: Path | str = ".cosmu/market_data/bybit",
+        *,
+        now_fn=None,  # noqa: ANN001 — Callable[[], datetime]; injected by tests to pin the clock
+    ) -> None:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._now_fn = now_fn or (lambda: datetime.now(tz=UTC))
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        now = self._now_fn()
         cached = self._read_cache(symbol, timeframe)
-        if len(cached) >= limit:
+        if len(cached) >= limit and _cache_is_fresh(cached, timeframe, now):
             return cached[-limit:]
-        bars = self._fetch_rest(symbol, timeframe, limit)
+        try:
+            fetched = self._fetch_rest(symbol, timeframe, limit + 1)
+        except Exception:  # noqa: BLE001 — offline/refused: a covering-but-stale cache still serves (degrade)
+            fetched = []
+        bars = _drop_unclosed(fetched, timeframe, now)
         if not bars:
             return cached[-limit:]  # network empty → never shrink; serve what we have
         return self._write_cache(symbol, timeframe, bars)[-limit:]
@@ -243,22 +364,32 @@ class BybitSpotOHLCVProvider:
 class YahooDailyBarsProvider:
     """Free daily equity/ETF bars via the Yahoo Finance chart API (no key). Like Stooq it lists only
     CURRENTLY-traded symbols, so it is SURVIVORSHIP-BIASED (delisted names absent) — declared, not hidden:
-    it proves cross-asset signal PRESENCE, not deployable capacity. Norgate replaces it at the live phase."""
+    it proves cross-asset signal PRESENCE, not deployable capacity. Norgate replaces it at the live phase.
+    Serves only CLOSED US sessions; a cache missing the latest expected session is refetched (never served
+    forever), and offline it degrades to the cache."""
 
     survivorship_complete = False  # free bars have no delisted names — see class docstring
 
-    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/yahoo") -> None:
+    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/yahoo", *, now_fn=None) -> None:  # noqa: ANN001
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._now_fn = now_fn or (lambda: datetime.now(tz=UTC))
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        now = self._now_fn()
         cached = self._read_cache(symbol)
-        if cached:
+        if len(cached) >= limit and _equity_cache_is_fresh(cached, now):
             return cached[-limit:]
-        bars = self._fetch_chart(symbol)
-        if bars:
-            self._write_cache(symbol, bars)
-        return bars[-limit:]
+        try:
+            fetched = self._fetch_chart(symbol)
+        except Exception:  # noqa: BLE001 — offline/blocked: degrade to the cache, never crash the caller
+            return cached[-limit:]
+        fetched = _drop_unclosed_us_daily(fetched, now)
+        if not fetched:
+            return cached[-limit:]
+        merged = _merge_bars(cached, fetched)
+        self._write_cache(symbol, merged)
+        return merged[-limit:]
 
     def _fetch_chart(self, symbol: str) -> list[Bar]:
         # Use an EXPLICIT epoch window (period1/period2), NOT range=max: Yahoo SILENTLY downgrades
@@ -318,11 +449,13 @@ def _ssl_context() -> ssl.SSLContext:
 
 
 def _merge_bars(existing: list[Bar], fetched: list[Bar]) -> list[Bar]:
-    """Union two bar lists deduped on ts, ascending. `existing` wins on a ts collision (a closed bar is
-    immutable, so the on-disk value is authoritative and merging stays idempotent). This is the core
-    never-shrink invariant: merging a short fetched page with a deep cache can only ADD bars."""
-    merged: dict[datetime, Bar] = {b.ts: b for b in fetched}
-    merged.update({b.ts: b for b in existing})
+    """Union two bar lists deduped on ts, ascending. `fetched` wins on a ts collision: a genuinely closed bar
+    is immutable so this is a no-op for it, but a row CACHED while its candle was still forming (the pre-fix
+    22:10 cron snapshotting the in-progress daily candle) must be repaired by the exchange's final values, not
+    frozen forever. Still a union — the never-shrink invariant holds: merging a short fetched page with a deep
+    cache can only ADD or REPAIR bars, never remove one."""
+    merged: dict[datetime, Bar] = {b.ts: b for b in existing}
+    merged.update({b.ts: b for b in fetched})
     return sorted(merged.values(), key=lambda b: b.ts)
 
 

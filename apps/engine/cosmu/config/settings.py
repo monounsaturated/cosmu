@@ -146,6 +146,11 @@ class Settings(BaseSettings):
     # LLM author: xAI (Grok) is preferred when XAI_API_KEY is set (already on Railway) — most efficient,
     # no new key; OpenRouter is the fallback. Both are OpenAI-compatible (same request shape).
     xai_api_key: str | None = Field(default=None, repr=False)
+    # PAID-call throttle for LLM-BACKED ingest sources (xAI LiveSearch, llm_index rubric scoring): a source
+    # whose newest stored point is younger than this many minutes is SKIPPED for the pass. Exists because the
+    # Tier-1 15-min ingest cadence (realtime-data-lane epic) would otherwise multiply paid LLM calls ×24 vs
+    # the old 6h cron — free/numeric sources never throttle (idempotent + $0). 0 disables the throttle.
+    llm_source_min_interval_minutes: int = 60
     lunarcrush_api_key: str | None = Field(default=None, repr=False)
     # CryptoPanic news-vote source: key-gated (free tier). No key → the provider returns [] (honest
     # degradation, never fabricates). Reddit-volume uses REDDIT_CLIENT_ID/SECRET read directly from env.
@@ -166,9 +171,32 @@ class Settings(BaseSettings):
     binance_api_secret: str | None = Field(default=None, repr=False)
     binance_testnet_api_key: str | None = Field(default=None, repr=False)
     binance_testnet_api_secret: str | None = Field(default=None, repr=False)
+    # Alpaca (US equities): PAPER keys unlock the free paper-trading lane AND the market-data API (IEX feed) —
+    # the equity data+forward-test venue. Live keys are honored ONLY with live.mode=="real" (the same
+    # never-auto-live interlock as Binance). No keys → the adapter is disabled and the equity lane stays on
+    # the keyless Yahoo/Stooq path (honest degradation).
+    alpaca_paper_api_key: str | None = Field(default=None, repr=False)
+    alpaca_paper_api_secret: str | None = Field(default=None, repr=False)
+    alpaca_api_key: str | None = Field(default=None, repr=False)
+    alpaca_api_secret: str | None = Field(default=None, repr=False)
     api_secret_key: str | None = Field(default=None, repr=False)
     railway_api_token: str | None = Field(default=None, repr=False)
     slack_webhook_url: str | None = Field(default=None, repr=False)
+    # --- alt-data storage tier (hot/cold) ---------------------------------------------------------------
+    # "pg" (default, unchanged): alt_data rows live in Postgres (hot, transactional, the live-gate read path).
+    # "parquet": the COLD tier — alt-data is an append-only Parquet lake read via DuckDB (columnar, ~5-15x
+    # smaller, no per-row btrees), local for research / Cloudflare R2 for prod. Flip with ALT_DATA_BACKEND once
+    # the lake is backfilled (python -m cosmu.data.export_alt_parquet). See docs/epics/hot-cold-data-stack.md.
+    alt_data_backend: Literal["pg", "parquet"] = "pg"
+    alt_data_parquet_root: str = ".cosmu/altdata_parquet"
+    # Cloudflare R2 (S3-compatible object store, ~$0.36/mo/24GB, ZERO egress) for the prod Parquet lake. All
+    # four present → the cold tier writes/reads R2; absent → it uses the local dir (honest degradation, same
+    # keyless-fallback pattern as the Alpaca lane). Set R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
+    # / R2_BUCKET in .env.local (and on Railway for prod ingest).
+    r2_account_id: str | None = Field(default=None, repr=False)
+    r2_access_key_id: str | None = Field(default=None, repr=False)
+    r2_secret_access_key: str | None = Field(default=None, repr=False)
+    r2_bucket: str | None = Field(default=None)
     spend: SpendSettings = Field(default_factory=SpendSettings)
     gates: GateSettings = Field(default_factory=GateSettings)
     live: LiveSettings = Field(default_factory=LiveSettings)

@@ -109,3 +109,24 @@ def notify_tick_error(
     """Fire when a critical autonomy-tick stage fails (ingest / funding / evolution / uncaught).
     Silently no-ops when the webhook is unset."""
     notifier.send(f":rotating_light: *Autonomy tick error — {kind}*\n`{error}`")
+
+
+def notify_ingest_degraded(
+    notifier: SlackNotifier,
+    *,
+    all_zero: bool,
+    stale: list[tuple[str, int]],
+) -> None:
+    """Fire when the data lane is SILENTLY degrading: an ingest pass where every source returned 0 points,
+    and/or previously-flowing providers gone stale (no new data in days). The caller (ingest/health.py)
+    dedupes to one alert per cooldown window — this never spams per-tick.
+    Silently no-ops when the webhook is unset."""
+    lines: list[str] = []
+    if all_zero:
+        lines.append(":large_yellow_circle: *Ingest degraded* — every source returned 0 points this pass (network / keys / provider outage?)")
+    if stale:
+        worst = ", ".join(f"{source} ({hours}h)" for source, hours in stale[:6])
+        extra = f" (+{len(stale) - 6} more)" if len(stale) > 6 else ""
+        lines.append(f":hourglass: *Stale sources* — no new data in >72h: {worst}{extra}")
+    if lines:
+        notifier.send("\n".join(lines))

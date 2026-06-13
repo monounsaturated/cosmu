@@ -113,8 +113,8 @@ This table is the **source of truth for infra/cost**; an in-app **cost/infra vie
 - **Before push:** `/deploy-check` (= `pnpm verify`). **After push:** `/deploy-iterate` (watch Railway/Vercel).
 - **Maintain:** `/groom` + `/tech-debt` (prune), `/align-check` (drift check).
 - **Go live:** open a strategy → **Launch-live modal** → pick venue (must have keys), confirm budget ($100 default) → arm. 30-day proof is shown as advice, not a blocker; the 5 interlocks are the hard safety.
-- **Watch:** `/` overview, `/lab`, `/paper`, `/mind`, `/live`.
-- **Cadence (Railway crons):** ~6h ingest · 4h autonomous tick · hourly mark-to-market. Setup checklist: [OWNER_SETUP.md](OWNER_SETUP.md).
+- **Watch:** `/` overview, `/lab`, `/forward-test`, `/mind`, `/live`.
+- **Cadence (Railway crons, 7 total — see `apps/engine/railway.toml`):** 15-min ingest · 4h autonomous tick · daily (00:10 + 22:10 UTC) + hourly forward-test/mark clocks · hourly voices · daily rotation re-arm. Setup checklist: [OWNER_SETUP.md](OWNER_SETUP.md).
 
 ## 14. Locked decisions (this cycle)
 - **Live:** human launches via a modal (asset/venue, live fees, **budget default $100 editable**, settings); **no time gate** — 30-day proof is advisory, LLM may suggest, human decides; 5 interlocks are the hard safety; **venues grey-out without keys**.

@@ -28,6 +28,9 @@ The single source of truth for product terms. **DB tables, API fields, UI labels
 | **Score** | **Deflated Sharpe** — the one ranking scalar. Everything sorts by this so no metric can be cherry-picked. |
 | **Gate** | The deterministic pass/fail bar (min-trades, max-drawdown, untouched holdout) **plus** a cohort-level **Benjamini-Hochberg FDR** correction — a Version must clear the per-candidate stats AND survive false-discovery control across its whole cohort before it can be funded, so authoring more candidates per tick can't manufacture a winner. The Gate decides what gets *money*, never what gets *tried*. **Deterministic, out of any LLM path.** |
 | **Profit factor** | A **displayed** secondary metric (gross wins / gross losses). Shown for context; ranking stays **Score** (deflated Sharpe). |
+| **Event study** | The deterministic harness (`research/event_study.py`) that asks "did THIS kind of event move the market?" — abnormal (market-model) returns in EVENT time on intraday bars, judged by randomization inference vs matched placebo times + BH-FDR across cells. A research verdict, never a funding path. |
+| **Root event / breaker / echo** | One real-world story clustered from many reports (`research/event_corpus.py`). The earliest report is the **breaker** (novelty 1.0); later copies are **echoes** with decaying novelty. Event studies run on roots; echo reaction is a separate hypothesis (stale-news reversal). |
+| **Two event clocks** | Every `market_events` row carries `ts` (the event's own publish time — the event-study axis) AND `available_at` (when WE received it — the only honest trading-feature axis). A scraped archive is available at scrape time, **never backdated**. |
 
 ## Money state
 

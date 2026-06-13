@@ -1,22 +1,29 @@
 # intent: CLOSE THE AUTONOMOUS LOOP — read REAL persisted survivors (Finder/research gate-passers with tracks),
-# open a STANDALONE paper track for each (its own simulated capital, no pooled wallet, no cross-track
-# competition), routing intended orders through the ONE order path (master/execution → master/portfolio), then
-# mark-to-market so GET /overview reflects genuine positions/equity (no fabricated numbers). inputs: the store +
-# a market provider for latest marks; outputs: funded tracks + opened sim positions + a marked snapshot.
-# invariants: only gate-passed survivors are funded, each track is standalone (fixed per-strategy capital, never a
-# pooled share), live stays OFF (sim fills only), every fill is audited, deterministic for a fixed store + marks,
-# offline-safe (degrades to cache).
+# open a STANDALONE forward-test track for each (its own simulated capital, no pooled wallet, no cross-track
+# competition). Funding REGISTERS the track FLAT (a zero-qty position row): the track's first entry is its own
+# spec's signal, executed by the forward-test executor (orchestrator/forward_step.py) — the funder never opens a
+# static long, so the ≥30-day forward record measures the strategy, not buy-and-hold-from-funding-day. Each
+# survivor funds on a symbol its gate evidence actually covered (the screened universe ∩ the venue catalog),
+# then mark-to-market so GET /overview reflects genuine positions/equity (no fabricated numbers). inputs: the
+# store + a market provider for latest marks; outputs: registered flat tracks + a marked snapshot. invariants:
+# only gate-passed survivors are funded, each track is standalone (fixed per-strategy capital, never a pooled
+# share), live stays OFF, registration is idempotent (an existing row is never reset), deterministic for a fixed
+# store + marks, offline-safe (degrades to cache).
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, replace
-from decimal import ROUND_DOWN, Decimal
+from decimal import Decimal
+from typing import TYPE_CHECKING
 
+from cosmu.adapters.data.alpaca import AlpacaDailyBarsProvider
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider, YahooDailyBarsProvider
+
+if TYPE_CHECKING:
+    from cosmu.config.settings import Settings
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.drift import monitor_drift
-from cosmu.master.execution import IntendedOrder, execute_orders
 from cosmu.master.neutral import accrue_funding, neutral_tracks
 from cosmu.master.portfolio import Portfolio
 from cosmu.portfolio.rotation import Track, select_tracks
@@ -44,6 +51,20 @@ def _venue_symbols(catalog: VenueCatalog, venue_id: str, asset_class: str) -> li
     """Symbols that actually exist as instruments at `venue_id` for `asset_class` (so a sim fill can resolve an
     instrument). A track only funds tradable instruments — no fabricated symbols."""
     return [i.symbol for i in catalog.instruments if i.venue_id == venue_id and i.asset_class == asset_class]
+
+
+def _screened_symbols(raw_spec: object, asset_class: str, venue_symbols: list[str]) -> list[str]:
+    """The venue-tradable subset of the universe this survivor was SCREENED on — so a forward test runs on an
+    instrument its gate evidence actually covered, never a rotation-assigned stranger. Crypto gate-lane
+    candidates are screened against the fixed CRYPTO_SCREEN_UNIVERSE (evolution/loop.py); equity gate evidence
+    comes from the campaign cohorts on the catalog ETFs, which already match `venue_symbols`. Empty ⇒ the
+    caller falls back to the whole venue list (historical rows; better an imperfect track than none)."""
+    if asset_class != "crypto":
+        return []
+    from cosmu.evolution.loop import CRYPTO_SCREEN_UNIVERSE  # deferred: evolution imports master at module level
+
+    tradable = set(venue_symbols)
+    return [s for s in CRYPTO_SCREEN_UNIVERSE if s in tradable]
 
 
 def _survivor_asset_class(raw_spec: object) -> str:
@@ -104,10 +125,13 @@ def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Tra
         symbols = symbols_by_class.setdefault(asset_class, _venue_symbols(catalog, venue_id, asset_class))
         if not symbols:
             continue  # the funding venue has no tradable instrument for this class → SKIP (no fabricated symbol)
+        # Fund on the SCREENED universe: round-robin spreads multiple survivors, but only across symbols this
+        # survivor's gate evidence covered. Whole-venue fallback only when the screened set is empty (historical).
+        pool = _screened_symbols(r.get("spec"), asset_class, symbols) or symbols
         i = next_idx.get(asset_class, 0)
         next_idx[asset_class] = i + 1
         track = Track(id=r["version_id"], rolling_dsr=float(r["deflated_sharpe"] or 0.0))
-        out.append((r["version_id"], track, symbols[i % len(symbols)], venue_id))
+        out.append((r["version_id"], track, pool[i % len(pool)], venue_id))
     return out
 
 
@@ -129,10 +153,10 @@ def fund_tracks_from_survivors(
     crypto symbol. A survivor whose asset class has no funding venue wired is SKIPPED (never forced onto crypto).
     `market_data` (kept for back-compat) overrides ONLY the crypto mark leg; pass `router` to control both legs."""
     cat = catalog or default_catalog()
-    # ASSET-AWARE marks: the funder marks each new fill via the SAME router the paper clock uses, so a crypto
-    # fill prices off Binance and an equity fill off Yahoo total-return — never marking an equity to 0 against a
-    # Binance symbol. `market_data` (kept for back-compat) overrides only the crypto leg.
-    pricer = router or PricingRouter(cat, crypto=market_data)
+    # ASSET-AWARE marks: the funder marks each new fill via the SAME router the forward-test clock uses, so a crypto
+    # fill prices off Binance and an equity fill off Alpaca-when-keyed-else-Yahoo total-return — never marking an
+    # equity to 0 against a Binance symbol. `market_data` (kept for back-compat) overrides only the crypto leg.
+    pricer = router or PricingRouter(cat, crypto=market_data, settings=store.settings)
     portfolio = Portfolio(store, bankroll=bankroll)
 
     triples = _survivor_tracks(store, cat)
@@ -177,61 +201,34 @@ def fund_tracks_from_survivors(
         )
     }
 
-    # Build the latest marks + the intended sim orders for each NEW funded track. Each track is standalone: it is
-    # sized to a fixed per-strategy capital (the standardized track size), not a competed pooled share.
+    # Register each NEW funded track FLAT. The funder used to open a static long at the current mark (side=1,
+    # 0.95/1.10 brackets) regardless of the spec's entry signal — so the FIRST (often longest) leg of the
+    # ≥30-day forward proof measured buy-and-hold-from-funding-day, not the strategy. Now funding writes a
+    # zero-qty registration row; the forward-test executor (forward_step.py) opens the first position when —
+    # and only when — the track's OWN entry signal fires, through the one order path. Each track is standalone:
+    # sized to the fixed per-strategy capital by the executor at entry, never a competed pooled share.
     marks: dict[str, Decimal] = {}
-    intents: list[IntendedOrder] = []
-    # A standalone track is funded with one per-strategy slice (sim_track_capital), drawn from the SIM pool
-    # (sim_bankroll) — so the pool fits many tracks and the gauntlet's per_strategy_cap/min_cash_reserve pass.
-    per_track_capital = store.settings.sim_track_capital
+    registered: list[str] = []
     for vid in fundable:
         if vid in already_funded:
             continue
         _track, symbol, venue_id = track_by_id[vid]
-        # Mark via the asset-aware router (crypto → Binance, equity → Yahoo) at the survivor's OWN venue — so an
-        # equity survivor prices off a real equity close, not a Binance symbol that does not exist.
+        # Mark via the asset-aware router (crypto → Binance, equity → Yahoo) at the survivor's OWN venue — a
+        # symbol we cannot price honestly is not funded this cycle (the executor could neither enter nor mark it).
         price = pricer.last_price(symbol, venue_id)
         if price <= 0:
             continue
         instrument = cat.instrument(symbol, venue_id)
         marks[instrument.id] = price
-        # Standalone track size = the standardized per-strategy capital (the risk gauntlet enforces the same cap,
-        # so the sim fill is accepted rather than rejected).
-        notional = per_track_capital
-        # Round qty DOWN so qty*price can never round a hair OVER the per-strategy cap (the gauntlet's
-        # `notional > cap` is strict — sizing to exactly the cap then rounding up would trip it + reject the fill).
-        qty = (notional / price).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
-        if qty <= 0:
-            continue
-        intents.append(
-            IntendedOrder(
-                strategy_version_id=vid,
-                symbol=symbol,
-                venue_id=venue_id,
-                side=1,
-                qty=qty,
-                price=price,
-                # Bracket the sim entry with conservative protective levels (the risk gauntlet requires both;
-                # the deterministic master owns final sizing — these are structure, not magic edge numbers).
-                stop_loss=(price * Decimal("0.95")).quantize(Decimal("0.01")),
-                take_profit=(price * Decimal("1.10")).quantize(Decimal("0.01")),
-                conviction=Decimal("0.5"),
-                gate_passed=True,        # only gate-passed survivors reach here; live still gated by the toggle
-            )
+        # venue='sim' matches the fill-ledger label the order path persists — the executor's flat-row query
+        # (and the funder's own already_funded guard) see exactly what a closed sim position would look like.
+        portfolio.register_track(
+            instrument_id=instrument.id, symbol=symbol, venue="sim", strategy_version_id=vid
         )
+        registered.append(vid)
 
-    execute_orders(
-        intents,
-        live_enabled=False,             # the loop funds SIM tracks; live stays off until explicitly armed
-        kill_switch=False,
-        adapter=None,
-        store=store,
-        portfolio=portfolio,
-        risk=store.settings.risk,
-        catalog=cat,
-    )
-    report.funded = len(intents)
-    report.funded_tracks = [i.strategy_version_id for i in intents if i.strategy_version_id]
+    report.funded = len(registered)
+    report.funded_tracks = registered
     snapshot = portfolio.mark_to_market(marks)
     report.equity = float(snapshot["equity"])
     report.pnl = float(snapshot["pnl"])
@@ -245,18 +242,34 @@ def fund_tracks_from_survivors(
     return report
 
 
+def _default_equity_provider(settings: Settings | None) -> MarketDataProvider:
+    """The equity mark source when none is injected: prefer Alpaca daily bars (IEX, adjustment=all — dividend-
+    adjusted, with the closed-candle guard + stale-cache refetch the keyless equity providers lack) when ALPACA
+    keys are configured, else the keyless Yahoo v8 total-return path. AlpacaDailyBarsProvider.from_settings
+    returns None without keys, so this degrades HONESTLY to Yahoo — never a fabricated bar. (The Alpaca DATA
+    lane shipped key-gated in #172; this is the wiring that actually selects it for the forward-test clock once
+    keys land — both providers price the same total-return closes, so a track's P&L is consistent either way.)"""
+    if settings is not None:
+        alpaca = AlpacaDailyBarsProvider.from_settings(settings)
+        if alpaca is not None:
+            return alpaca
+    return YahooDailyBarsProvider()
+
+
 class PricingRouter:
-    """ASSET-AWARE mark source for the paper clock. One router routes each held position to the REAL
-    pricing source for its asset class — crypto → Binance spot, equity/ETF → Yahoo v8 total-return — so an
-    equity (GEM, the TAA fleet) accrues honest P&L instead of marking to 0 against a Binance symbol that does
-    not exist. The asset class is read from the instrument the position references in the catalog (looked up by
-    (symbol, venue)); an unknown instrument falls back to the venue's declared kind. NO synthetic/zero-fill: a
-    genuinely unavailable close (offline, gap day, unknown symbol) returns 0 and the caller SKIPS that position,
-    leaving it at its last basis. Deterministic for a fixed catalog + provider responses; offline-safe.
+    """ASSET-AWARE mark source for the forward-test clock. One router routes each held position to the REAL
+    pricing source for its asset class — crypto → Binance spot, equity/ETF → Alpaca (IEX, dividend-adjusted) when
+    ALPACA keys are set else keyless Yahoo total-return — so an equity (GEM, the TAA fleet) accrues honest P&L
+    instead of marking to 0 against a Binance symbol that does not exist. The asset class is read from the
+    instrument the position references in the catalog (looked up by (symbol, venue)); an unknown instrument falls
+    back to the venue's declared kind. NO synthetic/zero-fill: a genuinely unavailable close (offline, gap day,
+    unknown symbol) returns 0 and the caller SKIPS that position, leaving it at its last basis. Deterministic for
+    a fixed catalog + provider responses; offline-safe.
 
     The crypto and equity providers are constructed lazily and reused across every position in one run (one cache
     each), and either can be injected for tests/alternate venues — there is no per-call-site provider, this is the
-    single pricing-router for the clock."""
+    single pricing-router for the clock. Pass `settings` to let the equity leg pick Alpaca-when-keyed (an injected
+    `equity` provider always wins)."""
 
     def __init__(
         self,
@@ -264,12 +277,13 @@ class PricingRouter:
         *,
         crypto: MarketDataProvider | None = None,
         equity: MarketDataProvider | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self.catalog = catalog
         self._crypto = crypto or BinanceSpotOHLCVProvider()
-        # Yahoo v8 prices on TOTAL-RETURN closes — the same source the working equity_dual_momentum_arm mark uses
-        # (keyless, certifi SSL). Reused so a multi-leg equity track shares one cache per run.
-        self._equity = equity or YahooDailyBarsProvider()
+        # Equity leg: an injected provider always wins (tests / alternate venues); otherwise prefer Alpaca when
+        # keyed, else keyless Yahoo total-return — the same total-return closes the equity_dual_momentum_arm uses.
+        self._equity = equity or _default_equity_provider(settings)
 
     def _asset_class(self, symbol: str, venue: str) -> str:
         """The asset class to price `symbol`@`venue` against. Prefer the instrument's own asset_class; if the
@@ -313,7 +327,7 @@ def mark_tracks(
     equity/ETF → Yahoo total-return — so equity tracks (GEM, the TAA fleet) accrue P&L instead of sitting flat.
     `market_data` (kept for back-compat) overrides ONLY the crypto leg; pass `router` to control both legs."""
     cat = catalog or default_catalog()
-    pricer = router or PricingRouter(cat, crypto=market_data)
+    pricer = router or PricingRouter(cat, crypto=market_data, settings=store.settings)
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
     positions = [p for p in portfolio.positions() if p.qty != 0]
     marks: dict[str, Decimal] = {}
@@ -421,22 +435,42 @@ def _funding_rate_asof(store: Store, symbol: str) -> Decimal | None:
     return Decimal(str(row["value"])) if row else None
 
 
+# The hourly intraday lane steps ONLY sub-daily horizons: crypto bars are closed-candle-guarded (data/market),
+# while the Yahoo equity source serves an in-progress day bar — so daily tracks stay on the daily clocks.
+_INTRADAY_BAR_SIZES = frozenset({"1h", "4h"})
+
+
 def _main(argv: list[str] | None = None) -> int:
     """Railway cron entrypoint for the PAPER CLOCK: first the EXECUTOR (paper_step.step_tracks — each
     gate-lane track's OWN spec/params decide exits and re-entries through the one order path, sim-only), then
     the MARK (re-mark every held sim position against the latest REAL close, routed by asset class — crypto →
     Binance, equity/ETF → Yahoo total-return). Step-then-mark so the snapshot reflects post-trade state.
-    `python3 -m cosmu.orchestrator.loop`."""
+
+    Three cadences, one entrypoint (re-running on the same closed bar is always a no-op — decision-bar coids):
+      `python3 -m cosmu.orchestrator.loop`             full clock (daily crons, 00:10 + 22:10 UTC)
+      `python3 -m cosmu.orchestrator.loop --intraday`  hourly lane: step sub-daily (1h/4h) tracks, then mark all
+      `python3 -m cosmu.orchestrator.loop --mark-only` marks only (no executor step) — freshness without trades
+    """
     import argparse
 
     from cosmu.config.settings import Settings
     from cosmu.orchestrator.paper_step import step_tracks
 
-    argparse.ArgumentParser(description="Run the paper executor (each track's own exits/entries, sim-only) then mark held positions to the latest real close, asset-aware.").parse_args(argv)
+    parser = argparse.ArgumentParser(
+        description="Run the forward-test executor (each track's own exits/entries, sim-only) then mark held positions to the latest real close, asset-aware."
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--intraday", action="store_true",
+                      help="step only sub-daily (1h/4h) tracks, then mark all held positions (the hourly lane)")
+    mode.add_argument("--mark-only", action="store_true",
+                      help="skip the executor step; just re-mark held positions to the latest real close")
+    args = parser.parse_args(argv)
     store = Store(Settings())
-    step = step_tracks(store)
-    print(f"PAPER STEP — managed={step.managed} closed={step.closed} opened={step.opened} "
-          f"skipped(deploy/unmanaged)={step.skipped_deploy}/{step.skipped_unmanaged}")
+    if not args.mark_only:
+        step = step_tracks(store, bar_sizes=_INTRADAY_BAR_SIZES if args.intraday else None)
+        lane = "intraday" if args.intraday else "full"
+        print(f"FORWARD-TEST STEP ({lane}) — managed={step.managed} closed={step.closed} opened={step.opened} "
+              f"skipped(deploy/unmanaged)={step.skipped_deploy}/{step.skipped_unmanaged}")
     snap = mark_tracks(store)
     print(f"SIM MARK-TO-MARKET — equity={float(snap['equity']):.2f} pnl={float(snap['pnl']):+.2f} drawdown={float(snap['drawdown']):.4f}")
     return 0

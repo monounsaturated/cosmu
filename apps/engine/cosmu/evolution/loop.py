@@ -582,6 +582,11 @@ class FarmLoop:
         return build_alt_by_symbol(self._alt_store(), spec, market)
 
 
+# THE crypto screen universe — the symbols every Binance gate-lane candidate is screened against. The funder
+# reads this too (orchestrator/loop.py): a survivor forward-tests ONLY on a symbol its gate evidence covered.
+CRYPTO_SCREEN_UNIVERSE: tuple[str, ...] = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")
+
+
 def _binance_symbols(spec: StrategySpec, enabled_venues: set[str], enabled_classes: set[str]) -> list[str]:
     # The strategy must target crypto on Binance AND the operator must have that venue/class enabled
     # in the global universe gate. A disabled venue/class yields no symbols → no trades → killed.
@@ -589,7 +594,7 @@ def _binance_symbols(spec: StrategySpec, enabled_venues: set[str], enabled_class
         return []
     if "crypto" not in enabled_classes or "binance" not in enabled_venues:
         return []
-    return ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"]
+    return list(CRYPTO_SCREEN_UNIVERSE)
 
 
 def _bar_limit(spec: StrategySpec) -> int:

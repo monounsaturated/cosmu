@@ -95,10 +95,16 @@ class PgAltDataStore:
         # Batched multi-row insert: one round-trip per ~1000 rows, not per row. Row-by-row over the
         # Supabase pooler made a 1.3M-row backfill take ~6h; this is the same data in minutes.
         with self.store.batch() as writer:
+            # ON CONFLICT DO NOTHING against uq_alt_data_pit (provider,symbol,metric,ts,available_at): a repeat
+            # or raced append of an already-stored window is a no-op, never a raise — the DB-level idempotency
+            # the 15-min ingest cron relies on. (The scheduled path already dedups upstream, so n_rows below
+            # equals the rows actually inserted in normal operation; the summary is rebuilt from truth during
+            # compaction, so a rare raced over-count self-heals.)
             writer.insert_many(
                 "alt_data",
                 ["provider", "symbol", "metric", "ts", "available_at", "value", "ingested_at"],
                 rows,
+                ignore_duplicates=True,
             )
             # Roll this just-written batch into the per-(provider, metric) summary IN THE SAME transaction —
             # an INCREMENTAL upsert (n_rows += len(points), latest_available_at = max), never a full re-aggregate
@@ -116,10 +122,15 @@ class PgAltDataStore:
             )
 
     def read_asof(self, provider: str, symbol: str, metric: str, as_of: datetime) -> list[AltDataPoint]:
+        # Latest-revision row (max id) per ts among rows available by `as_of`, ordered by ts. Uses a window
+        # function instead of Postgres-only `DISTINCT ON (ts)` so it runs IDENTICALLY on SQLite — the old
+        # `DISTINCT ON` errored on SQLite, which made read_pit_fee silently return its fallback for every local/
+        # test fee read (prod/Postgres was unaffected). On Postgres the result is unchanged (max-id per ts).
         rows = self.store.rows(
-            "SELECT DISTINCT ON (ts) ts, available_at, value FROM alt_data "
-            "WHERE provider = ? AND symbol = ? AND metric = ? AND available_at <= ? "
-            "ORDER BY ts, id DESC",
+            "SELECT ts, available_at, value FROM ("
+            "  SELECT ts, available_at, value, row_number() OVER (PARTITION BY ts ORDER BY id DESC) AS rn "
+            "  FROM alt_data WHERE provider = ? AND symbol = ? AND metric = ? AND available_at <= ?"
+            ") t WHERE rn = 1 ORDER BY ts",
             (provider, symbol, metric, as_of.isoformat()),
         )
         return [AltDataPoint(ts=datetime.fromisoformat(r["ts"]), available_at=datetime.fromisoformat(r["available_at"]), value=float(r["value"])) for r in rows]
@@ -360,4 +371,12 @@ class StoreBackedAltProvider:
                     alias = _STORE_METRIC_ALIAS.get(metric)
                     if alias:
                         points = self._store.read_all(provider, base, alias)
+        # Collapse exact re-appended duplicates (same ts AND available_at; last write wins, matching
+        # read_asof's id-DESC rule) BEFORE the trailing slice — the slice must count DISTINCT points, or a
+        # store that accreted duplicate copies of a window (the pre-dedup scheduled ingest did this every
+        # pass) silently shrinks the history the gate sees to a fraction of what it asked for.
+        if points:
+            by_key = {(p.ts, p.available_at): p for p in points}
+            if len(by_key) != len(points):
+                points = list(by_key.values())
         return points[-limit:]

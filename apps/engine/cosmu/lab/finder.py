@@ -333,19 +333,42 @@ class StrategyFinder:
         promotions = {
             p.candidate_id: p
             for p in promote_cohort(
-                self.store, rep_cohort, self.settings.gates, fdr_q=fdr_q, register=False, trials=finder_stats
+                self.store, rep_cohort, self.settings.gates, fdr_q=fdr_q, register=False, trials=finder_stats,
+                check_holdout=False,  # selection is validation-only; the holdout confirms champions below
             )
         }
         for r in results:
             p = promotions.get(r.config_tag)
             r.promoted = bool(p and p.promoted)  # only a cluster representative can be promoted
 
-        # WFO / one-shot holdout BEFORE promotion: a promoted variant must ALSO clear the untouched, PURGED +
-        # EMBARGOED holdout (holdout_deflated_sharpe > the configured floor) so the finder never promotes on
-        # in-sample evidence alone.
+        # CHAMPION-ONLY one-shot holdout. The grid screened with include_holdout=False (no variant ever
+        # simulated the exam), selection + FDR ran on validation evidence alone — so the untouched, PURGED +
+        # EMBARGOED holdout is now evaluated exactly once per PROMOTED cluster representative, as a pure
+        # CONFIRMATION. A champion that fails is an honest dead end for this run: the finder never retries the
+        # exam with the next-best variant (search-until-pass would silently turn the holdout back into a
+        # selection set). Every look is audited as a `holdout_look` event.
         floor = float(self.settings.gates.holdout_min_deflated_sharpe)
         for r in results:
+            r.holdout_passed = False
+        for r in (r for r in results if r.promoted):
+            champion = run_strategy_backtest_detailed(
+                spec, dict(r.fitted_params), market, fee_bps=venue.taker_fee_bps, alt_by_symbol=alt
+            )  # include_holdout defaults True — this is the single exam look for this champion
+            r.metrics = r.metrics.model_copy(
+                update={"holdout_deflated_sharpe": champion.metrics.holdout_deflated_sharpe}
+            )
             r.holdout_passed = float(r.metrics.holdout_deflated_sharpe) > floor
+            try:
+                self.store.append_event(
+                    actor="master", kind="holdout_look", ref_type="strategy",
+                    ref_id=f"{spec.name}:{r.config_tag}",
+                    payload={
+                        "passed": r.holdout_passed,
+                        "holdout_deflated_sharpe": float(r.metrics.holdout_deflated_sharpe),
+                    },
+                )
+            except Exception:  # noqa: BLE001 — audit trail is best-effort; the verdict itself is already set
+                pass
         if persist:
             self._persist(spec, results, market)
 
@@ -390,8 +413,12 @@ class StrategyFinder:
             compiled = compile_spec(spec, variant.params)
         except ValueError:
             return None
+        # include_holdout=False: the SCREEN sees validation evidence only — the untouched holdout is evaluated
+        # exactly once, for the promoted champion(s), in find()'s champion-only holdout step. A 256-variant grid
+        # simulating the exam per variant was the structural holdout-reuse channel the deep review flagged.
         detailed = run_strategy_backtest_detailed(
-            spec, variant.params, market, fee_bps=venue.taker_fee_bps, alt_by_symbol=alt_by_symbol
+            spec, variant.params, market, fee_bps=venue.taker_fee_bps, alt_by_symbol=alt_by_symbol,
+            include_holdout=False,
         )
         metrics = detailed.metrics
         net_profit = float(metrics.oos_return) - _round_trip_cost(metrics, venue)
@@ -433,7 +460,7 @@ class StrategyFinder:
             if cohort_pbo is not None:
                 metrics = metrics.model_copy(update={"pbo": Decimal(str(round(cohort_pbo, 6)))})
                 r.metrics = metrics  # persist the real CSCV-PBO into the recorded backtest
-            verdict = score(metrics, self.settings.gates, trials=finder_stats)
+            verdict = score(metrics, self.settings.gates, trials=finder_stats, check_holdout=False)
             reasons = list(verdict.reasons)
             per_symbol_ok = trades_by_tag.get(r.config_tag, 0) >= _MIN_TRADES_PER_SYMBOL
             if not per_symbol_ok:
@@ -548,11 +575,13 @@ class StrategyFinder:
                         },
                     )
 
-        # After the version rows are committed, record each gate-passer's one-shot holdout verdict through the
+        # After the version rows are committed, record each CHAMPION's one-shot holdout verdict through the
         # ledger (separate transaction; idempotent on version_id) so the finder can never re-pick on the holdout.
+        # Only promoted representatives ever took the exam (champion-only holdout) — recording a non-promoted
+        # gate-passer here would mark its holdout "spent, failed" for an exam it never sat.
         ledger = HoldoutLedger(self.store)
         for r in results:
-            if r.version_id and r.gate_passed and not ledger.consumed(r.version_id):
+            if r.version_id and r.promoted and not ledger.consumed(r.version_id):
                 ledger.evaluate_once(
                     r.version_id,
                     lambda r=r: {"passed": r.holdout_passed, "deflated_sharpe": round(float(r.metrics.holdout_deflated_sharpe), 6)},

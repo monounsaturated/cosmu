@@ -16,6 +16,7 @@ from cosmu.data.providers._types import (  # noqa: F401
 from cosmu.data.providers.fees import (  # noqa: F401
     VenueFeesProvider,
     read_pit_fee,
+    read_pit_fee_resolver,
 )
 from cosmu.data.providers.fixtures import (  # noqa: F401
     FixtureAltDataProvider,
@@ -127,6 +128,7 @@ __all__ = [
     "FixtureAltDataProvider",
     "FixtureNewsProvider",
     "read_pit_fee",
+    "read_pit_fee_resolver",
     "VenueFeesProvider",
     "rolling_zscore",
     # private helpers

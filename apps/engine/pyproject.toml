@@ -17,7 +17,6 @@ dependencies = [
   "pydantic>=2.9",
   "pydantic-settings>=2.5",
   "pyyaml>=6.0",  # parse typed YAML front-matter in `.md` inbox specs (cosmu.lab.inbox)
-  "sqlalchemy>=2.0",
   "uvicorn>=0.30",
 ]
 
@@ -26,6 +25,7 @@ dev = [
   "httpx>=0.27", # required by fastapi.testclient, which engine:test imports — without it pytest collection errors
   "pytest>=8.3",
   "pytest-xdist>=3.5", # parallel test execution via -n auto (workers = CPU count)
+  "pytest-timeout>=2.3", # bound every test so the pre-push gate (.githooks/pre-push) can never silently HANG
   "ruff>=0.7",
 ]
 # The Modal client — ONLY needed where you invoke `modal run` (laptop / cloud session), never inside the
@@ -33,12 +33,17 @@ dev = [
 remote = [
   "modal>=0.64",
 ]
+# The COLD data tier (hot/cold stack): DuckDB powers the Parquet lake (local or Cloudflare R2) behind
+# ParquetAltDataStore + export_alt_parquet. Opt-in (the default "pg" backend needs none of this), so the
+# Railway image stays lean. Install where you run the parquet backend / migration: pip install -e ".[lake]".
+lake = [
+  "duckdb>=1.1",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
-  "evals: evaluation gates for agentic behavior",
   "allow_network: opt-out of the session-wide socket guard (for tests that genuinely need a live connection)",
 ]
 

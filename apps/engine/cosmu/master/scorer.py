@@ -198,7 +198,11 @@ def sample_moments(returns: list[float]) -> tuple[float, float, float, int]:
     return sr, skew, kurt, n
 
 
-def score(metrics: BacktestMetrics, gates: GateSettings, *, trials: TrialStats | None = None) -> ScoreVerdict:
+def score(metrics: BacktestMetrics, gates: GateSettings, *, trials: TrialStats | None = None, check_holdout: bool = True) -> ScoreVerdict:
+    """`check_holdout=False` is the SCREENING-lane mode: variant selection must see only validation evidence —
+    the untouched holdout is a one-shot CONFIRMATION the caller applies to its selected champion afterwards
+    (the finder's champion-only holdout step). Leaving it True (the default, every other caller) keeps the
+    holdout floor inside the verdict, which is correct only when the scored metrics ARE a champion's."""
     trials = trials or TrialStats(count=max(metrics.trials_counted, 1))
     dsr = deflated_sharpe_prob(metrics, trials)
     reasons: list[str] = []
@@ -212,7 +216,7 @@ def score(metrics: BacktestMetrics, gates: GateSettings, *, trials: TrialStats |
         reasons.append("pbo")
     if Decimal(str(dsr)) < gates.min_deflated_sharpe_prob:
         reasons.append("deflated_sharpe")
-    if metrics.holdout_deflated_sharpe <= gates.holdout_min_deflated_sharpe:
+    if check_holdout and metrics.holdout_deflated_sharpe <= gates.holdout_min_deflated_sharpe:
         reasons.append("holdout")
     # Beat-buy-and-hold: a promotable edge must out-return simply holding the same validation-slice basket, net of
     # fees. Without this a bull-regime long can pass every statistical gate yet underperform BTC and still get

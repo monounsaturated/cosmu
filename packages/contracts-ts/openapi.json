@@ -1370,6 +1370,166 @@
         "title": "CostsResponse",
         "type": "object"
       },
+      "CredibilityResponse": {
+        "description": "The source scoreboard: one row per followed voice, ordered skill DESC with NULLs (untested) last.\n`panel_size` is the row count; `as_of` is the latest scoreboard update (null when the panel is empty\n\u2014 voices are pre-registered in cosmu/config/voices.py and the hourly pass fills this in).",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "panel_size": {
+            "title": "Panel Size",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CredibilityRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "panel_size",
+          "rows"
+        ],
+        "title": "CredibilityResponse",
+        "type": "object"
+      },
+      "CredibilityRow": {
+        "description": "One pre-registered voice's flat scoreboard row (written by cosmu/ingest/voices_pass.py).\n\n`n_posts`/`n_claims` are volume, NOT skill. `n_resolved` is how many claims were old enough to be\nscored against the tape. Every REAL metric is nullable: a voice with zero resolved claims carries\nNULL skill (honest \u2014 untested, not unskilled). `hit_rate` vs `base_hit_rate` separates being right\nfrom the market simply going up; `brier_skill_score` > 0 beats the base rate; `calibration_error`\nis |stated conviction \u2212 realized| (0 = perfectly calibrated); `skill` is the headline [0,1]\nsample-shrunk scalar; `authority` is skill-anchored citation PageRank (influence \u2260 authority);\n`primacy_rate` is how often this voice is FIRST on a claim (breaker vs echo).",
+        "properties": {
+          "authority": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authority"
+          },
+          "base_hit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Hit Rate"
+          },
+          "brier_skill_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brier Skill Score"
+          },
+          "calibration_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration Error"
+          },
+          "excess_hit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excess Hit Rate"
+          },
+          "handle": {
+            "title": "Handle",
+            "type": "string"
+          },
+          "hit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hit Rate"
+          },
+          "n_claims": {
+            "title": "N Claims",
+            "type": "integer"
+          },
+          "n_posts": {
+            "title": "N Posts",
+            "type": "integer"
+          },
+          "n_resolved": {
+            "title": "N Resolved",
+            "type": "integer"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "primacy_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primacy Rate"
+          },
+          "skill": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "handle",
+          "platform",
+          "n_posts",
+          "n_claims",
+          "n_resolved",
+          "updated_at"
+        ],
+        "title": "CredibilityRow",
+        "type": "object"
+      },
       "CrossAssetVerdict": {
         "description": "The four-arm cross-asset ablation verdict \u2014 shared snake_case contract used by the UI gate run.\nMirrors cosmu.research.gate.CrossAssetVerdict exactly so the dataclass maps field-for-field.",
         "properties": {
@@ -5088,6 +5248,39 @@
             "title": "Spec",
             "type": "object"
           },
+          "summary_md": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Md"
+          },
+          "summary_stale": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Stale"
+          },
+          "summary_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Updated At"
+          },
           "trades": {
             "items": {
               "$ref": "#/components/schemas/Execution"
@@ -5112,6 +5305,68 @@
           "holdout"
         ],
         "title": "StrategyDetailResponse",
+        "type": "object"
+      },
+      "StrategySummaryPutRequest": {
+        "description": "An externally-written summary being stored: the markdown body + the facts_hash it was written from\n(the staleness pin) + writer provenance (model, prompt_version). The engine stores/serves \u2014 never writes.",
+        "properties": {
+          "body_md": {
+            "title": "Body Md",
+            "type": "string"
+          },
+          "facts_hash": {
+            "title": "Facts Hash",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body_md",
+          "facts_hash",
+          "model",
+          "prompt_version"
+        ],
+        "title": "StrategySummaryPutRequest",
+        "type": "object"
+      },
+      "StrategySummaryPutResponse": {
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "StrategySummaryPutResponse",
+        "type": "object"
+      },
+      "SummaryFactsResponse": {
+        "description": "The DETERMINISTIC facts a plain-language summary is written from (research/summary_facts.py) plus the\nsha256 staleness pin. The external writer GETs this, writes prose from these facts ONLY, and PUTs the\nsummary back pinned to this exact facts_hash.",
+        "properties": {
+          "facts": {
+            "additionalProperties": true,
+            "title": "Facts",
+            "type": "object"
+          },
+          "facts_hash": {
+            "title": "Facts Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "facts",
+          "facts_hash"
+        ],
+        "title": "SummaryFactsResponse",
         "type": "object"
       },
       "TickDetail": {
@@ -6639,6 +6894,25 @@
         "summary": "Mind"
       }
     },
+    "/mind/credibility": {
+      "get": {
+        "description": "The SOURCE SCOREBOARD (realtime-data-lane epic P2) \u2014 one flat row per pre-registered voice from\n`voice_scoreboard` (written by the voices pass), ordered skill DESC with NULLs (untested) last.\n\nHonest: nullable metrics pass through as null \u2014 a voice with no resolved claims is UNTESTED, never\nrendered as zero-skill. Empty panel \u2192 rows=[], as_of=null (voices are pre-registered in\ncosmu/config/voices.py; the hourly pass fills this in). Read-only; no LLM on this path; AUTH is the\napp-level x-api-key middleware (no per-route check). Cheap flat SELECT \u2014 no cache needed.",
+        "operationId": "mind_credibility_mind_credibility_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredibilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Mind Credibility"
+      }
+    },
     "/mind/news-intel": {
       "get": {
         "description": "Recent scored news events for a symbol \u2014 the typed, dated, point-in-time news/intel panel.\n\nEach event has: ts, available_at, value (signed magnitude in [-1, 1]), event_type (bullish/bearish/neutral).\nHonest empty state when no news has been ingested yet. No LLM on this path \u2014 events were scored at ingest.",
@@ -6711,7 +6985,7 @@
     },
     "/overview": {
       "get": {
-        "description": "The aggregate read-out for the Overview surface \u2014 the \u03a3 of all standalone paper tracks. A pure\nread-out: there is NO pooled wallet and no cross-track allocation (each survivor proves on its own track).\n\nAll four reads share ONE autocommit Postgres connection (store.reading()) \u2014 without this each store.row()\nopens + closes a separate psycopg2 connection (~1s RTT \u00d7 5 \u2248 5\u20137s, over the 5s frontend budget).",
+        "description": "The aggregate read-out for the Overview surface \u2014 the \u03a3 of all standalone forward-test tracks. A pure\nread-out: there is NO pooled wallet and no cross-track allocation (each survivor proves on its own track).\n\nAll four reads share ONE autocommit Postgres connection (store.reading()) \u2014 without this each store.row()\nopens + closes a separate psycopg2 connection (~1s RTT \u00d7 5 \u2248 5\u20137s, over the 5s frontend budget).",
         "operationId": "overview_overview_get",
         "responses": {
           "200": {
@@ -7081,6 +7355,96 @@
           }
         },
         "summary": "Strategy Detail"
+      }
+    },
+    "/strategies/{version_id}/summary": {
+      "put": {
+        "description": "Store an EXTERNALLY-WRITTEN plain-language summary as a research_notes row (kind='summary'; the new\nlatest wins \u2014 no schema change). The deployed engine NEVER generates this text \u2014 Claude Code writes it on\nthe flat sub; this route only persists it with its facts_hash pin + writer provenance. Auth is the global\nx-api-key middleware (cosmu/api/app.py), the SAME gate every control-plane route sits behind. The embedding\nis the same deterministic keyless embed GraveyardMemory uses, so summaries are recallable like other notes.",
+        "operationId": "put_strategy_summary_strategies__version_id__summary_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StrategySummaryPutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategySummaryPutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Strategy Summary"
+      }
+    },
+    "/strategies/{version_id}/summary-facts": {
+      "get": {
+        "description": "The DETERMINISTIC facts a plain-language summary is written from + the sha256 staleness pin. The\nexternal writer (Claude Code) GETs this, writes prose from these facts ONLY, then PUTs the summary back\npinned to this exact facts_hash. Read-only; no LLM on this path.",
+        "operationId": "strategy_summary_facts_strategies__version_id__summary_facts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryFactsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategy Summary Facts"
       }
     },
     "/strategy/pine": {

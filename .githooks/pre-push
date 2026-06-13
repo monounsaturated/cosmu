@@ -64,6 +64,11 @@ if PYTHONPATH=apps/engine python3 -c "import pytest, cosmu.config.settings" >/de
   else
     PYTEST_ARGS="-q"
   fi
+  # A pre-push gate must NEVER hang. When pytest-timeout is installed, bound every test so a pathological one
+  # (e.g. a per-bar DB-read loop under parallel I/O) fails LOUD instead of stalling the push indefinitely.
+  if python3 -c "import pytest_timeout" >/dev/null 2>&1; then
+    PYTEST_ARGS="$PYTEST_ARGS --timeout=300 --timeout-method=thread"
+  fi
   if ! PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests $PYTEST_ARGS; then
     echo "[pre-push] BLOCKED: engine tests failed. Push = deploy — fix them, then push." >&2
     exit 1

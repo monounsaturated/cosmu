@@ -317,6 +317,78 @@ CREATE TABLE IF NOT EXISTS alt_data (
   ingested_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_alt_data_lookup ON alt_data (provider, symbol, metric, available_at);
+-- POINT-IN-TIME uniqueness (mirrors schema_postgres.sql uq_alt_data_pit): exact PIT photocopies collapse at the
+-- DB layer; appends use ON CONFLICT DO NOTHING so a re-appended window is a no-op, never a raise. A real vendor
+-- revision (same ts, DIFFERENT available_at) stays a distinct row.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_alt_data_pit ON alt_data (provider, symbol, metric, ts, available_at);
+
+-- POINT-IN-TIME UNSTRUCTURED-EVENT store (realtime-data-lane epic §5): typed news/tweet/Polymarket/OSINT
+-- events with TWO clocks — ts = the event's own publish time (event-study axis), available_at = OUR receipt
+-- time (the only honest trading-feature axis; scraped archives are "available at scrape time", never
+-- backdated). Append-only, deduped by (provider, content_hash). Title-level text only (small); numeric
+-- features derived from events flow into alt_data. Read by the event-study harness + mind/authority.py.
+CREATE TABLE IF NOT EXISTS market_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT '',
+  symbols TEXT NOT NULL DEFAULT '[]',     -- JSON array; [] = market-wide
+  ts TEXT NOT NULL,
+  available_at TEXT NOT NULL,
+  title TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  event_type TEXT,
+  root_event_id TEXT,
+  novelty REAL,
+  direction INTEGER,
+  magnitude REAL,
+  confidence REAL,
+  extractor_version TEXT,
+  ingested_at TEXT NOT NULL,
+  UNIQUE (provider, content_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_market_events_ts ON market_events (provider, ts);
+CREATE INDEX IF NOT EXISTS idx_market_events_root ON market_events (root_event_id);
+
+-- CREDIBILITY pipeline durable storage (realtime-data-lane epic P2). voice_claims = every typed predictive
+-- claim Phase 1 extracted (append-only, deduped so a re-extraction never double-counts; ts == the post's own
+-- availability — a claim can never read the future). voice_scoreboard = ONE flat, human-readable row per
+-- followed voice, upserted each pass — the operator-facing surface (plain columns, no joins needed).
+CREATE TABLE IF NOT EXISTS voice_claims (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  handle TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  post_id TEXT NOT NULL,
+  entity TEXT NOT NULL,
+  direction TEXT NOT NULL,            -- up | down | flat
+  horizon TEXT NOT NULL,              -- canonical horizon code
+  horizon_days INTEGER NOT NULL,
+  conviction REAL NOT NULL,
+  ts TEXT NOT NULL,                   -- claim time == the post's availability (PIT)
+  quote TEXT NOT NULL DEFAULT '',
+  url TEXT NOT NULL DEFAULT '',
+  extractor_version TEXT,
+  ingested_at TEXT NOT NULL,
+  UNIQUE (post_id, entity, direction, horizon)
+);
+CREATE INDEX IF NOT EXISTS idx_voice_claims_handle ON voice_claims (handle, ts);
+
+CREATE TABLE IF NOT EXISTS voice_scoreboard (
+  handle TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  n_posts INTEGER NOT NULL DEFAULT 0,        -- timeline posts on record
+  n_claims INTEGER NOT NULL DEFAULT 0,       -- typed claims extracted (volume, NOT skill)
+  n_resolved INTEGER NOT NULL DEFAULT 0,     -- claims old enough to be scored against the tape
+  hit_rate REAL,                             -- fraction of resolved claims whose direction realized
+  base_hit_rate REAL,                        -- what a coin-at-base-rate would have hit
+  excess_hit_rate REAL,                      -- hit_rate - base_hit_rate (skill above chance)
+  brier_skill_score REAL,                    -- >0 beats the base rate; <=0 does not
+  calibration_error REAL,                    -- |stated conviction - realized| (0 = perfectly calibrated)
+  skill REAL,                                -- the headline [0,1] scalar (sample-shrunk Brier skill)
+  authority REAL,                            -- citation-PageRank anchored to skill (influence != authority)
+  primacy_rate REAL,                         -- how often this voice is FIRST on a claim (breaker vs echo)
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (platform, handle)
+);
 
 -- Per-(provider, metric) rollup of alt_data, refreshed INCREMENTALLY after each ingest pass (an upsert from
 -- the just-written rows, NEVER a full re-aggregate of alt_data). Reads that only need "how fresh / how much"

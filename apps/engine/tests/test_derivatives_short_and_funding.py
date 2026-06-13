@@ -168,6 +168,23 @@ def test_short_profits_when_price_falls():
     assert long.oos_return < 0, "the mirror long into the same fall should lose"
 
 
+def test_short_pays_fees_like_a_long_on_a_flat_path():
+    """On a FLAT price path every round trip is a pure cost trade — the long and the short must both lose
+    ≈ the same two-sided fees+slippage on the EQUITY CURVE (not just in per-trade pnl_pct). Regression for
+    the inverted short entry booking that credited the entry fee as a gain (qty shrank by the fee while the
+    full sale proceeds landed in cash), which made every short curve near fee-free and the gate's
+    curve-derived metrics gross-of-fee for direction=-1 specs."""
+    market = {"BTCUSDT": _bars([100.0] * 120)}
+    long = run_strategy_backtest(_spec(direction=1), _PARAMS, market, fee_bps=Decimal("10"))
+    short = run_strategy_backtest(_spec(direction=-1), _PARAMS, market, fee_bps=Decimal("10"))
+    assert long.num_trades > 0 and short.num_trades > 0
+    long_ret, short_ret = float(long.oos_return), float(short.oos_return)
+    assert long_ret < 0
+    assert short_ret < 0, "a flat-path short round trip must PAY fees, not earn them"
+    # Same costs to first order; allow only a small second-order slippage asymmetry between the sides.
+    assert abs(short_ret - long_ret) < 0.1 * abs(long_ret)
+
+
 # ---------- funding accrues with the correct sign -----------------------------------------------------------
 
 

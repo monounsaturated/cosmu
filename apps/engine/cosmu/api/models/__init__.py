@@ -66,6 +66,9 @@ from cosmu.api.models.core import (  # noqa: F401
     RecommendationsResponse,
     SetJurisdictionRequest,
     StrategyDetailResponse,
+    StrategySummaryPutRequest,
+    StrategySummaryPutResponse,
+    SummaryFactsResponse,
     ToggleRequest,
     ToggleResponse,
     UniverseResponse,
@@ -83,6 +86,10 @@ from cosmu.api.models.costs import (  # noqa: F401
     InfraLine,
     LlmCallSummary,
     VendorActual,
+)
+from cosmu.api.models.credibility import (  # noqa: F401
+    CredibilityResponse,
+    CredibilityRow,
 )
 from cosmu.api.models.drift import (  # noqa: F401
     DriftResponse,
@@ -222,6 +229,9 @@ __all__ = [
     "RecommendationsResponse",
     "SetJurisdictionRequest",
     "StrategyDetailResponse",
+    "StrategySummaryPutRequest",
+    "StrategySummaryPutResponse",
+    "SummaryFactsResponse",
     "ToggleRequest",
     "ToggleResponse",
     "UniverseResponse",
@@ -291,6 +301,9 @@ __all__ = [
     "InfraLine",
     "LlmCallSummary",
     "VendorActual",
+    # credibility
+    "CredibilityResponse",
+    "CredibilityRow",
     # drift
     "DriftResponse",
     "DriftTrack",
