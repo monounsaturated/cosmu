@@ -18,6 +18,7 @@ dependencies = [
   "pydantic-settings>=2.5",
   "pyyaml>=6.0",  # parse typed YAML front-matter in `.md` inbox specs (cosmu.lab.inbox)
   "uvicorn>=0.30",
+  "websockets>=12",  # realtime worker's Binance kline stream (import-guarded; worker is OFF by default)
 ]
 
 [project.optional-dependencies]

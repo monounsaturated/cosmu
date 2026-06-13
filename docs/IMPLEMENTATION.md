@@ -39,8 +39,17 @@ Polymarket) honestly, in event time, on intraday bars.*
   throttle (`llm_source_min_interval_minutes`, default 60): xAI/llm_index spend now scales with data
   freshness, not cron cadence. Decision recorded (epic §8): NO new gate / lighter lane — revisit only after
   the first event-study verdict.
-- **Follow-up staged:** launch-ready session prompt in `docs/epics/tasks/` for P3 (the always-on realtime
-  worker); the P2 prompt is superseded by the shipped implementation.
+- **P3 — realtime recording worker CODE SHIPPED (same day, operator decisions: in-process — no second
+  Railway service — and OFF by default until local testing; `REALTIME_WORKER_ENABLED=1` activates).**
+  `cosmu/realtime/`: Binance WS closed-1m-candle consumer (reconnect + backoff + jitter, injectable
+  connect seam, import-guarded `websockets` dep) → durable deduped `bars_intraday` with 1m→5m retention
+  rollup (no-loss-window delete) · budget-guarded poll collectors (RSS keyless / CryptoPanic key-gated /
+  Polymarket) → `market_events` with receipt-time `available_at` + lexicon enrichment ($0) · supervised
+  crash-isolated task tree + 60s heartbeat → events ledger · `GET /realtime/status`
+  (off|never|fresh|stale) + the Strategies-page staleness badge · standalone entrypoint kept as the
+  split-later option. The worker RECORDS, never executes; crons remain the fallback lane. 14 offline
+  tests (`tests/test_realtime_worker.py`). Activation steps live in
+  `docs/epics/tasks/local-agent-post-merge-actions.md` (its launch prompt replaced the P3 task file).
 
 ### Trust workflows — SIM→live variance attribution + a data-trust source audit (2026-06-04)
 *Two review-only "trust" surfaces, both deterministic + offline + out of the gate/money path. They EXPLAIN and

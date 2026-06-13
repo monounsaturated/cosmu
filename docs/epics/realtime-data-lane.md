@@ -280,10 +280,15 @@ caching + budget guard. Hard rule: alert when monthly compute exceeds the `costs
   per-source skill/authority (+ the `/profile-source` freshness badge pattern).
   ✓ when: ≥10 sources carry walk-forward skill scores with honest n; `authority_weighted_claim_signal`
   accrues as a PIT feature.
-- **P3 (worker, the Tier-2 core):** `cosmu.realtime.worker` deployed · Binance WS klines → 1m/5m bar
-  store with retention · event recorder for news/social/Polymarket · heartbeat + staleness badges.
-  ✓ when: a 5m bar is queryable < 30s after close, 7 consecutive days, zero manual restarts; events
-  carry receipt-time `available_at` from day one.
+- **P3 (worker, the Tier-2 core)** ✅ CODE SHIPPED 2026-06-11 — **IN-PROCESS, OFF BY DEFAULT** (two
+  operator decisions same day: no second Railway service — lean — and inert until local testing;
+  `REALTIME_WORKER_ENABLED=1` activates). `cosmu/realtime/`: Binance WS closed-1m-candles →
+  `bars_intraday` (PG-durable, 1m→5m retention rollup) · budget-guarded poll collectors
+  (RSS/CryptoPanic/Polymarket) → `market_events` with receipt-time `available_at` · 60s heartbeat →
+  events ledger · `GET /realtime/status` + the Strategies-page staleness badge · standalone entrypoint
+  kept as the split-later option. The worker RECORDS, never executes.
+  ✓ when (post-activation): a 1m bar is queryable < 30s after close, 7 consecutive days, zero manual
+  restarts; events carry receipt-time `available_at` from day one.
 - **P4 (event-driven executor + exploratory lane, gated on §8 sign-off):** `bar_closed` triggers the
   intraday lane through the one order path · exploratory lane if approved.
   ✓ when: an intraday paper track reacts within one bar period with fills through the standard
