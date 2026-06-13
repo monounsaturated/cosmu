@@ -7,7 +7,7 @@
 
 ## 1. The locked design
 
-**`mockups/cosmu-final-v11.html`** is the reference (self-contained HTML; open in Chrome).
+**`mockups/cosmu-final-v12.html`** is the reference (self-contained HTML; open in Chrome).
 It is the consolidation of the whole session. Key decisions already baked in:
 
 - **5 pages**, sidebar order **Live · Paper · Strategies · Costs · Commands**, default landing = **Live**.
@@ -36,7 +36,7 @@ It is the consolidation of the whole session. Key decisions already baked in:
 
 ## 2. Design requirements still to apply (operator, 2026-06-13) — fold into the web port
 
-These came in after v10 was cut; implement them in `apps/web` (and/or patch the mockup if iterating there):
+These are now reflected in the v12 mockup (reference); implement them in `apps/web` too (and/or patch the mockup if iterating there):
 
 1. **OOS must show its window, not just a %.** Out-of-sample is "`+8.2%` **over <period / N trades>**".
    Surface the duration next to the OOS return on the **strat sheet** (gate OOS chip + the phase-comparison
