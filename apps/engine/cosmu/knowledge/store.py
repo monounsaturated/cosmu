@@ -62,23 +62,32 @@ class _Conn:
         else:
             self._raw.executescript(sql)
 
-    def insert_many(self, table: str, columns: list[str], rows: list[tuple[Any, ...]], *, page_size: int = 1000) -> None:
+    def insert_many(
+        self, table: str, columns: list[str], rows: list[tuple[Any, ...]], *, page_size: int = 1000,
+        ignore_duplicates: bool = False,
+    ) -> None:
         """Multi-row INSERT in ONE round-trip per chunk — psycopg2 `execute_values` on PG, `executemany` on
         sqlite. Row-by-row `execute()` over a remote pooled Postgres is ~1 network RTT each; batching cut a
-        ~1.3M-row LunarCrush backfill from ~6h to minutes. Use for any bulk/backfill write."""
+        ~1.3M-row LunarCrush backfill from ~6h to minutes. Use for any bulk/backfill write.
+
+        `ignore_duplicates` appends `ON CONFLICT DO NOTHING` (valid on both psycopg2/PG and modern SQLite) so a
+        row that collides with a UNIQUE/PK constraint is a harmless no-op instead of raising — used by the
+        point-in-time alt_data append, whose `uq_alt_data_pit` index would otherwise make a re-appended (or
+        raced) window RAISE."""
         if not rows:
             return
         cur = self._raw.cursor()
         cols = ", ".join(columns)
+        conflict = " ON CONFLICT DO NOTHING" if ignore_duplicates else ""
         if self._pg:
             import psycopg2.extras
 
             psycopg2.extras.execute_values(
-                cur, f"INSERT INTO {table} ({cols}) VALUES %s", [tuple(r) for r in rows], page_size=page_size
+                cur, f"INSERT INTO {table} ({cols}) VALUES %s{conflict}", [tuple(r) for r in rows], page_size=page_size
             )
         else:
             placeholders = ", ".join("?" for _ in columns)
-            cur.executemany(f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", [tuple(r) for r in rows])
+            cur.executemany(f"INSERT INTO {table} ({cols}) VALUES ({placeholders}){conflict}", [tuple(r) for r in rows])
 
     def commit(self) -> None:
         self._raw.commit()
@@ -107,9 +116,12 @@ class Writer:
         """Run a raw write statement (e.g. DELETE/UPDATE) on this batch's single transaction."""
         self._con.execute(sql, params)
 
-    def insert_many(self, table: str, columns: list[str], rows: list[tuple[Any, ...]]) -> None:
-        """Batched multi-row INSERT on this transaction (see _Conn.insert_many) — for backfills/cohorts."""
-        self._con.insert_many(table, columns, [tuple(r) for r in rows])
+    def insert_many(
+        self, table: str, columns: list[str], rows: list[tuple[Any, ...]], *, ignore_duplicates: bool = False,
+    ) -> None:
+        """Batched multi-row INSERT on this transaction (see _Conn.insert_many) — for backfills/cohorts.
+        `ignore_duplicates` → `ON CONFLICT DO NOTHING` for idempotent re-append against a UNIQUE constraint."""
+        self._con.insert_many(table, columns, [tuple(r) for r in rows], ignore_duplicates=ignore_duplicates)
 
     def append_event(
         self,

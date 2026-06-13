@@ -317,6 +317,10 @@ CREATE TABLE IF NOT EXISTS alt_data (
   ingested_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_alt_data_lookup ON alt_data (provider, symbol, metric, available_at);
+-- POINT-IN-TIME uniqueness (mirrors schema_postgres.sql uq_alt_data_pit): exact PIT photocopies collapse at the
+-- DB layer; appends use ON CONFLICT DO NOTHING so a re-appended window is a no-op, never a raise. A real vendor
+-- revision (same ts, DIFFERENT available_at) stays a distinct row.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_alt_data_pit ON alt_data (provider, symbol, metric, ts, available_at);
 
 -- POINT-IN-TIME UNSTRUCTURED-EVENT store (realtime-data-lane epic §5): typed news/tweet/Polymarket/OSINT
 -- events with TWO clocks — ts = the event's own publish time (event-study axis), available_at = OUR receipt

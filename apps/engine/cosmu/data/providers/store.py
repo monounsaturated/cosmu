@@ -95,10 +95,16 @@ class PgAltDataStore:
         # Batched multi-row insert: one round-trip per ~1000 rows, not per row. Row-by-row over the
         # Supabase pooler made a 1.3M-row backfill take ~6h; this is the same data in minutes.
         with self.store.batch() as writer:
+            # ON CONFLICT DO NOTHING against uq_alt_data_pit (provider,symbol,metric,ts,available_at): a repeat
+            # or raced append of an already-stored window is a no-op, never a raise — the DB-level idempotency
+            # the 15-min ingest cron relies on. (The scheduled path already dedups upstream, so n_rows below
+            # equals the rows actually inserted in normal operation; the summary is rebuilt from truth during
+            # compaction, so a rare raced over-count self-heals.)
             writer.insert_many(
                 "alt_data",
                 ["provider", "symbol", "metric", "ts", "available_at", "value", "ingested_at"],
                 rows,
+                ignore_duplicates=True,
             )
             # Roll this just-written batch into the per-(provider, metric) summary IN THE SAME transaction —
             # an INCREMENTAL upsert (n_rows += len(points), latest_available_at = max), never a full re-aggregate

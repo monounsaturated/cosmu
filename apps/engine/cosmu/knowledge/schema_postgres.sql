@@ -297,6 +297,12 @@ create index if not exists idx_alt_data_lookup on alt_data (provider, symbol, me
 -- Covering index for the /scores freshness query: MAX(available_at) per metric across all symbols.
 -- Without this the query does a seqscan over millions of rows (LunarCrush per-symbol backfill).
 create index if not exists idx_alt_data_metric_avail on alt_data (metric, available_at desc);
+-- POINT-IN-TIME uniqueness: collapse exact (provider,symbol,metric,ts,available_at) photocopies at the DB layer,
+-- so the 15-min ingest cron can re-append a window idempotently. A genuine vendor revision has a DIFFERENT
+-- available_at (when we'd have known the new value) and is still kept as a distinct row — zero information loss.
+-- Appends MUST insert ON CONFLICT DO NOTHING (see PgAltDataStore.append) so a racing/repeat insert is a no-op,
+-- never a raise.
+create unique index if not exists uq_alt_data_pit on alt_data (provider, symbol, metric, ts, available_at);
 
 -- POINT-IN-TIME UNSTRUCTURED-EVENT store (realtime-data-lane epic §5): typed news/tweet/Polymarket/OSINT
 -- events with TWO clocks — ts = the event's own publish time (event-study axis), available_at = OUR receipt
