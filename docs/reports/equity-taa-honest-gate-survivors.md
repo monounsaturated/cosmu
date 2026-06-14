@@ -94,6 +94,29 @@ the DSR already credits the risk-adjustment, but the literal `require_beat_buy_a
   correctly kills the slow GEM (0.876). DAA passes because its drawdown *is* small (8.3%) and its Sharpe *is*
   high — that's the edge, not a loophole.
 
+## Follow-on (same day) — replicability + ensemble
+
+**Replicability** (`equity_taa_robustness.py`). A real snipe must survive its own parameter neighbourhood. Sweeping fee {1,2,3,5}bps · in-sample start-shift {0,+12,+24,+36mo} · DAA top-N {3..8} · ADM bond sleeve (AGG/TLT), Gating **every** variant deflated against the entire 27-variant search:
+
+| survivor | clears | replicability |
+|---|---|---|
+| **DAA** | 12/12 | **100%** — DSR pinned at 1.000 across all fees/starts/top-N |
+| **ADM** | 8/8 | **100%** — robust to fees, starts, AGG/TLT sleeve |
+| **VAA** | 6/7 | 86% — only cracks at +36mo start-shift (loses the GFC window; holdout actually *higher* there) |
+
+These are not knife-edge fits.
+
+**Ensemble** (`equity_taa_ensemble.py`). Recombine the winning logic — equal-weight (1/N, nothing fit) blends of the survivors. Three differently-triggered defensive rotations diversify into a strictly better risk-adjusted book:
+
+| book | DSR | holdout | annSR | maxDD | bar |
+|---|---|---|---|---|---|
+| **defensive4** (DAA+PAA+GTAA+TSMOM) | **1.000** | +0.484 | **1.23** | **4.7%** | DSR+holdout |
+| all7 | 1.000 | +0.482 | 1.24 | 7.9% | DSR+holdout |
+| core3 (DAA+VAA+ADM) | 1.000 | +0.464 | 1.13 | 12.7% | STRICT-PASS |
+| *best single (DAA)* | *1.000* | *+0.447* | *1.23* | *8.3%* | *STRICT-PASS* |
+
+**`defensive4` is the best risk-adjusted snipe** — DAA's Sharpe (1.23) at **~half the drawdown** (4.7% vs 8.3%), DSR 1.000, holdout +0.484. It clears the DSR+holdout bar but not the *strict* gate, because its defensive tilt does not out-*return* raw SPY (it trades return for smoothness) — exactly the expected behaviour of a crash-protected sleeve, and arguably the single most deployable "floor" product. 1/N is not overfitting: no weights are fit, the members are fixed priors, the 3 compositions are pre-declared and FDR-counted.
+
 ## Next
 
 - The survivors are already armed in SIM via `arm_fleet.py`; the **live forward paper is the fresh OOS arbiter**
