@@ -19,6 +19,7 @@ import { EquityHero } from "@/components/live/equity-hero";
 import { SimSummary } from "@/components/paper/sim-summary";
 import { PaperPositions } from "@/components/paper/track-card";
 import { WalletAllocCard } from "@/components/paper/wallet-alloc";
+import { TrackLedger } from "@/components/paper/track-ledger";
 import { StopPaperButton } from "@/components/paper/stop-paper-button";
 import { isPaper } from "@/lib/utils";
 
@@ -70,14 +71,16 @@ async function PaperData() {
       {/* Equity hero ALWAYS on top — the real aggregate paper curve (Σ of all funded tracks, net of fees). */}
       <EquityHero label="Paper equity" curve={overview.equity_curve} />
 
-      {/* 4-box KPI grid: Invested / P&L / Strategies / Live-ready. */}
-      <SimSummary rows={simRows} />
-
-      {/* [Open positions | Capital allocation donut] side by side — the donut replaces the honest-empty
-          aggregate trades box (no cohort fill feed exists) with the wallet's real per-strategy split. */}
-      <div className="kgrid dash-split" style={{ gridTemplateColumns: "1fr 1fr" }}>
+      {/* Stats (2×2 KPI grid, left) + Open positions (right). */}
+      <div className="kgrid dash-split" style={{ gridTemplateColumns: "minmax(0,2fr) minmax(0,3fr)" }}>
+        <SimSummary rows={simRows} />
         <PaperPositions rows={simRows} />
+      </div>
+
+      {/* Capital allocation donut (left) + Recent trades (right). */}
+      <div className="kgrid dash-split" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <WalletAllocCard rows={simRows} />
+        <TrackLedger rows={simRows} />
       </div>
     </div>
   );
