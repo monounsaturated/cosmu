@@ -177,8 +177,12 @@ def current_weights() -> dict[str, float]:
     return _target_weights(series, _add_months((today.year, today.month), -1)) or {}
 
 
+MATERIAL_DD_REDUCTION = 0.75  # "materially lower" drawdown = <= 75% of SPY's, for the deployment-bar risk-adjusted beat
+
+
 def validate() -> dict:
-    """Standalone deploy-lane validation print (full-sample + IS/OOS purged split). Returns the result dict."""
+    """The DEPLOYMENT-bar validation (NOT the 0.95 in-sample Gate). Returns the dict the sibling arm reads:
+    `deployable`, `current_weights`, `full`/`oos` PerfStats (+ their SPY benchmarks), `window`, `turnover`."""
     series = {sym: load_monthly(sym) for sym in HAA_SERIES}
     start = first_investable_month(series)
     today = datetime.now(tz=UTC).date()
@@ -189,13 +193,22 @@ def validate() -> dict:
     n = haa_stats.n_months
     is_end = full.months[n // 2]
     oos_start = _add_months(is_end, MAX_LOOKBACK)
-    oos = _stats(run_haa(series, start=oos_start, end=last_complete).net_returns)
+    oos_run = run_haa(series, start=oos_start, end=last_complete)
+    oos = _stats(oos_run.net_returns)
+    oos_spy = _stats(oos_run.spy_returns)
+    # Deployment bar (same as the Keller siblings): OOS positive net of fees, AND OOS risk-adjusted beat of B&H SPY,
+    # AND full-cycle risk-adjusted beat. risk-adjusted beat = higher Sharpe OR materially (<=75%) lower maxDD.
+    oos_beat = oos.ann_sharpe >= oos_spy.ann_sharpe or oos.max_dd <= oos_spy.max_dd * MATERIAL_DD_REDUCTION
+    full_beat = haa_stats.ann_sharpe >= spy_stats.ann_sharpe or haa_stats.max_dd <= spy_stats.max_dd * MATERIAL_DD_REDUCTION
+    deployable = (oos.total_return > 0) and oos_beat and full_beat
+    cur = _target_weights(series, last_complete) or {}
     print(f"HAA (Hybrid Asset Allocation, Keller 2023, top-{TOP_T}) — window {start} -> {last_complete}")
     print(f"  FULL  net Sharpe {haa_stats.ann_sharpe:+.2f}  tot {haa_stats.total_return:+.1%}  "
           f"maxDD {haa_stats.max_dd:.1%}  vs B&H SPY Sharpe {spy_stats.ann_sharpe:+.2f} maxDD {spy_stats.max_dd:.1%}")
     print(f"  OOS   net Sharpe {oos.ann_sharpe:+.2f}  tot {oos.total_return:+.1%}  maxDD {oos.max_dd:.1%}")
-    print(f"  turnover {full.turnover:.1f} (~{full.turnover/(n/12):.1f}/yr)")
-    return {"full": haa_stats, "full_spy": spy_stats, "oos": oos, "window": (start, last_complete), "result": full}
+    print(f"  turnover {full.turnover:.1f} (~{full.turnover/(n/12):.1f}/yr)  ==> {'DEPLOYABLE' if deployable else 'NOT deployable'}")
+    return {"deployable": deployable, "current_weights": cur, "full": haa_stats, "full_spy": spy_stats,
+            "oos": oos, "oos_spy": oos_spy, "window": (start, last_complete), "turnover": full.turnover, "result": full}
 
 
 def main() -> int:
