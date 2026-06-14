@@ -212,7 +212,14 @@ body{
 .screener-wrap{
   border-radius:var(--r);overflow-x:auto;overflow-y:hidden;
   box-shadow:var(--cell-shadow);
+  scroll-behavior:smooth;-webkit-overflow-scrolling:touch;
+  transition:margin-right 220ms cubic-bezier(0.16,1,0.3,1);
 }
+/* The detail side-panel overlays the right of the screen with NO backdrop (the table stays visible). Reserve
+   its width on the right when open so the screener's scroll viewport ends at the panel's LEFT edge — every
+   column can now scroll into the visible strip instead of hiding permanently under the panel. Width + slide
+   timing match `.side-panel` (var(--panel-w) capped at 54vw). */
+.screener-wrap.panel-open{margin-right:min(var(--panel-w),54vw)}
 .screener-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
 .col-name{width:215px;min-width:155px}
 .col-stage{width:92px}
