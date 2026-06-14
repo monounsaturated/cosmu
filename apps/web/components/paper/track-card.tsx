@@ -60,6 +60,7 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
                 <th className="r">Size</th>
                 <th className="r">Value</th>
                 <th className="r">P&amp;L</th>
+                <th className="r">P&amp;L %</th>
               </tr>
             </thead>
             <tbody>
@@ -80,10 +81,8 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
                     <td className="muted pos-venue">{formatVenue(row.venue)}</td>
                     <td className="r tab muted">{invested === null ? "—" : formatUsd(invested)}</td>
                     <td className="r tab">{value === null ? "—" : formatUsd(value)}</td>
-                    <td className={cn("r tab", pnlCls)}>
-                      {pnl === null ? "—" : formatUsd(pnl)}
-                      {pct !== null ? <span> {formatPct(pct)}</span> : null}
-                    </td>
+                    <td className={cn("r tab", pnlCls)}>{pnl === null ? "—" : formatUsd(pnl)}</td>
+                    <td className={cn("r tab", pnlCls)}>{pct === null ? "—" : formatPct(pct)}</td>
                   </tr>
                 );
               })}
