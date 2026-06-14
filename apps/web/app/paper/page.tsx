@@ -21,7 +21,7 @@ import { PaperPositions } from "@/components/paper/track-card";
 import { WalletAllocCard } from "@/components/paper/wallet-alloc";
 import { TrackLedger } from "@/components/paper/track-ledger";
 import { StopPaperButton } from "@/components/paper/stop-paper-button";
-import { isPaper } from "@/lib/utils";
+import { isPaperRow } from "@/lib/utils";
 
 export default function PaperPage() {
   return (
@@ -41,7 +41,10 @@ async function PaperData() {
   const allRows = leaderboard.rows as LeaderboardRow[];
 
   // Filter to paper-stage strategies (status = forward / forward_test / paper).
-  const simRows = allRows.filter((r) => isPaper(r.status));
+  // Paper cohort = strategies that have genuinely TRADED on paper (a real fill), not merely a paper-ish
+  // status. A funded documented arm with zero fills is Backtest, so it never inflates the Paper dashboard
+  // with fabricated value/P&L — the aggregate now tells the same story as each strategy's own sheet.
+  const simRows = allRows.filter((r) => isPaperRow(r));
 
   if (!connected) {
     return (

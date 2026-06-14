@@ -81,7 +81,9 @@ def leaderboard() -> LeaderboardResponse:
         """
         SELECT sv.id, s.name, sv.status, sv.spec, sv.origin, b.deflated_sharpe, b.oos_return, b.pbo,
                b.oos_start, b.oos_end, ev.funded_at,
-               tr.starting_capital, ps.equity AS tr_equity
+               tr.starting_capital, ps.equity AS tr_equity,
+               EXISTS(SELECT 1 FROM executions e WHERE e.strategy_version_id = sv.id
+                      AND CAST(e.is_paper AS INTEGER) = 1) AS has_paper_fills
         FROM strategy_versions sv
         JOIN strategies s ON s.id = sv.strategy_id
         LEFT JOIN backtests b ON b.strategy_version_id = sv.id
@@ -117,11 +119,17 @@ def leaderboard() -> LeaderboardResponse:
         # ADVISORY ONLY (master/paper_maturity.py): surfaced, never a gate. The paper clock runs from the
         # track's first mark; live_ready recommends a matured + net-positive track. The operator decides.
         mat = paper_maturity(row["funded_at"], net_pct)
+        # HAS THIS TRACK ACTUALLY TRADED ON PAPER? The single source of truth = a real paper fill in the
+        # executions ledger (is_paper=1), the SAME signal the detail sheet's blotter reads. A funded
+        # documented arm only writes `positions` (apply_fill) and a seeded track snapshot — NO executions —
+        # so it must read "—" for every forward money figure, exactly like its sheet says "no fills yet".
+        # Gating the marked money on this is what makes the aggregate and the per-strategy sheet tell the
+        # SAME honest story (and kills the fabricated value/P&L the screener showed for un-traded tracks).
+        has_paper_fills = bool(row["has_paper_fills"])
         # The REAL paper return: marked equity (latest scope='track' snapshot) vs the track's
-        # starting_capital, net of fees. Null when the track has NO marked snapshot yet (day-0 / never
-        # marked) — we NEVER fall back to b.oos_return, so a fresh track shows its honest 0/— forward, not
-        # the rosy backtest. Once marked, a flat/negative paper run shows its TRUE (0 or negative) number.
-        paper_return_pct = _paper_return_pct(row["tr_equity"], row["starting_capital"])
+        # starting_capital, net of fees. None unless the track has genuinely traded on paper — a marked
+        # snapshot without a backing fill is NOT a forward result.
+        paper_return_pct = _paper_return_pct(row["tr_equity"], row["starting_capital"]) if has_paper_fills else None
         # ADVISORY (master/divergence.py): an early warning that the REAL marked forward return has stopped
         # tracking the backtest this track was funded on. We compare the marked forward return to the backtest OOS
         # return pro-rated to the SAME elapsed forward window (track_return_pct = oos_return*100 is the backtest %,
@@ -137,10 +145,11 @@ def leaderboard() -> LeaderboardResponse:
             _metric(row["oos_return"]) * 100,
             oos_window_days,
         )
-        # v18 money columns — REAL marked $ value + $ P&L, net of fees. None (not 0) until the track is marked,
-        # so a day-0 track shows "—", never a fabricated $0 / -100%. pnl_pct ALIASES paper_return_pct (the
-        # forward %) so $ and % can never disagree and the backtest is never surfaced as forward performance.
-        value_usd = _money_or_none(row["tr_equity"])
+        # v18 money columns — REAL marked $ value + $ P&L, net of fees. None (not 0) unless the track has
+        # genuinely traded on paper (has_paper_fills): a seeded/marked snapshot with no backing fill is not
+        # deployed capital, so it reads "—", never a fabricated $value / $0 P&L. pnl_pct ALIASES
+        # paper_return_pct so the $ and % can never disagree and the backtest is never surfaced as forward.
+        value_usd = _money_or_none(row["tr_equity"]) if has_paper_fills else None
         start_usd = _money_or_none(row["starting_capital"])
         pnl_usd = (value_usd - start_usd) if (value_usd is not None and start_usd is not None) else None
         # Facets are DERIVED from the spec's named features (taxonomy.py) — no manual tagging — so the
@@ -165,6 +174,7 @@ def leaderboard() -> LeaderboardResponse:
                 # renders a fabricated number for a track without enough marked history.
                 divergence_status=div.status,
                 divergence_gap_pct=div.gap_pct if div.status != "insufficient" else None,
+                has_paper_fills=has_paper_fills,
                 value_usd=value_usd,
                 pnl_usd=pnl_usd,
                 pnl_pct=paper_return_pct,

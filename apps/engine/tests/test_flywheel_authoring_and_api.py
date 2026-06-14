@@ -245,6 +245,22 @@ def _open_seeded_track(store: Store, vid: str) -> None:
     )
 
 
+def _add_paper_fill(store: Store, vid: str) -> None:
+    """Record ONE real paper fill in the executions log — what makes a version 'has started trading on paper'.
+    The leaderboard now gates the marked money columns on this (the same signal the detail sheet's blotter
+    reads), so a track must have genuinely traded — not merely been marked — for value/pnl to surface."""
+    rid = store.insert(
+        "runs",
+        {"strategy_version_id": vid, "mode": "paper", "venue_id": "ibkr", "seed": 1, "started_at": utcnow(), "status": "completed"},
+    )
+    store.insert(
+        "executions",
+        {"run_id": rid, "strategy_version_id": vid, "instrument_id": "spy-ibkr", "venue_id": "ibkr", "side": "buy",
+         "qty": "25", "price": "400", "fee": "0", "slippage": "0", "order_type": "market", "is_paper": 1,
+         "ts": utcnow(), "fill_log": "{}"},
+    )
+
+
 def test_leaderboard_forward_return_is_null_without_a_track(tmp_path, monkeypatch):
     # No track row at all => no forward trajectory => paper_return_pct is honest null (not 0, not the backtest).
     client, store = _client(tmp_path, monkeypatch)
@@ -276,6 +292,7 @@ def test_leaderboard_forward_return_is_the_marked_trajectory(tmp_path, monkeypat
     spec = seed_momentum_spec(); spec.name = "Marked-up momentum"
     vid = _persist_version(store, spec, passed=True)
     _open_seeded_track(store, vid)
+    _add_paper_fill(store, vid)  # the track has genuinely traded on paper → marked money is surfaced
     store.insert(
         "portfolio_snapshots",
         {
@@ -327,6 +344,7 @@ def test_leaderboard_v18_money_columns_from_marked_trajectory(tmp_path, monkeypa
     spec = seed_momentum_spec(); spec.name = "Marked money cols"
     vid = _persist_version(store, spec, passed=True)
     _open_seeded_track(store, vid)
+    _add_paper_fill(store, vid)  # has traded on paper → marked money is surfaced
     store.insert(
         "portfolio_snapshots",
         {
@@ -342,12 +360,35 @@ def test_leaderboard_v18_money_columns_from_marked_trajectory(tmp_path, monkeypa
     assert row["oos_window_days"] is None or row["oos_window_days"] > 0
 
 
+def test_leaderboard_marked_without_a_fill_is_honest_dash(tmp_path, monkeypatch):
+    # HONESTY: a track that has a marked scope='track' snapshot but has NEVER recorded a real paper fill
+    # (the documented-arm case: apply_fill writes positions, never executions) must read has_paper_fills=False
+    # and surface NO marked money — value_usd/pnl_usd/pnl_pct/paper_return_pct all null — so the aggregate
+    # tells the SAME story as the strategy's own sheet ("no fills yet"), never a fabricated value.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Marked but unfilled"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)
+    store.insert(
+        "portfolio_snapshots",
+        {
+            "scope": "track", "ref_id": vid, "ts": utcnow(), "equity": "101500.00", "cash": "0",
+            "positions_value": "101500.00", "pnl": "1500.00", "drawdown": "0",
+        },
+    )  # marked, but NO _add_paper_fill — the track never traded on paper
+    row = next(r for r in client.get("/leaderboard").json()["rows"] if r["version_id"] == vid)
+    assert row["has_paper_fills"] is False
+    assert row["value_usd"] is None and row["pnl_usd"] is None
+    assert row["pnl_pct"] is None and row["paper_return_pct"] is None
+
+
 def test_leaderboard_forward_return_shows_true_negative(tmp_path, monkeypatch):
     # HONESTY: a losing paper run shows its TRUE negative number — never the rosy backtest, never floored at 0.
     client, store = _client(tmp_path, monkeypatch)
     spec = seed_momentum_spec(); spec.name = "Losing momentum"
     vid = _persist_version(store, spec, passed=True)
     _open_seeded_track(store, vid)
+    _add_paper_fill(store, vid)  # has traded on paper → its TRUE (negative) marked return is surfaced
     store.insert(
         "portfolio_snapshots",
         {

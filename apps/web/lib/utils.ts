@@ -39,11 +39,20 @@ export function numOrNull(v: number | null | undefined): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-// The canonical paper-stage predicate (paper / forward_test / forward). ONE taxonomy, imported everywhere
-// (screener, dashboards, sidebar counts) so the cohort never drifts between surfaces.
+// The canonical paper-stage STATUS predicate (paper / forward_test / forward). ONE taxonomy, imported
+// everywhere (screener, dashboards, sidebar counts) so the cohort never drifts between surfaces.
 export function isPaper(status: string | null | undefined): boolean {
   const s = (status ?? "").toLowerCase();
   return s === "paper" || s === "forward_test" || s === "forward";
+}
+
+// The HONEST paper predicate: a strategy is in Paper only if it has a paper-ish status AND has genuinely
+// traded on paper (a real fill in the executions ledger, `has_paper_fills`). Single source of truth for the
+// "Paper" badge + the Paper cohort, so a funded-but-never-filled documented arm reads "Backtest" — matching
+// its own sheet's "no fills yet" — instead of "Paper" over fabricated money. Fills (not status) decide, so a
+// stale/legacy status can never lie on any surface.
+export function isPaperRow(row: { status?: string | null; has_paper_fills?: boolean | null }): boolean {
+  return isPaper(row.status) && row.has_paper_fills === true;
 }
 
 // Pretty venue display names. The engine stores raw venue ids ("ibkr", "kraken_futures"); the UI shows the

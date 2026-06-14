@@ -37,16 +37,21 @@ type LifeStatus = "lab" | "screened" | "paper" | "live" | "killed";
 // The screener's filter buckets map onto the chips; "lab" reads as Queued, "screened" as Backtest.
 type FilterKey = "all" | "live" | "paper" | "backtest" | "killed" | "queued";
 
-function lifeStatusOf(status: string | null | undefined): LifeStatus {
-  const s = (status ?? "").toLowerCase();
+// Fill-aware: a paper-ish STATUS only reads "paper" once the track has genuinely traded on paper
+// (has_paper_fills). A funded documented arm with zero fills falls to "screened" (Backtest) — so the table
+// badge AND the stageOverride it passes to the sheet match the sheet's own fill-based deriveStage, and a
+// "Paper" badge can never sit over a strategy whose sheet says "no fills yet".
+type RowStage = { status?: string | null; has_paper_fills?: boolean | null };
+function lifeStatusOf(row: RowStage | null | undefined): LifeStatus {
+  const s = (row?.status ?? "").toLowerCase();
   if (s === "killed" || s === "dead" || s === "graveyard") return "killed";
   if (s === "live") return "live";
-  if (s === "paper" || s === "forward_test" || s === "forward") return "paper";
+  if (s === "paper" || s === "forward_test" || s === "forward") return row?.has_paper_fills === true ? "paper" : "screened";
   if (s === "screening" || s === "screened" || s === "validating" || s === "optimizing") return "screened";
   return "lab";
 }
-function filterBucketOf(status: string | null | undefined): FilterKey {
-  const life = lifeStatusOf(status);
+function filterBucketOf(row: RowStage | null | undefined): FilterKey {
+  const life = lifeStatusOf(row);
   if (life === "live") return "live";
   if (life === "paper") return "paper";
   if (life === "killed") return "killed";
@@ -89,7 +94,7 @@ type ColDef = {
 
 const COLS: ColDef[] = [
   { key: "name", label: "Name", width: 240, sort: { dir: "asc", value: (r) => r.name.toLowerCase() } },
-  { key: "stage", label: "Stage", width: 90, pickable: true, sort: { dir: "desc", value: (r) => STAGE_RANK[lifeStatusOf(r.status)] } },
+  { key: "stage", label: "Stage", width: 90, pickable: true, sort: { dir: "desc", value: (r) => STAGE_RANK[lifeStatusOf(r)] } },
   { key: "days", label: "Days", width: 42, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.paper_age_days) ? r.paper_age_days : null) } },
   { key: "value", label: "Value", width: 72, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.value_usd) } },
   { key: "pnl", label: "P&L", width: 66, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_usd) } },
@@ -150,7 +155,7 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
         return false;
       }
       if (filter === "all") return true;
-      return filterBucketOf(r.status) === filter;
+      return filterBucketOf(r) === filter;
     });
     const col = COL_BY_KEY[sort.key];
     const getter = col?.sort?.value;
@@ -329,10 +334,10 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
             </thead>
             <tbody>
               {filtered.map((row) => {
-                const life = lifeStatusOf(row.status);
+                const life = lifeStatusOf(row);
                 const rowClass = cn(
                   life === "killed" && "row-killed",
-                  filterBucketOf(row.status) === "queued" && life === "lab" && "row-queued",
+                  filterBucketOf(row) === "queued" && life === "lab" && "row-queued",
                   life === "screened" && "row-backtest",
                   row.version_id === selectedId && "sel"
                 );
@@ -358,7 +363,7 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
 
       <SheetPanel
         id={selectedId}
-        stage={selectedId ? LIFE_TO_STAGE[lifeStatusOf(rows.find((r) => r.version_id === selectedId)?.status)] : undefined}
+        stage={selectedId ? LIFE_TO_STAGE[lifeStatusOf(rows.find((r) => r.version_id === selectedId))] : undefined}
         onClose={() => setSelectedId(null)}
       />
     </>

@@ -13,7 +13,7 @@ import { CosmuMark } from "@/components/brand/logo";
 import { SideNav, type NavCounts } from "@/components/nav/app-nav";
 import { TipLayer } from "@/components/ui/tip-layer";
 import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
-import { cn, isPaper } from "@/lib/utils";
+import { cn, isPaperRow } from "@/lib/utils";
 
 type DotState = "on" | "off" | "warn";
 
@@ -111,7 +111,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         if (!alive || rows.length === 0) return;
         setCounts({
           strategies: rows.length,
-          paper: rows.filter((r) => isPaper(r.status)).length,
+          paper: rows.filter((r) => isPaperRow(r)).length,
           live: rows.filter((r) => (r.status ?? "").toLowerCase() === "live").length
         });
       } catch {

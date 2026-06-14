@@ -457,7 +457,11 @@ def reclassify_unforwarded_paper(store: Store) -> int:
     moment its first real fill lands. Badge-only — the live gate reads track_opened, not status. Wired into boot
     via api._lifespan; lives here so the stage-transition logic stays in ONE module with its forward twin."""
     demoted = 0
-    for r in store.rows("SELECT id FROM strategy_versions WHERE status = 'paper'"):
+    # Match EVERY paper-ish status the web renders as the "Paper" badge — including the LEGACY 'forward_test'
+    # / 'forward' values (the 2026-06-11 rename is applied by hand in Supabase and may not have run). Matching
+    # only 'paper' left the documented arms stranded as 'forward_test' → badged "Paper" with ZERO fills. The
+    # has-fills guard is unchanged, so a track that has genuinely traded on paper is never demoted.
+    for r in store.rows("SELECT id, status FROM strategy_versions WHERE status IN ('paper', 'forward_test', 'forward')"):
         vid = r["id"]
         if not _has_paper_fills(store, vid):
             store.rows("UPDATE strategy_versions SET status = 'screened' WHERE id = ?", (vid,))
@@ -466,7 +470,7 @@ def reclassify_unforwarded_paper(store: Store) -> int:
                 kind="status_demoted",
                 ref_type="strategy_version",
                 ref_id=vid,
-                payload={"from": "paper", "to": "screened", "reason": "no_fills_yet"},
+                payload={"from": r["status"], "to": "screened", "reason": "no_fills_yet"},
             )
             demoted += 1
     return demoted
