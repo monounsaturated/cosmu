@@ -56,7 +56,8 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
             <thead>
               <tr>
                 <th>Strategy</th>
-                <th>Pair</th>
+                <th>Venue</th>
+                <th>Class</th>
                 <th className="r">Size</th>
                 <th className="r">Value</th>
                 <th className="r">P&amp;L</th>
@@ -77,9 +78,10 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
                         {row.name}
                       </Link>
                     </td>
-                    <td className="muted pos-pair">
-                      {row.asset_class} · {row.venue} · {row.timeframe}
+                    <td className="muted pos-venue" title={row.venue}>
+                      {row.venue}
                     </td>
+                    <td className="muted pos-class">{row.asset_class}</td>
                     <td className="r tab muted">{invested === null ? "—" : formatUsd(invested)}</td>
                     <td className="r tab">{value === null ? "—" : formatUsd(value)}</td>
                     <td className={cn("r tab", pnlCls)}>
