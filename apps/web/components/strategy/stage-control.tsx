@@ -64,30 +64,27 @@ export function StageControl({
       <Modal
         open={confirming}
         onClose={() => setConfirming(false)}
-        title={live ? "Stop live trading" : "Stop paper track"}
+        title={live ? "Stopping a live strategy" : "Stopping a paper track"}
         titleColor={live ? "var(--down)" : undefined}
         actions={
-          <>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirming(false)}>
-              Cancel
-            </button>
-            <button type="button" className={live ? "btn btn-danger btn-sm" : "btn btn-sm"} onClick={() => setConfirming(false)}>
-              {live ? "Stop & sell" : "Stop track"}
-            </button>
-          </>
+          <button type="button" className="btn btn-sm" onClick={() => setConfirming(false)}>
+            Close
+          </button>
         }
       >
         {live ? (
           <p className="ai-body">
-            Sell every open position for <strong style={{ color: "var(--fg)" }}>{strategyName}</strong> to cash, kill the
-            running bot, and place no further orders. <strong className="dn">Real money moves.</strong> The P&amp;L it
-            produced stays on the live record.
+            To stop <strong style={{ color: "var(--fg)" }}>{strategyName}</strong> live, use the{" "}
+            <strong style={{ color: "var(--fg)" }}>Live</strong> page&apos;s Stop (or{" "}
+            <span className="mono">cosmu live stop</span> from Commands) — that is the one path that moves{" "}
+            <strong className="dn">real money</strong>, with the hard caps applied. This sheet shows the stage; it
+            never fires orders itself, so there&apos;s no one-click sell here by design.
           </p>
         ) : (
           <p className="ai-body">
-            Halt the paper track for <strong style={{ color: "var(--fg)" }}>{strategyName}</strong> and close its paper
-            positions. <strong style={{ color: "var(--fg)" }}>No real money is involved</strong> — this only stops the
-            paper track. Its stats are kept so you can still review what happened.
+            Paper tracks are managed by the <strong style={{ color: "var(--fg)" }}>Gate</strong>, not stopped by hand
+            here — <strong style={{ color: "var(--fg)" }}>{strategyName}</strong> leaves Paper when the FDR gate kills
+            it or you launch it Live, and its stats are kept either way. No real money is involved in Paper.
           </p>
         )}
       </Modal>
