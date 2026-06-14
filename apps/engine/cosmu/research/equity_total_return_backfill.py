@@ -26,6 +26,15 @@ CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/ma
 # present as price-return but we ALSO want their total-return series so the whole backtest is apples-to-apples.
 GEM_SYMBOLS = ["SPY", "EFA", "AGG", "BIL", "TLT", "GLD", "QQQ"]
 
+# The FULL documented-TAA universe (union over GEM/GTAA/ADM/RiskParity/VAA/TSMOM/QQQ/Sector/PAA/DAA/HAA) — run
+# `python -m cosmu.research.equity_total_return_backfill --taa` on a fresh cache to materialize every `*_tr.json`
+# the `equity_taa_cohort` needs (incl. HAA's TIP/VNQ/DBC/IWM, added 2026-06-14). Reproduces the cohort anywhere.
+TAA_SYMBOLS = sorted({
+    "SPY", "QQQ", "EFA", "EEM", "GLD", "AGG", "LQD", "TLT", "SHY", "IEF", "BIL",  # core 11
+    "IWM", "VNQ", "DBC", "TIP",                                                   # HAA additions (Keller 2023)
+    "XLB", "XLE", "XLF", "XLI", "XLK", "XLP", "XLU", "XLV", "XLY",                # sector-rotation universe
+})
+
 
 def _ssl_context() -> ssl.SSLContext:
     """certifi CA bundle — macOS system Python has no usable default CA store for urllib TLS (confirmed today)."""
@@ -68,7 +77,12 @@ def backfill(symbols: list[str] | None = None) -> dict[str, int]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    syms = argv if argv else GEM_SYMBOLS
+    if argv and argv[0] == "--taa":
+        syms = TAA_SYMBOLS
+    elif argv:
+        syms = argv
+    else:
+        syms = GEM_SYMBOLS
     print(f"Backfilling TOTAL-RETURN (adjusted-close) daily bars for: {', '.join(syms)}")
     backfill(syms)
     return 0

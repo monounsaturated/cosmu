@@ -29,7 +29,7 @@ def _member(key: str, phase: float) -> StratStreams:
 
 
 def _fake_members():
-    keys = ["daa", "vaa", "accel_dual_momentum", "paa", "faber_gtaa", "risk_parity", "tsmom_trend"]
+    keys = ["daa", "vaa", "accel_dual_momentum", "paa", "faber_gtaa", "risk_parity", "tsmom_trend", "haa"]
     return {k: (lambda k=k, ph=i * 0.9: _member(k, ph)) for i, k in enumerate(keys)}
 
 

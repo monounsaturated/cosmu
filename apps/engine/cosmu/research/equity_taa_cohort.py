@@ -58,6 +58,7 @@ from cosmu.research import equity_daa as daa
 from cosmu.research import equity_dual_momentum as gem
 from cosmu.research import equity_dual_momentum_qqq as qqq
 from cosmu.research import equity_faber_gtaa as gtaa
+from cosmu.research import equity_haa as haa
 from cosmu.research import equity_paa as paa
 from cosmu.research import equity_risk_parity as rp
 from cosmu.research import equity_sector_rotation_taa as sector
@@ -190,6 +191,13 @@ def _s_daa() -> StratStreams:
     return StratStreams("daa", "Defensive Asset Allocation (DAA, Keller)", r.months, r.net_returns, r.spy_returns)
 
 
+def _s_haa() -> StratStreams:
+    series = {s: haa.load_monthly(s) for s in haa.HAA_SERIES}
+    start = haa.first_investable_month(series)
+    r = haa.run_haa(series, fee_bps_per_side=haa.IBKR_ETF_BPS_PER_SIDE, start=start, end=_last_complete_month())
+    return StratStreams("haa", "Hybrid Asset Allocation (HAA, Keller 2023)", r.months, r.net_returns, r.spy_returns)
+
+
 # --- disconfirmers (ride in the cohort so FDR/CSCV see them; both EXPECTED to fail) ---------------------------
 
 
@@ -231,7 +239,7 @@ def _s_random_placebo(seed: int = 1) -> StratStreams:
                         is_disconfirmer=True)
 
 
-_ADAPTERS = [_s_gem, _s_gtaa, _s_adm, _s_risk_parity, _s_vaa, _s_tsmom, _s_qqq, _s_sector, _s_paa, _s_daa,
+_ADAPTERS = [_s_gem, _s_gtaa, _s_adm, _s_risk_parity, _s_vaa, _s_tsmom, _s_qqq, _s_sector, _s_paa, _s_daa, _s_haa,
              _s_spy_null, _s_random_placebo]
 
 
