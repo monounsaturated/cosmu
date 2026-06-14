@@ -23,6 +23,7 @@ import type { PositionsResponse } from "./contracts";
 import { RulesModal } from "./rules-modal";
 import { GuardTile } from "./guard-tile";
 import { EquityHero } from "./equity-hero";
+import { AllocDonut } from "./alloc-donut";
 import { Page, Toolbar } from "@/components/ui/toolbar";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/honest-state";
@@ -44,12 +45,14 @@ export function LiveSurface({
   initial,
   initialSummary,
   initialRules,
-  equityCurve
+  equityCurve,
+  venues
 }: {
   initial: PositionsResponse & { connected: boolean };
   initialSummary: PortfolioSummaryResponse & { connected: boolean };
   initialRules: RulesResponse & { connected: boolean };
   equityCurve: Point[];
+  venues: { name: string; amount: number }[];
 }) {
   const [state, setState] = useState<PositionsResponse>(initial);
   const [connected, setConnected] = useState(initial.connected);
@@ -191,11 +194,15 @@ export function LiveSurface({
             <button className="btn btn-sm" onClick={() => setRulesOpen(true)}>
               Rules
             </button>
-            {armed ? (
-              <button className="btn btn-danger btn-sm" onClick={() => setLiqOpen(true)}>
-                Stop
-              </button>
-            ) : null}
+            <button
+              className="btn btn-danger btn-sm"
+              onClick={() => setLiqOpen(true)}
+              disabled={!armed}
+              title={armed ? "Liquidate all live positions and disarm" : "Nothing is armed live to stop"}
+              style={!armed ? { opacity: 0.45, cursor: "not-allowed" } : undefined}
+            >
+              Stop
+            </button>
           </>
         }
       />
@@ -208,7 +215,8 @@ export function LiveSurface({
         <EquityHero label="Total equity" curve={isLive ? equityCurve : []} />
 
         {/* KPI + guard row: 3 money KPIs + 3 guard boxes folded into one line. */}
-        <div className="kgrid kpi-guard" style={{ gridTemplateColumns: "repeat(6,1fr)" }}>
+        {/* 6 KPI/guard boxes (6/8) + the capital-allocation donut (2/8) on one row. */}
+        <div className="kgrid kpi-guard" style={{ gridTemplateColumns: "repeat(6,1fr) 2fr" }}>
           <MoneyBox
             label="Invested"
             value={usd(liveInvested)}
@@ -253,6 +261,8 @@ export function LiveSurface({
             unit="usd"
             onCapChange={(n) => saveCap({ global_max_notional: n })}
           />
+          {/* Capital allocation by venue (2/8) — honest empty until something is deployed live. */}
+          <AllocDonut venues={isLive ? venues : []} />
         </div>
 
         {/* [Open positions | Recent trades] side by side. */}

@@ -31,8 +31,8 @@ import { cn, formatUsd, numOrNull, signedUsd } from "@/lib/utils";
 // ── Lifecycle mapping — the screener's local lifecycle normalizer (the canonical paper predicate is the
 // shared isPaper in lib/utils; this maps the full engine status onto the 5-stage lifecycle/filter lanes). ──
 type LifeStatus = "lab" | "screened" | "paper" | "live" | "killed";
-// The screener's filter buckets map onto the 5 chips; "lab"+"screened" both read as the Backtest/Queued lanes.
-type FilterKey = "all" | "live" | "paper" | "killed" | "queued";
+// The screener's filter buckets map onto the chips; "lab" reads as Queued, "screened" as Backtest.
+type FilterKey = "all" | "live" | "paper" | "backtest" | "killed" | "queued";
 
 function lifeStatusOf(status: string | null | undefined): LifeStatus {
   const s = (status ?? "").toLowerCase();
@@ -47,7 +47,8 @@ function filterBucketOf(status: string | null | undefined): FilterKey {
   if (life === "live") return "live";
   if (life === "paper") return "paper";
   if (life === "killed") return "killed";
-  return "queued"; // lab + screened (backtest/queued lane)
+  if (life === "screened") return "backtest";
+  return "queued"; // lab
 }
 
 const STAGE_LABEL: Record<LifeStatus, string> = { lab: "Queued", screened: "Backtest", paper: "Paper", live: "Live", killed: "Killed" };
@@ -84,7 +85,6 @@ type ColDef = {
 const COLS: ColDef[] = [
   { key: "name", label: "Name", width: 200, sort: { dir: "asc", value: (r) => r.name.toLowerCase() } },
   { key: "stage", label: "Stage", width: 90, pickable: true, sort: { dir: "desc", value: (r) => STAGE_RANK[lifeStatusOf(r.status)] } },
-  { key: "life", label: "Lifecycle", width: 96, pickable: true },
   { key: "days", label: "Days", width: 56, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.paper_age_days) ? r.paper_age_days : null) } },
   { key: "value", label: "Value", width: 84, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.value_usd) } },
   { key: "pnl", label: "P&L", width: 84, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_usd) } },
@@ -217,8 +217,9 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
           <FilterChip label="All" active={filter === "all"} onClick={() => setFilter("all")} />
           <FilterChip label="Live" dot="var(--down)" active={filter === "live"} onClick={() => setFilter("live")} />
           <FilterChip label="Paper" dot="var(--iris)" active={filter === "paper"} onClick={() => setFilter("paper")} />
-          <FilterChip label="Killed" active={filter === "killed"} onClick={() => setFilter("killed")} />
+          <FilterChip label="Backtest" dot="var(--info)" active={filter === "backtest"} onClick={() => setFilter("backtest")} />
           <FilterChip label="Queued" active={filter === "queued"} onClick={() => setFilter("queued")} />
+          <FilterChip label="Killed" active={filter === "killed"} onClick={() => setFilter("killed")} />
         </div>
         <input
           className="search-input"

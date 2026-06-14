@@ -100,24 +100,44 @@ export function SpendChartCard({ totalToDate }: { totalToDate: number | null }) 
 // The mockup's `.cat-tiles .cat-tile` grid, fed the REAL CostsResponse.by_category. Each tile shows the
 // lifetime/total $ for the category + a category badge. Renders nothing when the engine returned no
 // categories (never a fabricated split).
-export function CategoryTiles({ categories }: { categories: CostByCategory[] }) {
+export function CategoryTiles({
+  categories,
+  active,
+  onPick,
+}: {
+  categories: CostByCategory[];
+  /** Active category filter (lowercased match); when set the matching tile is highlighted. */
+  active?: string | null;
+  /** When provided the tiles become clickable filters. */
+  onPick?: (cat: string) => void;
+}) {
   const cats = [...categories].filter((c) => c.amount > 0).sort((a, b) => b.amount - a.amount);
   if (cats.length === 0) return null;
   return (
     <div className="cat-tiles">
-      {cats.map((c) => (
-        <div className="cat-tile" key={c.category} data-tip={`${c.category}: ${formatUsd(c.amount, 2)}`}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <CatBadge category={c.category} />
+      {cats.map((c) => {
+        const isActive = active != null && c.category.toLowerCase() === active.toLowerCase();
+        return (
+          <div
+            className={cn("cat-tile", onPick && "cat-tile-btn", isActive && "active")}
+            key={c.category}
+            data-tip={`${c.category}: ${formatUsd(c.amount, 2)} — click to filter the register`}
+            onClick={onPick ? () => onPick(c.category) : undefined}
+            role={onPick ? "button" : undefined}
+            aria-pressed={onPick ? isActive : undefined}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <CatBadge category={c.category} />
+            </div>
+            <div className="stat-v" style={{ marginTop: 8 }}>
+              {formatUsd(c.amount)}
+            </div>
+            <div className="stat-s" style={{ textTransform: "capitalize" }}>
+              total · {c.category}
+            </div>
           </div>
-          <div className="stat-v" style={{ marginTop: 8 }}>
-            {formatUsd(c.amount)}
-          </div>
-          <div className="stat-s" style={{ textTransform: "capitalize" }}>
-            total · {c.category}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

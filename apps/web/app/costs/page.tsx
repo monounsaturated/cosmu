@@ -21,16 +21,14 @@ import { Page, Toolbar } from "@/components/ui/toolbar";
 import { NotConnectedBanner } from "@/components/ui/honest-state";
 import {
   CardHead,
-  CategoryTiles,
   LlmCallsSummary,
-  RefreshedAt,
-  RegisterTable,
   RoiTable,
   SpendChartCard,
   StatStrip,
   buildRegister,
   type StatCell,
 } from "@/components/costs/cost-sections";
+import { CostsRegister } from "@/components/costs/costs-register";
 import { formatUsd } from "@/lib/utils";
 
 // On-demand: the engine may be offline at build time, and supplier billing is fetched live. Never
@@ -93,7 +91,6 @@ async function CostsData() {
   ];
 
   const register = buildRegister(supplierRows, connected ? costs.infra_lines : [], connected ? costs.vendor_actuals : []);
-  const hasCategories = connected && costs.by_category.some((c) => c.amount > 0);
 
   return (
     <>
@@ -105,21 +102,8 @@ async function CostsData() {
       {/* 1 · spend chart — honest empty (no dated series in the contract). */}
       <SpendChartCard totalToDate={totalSpend} />
 
-      {/* 2 · category tiles — only when the engine returned a real split. */}
-      {hasCategories ? <CategoryTiles categories={costs.by_category} /> : null}
-
-      {/* 3 · register — every cost source the contract gives us (supplier + infra + actuals). */}
-      <div className="card" style={{ marginBottom: "var(--gap)" }}>
-        <CardHead label={`Cost register · ${register.length} source${register.length === 1 ? "" : "s"}`} aside={<RefreshedAt at={computed_at} />} />
-        <div className="card-body">
-          <RegisterTable rows={register} />
-          <div className="costs-note">
-            Live figures are fetched from each provider&apos;s billing API; <code>actual</code> rows are
-            engine-reported real spend vs budget; the rest are clearly-labelled plan-tier estimates. Headroom
-            is shown only where a real budget cap exists. Nothing here is fabricated.
-          </div>
-        </div>
-      </div>
+      {/* 2 + 3 · category tiles (clickable filters) + the cost register they filter. */}
+      <CostsRegister categories={connected ? costs.by_category : []} register={register} computedAt={computed_at} />
 
       {/* 4 · per-strategy ROI — the literal opex-vs-alpha question at the strategy grain (engine-only,
           only when the engine attributed opex to a strategy). Net P&L here is the engine-attributed

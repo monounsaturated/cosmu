@@ -99,6 +99,7 @@ function Location({ row }: { row: SettingsKeyRow }) {
 
 export function KeysTable({ rows }: { rows: SettingsKeyRow[] }) {
   return (
+    <div className="tbl-scroll">
     <table className="mini-tbl key-tbl">
       <thead>
         <tr>
@@ -139,6 +140,7 @@ export function KeysTable({ rows }: { rows: SettingsKeyRow[] }) {
         })}
       </tbody>
     </table>
+    </div>
   );
 }
 
