@@ -55,6 +55,9 @@ function EditNum({ value, onCommit, tip }: { value: number | null; onCommit: (n:
           if (t === "") return onCommit(null);
           const n = parseFloat(t);
           if (!Number.isNaN(n) && n >= 0) onCommit(n);
+          // Invalid (non-number / negative): commit NOTHING and revert the draft to the live value, so the
+          // rejected text doesn't silently persist in the field and reappear on the next edit.
+          else setDraft(value === null ? "" : String(value));
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();

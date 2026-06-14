@@ -1052,7 +1052,7 @@ th[draggable=true]{cursor:pointer}
 .alloc-box .donut{flex-shrink:0}
 .alloc-leg{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;overflow:hidden}
 .alloc-leg .arow{display:flex;align-items:center;gap:6px;font-size:10.5px;white-space:nowrap;min-width:0}
-.alloc-leg .arow .nm{color:var(--fg);overflow:hidden;text-overflow:ellipsis}
+.alloc-leg .arow .nm{color:var(--fg);overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;min-width:0}
 .alloc-leg .arow .amt{color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums;flex-shrink:0}
 .alloc-dot{width:7px;height:7px;border-radius:2px;flex-shrink:0}
 .alloc-empty{font-size:10px;color:var(--quiet);text-align:center;width:100%;line-height:1.4}
@@ -1062,7 +1062,9 @@ th[draggable=true]{cursor:pointer}
 .wallet-alloc .wdonut{flex-shrink:0}
 .wallet-alloc .alloc-leg{gap:6px}
 .wallet-alloc .alloc-leg .arow{font-size:11.5px}
-.wallet-alloc .alloc-leg .arow .nm{max-width:100%}
+/* the grouping picker (Venue · Class · Strategy) in the card header — keep it compact so the header doesn't wrap */
+.alloc-pick{flex-shrink:0}
+.alloc-pick button{padding:3px 8px;font-size:10px}
 
 /* ── App infrastructure (not in the reference mockup) ───────────────────────────────────────────
    Loading skeletons for the instant-shell / streamed-data UX. The bento shell paints immediately;

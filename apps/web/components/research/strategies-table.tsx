@@ -96,7 +96,7 @@ const COLS: ColDef[] = [
   { key: "pnlpct", label: "P&L %", width: 58, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_pct) } },
   { key: "dsr", label: "DSR", width: 94, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.deflated_sharpe) ? r.deflated_sharpe : null) } },
   { key: "pbo", label: "PBO", width: 64, pickable: true, sort: { dir: "asc", value: (r) => (Number.isFinite(r.pbo) ? r.pbo : null) } },
-  { key: "dd", label: "Max DD", width: 80, pickable: true },
+  { key: "dd", label: "Max DD", width: 80, defaultOn: false, pickable: true },
   { key: "oos", label: "OOS", width: 70, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.track_return_pct) ? r.track_return_pct : null) } },
   { key: "venue", label: "Venue", width: 72, defaultOn: false, pickable: true, sort: { dir: "asc", value: (r) => r.venue } },
   { key: "fees", label: "Fees", pickerLabel: "Fees paid", width: 74, defaultOn: false, pickable: true },
@@ -178,6 +178,14 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
 
   const visibleCols = useMemo(() => order.map((k) => COL_BY_KEY[k]).filter((c) => visible[c.key]), [order, visible]);
   const minWidth = useMemo(() => visibleCols.reduce((sum, c) => sum + c.width, 0), [visibleCols]);
+
+  // INSTANT SHEETS: warm the detail cache for the top visible rows on mount (and whenever the sort/filter
+  // reshuffles them), so the FIRST click opens immediately instead of paying the ~2s cold engine round-trip.
+  // enginePrefetch dedups + caches; capped at 12 so we never fan dozens of reads. Hover-prefetch + the cache
+  // cover everything below the fold.
+  useEffect(() => {
+    for (const r of filtered.slice(0, 12)) enginePrefetch(`/strategies/${r.version_id}`);
+  }, [filtered]);
 
   // Cycle a sortable header: inactive → natural dir → flip → back to the house default (DSR-ranked Stage).
   const toggleSort = useCallback((col: ColDef) => {
@@ -320,7 +328,7 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row, i) => {
+              {filtered.map((row) => {
                 const life = lifeStatusOf(row.status);
                 const rowClass = cn(
                   life === "killed" && "row-killed",
@@ -330,7 +338,7 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
                 );
                 return (
                   <tr
-                    key={`${row.version_id}-${i}`}
+                    key={row.version_id}
                     className={rowClass || undefined}
                     onClick={() => setSelectedId(row.version_id)}
                     onMouseEnter={() => enginePrefetch(`/strategies/${row.version_id}`)}

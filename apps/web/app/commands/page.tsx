@@ -21,10 +21,12 @@ const GROUPS: Group[] = [
   {
     stage: "Discover",
     cmds: [
+      { name: "/strategize", desc: "The ONE front door for strategy intake — chat a vibe, paste a URL/Pine, or 'find me something on funding': it classifies intent, authors typed specs, and routes them through the Gate" },
       { name: "/scan-signals", desc: "Unbiased cross-asset sweep over every data source → testable hypotheses, each with its disconfirmer — propose-only, never moves money" },
       { name: "/create-strategy", desc: "Turn a thesis into a typed, auditable StrategySpec and drop it in the inbox" },
       { name: "/import-pine", desc: "TradingView Pine → typed spec; hardcoded numbers become a fitted search space, never baked in" },
       { name: "/dump-idea", desc: "Capture a loose natural-language idea as a StrategySpec in strategies/inbox/" },
+      { name: "/triage-ideas", desc: "Process the idea inbox — promote ripe ideas into BACKLOG.md with tags, archive the rest, keep IDEAS.md lean" },
     ],
   },
   {
@@ -51,7 +53,18 @@ const GROUPS: Group[] = [
       { name: "/deploy-check", desc: "The pre-push gate — run pnpm verify and confirm the tree is green and coherent" },
       { name: "/deploy-iterate", desc: "After a push, read Railway / Vercel logs to confirm the deploy is healthy and iterate on failures" },
       { name: "/groom", desc: "Self-maintenance: prune dead code, graveyard stale strategies, keep docs + memory lean, leave the tree green" },
+      { name: "/tech-debt", desc: "Focused cleanup (sharper than groom) — kill dead imports/vars, resolve debt markers, reconcile docs with reality" },
       { name: "/code-review", desc: "Pre-merge quality gate — review the diff for correctness traps, synthetic-data leaks and security" },
+      { name: "/align-check", desc: "Strategic alignment review — measure recent work against the north star (autonomous profit, net of fees) and flag drift" },
+      { name: "/backfill-summaries", desc: "Write/refresh the plain-language per-strategy summaries from each Version's deterministic facts (advisory text, never the gate)" },
+    ],
+  },
+  {
+    stage: "Orchestrate (parallel agents)",
+    cmds: [
+      { name: "/start-session", desc: "New-chat orientation — read the entry docs, check repo + engine state, report what to work on (cloud vs local)" },
+      { name: "/split-tasks", desc: "Turn independent backlog items into focused sub-agent prompts in .claude/tasks/*.md for parallel launch" },
+      { name: "/fan-out", desc: "Orchestrator playbook — split one big request into parallel agents (one branch each), then run a merge train into main" },
     ],
   },
   {
