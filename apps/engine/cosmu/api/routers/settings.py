@@ -25,6 +25,11 @@ def _key_table() -> list[tuple[str, str, str, str, str, str, bool]]:
     env = os.environ
     return [
         ("API_SECRET_KEY", "API secret", "Locks the control-plane API — the web app sends it; nobody else can call the engine.", "required", "free", "railway", bool(settings.api_secret_key)),
+        # The two vars the WEB needs on Vercel to reach the engine (the proxy forwards to API_BASE_URL with the
+        # secret; NEXT_PUBLIC_API_BASE_URL drives the connected/offline state). The engine runs on Railway and
+        # cannot observe Vercel's env, so their presence is left honestly unverified (see _settings_key_rows).
+        ("API_BASE_URL", "Engine URL (web→Vercel)", "The engine URL the web's server proxy forwards to. Set on Vercel.", "required", "free", "vercel", False),
+        ("NEXT_PUBLIC_API_BASE_URL", "Engine URL (public)", "Public engine URL the web reads to show connected vs offline. Set on Vercel.", "required", "free", "vercel", False),
         ("XAI_API_KEY", "xAI (Grok)", "LLM strategy authoring (preferred). Research still runs offline without it.", "optional", "paid", "railway", bool(settings.xai_api_key)),
         ("OPENROUTER_API_KEY", "OpenRouter", "LLM authoring fallback when xAI is not set.", "optional", "paid", "railway", bool(settings.openrouter_api_key)),
         ("LUNARCRUSH_API_KEY", "LunarCrush", "Social-sentiment scores + a real (non-synthetic) edge-gate verdict.", "optional", "paid", "railway", bool(settings.lunarcrush_api_key)),
@@ -62,17 +67,23 @@ def _settings_key_rows() -> list[SettingsKeyRow]:
     is_prod = getattr(settings, "environment", "local") == "production"
     rows: list[SettingsKeyRow] = []
     for env_var, service, description, requirement, cost, host, configured in _key_table():
-        present = KeyPresence(
-            local=None if is_prod else configured,
-            host=configured if is_prod else None,
-        )
-        observed = present.host if is_prod else present.local  # the side we can actually see
-        if observed:
-            status = "connected"
-        elif requirement in ("required", "live-only"):
-            status = "missing"  # expected but absent on the side we observe
+        if host == "vercel":
+            # The engine runs on Railway and CANNOT observe Vercel's env. These web vars are indexed so the
+            # operator knows to set them, but presence stays honestly UNVERIFIED — never a fabricated red/green.
+            present = KeyPresence(local=None, host=None)
+            status = "unverified"
         else:
-            status = "unset"  # optional and absent
+            present = KeyPresence(
+                local=None if is_prod else configured,
+                host=configured if is_prod else None,
+            )
+            observed = present.host if is_prod else present.local  # the side we can actually see
+            if observed:
+                status = "connected"
+            elif requirement in ("required", "live-only"):
+                status = "missing"  # expected but absent on the side we observe
+            else:
+                status = "unset"  # optional and absent
         rows.append(
             SettingsKeyRow(
                 key=service,
