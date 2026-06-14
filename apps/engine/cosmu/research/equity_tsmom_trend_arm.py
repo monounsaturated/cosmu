@@ -169,13 +169,13 @@ def arm(store: Store | None = None) -> dict:
                 "mutation_operator": None,
                 "mutation_rationale": "documented strategy (diversified TSMOM trend-following) — deployed via the documented-deploy lane, not the in-sample Gate",
                 "origin": STRATEGY_ORIGIN,
-                "status": "paper",
+                "status": "screened",
                 "created_at": now,
                 "killed_at": None,
                 "kill_reason": None,
             },
         )
-        print(f"\nREGISTERED paper track: version_id={version_id}  (status=paper, origin=documented)")
+        print(f"\nREGISTERED paper track: version_id={version_id}  (status=screened, origin=documented)")
     else:
         version_id = existing
         print(f"\nPaper track already registered: version_id={version_id} (idempotent — clock NOT reset)")

@@ -428,7 +428,9 @@ class FarmLoop:
         # Deflate against the FULL global trial count (this cohort + all history), not ~len(param_space).
         verdict = score(metrics, self.settings.gates, trials=trials)
         passed = verdict.passed
-        status = "paper" if passed else "killed"
+        # Born "screened" (badge: Backtest) — backtest evidence only at birth. The paper clock promotes to
+        # "paper" once >= 1 real forward day accrues. status is badge-only; the live gate reads track_opened.
+        status = "screened" if passed else "killed"
         kill_reason = None if passed else ",".join(verdict.reasons) or "screened_out"
         survival_score = sc.survival_score
         proven = sc.proven

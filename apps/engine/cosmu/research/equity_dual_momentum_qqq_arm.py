@@ -183,7 +183,7 @@ def arm(store: Store | None = None) -> dict:
                 "mutation_operator": None,
                 "mutation_rationale": "documented strategy (tech-tilt dual momentum, SPY->QQQ) — deployed via the documented-deploy lane, not the in-sample Gate",
                 "origin": STRATEGY_ORIGIN,
-                "status": "paper",
+                "status": "screened",
                 "created_at": now,
                 "killed_at": None,
                 "kill_reason": None,
@@ -214,7 +214,7 @@ def arm(store: Store | None = None) -> dict:
                 "deployment_bar": "positive OOS net of IBKR fees + Sharpe>SPY + ~half SPY drawdown + real holdout DSR>0 (NOT the 0.95 in-sample Gate)",
             },
         )
-        print(f"\nREGISTERED paper track: version_id={version_id}  (status=paper, origin=documented)")
+        print(f"\nREGISTERED paper track: version_id={version_id}  (status=screened, origin=documented)")
     else:
         version_id = existing
         print(f"\nPaper track already registered: version_id={version_id} (idempotent — clock NOT reset)")
