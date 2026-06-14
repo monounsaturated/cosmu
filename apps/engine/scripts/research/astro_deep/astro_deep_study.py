@@ -127,6 +127,24 @@ def main() -> None:
     equity = EQUITY[:3] if args.quick else EQUITY
     n_perm = 40 if args.quick else args.n_perm
 
+    def run_perm(jobs):
+        """Heavy pooled permutation nulls → Modal (off the local M2) when --modal, else a LOW-parallelism
+        local run (n_jobs=3) that leaves the laptop responsive. Modal failure falls back the same way."""
+        if args.modal and jobs:
+            try:
+                return MS.run_sweep_modal(jobs)
+            except Exception as e:  # noqa: BLE001
+                print(f"   [modal] perm sweep failed ({type(e).__name__}: {str(e)[:90]}); local n_jobs=3 fallback", flush=True)
+        return MS.run_sweep_local(jobs, n_jobs=3)
+
+    def run_incr(jobs):
+        if args.modal and jobs:
+            try:
+                return MS.run_incr_modal(jobs)
+            except Exception as e:  # noqa: BLE001
+                print(f"   [modal] incr sweep failed ({type(e).__name__}: {str(e)[:90]}); local n_jobs=3 fallback", flush=True)
+        return MS.run_incr_local(jobs, n_jobs=3)
+
     print(f"[1/7] REAL prices: {len(crypto)} crypto + {len(equity)} equities …", flush=True)
     bars = RP.load_crypto_bars(crypto, "1d", days=3650)
     bars.update(RP.load_equity_bars(equity))
@@ -185,28 +203,34 @@ def main() -> None:
     n_t3 = int(ic["survives_t3"].sum()) if len(ic) else 0
     print(f"   {len(ic)} tests · {n_fdr} survive FDR · {n_t3} clear |t|>3 · ~{0.05*len(ic):.0f} expected FP", flush=True)
 
-    print(f"[5/7] ML group battle vs permutation null (B={n_perm}) …", flush=True)
+    pooled_B = max(n_perm, 200)  # Modal carries the heavy nulls → afford a richer permutation null than local default
+    where = "MODAL (off the M2)" if args.modal else "local n_jobs=3"
+    print(f"[5/7] ML group battle vs permutation null on {where} (B={pooled_B}) …", flush=True)
     groups = {
         "astro": (astro_cont, astro_circ, astro_bin, astro_cat),
         "calendar": ([], [], CAL_BIN, CAL_CAT),
         "real": (real_cols, [], [], []),
         "all": (astro_cont + real_cols, astro_circ, astro_bin, astro_cat),
     }
-    ml_results = []
+    g_jobs, g_meta = [], []
     for gname, cg in groups.items():
         for h in (1, 5):
             pooled, y, dates = _pool(per_asset, cg[0] + cg[1] + cg[2] + cg[3], h)
-            X, names = enc(pooled, cg)
+            X, _ = enc(pooled, cg)
             if X.shape[1] == 0:
                 continue
-            r = ML.perm_null(X, y, dates, B=n_perm, n_jobs=-1)
-            r.update(group=gname, horizon=h, n_feat=X.shape[1])
-            ml_results.append(r)
-            print(f"   {gname:9} h={h:<2} AUC={r['auc']:.4f} null≈{r['null_mean']:.4f} p={r['p']:.3f} "
-                  f"({X.shape[1]} feat, n={r['n']})", flush=True)
+            g_jobs.append(MS.make_job_np(asset="POOL", group=gname, model="hgb", X=X, y=y, dates=dates, n_perm=pooled_B, seed=7))
+            g_meta.append((gname, h, X.shape[1], int(len(y))))
+    g_raw = run_perm(g_jobs)
+    ml_results = []
+    for (gname, h, nf, n), r in zip(g_meta, g_raw, strict=False):
+        r = dict(r or {}); r.update(group=gname, horizon=h, n_feat=nf, n=r.get("n", n))
+        ml_results.append(r)
+        print(f"   {gname:9} h={h:<2} AUC={r.get('auc', float('nan')):.4f} null≈{r.get('null_mean', float('nan')):.4f} "
+              f"p={r.get('p', float('nan')):.3f} ({nf} feat, n={r['n']})", flush=True)
 
-    print(f"[6/7] INCREMENTAL TEST — does astro add to the real-signal baseline? (B={n_perm}) …", flush=True)
-    inc_results = []
+    print(f"[6/7] INCREMENTAL TEST — does astro add to the real-signal baseline? on {where} (B={pooled_B}) …", flush=True)
+    incr_jobs, incr_meta = [], []
     for extra_name, extra_cg in (("astro", (astro_cont, astro_circ, astro_bin, astro_cat)),
                                  ("calendar", ([], [], CAL_BIN, CAL_CAT))):
         for h in (1, 5):
@@ -216,11 +240,15 @@ def main() -> None:
             Xe, _ = enc(pooled, extra_cg)
             if Xb.shape[1] == 0 or Xe.shape[1] == 0:
                 continue
-            r = ML.incremental_test(Xb, Xe, y, dates, B=n_perm, n_jobs=-1)
-            r.update(added=extra_name, horizon=h, n_base=Xb.shape[1], n_extra=Xe.shape[1])
-            inc_results.append(r)
-            print(f"   +{extra_name:9} h={h:<2} base={r['auc_base']:.4f} full={r['auc_full']:.4f} "
-                  f"lift={r['lift']:+.4f} p={r['p']:.3f}", flush=True)
+            incr_jobs.append(MS.make_incr_job(added=extra_name, horizon=h, model="hgb", Xb=Xb, Xe=Xe, y=y, dates=dates, n_perm=pooled_B, seed=8))
+            incr_meta.append((extra_name, h, Xb.shape[1], Xe.shape[1]))
+    incr_raw = run_incr(incr_jobs)
+    inc_results = []
+    for (added, h, nb, ne), r in zip(incr_meta, incr_raw, strict=False):
+        r = dict(r or {}); r.update(added=added, horizon=h, n_base=nb, n_extra=ne)
+        inc_results.append(r)
+        print(f"   +{added:9} h={h:<2} base={r.get('auc_base', float('nan')):.4f} full={r.get('auc_full', float('nan')):.4f} "
+              f"lift={r.get('lift', float('nan')):+.4f} p={r.get('p', float('nan')):.3f}", flush=True)
 
     # backtest best astro single-feature rule per asset → Deflated Sharpe (charged for the trial count)
     n_trials = max(len(ic), 1)
@@ -244,26 +272,20 @@ def main() -> None:
     # Modal fan-out (optional): per-asset × group × model with a big permutation null
     modal_results = []
     if args.modal:
-        print("   [modal] fanning per-asset sweep out to Modal …", flush=True)
+        print("   [modal] fanning per-asset sweep (B=1000, lgbm) out to Modal …", flush=True)
         jobs = []
         for asset, df in per_asset.items():
+            y = (df["fwd_1"].to_numpy(float) > 0).astype(int)
+            d = df["__date"].to_numpy()
+            ok = np.isfinite(df["fwd_1"].to_numpy(float))
             for gname, cg in (("astro", (astro_cont, astro_circ, astro_bin, astro_cat)),
                               ("real", (real_cols, [], [], []))):
                 X, _ = enc(df, cg)
-                y = (df["fwd_1"].to_numpy(float) > 0).astype(int)
-                d = df["__date"].to_numpy()
-                ok = np.isfinite(df["fwd_1"].to_numpy(float))
-                X = np.nan_to_num(X[ok], nan=0.0)
-                if X.shape[1] == 0 or len(y[ok]) < 400:
+                if X.shape[1] == 0 or int(ok.sum()) < 400:
                     continue
-                jobs.append(dict(asset=asset, group=gname, model="lgbm",
-                                 X=X.tolist(), y=y[ok].astype(int).tolist(),
-                                 dates=d[ok].astype(int).tolist(), n_perm=max(n_perm * 4, 1000), seed=7))
-        try:
-            modal_results = MS.run_sweep_modal(jobs)
-        except Exception as e:  # noqa: BLE001
-            print(f"   [modal] failed ({type(e).__name__}: {str(e)[:120]}); local fallback", flush=True)
-            modal_results = MS.run_sweep_local(jobs, n_jobs=-1)
+                jobs.append(MS.make_job_np(asset=asset, group=gname, model="lgbm",
+                                           X=X[ok], y=y[ok], dates=d[ok], n_perm=max(n_perm * 4, 1000), seed=7))
+        modal_results = run_perm(jobs)  # Modal (off the M2) with a low-parallelism local safety net
 
     gate_verdict = None
     if args.gate:
@@ -310,8 +332,9 @@ def _verdict(ic, ml_results, inc_results, bt_df) -> None:
     print(f"  IC: {len(ic)} tests · {nf} survive FDR · ~{0.05*len(ic):.0f} expected by chance")
     inc = [r for r in inc_results if r.get("added") == "astro"]
     for r in inc:
-        verdict = "ADDS signal" if (np.isfinite(r["p"]) and r["p"] < 0.05 and r["lift"] > 0) else "adds NOTHING"
-        print(f"  Incremental astro-on-real h={r['horizon']}: lift={r['lift']:+.4f} p={r['p']:.3f} → {verdict}")
+        # need BOTH statistical (p<0.05) AND economic (>0.005 AUC) significance — a +0.001 bump is untradable
+        verdict = "ADDS signal" if (np.isfinite(r.get("p", float("nan"))) and r["p"] < 0.05 and r.get("lift", 0) > 0.005) else "adds NOTHING"
+        print(f"  Incremental astro-on-real h={r['horizon']}: lift={r.get('lift', float('nan')):+.4f} p={r.get('p', float('nan')):.3f} → {verdict}")
     if len(bt_df):
         b = bt_df.iloc[0]
         print(f"  Best backtested astro rule: {b['asset']}/{b['feature']} Sharpe={b['sharpe']:.2f} "
@@ -341,8 +364,8 @@ def write_report(path, per_asset, astro, ic, ml_results, inc_results, bt_df, mod
              f"· ~{0.05*len(ic):.0f} false positives expected by chance.")
     astro_inc = [r for r in inc_results if r.get("added") == "astro"]
     if astro_inc:
-        worst = max(astro_inc, key=lambda r: (r["lift"] if np.isfinite(r["lift"]) else -9))
-        verdict = "ADDS incremental signal" if (np.isfinite(worst["p"]) and worst["p"] < 0.05 and worst["lift"] > 0) else "adds NOTHING"
+        worst = max(astro_inc, key=lambda r: (r["lift"] if np.isfinite(r.get("lift", float("nan"))) else -9))
+        verdict = "ADDS incremental signal" if (np.isfinite(worst.get("p", float("nan"))) and worst["p"] < 0.05 and worst.get("lift", 0) > 0.005) else "adds NOTHING (no economically meaningful lift)"
         L.append(f"- **Incremental test (THE question):** adding all astro to the real-signal model changes OOS AUC "
                  f"by lift={worst['lift']:+.4f} (p={worst['p']:.3f}) → astro **{verdict}** on top of real signals.")
     if len(bt_df):

@@ -147,8 +147,10 @@ def _perm_cv_core(payload: dict) -> dict:
     y = np.asarray(payload["y"], dtype=int)
     dates = np.asarray(payload["dates"])
 
-    # Honest cleaning: drop any non-finite feature/label rows (never impute fabricated values).
-    ok = np.isfinite(X).all(axis=1) & np.isfinite(y)
+    # Require a finite LABEL only; KEEP NaN in X (HistGradientBoosting / LightGBM both handle missing
+    # values natively). Dropping rows with any NaN feature would gut the real/all groups (funding is NaN
+    # pre-2023, social pre-2020) and silently disagree with the local path — never impute, never fabricate.
+    ok = np.isfinite(y)
     X, y, dates = X[ok], y[ok], dates[ok]
 
     base = dict(
@@ -190,18 +192,71 @@ def _perm_cv_core(payload: dict) -> dict:
     return base
 
 
-# ── Modal entrypoint: one container per job (read-only, scale-to-zero) ─────────────────────────────
+def _incr_cv_core(payload: dict) -> dict:
+    """INCREMENTAL test kernel (shares _cv_auc_core). Does X_extra add OOS information ON TOP OF X_base?
+
+    real = AUC([base|extra]); null = AUC([base | ROW-SHUFFLED extra]) — the base signal is preserved, only the
+    extra block's information is destroyed. p<0.05 AND lift>0 ⇒ the extra block carries incremental signal.
+
+    payload keys: added (label), horizon (label), model, Xb (n×db), Xe (n×de), y (n), dates (n), n_perm, seed.
+    returns: {added, horizon, model, auc_base, auc_full, lift, null_mean, p, n, n_perm}. Pure, READ-ONLY, NaN-safe.
+    """
+    import warnings
+
+    warnings.filterwarnings("ignore", message="X does not have valid feature names")
+    added = payload.get("added", "?")
+    horizon = int(payload.get("horizon", 0))
+    model = payload.get("model", "hgb")
+    n_perm = int(payload.get("n_perm", 0))
+    seed = int(payload.get("seed", 0))
+    Xb = np.asarray(payload["Xb"], dtype=float)
+    Xe = np.asarray(payload["Xe"], dtype=float)
+    y = np.asarray(payload["y"], dtype=int)
+    dates = np.asarray(payload["dates"])
+    ok = np.isfinite(y)  # keep NaN in features (trees handle it); require a finite label
+    Xb, Xe, y, dates = Xb[ok], Xe[ok], y[ok], dates[ok]
+
+    base = dict(added=added, horizon=horizon, model=model, auc_base=float("nan"),
+                auc_full=float("nan"), lift=float("nan"), null_mean=float("nan"),
+                p=float("nan"), n=int(len(y)), n_perm=0)
+    folds = _date_folds(dates)
+    if not folds or len(np.unique(y)) < 2 or Xe.shape[1] == 0:
+        return base
+    auc_base = _cv_auc_core(Xb, y, folds, model=model, seed=seed)
+    auc_full = _cv_auc_core(np.hstack([Xb, Xe]), y, folds, model=model, seed=seed)
+    rng = np.random.default_rng(seed)
+    perm_seeds = rng.integers(0, 2**31 - 1, size=n_perm)
+    null = []
+    for s in perm_seeds:
+        r = np.random.default_rng(int(s))
+        v = _cv_auc_core(np.hstack([Xb, Xe[r.permutation(len(Xe))]]), y, folds, model=model, seed=int(s) % 1000)
+        if np.isfinite(v):
+            null.append(v)
+    null = np.asarray(null, dtype=float)
+    if len(null) and np.isfinite(auc_full):
+        p = (1 + int(np.sum(null >= auc_full))) / (1 + len(null))
+        base.update(auc_base=float(auc_base), auc_full=float(auc_full), lift=float(auc_full - auc_base),
+                    null_mean=float(np.mean(null)), p=float(p), n_perm=int(len(null)))
+    return base
 
 
-@app.function(image=image, timeout=1800, cpu=4.0, memory=8192)
+# ── Modal entrypoints: one container per job (read-only, scale-to-zero) ─────────────────────────────
+
+
+@app.function(image=image, timeout=3600, cpu=8.0, memory=16384)
 def perm_cv(payload: dict) -> dict:
     """Modal-side wrapper around the shared kernel. Pure compute, deterministic, READ-ONLY.
 
-    payload = {asset, group, model, X (list[list[float]]), y (list[int]),
-               dates (list[int epoch-days]), n_perm, seed}
+    payload = {asset, group, model, X (n×d float), y (n), dates (n epoch-days), n_perm, seed}
     returns  = {asset, group, model, auc, null_mean, null_p95, p, n, n_perm}
     """
     return _perm_cv_core(payload)
+
+
+@app.function(image=image, timeout=3600, cpu=8.0, memory=16384)
+def incr_cv(payload: dict) -> dict:
+    """Modal-side wrapper around the incremental kernel. Pure compute, deterministic, READ-ONLY."""
+    return _incr_cv_core(payload)
 
 
 # ── Drivers ───────────────────────────────────────────────────────────────────────────────────────
@@ -224,6 +279,7 @@ def run_sweep_local(jobs: list[dict], n_jobs: int = -1) -> list[dict]:
     """Identical compute to run_sweep_modal, parallelized locally with joblib (Modal-unavailable fallback).
 
     Returns the SAME dict shape. Each job is independent → process-parallel is safe and deterministic.
+    n_jobs is capped by the CALLER (e.g. 3) when the goal is to NOT saturate a small local machine.
     """
     if not jobs:
         return []
@@ -232,6 +288,23 @@ def run_sweep_local(jobs: list[dict], n_jobs: int = -1) -> list[dict]:
     return list(
         Parallel(n_jobs=n_jobs, prefer="processes")(delayed(_perm_cv_core)(j) for j in jobs)
     )
+
+
+def run_incr_modal(jobs: list[dict]) -> list[dict]:
+    """Fan the INCREMENTAL-test jobs out to Modal (one container each, ephemeral, scale-to-zero)."""
+    if not jobs:
+        return []
+    with app.run():
+        return list(incr_cv.map(jobs))
+
+
+def run_incr_local(jobs: list[dict], n_jobs: int = -1) -> list[dict]:
+    """Local joblib fallback for the incremental jobs — identical compute, same dict shape."""
+    if not jobs:
+        return []
+    from joblib import Parallel, delayed
+
+    return list(Parallel(n_jobs=n_jobs, prefer="processes")(delayed(_incr_cv_core)(j) for j in jobs))
 
 
 # ── Job-builder helper (convenience; the caller supplies REAL X/y/dates) ───────────────────────────
@@ -268,6 +341,28 @@ def make_job(
         n_perm=int(n_perm),
         seed=int(seed),
     )
+
+
+def _epoch_days(dates) -> np.ndarray:
+    d = np.asarray(dates)
+    if np.issubdtype(d.dtype, np.datetime64):
+        d = d.astype("datetime64[D]").astype(np.int64)
+    return d.astype(np.int64)
+
+
+def make_job_np(asset: str, group: str, model: str, X, y, dates, n_perm: int, seed: int) -> dict:
+    """Like make_job but ships X as a float32 ndarray (Modal cloudpickle serializes raw buffers — far
+    smaller/faster than list[list[float]] for big pooled matrices, so the local M2 just uploads and idles)."""
+    return dict(asset=str(asset), group=str(group), model=str(model),
+                X=np.ascontiguousarray(X, dtype=np.float32), y=np.asarray(y, dtype=np.int8),
+                dates=_epoch_days(dates), n_perm=int(n_perm), seed=int(seed))
+
+
+def make_incr_job(added: str, horizon: int, model: str, Xb, Xe, y, dates, n_perm: int, seed: int) -> dict:
+    """Pack one incremental-test job (base block + extra block) as float32 arrays for Modal incr_cv."""
+    return dict(added=str(added), horizon=int(horizon), model=str(model),
+                Xb=np.ascontiguousarray(Xb, dtype=np.float32), Xe=np.ascontiguousarray(Xe, dtype=np.float32),
+                y=np.asarray(y, dtype=np.int8), dates=_epoch_days(dates), n_perm=int(n_perm), seed=int(seed))
 
 
 # ── Self-test: TINY synthetic noise, proves wiring only (expects AUC≈0.5) ─────────────────────────
