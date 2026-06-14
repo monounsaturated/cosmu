@@ -104,15 +104,16 @@ Skills are **runnable playbooks** — the canonical procedure for each common ta
 
 ## Session protocol (for any coding agent)
 1. **Start**: Read this file → read `BACKLOG.md` → `git status` → report state. (`/start-session` does all of this.)
-2. **Suggest parallel work**: If backlog items are independent, tell the human:
-   "These could run as separate agents: [X in cloud/opus, Y in cloud/sonnet]." (`/split-tasks` writes the prompts.)
+2. **Parallelize by default** (don't just suggest it): independent work runs as concurrent subagents/workflows, not in sequence — fan out reads, edits, and reviews, and verify findings adversarially. Burn tokens freely (flat Max sub); only heavy *compute* goes to cloud/Modal. Tell the human what you fanned out: "ran these as separate agents: [X, Y]." (`/split-tasks` writes the prompts; `/fan-out` runs the merge train.)
 3. **Recommend cloud vs local**: Heavy compute (tests, build, backtest) = cloud.
    Editing, config, preview = local. Both are 16GB — cloud has no competing processes.
 4. **Before pushing**: Always `pnpm verify`. Feature branch + PR. Never push to main.
 5. **After pushing**: Suggest the next backlog item. Remind the human of open PRs.
 6. **Task files**: Use `/split-tasks` to write `.claude/tasks/*.md`. Delete after launch.
 
-### Parallel agents (fan-out)
+### Parallel agents (fan-out) — DEFAULT to this, go fast
+**Bias hard to speed through parallelism. LLM tokens are NOT the constraint — they're flat-rate on the Max sub, so burn them freely;** wall-clock and operator attention are what's scarce. So for any non-trivial task, **fan out parallel subagents / a workflow by default instead of grinding sequentially**: decompose, run independent reads/edits/reviews concurrently, and adversarially verify findings with a second pass rather than trusting one. A focused investigation that would take 5 sequential file-reads should be one parallel fan-out. Reserve solo, single-threaded work for genuinely serial judgment (gate/scorer design, one subtle bug, a conversational reply).
+The REAL limit is **local RAM, not tokens** — push heavy *compute* (`next build`, full `engine:test`, grid/walk-forward sweeps) to a cloud session or Modal; never throttle the *number of agents or tokens* to save money.
 **One branch per agent; never two agents in one working tree** (proven branch-stomping). Heavy/many-file agents get their own git worktree. The orchestrator merges PRs into `main` one at a time, re-checking mergeability between each. See `/fan-out` (orchestrate parallel agents + merge train) and `/triage-ideas` (clear the `IDEAS.md` inbox into the backlog).
 
 ## Non-negotiables
