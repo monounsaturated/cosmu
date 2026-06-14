@@ -147,6 +147,17 @@ _DSR charges for 32372 trials. None above 0.95 ⇒ no rule survives the multiple
 | BTCUSDT  | astro   | lgbm    | 0.5131   |    0.498093 |   0.521495 | 0.155844   | 3222 |     1000 |      228 |
 | LTCUSDT  | astro   | lgbm    | 0.511597 |    0.497796 |   0.521716 | 0.167832   | 3104 |     1000 |      227 |
 
+## Scope & adversarial-audit caveats
+
+A 6-skeptic adversarial audit verified this study **SOUND with HIGH confidence and ZERO blockers** — every defect found biases *toward* the no-edge conclusion (astro features are deterministic and broadcast-identically to all assets, so no data defect can *suppress* astro; both genuine leaks *inflate* AUC and astro still scored ≤ null; the incremental harness was verified not-rigged via a planted-signal control that fired at p=0.02). Honest scoping the audit (correctly) demanded:
+
+- **Time-series, not cross-sectional.** This tests astro as a market-wide *timing* signal; it does NOT rank the universe by a per-asset score (long-best/short-worst). The deterministic astro panel is identical across assets, so cross-sectional astro needs the per-coin **natal-chart** layer (genesis-timestamp transits) — future work. Read "broad" as "broad **time-series** astrology".
+- **Daily/weekly horizons** for the multivariate tests (group battle + incremental run h=1, h=5); h=20 monthly — where slow-planet cycles would live — is covered only by the single-feature IC panel. A monthly multivariate test is future work.
+- **Equity returns are price (dividend-unadjusted).** The Yahoo loader uses raw close; ex-dividend days are calendar-locked, a small self-inflicted seasonal artifact in the equity real/calendar groups (NOT astro). A total-return version would use adjusted close.
+- **Minors (all toward the null):** the Modal per-asset sweep's "beats" ≈ the count expected by chance (BH-FDR over the 64 jobs → 0 survive); group-battle p-values are floored at 1/(1+B)=0.016 (B=60) so the headline rests on the selection-robust *incremental/lift* test, not those floors; the backtest DSR charges the conservative 32,372-trial IC-grid count (true backtest count ~3,168 → DSR≈0.68, still <0.95); walk-forward folds carry no h-bar embargo (inflates AUC → works against astro).
+
+None of these flips the verdict; they bound its scope. Cross-sectional natal + h=20 + adjclose are the honest next extensions.
+
 ## Method — the anti-overfitting defenses
 
 - **No look-ahead:** astro = deterministic geometry knowable at each day's midnight UTC; real alt-data is PIT-joined (value at bar t = latest point with available_at ≤ t); regime = trailing 200d SMA only.
