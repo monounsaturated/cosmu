@@ -86,6 +86,11 @@ class LeaderboardRow(BaseModel):
     # the screener renders an honest "—", NOT 0 or a -100% loss. `oos_window_days` is the backtest OOS window
     # length (from the YYYY-MM bounds), so the OOS % can be shown WITH its window ("+8.2% over ~2.4yr"); null
     # when the bounds are missing/malformed.
+    # The honest "has this track traded on paper" flag = a real paper fill exists in the executions ledger
+    # (is_paper=1), the SAME signal the detail sheet's blotter reads. The web keys the "Paper" badge + the
+    # Paper cohort off THIS (not raw status), so a funded-but-never-filled documented arm can never show
+    # "Paper" while its own sheet says "no fills yet". When false, the marked money fields below are None.
+    has_paper_fills: bool = False
     value_usd: float | None = None
     pnl_usd: float | None = None
     pnl_pct: float | None = None

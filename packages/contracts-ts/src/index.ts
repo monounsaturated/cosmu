@@ -647,6 +647,7 @@ export interface LeaderboardRow {
   divergence_status?: "insufficient" | "tracking" | "diverging";
   edge_type: string;
   features: string[];
+  has_paper_fills?: boolean;
   lineage: string;
   live_ready: boolean;
   name: string;

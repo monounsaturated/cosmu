@@ -15,7 +15,7 @@ import { getPortfolioSummary } from "../data/portfolio";
 import { Page, Toolbar } from "@/components/ui/toolbar";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
 import { StrategiesTable } from "@/components/research/strategies-table";
-import { cn, formatPct, formatUsd, isPaper, numOrNull, signedUsd } from "@/lib/utils";
+import { cn, formatPct, formatUsd, isPaperRow, numOrNull, signedUsd } from "@/lib/utils";
 
 // Always render on-demand with fresh engine data — never statically pre-render (the engine may be offline
 // at build time; on-demand lets the honest not-connected state handle it).
@@ -87,7 +87,7 @@ function SummaryRibbon({ summary, rows }: { summary: PortfolioSummaryResponse; r
   const basis = liveEquity !== null && livePnl !== null ? liveEquity - livePnl : null;
   const livePct = basis && basis > 0 && livePnl !== null ? (livePnl / basis) * 100 : null;
 
-  const paperRows = rows.filter((r) => isPaper(r.status));
+  const paperRows = rows.filter((r) => isPaperRow(r));
   const bestPaper = paperRows.reduce<number | null>((best, r) => {
     const v = numOrNull(r.paper_return_pct);
     if (v === null) return best;

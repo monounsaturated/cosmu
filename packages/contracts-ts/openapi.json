@@ -3255,6 +3255,11 @@
             "title": "Features",
             "type": "array"
           },
+          "has_paper_fills": {
+            "default": false,
+            "title": "Has Paper Fills",
+            "type": "boolean"
+          },
           "lineage": {
             "title": "Lineage",
             "type": "string"
