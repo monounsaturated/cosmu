@@ -12,6 +12,10 @@ const SECRET = process.env.API_SECRET_KEY;
 // Don't cache control-plane calls — they must reflect live engine state.
 export const dynamic = "force-dynamic";
 
+// Run the proxy in cdg1 (Paris), co-located with the engine (Railway europe-west4) + its DB — so client-side
+// reads (browser → this proxy → engine) don't cross the Atlantic. Matches the SSR region pin in app/layout.tsx.
+export const preferredRegion = "cdg1";
+
 async function relay(req: NextRequest, path: string[]): Promise<Response> {
   if (!BASE) {
     return Response.json({ detail: "engine not configured (API_BASE_URL unset)" }, { status: 503 });
