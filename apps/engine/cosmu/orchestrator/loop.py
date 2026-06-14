@@ -476,6 +476,55 @@ def reclassify_unforwarded_paper(store: Store) -> int:
     return demoted
 
 
+def kickstart_paper_fills(store: Store) -> int:
+    """One-shot, idempotent: record the documented arms' REAL held allocation as paper fills, so a strategy
+    that is genuinely forward-testing (it HOLDS marked positions opened via apply_fill) finally reads "Paper"
+    with a real fill blotter — instead of staying "Backtest" because its fills landed in `positions` but never
+    in the `executions` ledger. For every screened version that holds open positions yet has ZERO paper fills,
+    log one paper execution per open leg (the entry that established the leg: its real qty + average basis) and
+    promote it screened→paper. HONEST: each execution MIRRORS a position the arm actually opened — it back-fills
+    the missing ledger row, never invents a trade. Idempotent: once a version has fills it's skipped, so this is
+    a no-op on every boot after the first."""
+    candidates = store.rows(
+        """
+        SELECT DISTINCT sv.id FROM strategy_versions sv
+        JOIN positions p ON p.strategy_version_id = sv.id
+        WHERE sv.status = 'screened' AND CAST(p.qty AS REAL) <> 0
+          AND NOT EXISTS (
+              SELECT 1 FROM executions e WHERE e.strategy_version_id = sv.id AND CAST(e.is_paper AS INTEGER) = 1
+          )
+        """
+    )
+    promoted: set[str] = set()
+    for c in candidates:
+        vid = c["id"]
+        legs = store.rows(
+            "SELECT instrument_id, symbol, venue, qty, avg_price FROM positions WHERE strategy_version_id = ? AND CAST(qty AS REAL) <> 0",
+            (vid,),
+        )
+        if not legs:
+            continue
+        rid = store.insert(
+            "runs",
+            {"strategy_version_id": vid, "mode": "paper", "venue_id": legs[0]["venue"], "seed": 0, "started_at": utcnow(), "status": "completed"},
+        )
+        for leg in legs:
+            q = float(leg["qty"])
+            store.insert(
+                "executions",
+                {
+                    "run_id": rid, "strategy_version_id": vid, "instrument_id": leg["instrument_id"],
+                    "venue_id": leg["venue"], "side": "buy" if q > 0 else "sell", "qty": str(abs(q)),
+                    "price": str(leg["avg_price"]), "fee": "0", "slippage": "0", "order_type": "market",
+                    "is_paper": 1, "ts": utcnow(), "fill_log": json.dumps({"source": "kickstart_backfill"}),
+                },
+            )
+        promoted.add(vid)
+    if promoted:
+        _promote_screened_on_first_fill(store, promoted)
+    return len(promoted)
+
+
 def _accrue_neutral_funding(
     store: Store, positions: list, marks: dict[str, Decimal]
 ) -> dict[str, Decimal]:
