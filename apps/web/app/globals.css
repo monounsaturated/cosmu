@@ -1047,8 +1047,8 @@ th[draggable=true]{cursor:pointer}
 .k-desc{color:var(--quiet);font-size:10.5px}
 .loc-env{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:var(--quiet)}
 .loc-sep{color:var(--quiet);font-size:10px;margin:0 4px}
-.loc-host{font-size:10px;font-weight:600}
-.loc-host.h-live{color:var(--up)}.loc-host.h-pending{color:var(--gold)}.loc-host.h-error{color:var(--down)}.loc-host.h-off{color:var(--quiet)}
+/* Host name (Railway/Vercel) is a plain GREY label — presence lives in the status dot, not the location. */
+.loc-host{font-size:10px;font-weight:500;color:var(--muted)}
 .key-legend{display:flex;gap:13px;font-size:9px;text-transform:none;letter-spacing:0;color:var(--quiet);font-weight:500}
 .key-legend .lg{display:inline-flex;align-items:center;gap:5px}
 .key-legend .kdot{cursor:default}

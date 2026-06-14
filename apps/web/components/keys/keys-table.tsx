@@ -53,43 +53,26 @@ const HOST_LABEL: Record<NonNullable<SettingsKeyRow["host"]>, string> = {
 };
 
 function hostLabel(row: SettingsKeyRow): string {
-  if (!row.host || row.host === "none") return "";
+  // "local" is redundant with the ".env.local" token already shown — never append a "· local".
+  if (!row.host || row.host === "none" || row.host === "local") return "";
   return HOST_LABEL[row.host];
 }
 
-// Colour the host token by whether the engine sees the key set THERE.
-//   present.host === true  → h-live    (green — set on the deploy host)
-//   present.host === false → h-error   (red — missing on the deploy host)
-//   present.host == null   → h-pending (gold — unverified, couldn't confirm)
-function hostSuffix(present: SettingsKeyRow["present"]): string {
-  const h = present?.host;
-  if (h === true) return "live";
-  if (h === false) return "error";
-  return "pending";
-}
-
-// The Location cell: ".env.local" (grey) · host (coloured by presence). Mirrors the mockup's locCell:
-// a keyed row shows ".env.local · <host>"; a keyless / project-linked row shows just the host or a
-// "public API" hint.
+// The Location cell: ".env.local" + host name, both GREY/regular — the host (Railway/Vercel) is a plain
+// label, NOT colour-coded by presence (the status DOT in column 1 already carries connected/missing/
+// unverified). A keyed row shows ".env.local · <host>"; a keyless row shows just the host or a "public API".
 function Location({ row }: { row: SettingsKeyRow }) {
   const host = hostLabel(row);
   if (!row.key) {
-    // Keyless / project-linked service (no env var to set).
-    return host ? (
-      <span className={`loc-host h-${hostSuffix(row.present)}`}>{host}</span>
-    ) : (
-      <span className="loc-env">public API</span>
-    );
+    return host ? <span className="loc-host">{host}</span> : <span className="loc-env">public API</span>;
   }
-  // .env.local stays grey always — the app can't inspect the operator's local file, so it never claims a
-  // local presence it can't verify. Only the deploy host (Railway/Vercel) is colour-coded.
   return (
     <>
       <span className="loc-env">.env.local</span>
       {host ? (
         <>
           <span className="loc-sep">·</span>
-          <span className={`loc-host h-${hostSuffix(row.present)}`}>{host}</span>
+          <span className="loc-host">{host}</span>
         </>
       ) : null}
     </>

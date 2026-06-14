@@ -65,11 +65,15 @@ def test_settings_keys_shape_and_never_leaks_values(tmp_path, monkeypatch):
         assert row["cost"] in ("free", "paid")
         assert row["status"] in ("connected", "unverified", "missing", "unset")
         assert row["host"] in ("railway", "vercel", "local", "none")
-        # present.local / present.host are each bool|None — and exactly ONE side is observable (the process's
-        # own env), so the unobservable side is honest None, never fabricated. The test runs LOCAL → host None.
+        # present.local / present.host are each bool|None. The engine observes only the process's own env, so
+        # the unobservable side is honest None, never fabricated. The test runs LOCAL → host None.
         assert set(row["present"]) == {"local", "host"}
         assert row["present"]["host"] is None, "a local engine cannot see the deployed host's env — must be None"
-        assert isinstance(row["present"]["local"], bool)
+        if row["host"] == "vercel":
+            # Vercel-hosted web vars are unobservable from the engine (it runs on Railway) — BOTH sides None.
+            assert row["present"]["local"] is None and row["status"] == "unverified"
+        else:
+            assert isinstance(row["present"]["local"], bool)
         assert row["name"] == row["env_var"]  # one row PER env var, keyed on the bare name
         # SECURITY: the actual secret value must never appear anywhere in the payload.
         assert "s3cret-key-very-long" not in str(row)
