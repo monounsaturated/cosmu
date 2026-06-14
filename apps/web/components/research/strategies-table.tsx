@@ -27,7 +27,7 @@ import type { LeaderboardRow, StrategyDetailResponse } from "@cosmu/contracts-ts
 import { SidePanel } from "@/components/ui/side-panel";
 import { StrategySheet } from "@/components/strategy/strategy-sheet";
 import type { Stage } from "@/components/strategy/stage-control";
-import { engineFetch } from "@/lib/engine";
+import { engineFetch, engineGetJson, enginePeek, enginePrefetch } from "@/lib/engine";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { cn, formatUsd, numOrNull, signedUsd } from "@/lib/utils";
 
@@ -329,7 +329,12 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
                   row.version_id === selectedId && "sel"
                 );
                 return (
-                  <tr key={`${row.version_id}-${i}`} className={rowClass || undefined} onClick={() => setSelectedId(row.version_id)}>
+                  <tr
+                    key={`${row.version_id}-${i}`}
+                    className={rowClass || undefined}
+                    onClick={() => setSelectedId(row.version_id)}
+                    onMouseEnter={() => enginePrefetch(`/strategies/${row.version_id}`)}
+                  >
                     {visibleCols.map((c) => (
                       <td key={c.key}>
                         <Cell col={c.key} row={row} life={life} />
@@ -493,11 +498,18 @@ function SheetPanel({ id, stage, onClose }: { id: string | null; stage?: Stage; 
       setState("idle");
       return;
     }
+    // Instant on a cache hit (re-open, or a hover-prefetch already landed) — no skeleton flash. The cached
+    // path is force-dynamic on the server, so this client cache is what makes re-opening a sheet feel instant.
+    const cached = enginePeek<StrategyDetailResponse>(`/strategies/${id}`);
+    if (cached) {
+      setDetail(cached);
+      setState("idle");
+      return;
+    }
     let cancelled = false;
     setState("loading");
     setDetail(null);
-    engineFetch(`/strategies/${id}`)
-      .then((r) => (r.ok ? (r.json() as Promise<StrategyDetailResponse>) : Promise.reject(new Error(String(r.status)))))
+    engineGetJson<StrategyDetailResponse>(`/strategies/${id}`)
       .then((d) => {
         if (!cancelled) {
           setDetail(d);

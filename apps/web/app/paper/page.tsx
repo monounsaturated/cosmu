@@ -18,7 +18,7 @@ import { NotConnected, EmptyState } from "@/components/ui/honest-state";
 import { EquityHero } from "@/components/live/equity-hero";
 import { SimSummary } from "@/components/paper/sim-summary";
 import { PaperPositions } from "@/components/paper/track-card";
-import { TrackLedger } from "@/components/paper/track-ledger";
+import { WalletAllocCard } from "@/components/paper/wallet-alloc";
 import { StopPaperButton } from "@/components/paper/stop-paper-button";
 import { isPaper } from "@/lib/utils";
 
@@ -73,10 +73,11 @@ async function PaperData() {
       {/* 4-box KPI grid: Invested / P&L / Strategies / Live-ready. */}
       <SimSummary rows={simRows} />
 
-      {/* [Open positions | Recent trades] side by side. */}
+      {/* [Open positions | Capital allocation donut] side by side — the donut replaces the honest-empty
+          aggregate trades box (no cohort fill feed exists) with the wallet's real per-strategy split. */}
       <div className="kgrid dash-split" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <PaperPositions rows={simRows} />
-        <TrackLedger rows={simRows} />
+        <WalletAllocCard rows={simRows} />
       </div>
     </div>
   );
