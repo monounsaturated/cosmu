@@ -1,0 +1,130 @@
+{
+  "name": "Low-vol-armed trend continuation (calm-tape momentum)",
+  "rationale": "THESIS: trend/momentum only persists in calm regimes; in high-vol tapes price overshoots and whipsaws, so plain momentum fires in chop where it bleeds. We arm the long-only trend ONLY when realized vol sits below a fitted calm ceiling (vol_realized is BOUNDED so a level threshold binds) AND medium-term return is positive. The vol gate is the orthogonal structure, not the trend. DISCONFIRMER: run the IDENTICAL ret_Nd>0 rule with the vol_realized<ceiling gate REMOVED (trend-alone). If gated and ungated produce statistically indistinguishable deflated-Sharpe net of fees, the calm-vol gate adds nothing and this is just already-exhausted momentum. The gate must add risk-adjusted return after the extra turnover from vol-regime exits.",
+  "catalyst": "Realized vol drops below a fitted calm ceiling while medium-term price trend is already up \u2014 a quiet, persistent tape that momentum survives.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized",
+        "lookback": {
+          "param": "vol_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vol_realized",
+          "lookback": {
+            "param": "vol_lb"
+          }
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vol_ceiling"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lb"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_floor"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_lb": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 30,
+      "step": 1
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.2,
+      "hi": 0.55
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 14,
+      "hi": 45,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

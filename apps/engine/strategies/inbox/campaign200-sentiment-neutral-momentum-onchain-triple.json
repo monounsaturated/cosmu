@@ -1,0 +1,125 @@
+{
+  "name": "sentiment_neutral_momentum_onchain_triple",
+  "rationale": "Thesis: durable trends start from NEUTRAL sentiment (fear_greed mid-band, not euphoric, not panicked), confirmed by positive medium-term momentum (ret_10d) AND expanding on-chain throughput (tx_count crossing up). The neutral-sentiment filter is the orthogonal piece that avoids buying crowded tops. Disconfirmer: a ret_10d-only momentum control; the sentiment+on-chain legs must beat it on risk-adjusted terms, else it is just momentum with extra constraints.",
+  "catalyst": "BTC tx_count crosses up with positive medium-term momentum and neutral fear_greed",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_tx_count"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tx_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_min"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "fg_band"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "fg_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tx_cross": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 14,
+      "step": 1
+    },
+    "mom_min": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "fg_band": {
+      "kind": "float",
+      "lo": 40,
+      "hi": 65
+    },
+    "fg_exit": {
+      "kind": "float",
+      "lo": 78,
+      "hi": 92
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.38
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

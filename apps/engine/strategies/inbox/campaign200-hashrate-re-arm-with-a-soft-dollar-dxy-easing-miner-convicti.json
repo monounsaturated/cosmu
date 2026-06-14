@@ -1,0 +1,139 @@
+{
+  "name": "Hashrate re-arm with a soft dollar (DXY easing) \u2014 miner conviction plus a liquidity tailwind",
+  "rationale": "A weakening dollar is a classic liquidity tailwind for risk assets including BTC. The thesis combines an external liquidity signal with on-chain conviction: btc_hashrate crosses UP (miners re-arm \u2014 structural conviction) AND the dollar is easing (dxy crosses DOWN through a fitted level \u2014 a fresh regime change toward looser conditions) AND momentum is positive. Note DXY is treated as a DRIFTING level here and therefore read ONLY via cross_down (a regime-change trigger), NOT a raw lt on its level \u2014 this keeps it honest as a change signal rather than a fitted level-in-disguise. btc_hashrate is likewise drifting, used ONLY via cross_up/cross_down. Go long spot. Exit when the dollar firms again (dxy cross_up) or miners capitulate. Disconfirmer (core falsifier): the edge must come from miner re-commitment adding orthogonal info to the dollar-easing trigger. If replacing the btc_hashrate cross_up arm with an always-true pass (keeping dxy cross_down + ret_Nd>0) matches or beats deflated Sharpe, hashrate is redundant and this is just a dollar-easing momentum trade. Low-confidence until OOS; the Gate decides.",
+  "catalyst": "btc_hashrate crosses up while the dollar (DXY) eases (crosses down) and momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 24
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hash_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "dxy"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "dxy_trig"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "dxy"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "dxy_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "btc_hashrate"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "hash_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "hash_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "hash_exit": {
+      "kind": "float",
+      "lo": -1.5,
+      "hi": 0.5
+    },
+    "dxy_trig": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.5
+    },
+    "dxy_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 1.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 12,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 24,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

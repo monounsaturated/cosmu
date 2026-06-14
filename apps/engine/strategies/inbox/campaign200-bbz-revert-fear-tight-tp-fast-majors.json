@@ -1,0 +1,102 @@
+{
+  "name": "bbz_revert_fear_tight_tp_fast_majors",
+  "rationale": "A fast, low-turnover scalp of the immediate snap-back: enter on bb_z recovery during fear, take a tight profit and tight stop on a short clock. Fear gate posits the snap is sentiment-driven and quick. Disconfirmer: fear_greed must be below the fear cap; if the same fast bb_z cross_up scalp pays equally in neutral/greed, the fear gate is decorative and it is a plain oversold scalp. Short max-hold + tight tp deliberately separate this from the long-hold variants so the family does not all degenerate to one trade.",
+  "catalyst": "bb_z recovers out of oversold during fear, scalped to a tight target",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 6
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "bbz_recover"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_max"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "bbz_recover": {
+      "kind": "float",
+      "lo": -2.4,
+      "hi": -1.0
+    },
+    "fear_max": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 35
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.3,
+      "hi": 0.8
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.2
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 8,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

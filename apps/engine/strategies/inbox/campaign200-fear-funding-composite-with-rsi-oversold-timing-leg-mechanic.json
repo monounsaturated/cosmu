@@ -1,0 +1,130 @@
+{
+  "name": "Fear-funding composite with RSI-oversold timing leg (mechanical confirm)",
+  "rationale": "Adds a price-mechanical oversold leg to the positioning+sentiment composite to sharpen entry timing. Arm a long when funding is soft (below ceiling, uncrowded) AND Fear&Greed is fearful AND RSI is below an oversold floor \u2014 the fear/funding gauges supply the contrarian REGIME, RSI supplies the precise oversold TIMING on price. All three BOUNDED/mean-reverting; RSI lt floor is the correct level op for a bounded oscillator; funding ceiling straddles realized to bite (null carry crowding filter). The thesis: an oversold price reading that COINCIDES with both positioning softness and sentiment fear is a higher-quality dip than oversold alone, which often keeps falling. DISCONFIRMER: an RSI-only oversold long (no fear, no funding) is in this cohort \u2014 if RSI-alone matches the deflated/holdout Sharpe, the fear and funding legs are redundant with price and add no orthogonal information beyond classic oversold mean-reversion, so the composite is not earning its complexity. Exit on RSI normalizing OR sentiment recovering. Holdout must hold. Gate disposes; honest FAIL valid.",
+  "catalyst": "soft funding + fear + RSI oversold coincide",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 15
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_oversold"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "funding_ceiling": {
+      "kind": "float",
+      "lo": -4e-05,
+      "hi": 6e-05
+    },
+    "fear_floor": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 40.0
+    },
+    "rsi_oversold": {
+      "kind": "float",
+      "lo": 22.0,
+      "hi": 38.0
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 52.0,
+      "hi": 68.0
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 52.0,
+      "hi": 75.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.09,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

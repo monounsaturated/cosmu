@@ -1,0 +1,130 @@
+{
+  "name": "Capitulation triple-confluence: extreme-fear + funding flush + vol spike (NOT fear-alone)",
+  "rationale": "Thesis: Fear&Greed-alone contrarian is EXHAUSTED \u2014 it fires too often and on shallow dips. The edge is the RARE confluence where three independent stress axes agree at once: crowd sentiment (fear_greed) at an extreme low, leveraged-positioning capitulation (funding_rate flushed to a low/negative level = perp longs washed out, NOT crowded long), AND a realized-volatility spike marking forced selling. The Extremity Premium result (sentiment extremity carries information beyond realized vol) means fear_greed and vol_realized are NOT redundant, so requiring BOTH plus a positioning flush isolates genuine capitulation bottoms from ordinary dips. RSI oversold is an optional fourth confirm. This is a positioning+sentiment+vol COMPOSITE at the swing horizon, not a single tired level. Disconfirmer(s): must beat (a) fear_greed-extreme ALONE \u2014 if lone-fear matches or beats net Sharpe the confluence adds nothing and we have re-derived the exhausted F&G-alone signal; and (b) funding-low ALONE \u2014 to rule out that this is just funding-carry capitulation. The composite must beat BOTH single-feature ablations after fees. Long-only crypto spot.",
+  "catalyst": "extreme-fear sentiment + perp-funding flush + realized-vol climax aligning on the same day",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_extreme"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_flush"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_spike"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "fear_neutral_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "fear_extreme": {
+      "kind": "float",
+      "lo": 12,
+      "hi": 25
+    },
+    "funding_flush": {
+      "kind": "float",
+      "lo": -0.0003,
+      "hi": 5e-05
+    },
+    "vol_spike": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.09
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 22,
+      "hi": 40
+    },
+    "fear_neutral_exit": {
+      "kind": "float",
+      "lo": 40,
+      "hi": 55
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,158 @@
+{
+  "name": "Vol-curve-confirmed funding squeeze \u2014 negative-funding long gated on a non-panic VIX regime",
+  "rationale": "A positioning+sentiment composite that demands BOTH a crypto-native short-crowding extreme AND a TradFi macro all-clear before buying spot majors. THESIS: the funding-crowding reversal (deeply negative perpetual funding -> crowded shorts -> short squeeze higher) is a documented mean-reversion, but it FAILS during genuine macro liquidations, where crowded shorts keep winning as everything sells. So we ARM the negative-funding long ONLY when the broad risk regime is NOT melting down: the equity vol curve is NOT in deep backwardation (vix_term_slope above a fitted floor \u2014 backwardation = acute systemic panic that keeps shorts paid) AND VIX level is below a fitted ceiling (~28 \u2014 not a vol spike). A local price turn (rsi cross_up through a fitted oversold floor) confirms the squeeze is starting rather than catching a falling knife. The edge hedge funds miss spans two desks that never talk \u2014 crypto perp microstructure (funding) and TradFi vol structure (VIX term + level) \u2014 on spot majors too small to bother. DISCONFIRMERS (both must be beaten after FDR + purged holdout): Control 1 is the bare negative-funding+rsi long with NO vix gates (does the macro gate add net deflated-Sharpe, or just shrink the sample?); Control 2 INVERTS the vix condition (take the funding long ONLY during VIX-spike / backwardation) \u2014 if the inverted gate does equally well, the regime thesis is wrong and we are just trading funding. The composite must beat the un-gated funding version AND the inverted-gate version. No magic numbers \u2014 every threshold is fit by the grid.",
+  "catalyst": "Deeply negative perp funding (crowded shorts) sets up a squeeze; we only take the long when the equity vol curve and VIX level confirm the macro regime is not in acute systemic panic, so the squeeze can actually fire.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_crowded_short_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_term_slope"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "term_slope_panic_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_calm_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "rsi_turn_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "funding_normalized_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit_ceiling"
+        }
+      },
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vix_abort_ceiling"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_crowded_short_ceiling": {
+      "kind": "float",
+      "lo": -0.0006,
+      "hi": -0.0001
+    },
+    "term_slope_panic_floor": {
+      "kind": "float",
+      "lo": -6.0,
+      "hi": 1.0
+    },
+    "vix_calm_ceiling": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 32.0
+    },
+    "rsi_turn_floor": {
+      "kind": "float",
+      "lo": 25.0,
+      "hi": 40.0
+    },
+    "funding_normalized_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.0003
+    },
+    "rsi_exit_ceiling": {
+      "kind": "float",
+      "lo": 55.0,
+      "hi": 70.0
+    },
+    "vix_abort_ceiling": {
+      "kind": "float",
+      "lo": 28.0,
+      "hi": 40.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": "funding_rate"
+}

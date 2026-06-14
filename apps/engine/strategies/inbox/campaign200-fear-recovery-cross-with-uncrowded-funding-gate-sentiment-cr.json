@@ -1,0 +1,102 @@
+{
+  "name": "Fear-recovery cross with uncrowded-funding gate (sentiment cross_up event)",
+  "rationale": "Pairs an event-based SENTIMENT recovery with a positioning gate. Rather than buying while fear is deepest (knife-catching), this arms a long when Fear&Greed CROSSES UP through a low threshold \u2014 the moment the crowd starts climbing out of fear \u2014 but ONLY if funding is still BELOW a low ceiling, so the recovery is happening while positioning is uncrowded (fuel left, not a crowded relief rally about to fade). The sentiment cross_up is the timing trigger; the funding level gate is the positioning-agreement half of the niche (BOUNDED, lt is the right op for a level filter, straddles realized to bite). Funding is crowding signal (null carry). The two must agree: sentiment turning UP + positioning still light = a recovery worth joining. DISCONFIRMER: a static fear_greed<floor (level) + funding sibling is in this cohort \u2014 if the cross_up sentiment-recovery event does not beat the static-level version on the purged holdout, the event framing adds no edge and it is the same level filter. If the funding ceiling must sit near the cap to trade, it is not filtering. Honest FAIL accepted.",
+  "catalyst": "Fear&Greed crosses up out of the fear band while funding stays uncrowded",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 16
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "fear_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "fear_cross": {
+      "kind": "float",
+      "lo": 22.0,
+      "hi": 42.0
+    },
+    "funding_ceiling": {
+      "kind": "float",
+      "lo": -2e-05,
+      "hi": 7e-05
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 55.0,
+      "hi": 80.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.09,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,125 @@
+{
+  "name": "greed_regime_rsi_not_overbought",
+  "rationale": "In a greed regime we want trend continuation but NOT to buy already-exhausted spikes, so we add an RSI ceiling \u2014 enter momentum names that are trending up yet not overbought. Disconfirmer: a control without the RSI ceiling. If removing the ceiling leaves performance unchanged, the overbought filter is meaningless and the edge is just greed-armed momentum (or worse, level-in-disguise on RSI).",
+  "catalyst": "greed regime, positive momentum, RSI below overbought ceiling",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "greed_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "greed_floor": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 72
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 38,
+      "hi": 50
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.03
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 7,
+      "step": 1
+    },
+    "rsi_ceiling": {
+      "kind": "float",
+      "lo": 62,
+      "hi": 78
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

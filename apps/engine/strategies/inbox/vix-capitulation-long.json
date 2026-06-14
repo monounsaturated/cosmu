@@ -1,0 +1,49 @@
+{
+  "name": "VIX spike cross-asset capitulation long (spot crypto)",
+  "rationale": "VIX (equity implied volatility, via FRED, knowable next-day) is a BOUNDED, mean-reverting fear gauge for the WHOLE risk-asset complex. A VIX spike marks a cross-asset risk-off flush; crypto, as the highest-beta risk asset, tends to over-sell into these flushes and recover as volatility normalizes. This is genuinely ORTHOGONAL to crypto price/funding/sentiment — the trigger lives in the equity-vol market, not in crypto's own tape. Because VIX is bounded (typically ~12-80), a fitted spike threshold binds across the sample (not a drifting-level trap). Hypothesis: enter LONG spot crypto when VIX is in a spike band, hold until vol normalizes (signal exit) or risk limits hit. LOW-TURNOVER by construction (vol spikes are rare, holds span the normalization) so spot taker fees do not eat the edge. Disconfirmer 1 (orthogonality vs crypto's own vol): a crypto realized-volatility / oversold control is in the cohort — if it matches this spec, the equity VIX adds nothing beyond crypto's own panic. Disconfirmer 2 (cross-asset causality vs coincidence): the purged+embargoed holdout must stay positive; if VIX spikes merely COINCIDE with crypto bottoms in-sample but the relation breaks out-of-sample, the holdout DSR goes negative and the Gate kills it. An honest FAIL is valid — the deterministic Gate disposes.",
+  "catalyst": "VIX enters a spike band (cross-asset risk-off flush)",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": { "name": "vix_level" },
+      "op": "gt",
+      "threshold": { "param": "vix_spike" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "vix_level" },
+        "op": "lt",
+        "threshold": { "param": "vix_calm" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_spike": { "kind": "float", "lo": 20.0, "hi": 45.0 },
+    "vix_calm":  { "kind": "float", "lo": 12.0, "hi": 22.0 },
+    "stop":      { "kind": "float", "lo": 0.06, "hi": 0.20 },
+    "tp":        { "kind": "float", "lo": 0.08, "hi": 0.35 },
+    "time_stop": { "kind": "int",   "lo": 5,    "hi": 25,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

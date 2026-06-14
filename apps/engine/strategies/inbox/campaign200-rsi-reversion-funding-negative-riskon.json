@@ -1,0 +1,116 @@
+{
+  "name": "rsi_reversion_funding_negative_riskon",
+  "rationale": "Oversold + negative funding = leveraged shorts crowded into a dip while macro is fine: buy RSI oversold when funding_rate is below a fitted negative threshold and macro_regime is favourable. Thesis: negative funding inside a healthy macro marks short-driven exhaustion that reverts. DISCONFIRMER: funding_rate is BOUNDED here, so lt is valid; the control is the sign of funding \u2014 if the oversold reversion pays equally with positive funding, the squeeze mechanism is fictional and it's plain dip-buying.",
+  "catalyst": "RSI oversold while perp funding is negative and macro stays risk-on",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 7
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_os"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fund_neg"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rsi_os": {
+      "kind": "float",
+      "lo": 24,
+      "hi": 40
+    },
+    "fund_neg": {
+      "kind": "float",
+      "lo": -0.01,
+      "hi": -0.0005
+    },
+    "regime_min": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 50,
+      "hi": 66
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

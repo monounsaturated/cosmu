@@ -1,0 +1,128 @@
+{
+  "name": "LOW-VIX armed trend continuation \u2014 TVL cross-up demand confirmation (ETH/SOL/AVAX/LINK)",
+  "rationale": "Thesis: in calm-vol regimes (VIX lt vix_ceiling), DeFi-bearing alts continue higher when real on-chain demand is accelerating. Confirm with defi_tvl crossing UP through its trend (cross_up ONLY \u2014 defi_tvl is a DRIFTING series, a raw level would just encode the secular TVL growth trend) and require positive price momentum (ret_Nd gt mom_floor). The TVL cross is fundamental confirmation that the trend is demand-backed, not just price chasing. Exit on momentum roll-over or risk/time stops. Disconfirmer 1 (does the TVL cross add edge?): a low-VIX + momentum-only sibling with NO TVL cross is in the cohort \u2014 if it matches the deflated Sharpe, the on-chain confirmation is dead weight and should be dropped. Disconfirmer 2 (drift trap): defi_tvl enters ONLY via cross_up, so secular TVL growth cannot masquerade as a level signal. Disconfirmer 3 (holdout): purged+embargoed recent slice must hold.",
+  "catalyst": "VIX calm AND DeFi TVL cross up AND positive momentum",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 26
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lookback"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 14.0,
+      "hi": 24.0
+    },
+    "tvl_cross": {
+      "kind": "float",
+      "lo": -0.04,
+      "hi": 0.06
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 12,
+      "hi": 35,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.1
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": -0.08,
+      "hi": 0.02
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 26,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,87 @@
+{
+  "name": "vol_shift_oversold_rsi_alts",
+  "rationale": "A vol_realized cross_up while price is oversold flags a volatility-regime shift that resolves upward (panic flush then recovery) in higher-beta alts. Thesis: arm long on vol_realized cross_up when RSI is depressed. Disconfirmer: cap rsi below a fitted ceiling \u2014 if the edge instead requires high RSI it is a momentum/breakout trade, not the oversold vol-shift recovery the thesis claims; the RSI ceiling proves the vol cross is timing capitulation.",
+  "catalyst": "realized vol crosses up while RSI is depressed",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "vol_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": []
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_cross": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.08
+    },
+    "rsi_ceiling": {
+      "kind": "float",
+      "lo": 30.0,
+      "hi": 48.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 12,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

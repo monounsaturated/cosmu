@@ -1,0 +1,111 @@
+{
+  "name": "On-chain breadth confirms a fast breakout \u2014 active-address cross-up + short-horizon momentum quick long",
+  "rationale": "Thesis: a SHORT-horizon momentum kick (3-7d) that is simultaneously confirmed by a breadth surge in active addresses is a high-conviction, short-hold continuation trade \u2014 fresh participants arriving as price accelerates. This is the fast-twitch sibling of the slow hashrate variant: tight stop, short time-stop, ride the impulse a few days. btc_active_addresses drifts so it enters ONLY as a cross_up; the momentum leg uses a short lookback. Disconfirmer 1: replace the active-address cross_up with a permuted-lag copy of the same series \u2014 if the deflated Sharpe is unchanged, the cross timing is information-free and only the momentum kick matters. Disconfirmer 2: lengthen the momentum lookback to 20-30d (slow trend) \u2014 if that absorbs all the Sharpe, the 'fast breakout' framing is illusory and this is just slow momentum. BTC/ETH/SOL, long-only spot.",
+  "catalyst": "btc_active_addresses crosses up while a short-horizon (3-7d) momentum kick fires",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 8
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_active_addresses"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "addr_x"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "fast_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "fast_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "btc_active_addresses"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "addr_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "addr_x": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "addr_exit": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.0
+    },
+    "fast_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 7,
+      "step": 1
+    },
+    "fast_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.22
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 9,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,144 @@
+{
+  "name": "Prediction-market risk-on regime gate on crypto trend (pm_risk_on arms momentum)",
+  "rationale": "Thesis: Polymarket-derived pm_risk_on (BOUNDED 0-1) prices the macro/event risk regime BEFORE it appears in any single crypto's own price \u2014 a forward-looking, cross-asset risk-on/off tag NOT derived from crypto price, so it cannot be the same momentum in disguise. Plain crypto trend is exhausted; here trend is only ARMED when the leading risk regime supports risk-taking. Enter LONG a major when trend is confirmed (ret_Nd>0 AND adx above a fitted floor) AND pm_risk_on is above a fitted risk-on level, AND fear_greed is NOT in extreme greed (avoid buying a euphoric top \u2014 a two-source regime confirm pairing the leading odds tag with the crowd gauge). Exit when the leading signal flips risk-off (pm_risk_on cross_down its threshold) or trend fails (ret_Nd<0). Regime shifts are infrequent so the position is regime-held \u2014 LOW turnover, fee-friendly. Disconfirmers: (1) the same trend with NO pm_risk_on gate (disc-momentum-only control) \u2014 the gated spec must beat it; (2) gate the same trend with a NON-CAUSAL control (weather_hub_stress) instead of pm_risk_on \u2014 the pm gate must beat spurious gating; (3) lead-lag check that pm_risk_on is not merely lagging crypto price. If neither control is beaten, the edge is just trend/buy-the-dip and this FAILs honestly. The Gate disposes.",
+  "catalyst": "prediction-market odds flip risk-on (pm_risk_on above fitted level) while crypto trend is confirmed and the crowd is not euphoric",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "pm_risk_on"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "pm_riskon_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "trend_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "greed_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "pm_risk_on"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "pm_riskoff_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "trend_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 4,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "pm_riskon_floor": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 0.75
+    },
+    "trend_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.08
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 30.0
+    },
+    "greed_ceiling": {
+      "kind": "float",
+      "lo": 70.0,
+      "hi": 90.0
+    },
+    "pm_riskoff_exit": {
+      "kind": "float",
+      "lo": 0.4,
+      "hi": 0.55
+    },
+    "trend_exit": {
+      "kind": "float",
+      "lo": -0.05,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

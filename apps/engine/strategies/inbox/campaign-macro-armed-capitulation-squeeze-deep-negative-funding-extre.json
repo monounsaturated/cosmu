@@ -1,0 +1,144 @@
+{
+  "name": "Macro-armed capitulation squeeze: deep-negative funding + extreme fear, gated by a non-panic tape (long-only spot)",
+  "rationale": "Funding-carry alone and Fear&Greed-alone are both exhausted. The orthogonal claim is a positioning+sentiment COMPOSITE that is ARMED only when the macro tape is NOT itself in free-fall, so it captures a local crypto SQUEEZE rather than a systemic de-risking bleed. Long only when ALL hold: (i) funding_rate deeply negative (crowded shorts paying longs = squeeze fuel), (ii) fear_greed in extreme-fear, (iii) vix_level BELOW a fitted panic ceiling AND macro_regime not deep risk-off (the arming gate: crypto fear is idiosyncratic, not a macro rout). Documented funding bottoms (Coindesk Apr-2026 most-negative funding since 2023 marked the bottom; Phemex 46-day negative-funding study) resolve UP only when the macro stress is crypto-local. DISCONFIRMERS this spec must beat net of fees: (1) fear_greed<floor alone (the exhausted Fear&Greed contrarian); (2) negative-funding alone; (3) funding+fear WITHOUT the vix/macro arming gate. If the un-gated composite (3) already captures the return, the macro arming gate -- the actual claim -- is worthless and this is just buy-the-dip rebuilt. Low turnover: deep-funding + extreme-fear co-occurrences are a handful per year.",
+  "catalyst": "deeply negative perp funding plus extreme fear, while the macro tape (VIX/regime) is calm enough that the crypto fear is idiosyncratic, not a systemic rout",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_panic_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "macro_riskoff_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "funding_neutral"
+        }
+      },
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "fear_neutral"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 3,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_floor": {
+      "kind": "float",
+      "lo": -0.01,
+      "hi": -0.0005
+    },
+    "fear_floor": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 25
+    },
+    "vix_panic_ceiling": {
+      "kind": "float",
+      "lo": 22,
+      "hi": 40
+    },
+    "macro_riskoff_floor": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.0
+    },
+    "funding_neutral": {
+      "kind": "float",
+      "lo": -0.0002,
+      "hi": 0.0005
+    },
+    "fear_neutral": {
+      "kind": "float",
+      "lo": 45,
+      "hi": 60
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

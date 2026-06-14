@@ -1,0 +1,123 @@
+{
+  "name": "Macro-tide-armed broad momentum (risk-on regime gates a 20d trend; gate, not trend-alone)",
+  "rationale": "THESIS: Crypto momentum fires identically in every tape \u2014 the chop and the risk-off bleed where it loses as much as the risk-on runs where it wins. The orthogonal structure is the macro GATE, not the trend. macro_regime is a next-day-available FRED curve+real-rates+liquidity composite (BOUNDED); when it sits above its fitted risk-on floor, growth-beta assets are being PAID a risk premium and trend persists, while below it the same breakout is a bull trap in a de-risking tape (documented macro->crypto coupling: crypto's equity-beta is regime-dependent and rises in risk-off). We only arm the long-only 20d-ish spot trend WHEN the macro window is open. DISCONFIRMER: run the IDENTICAL ret_Nd>mom_floor entry with macro_regime REMOVED (trend-alone). If gated and ungated produce statistically indistinguishable deflated-Sharpe net of the extra fees from regime-exit churn, the gate adds nothing and this is disguised momentum \u2014 falsified. The gate must add risk-adjusted return net of cost. Hedge funds run the fast leveraged-perp version; the slow daily long-only spot edge sits below their capacity floor.",
+  "catalyst": "Macro regime composite sits above its fitted risk-on floor while a multi-week price trend is already up \u2014 the macro window arms a trend that would otherwise also fire in losing risk-off tapes.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lookback"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.6
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 15,
+      "hi": 30,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": -0.06,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

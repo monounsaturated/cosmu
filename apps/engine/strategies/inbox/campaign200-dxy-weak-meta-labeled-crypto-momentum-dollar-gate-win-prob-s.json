@@ -1,0 +1,160 @@
+{
+  "name": "DXY-weak meta-labeled crypto momentum (dollar gate + win-prob sizing)",
+  "rationale": "Same dollar-weak momentum thesis, but with a triple-barrier meta-label that SIZES/SKIPS each primary trade by its predicted win probability (it never flips side). Thesis: the dollar-weak window is the primary edge, and a secondary logistic on funding_rate + fear_greed + vol_realized read point-in-time at entry further separates the high-quality dollar-weak entries from the marginal ones. dxy is drifting -> read ONLY as cross_down to arm; the meta-label features are bounded/registry features each with their own fitted lookback. DISCONFIRMER (two controls): (1) the SAME dollar-gated momentum book WITHOUT the meta-label, and (2) a bare momentum book with NO dollar gate and NO meta-label. This spec must beat BOTH on the Gate; if the meta-label adds nothing over control (1) it is overfit noise, and if control (2) already matches, the dollar channel itself is a STOP. CONTROL EXIT on dxy cross_up isolates the dollar-weak window.",
+  "catalyst": "positive medium-term momentum while the dollar is weakening, filtered to high win-probability entries",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 22
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "dxy"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "dxy_arm"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "dxy"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "dxy_disarm"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "dxy_arm": {
+      "kind": "float",
+      "lo": 95.0,
+      "hi": 108.0
+    },
+    "dxy_disarm": {
+      "kind": "float",
+      "lo": 98.0,
+      "hi": 112.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 90,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": -0.02,
+      "hi": 0.06
+    },
+    "meta_prob": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 0.72
+    },
+    "meta_fund_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    },
+    "meta_fg_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    },
+    "meta_vol_lb": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 30,
+      "step": 1
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null,
+  "meta_label": {
+    "features": [
+      {
+        "name": "funding_rate",
+        "lookback": {
+          "param": "meta_fund_lb"
+        }
+      },
+      {
+        "name": "fear_greed",
+        "lookback": {
+          "param": "meta_fg_lb"
+        }
+      },
+      {
+        "name": "vol_realized",
+        "lookback": {
+          "param": "meta_vol_lb"
+        }
+      }
+    ],
+    "prob_threshold": {
+      "param": "meta_prob"
+    },
+    "sizing": "proportional"
+  }
+}

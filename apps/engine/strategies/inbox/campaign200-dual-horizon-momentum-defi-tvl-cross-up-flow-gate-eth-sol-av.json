@@ -1,0 +1,137 @@
+{
+  "name": "Dual-Horizon Momentum \u2014 DeFi TVL Cross-Up Flow Gate (ETH/SOL/AVAX/LINK)",
+  "rationale": "Thesis: on DeFi-leveraged assets (ETH, SOL, AVAX, LINK), short (5d) + medium (15d) momentum agreement is corroborated by real capital inflow \u2014 a fresh defi_tvl cross_up signals on-chain demand backing the price trend. Disconfirmer: the TVL cross_up must add value over unconditional confluence; if momentum-only entries earn the same, the on-chain flow gate is decorative and this is plain momentum. defi_tvl is drifting so it is used ONLY via cross_up.",
+  "catalyst": "Dual-horizon momentum aligns as DeFi TVL crosses up (on-chain capital inflow).",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 21
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "lb_short"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "thr_short"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "lb_med"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "thr_med"
+      }
+    },
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_cross"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "lb_short"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "exit_short"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 4,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "lb_short": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 7,
+      "step": 1
+    },
+    "lb_med": {
+      "kind": "int",
+      "lo": 13,
+      "hi": 19,
+      "step": 1
+    },
+    "thr_short": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.04
+    },
+    "thr_med": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.1
+    },
+    "tvl_cross": {
+      "kind": "float",
+      "lo": 40000000000.0,
+      "hi": 120000000000.0
+    },
+    "exit_short": {
+      "kind": "float",
+      "lo": -0.06,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

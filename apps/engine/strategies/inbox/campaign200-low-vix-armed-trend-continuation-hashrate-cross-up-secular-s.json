@@ -1,0 +1,128 @@
+{
+  "name": "LOW-VIX armed trend continuation \u2014 hashrate cross-up secular-strength ride (BTC)",
+  "rationale": "Thesis: BTC trends in calm regimes (VIX lt vix_ceiling) are most durable when network security is expanding \u2014 rising hashrate signals miner conviction and capex committed to the network. Confirm with btc_hashrate crossing UP through its trend (cross_up ONLY \u2014 hashrate is a DRIFTING, near-monotonic series, so a raw level would just encode the secular climb) and require positive price momentum (ret_Nd gt mom_floor). Exit on momentum roll-over or risk/time stops. Long-horizon, very low turnover. Disconfirmer 1 (does the hashrate cross add edge?): a low-VIX + BTC-momentum-only sibling with NO hashrate cross is in the cohort \u2014 if it matches the deflated Sharpe, miner-conviction confirmation is dead weight. Disconfirmer 2 (drift trap): btc_hashrate enters ONLY via cross_up, so its secular growth cannot masquerade as a level. Disconfirmer 3 (holdout): purged+embargoed recent slice must hold or it is one-halving-cycle luck.",
+  "catalyst": "VIX calm AND BTC hashrate cross up AND positive momentum",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 35
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hashrate_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lookback"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 14.0,
+      "hi": 24.0
+    },
+    "hashrate_cross": {
+      "kind": "float",
+      "lo": -0.03,
+      "hi": 0.05
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 50,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.12
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": -0.1,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 35,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

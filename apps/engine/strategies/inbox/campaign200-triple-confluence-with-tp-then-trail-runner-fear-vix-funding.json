@@ -1,0 +1,132 @@
+{
+  "name": "Triple confluence with TP-then-trail runner: fear + VIX + funding flush, asymmetric exit",
+  "rationale": "Thesis: the entry edge (cross-market stress triple: fear_greed extreme-low + vix_level elevated + funding_rate flushed) is real, but capping it at one flat take-profit leaves the post-capitulation trend leg on the table. An asymmetric exit \u2014 take a partial at the first TP leg, move the stop to break-even, then trail the runner \u2014 should let winners ride the recovery while capping risk after the bounce is banked. All three entry axes bounded levels; all exit distances are fitted ParamRefs (no magic numbers). Long-only spot. Disconfirmer: run the SAME entry triple with a SINGLE flat take-profit (no plan); the runner version must beat the flat one on deflated Sharpe net of fees. If the flat TP matches, the multi-leg break-even+trail adds only complexity, not edge. Honest FAIL valid.",
+  "catalyst": "cross-market stress triple, then ride the recovery with a trailing runner",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_extreme"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_spike"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_flush"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [],
+    "plan": {
+      "multi_tp": [
+        {
+          "at": {
+            "param": "tp1_at"
+          },
+          "size_pct": {
+            "param": "tp1_size"
+          }
+        }
+      ],
+      "break_even_after_tp1": true,
+      "runner_trail": {
+        "param": "runner_trail"
+      }
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "fear_extreme": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 26
+    },
+    "vix_spike": {
+      "kind": "float",
+      "lo": 21,
+      "hi": 40
+    },
+    "funding_flush": {
+      "kind": "float",
+      "lo": -0.0004,
+      "hi": 5e-05
+    },
+    "tp1_at": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.15
+    },
+    "tp1_size": {
+      "kind": "float",
+      "lo": 0.3,
+      "hi": 0.7
+    },
+    "runner_trail": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.15
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.15,
+      "hi": 0.45
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,139 @@
+{
+  "name": "Regime + Bollinger-z trend-extension arms momentum (macro gate beyond a price-stretch band)",
+  "rationale": "THESIS: bb_z (BOUNDED z-score of price vs its Bollinger band) measures how stretched price is relative to its own recent range. A MILD positive bb_z is the signature of a healthy breakout (price pulling away from the mean with conviction) without yet being a blow-off (which a very high bb_z flags). The macro_regime gate decides whether that breakout is in a tape worth trusting. Entry: macro_regime>floor AND bb_z BETWEEN [bbz_lo, bbz_hi] (mild trend-extension, not a blow-off) AND ret_Nd>mom_floor. This is distinct from raw momentum because bb_z normalizes the breakout by the asset's own volatility. DISCONFIRMER: run the SAME entry with macro_regime DROPPED but the bb_z mild-extension band kept (bb_z-gated momentum). If the bb_z-only version reproduces the macro+bb_z net-of-fee Sharpe, the macro gate is redundant to a price-stretch breakout filter and carries no orthogonal macro information \u2014 falsified. The macro gate must add net edge over the bb_z-only band.",
+  "catalyst": "Risk-on macro regime with price in a mild-extension Bollinger-z band (healthy breakout, not blow-off) and positive trend \u2014 the window arms a normalized-momentum entry.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "bbz_lo"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "bbz_lo": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.8
+    },
+    "bbz_hi": {
+      "kind": "float",
+      "lo": 1.5,
+      "hi": 2.8
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.3
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 26,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,134 @@
+{
+  "name": "Regime-armed momentum with ADX trend-quality confirm (gate is regime, not the ADX filter)",
+  "rationale": "THESIS: Two failure modes kill plain momentum \u2014 wrong macro tape (risk-off) and chop (no real trend, just whipsaw). I separate them: macro_regime (BOUNDED composite) is the ORTHOGONAL macro gate that says 'risk premia are paid', and adx (BOUNDED, level-bounded directional strength) is the trend-QUALITY confirm that says 'this is a real trend not noise'. The claim under test is that the macro gate carries information BEYOND trend strength \u2014 the regime tells you whether to trust the trend at all. Entry: macro_regime>floor AND adx>adx_floor AND ret_Nd>mom_floor. DISCONFIRMER: run the SAME entry with macro_regime DROPPED but adx kept (trend-quality-only momentum). If ADX-gated momentum reproduces the regime+ADX net-of-fee Sharpe, the macro gate is redundant to a pure trend-strength filter and adds no orthogonal macro info \u2014 falsified. The macro gate must add incremental net edge over the ADX-only version.",
+  "catalyst": "Risk-on macro regime co-occurs with a high-ADX real trend and positive ret_Nd \u2014 the macro window arms a momentum entry that already passed a trend-quality screen.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "adx"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "adx_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 30.0
+    },
+    "adx_exit": {
+      "kind": "float",
+      "lo": 12.0,
+      "hi": 20.0
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 25,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

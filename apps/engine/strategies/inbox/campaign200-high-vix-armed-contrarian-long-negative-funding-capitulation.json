@@ -1,0 +1,102 @@
+{
+  "name": "HIGH-VIX armed contrarian long \u2014 negative-funding capitulation flush",
+  "rationale": "Thesis: when macro fear is high (VIX gt vix_floor) AND perp funding has gone deeply negative (lt funding_floor), longs are paying shorts \u2014 a crowded-short, over-hedged flush that mean-reverts violently once the panic exhales. The VIX arm distinguishes a true risk-off capitulation from routine negative-carry noise. Both features BOUNDED, used as level gates (no drift). Exit when funding normalizes back above funding_exit, or risk/time stops. Disconfirmer 1 (is VIX load-bearing?): the identical deep-negative-funding long with NO VIX gate is in the cohort \u2014 if it matches the deflated Sharpe, the regime arm adds nothing and this is just a funding-contrarian trade. Disconfirmer 2 (sign of edge): if the edge survives ONLY in the low-VIX complement, the thesis is inverted and FAILs. Disconfirmer 3 (holdout): purged+embargoed recent slice must hold or it is regime-luck.",
+  "catalyst": "VIX elevated AND perp funding deeply negative",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "funding_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "vix_floor": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 42.0
+    },
+    "funding_floor": {
+      "kind": "float",
+      "lo": -0.01,
+      "hi": -0.001
+    },
+    "funding_exit": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.006
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 16,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

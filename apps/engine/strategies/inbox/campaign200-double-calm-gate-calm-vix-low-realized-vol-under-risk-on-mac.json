@@ -1,0 +1,130 @@
+{
+  "name": "Double-calm gate (calm VIX + low realized-vol) under risk-on macro arms BB-z washout",
+  "rationale": "THESIS: require BOTH a TradFi calm (vix_level lt) AND a crypto-native calm (vol_realized lt) under a risk-on macro_regime before arming a bb_z washout long. The two calms are different lenses (implied equity vol vs realized crypto vol); requiring both isolates dislocations that are idiosyncratic/technical (single asset washed out while the tape is quiet) \u2014 the cleanest reversion setup \u2014 from broad risk-off. DISCONFIRMER 1 (does the second calm add?): spec-1 (macro/vix gate + bb_z, NO realized-vol) is the baseline; if vol_realized adds no risk-adjusted return it only cost trades. DISCONFIRMER 2 (is vol_realized just restating vix?): a sibling that swaps vix for vol_realized (crypto-calm only) tests whether the two calms are redundant. DISCONFIRMER 3 (just buy-the-quiet-washout?): the inbox bollinger-z-score-washout-reversion already pairs bb_z with vol_realized ungated by macro \u2014 that is the direct ungated control. DISCONFIRMER 4 (holdout).",
+  "catalyst": "bb_z washout while vix calm, vol_realized low, macro risk-on",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 9
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.6
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 15.0,
+      "hi": 24.0
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "bbz_floor": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -1.5
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.26
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 11,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

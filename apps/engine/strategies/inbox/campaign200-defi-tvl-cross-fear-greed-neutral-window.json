@@ -1,0 +1,110 @@
+{
+  "name": "defi_tvl_cross_fear_greed_neutral_window",
+  "rationale": "Thesis: TVL up-crosses that fire while sentiment is still only neutral (not euphoric) catch capital inflow BEFORE the crowd, so confluence of TVL cross + neutral fear_greed + positive momentum should front-run greed-driven extension. Disconfirmer: gate fear_greed-band-only entry (no TVL cross) over the same window \u2014 if the sentiment regime alone times the entries, the TVL cross is redundant and this is a sentiment-timing overlay, not a capital-inflow edge.",
+  "catalyst": "defi_tvl up-cross while fear_greed sits in a neutral band and momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 6
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "fg_band"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": []
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tvl_cross": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "fg_band": {
+      "kind": "float",
+      "lo": 35.0,
+      "hi": 62.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    },
+    "mom_min": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

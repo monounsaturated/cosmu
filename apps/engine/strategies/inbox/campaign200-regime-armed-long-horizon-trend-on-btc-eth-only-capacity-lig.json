@@ -1,0 +1,123 @@
+{
+  "name": "Regime-armed long-horizon trend on BTC/ETH only (capacity-light gate, not majors-beta)",
+  "rationale": "THESIS: The cleanest macro->crypto coupling is on the two assets institutions actually price off macro \u2014 BTC and ETH \u2014 not the long alt tail whose moves are dominated by idiosyncratic token flow. A risk-on macro_regime (BOUNDED FRED composite, next-day) should arm a SLOW 30d trend specifically on BTC/ETH, where the regime signal is least diluted by token noise and the swing horizon keeps taker churn far under 10bps. min_instruments=5 still holds because the universe is screened, but the thesis is that the gate's lift concentrates in the majors. DISCONFIRMERS (two): (1) run the SAME regime-armed 30d trend on a BTC+ETH-only screen vs the broad 8-asset universe \u2014 if broad matches, the lift is generic majors-beta diversification, not BTC/ETH macro coupling; (2) drop the macro_regime gate on the same assets \u2014 if trend-alone matches, the regime adds nothing. The gate must add net-of-fee Sharpe AND the majors-concentration must beat the broad universe to confirm the coupling thesis.",
+  "catalyst": "Macro regime composite above its risk-on floor while a 30d trend on the macro-coupled majors is up \u2014 the slow trend is armed only inside the open macro window.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lookback"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 2,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 25,
+      "hi": 45,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.07
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": -0.07,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

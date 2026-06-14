@@ -1,0 +1,137 @@
+{
+  "name": "Momentum Confluence \u2014 DXY Cross-Down Risk-On Gate",
+  "rationale": "Thesis: short (6d) + medium (18d) momentum agreement gets a macro tailwind when the dollar is weakening \u2014 a fresh DXY cross_down marks a risk-on inflection that favors crypto trend continuation. Disconfirmer: the DXY cross_down condition must add value; if confluence with no dollar-direction gate earns the same, the macro inflection is irrelevant and this is plain momentum. DXY is drifting so it is used ONLY via cross_down, never a level.",
+  "catalyst": "Dual-horizon momentum aligns at the moment the dollar index crosses down (risk-on inflection).",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 24
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "lb_short"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "thr_short"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "lb_med"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "thr_med"
+      }
+    },
+    {
+      "feature": {
+        "name": "dxy"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "dxy_cross"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "lb_med"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "exit_med"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "lb_short": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 8,
+      "step": 1
+    },
+    "lb_med": {
+      "kind": "int",
+      "lo": 15,
+      "hi": 22,
+      "step": 1
+    },
+    "thr_short": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.04
+    },
+    "thr_med": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.1
+    },
+    "dxy_cross": {
+      "kind": "float",
+      "lo": 98.0,
+      "hi": 106.0
+    },
+    "exit_med": {
+      "kind": "float",
+      "lo": -0.08,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

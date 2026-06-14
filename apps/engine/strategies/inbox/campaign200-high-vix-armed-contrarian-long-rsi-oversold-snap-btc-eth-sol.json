@@ -1,0 +1,114 @@
+{
+  "name": "HIGH-VIX armed contrarian long \u2014 RSI-oversold snap (BTC/ETH/SOL)",
+  "rationale": "Thesis: panic mean-reversion only pays when the WHOLE risk complex is stressed. Arm the trade with equity VIX elevated (gt vix_floor, a BOUNDED regime level), then require the crypto majors' own RSI to be oversold (lt rsi_floor) \u2014 a forced-seller flush inside a macro-fear window snaps back harder than a routine dip. Exit when RSI normalizes up through rsi_exit, or risk/time stops. Low turnover: both conditions extreme at once is rare. Disconfirmer 1 (is the VIX arm load-bearing?): the same RSI-oversold long with NO VIX gate is in the cohort \u2014 if the ungated version matches or beats the deflated Sharpe, the regime arm adds nothing and this is plain dip-buying. Disconfirmer 2 (trade count): two simultaneous extremes is rare; too few trades is an honest insufficient-evidence FAIL, not an edge. Disconfirmer 3 (holdout): purged+embargoed recent slice must stay positive or it is cycle-position-in-disguise.",
+  "catalyst": "VIX elevated AND majors RSI oversold simultaneously",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi",
+        "lookback": {
+          "param": "rsi_lookback"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi",
+          "lookback": {
+            "param": "rsi_lookback"
+          }
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "vix_floor": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 45.0
+    },
+    "rsi_lookback": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 21,
+      "step": 1
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 38.0
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 68.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,116 @@
+{
+  "name": "Forward-vol-regime armed fear capitulation: VIX-term backwardation gates an extreme-fear dip buy (PM-vol proxy)",
+  "rationale": "Thesis: the durable, tradable corollary of the Kalshi prediction-market result (arXiv 2604.01431 \u2014 pm repricing forecasts crypto 5-day REALIZED VOL, not direction) is that a forward-looking risk-regime gauge should ARM a contrarian crypto dip-buy only when the regime is genuinely stressed but not yet in free-fall. Real pm_risk_on has ~3 rows (uninvestable), so we substitute the durable PIT proxy with the same forward-vol content: VIX term structure. When vix_term_slope flips into BACKWARDATION (front > back, slope crosses DOWN through ~0) the options market is pricing imminent near-term stress \u2014 the forward-vol regime is hot. We ARM only then, and CONFIRM with fear_greed in the extreme-fear band (washed-out sentiment). The edge hedge funds cannot take: (a) the literal pm signal has ~1yr history (uninvestable for them), (b) they trade vol directly via options whereas we are long-only spot, so we use the forward-vol regime to TIME a dip-buy rather than to trade vol. This is regime-GATING (a vol regime ARMS a different entry), not a tired single signal. Low turnover by construction: term-slope backwardation co-occurring with extreme fear is rare. DISCONFIRMER (explicit): the SAME extreme-fear contrarian buy WITHOUT the term-slope arm is already EXHAUSTED (Fear&Greed-alone capitulation FAILED honestly). The disc-* fear-greed-alone control is in the cohort. If the fear-greed-alone net-of-fee deflated Sharpe matches this gated variant, the vix_term_slope backwardation gate adds NOTHING and this is buy-the-dip in disguise \u2014 an honest FAIL. A flat/random-arm control would likewise expose it. The deflated-Sharpe + BH-FDR + purged-holdout gate must show the GATED variant survives where the fear-alone ablation dies; if trades are too few to clear the minimum that is honest 'insufficient evidence', not an edge. The Gate disposes.",
+  "catalyst": "VIX term structure flips into backwardation (forward-vol regime stressed) while crypto Fear&Greed is in the extreme-fear band",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_term_slope"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "backwardation_arm"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "neutral_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "vix_term_slope"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "contango_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "backwardation_arm": {
+      "kind": "float",
+      "lo": -0.15,
+      "hi": 0.05
+    },
+    "fear_floor": {
+      "kind": "float",
+      "lo": 15.0,
+      "hi": 30.0
+    },
+    "neutral_exit": {
+      "kind": "float",
+      "lo": 45.0,
+      "hi": 60.0
+    },
+    "contango_exit": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.15
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

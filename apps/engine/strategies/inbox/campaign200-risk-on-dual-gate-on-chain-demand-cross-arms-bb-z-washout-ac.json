@@ -1,0 +1,130 @@
+{
+  "name": "Risk-on dual gate + on-chain demand cross arms BB-z washout (active-address confirmation)",
+  "rationale": "THESIS: the dual macro/vix regime gate arms a bb_z washout, but we add a DRIFTING on-chain confirmation \u2014 btc_active_addresses crossing UP (network demand turning back on) \u2014 to separate a washout that the chain is already buying from one still bleeding. btc_active_addresses is a drifting level so it is used ONLY via cross_up (never a raw level threshold). The on-chain cross is the timing refinement on top of the macro/vix arming. DISCONFIRMER 1 (does on-chain add over the dual gate alone?): spec-1 (same dual gate + bb_z, NO on-chain cross) is the direct baseline; if adding the cross does not raise deflated Sharpe it is noise. DISCONFIRMER 2 (just buy-the-washout?): ungated bb_z control. DISCONFIRMER 3 (is active-addresses a stand-in for price momentum?): a sibling replacing the on-chain cross with a ret_Nd>0 momentum confirm tests whether the chain carries info beyond price. DISCONFIRMER 4 (holdout).",
+  "catalyst": "btc_active_addresses crosses up while macro_regime risk-on, vix calm, and bb_z washed out",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "btc_active_addresses"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "addr_cross"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.6
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 15.0,
+      "hi": 25.0
+    },
+    "bbz_floor": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -1.5
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "addr_cross": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

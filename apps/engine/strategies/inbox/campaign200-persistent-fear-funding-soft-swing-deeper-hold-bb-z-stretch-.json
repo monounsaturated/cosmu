@@ -1,0 +1,130 @@
+{
+  "name": "Persistent-fear funding-soft swing (deeper hold, BB-z stretch confirm)",
+  "rationale": "A longer-horizon swing variant of the niche aimed at multi-week mean reversion rather than a fast bounce. Arm a long when Fear&Greed is fearful AND funding is soft (below ceiling, uncrowded) AND price is statistically STRETCHED below its mean (Bollinger z-score below a negative floor) \u2014 fear+funding establish the contrarian positioning context, bb_z confirms price is meaningfully extended to the downside (a measured stretch, not a single bad bar). All three BOUNDED; bb_z is a z-score so lt against a negative floor is the correct level op; funding ceiling straddles realized to bite (null carry). Longer min/max hold harvests the slower reversion and keeps turnover low so fees barely bite. DISCONFIRMER: a bb_z-only deep-stretch reversion long (no fear, no funding) is in this cohort \u2014 if bb_z-alone matches the deflated/holdout Sharpe, the fear and funding legs add nothing beyond what a Bollinger statistical-stretch reversion already captures, and the positioning+sentiment thesis is unsupported. Exit when bb_z reverts to its mean OR sentiment recovers. Holdout must hold. Gate disposes.",
+  "catalyst": "persistent fear + soft funding + price stretched below its Bollinger mean",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 30
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_stretch"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "fear_floor": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 40.0
+    },
+    "funding_ceiling": {
+      "kind": "float",
+      "lo": -4e-05,
+      "hi": 6e-05
+    },
+    "bbz_stretch": {
+      "kind": "float",
+      "lo": -2.5,
+      "hi": -1.0
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 1.0
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 52.0,
+      "hi": 78.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 30,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

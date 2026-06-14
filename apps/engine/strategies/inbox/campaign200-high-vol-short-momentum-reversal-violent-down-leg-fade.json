@@ -1,0 +1,123 @@
+{
+  "name": "High-vol short-momentum reversal (violent down-leg fade)",
+  "rationale": "THESIS: short-horizon NEGATIVE momentum reverses only in high-vol regimes \u2014 a sharp multi-day drop during elevated vol is an overshoot that overcorrects and bounces, whereas the same drop in a calm regime is the orderly start of a downtrend that continues. We fade a violent down-leg: ret_Nd below a fitted negative floor (SIGNED, used as a return so gt/lt on the signed value is legitimate) ARMED by realized vol above a fitted high-vol floor (vol_realized BOUNDED). DISCONFIRMER: (1) drop the vol_realized>floor gate (fade every short-term dip) \u2014 if high-vol-armed is not better risk-adjusted net of fees the vol gate is decorative; (2) run the IDENTICAL negative-momentum fade armed by LOW vol \u2014 it should LOSE, proving the regime SIGN (not just having a gate) is what carries the edge. This is the inverse-sign counterpart to the low-vol trend specs.",
+  "catalyst": "A sharp short-horizon drop (negative multi-day return) coincides with elevated realized vol \u2014 a violent overshoot to the downside primed to overcorrect.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 5
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized",
+        "lookback": {
+          "param": "vol_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "drop_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "drop_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "drop_lb"
+          }
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rebound_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_lb": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 21,
+      "step": 1
+    },
+    "vol_floor": {
+      "kind": "float",
+      "lo": 0.58,
+      "hi": 1.15
+    },
+    "drop_lb": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 7,
+      "step": 1
+    },
+    "drop_floor": {
+      "kind": "float",
+      "lo": -0.18,
+      "hi": -0.05
+    },
+    "rebound_exit": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.22
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 6,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

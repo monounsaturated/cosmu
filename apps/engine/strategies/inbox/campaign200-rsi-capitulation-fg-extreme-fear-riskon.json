@@ -1,0 +1,116 @@
+{
+  "name": "rsi_capitulation_fg_extreme_fear_riskon",
+  "rationale": "Capitulation reversion: buy when RSI is deeply oversold AND fear_greed is in extreme-fear AND macro_regime is still favourable (the panic is sentiment-driven, not a macro break). Thesis: sentiment capitulation inside a healthy macro mean-reverts hard. DISCONFIRMER: the macro_regime gate is the control \u2014 a fear_greed-only capitulation buy is the null; if the macro layer does not lift returns, regime-conditioning is decorative and it is just buy-the-fear.",
+  "catalyst": "Deep RSI oversold coincides with extreme-fear sentiment while macro stays risk-on",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 15
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_os"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fg_fear"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "fg_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rsi_os": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 34
+    },
+    "fg_fear": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 30
+    },
+    "regime_min": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "fg_exit": {
+      "kind": "float",
+      "lo": 45,
+      "hi": 65
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

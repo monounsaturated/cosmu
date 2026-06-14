@@ -1,0 +1,111 @@
+{
+  "name": "DeFi TVL inflow confirms an alt-momentum long \u2014 defi_tvl cross-up on positive ETH/SOL/AVAX momentum",
+  "rationale": "Thesis: capital flowing INTO DeFi (rising total value locked) is fresh on-chain risk appetite that should confirm and extend an alt-L1 uptrend before the inflow is fully priced. defi_tvl is a DRIFTING level (it grew ~1000x then collapsed and re-grew), so a level threshold is meaningless \u2014 we use it ONLY as a cross_up (an acceleration of locked capital). We pair it with positive own-price momentum on the smart-contract-platform basket (ETH, SOL, AVAX, BNB, LINK) so we ride trends that the on-chain capital flow is confirming. Disconfirmer 1: drop the defi_tvl cross_up and keep only ret_Nd>mom_floor \u2014 if the deflated Sharpe survives, TVL is redundant and this is plain alt-momentum. Disconfirmer 2: TVL is denominated partly in the very tokens we hold, so it mechanically rises when alts rise; a permuted-lag ablation of the TVL series must kill the edge, else the cross is just a lagged echo of price. Long-only spot.",
+  "catalyst": "defi_tvl crosses up through its inflow threshold while alt-L1 momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_x"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "defi_tvl"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "tvl_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "tvl_x": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "tvl_exit": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.07
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

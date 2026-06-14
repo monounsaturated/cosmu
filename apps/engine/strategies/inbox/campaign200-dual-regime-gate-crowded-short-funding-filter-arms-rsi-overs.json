@@ -1,0 +1,144 @@
+{
+  "name": "Dual regime gate + crowded-short funding filter arms RSI-oversold reversion",
+  "rationale": "THESIS: an RSI-oversold dip armed by the dual macro/vix regime gate reverts hardest when perps funding is NEGATIVE (shorts are paying, i.e. crowded-short) \u2014 the short crowd becomes squeeze fuel. funding_rate is BOUNDED (~+/-0.01) so a fitted lt threshold is valid. The dual regime gate is the arming switch; funding<floor is the crowding refinement. Long-only spot harvests the squeeze without touching the perp. DISCONFIRMER 1 (does funding add over the dual gate?): spec-2 (same dual gate + RSI, NO funding) is the baseline. DISCONFIRMER 2 (is it the squeeze or just any oversold?): a sibling with funding>0 (longs crowded) on the same gate should be WORSE; if equal, funding sign is inert. DISCONFIRMER 3 (just buy-the-dip?): ungated RSI control. DISCONFIRMER 4 (holdout). funding_feature stays null because funding is used as an ENTRY gate, not a carry leg.",
+  "catalyst": "funding_rate negative (crowded short) with RSI oversold under a risk-on calm-vol regime",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "funding_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.6
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 16.0,
+      "hi": 26.0
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 26.0,
+      "hi": 40.0
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 62.0
+    },
+    "funding_ceiling": {
+      "kind": "float",
+      "lo": -0.0005,
+      "hi": 0.0002
+    },
+    "funding_exit": {
+      "kind": "float",
+      "lo": 0.0002,
+      "hi": 0.001
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 12,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

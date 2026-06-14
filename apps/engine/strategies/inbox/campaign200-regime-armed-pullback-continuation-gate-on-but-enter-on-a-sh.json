@@ -1,0 +1,146 @@
+{
+  "name": "Regime-armed pullback-continuation: gate ON, but enter on a SHORT-term dip inside an uptrend",
+  "rationale": "THESIS: Buying breakouts pays the worst fill. Inside an armed risk-on regime, the better entry is the PULLBACK \u2014 a short-term dip (negative ret over a few days) WITHIN an intact longer uptrend (positive ret over many days). The macro_regime gate is what makes the dip safe to buy: in a risk-off tape a dip keeps dipping, but in a paid-risk-premium regime a shallow pullback inside an uptrend reverts to trend. So entry combines: macro_regime>floor (gate) AND ret_Nd(long)>trend_floor (uptrend intact) AND ret_Nd(short)<dip_ceiling (currently pulling back). This is structurally distinct from breakout-momentum and gets cheaper fills (lower turnover, buy weakness not strength). DISCONFIRMER: run the SAME regime gate + long-uptrend condition but enter on raw POSITIVE short momentum (ret_short>0, a breakout) instead of the negative-short dip. If breakout-entry reproduces the pullback-entry net-of-fee Sharpe, the dip-buy structure adds nothing and this collapses to plain regime-gated momentum \u2014 falsified. The pullback structure must add edge (better fills / higher hit-rate) over the breakout version under the same gate.",
+  "catalyst": "Inside an armed risk-on macro regime, price puts in a short-term pullback while the multi-week uptrend stays intact \u2014 a discounted continuation entry.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "trend_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "trend_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "dip_lookback"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "dip_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "trend_lookback"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "trend_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "trend_lookback": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 40,
+      "step": 1
+    },
+    "trend_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.08
+    },
+    "dip_lookback": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 6,
+      "step": 1
+    },
+    "dip_ceiling": {
+      "kind": "float",
+      "lo": -0.05,
+      "hi": 0.0
+    },
+    "trend_exit": {
+      "kind": "float",
+      "lo": -0.06,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

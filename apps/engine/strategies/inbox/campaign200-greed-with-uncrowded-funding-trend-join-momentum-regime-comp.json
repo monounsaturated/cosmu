@@ -1,0 +1,102 @@
+{
+  "name": "Greed-with-uncrowded-funding trend join (momentum-regime composite)",
+  "rationale": "A deliberately INVERTED composite to test the niche from the other side: sentiment and positioning must agree on RISK-ON, but only when positioning is not yet stretched. Arm a long when Fear&Greed is in the GREED band (crowd is optimistic, trend regime) AND funding is still BELOW a moderate ceiling (the leveraged crowd has NOT fully piled in \u2014 there is fuel left). The thesis: early-greed with uncrowded funding is a healthy uptrend to join; late-greed with hot funding is a blow-off top to avoid. This is the same two ingredients as the capitulation specs but composed for continuation, giving the Gate a genuinely distinct hypothesis to dispose. Funding remains a crowding filter (null carry); ceiling straddles realized levels so the 'uncrowded' condition actually excludes hot bars. DISCONFIRMER: a greed-only trend-join sibling is in this cohort \u2014 if dropping the funding ceiling does not reduce the deflated/holdout Sharpe, the uncrowded gate is decorative and this is naive top-chasing that the Gate should FAIL. If the funding ceiling has to sit near the +1e-4 cap to trade at all, it is not filtering and the result is suspect. Honest FAIL accepted.",
+  "catalyst": "greed sentiment with funding still below a moderate (uncrowded) ceiling",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 16
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "greed_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "funding_hot_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "greed_floor": {
+      "kind": "float",
+      "lo": 55.0,
+      "hi": 75.0
+    },
+    "funding_ceiling": {
+      "kind": "float",
+      "lo": 1e-05,
+      "hi": 8e-05
+    },
+    "funding_hot_exit": {
+      "kind": "float",
+      "lo": 8e-05,
+      "hi": 0.0002
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.14
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.26
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

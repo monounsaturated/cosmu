@@ -1,0 +1,134 @@
+{
+  "name": "HIGH-VIX armed contrarian long \u2014 confirmed-bottom via active-address cross-up",
+  "rationale": "Thesis: catching a falling knife in a fear regime is costly; wait for on-chain demand to turn. Arm with VIX elevated (gt vix_floor) and a recent drawdown (ret_Nd over a short lookback lt drawdown_ceiling, a SIGNED return so a level gate is legitimate), then TIME the entry on btc_active_addresses crossing UP through its trend (cross_up only \u2014 it is a DRIFTING series, never a raw level). The cross is the confirmation that network demand is re-accelerating into the panic. Exit on momentum recovery (ret_Nd gt mom_exit) or risk/time stops. Disconfirmer 1 (does the on-chain cross add timing?): a sibling spec arms on the SAME VIX+drawdown but enters on a fixed time delay with no on-chain confirmation \u2014 if it matches the deflated Sharpe, the active-address cross adds no edge and should be dropped. Disconfirmer 2 (drift trap): active-addresses is gated ONLY by cross_up, so a secular network-growth trend cannot masquerade as signal. Disconfirmer 3 (holdout): purged+embargoed recent slice must hold.",
+  "catalyst": "VIX elevated + recent drawdown, then BTC active addresses cross up",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "dd_lookback"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "drawdown_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "btc_active_addresses"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "addr_cross"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lookback"
+          }
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "vix_floor": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 42.0
+    },
+    "dd_lookback": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 20,
+      "step": 1
+    },
+    "drawdown_ceiling": {
+      "kind": "float",
+      "lo": -0.2,
+      "hi": -0.04
+    },
+    "addr_cross": {
+      "kind": "float",
+      "lo": -0.05,
+      "hi": 0.05
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 21,
+      "step": 1
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.2
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

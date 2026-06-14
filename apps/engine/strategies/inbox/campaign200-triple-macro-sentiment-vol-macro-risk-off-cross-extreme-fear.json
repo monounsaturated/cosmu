@@ -1,0 +1,116 @@
+{
+  "name": "Triple macro+sentiment+vol: macro risk-off cross + extreme fear + crypto vol spike (no funding axis)",
+  "rationale": "Thesis: a funding-free triple to prove the confluence edge is not secretly a funding-carry trade. The three axes are: macro_regime crossing DOWN into risk-off (drifting \u2014 cross_down only), crypto crowd at extreme fear (fear_greed low), and a crypto realized-vol spike (vol_realized high) marking the forced-selling climax. The macro cross supplies timing; sentiment + vol supply the capitulation confirmation. Long-only spot, medium hold. Disconfirmer: must beat (a) macro_regime cross_down ALONE on deflated Sharpe after fees \u2014 if the regime cross matches, the fear+vol gates are decorative; and (b) the funding-based capitulation triple (spec core) \u2014 if that beats this, the real edge IS funding carry and the macro/vol framing is a worse proxy. Honest FAIL valid.",
+  "catalyst": "macro_regime crossing risk-off during extreme fear and a vol climax",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "regime_riskoff"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_extreme"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "rv_spike"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "regime_riskon_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "regime_riskoff": {
+      "kind": "float",
+      "lo": -0.15,
+      "hi": 0.1
+    },
+    "fear_extreme": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 26
+    },
+    "rv_spike": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.09
+    },
+    "regime_riskon_exit": {
+      "kind": "float",
+      "lo": -0.05,
+      "hi": 0.2
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.36
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

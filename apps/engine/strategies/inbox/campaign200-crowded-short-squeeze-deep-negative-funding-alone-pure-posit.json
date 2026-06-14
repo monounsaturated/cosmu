@@ -1,0 +1,88 @@
+{
+  "name": "Crowded-short squeeze: deep-negative funding alone (pure positioning long)",
+  "rationale": "Thesis: when perp funding is DEEPLY NEGATIVE, shorts are crowded and paying longs to stay short \u2014 a positioning extreme that historically precedes a short-squeeze recovery in spot. This is the cleanest expression of niche #4: a single positioning gate, no momentum, no sentiment. funding_rate < a fitted DEEPLY-negative floor in [-0.006,-0.0006] (well inside the realized negative tail) arms a long-only spot entry. DISCONFIRMER: must beat a calendar-random long of identical entry-count and identical hold length \u2014 if shuffling the entry day to random dates matches net Sharpe, the funding level is noise and this is just 'own crypto'. It must ALSO not be re-derivable as funding-carry: funding_feature is null so NO carry is accrued; the only claim under test is that the crowded-short LEVEL forecasts a squeeze. Low turnover \u2014 deep-negative funding is rare (a handful of episodes/year).",
+  "catalyst": "perp funding flushed deeply negative \u2014 crowded shorts paying longs",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 15
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "funding_normalized"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_floor": {
+      "kind": "float",
+      "lo": -0.006,
+      "hi": -0.0006
+    },
+    "funding_normalized": {
+      "kind": "float",
+      "lo": -0.0002,
+      "hi": 0.0002
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

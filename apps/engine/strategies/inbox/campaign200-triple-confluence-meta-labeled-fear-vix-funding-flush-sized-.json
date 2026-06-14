@@ -1,0 +1,138 @@
+{
+  "name": "Triple confluence, meta-labeled: fear + VIX + funding flush, sized by a learned win-probability",
+  "rationale": "Thesis: the cross-market stress triple (fear_greed extreme-low + vix_level elevated + funding_rate flushed) is the PRIMARY signal; a secondary triple-barrier meta-label (Lopez de Prado) reads funding_rate, vix_level and rsi point-in-time at entry and predicts P(this trade is a net winner after costs), SKIPPING low-probability fires. The bet is that the triple is directionally right but its hit-rate varies with conditions the level-thresholds can't capture, and a learned gate should lift net Sharpe by cutting the worst entries. Meta-label only sizes/skips, never flips direction, trains expanding-window PIT (no look-ahead). Long-only spot. Disconfirmer: must beat the SAME bare triple WITHOUT meta_label on deflated Sharpe after fees. If the bare primary matches, the classifier adds nothing but overfit on thin spot history and should be dropped. Honest FAIL valid.",
+  "catalyst": "cross-market stress triple, gated by a learned win-probability",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_extreme"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_spike"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_flush"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "fear_recover_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "fear_extreme": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 26
+    },
+    "vix_spike": {
+      "kind": "float",
+      "lo": 21,
+      "hi": 40
+    },
+    "funding_flush": {
+      "kind": "float",
+      "lo": -0.0004,
+      "hi": 5e-05
+    },
+    "fear_recover_exit": {
+      "kind": "float",
+      "lo": 42,
+      "hi": 58
+    },
+    "meta_prob": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 0.7
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.38
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null,
+  "meta_label": {
+    "features": [
+      {
+        "name": "funding_rate"
+      },
+      {
+        "name": "vix_level"
+      },
+      {
+        "name": "rsi"
+      }
+    ],
+    "prob_threshold": {
+      "param": "meta_prob"
+    },
+    "sizing": "skip"
+  }
+}

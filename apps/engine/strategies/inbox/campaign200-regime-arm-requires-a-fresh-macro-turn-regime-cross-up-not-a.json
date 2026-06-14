@@ -1,0 +1,123 @@
+{
+  "name": "Regime-arm requires a fresh macro TURN (regime cross_up, not a static level gate)",
+  "rationale": "THESIS: The most informative moment is not BEING in a risk-on regime \u2014 it is the macro composite TURNING risk-on, because the regime-transition is when growth-beta re-rates and trend has the most runway ahead. A static level gate (macro_regime>floor) keeps you long deep into a stale, already-priced regime where forward edge is gone. Instead I require the macro composite to have freshly crossed UP through its floor recently, then arm the trend. macro_regime is BOUNDED so cross_up on its level is a legitimate transition signal (not a drifting-feature abuse \u2014 the composite is mean-bounded). Entry: macro_regime cross_up regime_floor AND ret_Nd>mom_floor. DISCONFIRMER: run the SAME momentum entry but with macro_regime as a STATIC gt level gate (always-in-regime) instead of the fresh cross_up. If the always-in version reproduces the cross_up version's net-of-fee Sharpe, the freshness of the macro TURN carries no info and this is a plain level gate \u2014 falsified. The turn-timing must add edge over static membership.",
+  "catalyst": "Macro composite freshly crosses up through its risk-on floor (a regime transition) while a trend is positive \u2014 the re-rating window arms momentum at its highest-runway moment.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 22
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lookback"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.6
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 12,
+      "hi": 30,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": -0.06,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.36
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

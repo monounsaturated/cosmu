@@ -1,0 +1,102 @@
+{
+  "name": "Transaction-count surge confirms a 20-day breakout \u2014 btc_tx_count cross-up on a high-RSI BTC/ETH long",
+  "rationale": "Thesis: a breakout (price strength shown by elevated RSI) is more durable when on-chain throughput is simultaneously accelerating \u2014 real economic activity, not just a thin price push. btc_tx_count drifts with network growth, so it is used ONLY as a cross_up (a fresh surge in daily transactions). RSI is BOUNDED [0-100] and a fitted floor genuinely binds, so RSI>rsi_floor is our breakout/strength proxy. Disconfirmer 1: drop the tx_count cross_up and keep only RSI>rsi_floor \u2014 if the deflated Sharpe holds, the on-chain term is redundant and we are merely buying price strength. Disconfirmer 2: tx_count can spike from dust/spam or fee-market quirks unrelated to demand; a permuted-timing ablation (random lag on the on-chain series) must DESTROY the edge, else the cross timing carries no information. Long-only spot, BTC and ETH only (the two assets whose own-chain tx_count is the cleanest read of the broader crypto risk cycle).",
+  "catalyst": "btc_tx_count crosses up through its surge threshold while RSI confirms a breakout",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_tx_count"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tx_x"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "tx_x": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 52.0,
+      "hi": 68.0
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 40.0,
+      "hi": 52.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.28
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 15,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

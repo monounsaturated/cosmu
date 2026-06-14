@@ -1,0 +1,130 @@
+{
+  "name": "Put/Call + VIX confluence capitulation buy-the-fear long on SPY/QQQ",
+  "rationale": "Thesis: equity put/call-ratio extremes mark hedging capitulation and have historically flagged attractive short-term LONG entries, and the signal is materially stronger when CONFIRMED by a coincident VIX spike (both gauges confirm genuine panic, not noise) (QuantifiedStrategies, MenthorQ, ValueTrend, Britannica). We trade this as a CONFLUENCE composite (putcall_ratio AND vix_level fearful together) rather than the already-exhausted VIX-alone or Fear&Greed-alone single-gauge capitulation trade. A third, optional confirmation requires bb_z very negative (price statistically washed-out) so we are buying an actual flush, not merely elevated hedging inside an uptrend. Hedge-fund-ignored angle: a tactical, low-frequency dip-buy on broad index/sector ETFs (SPY/QQQ + sector ETFs, no shorting, no single-name selection) is too small/slow for a vol desk but a clean long-only swing entry for us; the putcall+VIX panic signal is index-wide so it arms the whole ETF set uniformly, not just SPY/QQQ. Both inputs are BOUNDED (putcall_ratio z-score; vix_level ~10-80), so the fitted thresholds genuinely bind. Disconfirmer 1 (does confluence beat its best single leg?): the putcall-alone and vix-alone capitulation specs are in the cohort \u2014 if either single signal matches this confluence, the second leg is redundant and this collapses to the FAILED VIX-alone/F&G-alone fear-buy; the confluence MUST add deflated-Sharpe over the better single leg or it is over-fitting two filters. Disconfirmer 2 (timing vs exposure): the timed entries must beat buy-and-hold over the same in-market days net of fees \u2014 the fear-timing, not merely being long, has to pay. Disconfirmer 3 (PIT honesty): putcall_ratio is read at its CBOE next-day-availability floor so we never peek at the same-day close. The deterministic Gate disposes; an honest FAIL is valid.",
+  "catalyst": "putcall_ratio crosses above an extreme z-score AND VIX spikes above a fitted level on the same/adjacent bar (joint panic confirmation)",
+  "universe": {
+    "venues": [
+      "yahoo"
+    ],
+    "asset_classes": [
+      "equity"
+    ],
+    "min_liquidity_usd": 100000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 15
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "putcall_ratio"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "pcr_extreme"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_spike"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_washout"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "putcall_ratio"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "pcr_normalized"
+        }
+      },
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "vix_calm"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 2,
+    "max_position_pct": 0.5,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "pcr_extreme": {
+      "kind": "float",
+      "lo": 1.0,
+      "hi": 2.2
+    },
+    "vix_spike": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 45.0
+    },
+    "bbz_washout": {
+      "kind": "float",
+      "lo": -2.5,
+      "hi": -1.0
+    },
+    "pcr_normalized": {
+      "kind": "float",
+      "lo": 0.7,
+      "hi": 1.0
+    },
+    "vix_calm": {
+      "kind": "float",
+      "lo": 14.0,
+      "hi": 22.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 15,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,116 @@
+{
+  "name": "Triple-confluence flush long (negative funding + extreme fear + realized-vol spike)",
+  "rationale": "The strictest capitulation variant: three BOUNDED gauges must agree that a genuine flush is underway \u2014 funding has gone NEGATIVE (shorts paying), Fear&Greed is in extreme fear, AND realized volatility has SPIKED above a fitted level (the violent move that marks a true washout, not a slow grind). The thesis: a capitulation accompanied by a vol spike clears leverage fastest and bounces hardest; quiet fear without a vol event is just a sideways scare. All three are mean-reverting BOUNDED levels (vol_realized used with gt against a fitted spike level, not a drifting raw level). The triple-AND makes this the rarest, lowest-turnover spec in the family \u2014 fees negligible. Funding band sits on the negative side inside the clamp so it bites. DISCONFIRMER: the two-leg funding+fear sibling (no vol) is in this cohort \u2014 if the vol spike leg does not improve the deflated Sharpe, it is an over-fit third filter; conversely if only the vol-gated version passes, the result is a vol-mean-reversion artifact rather than the positioning+sentiment edge this niche is meant to test. DISCONFIRMER 2: three simultaneous extremes are very rare; too few trades is honest insufficient-evidence. Holdout must hold. Gate disposes.",
+  "catalyst": "negative funding + extreme fear + realized-vol spike simultaneously",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_neg"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_spike"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.65
+  },
+  "param_space": {
+    "funding_neg": {
+      "kind": "float",
+      "lo": -0.0003,
+      "hi": -5e-06
+    },
+    "fear_floor": {
+      "kind": "float",
+      "lo": 12.0,
+      "hi": 28.0
+    },
+    "vol_spike": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 78.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.22
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.45
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 30,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

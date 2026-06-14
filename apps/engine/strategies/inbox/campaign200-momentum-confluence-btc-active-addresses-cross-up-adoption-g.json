@@ -1,0 +1,137 @@
+{
+  "name": "Momentum Confluence \u2014 BTC Active-Addresses Cross-Up Adoption Gate (BTC/ETH)",
+  "rationale": "Thesis: short (6d) + medium (20d) momentum agreement on the two largest caps (BTC, ETH) is best corroborated by expanding network usage \u2014 a fresh btc_active_addresses cross_up signals broadening adoption underneath the price trend. Disconfirmer: the active-addresses cross_up must add value; if momentum-only entries earn the same, the on-chain adoption gate is decorative and this is plain momentum. btc_active_addresses is drifting so it is used ONLY via cross_up.",
+  "catalyst": "Dual-horizon momentum aligns as BTC active addresses cross up (network usage expanding).",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 23
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "lb_short"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "thr_short"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "lb_med"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "thr_med"
+      }
+    },
+    {
+      "feature": {
+        "name": "btc_active_addresses"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "addr_cross"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "lb_med"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "exit_med"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 2,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "lb_short": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 8,
+      "step": 1
+    },
+    "lb_med": {
+      "kind": "int",
+      "lo": 16,
+      "hi": 24,
+      "step": 1
+    },
+    "thr_short": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.04
+    },
+    "thr_med": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.1
+    },
+    "addr_cross": {
+      "kind": "float",
+      "lo": 700000.0,
+      "hi": 1100000.0
+    },
+    "exit_med": {
+      "kind": "float",
+      "lo": -0.08,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

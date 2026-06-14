@@ -1,0 +1,102 @@
+{
+  "name": "Uncrowded-non-extreme guard: deep-negative funding + ADX showing no entrenched downtrend (NOT funding-alone)",
+  "rationale": "Thesis: a deep-negative-funding flush squeezes UP only if the downtrend is NOT strongly entrenched \u2014 when ADX shows a powerful directional trend, the shorts are riding genuine momentum and the squeeze fails (funding can stay negative for weeks as price grinds lower). Gate the positioning entry to LOW trend strength, so we buy crowded-short panic in a choppy/range tape that mean-reverts. Entry (long-only spot): funding_rate < deeply-negative floor [-0.005,-0.0005] (crowded shorts) AND adx < a fitted ceiling (no entrenched trend; ADX is BOUNDED so lt on level is valid). DISCONFIRMER: must beat deep-funding ALONE with no ADX gate \u2014 if lone positioning matches net Sharpe, the trend-strength guard (the actual claim) is worthless. funding_feature null \u2014 level, not carry. Exit on funding normalizing up / target / time.",
+  "catalyst": "crowded-short funding flush while ADX shows no entrenched directional trend",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "adx_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "funding_normalized"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_floor": {
+      "kind": "float",
+      "lo": -0.005,
+      "hi": -0.0005
+    },
+    "adx_ceiling": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 32
+    },
+    "funding_normalized": {
+      "kind": "float",
+      "lo": -0.0002,
+      "hi": 0.0002
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 16,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,165 @@
+{
+  "name": "Greed-armed trend continuation (persistent risk-on sentiment regime ARMS momentum; gate, not contrarian)",
+  "rationale": "Plain crypto momentum is exhausted because breakouts fire identically in chop and in real regimes. The Extremity Premium study (arXiv 2602.07018 / rs-8802783) documents that extreme-greed is HIGHLY PERSISTENT (80.2% daily persistence vs 60.3% for neutral) and that sentiment extremity predicts excess uncertainty BEYOND realized volatility \u2014 i.e. the regime carries information orthogonal to a vol-only filter. So momentum should be tradable ONLY while the crowd-sentiment regime is risk-on AND persistent; in neutral/fear regimes the same breakout is noise. This is a regime GATE on trend (the inverse of the tired buy-fear contrarian), not a level-in-disguise: entry requires (a) greed NOW (fear_greed >= greed_floor), (b) PERSISTENT greed \u2014 fear_greed read persist_lookback days back was still >= persist_floor, so we ride a multi-day regime not a one-day blip, (c) confirmed trend (ret_Nd > mom_floor over a fitted lookback), and (d) a real trend not chop (adx > adx_floor). DISCONFIRMERS (pre-registered): run the SAME momentum entry (ret_Nd>mom_floor + adx floor) with NO sentiment gate, and separately gated by a NON-CAUSAL control (astro_lunar_phase) instead of fear_greed. If ungated momentum OR astro-gated momentum matches the greed-gated net-of-fee Sharpe, the gate adds nothing and this is disguised momentum \u2014 falsified. The greed gate must add incremental net edge over plain momentum AND beat the astro control. Because the greed regime is ~80% persistent, the position is held across many days and only flips on a genuine regime transition, keeping taker churn well under the 10bps drag (low turnover). Hedge funds ignore this because the alpha lives in low-capacity spot majors at swing horizon, beneath their cost/capacity floor, and F&G is an un-quantified retail gauge they dismiss as noise rather than mine as a regime tag.",
+  "catalyst": "momentum continuation while the crowd-sentiment regime is risk-on and persistent",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "gte",
+      "threshold": {
+        "param": "greed_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed",
+        "lookback": {
+          "param": "persist_lookback"
+        }
+      },
+      "op": "gte",
+      "threshold": {
+        "param": "persist_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "regime_break"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lookback"
+          }
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "greed_floor": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 72
+    },
+    "persist_floor": {
+      "kind": "float",
+      "lo": 50,
+      "hi": 62
+    },
+    "persist_lookback": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 5,
+      "step": 1
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.08
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 30
+    },
+    "regime_break": {
+      "kind": "float",
+      "lo": 42,
+      "hi": 52
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": -0.05,
+      "hi": 0.01
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,111 @@
+{
+  "name": "High-vol fear capitulation reversion (vol-regime fear-greed)",
+  "rationale": "THESIS: extreme-fear sentiment only marks a tradable bottom when realized vol confirms it is a CAPITULATION (forced, violent selling) rather than a slow grind of resignation. Fear-greed alone fires in long calm bleeds where 'fear' just means apathy and there is no snap-back. We buy when fear_greed is below a fitted extreme-fear floor (BOUNDED) ARMED by realized vol above a fitted high-vol floor (BOUNDED) \u2014 fear PLUS violence equals capitulation. DISCONFIRMER: run the IDENTICAL fear_greed<floor rule with the vol_realized>floor gate REMOVED (bare extreme-fear contrarian). If high-vol-armed is not better risk-adjusted net of fees, the vol confirmation is decorative and this is plain sentiment contrarianism. Cross-check the low-vol-armed variant underperforms.",
+  "catalyst": "Fear-greed prints extreme fear while realized vol is elevated \u2014 a violent capitulation flush, not a calm apathetic bleed.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized",
+        "lookback": {
+          "param": "vol_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "fear_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_lb": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 21,
+      "step": 1
+    },
+    "vol_floor": {
+      "kind": "float",
+      "lo": 0.55,
+      "hi": 1.1
+    },
+    "fear_floor": {
+      "kind": "float",
+      "lo": 12.0,
+      "hi": 28.0
+    },
+    "fear_exit": {
+      "kind": "float",
+      "lo": 45.0,
+      "hi": 62.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.28
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 12,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

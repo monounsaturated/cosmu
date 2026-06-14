@@ -1,0 +1,134 @@
+{
+  "name": "Regime + low-realized-vol double gate arms momentum (macro gate orthogonal to the vol gate)",
+  "rationale": "THESIS: A calm-volatility regime (vol_realized inside a fitted low band) is known to make momentum cleaner \u2014 this is the existing vol-regime-gated-momentum seed family. The new claim is that macro_regime adds a SECOND, ORTHOGONAL gate: calm vol says 'price is orderly' but macro_regime says 'the macro tape rewards risk' \u2014 you can have orderly price IN a risk-off drift (a slow bleed is low-vol too) which is exactly where calm-vol momentum gets chopped. Stacking the macro gate on top should remove those orderly-but-wrong-tape losers. Entry: macro_regime>floor AND vol_realized<vol_ceiling AND ret_Nd>mom_floor. DISCONFIRMER: run the SAME entry with macro_regime DROPPED but the vol_realized calm band kept (the documented vol-gated-momentum family). If vol-gated-alone reproduces the macro+vol net-of-fee Sharpe, the macro gate is redundant to the calm-vol filter and carries no orthogonal macro information \u2014 falsified. The macro gate must add incremental net edge over the vol-only seed.",
+  "catalyst": "Risk-on macro regime co-occurs with a calm realized-vol regime and positive trend \u2014 the macro window arms momentum only when price is orderly AND the tape rewards risk.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "vol_realized"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vol_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.05
+    },
+    "vol_exit": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.09
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 28,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

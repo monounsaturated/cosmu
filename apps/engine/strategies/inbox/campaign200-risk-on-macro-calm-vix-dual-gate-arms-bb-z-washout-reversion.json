@@ -1,0 +1,130 @@
+{
+  "name": "Risk-on macro + calm VIX dual gate arms BB-z washout reversion (BTC/ETH)",
+  "rationale": "THESIS: a deep Bollinger z-score washout (bb_z far below band) only mean-reverts cleanly when the macro tide is IN and equity vol is calm; in a risk-off / high-vol tape the same washout is the start of a real breakdown, not a snap-back. DUAL REGIME GATE: macro_regime above its fitted risk-on level AND vix_level below a fitted non-extreme ceiling arm the entry; the bb_z floor is the mean-reversion trigger. Restrict focus to the deepest, most macro-coupled majors (BTCUSDT, ETHUSDT) where equity-vol beta is documented. Below HF capacity: long-only daily spot, no leverage. DISCONFIRMER 1 (is it just buy-the-washout?): the bare bb_z washout with the dual gate REMOVED is the bollinger-z-score-washout-reversion control already in the inbox; if gated deflated Sharpe is not materially above it, the regime gate adds nothing and it is plain band-reversion. DISCONFIRMER 2 (is the macro_regime the active ingredient or a level-in-disguise?): a sibling that flips macro_regime to lt (risk-OFF arming) on the same washout should be WORSE; if it is equal/better the composite carries no directional info. DISCONFIRMER 3 (holdout): purged+embargoed recent slice must stay positive or it is cycle-position-in-disguise.",
+  "catalyst": "macro_regime risk-on AND vix_level calm coinciding with a deep bb_z washout in a major",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vix_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.6
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 15.0,
+      "hi": 24.0
+    },
+    "vix_exit": {
+      "kind": "float",
+      "lo": 24.0,
+      "hi": 40.0
+    },
+    "bbz_floor": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -1.5
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.25
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 12,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

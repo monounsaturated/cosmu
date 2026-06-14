@@ -1,0 +1,144 @@
+{
+  "name": "Dual regime gate + extreme-fear sentiment arms BB-z washout reversion",
+  "rationale": "THESIS: a bb_z washout armed by the dual macro/vix gate, with a crypto-native sentiment confirmation \u2014 fear_greed in extreme-fear (lt a fitted floor, 0-100 BOUNDED) \u2014 to require that the dislocation is also a sentiment capitulation, not a quiet technical dip. Three orthogonal lenses: macro (FRED composite), TradFi vol (vix), crypto sentiment (fear_greed), arming a band-relative price trigger. DISCONFIRMER 1 (does fear_greed add over the macro/vix gate?): spec-1 (dual gate + bb_z, no fear_greed) is the baseline. DISCONFIRMER 2 (is fear_greed just a vix proxy?): a sibling dropping the vix gate but keeping fear_greed tests whether crypto sentiment substitutes for TradFi vol or adds to it. DISCONFIRMER 3 (just buy-extreme-fear?): the inbox fear-greed-contrarian control is the ungated baseline. DISCONFIRMER 4 (holdout).",
+  "catalyst": "fear_greed extreme-fear with a bb_z washout under a risk-on calm-vol regime",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 11
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fg_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "fg_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.6
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 16.0,
+      "hi": 26.0
+    },
+    "fg_floor": {
+      "kind": "float",
+      "lo": 15.0,
+      "hi": 35.0
+    },
+    "fg_exit": {
+      "kind": "float",
+      "lo": 45.0,
+      "hi": 62.0
+    },
+    "bbz_floor": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -1.5
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 13,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

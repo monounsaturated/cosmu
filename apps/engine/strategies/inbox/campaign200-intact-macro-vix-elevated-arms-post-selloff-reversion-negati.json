@@ -1,0 +1,125 @@
+{
+  "name": "Intact macro + VIX-elevated arms post-selloff reversion (negative ret_Nd trigger, not momentum)",
+  "rationale": "THESIS: a REVERSION (not momentum) trigger \u2014 a negative trailing return ret_Nd (recent sharp selloff, the OPPOSITE of trend-following) \u2014 armed by macro_regime still intact (gt) and vix elevated (gt a fitted stress floor). The thesis: a sharp multi-day drop INSIDE an intact macro regime with elevated-but-not-broken vol is a fear flush that reverts. ret_Nd is SIGNED and used as a reversion trigger via lt 0-ish (we BUY weakness). This is the explicit anti-momentum sibling: same dual gate, but the price trigger is a recent LOSS rather than an oversold oscillator. DISCONFIRMER 1 (reversion vs momentum): the disc-momentum-only-control / trend siblings buy ret_Nd>0; if buying ret_Nd<0 under this gate is not better, there is no reversion edge here, only momentum. DISCONFIRMER 2 (does the dual gate add over raw buy-the-dip?): ungated negative-ret control. DISCONFIRMER 3 (is vix-elevated load-bearing?): a vix-calm sibling tests whether the flush needs elevated vol. DISCONFIRMER 4 (holdout).",
+  "catalyst": "a negative trailing ret_Nd (recent selloff) with macro intact and vix elevated",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_stress_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "selloff_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "selloff_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "vix_normalized_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": -0.1,
+      "hi": 0.5
+    },
+    "vix_stress_floor": {
+      "kind": "float",
+      "lo": 22.0,
+      "hi": 38.0
+    },
+    "vix_normalized_exit": {
+      "kind": "float",
+      "lo": 15.0,
+      "hi": 24.0
+    },
+    "selloff_ceiling": {
+      "kind": "float",
+      "lo": -0.15,
+      "hi": -0.03
+    },
+    "selloff_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 10,
+      "step": 1
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.38
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

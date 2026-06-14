@@ -1,0 +1,139 @@
+{
+  "name": "Hashrate re-arm under calm volatility \u2014 miner conviction in a low-vol-realized base",
+  "rationale": "Trends that begin from a calm, low-realized-volatility base tend to be more orderly and persistent than those born in a high-vol whipsaw. The thesis pairs that volatility-regime filter with slow-capital confirmation: when btc_hashrate crosses UP (miners re-arm \u2014 structural conviction) AND realized volatility is BELOW a fitted ceiling (a calm base, not a chaotic spike) AND momentum is positive, we get a structurally-backed trend emerging from an orderly regime. Lower vol also means tighter, lower-turnover risk control \u2014 aligned with the low-fee bias. Go long spot. vol_realized is BOUNDED and gated by lt on its raw level; btc_hashrate is drifting and read ONLY via cross_up/cross_down. Exit when vol expands past an exit ceiling (regime breaks) or miners capitulate. Disconfirmer (core falsifier): the edge must come from miner re-commitment, not from the low-vol filter. If dropping the btc_hashrate cross_up arm (keeping vol_realized<ceiling + ret_Nd>0) matches or beats deflated Sharpe, hashrate is redundant and this is just a low-vol momentum trade. Low-confidence until OOS; the Gate decides.",
+  "catalyst": "btc_hashrate crosses up while realized volatility is calm (below ceiling) and momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hash_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vol_realized"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vol_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "btc_hashrate"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "hash_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.45
+  },
+  "param_space": {
+    "hash_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "hash_exit": {
+      "kind": "float",
+      "lo": -1.5,
+      "hi": 0.5
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.06
+    },
+    "vol_exit": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.1
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 35,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.14
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

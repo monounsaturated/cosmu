@@ -1,0 +1,134 @@
+{
+  "name": "Regime + non-extreme VIX confluence arms momentum (macro composite beyond a vix-level filter)",
+  "rationale": "THESIS: macro_regime (FRED curve+rates+liquidity composite) and vix_level (implied equity vol) are both BOUNDED risk gauges, but they measure different things \u2014 the composite is a SLOW structural tide (rates/curve/liquidity), VIX is a FAST fear spike. A risk-on composite tells you the structural tape rewards risk; a non-extreme VIX tells you there is no acute panic right now. Requiring BOTH should catch the case where the structural regime is fine but a vol spike is about to chop momentum, and the case where VIX is calm but the structural tide has already turned out. Entry: macro_regime>floor AND vix_level<vix_ceiling AND ret_Nd>mom_floor. DISCONFIRMER: run the SAME entry with macro_regime DROPPED but the vix_level ceiling kept (vix-only gated momentum). If the vix-only version reproduces the macro+vix net-of-fee Sharpe, the macro composite is collinear with implied vol and carries no incremental info beyond a VIX filter \u2014 falsified. The composite must add edge over the VIX-only gate.",
+  "catalyst": "Structural macro regime risk-on AND implied vol non-extreme AND trend up \u2014 both the slow tide and the fast fear gauge align to arm momentum.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vix_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 16.0,
+      "hi": 26.0
+    },
+    "vix_exit": {
+      "kind": "float",
+      "lo": 26.0,
+      "hi": 36.0
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 12,
+      "hi": 30,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.34
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 24,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,130 @@
+{
+  "name": "Credit-Stress x VIX Confluence Defensive-Sector Rotation (long XLU/XLP/XLV)",
+  "rationale": "Thesis: a SIMULTANEOUS widening of credit spreads (slow, fundamental stress) AND an elevated VIX (fast, market stress) marks an institutional de-risking regime in which defensive sectors -- utilities (XLU), consumer staples (XLP), health care (XLV) -- outperform on a relative basis and rise as flows rotate out of cyclicals. credit_spread already shows +IC in our internal scan; the orthogonal structure is a two-factor CONFLUENCE (credit cross_up arming + VIX above a stress level), not either single tired factor, plus a macro_regime risk-off confirmation gate. This sidesteps the spot-crypto long-only/no-short constraint entirely: defensives genuinely go UP in stress, so a long-only equity book expresses the rotation directly without any short or pairs leg. Hedge funds run sector rotation, but the specific credit+VIX two-factor confluence on plain sector ETFs (no shorting, no pairs, low turnover) is a low-glamour, capacity-modest signal they under-exploit. DISCONFIRMERS: (1) credit_spread-gate-ALONE and vix_level-gate-ALONE -- the confluence must beat each single factor or it is just one tired macro level in disguise; (2) run the IDENTICAL entry on a CYCLICAL ETF (XLK/XLY) -- if cyclicals do as well during the gated windows the signal is generic market-timing/beta, not defensive rotation, so the defensive leg must out-earn the cyclical control over the same gated periods.",
+  "catalyst": "Joint credit-spread widening + VIX stress spike triggering institutional rotation into defensive sectors (risk-off de-risking).",
+  "universe": {
+    "venues": [
+      "yahoo"
+    ],
+    "asset_classes": [
+      "equity"
+    ],
+    "min_liquidity_usd": 50000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "credit_spread"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "credit_widen"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_stress"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "regime_riskoff"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "credit_spread"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "credit_tighten"
+        }
+      },
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "vix_calm"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "credit_widen": {
+      "kind": "float",
+      "lo": 1.2,
+      "hi": 3.5
+    },
+    "vix_stress": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 30.0
+    },
+    "regime_riskoff": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.0
+    },
+    "credit_tighten": {
+      "kind": "float",
+      "lo": 1.0,
+      "hi": 2.5
+    },
+    "vix_calm": {
+      "kind": "float",
+      "lo": 14.0,
+      "hi": 20.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

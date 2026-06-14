@@ -1,0 +1,114 @@
+{
+  "name": "HIGH-VIX armed contrarian long \u2014 realized-vol spike exhaustion (BTC/ETH)",
+  "rationale": "Thesis: a crypto realized-vol spike (vol_realized gt vol_spike) that coincides with elevated equity VIX (gt vix_floor) marks forced de-leveraging exhaustion \u2014 when BOTH the crypto tape and the equity-vol market are blown out together, the marginal seller is nearly done, and a bounce follows. Cross-asset confluence (two independent vol measures) is the selectivity. Both BOUNDED level gates. Exit when realized vol calms below vol_exit or risk/time stops. Disconfirmer 1 (is the equity-VIX arm load-bearing?): the same crypto-realized-vol-spike long with NO equity-VIX gate is in the cohort \u2014 if it matches the deflated Sharpe, the cross-asset arm adds nothing and this is just a vol-spike fade. Disconfirmer 2 (direction): vol-spike longs can be a knife-catch; if the holdout edge is negative the thesis FAILs honestly. Disconfirmer 3 (holdout): purged+embargoed recent slice must hold.",
+  "catalyst": "crypto realized-vol spike AND equity VIX elevated together",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized",
+        "lookback": {
+          "param": "vol_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_spike"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vol_realized",
+          "lookback": {
+            "param": "vol_lookback"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "vol_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "vix_floor": {
+      "kind": "float",
+      "lo": 22.0,
+      "hi": 48.0
+    },
+    "vol_lookback": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 30,
+      "step": 1
+    },
+    "vol_spike": {
+      "kind": "float",
+      "lo": 0.14,
+      "hi": 0.32
+    },
+    "vol_exit": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.14
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 16,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

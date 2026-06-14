@@ -1,0 +1,123 @@
+{
+  "name": "High-vol Bollinger-floor reversion (volatility-overshoot snap)",
+  "rationale": "THESIS: a lower-Bollinger-band touch only mean-reverts when vol is HIGH \u2014 in high-vol regimes the bands are wide and a deep negative z-score is a genuine overshoot driven by forced selling that snaps back; in calm regimes the bands are tight and a band touch is just a slow drift lower that keeps going. We buy when Bollinger z-score is below a fitted floor (bb_z BOUNDED) ARMED by realized vol above a fitted high-vol floor (vol_realized BOUNDED). DISCONFIRMER: run the IDENTICAL bb_z<floor rule with the vol_realized>floor gate REMOVED (bare band-touch buy). If high-vol-armed is not materially better risk-adjusted net of fees, the vol regime adds nothing and this is plain band-touch dip-buying. Cross-check: LOW-vol-armed version of the same rule should underperform.",
+  "catalyst": "Price pierces the lower Bollinger band (deep negative z-score) while realized vol is elevated \u2014 a wide-band overshoot in a panic tape.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 7
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized",
+        "lookback": {
+          "param": "vol_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z",
+        "lookback": {
+          "param": "bb_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bb_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z",
+          "lookback": {
+            "param": "bb_lb"
+          }
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "bb_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_lb": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 21,
+      "step": 1
+    },
+    "vol_floor": {
+      "kind": "float",
+      "lo": 0.55,
+      "hi": 1.05
+    },
+    "bb_lb": {
+      "kind": "int",
+      "lo": 14,
+      "hi": 30,
+      "step": 1
+    },
+    "bb_floor": {
+      "kind": "float",
+      "lo": -2.6,
+      "hi": -1.6
+    },
+    "bb_exit": {
+      "kind": "float",
+      "lo": -0.3,
+      "hi": 0.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.24
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 9,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

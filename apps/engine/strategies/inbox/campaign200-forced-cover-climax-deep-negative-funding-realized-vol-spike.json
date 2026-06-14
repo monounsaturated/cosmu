@@ -1,0 +1,102 @@
+{
+  "name": "Forced-cover climax: deep-negative funding + realized-vol spike (NOT vol-spike-alone)",
+  "rationale": "Thesis: a realized-vol climax marks forced flow, but vol-spikes alone are ambiguous (could be a long blow-off). The squeeze setup is the vol climax that is SHORT-driven: funding deeply negative means the forced sellers are over-extended shorts whose covering reverses the move UP. Entry (long-only spot): funding_rate < deeply-negative floor [-0.005,-0.0005] (crowded shorts) AND vol_realized > a fitted spike floor (the forced-flow climax). vol_realized is BOUNDED so gt on level is valid. DISCONFIRMER: must beat vol_realized>floor ALONE with the SAME floor and no funding gate \u2014 if lone vol-spike reversion matches net Sharpe, the funding gate is decorative. The positioning gate is the claim: it must isolate the short-driven subset of climaxes. funding_feature null \u2014 level, not carry. Exit on funding normalizing up or a profit target.",
+  "catalyst": "realized-vol climax driven by crowded-short capitulation (deep-negative funding)",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_spike"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "funding_normalized"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_floor": {
+      "kind": "float",
+      "lo": -0.005,
+      "hi": -0.0005
+    },
+    "vol_spike": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.1
+    },
+    "funding_normalized": {
+      "kind": "float",
+      "lo": -0.0002,
+      "hi": 0.0002
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

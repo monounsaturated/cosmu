@@ -1,0 +1,102 @@
+{
+  "name": "Squeeze-trigger crossing: funding cross_up out of the deep-negative tail (NOT a static funding level)",
+  "rationale": "Thesis: a static deep-negative-funding level catches the crowded-short condition but says nothing about WHEN the squeeze ignites \u2014 funding can keep bleeding lower for days. The trigger is the moment funding TURNS, crossing back UP through a still-negative recovery level: shorts have started covering, paying-to-short pressure is easing, the squeeze is underway. Entry (long-only spot): funding_rate cross_up through a (negative) recovery threshold. This uses funding via cross_up \u2014 valid for a feature where the TIMING of the turn, not the absolute level, is the signal. To ensure the turn comes FROM a crowded base, also require recent realized-vol elevated (forced-flow context). DISCONFIRMER: must beat the static funding<deep-floor LEVEL gate on the same universe \u2014 if static-level matches net Sharpe, the cross-up timing is worthless. funding_feature null \u2014 the claim is the positioning TURN, not carry. Exit on time / target / a higher funding cross_up (squeeze complete).",
+  "catalyst": "funding crossing back up out of the deep-negative tail \u2014 short-covering ignition",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "funding_recovery"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "funding_done"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_recovery": {
+      "kind": "float",
+      "lo": -0.0025,
+      "hi": -0.0003
+    },
+    "vol_floor": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.07
+    },
+    "funding_done": {
+      "kind": "float",
+      "lo": 0.0001,
+      "hi": 0.0006
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.28
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

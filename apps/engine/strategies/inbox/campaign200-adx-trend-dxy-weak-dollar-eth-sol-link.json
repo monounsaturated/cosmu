@@ -1,0 +1,102 @@
+{
+  "name": "adx_trend_dxy_weak_dollar_eth_sol_link",
+  "rationale": "Crypto trends tend to extend when the dollar is rolling over (liquidity easing). dxy is a drifting level, so we use cross_down to mark a fresh dollar-weakening regime, then require ADX above a strength floor to confirm a real trend. Assets ETH/SOL/LINK are dollar-liquidity-sensitive. Disconfirmer: a control run removes the dxy cross gate \u2014 if ADX-only earns the same outside dollar-weakening windows, the macro regime adds no edge and this is trend-following in disguise. dxy is drifting so we NEVER use lt/gt on its raw level \u2014 only cross_down.",
+  "catalyst": "dxy crosses down (dollar weakening) while ADX is above its trend-strength floor",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "dxy"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "dxy_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "dxy"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "dxy_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "dxy_cross": {
+      "kind": "float",
+      "lo": 100.0,
+      "hi": 106.0
+    },
+    "dxy_exit": {
+      "kind": "float",
+      "lo": 104.0,
+      "hi": 110.0
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 30.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

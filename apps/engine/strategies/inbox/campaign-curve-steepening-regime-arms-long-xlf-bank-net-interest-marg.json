@@ -1,0 +1,156 @@
+{
+  "name": "Curve-steepening regime ARMS long-XLF (bank net-interest-margin sleeve, SPY-disconfirmed)",
+  "rationale": "Thesis: a steepening 2s10s curve mechanically widens bank net-interest margins, so financials (XLF) carry a regime-conditional drift that plain sector momentum misses. The orthogonal structure is regime-GATING: only take the XLF trend when the curve is STEEPENING (yield_curve_2s10s crossing UP through a fitted trailing reference \u2014 the DIRECTION, never the slow raw level) AND the macro regime is turning early-cycle/risk-on (macro_regime cross_up), with XLF's own short-window return positive as the trend confirm. Documented (ainvest 'Great Rotation', Curzio Research, Capital Group): financials outperform the S&P by 5-10% in steepening regimes when loan demand recovers and credit losses peak. Macro desks trade this via rate futures + XLF options with leverage; a long-only daily XLF sleeve gated on the curve is a low-capacity scrap they leave on the table. DISCONFIRMERS: (1) XLF-trend-alone (same ret_Nd>0, no curve/regime gate): if indistinguishable, the curve adds nothing and it is just sector momentum. (2) SPY control: run the identical curve+regime gate on SPY instead of XLF \u2014 if SPY captures the same lift, the gate is merely timing broad-market risk-on, NOT the financials-specific NIM channel, and the XLF specificity is illusory. The XLF-gated version must beat both nets of fees. (3) Level-trap control: using cross_up on the curve (not a gt on the raw bounded level) is what separates true steepening alpha from a near-constant always-true level threshold. NOTE: macro_regime is FRED-T10Y2Y-derived, so the regime arm and the curve arm share a root series; it is included as a distinct transform/regime tag, and the SPY disconfirmer is the real test that the lift is XLF-specific NIM and not just curve-timed beta.",
+  "catalyst": "2s10s steepening turns positive / accelerates as the Fed cycle shifts to easing and loan demand recovers \u2014 financials re-rate on widening net-interest margins.",
+  "universe": {
+    "venues": [
+      "yahoo"
+    ],
+    "asset_classes": [
+      "equity"
+    ],
+    "min_liquidity_usd": 50000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 60
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "yield_curve_2s10s"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "steepen_ref"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "regime_arm"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "yield_curve_2s10s"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "flatten_ref"
+        }
+      },
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "regime_off"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lb"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 2,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "steepen_ref": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 1.0
+    },
+    "regime_arm": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 1.0
+    },
+    "flatten_ref": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 1.0
+    },
+    "regime_off": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 1.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 60,
+      "step": 5
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": -0.02,
+      "hi": 0.05
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": -0.05,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 60,
+      "step": 5
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,116 @@
+{
+  "name": "Triple stress, macro-armed: extreme-fear + funding flush + risk-off regime cross (large-cap BTC/ETH)",
+  "rationale": "Thesis: the highest-conviction mean-reversion bottom is sentiment + leverage capitulation that fires PRECISELY as the macro regime is rolling over into risk-off (the forced-selling window). Restrict to the two deepest-liquidity names (BTC/ETH proxy via min_instruments) where capitulation prints are cleanest and slippage smallest. Entries require fear_greed extreme-low AND funding_rate flushed (perp longs liquidated) AND macro_regime crossing DOWN (the stress is hitting the composite, not yet bottomed). macro_regime is drifting so it is used ONLY via cross_down. Long-only spot, medium hold. Disconfirmer: must beat the SAME triple stripped of the regime arm (i.e. fear+funding pair) on this subset after fees; if the pair matches, the regime cross adds no timing value and is noise. Honest FAIL valid.",
+  "catalyst": "extreme fear and a funding flush coinciding with macro_regime rolling into risk-off",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 50000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_extreme"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_flush"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "regime_riskoff"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "fear_recover_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 3,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "fear_extreme": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 24
+    },
+    "funding_flush": {
+      "kind": "float",
+      "lo": -0.0005,
+      "hi": 0.0
+    },
+    "regime_riskoff": {
+      "kind": "float",
+      "lo": -0.15,
+      "hi": 0.1
+    },
+    "fear_recover_exit": {
+      "kind": "float",
+      "lo": 40,
+      "hi": 55
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

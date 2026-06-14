@@ -1,0 +1,153 @@
+{
+  "name": "Cross-Asset Credit-Regime Shield: equity credit/NFCI stress gates long crypto spot",
+  "rationale": "Crypto spot carries high beta to broad equity/Nasdaq liquidity, and macro tightening (widening credit spreads, tightening NFCI financial conditions, a risk-off macro regime) transmits to crypto as a risk-off de-risking. Since we are long-only on spot, the only lever is WHEN to hold the long. The equity-macro credit regime is a CROSS-ASSET on/off switch: arm the crypto long only while credit_spread is tight (lt), NFCI is loose (lt), and the macro_regime composite reads risk-on (gt); require the equity tape to confirm via spx_index crossing UP (a DRIFTING raw level, so cross_up only, never a level cut). The edge hedge funds miss: crypto desks watch crypto-native signals (funding, on-chain) and equity desks watch credit \u2014 few systematically use the EQUITY credit regime as a tactical on/off gate for a long-only crypto SPOT book at the daily horizon. DISCONFIRMERS (mandatory): (1) the critical control \u2014 compare against gating on spx_index/ndx_index trend ALONE; if equity-price trend reproduces the protection, the credit/NFCI features add nothing and this is just 'follow equity beta', a level-in-disguise/momentum trade we reject. The credit+NFCI regime must add return BEYOND the equity price trend. (2) ablate vs crypto-native funding_rate de-risk \u2014 if funding alone protects equally, the cross-asset equity-macro claim is unsupported. (3) must beat buy-and-hold BTC/ETH net of 10bps spot taker fees on Sharpe/return, not merely reduce vol by being out on average. (4) credit_spread/nfci must be applied PIT (FRED/ALFRED initial-release vintage; weekly NFCI realtime_start) so no same-day look-ahead bleeds into the 24/7 crypto bar.",
+  "catalyst": "Credit-led tightening (HY OAS widening, NFCI flipping positive) leads risk-asset drawdowns by ~1-3 months; flatten the long-only crypto book to cash when the equity credit regime arms hostile, re-arm when spreads tighten, NFCI re-loosens, and the SPX tape turns back up.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "credit_spread"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "credit_tight"
+      }
+    },
+    {
+      "feature": {
+        "name": "nfci"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "nfci_loose"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_risk_on"
+      }
+    },
+    {
+      "feature": {
+        "name": "spx_index"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "spx_trend_ref"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "credit_spread"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "credit_wide"
+        }
+      },
+      {
+        "feature": {
+          "name": "nfci"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "nfci_tight"
+        }
+      },
+      {
+        "feature": {
+          "name": "spx_index"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "spx_trend_ref"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "credit_tight": {
+      "kind": "float",
+      "lo": 2.5,
+      "hi": 5.0
+    },
+    "credit_wide": {
+      "kind": "float",
+      "lo": 4.0,
+      "hi": 7.0
+    },
+    "nfci_loose": {
+      "kind": "float",
+      "lo": -0.6,
+      "hi": 0.0
+    },
+    "nfci_tight": {
+      "kind": "float",
+      "lo": -0.1,
+      "hi": 0.6
+    },
+    "regime_risk_on": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "spx_trend_ref": {
+      "kind": "float",
+      "lo": 3000.0,
+      "hi": 6000.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

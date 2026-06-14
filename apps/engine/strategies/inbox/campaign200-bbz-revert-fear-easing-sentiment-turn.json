@@ -1,0 +1,102 @@
+{
+  "name": "bbz_revert_fear_easing_sentiment_turn",
+  "rationale": "The cleanest sentiment-reversion entry is a bb_z recovery co-timed with fear_greed turning UP (cross_up through a low level) \u2014 the moment the crowd stops capitulating. Disconfirmer: entry requires fear_greed cross_up through the turn level alongside the bb_z cross_up; if the bb_z recovery reverts equally while sentiment is still falling, the fear-turn gate adds no edge and this reduces to plain oversold-bounce buying.",
+  "catalyst": "bb_z recovers as fear_greed crosses up out of the capitulation zone",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "bbz_recover"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "fear_turn"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "bbz_recover": {
+      "kind": "float",
+      "lo": -2.5,
+      "hi": -1.0
+    },
+    "fear_turn": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 40
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.2
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.34
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

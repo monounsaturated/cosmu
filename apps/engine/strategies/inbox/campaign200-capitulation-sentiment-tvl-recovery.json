@@ -1,0 +1,102 @@
+{
+  "name": "capitulation_sentiment_tvl_recovery",
+  "rationale": "Thesis: deep sentiment capitulation (very low fear_greed) marks washed-out positioning, but we only commit once on-chain capital starts FLOWING BACK (DeFi TVL crossing up) which confirms the bottom is being bought by real users, not just contrarians. Disconfirmer: a fear-only contrarian control; the TVL recovery cross must beat it, else we are merely catching falling knives and calling the bounce skill.",
+  "catalyst": "DeFi TVL crosses up while fear_greed is in extreme-fear territory",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fg_max"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "fg_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tvl_cross": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.0
+    },
+    "fg_max": {
+      "kind": "float",
+      "lo": 15,
+      "hi": 35
+    },
+    "fg_exit": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 75
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

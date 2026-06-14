@@ -1,0 +1,87 @@
+{
+  "name": "vix_spike_capitulation_reversion_solbnb",
+  "rationale": "A VIX cross_up through an elevated level marks a volatility spike that, in crypto, often coincides with forced de-leveraging and a subsequent relief bounce. Thesis: arm long on vix_level cross_up (buy the vol shock). Disconfirmer: require fear_greed within a low band (between floor/ceiling) so we only fire when sentiment is genuinely fearful \u2014 if the edge persists at neutral/greedy sentiment it is generic dip-buying, not a vol-spike capitulation reversion.",
+  "catalyst": "VIX crosses up through an elevated stress level",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "vix_spike"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "fg_band"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": []
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_spike": {
+      "kind": "float",
+      "lo": 24.0,
+      "hi": 45.0
+    },
+    "fg_band": {
+      "kind": "float",
+      "lo": 10.0,
+      "hi": 40.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 10,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

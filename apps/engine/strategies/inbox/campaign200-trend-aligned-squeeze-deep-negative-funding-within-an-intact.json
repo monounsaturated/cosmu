@@ -1,0 +1,128 @@
+{
+  "name": "Trend-aligned squeeze: deep-negative funding within an intact uptrend (NOT trend-filter-alone)",
+  "rationale": "Thesis: the highest-quality squeeze is a crowded-short flush that occurs WITHIN a still-intact uptrend \u2014 shorts fading a healthy market get squeezed hardest as the primary trend reasserts. Combine a slow trend filter with the positioning gate, timing entries to the crowded-short pullback rather than chasing. Entry (long-only spot): ret_Nd over a LONG lookback > a trend floor (uptrend intact) AND funding_rate < deeply-negative floor [-0.004,-0.0005] (crowded shorts fading the trend). DISCONFIRMER: must beat the long-lookback trend filter ALONE with the SAME lookback and floor and no funding gate \u2014 if lone trend-following matches net Sharpe, the funding pullback-timing gate is worthless. The positioning gate is the claim: it must beat continuous trend exposure by entering only on the crowded-short dips. funding_feature null \u2014 level, not carry. Exit on the trend breaking down or funding normalizing up.",
+  "catalyst": "crowded-short funding flush during an intact longer-term uptrend",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "trend_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "trend_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "trend_lookback"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "trend_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "funding_normalized"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "trend_lookback": {
+      "kind": "int",
+      "lo": 40,
+      "hi": 120,
+      "step": 1
+    },
+    "trend_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.08
+    },
+    "trend_exit": {
+      "kind": "float",
+      "lo": -0.06,
+      "hi": 0.0
+    },
+    "funding_floor": {
+      "kind": "float",
+      "lo": -0.004,
+      "hi": -0.0005
+    },
+    "funding_normalized": {
+      "kind": "float",
+      "lo": -0.0002,
+      "hi": 0.0002
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,128 @@
+{
+  "name": "Hashrate-commitment momentum confluence \u2014 miners re-arm a real trend",
+  "rationale": "Miners are the most capital-committed, slowest-moving participants in BTC: deploying or re-energizing hashpower is a multi-month capex decision, so a rising network hashrate is a costly signal that the people who must literally burn electricity to secure the chain are betting it stays worth securing. The thesis: when btc_hashrate crosses UP through a fitted floor (miner-commitment regime turns on) AND medium-term price momentum (ret_Nd) is already positive, the miner re-arm CONFIRMS that the trend is backed by structural conviction rather than thin speculative drift \u2014 go long spot. We hold while momentum persists and exit when momentum rolls over (ret_Nd cross_down) or miners capitulate (btc_hashrate cross_down). Hashrate is a slow, drifting series so it is read ONLY via cross_up/cross_down (never a raw level). Disconfirmer (core falsifier): the edge must come from hashrate CONFIRMING momentum, not from momentum alone \u2014 if removing the btc_hashrate cross_up arm and keeping only the ret_Nd>floor filter yields equal-or-better deflated Sharpe, hashrate is redundant and this is just plain momentum already covered by the vol/funding-gated specs. Low-confidence until OOS; the Gate decides.",
+  "catalyst": "btc_hashrate crosses up (miner-commitment regime turns on) while medium-term price momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hash_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lb"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "btc_hashrate"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "hash_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.45
+  },
+  "param_space": {
+    "hash_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "hash_exit": {
+      "kind": "float",
+      "lo": -1.5,
+      "hi": 0.5
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.08
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": -0.06,
+      "hi": 0.01
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

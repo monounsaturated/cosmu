@@ -1,0 +1,153 @@
+{
+  "name": "Regime-armed sector momentum \u2014 credit+VIX+macro confluence gate ARMS equity sector trend, risk-off disarms",
+  "rationale": "Sector/cross-sectional momentum is exhausted standalone because sector leadership rotates and reverses violently in risk-off transitions. The fix is a cross-asset CONFLUENCE GATE rather than a single signal: chase a trending sector ETF (ret_Nd > 0) ONLY while the shared macro/credit/vol regime is benign \u2014 credit_spread below a fitted calm level (BOUNDED, flagged +IC in our own scan as the cleanest forward-looking risk gauge), vix_level below a fitted calm ceiling (BOUNDED), AND macro_regime above a fitted supportive floor (BOUNDED composite of curve/real-rates/liquidity). All three must AGREE to arm the entry. Regime-dependent literature (Markov-switching crude/VIX/MOVE studies; 'When Alpha Breaks') shows momentum works in stable regimes and mean-reverts in volatile ones \u2014 so when credit is tightening or VIX is elevated the SAME sector momentum should reverse. The book is exited wholesale when the regime gate flips risk-off (credit_spread crosses_up its threshold OR vix_level crosses_up its ceiling), specifically to AVOID the risk-off drawdown that decays ungated momentum. Hedge funds run sector rotation but over-trade it intraday and get chopped in regime transitions; they rarely GATE patient daily sector trend on a multi-signal credit+vol+macro composite over a small ETF set. DISCONFIRMER: run identical sector momentum (1) with NO regime gate and (2) with the gate driven by a non-causal control (noaa_kp_index) instead of credit/vix/macro. If ungated or control-gated sector momentum matches the regime-gated NET deflated Sharpe, the macro gate is decorative and this is plain sector momentum in disguise \u2014 the credit+vix+macro gate must add edge specifically by sidestepping the risk-off drawdowns, not by re-expressing the same price trend. Low-confidence until OOS-validated.",
+  "catalyst": "A sector ETF's daily trend is positive WHILE credit spreads are tight, VIX is calm, and the macro regime is supportive \u2014 all three risk-on conditions agree, arming the momentum long; the book exits when credit or VIX crosses up into risk-off.",
+  "universe": {
+    "venues": [
+      "yahoo"
+    ],
+    "asset_classes": [
+      "equity"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "credit_spread"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "cs_calm"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_calm"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mr_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "credit_spread"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "cs_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "vix_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.45
+  },
+  "param_space": {
+    "mom_lb": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 60,
+      "step": 5
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "cs_calm": {
+      "kind": "float",
+      "lo": 1.0,
+      "hi": 3.0
+    },
+    "vix_calm": {
+      "kind": "float",
+      "lo": 14.0,
+      "hi": 24.0
+    },
+    "mr_floor": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "cs_exit": {
+      "kind": "float",
+      "lo": 1.5,
+      "hi": 4.0
+    },
+    "vix_exit": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 35.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.14
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.26
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

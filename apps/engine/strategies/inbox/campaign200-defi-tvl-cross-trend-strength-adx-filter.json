@@ -1,0 +1,125 @@
+{
+  "name": "defi_tvl_cross_trend_strength_adx_filter",
+  "rationale": "Thesis: a TVL up-cross only pays when it occurs inside an already directional market \u2014 so we require ADX above a fitted floor (real trend, not chop) plus positive momentum at the TVL cross, betting capital inflow accelerates an established trend. Disconfirmer: gate ADX-trend-filter-only entry (no TVL cross) over the same window \u2014 if a strong trend alone delivers the return, the TVL cross is merely confirming what ADX already saw and adds no edge.",
+  "catalyst": "defi_tvl up-cross during a confirmed strong trend (ADX above floor) with positive momentum",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 6
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "adx"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "adx_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tvl_cross": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 35.0
+    },
+    "adx_exit": {
+      "kind": "float",
+      "lo": 12.0,
+      "hi": 22.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 15,
+      "step": 1
+    },
+    "mom_min": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,103 @@
+{
+  "name": "greed_regime_tvl_inflow_confirm",
+  "rationale": "A genuine risk-on greed regime should be backed by real capital flowing on-chain, so we require a fresh defi_tvl breakout (cross_up of its own trend) to CONFIRM the greed reading, then ride momentum. Disconfirmer: a control without the TVL cross \u2014 if sentiment-only greed performs the same, the on-chain inflow confirmation is decorative and we are trading pure greed-momentum. defi_tvl is drifting so it is used ONLY via cross_up.",
+  "catalyst": "greed regime confirmed by a fresh DeFi TVL inflow breakout",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "greed_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_ma"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "greed_floor": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 72
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 38,
+      "hi": 50
+    },
+    "tvl_ma": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 30,
+      "step": 1
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

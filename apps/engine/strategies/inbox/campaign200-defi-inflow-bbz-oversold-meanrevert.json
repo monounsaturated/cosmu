@@ -1,0 +1,102 @@
+{
+  "name": "defi_inflow_bbz_oversold_meanrevert",
+  "rationale": "Thesis: a statistically oversold price (negative Bollinger z-score) is a reversion setup, but we only act when on-chain capital is simultaneously RETURNING (DeFi TVL crossing up) \u2014 separating a real fundamentally-backed bounce from a falling-knife continuation. We buy ETH/SOL/AVAX/LINK (DeFi-levered). Disconfirmer: a bb_z-oversold-only control; the TVL inflow cross must beat it, else the on-chain confirmation adds nothing and we are just mean-reverting price.",
+  "catalyst": "DeFi TVL crosses up while bb_z is statistically oversold (negative)",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_max"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tvl_cross": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.0
+    },
+    "bbz_max": {
+      "kind": "float",
+      "lo": -2.5,
+      "hi": -0.8
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 2.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 16,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

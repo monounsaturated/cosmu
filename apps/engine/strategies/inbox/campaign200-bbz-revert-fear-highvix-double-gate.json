@@ -1,0 +1,116 @@
+{
+  "name": "bbz_revert_fear_highvix_double_gate",
+  "rationale": "The strongest sentiment-capitulation reversion needs BOTH crowd fear AND elevated macro vol present \u2014 a bb_z recovery when fear_greed is low AND vix_level is high marks a true panic flush that snaps back. Disconfirmer: this double gate must beat each single-gate variant; if the bb_z cross_up reverts equally with only the fear gate, only the vix gate, or no gate, the conjunction is redundant and there is no regime-conditional edge beyond plain reversion.",
+  "catalyst": "bb_z recovers out of oversold while fear_greed is low and vix_level is elevated",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 13
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "bbz_recover"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_max"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_hot_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 4,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "bbz_recover": {
+      "kind": "float",
+      "lo": -2.8,
+      "hi": -1.2
+    },
+    "fear_max": {
+      "kind": "float",
+      "lo": 15,
+      "hi": 32
+    },
+    "vix_hot_min": {
+      "kind": "float",
+      "lo": 24,
+      "hi": 45
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.2
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

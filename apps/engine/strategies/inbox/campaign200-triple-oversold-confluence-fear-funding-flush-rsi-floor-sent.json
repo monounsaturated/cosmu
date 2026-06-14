@@ -1,0 +1,116 @@
+{
+  "name": "Triple oversold-confluence: fear + funding flush + RSI floor (sentiment must add beyond price)",
+  "rationale": "Thesis: combine a PRICE-oversold axis (rsi below a floor, bounded 0-100) with two NON-price stress axes \u2014 crowd sentiment (fear_greed extreme-low) and leverage capitulation (funding_rate flushed). The hypothesis is the Extremity-Premium claim that sentiment carries information BEYOND price-based oversold: requiring all three should isolate true exhaustion from a routine RSI dip that mean-reverts weakly. Long-only spot, short-to-medium hold. Disconfirmer: must beat (a) rsi-floor ALONE and (b) the fear+rsi pair on deflated Sharpe after fees \u2014 if RSI-alone matches, the sentiment/funding axes are redundant with price and we have re-derived a tired oversold-RSI signal. Honest FAIL valid.",
+  "catalyst": "RSI oversold coinciding with extreme fear and a funding flush",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_extreme"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_flush"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "fear_extreme": {
+      "kind": "float",
+      "lo": 12,
+      "hi": 28
+    },
+    "funding_flush": {
+      "kind": "float",
+      "lo": -0.0004,
+      "hi": 8e-05
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 20,
+      "hi": 38
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 48,
+      "hi": 62
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.28
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,55 @@
+{
+  "name": "Cross-asset capitulation composite long (Fear&Greed + VIX)",
+  "rationale": "A composite contrarian-capitulation entry that requires BOTH gauges to flag fear at once: crypto's own Fear & Greed in its fear band AND equity VIX elevated. The thesis is selectivity — a true cross-asset risk flush (both the crypto crowd AND the equity-vol market in fear) is a rarer, higher-conviction capitulation than either alone, so requiring confluence should raise the post-flush hit-rate and cut whipsaw. Both features are BOUNDED and mean-reverting (no drifting-level trap), and the confluence makes this the LOWEST-turnover of the capitulation family — fees barely bite. Hypothesis: enter LONG spot when both gauges are fearful, exit when EITHER normalizes (sentiment recovers OR vol calms) or risk limits hit. Disconfirmer 1 (does confluence beat the single signals?): the standalone Fear&Greed and standalone VIX specs are in the same cohort — if neither AND-confluence improves the deflated Sharpe over the better single signal, the composite adds nothing and is just over-fitting two filters. Disconfirmer 2 (trade count): requiring two extremes is rare; if it generates too few trades to clear the Gate's minimum, that is an honest 'insufficient evidence', not an edge. Disconfirmer 3 (holdout): the recent purged+embargoed slice must stay positive or it is cycle-position-in-disguise. The Gate disposes; an honest FAIL is valid.",
+  "catalyst": "crypto Fear&Greed in the fear band AND equity VIX elevated simultaneously",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": { "name": "fear_greed" },
+      "op": "lt",
+      "threshold": { "param": "fear_floor" }
+    },
+    {
+      "feature": { "name": "vix_level" },
+      "op": "gt",
+      "threshold": { "param": "vix_spike" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "fear_greed" },
+        "op": "gt",
+        "threshold": { "param": "greed_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "fear_floor": { "kind": "float", "lo": 15.0, "hi": 40.0 },
+    "vix_spike":  { "kind": "float", "lo": 18.0, "hi": 40.0 },
+    "greed_exit": { "kind": "float", "lo": 50.0, "hi": 80.0 },
+    "stop":       { "kind": "float", "lo": 0.06, "hi": 0.20 },
+    "tp":         { "kind": "float", "lo": 0.10, "hi": 0.40 },
+    "time_stop":  { "kind": "int",   "lo": 5,    "hi": 30,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

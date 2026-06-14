@@ -1,0 +1,137 @@
+{
+  "name": "Momentum Confluence \u2014 VIX Calm Regime Gate (BTC/ETH/SOL)",
+  "rationale": "Thesis: on the three highest-liquidity majors, short (5d) and medium (15d) momentum agreement persists best when broad-market fear (VIX) is calm; spikes in VIX precede crypto risk-off. Disconfirmer: the VIX ceiling must matter \u2014 if confluence during high-VIX (turbulent) periods is equally profitable, the calm gate is a no-op and this is plain majors momentum.",
+  "catalyst": "Dual-horizon momentum aligns while VIX sits below a fitted calm ceiling.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "lb_short"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "thr_short"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "lb_med"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "thr_med"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_max"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "lb_short"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "exit_short"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 3,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "lb_short": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 7,
+      "step": 1
+    },
+    "lb_med": {
+      "kind": "int",
+      "lo": 12,
+      "hi": 18,
+      "step": 1
+    },
+    "thr_short": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.04
+    },
+    "thr_med": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.09
+    },
+    "vix_max": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 30.0
+    },
+    "exit_short": {
+      "kind": "float",
+      "lo": -0.06,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,128 @@
+{
+  "name": "Recession-odds-shock regime gate (credit-spread cross-up + macro risk-off) arming a long defensive-equity rotation",
+  "rationale": "Thesis: rising recession odds = a risk-off regime that front-runs equity drawdowns and a defensive-sector bid. The Kalshi/arXiv 2604.01431 work finds the recession-probability channel (KXRECSSNBER) is the MOST stable macro-risk signal OOS; Polymarket recession + emergency-cut odds spiked with the 2025 tariff shock as risk assets fell, i.e. recession odds LEAD risk-asset drawdowns. The real pm recession-odds series is not yet ingested, so we proxy the recession-risk regime with credit_spread (BOUNDED, +IC in our own scan, ~3yr PIT) which is the market-priced analogue of rising recession probability. The HEDGE-FUND-UNTAKEABLE edge is not credit itself (macro funds trade credit) but the GATING combination on slow, low-glamour daily defensive ETFs that are too low-capacity for macro funds: arm a long defensive-equity rotation only when the recession-risk regime TRANSITIONS on. Entry fires ONLY on credit_spread cross_up through a fitted high quantile (a regime TRANSITION, never a static level) AND while macro_regime is gt a fitted risk-off floor. Long-only. DISCONFIRMER 1 (beta control): an unconditional long-hold of the same defensive ETFs over the same window \u2014 defensives drift up anyway; the gated version MUST beat this net of 10bps fees or it is beta not signal. DISCONFIRMER 2 (DRIFTING-trap control): credit_spread as a raw lt/gt LEVEL with no cross/quantile transition MUST NOT survive \u2014 if a static level works, the edge was a level-in-disguise, not the recession-regime transition. If the unconditional defensive hold matches the gated PnL, the hypothesis is rejected.",
+  "catalyst": "Recession-odds shock: credit spreads widen through a trailing high (the market-priced recession-probability proxy) while macro regime turns risk-off \u2014 historically front-runs equity weakness and a defensive-sector (staples/utilities) bid.",
+  "universe": {
+    "venues": [
+      "yahoo"
+    ],
+    "asset_classes": [
+      "equity"
+    ],
+    "min_liquidity_usd": 50000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "credit_spread",
+        "lookback": {
+          "param": "spread_lookback"
+        }
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "spread_high_quantile"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_riskoff_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "credit_spread",
+          "lookback": {
+            "param": "spread_lookback"
+          }
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "spread_median_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_riskon_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "spread_lookback": {
+      "kind": "int",
+      "lo": 40,
+      "hi": 90,
+      "step": 5
+    },
+    "spread_high_quantile": {
+      "kind": "float",
+      "lo": 0.6,
+      "hi": 0.9
+    },
+    "regime_riskoff_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.7
+    },
+    "spread_median_exit": {
+      "kind": "float",
+      "lo": 0.3,
+      "hi": 0.55
+    },
+    "regime_riskon_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.2
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

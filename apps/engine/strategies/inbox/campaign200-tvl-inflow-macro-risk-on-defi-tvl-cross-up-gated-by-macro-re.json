@@ -1,0 +1,125 @@
+{
+  "name": "TVL inflow + macro risk-on \u2014 defi_tvl cross-up gated by macro_regime arms an alt-momentum long",
+  "rationale": "Thesis: DeFi capital inflows (defi_tvl cross_up) extend alt-L1 trends most reliably when the broad macro backdrop is risk-on \u2014 in a risk-off macro, on-chain inflows are often short-lived rotations that fade. macro_regime is a BOUNDED composite, so a fitted floor binds and we require it above a risk-on threshold. defi_tvl drifts, so it enters ONLY as a cross_up; positive own-momentum confirms direction. Disconfirmer 1: drop the macro_regime gate \u2014 if the deflated Sharpe is unchanged, the macro arm never bound and we should not claim a macro-conditioned edge. Disconfirmer 2: drop the defi_tvl cross_up and keep macro-gate + momentum \u2014 if the Sharpe holds, TVL adds no orthogonal information. ETH/SOL/AVAX/BNB/LINK, long-only spot.",
+  "catalyst": "defi_tvl crosses up while macro_regime is risk-on and alt momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_x"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "macro_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "defi_tvl"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "tvl_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.35
+  },
+  "param_space": {
+    "tvl_x": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "tvl_exit": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.0
+    },
+    "macro_floor": {
+      "kind": "float",
+      "lo": -0.2,
+      "hi": 0.6
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 30,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.07
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,141 @@
+{
+  "name": "Low-vol macro-on trend (calm tape gated by risk-on macro regime)",
+  "rationale": "THESIS: a calm vol regime is necessary but not sufficient \u2014 a quiet tape during a risk-OFF macro backdrop is the calm before a bleed, whereas a quiet tape during risk-ON macro is a durable melt-up. We stack two orthogonal regime gates: low realized vol (vol_realized BOUNDED, lt-ceiling, micro-regime) AND macro_regime above a fitted risk-on floor (BOUNDED, macro-regime), then ride long-only trend. The vol-of-regime idea conditioned on the macro tide. DISCONFIRMER: ablate each gate independently \u2014 (a) drop vol_realized (macro-trend only), (b) drop macro_regime (vol-trend only). The full conjunction must beat BOTH single-gate variants on deflated-Sharpe net of fees; if either single gate matches it, the other gate is redundant and the two-gate conjunction is fitted over-specification.",
+  "catalyst": "Realized vol is low AND macro regime is risk-on while price trends up \u2014 a calm tape with the macro tide coming in.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized",
+        "lookback": {
+          "param": "vol_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "macro_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vol_realized",
+          "lookback": {
+            "param": "vol_lb"
+          }
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vol_ceiling"
+        }
+      },
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "macro_floor"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_lb": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 28,
+      "step": 1
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.22,
+      "hi": 0.52
+    },
+    "macro_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.6
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 14,
+      "hi": 45,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

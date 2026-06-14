@@ -1,0 +1,116 @@
+{
+  "name": "rsi_dip_vix_crossing_down_relief",
+  "rationale": "Relief reversion: buy RSI oversold at the moment vix_level crosses DOWN through a fitted level (fear is rolling over) within a favourable macro_regime. Thesis: oversold + fear-rolling-over marks the bottom of a scare. DISCONFIRMER: the cross DIRECTION is the control \u2014 an oversold buy on vix cross_UP (fear accelerating) is the null; if it performs the same, the relief-timing thesis is false and the VIX gate is decorative.",
+  "catalyst": "RSI oversold as VIX crosses down through a fitted level under risk-on macro",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 11
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_os"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "vix_x"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rsi_os": {
+      "kind": "float",
+      "lo": 22,
+      "hi": 40
+    },
+    "vix_x": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 40
+    },
+    "regime_min": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 52,
+      "hi": 68
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.36
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

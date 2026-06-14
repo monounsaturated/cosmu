@@ -1,0 +1,116 @@
+{
+  "name": "Triple capitulation core: extreme-fear + VIX spike + funding flush (NOT any pair)",
+  "rationale": "Thesis: a genuine cross-market risk flush requires three INDEPENDENT stress axes to agree on the same day \u2014 crypto crowd sentiment at an extreme low (fear_greed), equity-vol fear (vix_level elevated), AND a leveraged-positioning capitulation where perp longs are washed out (funding_rate flushed low/negative). Each axis is a different market (spot crowd / equity options / perp leverage), so their simultaneous agreement is rare and high-conviction, not a single tired level. Long-only spot, swing horizon. Disconfirmer: the cohort carries all three two-feature pairs (fear+vix, fear+funding, vix+funding); the triple must beat the BEST pair on deflated Sharpe after 10bps taker. If any pair matches it, the third filter is redundant and this is just an over-filtered pair-in-disguise. Honest FAIL is valid.",
+  "catalyst": "extreme-fear sentiment + elevated equity VIX + perp-funding flush aligning same day",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_extreme"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_spike"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_flush"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "fear_neutral_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "fear_extreme": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 25
+    },
+    "vix_spike": {
+      "kind": "float",
+      "lo": 22,
+      "hi": 40
+    },
+    "funding_flush": {
+      "kind": "float",
+      "lo": -0.0004,
+      "hi": 5e-05
+    },
+    "fear_neutral_exit": {
+      "kind": "float",
+      "lo": 42,
+      "hi": 58
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

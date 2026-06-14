@@ -1,0 +1,130 @@
+{
+  "name": "Triple complacency-avoidance: greed-band + low-VIX + crowded-funding regime gate (macro-armed)",
+  "rationale": "Thesis: NOT every confluence is a capitulation buy. This is a risk-ON trend-continuation triple: a constructive crypto crowd (fear_greed in a moderate-greed band via between, NOT euphoria-extreme), a calm equity-vol tape (vix_level low), and a healthy-but-not-blown-out perp funding (funding_rate between a small-positive band = longs paid for carry but not crowded-mania). The macro_regime composite must be CROSSING UP (risk-on igniting) to arm entries \u2014 a drifting feature so used only via cross_up, never a raw level. Three risk-on axes confirming is a rarer, higher-quality trend entry than chasing price. Long-only spot. Disconfirmer: must beat (a) macro_regime cross_up ALONE and (b) the subset's buy-and-hold \u2014 if either matches, the sentiment/vix gates are decorative; and (c) the fear-side capitulation triple, to show this greed-trend variant is a distinct edge, not a relabeled reversion. Honest FAIL valid.",
+  "catalyst": "macro_regime crossing into risk-on with constructive sentiment, calm VIX, and non-crowded funding",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "fear_greed_band"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_calm"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "funding_band"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "regime_arm"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "regime_disarm"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "fear_greed_band": {
+      "kind": "float",
+      "lo": 50,
+      "hi": 72
+    },
+    "vix_calm": {
+      "kind": "float",
+      "lo": 13,
+      "hi": 20
+    },
+    "funding_band": {
+      "kind": "float",
+      "lo": 2e-05,
+      "hi": 0.0002
+    },
+    "regime_arm": {
+      "kind": "float",
+      "lo": -0.1,
+      "hi": 0.2
+    },
+    "regime_disarm": {
+      "kind": "float",
+      "lo": -0.2,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.38
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

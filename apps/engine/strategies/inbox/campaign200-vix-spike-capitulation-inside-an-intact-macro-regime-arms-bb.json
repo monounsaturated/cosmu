@@ -1,0 +1,130 @@
+{
+  "name": "VIX-spike capitulation inside an intact macro regime arms BB-z washout (buy-the-fear)",
+  "rationale": "THESIS: the most reliable reversion is fear WITHOUT a regime break \u2014 a vix_level SPIKE (gt a fitted panic floor) that coincides with macro_regime STILL risk-on (gt) signals a sentiment flush rather than a structural de-risking, and crypto majors snap back. The dual gate is deliberately CONTRADICTORY-looking (high vix AND intact macro) to isolate transient panic from regime change. bb_z washout is the price trigger. DISCONFIRMER 1 (is the macro-intact condition load-bearing, or just buy-high-vix?): a sibling that drops the macro_regime>floor condition (buy any vix spike) should be WORSE precisely in the episodes where vol spiked BECAUSE the macro regime broke; if it is equal/better, the macro gate is decoration. DISCONFIRMER 2 (is it just the washout?): bare bb_z washout control (inbox) is the floor. DISCONFIRMER 3 (level-in-disguise?): the vix panic floor is fitted, not magic; the holdout slice with a frozen param must hold or the level was overfit to one cycle's vol scale.",
+  "catalyst": "vix_level spikes above a fitted panic floor WHILE macro_regime remains risk-on, with a bb_z washout",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 9
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_panic_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "vix_normalized_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "vix_panic_floor": {
+      "kind": "float",
+      "lo": 26.0,
+      "hi": 45.0
+    },
+    "vix_normalized_exit": {
+      "kind": "float",
+      "lo": 16.0,
+      "hi": 26.0
+    },
+    "regime_floor": {
+      "kind": "float",
+      "lo": -0.2,
+      "hi": 0.4
+    },
+    "bbz_floor": {
+      "kind": "float",
+      "lo": -3.2,
+      "hi": -1.8
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 12,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

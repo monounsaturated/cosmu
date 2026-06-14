@@ -1,0 +1,87 @@
+{
+  "name": "vol_expansion_dxy_easing_majors",
+  "rationale": "A vol_realized expansion that lands alongside a weakening dollar is a liquidity-driven vol-regime shift that favors long majors. Thesis: arm long on vol_realized cross_up confirmed by dxy cross_down. Disconfirmer: both legs are crosses (no level-in-disguise); the control is to also test vol_realized cross_up ALONE \u2014 if the dollar-easing leg adds no edge it is inert, and if vol alone is flat then the dollar leg is doing the work. The two-cross conjunction tests whether the liquidity-plus-vol regime shift is jointly necessary.",
+  "catalyst": "realized vol expands while the dollar weakens",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "vol_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "dxy"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "dxy_cross"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": []
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_cross": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.07
+    },
+    "dxy_cross": {
+      "kind": "float",
+      "lo": 98.0,
+      "hi": 108.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

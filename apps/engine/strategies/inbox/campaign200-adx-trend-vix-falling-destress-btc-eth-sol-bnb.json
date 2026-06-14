@@ -1,0 +1,102 @@
+{
+  "name": "adx_trend_vix_falling_destress_btc_eth_sol_bnb",
+  "rationale": "Crypto trends accelerate as cross-asset volatility deflates (risk re-entering the system). Rather than a static low-vix level, we mark the TRANSITION with vix_level cross_down (de-stressing), then require ADX above a strength floor to confirm a real trend. Disconfirmer: a control run removes the vix_level cross_down gate \u2014 if ADX-floor trades earn the same outside vol-collapse windows, the de-stress transition is not driving returns and this is trend-following. Using cross_down here is the drift-safe choice for a transition signal; a separate static-level variant exists elsewhere.",
+  "catalyst": "vix_level crosses down (volatility deflating) while ADX is above its strength floor",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "vix_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "adx"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "adx_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_cross": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 28.0
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 19.0,
+      "hi": 30.0
+    },
+    "adx_exit": {
+      "kind": "float",
+      "lo": 12.0,
+      "hi": 20.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

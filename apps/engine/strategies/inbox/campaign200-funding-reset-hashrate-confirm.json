@@ -1,0 +1,102 @@
+{
+  "name": "funding_reset_hashrate_confirm",
+  "rationale": "Thesis: when perp funding has reset to neutral/negative (leverage flushed) AND miners are simultaneously committing more compute (BTC hashrate crossing up = producer conviction), the supply side signals a durable bottom rather than a dead-cat bounce. Disconfirmer: compare against a funding-only contrarian control; the hashrate cross-up must add expectancy, otherwise it is just buy-the-dip with extra steps.",
+  "catalyst": "BTC hashrate crosses up while funding_rate is low/neutral",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hr_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fund_max"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "fund_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "hr_cross": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.0
+    },
+    "fund_max": {
+      "kind": "float",
+      "lo": -0.005,
+      "hi": 0.002
+    },
+    "fund_exit": {
+      "kind": "float",
+      "lo": 0.004,
+      "hi": 0.01
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,102 @@
+{
+  "name": "hashrate_growth_lowvol_compression",
+  "rationale": "Thesis: rising BTC hashrate (miners committing, producer conviction) during a low realized-volatility regime (price coiled, energy building) sets up an asymmetric breakout \u2014 supply-side confidence plus a compressed spring. Disconfirmer: a hashrate-cross-only control; if the low-vol_realized filter does not improve expectancy, the compression-breakout premise is wrong and we keep only what survives.",
+  "catalyst": "BTC hashrate crosses up while vol_realized is compressed",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hr_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_max"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vol_realized"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vol_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "hr_cross": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.0
+    },
+    "vol_max": {
+      "kind": "float",
+      "lo": 0.2,
+      "hi": 0.55
+    },
+    "vol_exit": {
+      "kind": "float",
+      "lo": 0.65,
+      "hi": 1.1
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

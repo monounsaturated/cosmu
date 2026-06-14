@@ -1,0 +1,125 @@
+{
+  "name": "Slow-swing dual regime gate arms BB-z washout (long-hold, wide stop) reversion",
+  "rationale": "THESIS: same dual macro/vix arming + bb_z washout, but expressed as a SLOW structural swing (min-hold high, max-hold long, wide stop/tp, long time-stop) rather than a tactical bounce. The bet is that in an intact risk-on calm-vol regime a washed-out major mean-reverts over weeks, not days; holding through noise harvests the full reversion and cuts turnover to near-zero (fees negligible). DISCONFIRMER 1 (does horizon matter, or is it the same trade?): the fast-bounce sibling (spec-1) is the direct horizon control; if the slow version is not better risk-adjusted, the long hold only adds path risk. DISCONFIRMER 2 (just buy-the-washout-and-hold?): ungated long-hold bb_z control. DISCONFIRMER 3 (regime active?): macro lt sibling. DISCONFIRMER 4 (holdout). The long hold makes the holdout especially load-bearing \u2014 few independent trades, so a frozen-param recent slice that stays positive is the real test of non-overfit.",
+  "catalyst": "bb_z washout under a sustained risk-on calm-vol regime, held as a multi-week swing",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vix_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.6
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 16.0,
+      "hi": 26.0
+    },
+    "vix_exit": {
+      "kind": "float",
+      "lo": 26.0,
+      "hi": 42.0
+    },
+    "bbz_floor": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -1.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.15,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 12,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

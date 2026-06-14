@@ -1,0 +1,139 @@
+{
+  "name": "Hashrate re-arm into a building ADX trend \u2014 miner commitment meets directional strength",
+  "rationale": "ADX measures whether a trend HAS directional strength but is agnostic about whether the underlying conviction is structural or speculative. The thesis adds the slow-capital confirmation: when btc_hashrate crosses UP (miners re-arm \u2014 costly structural conviction) AND ADX is above a fitted floor (a real directional trend is in force, not chop) AND momentum is positive, the move is both directionally strong AND backed by the participants least able to flip on a whim. Go long spot. adx is BOUNDED and gated by gt on its raw level; btc_hashrate is drifting and read ONLY via cross_up/cross_down. Exit when the trend strength collapses (adx lt exit floor) or miners capitulate. Disconfirmer (core falsifier): the edge must come from miner re-commitment adding orthogonal info to a strong-trend filter. If dropping the btc_hashrate cross_up arm (keeping adx>floor + ret_Nd>0) matches or beats deflated Sharpe, hashrate is redundant and this collapses to the existing ADX-trend-follow spec. Low-confidence until OOS; the Gate decides.",
+  "catalyst": "btc_hashrate crosses up while ADX confirms a strong directional trend and momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 22
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hash_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "adx"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "adx_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "btc_hashrate"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "hash_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.45
+  },
+  "param_space": {
+    "hash_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "hash_exit": {
+      "kind": "float",
+      "lo": -1.5,
+      "hi": 0.5
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 35.0
+    },
+    "adx_exit": {
+      "kind": "float",
+      "lo": 12.0,
+      "hi": 22.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 35,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

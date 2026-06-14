@@ -1,0 +1,125 @@
+{
+  "name": "On-chain demand + ADX trend strength \u2014 active-address cross-up gates a confirmed-trend BTC/ETH long",
+  "rationale": "Thesis: a directional trend that is BOTH technically strong (high ADX) AND backed by accelerating on-chain demand (active-address cross_up) should continue. ADX is BOUNDED so a fitted floor binds and isolates 'a real trend exists'; btc_active_addresses drifts so it enters ONLY as a cross_up confirming fresh demand. The two are orthogonal in principle (one is price-derived trend strength, the other is network usage). Disconfirmer 1: keep only ADX>adx_floor and drop the address cross_up \u2014 if the deflated Sharpe holds, the on-chain leg is decorative. Disconfirmer 2: ADX has no direction, so without a positive-return check ADX could fire on strong downtrends; we add ret_Nd>0 as a direction gate, and if that single gate plus ADX explains the Sharpe (address cross permuted-lagged makes no difference), the on-chain confirmation is spurious. BTC/ETH, long-only spot.",
+  "catalyst": "btc_active_addresses crosses up while ADX shows a strong, positively-directed trend",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 16
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_active_addresses"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "addr_x"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "dir_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "dir_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "adx"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "adx_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "addr_x": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 35.0
+    },
+    "adx_exit": {
+      "kind": "float",
+      "lo": 12.0,
+      "hi": 22.0
+    },
+    "dir_lb": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 20,
+      "step": 1
+    },
+    "dir_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.04
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.09,
+      "hi": 0.34
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,130 @@
+{
+  "name": "Credit-spread stress GATE arms defensive sector-ETF rotation (HY OAS + macro risk-off)",
+  "rationale": "THESIS: HY credit_spread (ICE BofA HY OAS, +IC already flagged in our cross-asset scan) is equity's most-watched anxiety meter and leads equity vol. The ORTHOGONAL trade is not 'spreads wide => sell stocks' (a tired index-timing level trade) but a defensive/cyclical ROTATION: when HY OAS widens past a credit-stress level, investment-grade, cycle-insensitive defensive sectors (XLU/XLP/XLV) outperform cyclicals on a RELATIVE basis even when the index is flat. Hedge funds express this as a leveraged long/short sector pair; a long-only daily bot can only own the LONG defensive leg when the credit gate is armed, ranked by ret_Nd to hold the best-trending defensive sibling. That is a lower-capacity, lower-Sharpe slice the funds ignore. LOW-TURNOVER by construction: HY OAS regime crossings are infrequent, and credit_spread is BOUNDED so a fitted stress level genuinely binds. DISCONFIRMERS (authored as sibling controls in the cohort, must beat BOTH net of fees): (1) Always-defensive control = own XLU/XLP/XLV unconditionally with no credit gate; if it matches this gated spec, the credit regime adds nothing and we are merely long low-beta. (2) Spread-as-trend control = replace this BOUNDED level gate with a cross_up of credit_spread momentum; if the level gate does not beat the momentum gate, the 'regime' is just spread trend in disguise. macro_regime risk-off confirm (tanh composite, negative = risk-off) suppresses isolated single-asset spread blips that are not real cross-asset stress. The Gate disposes; an honest FAIL (defensives during stress = buy-the-low-beta-dip) is a valid outcome.",
+  "catalyst": "HY OAS credit_spread widens into a fitted stress band while macro_regime confirms cross-asset risk-off",
+  "universe": {
+    "venues": [
+      "yahoo"
+    ],
+    "asset_classes": [
+      "equity"
+    ],
+    "min_liquidity_usd": 50000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 30
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "credit_spread"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "stress_level"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "riskoff_confirm"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "rank_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "credit_spread"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "stress_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "riskon_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 3,
+    "max_position_pct": 0.34,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "stress_level": {
+      "kind": "float",
+      "lo": 3.5,
+      "hi": 9.0
+    },
+    "riskoff_confirm": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.1
+    },
+    "rank_floor": {
+      "kind": "float",
+      "lo": -0.05,
+      "hi": 0.05
+    },
+    "stress_exit": {
+      "kind": "float",
+      "lo": 3.0,
+      "hi": 5.0
+    },
+    "riskon_exit": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.4
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 30,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

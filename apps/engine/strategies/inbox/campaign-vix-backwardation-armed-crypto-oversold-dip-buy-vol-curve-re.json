@@ -1,0 +1,116 @@
+{
+  "name": "VIX backwardation-armed crypto oversold dip-buy (vol-curve regime gate)",
+  "rationale": "Thesis: the VIX term-structure SIGN (not level) is a cross-asset capitulation gate. When the curve flips into backwardation (front-month implied vol > longer-dated, i.e. vix_term_slope negative, ~20% of days), it marks acute equity-vol panic that historically precedes positive forward S&P returns (Macrosynergy, Quantpedia, pm-research). Crypto majors are high-beta risk-on and tightly coupled to equity-vol regimes, so a TradFi backwardation reading ARMS a mean-reversion long in crypto; the trigger is a local oversold (rsi). The regime is the arming switch, the oversold is the entry. Edge hedge funds skip: they express the vol-curve view via VIX FUTURES (capacity-rich, well-arbed); using the curve as a FREE cross-asset gate on long-only spot crypto majors is a low-capacity, un-automated cross-domain bridge they ignore because the crypto leg is too small. Low turnover: backwardation is rare AND must coincide with oversold, so this fires seldom \u2014 the 10bps taker fee barely bites. Disconfirmer 1 (is it just buy-the-dip?): the same rsi-oversold entry with NO vix_term_slope gate is a separate control spec; if the gated net-of-fee deflated Sharpe is not materially above it, the gate adds nothing and the 'edge' is plain buy-the-dip. Disconfirmer 2 (is backwardation the active ingredient, or any vol reading?): a sibling control takes the identical oversold entry in CONTANGO (positive slope) instead of backwardation; if the contango version is as good or better, the sign carries no information and it is level-in-disguise. Disconfirmer 3 (holdout): the purged+embargoed recent slice must stay positive or it is cycle-position-in-disguise. The Gate disposes; an honest FAIL is a valid outcome.",
+  "catalyst": "VIX term structure in backwardation (front > back, negative slope) coinciding with a crypto major oversold (low rsi)",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 15
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_term_slope"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "backwardation_arm"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "oversold_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_recover_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "vix_term_slope"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "contango_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "backwardation_arm": {
+      "kind": "float",
+      "lo": -0.1,
+      "hi": 0.02
+    },
+    "oversold_floor": {
+      "kind": "float",
+      "lo": 25.0,
+      "hi": 40.0
+    },
+    "rsi_recover_exit": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 65.0
+    },
+    "contango_exit": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.1
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 15,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,125 @@
+{
+  "name": "Funding-fear confluence with momentum-recovery confirm (no falling-knife)",
+  "rationale": "Pure capitulation entries can keep falling (the falling-knife problem). This spec arms the funding+fear composite but adds a SHORT-lookback recovery confirm: enter long only when funding is soft (below ceiling) AND Fear&Greed is fearful AND the most-recent short-window return has already turned UP (ret over a short lookback above a small floor) \u2014 i.e. wait for the first bounce after the flush rather than catching the knife. Funding+fear establish the contrarian context; the tiny positive momentum confirms the market has stopped falling. Funding is a crowding filter (null carry); its ceiling straddles realized levels so it bites. The short-lookback ret floor is small and positive so it filters timing, not regime. DISCONFIRMER: the recovery-confirm leg IS the test \u2014 a sibling WITHOUT the ret confirm is in this cohort. If the unconfirmed composite already matches the deflated Sharpe, the confirm is decorative; if the strategy only works WITH a meaningful positive momentum floor, then the edge is largely momentum-in-disguise and the fear/funding contrarian thesis is weak. Holdout must hold. Gate disposes.",
+  "catalyst": "fear + soft funding followed by first short-window upturn",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "recover_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "recover_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "funding_ceiling": {
+      "kind": "float",
+      "lo": -5e-05,
+      "hi": 6e-05
+    },
+    "fear_floor": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 38.0
+    },
+    "recover_lookback": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 5,
+      "step": 1
+    },
+    "recover_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.03
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 78.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

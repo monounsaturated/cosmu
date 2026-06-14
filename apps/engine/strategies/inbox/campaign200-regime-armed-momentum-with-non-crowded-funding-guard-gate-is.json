@@ -1,0 +1,134 @@
+{
+  "name": "Regime-armed momentum with non-crowded funding guard (gate is macro, not the funding filter)",
+  "rationale": "THESIS: A risk-on macro_regime tells you the tape rewards risk; funding_rate (BOUNDED, ~+/-0.01) tells you whether the perp crowd is already maximally long. The worst trend entry is into a euphoric macro window where funding is ALSO blown out \u2014 that is a crowded long primed for a long-squeeze. So I arm spot momentum only when macro_regime>floor AND ret_Nd>mom_floor AND funding_rate<crowd_ceiling (positioning not yet crowded). The macro gate is the orthogonal regime piece; the funding ceiling is squeeze-avoidance. funding_rate is a populated BOUNDED feature so the lt level threshold is honest. DISCONFIRMER: run the SAME entry with macro_regime DROPPED but the funding_rate<crowd_ceiling guard kept (funding-gated momentum). If the funding-only version reproduces the macro+funding net-of-fee Sharpe, the macro gate is redundant to a positioning filter and adds no orthogonal macro info \u2014 falsified. The macro gate must add net edge over the funding-only version.",
+  "catalyst": "Risk-on macro regime with positive trend but perp funding not yet crowded-long \u2014 the window arms momentum before the crowd piles in.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 16
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "crowd_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "crowd_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 24,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "crowd_ceiling": {
+      "kind": "float",
+      "lo": 0.0003,
+      "hi": 0.0009
+    },
+    "crowd_exit": {
+      "kind": "float",
+      "lo": 0.0009,
+      "hi": 0.0018
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

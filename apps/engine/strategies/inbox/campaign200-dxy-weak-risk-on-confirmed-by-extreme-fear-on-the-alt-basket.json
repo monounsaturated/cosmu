@@ -1,0 +1,116 @@
+{
+  "name": "DXY-weak risk-on confirmed by extreme fear on the alt basket",
+  "rationale": "Two independent cross-asset risk-on tells must agree: (1) the dollar is actively WEAKENING (loosening conditions) and (2) crypto sentiment is at an extreme-fear trough (bounded Fear&Greed). The conjunction is the thesis \u2014 a dollar-driven liquidity tailwind landing on washed-out sentiment in higher-beta alts. dxy is drifting so it is read ONLY as a cross (cross_down arms); Fear&Greed is bounded 0-100 so a fitted lt level is legitimate. DISCONFIRMER: a fear-greed-extreme-fear-only control (no dollar gate) must NOT match this on the Gate \u2014 if sentiment alone explains the edge, the dollar leg is redundant and this is a STOP. CONTROL EXIT on dxy cross_up isolates the dollar-weak window.",
+  "catalyst": "dollar weakening (dxy cross_down) coincides with extreme-fear sentiment on the alt basket",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "dxy"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "dxy_arm"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fg_fear"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "dxy"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "dxy_disarm"
+        }
+      },
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "fg_greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "dxy_arm": {
+      "kind": "float",
+      "lo": 95.0,
+      "hi": 108.0
+    },
+    "dxy_disarm": {
+      "kind": "float",
+      "lo": 98.0,
+      "hi": 112.0
+    },
+    "fg_fear": {
+      "kind": "float",
+      "lo": 12.0,
+      "hi": 32.0
+    },
+    "fg_greed_exit": {
+      "kind": "float",
+      "lo": 55.0,
+      "hi": 78.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

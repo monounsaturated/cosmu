@@ -1,0 +1,142 @@
+{
+  "name": "Hashrate re-arm under uncrowded funding \u2014 structural conviction, no leverage froth",
+  "rationale": "A momentum trend backed by miner commitment is most durable when it is NOT yet a crowded leverage trade. The thesis pairs two orthogonal confirmations: btc_hashrate crosses UP (slow capital \u2014 miners \u2014 re-arm, a structural vote of confidence) WHILE perp funding sits BELOW a fitted ceiling (fast capital is not yet crowded long, so there is no over-levered froth waiting to unwind) AND momentum is positive. The combination distinguishes a trend in its durable early phase (slow money in, fast money not yet euphoric) from a late, fragile, over-levered one. Go long spot, direction +1. funding is BOUNDED and read via lt on its raw clamped level; the ceiling [-2e-5,1.0e-4] straddles the realized median up to the +1e-4 cap so the filter genuinely bites (not above realized max). btc_hashrate is drifting, used ONLY via cross_up/cross_down. funding_feature stays null \u2014 funding is a crowding FILTER, not a carry to harvest (spot has no funding accrual). Disconfirmer (core falsifier): the edge must come from miner re-commitment adding orthogonal info to the funding-gated trade. If replacing the btc_hashrate cross_up arm with an always-true pass (keeping funding<ceiling + ret_Nd>floor) matches or beats deflated Sharpe, hashrate is redundant and this collapses to the existing funding-gated-momentum spec. Low-confidence until OOS; the Gate decides.",
+  "catalyst": "btc_hashrate crosses up while funding is uncrowded (below ceiling) and momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 16
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hash_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lb"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "btc_hashrate"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "hash_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.45
+  },
+  "param_space": {
+    "hash_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "hash_exit": {
+      "kind": "float",
+      "lo": -1.5,
+      "hi": 0.5
+    },
+    "funding_ceiling": {
+      "kind": "float",
+      "lo": -2e-05,
+      "hi": 0.0001
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 30,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": -0.05,
+      "hi": 0.01
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

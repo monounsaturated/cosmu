@@ -1,0 +1,116 @@
+{
+  "name": "Fed-dovish liquidity-easing regime gate (macro_regime-armed) firing a falling-DXY crypto long",
+  "rationale": "Thesis: the paper's Fed-dovish channel predicted BTC vol at t=3.63 but was EXPLICITLY regime-dependent \u2014 it only paid inside the 2024-25 easing cycle and decayed afterward. The tradable read is therefore CONDITIONAL, not a standalone signal: a dollar-liquidity-easing repricing is a risk-on trigger for crypto ONLY while the macro regime is already in its easing/risk-on band; outside that band the same impulse is noise. We proxy the un-ingested Polymarket Fed-cut contract with a falling-DXY cross (a dollar-easing impulse) that is ARMED only when macro_regime sits above a fitted risk-on/easing floor. macro_regime is a BOUNDED FRED composite (curve slope, real rates, liquidity), so a fitted floor genuinely binds; dxy is a DRIFTING level so it enters ONLY via cross_down (the impulse), never a raw lt/gt. The regime-conditionality is exactly what a naive single-signal backtest misses, and what makes this look like an edge funds 'missed' \u2014 it is fragile by construction. DISCONFIRMER: the control is dxy cross_down ALONE, with NO macro_regime arm \u2014 that is the already-EXHAUSTED 'dollar-weakness as sole signal' and it must FAIL net of fees. If the regime-gated version does not beat the bare dxy cross net of the 10bps taker fee, the regime arm is cosmetic and this is a STOP. We further expect the gate to DEGRADE in the non-easing sub-period (confirming genuine regime-dependence) yet still NET-survive the full purged holdout, not just the easing cherry-pick. Low turnover by design: a cross-down impulse fires rarely and a 10-day time stop caps churn so the taker fee does not eat the edge.",
+  "catalyst": "a dollar-liquidity-easing (falling-DXY) impulse firing INSIDE a risk-on / easing macro regime",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_arm_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "dxy"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "dxy_easing_level"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "dxy"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "dxy_exit_level"
+        }
+      },
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_close_floor"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_arm_floor": {
+      "kind": "float",
+      "lo": -0.4,
+      "hi": 0.5
+    },
+    "dxy_easing_level": {
+      "kind": "float",
+      "lo": 95.0,
+      "hi": 110.0
+    },
+    "dxy_exit_level": {
+      "kind": "float",
+      "lo": 96.0,
+      "hi": 112.0
+    },
+    "regime_close_floor": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.4
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

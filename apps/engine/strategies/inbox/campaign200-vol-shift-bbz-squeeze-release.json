@@ -1,0 +1,87 @@
+{
+  "name": "vol_shift_bbz_squeeze_release",
+  "rationale": "A vol_realized cross_up that fires while price is still centered (bb_z near zero) captures the release of a low-vol squeeze BEFORE the move shows up in price extension. Thesis: arm long on vol_realized cross_up while bb_z is near the mean. Disconfirmer: require bb_z within a near-zero band \u2014 if the edge instead needs an already-elevated bb_z it is chasing an extended breakout, not timing the squeeze release that the vol-regime shift is supposed to anticipate.",
+  "catalyst": "realized vol crosses up while price is still centered",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "vol_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "bbz_band"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": []
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_cross": {
+      "kind": "float",
+      "lo": 0.015,
+      "hi": 0.06
+    },
+    "bbz_band": {
+      "kind": "float",
+      "lo": -0.6,
+      "hi": 0.8
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

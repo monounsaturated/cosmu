@@ -1,0 +1,116 @@
+{
+  "name": "Triple confluence, slow swing: fear + VIX + funding flush with a long 25-day patience hold",
+  "rationale": "Thesis: the cross-market stress triple (fear_greed extreme-low + vix_level elevated + funding_rate flushed) marks a regime bottom whose RECOVERY plays out over weeks, not days. A patient long hold (up to 25d) should harvest the full mean-reversion-to-trend leg, not just the dead-cat bounce, while the rare entry keeps turnover \u2014 and thus fees \u2014 negligible. All three axes bounded levels. Long-only spot. Disconfirmer: run the SAME triple with a SHORT max-hold (\u22648 days); the slow version must beat the fast one on deflated Sharpe net of fees. If the short hold matches, the edge is the immediate bounce and the long hold only adds decay and whipsaw \u2014 there is no slow-reversion premium. Honest FAIL valid.",
+  "catalyst": "cross-market stress triple opening a multi-week recovery window",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_extreme"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_spike"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_flush"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "fear_extreme": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 26
+    },
+    "vix_spike": {
+      "kind": "float",
+      "lo": 21,
+      "hi": 40
+    },
+    "funding_flush": {
+      "kind": "float",
+      "lo": -0.0004,
+      "hi": 5e-05
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 75
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.15,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

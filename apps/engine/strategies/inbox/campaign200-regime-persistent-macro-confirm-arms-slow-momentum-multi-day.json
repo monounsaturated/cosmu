@@ -1,0 +1,146 @@
+{
+  "name": "Regime + persistent macro confirm arms slow momentum (multi-day regime, not a one-day blip)",
+  "rationale": "THESIS: A one-day reading above the risk-on floor can be macro composite noise; what matters for a slow swing trade is that the regime has been risk-on for a SUSTAINED window. I require macro_regime>floor NOW and ALSO macro_regime>persist_floor as read persist_lookback days ago \u2014 i.e. the risk-on regime has held for days, not flickered. Only then do I arm a slow 30d-ish trend. This filters the whipsaw entries where the composite straddles its floor. macro_regime is BOUNDED so the lagged level read is a legitimate persistence check. DISCONFIRMER: run the SAME slow-momentum entry with ONLY the spot macro_regime>floor gate (drop the lagged persistence condition). If the spot-only gate reproduces the persistent-gate net-of-fee Sharpe, the multi-day persistence requirement carries no info and this is just a single-day level gate \u2014 falsified. The persistence condition must reduce whipsaw and add net edge over the spot-only gate. Holding across a persistent regime keeps taker churn low.",
+  "catalyst": "Macro regime has held risk-on for several days (spot AND lagged read both above floor) while a slow trend is up \u2014 a sustained window arms slow momentum.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime",
+        "lookback": {
+          "param": "persist_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "persist_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lookback"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "persist_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.5
+    },
+    "persist_lookback": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 7,
+      "step": 1
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 25,
+      "hi": 45,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.07
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": -0.07,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,139 @@
+{
+  "name": "Hashrate re-arm in a risk-on macro regime \u2014 slow on-chain capital aligned with macro tailwind",
+  "rationale": "Crypto trends backed by miner commitment are far more likely to extend when the macro backdrop is also risk-on rather than fighting a tightening tape. The thesis stacks two orthogonal slow signals: btc_hashrate crosses UP (on-chain slow capital \u2014 miners \u2014 re-arms) WHILE the composite macro_regime is above a fitted floor (the macro backdrop is risk-supportive) AND momentum is positive. The combination requires BOTH the network-internal conviction signal and the external liquidity/risk backdrop to agree before going long spot. macro_regime is a BOUNDED composite gated by gt on its level; btc_hashrate is drifting and read ONLY via cross_up/cross_down. Exit when macro turns (macro_regime lt exit) or miners capitulate. Disconfirmer (core falsifier): the edge must come from miner re-commitment adding orthogonal info to the macro gate. If replacing the btc_hashrate cross_up arm with an always-true pass (keeping macro_regime>floor + ret_Nd>0) matches or beats deflated Sharpe, hashrate is redundant and this collapses to a macro-armed momentum trade. Low-confidence until OOS; the Gate decides.",
+  "catalyst": "btc_hashrate crosses up while macro_regime is risk-on and momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hash_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "macro_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "macro_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "btc_hashrate"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "hash_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.45
+  },
+  "param_space": {
+    "hash_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "hash_exit": {
+      "kind": "float",
+      "lo": -1.5,
+      "hi": 0.5
+    },
+    "macro_floor": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "macro_exit": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 12,
+      "hi": 45,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.07
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

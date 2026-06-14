@@ -1,0 +1,139 @@
+{
+  "name": "Triple confluence with momentum-confirm: fear + VIX + funding flush, only after a positive 3d turn",
+  "rationale": "Thesis: capitulation triples often fire mid-crash (falling knife). Adding a short-horizon momentum CONFIRM \u2014 require ret_3d to have already turned positive (the first green bar after the flush) \u2014 should convert a knife-catch into a confirmed bottom, trading a touch of upside for a much higher hit-rate and shallower drawdown. Core stress triple: fear_greed extreme-low, vix_level elevated, funding_rate flushed. ret_3d is a SIGNED return used via its lookback param and a positive-side threshold (the confirm), never a drifting level. Long-only spot. Disconfirmer: must beat the SAME triple WITHOUT the ret_3d confirm (the pure knife-catch) on deflated Sharpe after fees AND show lower max-drawdown; if the knife-catch matches, the momentum confirm is decorative. Honest FAIL valid.",
+  "catalyst": "stress triple followed by the first positive 3-day return (confirmed turn)",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 16
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_extreme"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_spike"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_flush"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_confirm"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "vix_calm_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "fear_extreme": {
+      "kind": "float",
+      "lo": 12,
+      "hi": 28
+    },
+    "vix_spike": {
+      "kind": "float",
+      "lo": 20,
+      "hi": 38
+    },
+    "funding_flush": {
+      "kind": "float",
+      "lo": -0.0004,
+      "hi": 5e-05
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 5,
+      "step": 1
+    },
+    "mom_confirm": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.04
+    },
+    "vix_calm_exit": {
+      "kind": "float",
+      "lo": 15,
+      "hi": 24
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 16,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

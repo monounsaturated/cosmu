@@ -1,0 +1,116 @@
+{
+  "name": "Goldilocks VIX band (between) + risk-on macro arms RSI-oversold reversion",
+  "rationale": "THESIS: reversion edge is non-monotonic in vol \u2014 too calm means no dislocation to harvest, too panicked means regime break. The sweet spot is a MIDDLE vix band (between a fitted lo and hi) where dislocations are real but the regime is intact, AND macro_regime is risk-on. RSI-oversold is the trigger. Using vix between (not lt/gt) is the structural novelty vs the calm-only and panic-only siblings. DISCONFIRMER 1 (is the band real, or is one edge doing all the work?): two siblings \u2014 vix lt-only (calm) and vix gt-only (panic) \u2014 bracket this; if either single-sided cut matches the band, the 'band' is a relabelled one-sided cut. DISCONFIRMER 2 (just buy-the-dip?): bare RSI-oversold ungated baseline. DISCONFIRMER 3 (macro active?): drop macro_regime, keep the vix band. DISCONFIRMER 4 (holdout): frozen-param recent slice positive.",
+  "catalyst": "vix_level inside a fitted moderate band AND macro_regime risk-on with RSI oversold",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 11
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "vix_band"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_band": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 32.0
+    },
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.6
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 25.0,
+      "hi": 40.0
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 62.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

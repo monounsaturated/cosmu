@@ -1,0 +1,172 @@
+{
+  "name": "Tri-gauge risk-on confluence (low VIX + tight credit + calm put/call) arms the SPY/QQQ trend",
+  "rationale": "Thesis: no single vol/credit/sentiment gauge times equities reliably (VIX-alone and credit-alone both fail in different regimes). The orthogonal structure is CONFLUENCE: require three independent risk channels to AGREE that premia are being paid before taking the broad-index trend long \u2014 vix_level below a fitted ceiling (implied-vol complacency), credit_spread below a fitted tight level (credit calm), putcall_ratio below a fitted complacency level (options crowd not hedging), AND ret_Nd>0 (trend up). Because all three gauges are BOUNDED, their fitted levels genuinely bind, and their AGREEMENT is a higher-conviction, lower-false-positive regime tag than any one alone. Slow, daily, long-only on liquid index ETFs \u2014 the boring low-capacity no-leverage trade a vol desk skips. Disconfirmers: (1) Index-trend-alone (ret_Nd>0 only, no gauges) \u2014 if the confluence does not beat it, the regime filter is dead weight. (2) Each single-gauge gate run separately (vix-only, credit-only, putcall-only, each paired with the same trend) \u2014 if any ONE alone matches the three-gauge confluence, the agreement adds no info and the simpler single gate wins. The confluence must beat the best single-gauge variant AND the un-gated trend, net of fees and net of the return given up by sitting out non-confluent windows.",
+  "catalyst": "three independent risk gauges (implied vol, credit, options positioning) simultaneously in their calm/risk-on zone while the index trend is up",
+  "universe": {
+    "venues": [
+      "yahoo"
+    ],
+    "asset_classes": [
+      "equity"
+    ],
+    "min_liquidity_usd": 100000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "credit_spread"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "credit_tight"
+      }
+    },
+    {
+      "feature": {
+        "name": "putcall_ratio"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "pc_calm"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "trend_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vix_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "credit_spread"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "credit_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "putcall_ratio"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "pc_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "trend_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 2,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 14.0,
+      "hi": 22.0
+    },
+    "credit_tight": {
+      "kind": "float",
+      "lo": 2.0,
+      "hi": 4.0
+    },
+    "pc_calm": {
+      "kind": "float",
+      "lo": 0.7,
+      "hi": 1.05
+    },
+    "trend_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.03
+    },
+    "vix_exit": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 28.0
+    },
+    "credit_exit": {
+      "kind": "float",
+      "lo": 3.5,
+      "hi": 5.5
+    },
+    "pc_exit": {
+      "kind": "float",
+      "lo": 1.0,
+      "hi": 1.4
+    },
+    "trend_exit": {
+      "kind": "float",
+      "lo": -0.03,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.25
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

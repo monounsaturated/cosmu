@@ -1,0 +1,49 @@
+{
+  "name": "Fear & Greed extreme-fear contrarian long (spot)",
+  "rationale": "The Crypto Fear & Greed index (alternative.me, 0-100, bounded and mean-reverting) is the canonical crowd-sentiment gauge: extreme fear marks forced/emotional capitulation that historically mean-reverts at a swing horizon. Because the index is BOUNDED (not a drifting level), a fitted floor genuinely binds across the whole sample — it is NOT the always-true/false trap that kills raw-level features (phase0-social §4). Hypothesis: entering LONG spot when Fear & Greed is in its extreme-fear band captures the post-capitulation bounce; we hold until sentiment recovers (signal exit) or risk limits hit. This is a deliberately LOW-TURNOVER signal (extremes are infrequent, holds run days-to-weeks) so the thin per-trade edge is not eaten by spot taker fees — the failure mode that killed the high-turnover intraday families. Disconfirmer 1 (orthogonality): a price-only oversold control (RSI/drawdown entry) is in the same cohort — if it matches or beats this spec's deflated Sharpe, the edge is just 'buy the dip', not sentiment, and Fear & Greed adds no orthogonal information. Disconfirmer 2 (regime depth): the index has ~3 years of history over essentially one bull-bear cycle; the purged+embargoed holdout (recent slice) must stay positive, else this is cycle-position-in-disguise that reverses out-of-sample. The Gate is the disposal layer — an honest FAIL is a valid result.",
+  "catalyst": "Fear & Greed enters the extreme-fear band (crowd capitulation)",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": { "name": "fear_greed" },
+      "op": "lt",
+      "threshold": { "param": "fear_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "fear_greed" },
+        "op": "gt",
+        "threshold": { "param": "greed_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "fear_floor":  { "kind": "float", "lo": 10.0, "hi": 35.0 },
+    "greed_exit":  { "kind": "float", "lo": 50.0, "hi": 80.0 },
+    "stop":        { "kind": "float", "lo": 0.06, "hi": 0.20 },
+    "tp":          { "kind": "float", "lo": 0.08, "hi": 0.35 },
+    "time_stop":   { "kind": "int",   "lo": 5,    "hi": 25,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

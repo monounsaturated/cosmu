@@ -1,0 +1,146 @@
+{
+  "name": "Calm-tape ADX trend (low-vol-confirmed strong trend)",
+  "rationale": "THESIS: ADX measures trend STRENGTH but not trend QUALITY \u2014 a high ADX during a volatile blow-off is a fragile trend that snaps, whereas high ADX in a calm tape is a durable trend that persists. We require a strong directional trend (ADX above a fitted floor) ARMED by low realized vol (vol_realized BOUNDED, lt-ceiling) so we only ride orderly trends. The vol gate is meant to filter the fragile high-ADX-high-vol spikes that ADX-alone cannot distinguish. DISCONFIRMER: run the IDENTICAL ADX>floor + ret_Nd>0 rule with the vol_realized<ceiling gate REMOVED (ADX-alone). If calm-armed and ungated deliver indistinguishable deflated-Sharpe net of fees, ADX already encodes everything the vol gate would and the calm filter is redundant.",
+  "catalyst": "ADX confirms a strong trend while realized vol is low \u2014 an orderly, durable directional move rather than a volatile spike.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 22
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized",
+        "lookback": {
+          "param": "vol_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "adx"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "adx_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "vol_realized",
+          "lookback": {
+            "param": "vol_lb"
+          }
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vol_ceiling"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_lb": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 28,
+      "step": 1
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.22,
+      "hi": 0.55
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 35.0
+    },
+    "adx_exit": {
+      "kind": "float",
+      "lo": 12.0,
+      "hi": 20.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 14,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.38
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,125 @@
+{
+  "name": "Dual regime gate (risk-on macro + calm VIX) arms RSI-oversold reversion (large-cap majors)",
+  "rationale": "THESIS: RSI-oversold dip-buying works only when the macro window is open and equity vol is calm; the oversold reading is momentum-relative, the gate is the orthogonal arming switch. DUAL GATE: macro_regime above a fitted risk-on level AND vix_level below a non-extreme ceiling. RSI < floor is the trigger. This is the RSI sibling of the bb_z washout family (a different oversold definition: momentum-relative vs band-relative), run on the most macro-coupled large caps (BTCUSDT, ETHUSDT, BNBUSDT). DISCONFIRMER 1 (just buy-the-dip?): the bare RSI-oversold entry with NO dual gate (fear-greed/feargreed family already has ungated dip controls) must be the baseline; gated deflated Sharpe must clear it net of the extra exits. DISCONFIRMER 2 (is RSI or bb_z carrying the signal?): the spec-1 bb_z sibling under the same gate is the cross-check; if RSI-gated is no better than bb_z-gated they are the same trade and only one survives parsimony. DISCONFIRMER 3 (vix the active ingredient?): a sibling that removes ONLY the vix gate isolates whether macro alone suffices. DISCONFIRMER 4 (holdout): recent purged slice stays positive.",
+  "catalyst": "RSI prints oversold while macro_regime is risk-on and vix_level is calm",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.6
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 15.0,
+      "hi": 25.0
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 25.0,
+      "hi": 40.0
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 65.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 15,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,119 @@
+{
+  "name": "defi_tvl_cross_dual_horizon_momentum_alignment",
+  "rationale": "Thesis: a TVL up-cross matters most when short- AND medium-horizon momentum agree (both positive) \u2014 capital inflow into an asset already trending on two timescales is the strongest confluence \u2014 so we require a TVL cross plus two ret_Nd filters at different lookbacks. Disconfirmer: gate the dual-momentum alignment alone (two ret_Nd gt, no TVL cross) over the same window \u2014 if multi-horizon trend agreement alone earns the return, the TVL cross is redundant and this is just stacked momentum.",
+  "catalyst": "defi_tvl up-cross while both short and medium momentum are positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 6
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 22
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb_short"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_min_short"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb_long"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_min_long"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": []
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tvl_cross": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "mom_lb_short": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 7,
+      "step": 1
+    },
+    "mom_min_short": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.04
+    },
+    "mom_lb_long": {
+      "kind": "int",
+      "lo": 12,
+      "hi": 25,
+      "step": 1
+    },
+    "mom_min_long": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

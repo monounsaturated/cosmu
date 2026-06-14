@@ -35,6 +35,21 @@ image = (
     .run_commands("pip install /root/engine")
 )
 
+# Crypto bar cache for the gate sweep. Binance's REST API geo-blocks cloud IPs (Modal is US) → a live fetch
+# returns nothing, so the gate sees "no-data" and refuses every spec. We bundle the LOCAL daily bar cache into
+# the image (deterministic, point-in-time, ~a few MB for 1d) and point COSMU_BINANCE_CACHE at it. Opt-in via
+# COSMU_BARS_SRC (set on the operator Mac, e.g. /Users/.../.cosmu/market_data) so the committed image stays
+# Mac-path-free; only the daily files ship (1h/4h ignored to keep the layer lean). The bars never leave the
+# image; all WRITES still go to the same Supabase.
+_BARS_SRC = os.environ.get("COSMU_BARS_SRC")
+_BARS_REMOTE = "/root/market_data"
+if _BARS_SRC and Path(_BARS_SRC).exists():
+    # Bake COSMU_BINANCE_CACHE into the image env so the CONTAINER (where COSMU_BARS_SRC is unset) points the
+    # bar loader at the bundled daily cache — without this the runtime never knows the bars were shipped.
+    image = image.add_local_dir(
+        _BARS_SRC, remote_path=_BARS_REMOTE, copy=True, ignore=["**/*_1h.json", "**/*_4h.json"]
+    ).env({"COSMU_BINANCE_CACHE": _BARS_REMOTE})
+
 # Runtime env: the SAME values the Railway backend reads. APP_ENV=production makes Settings read process env
 # only (no committed file). Sync it from .env.local with:  python3 scripts/sync_modal_secret.py
 engine_secret = modal.Secret.from_name("cosmu-engine")
@@ -47,6 +62,7 @@ def _run(module_args: list[str]) -> int:
     """Run `python -m <module> [args…]` against the installed engine, streaming output back to the caller."""
     env = {**os.environ}
     env.setdefault("APP_ENV", "production")  # process-env secrets only, like the deployed engine
+    # COSMU_BINANCE_CACHE is baked into the image env when bars are bundled (see above) → inherited here.
     proc = subprocess.run([sys.executable, "-m", *module_args], cwd="/root/engine", env=env)
     return proc.returncode
 

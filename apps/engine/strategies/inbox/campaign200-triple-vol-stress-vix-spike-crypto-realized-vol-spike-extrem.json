@@ -1,0 +1,116 @@
+{
+  "name": "Triple vol-stress: VIX spike + crypto realized-vol spike + extreme fear (cross-market vol agreement)",
+  "rationale": "Thesis: a forced-selling climax shows up as a vol spike in BOTH the equity-options market (vix_level) AND crypto's own realized vol (vol_realized), gauged independently, while sentiment (fear_greed) is at an extreme low. Requiring both vol gauges to spike together filters single-market vol noise (an equity-only VIX pop, or a crypto-only liquidation) down to genuine cross-market panic. All three are bounded levels used via gt/lt. Long-only spot, short hold to harvest the post-climax bounce. Disconfirmer: must beat (a) vol_realized-spike ALONE and (b) vix-spike ALONE on deflated Sharpe after fees \u2014 if either single vol gauge matches, requiring both vol markets plus sentiment over-fits a redundant vol axis. Honest FAIL valid.",
+  "catalyst": "simultaneous VIX and crypto realized-vol spikes during extreme fear",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_spike"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "rv_spike"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_extreme"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vol_realized"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "rv_calm_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "vix_spike": {
+      "kind": "float",
+      "lo": 22,
+      "hi": 42
+    },
+    "rv_spike": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.09
+    },
+    "fear_extreme": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 26
+    },
+    "rv_calm_exit": {
+      "kind": "float",
+      "lo": 0.018,
+      "hi": 0.04
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 12,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

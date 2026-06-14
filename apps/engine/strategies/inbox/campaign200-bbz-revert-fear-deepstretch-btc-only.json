@@ -1,0 +1,87 @@
+{
+  "name": "bbz_revert_fear_deepstretch_btc_only",
+  "rationale": "On the deepest, most liquid name (BTC alone via min_instruments) a very deep bb_z stretch during extreme fear is the cleanest sentiment-capitulation reversion with the lowest knife-catch risk. Disconfirmer: fear_greed must be below an extreme-fear cap; if the deep bb_z cross_up on BTC reverts just as well outside extreme fear, the fear gate carries no information and this is plain BTC dip-buying. Time-stop exit only, no bb_z signal exit, to isolate the entry edge.",
+  "catalyst": "deep bb_z recovery on BTC during extreme fear",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 15
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "bbz_deep"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "extreme_fear"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": []
+  },
+  "risk": {
+    "max_concurrent_positions": 2,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "bbz_deep": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -1.5
+    },
+    "extreme_fear": {
+      "kind": "float",
+      "lo": 12,
+      "hi": 28
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

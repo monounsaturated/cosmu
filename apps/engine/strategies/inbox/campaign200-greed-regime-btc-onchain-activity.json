@@ -1,0 +1,103 @@
+{
+  "name": "greed_regime_btc_onchain_activity",
+  "rationale": "Persistent greed backed by RISING network usage (BTC active addresses breaking above trend) reflects real adoption-driven risk-on, not just price-chasing sentiment. We require greed plus a btc_active_addresses cross_up. Disconfirmer: a control without the activity cross \u2014 if sentiment-only greed performs identically, on-chain usage adds nothing. btc_active_addresses drifts, so it is used ONLY via cross_up.",
+  "catalyst": "greed regime with rising BTC on-chain activity",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 22
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "greed_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "btc_active_addresses"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "addr_ma"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 4,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "greed_floor": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 70
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 40,
+      "hi": 50
+    },
+    "addr_ma": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 30,
+      "step": 1
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

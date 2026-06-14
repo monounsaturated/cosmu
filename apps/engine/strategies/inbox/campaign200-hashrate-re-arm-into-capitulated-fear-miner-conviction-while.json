@@ -1,0 +1,139 @@
+{
+  "name": "Hashrate re-arm into capitulated fear \u2014 miner conviction while the crowd panics",
+  "rationale": "Sentiment capitulation marks washed-out price but does not, by itself, time the turn \u2014 fear can persist as the trend keeps bleeding. The orthogonal confirmation is the people who CANNOT panic-sell their position: miners. The thesis: when sentiment is in capitulated fear (fear_greed BELOW a fitted floor) AND btc_hashrate crosses UP (miners are still deploying / re-energizing hashpower into the panic \u2014 a costly vote that the chain stays valuable) AND nascent momentum has turned positive (ret_Nd>floor), the miner re-arm is the structural signal that the strong hands are accumulating while weak hands flush. Go long spot. fear_greed is BOUNDED so it is gated by lt on its raw 0-100 level; btc_hashrate is drifting so it appears ONLY as cross_up/cross_down. Exit on sentiment normalizing back above a ceiling or on miner capitulation. Disconfirmer (core falsifier): the edge must come from miner re-commitment, not from buying fear. If replacing the btc_hashrate cross_up arm with an always-true pass (keeping fear_greed<floor and ret_Nd>0) yields equal-or-better deflated Sharpe, hashrate is redundant and this is the already-covered capitulation/fear-dip trade. Low-confidence until OOS; the Gate decides.",
+  "catalyst": "btc_hashrate crosses up while fear_greed sits in capitulated-fear territory and momentum has turned positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hash_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fg_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "fg_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "btc_hashrate"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "hash_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "hash_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "hash_exit": {
+      "kind": "float",
+      "lo": -1.5,
+      "hi": 0.5
+    },
+    "fg_floor": {
+      "kind": "float",
+      "lo": 15.0,
+      "hi": 40.0
+    },
+    "fg_exit": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 75.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 15,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.04
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

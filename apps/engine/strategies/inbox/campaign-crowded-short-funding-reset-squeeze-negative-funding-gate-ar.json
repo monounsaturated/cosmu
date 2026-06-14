@@ -1,0 +1,116 @@
+{
+  "name": "Crowded-short funding RESET squeeze (negative-funding gate ARMS, RSI turn-up TRIGGERS the long)",
+  "rationale": "Funding-as-crowding done RIGHT (not funding-carry). Deeply NEGATIVE perp funding means shorts are crowded and paying to hold the short \u2014 a positioning extreme that historically precedes relief rallies / short-squeezes in mid-cap majors. Funding is used ONLY as a regime GATE that arms a long; the actual entry is a price-stabilization TRIGGER (RSI crossing up out of oversold) so we never catch a falling knife. Long-only spot rides the squeeze up. DISCONFIRMERS the gate must beat on net deflated Sharpe: (1) plain reversion control = same RSI cross_up trigger with NO funding gate (proves funding adds signal over buy-the-dip); (2) funding-carry baseline = long whenever funding negative with no price trigger (the KNOWN-FAILED approach this must beat); (3) funding LEVEL as a continuous lt signal = the DRIFTING-level trap (handled by gating the level + requiring a cross_up confirmation rather than trading the raw level).",
+  "catalyst": "crowded-short capitulation: extreme-negative perp funding while price stabilizes (RSI turns up out of oversold)",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "rsi_trigger"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "funding_normalized"
+        }
+      },
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_floor": {
+      "kind": "float",
+      "lo": -0.0008,
+      "hi": -0.0001
+    },
+    "rsi_trigger": {
+      "kind": "float",
+      "lo": 28,
+      "hi": 42
+    },
+    "funding_normalized": {
+      "kind": "float",
+      "lo": -5e-05,
+      "hi": 0.0002
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 68
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 12,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,116 @@
+{
+  "name": "rsi_reversion_adx_low_vix_calm_xrp_ada_link",
+  "rationale": "Mid-cap alt reversion in flat, calm conditions: buy RSI oversold on XRP/ADA/LINK when ADX is below a fitted cap (no established trend) and vix_level is low. Thesis: range-bound alts in calm vol mean-revert from oversold. DISCONFIRMER: the ADX cap is the explicit control against momentum \u2014 if a high-ADX (trending) version earns more, the result is trend-following dressed as reversion; the low-VIX gate is the second control proving regime-conditioning, not just oversold entry, drives it.",
+  "catalyst": "RSI oversold on a range-bound (low-ADX) alt during a calm-VIX window",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 9
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_os"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "adx_cap"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_calm"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 3,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rsi_os": {
+      "kind": "float",
+      "lo": 24,
+      "hi": 40
+    },
+    "adx_cap": {
+      "kind": "float",
+      "lo": 14,
+      "hi": 28
+    },
+    "vix_calm": {
+      "kind": "float",
+      "lo": 14,
+      "hi": 24
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 52,
+      "hi": 68
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.34
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,87 @@
+{
+  "name": "vix_ease_macro_regime_filter",
+  "rationale": "VIX easing only generates durable crypto upside when the broader macro regime is risk-supportive; the two together define a clean risk-on vol-regime shift. Thesis: arm long on vix_level cross_down within a supportive macro regime. Disconfirmer: require macro_regime > a fitted floor \u2014 if the VIX cross also works in an unsupportive macro composite then the vol-easing signal is not the driver and the strategy is really a macro-regime bet; conversely if it only works in already-bullish macro then the VIX cross is redundant. The conjunction isolates the regime-shift moment.",
+  "catalyst": "VIX eases while macro regime turns supportive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "vix_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "macro_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": []
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_cross": {
+      "kind": "float",
+      "lo": 15.0,
+      "hi": 26.0
+    },
+    "macro_floor": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

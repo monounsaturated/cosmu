@@ -1,0 +1,130 @@
+{
+  "name": "rsi_bbz_double_oversold_riskon_btc_only",
+  "rationale": "BTC-only double-oversold reversion: buy when BOTH rsi is oversold AND bb_z is below a fitted floor, conditioned on a favourable macro_regime. Thesis: agreement of two oversold gauges on the deepest, least-noisy asset gives a cleaner reversion signal that only pays in benign macro. DISCONFIRMER: the macro_regime gate is the control \u2014 if the double-oversold rule earns identically in risk-off, the regime layer is decorative and it is unconditional buy-the-dip; BTC-only isolates it from alt-beta contamination.",
+  "catalyst": "BTC rsi and bb_z both deeply oversold while macro stays favourable",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_os"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 1,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rsi_os": {
+      "kind": "float",
+      "lo": 20,
+      "hi": 36
+    },
+    "bbz_floor": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -1.5
+    },
+    "regime_min": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 52,
+      "hi": 68
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.2,
+      "hi": 1.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

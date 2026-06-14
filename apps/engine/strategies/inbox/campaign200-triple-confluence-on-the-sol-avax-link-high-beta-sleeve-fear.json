@@ -1,0 +1,116 @@
+{
+  "name": "Triple confluence on the SOL/AVAX/LINK high-beta sleeve: fear + VIX + funding flush",
+  "rationale": "Thesis: the SAME stress triple (fear_greed extreme-low + vix_level elevated + funding_rate flushed) should pay MORE on the high-beta alt sleeve (SOL/AVAX/LINK/ADA-type names) because these overshoot to the downside during cross-market panic and snap back harder \u2014 the capitulation premium scales with beta. We keep a stricter min_liquidity so only the tradeable high-beta names qualify. All three axes are bounded levels. Long-only spot, medium hold. Disconfirmer: run the IDENTICAL triple on the BTC/ETH large-cap sleeve; this high-beta version must beat large-caps on deflated Sharpe net of the SAME fees. If large-caps match or beat, the high-beta sleeve is just leverage on one signal (more vol, not more edge) and adds nothing. Honest FAIL valid.",
+  "catalyst": "cross-market stress triple hitting the high-beta alt sleeve",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 15000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_extreme"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_spike"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_flush"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "fear_recover_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.18,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "fear_extreme": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 26
+    },
+    "vix_spike": {
+      "kind": "float",
+      "lo": 21,
+      "hi": 40
+    },
+    "funding_flush": {
+      "kind": "float",
+      "lo": -0.0005,
+      "hi": 5e-05
+    },
+    "fear_recover_exit": {
+      "kind": "float",
+      "lo": 42,
+      "hi": 58
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

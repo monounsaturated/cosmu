@@ -1,0 +1,125 @@
+{
+  "name": "defi_tvl_cross_low_vix_calm_macro_eth_bnb",
+  "rationale": "Thesis: TVL up-crosses that fire while equity-vol (VIX) is low are inflows happening against a calm macro backdrop, so confluence of TVL cross + bounded-low vix_level + positive momentum on ETH/BNB should be durable, low-stress longs. Disconfirmer: gate low-vix_level-only entry (vix_level lt, no TVL cross) on ETH/BNB over the same window \u2014 if the calm-equity-vol risk-on filter alone delivers the return, the TVL cross is redundant and this is a macro-calm beta trade.",
+  "catalyst": "defi_tvl up-cross while VIX sits below a fitted ceiling and momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 6,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vix_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tvl_cross": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 15.0,
+      "hi": 24.0
+    },
+    "vix_exit": {
+      "kind": "float",
+      "lo": 26.0,
+      "hi": 40.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 20,
+      "step": 1
+    },
+    "mom_min": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

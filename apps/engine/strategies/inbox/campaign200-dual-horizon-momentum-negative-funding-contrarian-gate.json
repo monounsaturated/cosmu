@@ -1,0 +1,134 @@
+{
+  "name": "Dual-Horizon Momentum \u2014 Negative-Funding Contrarian Gate",
+  "rationale": "Thesis: short (5d) + medium (14d) momentum agreement is most durable when perp funding is NOT crowded-long (funding low or negative) \u2014 uptrends with under-positioned longs have room to run, whereas euphoric funding precedes squeezes. Disconfirmer: the funding ceiling must improve outcomes over unconditional confluence; if high-funding (crowded) entries earn the same, the funding gate is decorative and the edge is plain momentum.",
+  "catalyst": "Dual-horizon momentum aligns while funding is below a fitted non-crowded ceiling.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 16
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "lb_short"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "thr_short"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "lb_med"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "thr_med"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fund_max"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "fund_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "lb_short": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 7,
+      "step": 1
+    },
+    "lb_med": {
+      "kind": "int",
+      "lo": 12,
+      "hi": 18,
+      "step": 1
+    },
+    "thr_short": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.04
+    },
+    "thr_med": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.09
+    },
+    "fund_max": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.005
+    },
+    "fund_exit": {
+      "kind": "float",
+      "lo": 0.005,
+      "hi": 0.01
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

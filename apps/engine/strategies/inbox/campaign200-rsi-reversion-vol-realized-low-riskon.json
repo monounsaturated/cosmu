@@ -1,0 +1,116 @@
+{
+  "name": "rsi_reversion_vol_realized_low_riskon",
+  "rationale": "Reversion conditioned on a quiet realized-vol regime: buy RSI oversold when vol_realized is below a fitted ceiling and macro_regime is favourable. Thesis: low realized-vol regimes are mean-reverting; oversold prints snap back. DISCONFIRMER: vol_realized is BOUNDED so lt is valid; the control is the vol ceiling \u2014 if the same RSI rule earns in high realized-vol regimes, the regime-conditioning is fake and the result is generic oversold-buying.",
+  "catalyst": "RSI oversold inside a low realized-volatility, risk-on regime",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_os"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_cap"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rsi_os": {
+      "kind": "float",
+      "lo": 24,
+      "hi": 40
+    },
+    "vol_cap": {
+      "kind": "float",
+      "lo": 0.2,
+      "hi": 0.7
+    },
+    "regime_min": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 52,
+      "hi": 68
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

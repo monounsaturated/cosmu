@@ -1,0 +1,111 @@
+{
+  "name": "greed_regime_tight_trail_quick_exit",
+  "rationale": "If greed continuation is a SHORT-LIVED regime impulse, a tight stop and short time-stop should bank gains and cut losers before the regime flips. We arm greed-momentum entries with tight risk controls plus a greed-fade signal exit. Disconfirmer: a loose-exit control (wide stop, long time-stop). If quick exits do not improve risk-adjusted return over the slow version, the exit structure is irrelevant and the entry (greed-momentum) carries everything.",
+  "catalyst": "greed regime with positive momentum, managed by tight fast exits",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 8
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "greed_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "greed_floor": {
+      "kind": "float",
+      "lo": 58,
+      "hi": 75
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 42,
+      "hi": 55
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.03
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 5,
+      "step": 1
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.1
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.2
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 8,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

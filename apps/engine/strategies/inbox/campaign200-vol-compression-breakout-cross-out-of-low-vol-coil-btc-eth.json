@@ -1,0 +1,118 @@
+{
+  "name": "Vol-compression breakout (cross out of low-vol coil, BTC/ETH)",
+  "rationale": "THESIS: the most powerful trends are BORN from volatility compression \u2014 a long quiet coil (low realized vol) stores energy, and the regime SHIFT (vol expanding while price breaks up) is the tradable event, not the steady-state level. We require realized vol to be low (vol_realized BOUNDED, lt-ceiling, the coil precondition) AND a fresh positive momentum break (ret_Nd>0) to catch the expansion's first leg, on the two deepest majors where coils are cleanest. DISCONFIRMER: run the IDENTICAL ret_Nd>0 entry with the vol_realized<ceiling coil precondition REMOVED (momentum that fires in any vol state). If the compression-timed version is not better risk-adjusted net of fees, the coil-then-break timing is fitted and this is plain momentum. Also: the rule should beat entering AFTER vol is already high (chasing the expansion late).",
+  "catalyst": "Realized vol has compressed to a low coil and price breaks upward (positive short-horizon return) \u2014 the regime transition from calm to expansion.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized",
+        "lookback": {
+          "param": "vol_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_coil"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "break_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "break_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "break_lb"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "break_floor"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 2,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_lb": {
+      "kind": "int",
+      "lo": 14,
+      "hi": 35,
+      "step": 1
+    },
+    "vol_coil": {
+      "kind": "float",
+      "lo": 0.18,
+      "hi": 0.42
+    },
+    "break_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 12,
+      "step": 1
+    },
+    "break_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.04
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

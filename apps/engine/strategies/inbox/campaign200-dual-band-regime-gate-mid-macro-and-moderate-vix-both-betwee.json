@@ -1,0 +1,116 @@
+{
+  "name": "Dual-band regime gate (mid macro AND moderate VIX, both between) arms RSI-oversold reversion",
+  "rationale": "THESIS: the cleanest expression of the niche \u2014 BOTH regime gauges expressed as BANDS (macro_regime between a mid range, vix_level between a moderate range), arming an RSI-oversold reversion. The bet: reversion edge is jointly non-monotonic \u2014 it needs macro neither euphoric nor broken AND vol neither dead-calm nor panicked. Two two-sided gates is the structural novelty vs every gt/lt sibling. DISCONFIRMER 1 (are the bands real or disguised one-sided cuts?): four one-sided siblings (macro gt-only, macro lt-only, vix gt-only, vix lt-only) bracket this; if any one-sided cut matches the dual band, the bands are relabelled thresholds. DISCONFIRMER 2 (just buy-the-dip?): ungated RSI baseline. DISCONFIRMER 3 (do you need BOTH bands?): single-band siblings (macro-band-only, vix-band-only). DISCONFIRMER 4 (holdout): with two-sided gates the search space is larger so overfit risk is higher \u2014 the frozen-param recent slice staying positive is the binding test.",
+  "catalyst": "macro_regime and vix_level BOTH inside their fitted moderate bands with RSI oversold",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "regime_band"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "vix_band"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_band": {
+      "kind": "float",
+      "lo": -0.2,
+      "hi": 0.7
+    },
+    "vix_band": {
+      "kind": "float",
+      "lo": 16.0,
+      "hi": 32.0
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 26.0,
+      "hi": 40.0
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 62.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

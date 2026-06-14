@@ -1,0 +1,114 @@
+{
+  "name": "HIGH-VIX band contrarian long \u2014 bb_z stretch reversion inside the fear window",
+  "rationale": "Thesis: price stretched far below its band (bb_z lt z_floor, a z-score level gate) reverts hardest when it happens inside an elevated-but-not-broken-vol window. Use vix_level with the BETWEEN op to require VIX inside an armed band (above complacency, below a blow-up ceiling) \u2014 the regime where reversion is reliable rather than a regime-change crash. Exit when the z-stretch closes back above z_exit or risk/time stops. Disconfirmer 1 (is the VIX band load-bearing?): the same bb_z-stretch long with NO VIX condition is in the cohort \u2014 if it matches the deflated Sharpe, the band adds nothing and this is plain Bollinger reversion. Disconfirmer 2 (band-edge sensitivity): if the edge depends on a razor-thin band that the holdout cannot reproduce, it is over-fit. Disconfirmer 3 (holdout): purged+embargoed recent slice must stay positive.",
+  "catalyst": "price z-score stretched below band while VIX inside an armed band",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "vix_band_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z",
+        "lookback": {
+          "param": "bb_lookback"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "z_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z",
+          "lookback": {
+            "param": "bb_lookback"
+          }
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "z_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "vix_band_ceiling": {
+      "kind": "float",
+      "lo": 30.0,
+      "hi": 55.0
+    },
+    "bb_lookback": {
+      "kind": "int",
+      "lo": 14,
+      "hi": 30,
+      "step": 1
+    },
+    "z_floor": {
+      "kind": "float",
+      "lo": -2.6,
+      "hi": -1.2
+    },
+    "z_exit": {
+      "kind": "float",
+      "lo": -0.3,
+      "hi": 0.8
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.28
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

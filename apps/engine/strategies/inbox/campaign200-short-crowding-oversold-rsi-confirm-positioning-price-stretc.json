@@ -1,0 +1,116 @@
+{
+  "name": "Short-crowding + oversold RSI confirm (positioning + price stretch, NOT RSI-alone)",
+  "rationale": "Thesis: ordinary oversold-RSI dip-buying is exhausted \u2014 it fires on every shallow pullback. The edge is the rare oversold bar that ALSO sits on a crowded-short positioning extreme, where mechanical short-covering supplies the bounce. Entry (long-only spot): funding_rate < a deeply-negative floor [-0.005,-0.0005] AND rsi < an oversold floor. Funding is the positioning gate (crowded shorts paying longs); RSI is the price-stretch confirm. DISCONFIRMER: must beat RSI-oversold ALONE with the SAME rsi floor and no funding gate \u2014 if lone-RSI matches net Sharpe, the funding gate is decorative and this is plain RSI reversion. funding_feature is null \u2014 no carry accrued, the claim is positioning-level, not carry. Exit on RSI recovering through a fitted level OR funding normalizing back up.",
+  "catalyst": "price oversold while perp funding is deeply negative (crowded shorts)",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "funding_normalized"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_floor": {
+      "kind": "float",
+      "lo": -0.005,
+      "hi": -0.0005
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 20,
+      "hi": 38
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 48,
+      "hi": 62
+    },
+    "funding_normalized": {
+      "kind": "float",
+      "lo": -0.0002,
+      "hi": 0.0002
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.28
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,111 @@
+{
+  "name": "Hashrate expansion confirms a BTC trend \u2014 btc_hashrate cross-up on positive 30-day BTC momentum",
+  "rationale": "Thesis: rising hashrate reflects miners committing more capital/energy \u2014 a low-frequency 'smart-money conviction' signal. When hashrate accelerates UP while BTC is already in an uptrend, the trend has structural backing and tends to persist. btc_hashrate drifts up secularly (and across halvings), so only a cross_up is meaningful, never a level. We confirm with positive medium-horizon BTC momentum (30d-ish) so we are not catching a hashrate bump into a downtrend. Disconfirmer 1: replace the hashrate cross_up with a permuted-lag copy of the same series \u2014 if the deflated Sharpe is unchanged, the cross timing is information-free and the apparent edge is the momentum leg alone. Disconfirmer 2: hashrate is slow and lagging; if shortening the momentum lookback to a few days (so the trend leg dominates) absorbs all the Sharpe, hashrate adds nothing. BTC-only, long-only spot, longer hold to match the slow signal.",
+  "catalyst": "btc_hashrate crosses up through its expansion threshold while medium-horizon BTC momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hash_x"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "btc_hashrate"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "hash_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.35
+  },
+  "param_space": {
+    "hash_x": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "hash_exit": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 15,
+      "hi": 45,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.08
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

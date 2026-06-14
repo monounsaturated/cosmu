@@ -1,0 +1,139 @@
+{
+  "name": "Hashrate re-arm with calm equity vol (VIX) \u2014 miner conviction while macro fear is contained",
+  "rationale": "Crypto trends are vulnerable to macro risk-off shocks; an elevated VIX is the classic warning that cross-asset deleveraging can swamp crypto-internal signals. The thesis gates miner commitment on a benign equity-vol backdrop: btc_hashrate crosses UP (miners re-arm \u2014 on-chain structural conviction) WHILE vix_level is BELOW a fitted ceiling (macro fear is contained, no systemic stress) AND momentum is positive. The miner signal is the alpha source; the calm VIX is the external safety filter that keeps us out when a macro shock would override on-chain conviction. Go long spot. vix_level is BOUNDED and gated by lt on its raw ~12-80 level; btc_hashrate is drifting and read ONLY via cross_up/cross_down. Exit when VIX spikes past an exit ceiling (macro stress) or miners capitulate. Disconfirmer (core falsifier): the edge must come from miner re-commitment, not from the calm-VIX filter. If replacing the btc_hashrate cross_up arm with an always-true pass (keeping vix_level<ceiling + ret_Nd>0) matches or beats deflated Sharpe, hashrate is redundant and this is just a VIX-gated momentum trade. Low-confidence until OOS; the Gate decides.",
+  "catalyst": "btc_hashrate crosses up while VIX is contained (below ceiling) and momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hash_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vix_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "btc_hashrate"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "hash_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "hash_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "hash_exit": {
+      "kind": "float",
+      "lo": -1.5,
+      "hi": 0.5
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 16.0,
+      "hi": 28.0
+    },
+    "vix_exit": {
+      "kind": "float",
+      "lo": 28.0,
+      "hi": 45.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 30,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.34
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,102 @@
+{
+  "name": "adx_trend_macro_regime_cross_up_xrp_ada_link",
+  "rationale": "Mid-cap alts (XRP, ADA, LINK) trend hardest right as the macro_regime composite TURNS risk-on, not just while it sits high. Because the composite can drift, we use cross_up to mark the regime transition, then gate on ADX above a strength floor to confirm a genuine trend rather than a one-day pop. Disconfirmer: a control run removes the macro_regime cross_up gate \u2014 if ADX-floor trades earn the same when there is no regime turn, the macro transition is not the source of edge and this is trend-following. We treat the composite as drifting and use ONLY cross_up on it.",
+  "catalyst": "macro_regime composite crosses up (regime turning risk-on) while ADX is above its strength floor",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "macro_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "macro_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "macro_cross": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.6
+    },
+    "macro_exit": {
+      "kind": "float",
+      "lo": -0.3,
+      "hi": 0.2
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 30.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

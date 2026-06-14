@@ -1,0 +1,102 @@
+{
+  "name": "Credit-Stress De-Risk Gate on Equity ETFs (HY-spread momentum x quiet-VIX divergence)",
+  "rationale": "Default-LONG large-cap equity ETFs (SPY/QQQ + liquid sector ETFs); time the long exposure off HY credit-spread DIRECTION via crossings, NOT a static level filter. THESIS: HY credit spreads lead equity drawdowns by 1-3 months because the credit market prices deteriorating fundamentals through actual lending/default activity before equities do. ENGINE-FAITHFUL MECHANICS (verified against cosmu/data/backtest.py _condition_true): credit_spread is a raw point-in-time alt-data series, so a bare gt/lt level filter on it would be the DRIFTING always-true/false TRAP the brief forbids. We instead trigger ONLY on the cross_up / cross_down events \u2014 the bar where the HY-OAS level crosses a fitted threshold from one side to the other. A crossing fires on the TRANSITION (a state change in the credit regime), not on a persistent level, so it sidesteps the drift trap and is directional by construction. NOTE/HONESTY: the engine evaluates cross_up/cross_down as a one-bar RAW-LEVEL crossing of the OAS percentage-point level (prev<=thr<curr), NOT a multi-week rate-of-change z-score \u2014 the backtester ignores lookback on alt-data features, so the 'percentile/change' framing of the original thesis is reduced to a level-transition. HYSTERESIS to cut churn: the de-risk-up threshold band (spread_widen_derisk) sits ABOVE the re-arm-down band (spread_tighten_arm), so we flatten when OAS crosses up through the wider level and only re-enter when it crosses back down through the tighter level \u2014 no rapid in/out around a single line. CONFLUENCE GATE: re-enter the long ONLY when vix_level is also BELOW a fitted complacency level \u2014 the 'spreads tightening while VIX quiet' all-clear, which keeps us out during the discount-rate / pure-vol regimes (2022, 2020) where credit-spread timing historically failed and concentrates exposure in the credit-led calm. Low-turnover by construction (a few transitions a year), which is why an alpha desk under a Sharpe budget skips it and a fee-aware daily book can harvest it. DISCONFIRMERS: (1) replace the credit_spread crossings with same-direction crossings of dxy/macro_regime \u2014 if generic risk-off gives the same protection the credit signal adds nothing credit-specific; (2) ablate the cross_up/cross_down to a raw credit_spread gt/lt LEVEL filter \u2014 if the static level alone works it is the fitted DRIFTING artifact and the crossing adds nothing; (3) compare to buy-and-hold SPY net of 2x the round-trip fee \u2014 if the timed in/out version does not beat always-long after costs, the churn is destroying the edge. The signal must add return specifically through the credit-led de-risk transitions, not by being out of the market on average.",
+  "catalyst": "HY credit-spread (OAS) level crosses up through a fitted wider threshold -> flatten the long (de-risk); crosses back down through a fitted tighter threshold while VIX is below a complacency level -> re-enter the long. Credit-regime transition, not a static level.",
+  "universe": {
+    "venues": [
+      "yahoo"
+    ],
+    "asset_classes": [
+      "equity"
+    ],
+    "min_liquidity_usd": 50000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 60
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "credit_spread"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "spread_tighten_arm"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_complacency"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "credit_spread"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "spread_widen_derisk"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "spread_tighten_arm": {
+      "kind": "float",
+      "lo": 2.8,
+      "hi": 4.5
+    },
+    "spread_widen_derisk": {
+      "kind": "float",
+      "lo": 3.2,
+      "hi": 5.5
+    },
+    "vix_complacency": {
+      "kind": "float",
+      "lo": 14.0,
+      "hi": 25.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 60,
+      "step": 5
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

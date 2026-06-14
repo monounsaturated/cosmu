@@ -1,0 +1,87 @@
+{
+  "name": "vix_spike_fade_short_horizon_btc",
+  "rationale": "VIX cross_up vol shocks tend to mean-revert FAST in BTC; the relief bounce is a short-horizon phenomenon. Thesis: arm long BTC-led majors on vix_level cross_up with a deliberately short hold and tight time-stop. Disconfirmer: the horizon is capped short and funding must be below a fitted ceiling \u2014 if profits require a long hold the result is trend-following not a vol-spike fade, and if the edge needs crowded-positive funding it is a carry trade; the short clock plus funding cap proves the fast vol-shock reversion.",
+  "catalyst": "VIX spike cross_up, fast relief window",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 6
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "vix_spike"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fund_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": []
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_spike": {
+      "kind": "float",
+      "lo": 22.0,
+      "hi": 42.0
+    },
+    "fund_ceiling": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.006
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.25
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 6,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

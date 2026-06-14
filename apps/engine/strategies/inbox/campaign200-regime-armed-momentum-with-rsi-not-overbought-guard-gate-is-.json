@@ -1,0 +1,134 @@
+{
+  "name": "Regime-armed momentum with RSI-not-overbought guard (gate is macro, not the RSI ceiling)",
+  "rationale": "THESIS: macro_regime decides WHETHER to trust the tape; rsi decides whether the entry PRICE is over-extended. In a risk-on regime I want to ride trend, but chasing a vertically overbought print (RSI near the top) pays for the worst part of the move. So I arm momentum only when macro_regime>floor AND ret_Nd>mom_floor AND rsi<rsi_ceiling \u2014 trend confirmed, macro window open, but not yet euphorically stretched. The macro gate is the orthogonal piece; the RSI ceiling is just price-discipline. DISCONFIRMER: run the SAME entry with macro_regime DROPPED but the rsi<rsi_ceiling guard kept (RSI-gated momentum). If the RSI-only version reproduces the macro+RSI net-of-fee Sharpe, the macro gate is redundant to a mechanical not-overbought filter and carries no macro information \u2014 falsified. The macro gate must add incremental net edge over the RSI-only version. Low turnover because the RSI ceiling avoids repeatedly re-entering froth.",
+  "catalyst": "Risk-on macro regime with confirmed positive trend but RSI still below its overbought ceiling \u2014 the window arms a non-stretched momentum entry.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.55
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 28,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "rsi_ceiling": {
+      "kind": "float",
+      "lo": 58.0,
+      "hi": 72.0
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 74.0,
+      "hi": 85.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

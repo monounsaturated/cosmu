@@ -1,0 +1,111 @@
+{
+  "name": "On-chain demand confirms BTC trend \u2014 active-address growth cross-up on a positive-momentum BTC long",
+  "rationale": "Thesis: real, settling on-chain demand should CONFIRM a price uptrend before it is fully priced. btc_active_addresses is a DRIFTING level (network adoption grows secularly), so a fitted level floor would be always-true \u2014 we use it ONLY as a cross_up event (a fresh acceleration in distinct addresses transacting, i.e. broad demand picking up). We require positive own-price momentum (ret_Nd) so we ride a trend the chain is confirming, not a dead network burst with no price follow-through. Disconfirmer 1: if dropping the active-address cross_up entirely and keeping only ret_Nd>mom_floor yields an equal-or-better deflated Sharpe, the on-chain term adds no orthogonal information and the 'edge' is just momentum. Disconfirmer 2: address counts and price co-move; if replacing cross_up with a plain level filter (impossible here by rule, so the ablation is: shuffle the on-chain series' timing by a random lag) matches the Sharpe, the timing of the cross is irrelevant and the signal is spurious. Spot-only, long-only.",
+  "catalyst": "btc_active_addresses crosses up through its growth threshold while BTC price momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 15
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_active_addresses"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "addr_x"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "btc_active_addresses"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "addr_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "addr_x": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "addr_exit": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 30,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

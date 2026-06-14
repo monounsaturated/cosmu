@@ -1,0 +1,137 @@
+{
+  "name": "Mid-band regime sweet-spot arms short-burst momentum (between-gate, not a single floor)",
+  "rationale": "THESIS: A risk-on macro regime is not monotonically good for momentum. At the LOW end the tide is out and trend is a trap; at the EXTREME-HIGH end the composite is in a stretched euphoric state that mean-reverts (peak liquidity = peak fragility). The exploitable window is the MID-BAND \u2014 risk premia are being paid but the regime is not yet over-extended \u2014 where a short 7d momentum burst continues cleanly. macro_regime is BOUNDED so a two-sided between-band is the honest encoding. We arm a fast ret_Nd burst only inside [regime_lo, regime_hi]. DISCONFIRMER: re-run with the between-band replaced by a single gt floor at regime_lo (drop the upper rail). If the one-sided floor reproduces the band's net-of-fee Sharpe, the upper de-risking rail carries no information and this is just a floor-gate dressed as a band \u2014 falsified. The band must beat both the one-sided floor AND ungated 7d momentum.",
+  "catalyst": "Macro composite enters the mid-band sweet spot (risk-on but not over-extended) while a fast 7d-ish trend is positive \u2014 the window arms a short momentum burst.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "regime_lo"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "regime_hi"
+        }
+      },
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_lo"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lookback"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_lo": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.35
+    },
+    "regime_hi": {
+      "kind": "float",
+      "lo": 0.6,
+      "hi": 0.95
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 12,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": -0.05,
+      "hi": 0.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.25
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,139 @@
+{
+  "name": "Twin on-chain re-arm \u2014 hashrate and active-address growth confirm a network-backed trend",
+  "rationale": "On-chain conviction has two independent sides: SUPPLY-side (miners committing hashpower) and DEMAND-side (users actually transacting). A trend confirmed by BOTH is backed by the full network, not just one constituency. The thesis: when btc_hashrate crosses UP (miners re-arm \u2014 supply-side commitment) AND btc_active_addresses crosses UP (network usage/demand is growing) AND momentum is positive, go long spot \u2014 the move has structural support from both producers and users. Both are drifting on-chain series so each is read ONLY via cross_up/cross_down (never a raw level). Exit when usage rolls over (active_addresses cross_down) or miners capitulate. Disconfirmer (core falsifier): the edge must come specifically from the SUPPLY-side (miner) arm adding orthogonal info beyond demand-side usage. If dropping the btc_hashrate cross_up arm (keeping btc_active_addresses cross_up + ret_Nd>0) matches or beats deflated Sharpe, the hashrate arm is redundant and the demand-side usage signal carries it all. Low-confidence until OOS; the Gate decides.",
+  "catalyst": "btc_hashrate AND btc_active_addresses both cross up (supply + demand on-chain confirmation) while momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hash_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "btc_active_addresses"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "addr_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "btc_active_addresses"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "addr_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "btc_hashrate"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "hash_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.45
+  },
+  "param_space": {
+    "hash_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "hash_exit": {
+      "kind": "float",
+      "lo": -1.5,
+      "hi": 0.5
+    },
+    "addr_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 2.0
+    },
+    "addr_exit": {
+      "kind": "float",
+      "lo": -1.5,
+      "hi": 0.5
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 35,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.38
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,96 @@
+{
+  "name": "defi_tvl_cross_momentum_breadth_full_universe",
+  "rationale": "Thesis: a TVL up-cross is a market-wide DeFi liquidity event that should lift the whole crypto complex, so we enter ANY universe asset whose own momentum is positive at the moment the macro TVL cross fires \u2014 confluence of macro capital inflow with per-asset trend. Disconfirmer: gate the per-asset momentum filter alone (ret_Nd gt, no TVL) over the same window; if breadth-of-momentum already captures the return, the macro TVL confirm is redundant, and compare to per-asset buy-and-hold to rule out pure beta.",
+  "catalyst": "market-wide defi_tvl up-cross coincides with positive per-asset momentum",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 8
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": []
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tvl_cross": {
+      "kind": "float",
+      "lo": -0.6,
+      "hi": 0.6
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 15,
+      "step": 1
+    },
+    "mom_min": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,125 @@
+{
+  "name": "defi_tvl_cross_macro_regime_risk_on_btc_eth",
+  "rationale": "Thesis: a TVL up-cross that aligns with a risk-on macro_regime is doubly confirmed \u2014 crypto-native capital inflow AND a favorable cross-asset backdrop \u2014 so confluence of TVL cross + bounded risk-on macro_regime + positive momentum on the majors (BTC/ETH) should be a high-quality long. Disconfirmer: gate macro_regime-risk-on-only entry (no TVL cross) on BTC/ETH \u2014 if the macro regime filter alone times the up-legs, the TVL cross adds no edge and this is just risk-on beta.",
+  "catalyst": "defi_tvl up-cross while macro_regime is in a risk-on band and momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 24
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "regime_band"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "defi_tvl"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "tvl_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tvl_cross": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "tvl_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "regime_band": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 18,
+      "step": 1
+    },
+    "mom_min": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

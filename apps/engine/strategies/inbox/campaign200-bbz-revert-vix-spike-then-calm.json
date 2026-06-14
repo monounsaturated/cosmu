@@ -1,0 +1,102 @@
+{
+  "name": "bbz_revert_vix_spike_then_calm",
+  "rationale": "A bb_z recovery that occurs as macro vol is EASING (vix_level crossing DOWN through a threshold) marks the post-panic snap-back where forced sellers are done. Disconfirmer: entry requires a vix_level cross_down (vol regime relaxing) co-timed with the bb_z recovery; if the bb_z cross_up reverts equally while vol is still rising or flat, the vix-easing gate adds nothing and it is generic oversold bouncing.",
+  "catalyst": "bb_z recovers up out of oversold as vix_level crosses down through its easing level",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "bbz_recover"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "vix_easing"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "bbz_recover": {
+      "kind": "float",
+      "lo": -2.5,
+      "hi": -1.0
+    },
+    "vix_easing": {
+      "kind": "float",
+      "lo": 20,
+      "hi": 40
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.2
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.36
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

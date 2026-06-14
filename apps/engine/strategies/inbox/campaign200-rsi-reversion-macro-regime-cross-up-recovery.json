@@ -1,0 +1,102 @@
+{
+  "name": "rsi_reversion_macro_regime_cross_up_recovery",
+  "rationale": "Buy oversold into a FRESH macro turn: enter RSI oversold at the bar macro_regime crosses UP through a fitted level (regime flipping risk-on). Thesis: the regime-flip moment is when oversold reversions get the strongest macro tailwind. DISCONFIRMER: treating macro_regime as a cross (drifting composite) rather than a level is itself the control against a stale-level artifact; if a static macro_regime>level gate (no cross) captures the same return, the freshness thesis is false and it reduces to standard regime-gated dip-buying.",
+  "catalyst": "macro_regime crosses up through a fitted level while RSI is oversold",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_os"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "regime_x"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rsi_os": {
+      "kind": "float",
+      "lo": 24,
+      "hi": 42
+    },
+    "regime_x": {
+      "kind": "float",
+      "lo": -0.2,
+      "hi": 0.4
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 52,
+      "hi": 70
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

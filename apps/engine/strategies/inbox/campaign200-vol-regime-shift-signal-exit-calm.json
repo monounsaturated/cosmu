@@ -1,0 +1,88 @@
+{
+  "name": "vol_regime_shift_signal_exit_calm",
+  "rationale": "The edge is owning the EXPANSION phase of a vol regime and exiting the moment vol normalizes. Thesis: enter long on vol_realized cross_up, exit on vol_realized cross_down (symmetric vol-regime exit). Disconfirmer: the strategy must beat the same entry with NO signal_exit (time-stop only) \u2014 if the vol-down exit adds nothing, the vol cross is not actually marking a regime boundary and the result is just a timed momentum hold; the symmetric exit being load-bearing proves the regime framing.",
+  "catalyst": "realized vol crosses up, then normalizes",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "vol_up"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vol_realized"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "vol_down"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_up": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.07
+    },
+    "vol_down": {
+      "kind": "float",
+      "lo": 0.015,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

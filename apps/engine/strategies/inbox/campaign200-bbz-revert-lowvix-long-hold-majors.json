@@ -1,0 +1,102 @@
+{
+  "name": "bbz_revert_lowvix_long_hold_majors",
+  "rationale": "In a low-vix calm regime, mean reversion is slow and reliable, so a longer hold lets the bb_z stretch fully unwind back toward the band center while keeping turnover low (one-decision entry, patient exit). Disconfirmer: vix_level must be below the calm cap; if the same bb_z cross_up reverts equally over the long hold when vol is high, the calm gate adds nothing and it is a generic patient reversion trade. Long min-hold also tests that the edge is not just a 1-2 day microbounce.",
+  "catalyst": "bb_z recovers from the lower band during a sustained low-vol regime",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 22
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "bbz_recover"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_calm_max"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "bbz_recover": {
+      "kind": "float",
+      "lo": -2.3,
+      "hi": -0.9
+    },
+    "vix_calm_max": {
+      "kind": "float",
+      "lo": 14,
+      "hi": 22
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 1.8
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

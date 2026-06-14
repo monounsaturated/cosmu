@@ -1,0 +1,116 @@
+{
+  "name": "Funding-fear capitulation composite (negative funding + extreme fear AND-gate)",
+  "rationale": "The cleanest version of niche #5: a long arms ONLY when positioning AND sentiment both flag a flush at once \u2014 perp funding has gone NEGATIVE (shorts paying longs, leveraged crowd is positioned bearish and over-extended) WHILE crypto Fear&Greed sits in its extreme-fear band. The thesis is that a real capitulation needs the derivatives crowd AND the spot/sentiment crowd to capitulate together; either alone is noisy, but their AND-intersection is a rarer, higher-conviction reversal. Both inputs are BOUNDED and mean-reverting, so no drifting-level trap, and the AND makes this the lowest-turnover member of the capitulation family \u2014 10bps fees barely bite. Funding bands are fit around realized Binance levels (negative side of the median, well inside the \u00b11e-4 clamp) so the filter genuinely excludes only bars where shorts pay. Exit when EITHER gauge normalizes (fear lifts to greed OR funding turns positive). DISCONFIRMER 1: the fear_greed-alone and funding-alone siblings are in this cohort \u2014 if neither-AND fails to beat the better single signal's deflated Sharpe, the composite adds nothing. DISCONFIRMER 2: requiring two simultaneous extremes is rare; too few trades to clear the Gate minimum is honest 'insufficient evidence', not an edge. DISCONFIRMER 3: the purged+embargoed holdout slice must stay positive or it is just buy-the-2022-bottom in disguise. The Gate disposes; an honest FAIL is valid.",
+  "catalyst": "funding_rate negative AND fear_greed in extreme-fear band simultaneously",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_neg"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "funding_pos_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "funding_neg": {
+      "kind": "float",
+      "lo": -0.0003,
+      "hi": -1e-05
+    },
+    "fear_floor": {
+      "kind": "float",
+      "lo": 12.0,
+      "hi": 30.0
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 80.0
+    },
+    "funding_pos_exit": {
+      "kind": "float",
+      "lo": 1e-05,
+      "hi": 0.0001
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 30,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

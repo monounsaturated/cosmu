@@ -1,0 +1,102 @@
+{
+  "name": "Bollinger breakout backed by on-chain throughput \u2014 bb_z breakout + btc_tx_count cross-up long",
+  "rationale": "Thesis: a price breakout above the upper Bollinger band (bb_z above a positive floor) is more likely to follow through, rather than mean-revert, when on-chain transaction throughput is simultaneously surging \u2014 the breakout is demand-backed. bb_z is a BOUNDED z-score so a fitted positive floor binds and cleanly isolates 'price is breaking out'; btc_tx_count drifts so it enters ONLY as a cross_up. The pairing tests whether on-chain demand distinguishes real breakouts from fakeouts. Disconfirmer 1: keep only bb_z>bb_floor and drop the tx_count cross_up \u2014 if the deflated Sharpe holds, on-chain confirmation is unnecessary (vanilla vol breakout). Disconfirmer 2: a permuted-lag copy of tx_count must DESTROY the edge; if it does not, the cross timing is meaningless. Exit on bb_z falling back through a lower z (breakout failed). BTC/ETH/SOL, long-only spot.",
+  "catalyst": "price breaks out (bb_z above positive floor) while btc_tx_count crosses up through its surge threshold",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "bb_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "btc_tx_count"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tx_x"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "bb_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "bb_floor": {
+      "kind": "float",
+      "lo": 0.8,
+      "hi": 2.0
+    },
+    "bb_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.6
+    },
+    "tx_x": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.28
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 12,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

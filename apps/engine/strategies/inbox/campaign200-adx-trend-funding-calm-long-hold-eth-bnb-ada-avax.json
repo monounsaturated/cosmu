@@ -1,0 +1,102 @@
+{
+  "name": "adx_trend_funding_calm_long_hold_eth_bnb_ada_avax",
+  "rationale": "Over a long hold, a strong ADX trend survives longest when perp funding is NOT overheated \u2014 hot funding presages leverage-flush reversals that kill long holds. Gate ADX above a strength floor (gt) by funding_rate below an overheating cap (lt; funding_rate is a bounded level). Long hold window (up to ~25d) lets the regime gate prove it protects the tail. Disconfirmer: a control run removes the funding cap \u2014 if long-hold ADX trends earn the same when funding runs hot, the no-overheat regime contributes no edge and this is long-horizon trend-following. Exit early if funding spikes above the cap.",
+  "catalyst": "ADX above strength floor while funding_rate is below an overheating cap",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 6,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_cap"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "funding_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "adx_floor": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 32.0
+    },
+    "funding_cap": {
+      "kind": "float",
+      "lo": 0.0003,
+      "hi": 0.001
+    },
+    "funding_exit": {
+      "kind": "float",
+      "lo": 0.001,
+      "hi": 0.0025
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

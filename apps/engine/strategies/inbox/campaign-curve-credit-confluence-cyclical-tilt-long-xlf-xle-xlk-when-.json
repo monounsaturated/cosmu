@@ -1,0 +1,102 @@
+{
+  "name": "Curve+Credit Confluence Cyclical Tilt: long XLF/XLE/XLK when the 2s10s is steepening AND high-yield credit is tight",
+  "rationale": "Thesis: the sector-rotation map is conditioned on TWO genuinely orthogonal macro axes JOINTLY, not on either alone. Cyclicals (XLF financials, XLE energy, XLK tech) lead in EARLY EXPANSION \u2014 when the 2s10s yield curve is STEEPENING (a positive CHANGE in slope widens bank net-interest margins and signals reflation) AND high-yield credit spreads are TIGHT (low default-risk premium, ample risk appetite). The regime ARMS a long cyclical tilt; it does not trade any single sector's own momentum. The defensive flip (late-cycle de-risking into utilities/staples) is captured here as the EXIT: when HY credit spreads cross UP (widening = risk-off de-risking) the cyclical regime is no longer confirmed and we step aside. Confluence design that avoids the level traps: yield_curve_2s10s is entered via cross_up (its STEEPENING change arms the trade \u2014 using the change rather than the raw level avoids the always-true/false slope trap), while credit_spread (FRED BAMLH0A0HYM2, the ICE BofA US High-Yield OAS in percent, ~3-10) must sit BELOW a fitted tight threshold. These two FRED series are economically distinct inputs (rate-curve term structure vs default-risk premium), so requiring BOTH to agree is a real second filter \u2014 NOT one axis dressed as two. (Deliberately NOT using macro_regime here: in the current data macro_regime is ingested from the SAME raw T10Y2Y series as yield_curve_2s10s, so adding it would be collinear with the curve leg and the 'confluence' would be a single signal in disguise \u2014 the very trap this hypothesis is built to test.) Disconfirmer 1: a CONTROL spec firing the SAME cyclical entry on curve-steepening ALONE (drop the credit_spread leg) \u2014 if it matches this confluence version, credit is dead weight and this collapses to an exhausted single-signal regime, FAIL. Disconfirmer 2: a CONTROL on credit-tight ALONE \u2014 same logic, if it matches, the curve cross is redundant. Disconfirmer 3: this rotation must beat a static equal-weight hold of the sector ETFs net of rebalance fees, and beat plain cross-sectional momentum among them (the leader could just be whichever sector already ran). Disconfirmer 4: the cyclical leg must NOT be merely long-XLE-when-oil-is-up \u2014 that would show as correlation to oil, not to the curve+credit confluence. Low-turnover by construction: entries fire only on the steepening cross while credit is already tight, and we exit on the credit-widening flip \u2014 respecting the equity ETF cost drag.",
+  "catalyst": "2s10s yield curve steepens (cross-up of slope) WHILE high-yield credit spreads are tight \u2014 early-expansion confluence arms the cyclical sector tilt",
+  "universe": {
+    "venues": [
+      "yahoo"
+    ],
+    "asset_classes": [
+      "equity"
+    ],
+    "min_liquidity_usd": 50000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "yield_curve_2s10s"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "curve_steepen_level"
+      }
+    },
+    {
+      "feature": {
+        "name": "credit_spread"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "credit_tight"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "credit_spread"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "credit_widen_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "curve_steepen_level": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 1.5
+    },
+    "credit_tight": {
+      "kind": "float",
+      "lo": 3.0,
+      "hi": 5.0
+    },
+    "credit_widen_exit": {
+      "kind": "float",
+      "lo": 4.5,
+      "hi": 7.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

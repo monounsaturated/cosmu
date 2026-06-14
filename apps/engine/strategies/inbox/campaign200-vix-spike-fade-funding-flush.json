@@ -1,0 +1,102 @@
+{
+  "name": "vix_spike_fade_funding_flush",
+  "rationale": "Thesis: an equity-volatility spike (high VIX) that coincides with a crypto perp funding flush (low/negative funding = forced de-leveraging) marks a cross-asset panic where both equity and crypto longs have been purged simultaneously \u2014 the rebound is sharp. We fade the joint panic. Disconfirmer: a VIX-spike-fade-only control isolates the equity-panic mean-reversion; the funding-flush leg must add expectancy, else we are only fading VIX through a crypto proxy.",
+  "catalyst": "VIX in a spike band while funding_rate is flushed negative",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 12
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_min"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fund_max"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "vix_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_min": {
+      "kind": "float",
+      "lo": 26,
+      "hi": 45
+    },
+    "fund_max": {
+      "kind": "float",
+      "lo": -0.008,
+      "hi": 0.0
+    },
+    "vix_exit": {
+      "kind": "float",
+      "lo": 16,
+      "hi": 24
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.32
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

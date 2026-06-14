@@ -1,0 +1,116 @@
+{
+  "name": "rsi_oversold_fg_neutral_lowvix_patient",
+  "rationale": "Everyday reversion (not capitulation): buy mild RSI oversold when fear_greed is merely below a moderate cap (neutral-to-mild-fear, NOT panic) and vix_level is low, then hold patiently. Thesis: routine oversold dips in calm, mildly-cautious sentiment grind back up. DISCONFIRMER: the fear_greed cap distinguishes this from capitulation-buying \u2014 if returns only appear when fear_greed is in extreme-fear, this is a panic trade mislabeled; and the low-VIX gate must add value over RSI alone.",
+  "catalyst": "Mild RSI oversold with neutral-to-mild-fear sentiment in a calm-VIX window",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_os"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fg_cap"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_calm"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rsi_os": {
+      "kind": "float",
+      "lo": 30,
+      "hi": 45
+    },
+    "fg_cap": {
+      "kind": "float",
+      "lo": 35,
+      "hi": 55
+    },
+    "vix_calm": {
+      "kind": "float",
+      "lo": 14,
+      "hi": 24
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 52,
+      "hi": 68
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

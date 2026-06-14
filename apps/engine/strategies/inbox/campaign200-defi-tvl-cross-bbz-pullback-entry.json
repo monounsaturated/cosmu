@@ -1,0 +1,125 @@
+{
+  "name": "defi_tvl_cross_bbz_pullback_entry",
+  "rationale": "Thesis: enter on a shallow price pullback (bb_z below a small positive/zero threshold = price near or just under its mean) precisely when TVL crosses up \u2014 buying a dip that is backed by fresh locked capital, with momentum still net-positive to avoid catching a falling knife. Disconfirmer: gate bb_z-pullback-only entry (bb_z lt, no TVL cross) over the same window \u2014 if buying below-band alone explains the returns, the TVL cross is decorative and this is a vanilla band-pullback dip-buy.",
+  "catalyst": "defi_tvl up-cross while price pulls back to/below its mean (bb_z low) and momentum stays positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 6
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tvl_cross": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "bbz_ceiling": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.5
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": 1.0,
+      "hi": 2.5
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 14,
+      "step": 1
+    },
+    "mom_min": {
+      "kind": "float",
+      "lo": -0.01,
+      "hi": 0.04
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

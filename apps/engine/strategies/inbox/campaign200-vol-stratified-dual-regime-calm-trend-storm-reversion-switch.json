@@ -1,0 +1,144 @@
+{
+  "name": "Vol-stratified dual-regime: calm-trend + storm-reversion switch",
+  "rationale": "THESIS: the single edge is the SWITCH itself \u2014 vol regime selects which playbook to run. The same instrument should be traded as a trend in calm tapes and as a reversion in storms; running either playbook regime-blind loses in the wrong half of the vol distribution. Here we implement the LOW-vol-armed trend leg (vol_realized<ceiling BOUNDED + ret_Nd>0) as the entry; its high-vol-reversion mirror (vol_realized>floor + RSI<oversold) is filed as the sibling spec so the Gate can run them as a stratified pair. The disconfirmer is shared and decisive. DISCONFIRMER: (1) low-vol-trend leg must beat trend-blind momentum; (2) the high-vol-reversion sibling must beat dip-blind reversion; (3) a vol-BLIND blend that takes both signals regardless of regime must UNDERPERFORM the stratified pair on deflated-Sharpe net of the extra turnover. If the blind blend matches the switch, vol does not select the playbook and the stratification is fitted noise.",
+  "catalyst": "Realized vol is in the calm regime and price trend is up \u2014 the trend leg of the vol-stratified switch fires (the storm-reversion leg fires from its sibling spec in high-vol).",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized",
+        "lookback": {
+          "param": "vol_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_calm_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vol_realized",
+          "lookback": {
+            "param": "vol_lb"
+          }
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vol_calm_ceiling"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lb"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_floor"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_lb": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 28,
+      "step": 1
+    },
+    "vol_calm_ceiling": {
+      "kind": "float",
+      "lo": 0.22,
+      "hi": 0.5
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 14,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 30.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.38
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

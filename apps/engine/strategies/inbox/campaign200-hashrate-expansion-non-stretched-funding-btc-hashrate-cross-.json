@@ -1,0 +1,125 @@
+{
+  "name": "Hashrate expansion + non-stretched funding \u2014 btc_hashrate cross-up on a momentum BTC/ETH long",
+  "rationale": "Thesis: a hashrate-confirmed uptrend (miner conviction) is safest to ride when perp funding is NOT already stretched-positive \u2014 high funding means the long side is crowded and prone to a long-squeeze that would stop us out despite the on-chain backing. funding_rate is BOUNDED (~\u00b10.01) so a fitted ceiling binds (require funding BELOW a not-crowded level); btc_hashrate drifts so it enters ONLY as a cross_up; positive momentum confirms the trend. Disconfirmer 1: drop the funding<fund_ceil gate and keep hashrate cross + momentum \u2014 if the deflated Sharpe holds, the funding (crowding) filter is inert. Disconfirmer 2: replace the hashrate cross_up with a permuted-lag copy \u2014 if the Sharpe is unchanged, miner-conviction timing is not the driver. BTC/ETH, long-only spot, funding read for context only (funding_feature stays null \u2014 spot, no funding paid).",
+  "catalyst": "btc_hashrate crosses up while funding is non-crowded and BTC/ETH momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 22
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_hashrate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "hash_x"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fund_ceil"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "btc_hashrate"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "hash_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.35
+  },
+  "param_space": {
+    "hash_x": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "hash_exit": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.0
+    },
+    "fund_ceil": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.01
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.07
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.11,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

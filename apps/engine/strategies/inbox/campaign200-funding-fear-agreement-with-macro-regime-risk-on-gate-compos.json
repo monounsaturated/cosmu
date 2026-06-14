@@ -1,0 +1,130 @@
+{
+  "name": "Funding-fear agreement with macro-regime risk-on gate (composite under benign macro)",
+  "rationale": "Conditions the funding+fear capitulation composite on a benign MACRO backdrop, testing whether contrarian crypto bounces work better when the broad risk regime is turning supportive. Arm a long when funding is soft (below ceiling) AND Fear&Greed is fearful AND the macro_regime composite has CROSSED UP through a risk-on threshold. macro_regime is a DRIFTING composite, so it is used ONLY via cross_up (the event operator) \u2014 never as a raw level \u2014 capturing the moment the macro regime flips supportive rather than a fitted static level (which would be a drifting-level trap). funding+fear supply the crypto-native positioning+sentiment agreement; the macro cross supplies the top-down permission. Funding ceiling straddles realized to bite (null carry). DISCONFIRMER: the funding+fear composite WITHOUT the macro gate is in this cohort \u2014 if the macro cross_up does not improve the deflated/holdout Sharpe (or merely shrinks trade count without raising hit-rate), it is a decorative regime filter and capitulation bounces do not actually need a benign macro backdrop. If the macro gate cuts trades below the Gate minimum, honest insufficient-evidence. Gate disposes.",
+  "catalyst": "soft funding + fear while macro_regime crosses up into risk-on",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 22
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "macro_riskon"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "macro_riskoff"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "funding_ceiling": {
+      "kind": "float",
+      "lo": -4e-05,
+      "hi": 6e-05
+    },
+    "fear_floor": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 38.0
+    },
+    "macro_riskon": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "macro_riskoff": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 52.0,
+      "hi": 78.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.38
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 26,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

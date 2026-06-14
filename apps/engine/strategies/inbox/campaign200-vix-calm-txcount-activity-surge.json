@@ -1,0 +1,102 @@
+{
+  "name": "vix_calm_txcount_activity_surge",
+  "rationale": "Thesis: equity-market calm (low VIX) is a permissive risk-on backdrop, and a simultaneous surge in BTC transaction count (economic throughput crossing up) shows the on-chain economy is actually being used, not just speculated on. Together they front-run a sustained leg up. Disconfirmer: a VIX-calm-only control isolates the macro effect; the tx_count cross-up must beat it, else the on-chain leg is decorative.",
+  "catalyst": "BTC tx_count crosses up during a low-VIX equity-calm window",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_tx_count"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tx_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_max"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vix_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tx_cross": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.0
+    },
+    "vix_max": {
+      "kind": "float",
+      "lo": 14,
+      "hi": 22
+    },
+    "vix_exit": {
+      "kind": "float",
+      "lo": 24,
+      "hi": 35
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

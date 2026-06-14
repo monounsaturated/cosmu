@@ -1,0 +1,130 @@
+{
+  "name": "Wikipedia Attention-Shock x Crowd-Loudness, Fear-Gated (genuine-attention onset, not price)",
+  "rationale": "Two free, causal, un-revised crowd-attention signals quants ignore as 'social noise': Wikipedia page-view z-shocks (immutable counts, knowable T+1, never revised) and social loudness relative to dollar volume (social_excess_attention_z). Novel structure is a COMPOSITE distinguishing durable narrative ONSET from a crowded blow-off: require a fresh attention SHOCK (wiki z crosses UP through its own 30d baseline) WHILE the crowd is NOT already euphoric (fear_greed not greedy) and loudness-vs-money is elevated \u2014 the change-vs-altitude decomposition the registry already encodes (social_excess_attention_z continuation +1.8% t=+5.77; level leads DOWN). Hedge funds skip Wikipedia (no Bloomberg feed) and treat social as un-investable; an LLM-era pipeline reads it PIT-clean. DISCONFIRMER 1: replace the wiki z cross-up SHOCK with the raw wiki level via a fitted gt threshold \u2014 if a high-level threshold works equally, it is a drifting-level trap not a shock. DISCONFIRMER 2: drop the fear_greed gate \u2014 if the unconditional attention shock works the same, the 'not-yet-euphoric' composite adds nothing. DISCONFIRMER 3: substitute usgs_earthquake_count (a known non-causal noise control) for wiki views \u2014 if a noise series scores similarly the whole sweep is data-snooping.",
+  "catalyst": "Narrative-onset attention surge: a fresh Wikipedia page-view z-spike for the asset's entity, confirmed by rising social loudness relative to dollars traded, while the broad crowd is not yet euphoric \u2014 clean attention onset that leads price before it is priced.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "wiki_pageviews_zscore"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "wiki_shock_z"
+      }
+    },
+    {
+      "feature": {
+        "name": "social_excess_attention_z"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "loudness_floor_z"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fg_not_euphoric"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "wiki_pageviews_zscore"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "wiki_fade_z"
+        }
+      },
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "fg_euphoric_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "wiki_shock_z": {
+      "kind": "float",
+      "lo": 1.0,
+      "hi": 2.5
+    },
+    "loudness_floor_z": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 1.0
+    },
+    "fg_not_euphoric": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 70.0
+    },
+    "wiki_fade_z": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "fg_euphoric_exit": {
+      "kind": "float",
+      "lo": 75.0,
+      "hi": 88.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,144 @@
+{
+  "name": "Low-vol funding-clean trend (calm regime, no crowded leverage)",
+  "rationale": "THESIS: the cleanest trends are calm AND uncrowded \u2014 low realized vol means an orderly tape, and funding rising from neutral (rather than already euphoric) means the move is led by spot demand, not crowded perp leverage that unwinds violently. We take long-only trend when realized vol is low (vol_realized BOUNDED, lt-ceiling) AND funding crosses up through a fitted neutral level (funding_rate is BOUNDED but here we use cross_up to catch the FLIP from negative/neutral, treating its direction as the signal). DISCONFIRMER: run the IDENTICAL low-vol + ret_Nd>0 trend with the funding cross_up leg REMOVED. If the funding flip adds no risk-adjusted return net of fees, it is redundant and the edge is purely the calm-vol trend regime (already tested by the standalone low-vol-trend sibling) \u2014 not a new orthogonal source.",
+  "catalyst": "Realized vol is low and funding crosses up from neutral while price trends up \u2014 an orderly, spot-led advance without crowded leverage.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized",
+        "lookback": {
+          "param": "vol_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "fund_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vol_realized",
+          "lookback": {
+            "param": "vol_lb"
+          }
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vol_ceiling"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lb"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_floor"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_lb": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 28,
+      "step": 1
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.22,
+      "hi": 0.52
+    },
+    "fund_cross": {
+      "kind": "float",
+      "lo": -0.0005,
+      "hi": 0.0015
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 14,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

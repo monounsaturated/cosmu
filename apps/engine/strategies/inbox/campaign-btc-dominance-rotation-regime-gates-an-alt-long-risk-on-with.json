@@ -1,0 +1,139 @@
+{
+  "name": "BTC-dominance-rotation regime gates an alt long \u2014 risk-on-within-crypto confluence (dominance falling AND macro calm)",
+  "rationale": "THESIS: BTC dominance (BTC's share of total crypto mcap) is a cross-sectional 'rotation' read that single-name desks under-trade because it is RELATIVE market structure, not a price on any one instrument: FALLING dominance = capital rotating out of BTC into alts (risk-on within crypto), RISING dominance = a flight to BTC. The genuinely novel structure is CONFLUENCE / regime-GATING \u2014 only arm an alt long when BOTH (a) intra-crypto rotation favors alts (dominance is FALLING, captured as a downward CROSS of a fitted level, NOT a raw-level read) AND (b) the macro risk regime is constructive (vix_level below a fitted ~70th-pct ceiling, i.e. not in stress). Neither leg alone is the edge; the AND of them arms a different book than plain alt momentum. While armed, we only BUY a name once its short-horizon ret_Nd has turned positive (the rotation is actually showing up in THAT name) \u2014 so dominance+vix select the REGIME and ret_Nd selects the TIMING. Long-only spot (no shorts on Binance spot). MANDATORY DISCONFIRMERS \u2014 the deterministic Gate disposes, this is authored to be falsified, not tuned to pass: (1) SUBSUMPTION / 'is it just alt momentum?' \u2014 run the identical ret_Nd>0 entry with the dominance gate REMOVED; if unconditional alt momentum matches or beats this spec's deflated Sharpe, the dominance gate adds nothing and this is plain alt momentum, which is EXHAUSTED \u2192 FALSIFIED. (2) CONFLUENCE-NECESSITY / 'does vix matter?' \u2014 drop the vix leg; if dominance+momentum alone match the full three-leg spec, the CONFLUENCE claim is false and one filter is dead weight. (3) DRIFT-TRAP / 'is it the level in disguise?' \u2014 cg_btc_dominance is a DRIFTING raw-level snapshot, so a fitted lt/gt on its LEVEL would be an always-true/false trap; this spec binds ONLY the directional CHANGE via cross_down (entry) / cross_up (exit). A control that swaps cross_down for a static lt on the raw dominance level must NOT reproduce the edge \u2014 if it does, the result is a level-in-disguise artifact, not rotation. PRIOR (honest): cross-sectional rotation signals usually collapse into momentum under disconfirmer 1; expected outcome is maybe, leaning likely-fail. tier1, low-confidence until validated OOS \u2014 the Gate down-weights until it earns its place.",
+  "catalyst": "BTC dominance crosses DOWN through a fitted level (capital rotating into alts) WHILE equity VIX is below its stress ceiling (macro calm), and the alt's own short-horizon return has turned positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "cg_btc_dominance"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "dom_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "cg_btc_dominance"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "dom_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vix_stress_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.45
+  },
+  "param_space": {
+    "dom_cross": {
+      "kind": "float",
+      "lo": 38.0,
+      "hi": 62.0
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 16.0,
+      "hi": 28.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 15,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.04
+    },
+    "dom_exit": {
+      "kind": "float",
+      "lo": 40.0,
+      "hi": 64.0
+    },
+    "vix_stress_exit": {
+      "kind": "float",
+      "lo": 26.0,
+      "hi": 45.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

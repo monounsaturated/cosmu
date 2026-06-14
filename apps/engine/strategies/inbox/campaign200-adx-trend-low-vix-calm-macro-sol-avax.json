@@ -1,0 +1,102 @@
+{
+  "name": "adx_trend_low_vix_calm_macro_sol_avax",
+  "rationale": "High-beta alts (SOL, AVAX) trend cleanest when cross-asset macro stress is low. Gate ADX strength (gt a fitted level) by vix_level being below a calm threshold (bounded). Thesis: a strong ADX trend in a calm macro tape persists; the same ADX in a high-vix tape is whipsaw. Disconfirmer: control run removes the vix_level gate \u2014 if ADX-only trades earn equally in turbulent macro, the calm regime adds no edge and we are merely trend-following. vix_level is a bounded level so lt is valid.",
+  "catalyst": "ADX above trend-strength floor while vix_level sits below calm threshold",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_calm"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vix_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "adx_floor": {
+      "kind": "float",
+      "lo": 20.0,
+      "hi": 32.0
+    },
+    "vix_calm": {
+      "kind": "float",
+      "lo": 14.0,
+      "hi": 22.0
+    },
+    "vix_exit": {
+      "kind": "float",
+      "lo": 24.0,
+      "hi": 40.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 18,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

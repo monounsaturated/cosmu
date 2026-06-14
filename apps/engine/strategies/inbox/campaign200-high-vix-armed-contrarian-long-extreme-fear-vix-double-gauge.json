@@ -1,0 +1,102 @@
+{
+  "name": "HIGH-VIX armed contrarian long \u2014 extreme-fear + VIX double-gauge confluence",
+  "rationale": "Thesis: a real cross-asset capitulation prints when crypto's own Fear&Greed is in its fear band (lt fear_floor) AND equity VIX is elevated (gt vix_floor) at the same time \u2014 two independent fear gauges agreeing is rarer and higher-conviction than either alone. Both BOUNDED, mean-reverting, lowest-turnover member of this family. Exit when sentiment recovers above greed_exit OR risk/time stops. Disconfirmer 1 (does confluence beat the singles?): the standalone Fear&Greed-only and VIX-only contrarian longs are in the cohort \u2014 if neither the AND-confluence improves deflated Sharpe over the better single, the composite is just over-fitting two filters. Disconfirmer 2 (trade count): two extremes at once is rare; too few trades is honest insufficient-evidence. Disconfirmer 3 (holdout): purged+embargoed recent slice must stay positive.",
+  "catalyst": "crypto Fear&Greed in fear band AND equity VIX elevated simultaneously",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vix_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.6
+  },
+  "param_space": {
+    "fear_floor": {
+      "kind": "float",
+      "lo": 12.0,
+      "hi": 35.0
+    },
+    "vix_floor": {
+      "kind": "float",
+      "lo": 19.0,
+      "hi": 42.0
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 52.0,
+      "hi": 80.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 28,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

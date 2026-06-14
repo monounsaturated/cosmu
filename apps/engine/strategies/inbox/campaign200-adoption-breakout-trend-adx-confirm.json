@@ -1,0 +1,102 @@
+{
+  "name": "adoption_breakout_trend_adx_confirm",
+  "rationale": "Thesis: a real adoption breakout (BTC active addresses crossing up) is only worth chasing when price structure already shows a clean directional trend (ADX above a strength threshold) \u2014 the on-chain leg supplies the orthogonal fundamental why, ADX supplies the timing. Disconfirmer: an ADX-only trend-strength control; the active-address cross must add expectancy or the on-chain signal is just confirming what ADX already saw, contributing no orthogonal information.",
+  "catalyst": "BTC active addresses cross up while ADX shows trend strength",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_active_addresses"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "aa_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "adx"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "adx_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "aa_cross": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.0
+    },
+    "adx_min": {
+      "kind": "float",
+      "lo": 20,
+      "hi": 35
+    },
+    "adx_exit": {
+      "kind": "float",
+      "lo": 12,
+      "hi": 20
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.38
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

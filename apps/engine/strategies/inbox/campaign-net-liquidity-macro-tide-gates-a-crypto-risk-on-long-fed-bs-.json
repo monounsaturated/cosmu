@@ -1,0 +1,111 @@
+{
+  "name": "Net-liquidity macro tide gates a crypto risk-on long (Fed BS minus TGA, weekly, T+8)",
+  "rationale": "Thesis: Fed net liquidity (WALCL minus the Treasury General Account, net_liquidity_usd) is a macro-plumbing 'tide' that retail/CT discuss qualitatively but few systematize as a long-only crypto-spot REGIME GATE. The un-quantified part an LLM bridges: discrete liquidity events (debt-ceiling resolution -> TGA rebuild drains reserves; shutdown -> TGA balloons; QT pace) are calendar/policy-driven, not price-driven, so the tide turns on a clock hedge funds rarely route onto 8 spot alts. BTC is documented as extremely sensitive to liquidity as a non-yield-bearing asset. We ARM a long when net_liquidity_usd CROSSES UP through a fitted threshold (liquidity easing -> the 4-week change is positive expressed as a scale-stable cross event, NOT a raw drifting level) AND macro_regime is above a fitted risk-off floor (not in its risk-off extreme). We go flat when net_liquidity_usd crosses DOWN (tide receding) or macro_regime drops below the risk-off floor. Net liquidity is weekly and knowable ~T+8, so the gate flips rarely -> naturally low turnover (10bps taker fee survivable). DISCONFIRMERS: (1) Control arm replaces net_liquidity_usd with the raw fed_balance_sheet_usd LEVEL via the SAME cross op \u2014 if an always-rising balance-sheet level reproduces the edge it is a hidden time-trend, not the tide (this is precisely why we use the CROSS/CHANGE on net liquidity, not a level filter). (2) Buy-and-hold over the same windows \u2014 the gate MUST beat passive long, else it is just crypto's secular uptrend. (3) Date-shuffle the liquidity series (preserve marginal distribution, break price alignment) \u2014 the edge must vanish. Falsified if any disconfirmer matches. tier1 + low-confidence until validated OOS; the Gate down-weights until it earns its place.",
+  "catalyst": "net_liquidity_usd crosses UP through a fitted easing threshold (liquidity tide rising) while macro_regime is not in its risk-off extreme",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "net_liquidity_usd"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "netliq_arm"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "net_liquidity_usd"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "netliq_disarm"
+        }
+      },
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 3,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "netliq_arm": {
+      "kind": "float",
+      "lo": 5800000.0,
+      "hi": 6800000.0
+    },
+    "netliq_disarm": {
+      "kind": "float",
+      "lo": 5600000.0,
+      "hi": 6600000.0
+    },
+    "regime_floor": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

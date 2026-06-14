@@ -1,0 +1,111 @@
+{
+  "name": "defi_tvl_cross_momentum_with_tvl_recross_exit",
+  "rationale": "Thesis: the cleanest defi_tvl trade is symmetric \u2014 enter when TVL crosses up with positive momentum (capital arriving), exit the moment TVL crosses back down (capital leaving), letting the on-chain flow itself bracket the trade. Disconfirmer: gate the same entry with a fixed time_stop and NO TVL cross_down signal_exit \u2014 if returns are identical, the TVL-down exit isn't controlling risk; and gate momentum-only entry to confirm the entry-side cross isn't just a momentum proxy.",
+  "catalyst": "defi_tvl up-cross with positive momentum to enter; defi_tvl down-cross to exit",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 7
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tvl_cross"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_min"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "defi_tvl"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "tvl_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tvl_cross": {
+      "kind": "float",
+      "lo": -0.6,
+      "hi": 0.6
+    },
+    "tvl_exit": {
+      "kind": "float",
+      "lo": -0.6,
+      "hi": 0.6
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 18,
+      "step": 1
+    },
+    "mom_min": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

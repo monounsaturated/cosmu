@@ -1,0 +1,125 @@
+{
+  "name": "greed_regime_bbz_pullback_entry",
+  "rationale": "Inside a confirmed greed regime, BUYING a shallow pullback (bb_z below a low band rather than at the extension) should improve entry without abandoning the risk-on trend. We require greed plus positive medium momentum plus bb_z below a ceiling. Disconfirmer: a chase-the-high control (no bb_z condition). If buying pullbacks vs extensions performs the same inside greed, bb_z timing is noise and it's plain greed-momentum. bb_z is bounded (z-score) so lt is valid.",
+  "catalyst": "greed regime, positive momentum, price pulled back to a low Bollinger z",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 15
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "greed_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "greed_floor": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 72
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 38,
+      "hi": 50
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.04
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 12,
+      "step": 1
+    },
+    "bbz_ceiling": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.36
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 15,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

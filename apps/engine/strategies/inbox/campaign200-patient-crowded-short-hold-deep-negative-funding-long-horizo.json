@@ -1,0 +1,88 @@
+{
+  "name": "Patient crowded-short hold: deep-negative funding, long horizon, wide stops (NOT a tight-stop scalp)",
+  "rationale": "Thesis: short squeezes off a deep-negative-funding extreme are a multi-week REGIME, not a one-day pop \u2014 the bottoming process is noisy and a tight stop gets shaken out before the squeeze pays. Take the crowded-short positioning entry but hold patiently with wide stops and a long time-stop, riding the full recovery. Entry (long-only spot): funding_rate < deeply-negative floor [-0.006,-0.0005] (crowded shorts). Exit only on a wide stop, a large profit target, a long time-stop, or funding fully normalizing positive (cross_up) \u2014 i.e. the squeeze is unambiguously complete. DISCONFIRMER: must beat the SAME entry with a short max-hold and a tight stop (the scalp variant) \u2014 if the fast scalp matches net Sharpe net of fees, the patient structure adds nothing and the edge (if any) is a one-day reaction, not a regime. funding_feature null \u2014 positioning level, not carry. Low turnover by construction.",
+  "catalyst": "deep-negative funding (crowded shorts) opening a multi-week squeeze recovery",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 35
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "funding_positive"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 4,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_floor": {
+      "kind": "float",
+      "lo": -0.006,
+      "hi": -0.0005
+    },
+    "funding_positive": {
+      "kind": "float",
+      "lo": 0.0002,
+      "hi": 0.0008
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.3
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.18,
+      "hi": 0.5
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 12,
+      "hi": 35,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

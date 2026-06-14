@@ -1,0 +1,125 @@
+{
+  "name": "LOW-VIX armed trend continuation \u2014 Greed-confirmed risk-on momentum",
+  "rationale": "Thesis: calm macro vol (VIX lt vix_ceiling) plus crypto sentiment leaning risk-on (Fear&Greed gt greed_floor, BOUNDED) is the cleanest trend-continuation regime \u2014 both the equity-vol market and the crypto crowd are constructive, so up-momentum (ret_Nd gt mom_floor) persists. Two independent regime gauges agreeing reduces whipsaw. Exit when sentiment rolls back below fear_exit OR momentum fails OR risk/time stops. Disconfirmer 1 (is the sentiment gate load-bearing?): the identical low-VIX + momentum long with NO Fear&Greed gate is in the cohort \u2014 if it matches the deflated Sharpe, the sentiment confirmation adds nothing. Disconfirmer 2 (is it just buying greed-tops?): if the edge flips negative when greed is HIGH, this is late-cycle FOMO, not continuation, and FAILs. Disconfirmer 3 (holdout): purged+embargoed recent slice must hold.",
+  "catalyst": "VIX calm AND Fear&Greed risk-on AND positive momentum",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 28
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "greed_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "fear_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 14.0,
+      "hi": 23.0
+    },
+    "greed_floor": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 68.0
+    },
+    "fear_exit": {
+      "kind": "float",
+      "lo": 35.0,
+      "hi": 50.0
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 12,
+      "hi": 35,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.1
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 28,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

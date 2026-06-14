@@ -1,0 +1,125 @@
+{
+  "name": "Dual on-chain confirmation \u2014 active-address AND tx_count both cross up to gate a momentum BTC long",
+  "rationale": "Thesis: demand confirmation is stronger when BOTH the breadth of usage (distinct active addresses) AND the depth (total transactions) accelerate together \u2014 twin cross_ups reduce the chance either is a one-off artifact (dust spam inflates tx_count; exchange-reshuffles inflate addresses). Both series drift, so both enter ONLY as cross_ups. A modest positive-momentum gate ensures we ride a price trend the chain is corroborating. Disconfirmer 1: require only the active-address cross_up (drop the tx_count one) \u2014 if the deflated Sharpe is unchanged, the dual confirmation is overfit and a single cross carries everything. Disconfirmer 2: drop BOTH crosses and keep only ret_Nd>mom_floor \u2014 if the Sharpe holds, the on-chain layer is pure momentum dressing. BTC-only, long-only spot.",
+  "catalyst": "btc_active_addresses AND btc_tx_count both cross up while BTC momentum is positive",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_active_addresses"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "addr_x"
+      }
+    },
+    {
+      "feature": {
+        "name": "btc_tx_count"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "tx_x"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "btc_active_addresses"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "addr_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "addr_x": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "addr_exit": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.0
+    },
+    "tx_x": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.0
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 16,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,129 @@
+{
+  "name": "Macro-Regime-Armed Crypto Trend (risk-on + non-extreme VIX gate, not trend-alone)",
+  "rationale": "THESIS: Plain crypto trend/momentum is exhausted because it fires in every tape \u2014 including the chop and the risk-off bleed where it loses. The orthogonal structure is the GATE, not the trend: macro_regime (FRED curve+real-rates+liquidity composite, next-day available, BOUNDED 0-100-ish) and a non-extreme vix_level (BOUNDED) together define a 'risk premia are being paid' state. Documented macro->crypto coupling (Coinbase Institutional / S&P Global on crypto's regime-dependent equity-beta; Adler 'Bitcoin vs Macro Risk Score' = a DXY+10Y+VIX composite that overrides on-chain structure in risk-off) shows crypto co-moves with growth-equity beta in stress and de-risks when the macro tide goes out. We only take the long-only spot trend WHEN the macro window is open AND vol is non-extreme. This is below hedge-fund capacity (8 spot majors, daily, long-only, no leverage/shorts) and they run the fast leveraged perps version instead, so the slow daily regime-gated edge is left on the table. DISCONFIRMER: run the IDENTICAL ret_Nd>0 trend rule with the macro_regime+vix gate REMOVED (trend-alone). If gated and ungated produce statistically indistinguishable deflated-Sharpe, the regime gate carries no orthogonal info and the 'edge' is just already-exhausted momentum. The gate must add risk-adjusted return NET of the extra fees from missed-window exits.",
+  "catalyst": "Macro regime turning risk-on (FRED curve/rates/liquidity composite rises above its fitted level) while implied vol stays non-extreme (vix below a fitted complacency/normal ceiling) and price trend is already up \u2014 the macro window opens and arms a trend that would otherwise also fire in losing risk-off tapes.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "regime_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "trend_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "regime_floor"
+        }
+      },
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "vix_ceiling"
+        }
+      },
+      {
+        "feature": {
+          "name": "ret_Nd"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "trend_floor"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.6
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 16.0,
+      "hi": 28.0
+    },
+    "trend_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

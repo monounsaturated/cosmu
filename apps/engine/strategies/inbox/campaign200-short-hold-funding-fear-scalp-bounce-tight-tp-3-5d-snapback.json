@@ -1,0 +1,102 @@
+{
+  "name": "Short-hold funding-fear scalp bounce (tight TP, 3-5d snapback)",
+  "rationale": "A fast-turnover variant testing whether the funding+fear composite captures a SHORT, sharp snapback rather than a multi-week reversal. Arm a long when funding is soft (below ceiling) AND Fear&Greed is fearful, then exit fast on a TIGHT take-profit or a short time-stop \u2014 the bet is purely the immediate post-flush bounce. Both inputs BOUNDED/mean-reverting; funding ceiling straddles realized to bite (null carry). Because turnover is high, the tp/stop band is tight and the spec is restricted to the cheapest-to-trade names implicitly via min_liquidity; the Gate must net 10bps taker per leg. DISCONFIRMER: the SAME funding+fear entry with a LONG hold (max_hold 25-30d, wide TP) is in this cohort \u2014 if a true capitulation bounce exists it should persist beyond a few days, so if ONLY the tight-TP short-hold version is profitable, the apparent edge is a transient microstructure/noise artifact that 10bps fees should erase, not a durable reversal. If the short-hold turnover makes it fee-negative, that is an honest FAIL. Gate disposes.",
+  "catalyst": "soft funding + fear, played for a fast 3-5 day snapback",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 25000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 6
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_ceiling": {
+      "kind": "float",
+      "lo": -4e-05,
+      "hi": 6e-05
+    },
+    "fear_floor": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 38.0
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 70.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.1
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.14
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 6,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,114 @@
+{
+  "name": "LOW-VIX armed trend continuation \u2014 momentum ride in calm tape (BTC/ETH/SOL)",
+  "rationale": "Thesis: trends persist when macro vol is suppressed; complacency is the regime where uptrends grind on with shallow pullbacks. Arm with VIX BELOW a calm ceiling (lt vix_ceiling, a BOUNDED level \u2014 the LOW direction of the gate), then require positive multi-week momentum (ret_Nd over mom_lookback gt mom_floor, SIGNED so the level gate is legitimate). Ride until trend rolls over (momentum lt mom_exit) or risk/time stops. Low turnover via a multi-week lookback. Disconfirmer 1 (is the low-VIX cap load-bearing?): the identical momentum-continuation long with NO VIX cap is in the cohort \u2014 if it matches the deflated Sharpe, the calm arm adds nothing and this is plain TS-momentum. Disconfirmer 2 (regime inversion): if the edge actually lives in the HIGH-VIX complement, the thesis is wrong and FAILs. Disconfirmer 3 (holdout): purged+embargoed recent slice must hold or it is a single-bull-run artifact.",
+  "catalyst": "VIX below calm ceiling AND positive multi-week momentum",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 30
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lookback"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "ret_Nd",
+          "lookback": {
+            "param": "mom_lookback"
+          }
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "mom_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 14.0,
+      "hi": 24.0
+    },
+    "mom_lookback": {
+      "kind": "int",
+      "lo": 15,
+      "hi": 45,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.15
+    },
+    "mom_exit": {
+      "kind": "float",
+      "lo": -0.08,
+      "hi": 0.02
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 30,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

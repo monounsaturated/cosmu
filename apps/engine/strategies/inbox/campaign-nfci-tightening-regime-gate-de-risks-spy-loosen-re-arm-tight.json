@@ -1,0 +1,102 @@
+{
+  "name": "NFCI tightening regime-gate de-risks SPY (loosen re-arm, tighten cross-up exit)",
+  "rationale": "Thesis: the Chicago Fed NFCI fuses 100+ money/bond/equity/credit/leverage indicators into one weekly PIT composite; a TRANSITION from loose to tight (NFCI crossing up through a fitted threshold) precedes rising risk premia and declining asset values, and embeds leverage + shadow-banking stress that credit_spread alone misses. We hold LONG SPY while financial conditions are loose/re-loosening (NFCI crosses DOWN below a fitted loosen threshold, with VIX not already spiked so we arm BEFORE the vol event) and de-risk to cash on the tightening cross_up \u2014 a slow, low-turnover regime gate that desks treat as 'context' not a trigger. The edge is the regime CHANGE, not the drifting level. Disconfirmer 1: ablate nfci vs credit_spread driving the same arm/de-risk \u2014 if credit_spread reproduces the result, NFCI adds nothing beyond its credit component (keep the simpler feature). Disconfirmer 2: a raw NFCI LEVEL lt/gt threshold should NOT work; if it does the signal is a drifting-composite artifact (hence we use cross_down/cross_up only). Disconfirmer 3: must beat buy-and-hold SPY net of fees and not merely be 'flat during high-vol months' \u2014 controlled by checking a vix_level-only filter does not reproduce it. Disconfirmer 4: PIT integrity uses the ALFRED initial-release vintage (realtime_start), not revised series, so no look-ahead.",
+  "catalyst": "NFCI crosses down through its fitted loosen threshold (tight-to-loose regime flip) while VIX is calm \u2014 arm LONG; exit on the loose-to-tight cross_up.",
+  "universe": {
+    "venues": [
+      "yahoo"
+    ],
+    "asset_classes": [
+      "equity"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 60
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "nfci"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "nfci_loosen"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_calm"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "nfci"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "nfci_tighten"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.34,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "nfci_loosen": {
+      "kind": "float",
+      "lo": -0.6,
+      "hi": 0.2
+    },
+    "nfci_tighten": {
+      "kind": "float",
+      "lo": -0.4,
+      "hi": 0.4
+    },
+    "vix_calm": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 35.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 10,
+      "hi": 60,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

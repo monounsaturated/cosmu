@@ -1,0 +1,111 @@
+{
+  "name": "greed_regime_long_horizon_carry",
+  "rationale": "If greed is a persistent regime, a longer holding period (up to 25d) should harvest the full risk-on leg rather than a quick bounce. We hold momentum positions long while greed persists. Disconfirmer: a buy-and-hold momentum control with the same long horizon but NO greed gate \u2014 if it captures the same return, regime persistence adds nothing and we are merely riding drift.",
+  "catalyst": "sustained greed with positive medium-term momentum",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 8,
+    "max_hold_days": 25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "greed_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "greed_floor": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 70
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 40,
+      "hi": 50
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 14,
+      "step": 1
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.15,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 8,
+      "hi": 25,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

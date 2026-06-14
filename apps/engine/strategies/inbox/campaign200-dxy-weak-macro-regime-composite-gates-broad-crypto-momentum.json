@@ -1,0 +1,139 @@
+{
+  "name": "DXY-weak macro-regime composite gates broad crypto momentum",
+  "rationale": "Belt-and-suspenders macro arming: require BOTH the broad macro_regime composite to flip risk-on AND the dollar to be weakening, then ride medium-term momentum across the full major+alt basket. Thesis: the dollar is the single most important cross-asset channel into crypto, so even after a broad regime composite turns risk-on, the dollar's own direction carries orthogonal information about follow-through. Both macro_regime and dxy are drifting -> read ONLY as crosses (macro_regime cross_up to flip risk-on, dxy cross_down to confirm the dollar tailwind). DISCONFIRMER: a macro_regime-cross_up-only control (no explicit dollar leg) must NOT match \u2014 if the composite already prices the dollar, dxy is redundant and this is a STOP. CONTROL EXITS: either macro_regime cross_down (regime risk-off) or dxy cross_up (dollar bid) disarms.",
+  "catalyst": "macro_regime composite flips risk-on AND the dollar is weakening \u2014 confirmed broad risk-on",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 6
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 4,
+    "max_hold_days": 22
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "dxy"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "dxy_arm"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "regime_riskon"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "dxy"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "dxy_disarm"
+        }
+      },
+      {
+        "feature": {
+          "name": "macro_regime"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "regime_riskoff"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 6,
+    "max_position_pct": 0.16,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "dxy_arm": {
+      "kind": "float",
+      "lo": 95.0,
+      "hi": 108.0
+    },
+    "dxy_disarm": {
+      "kind": "float",
+      "lo": 98.0,
+      "hi": 112.0
+    },
+    "regime_riskon": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "regime_riskoff": {
+      "kind": "float",
+      "lo": -0.6,
+      "hi": 0.4
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 90,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": -0.02,
+      "hi": 0.06
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.18
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.12,
+      "hi": 0.4
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

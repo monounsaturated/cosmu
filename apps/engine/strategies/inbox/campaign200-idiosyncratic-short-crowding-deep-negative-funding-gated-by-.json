@@ -1,0 +1,116 @@
+{
+  "name": "Idiosyncratic short-crowding: deep-negative funding gated by a CALM macro tape (NOT funding-alone)",
+  "rationale": "Thesis: deep-negative funding squeezes resolve UP only when the crypto fear is IDIOSYNCRATIC, not part of a systemic macro rout (when the whole risk complex is in free-fall, crowded shorts are correct and the squeeze fails). Arm the positioning gate only on a calm tape. Entry (long-only spot): funding_rate < deeply-negative floor [-0.006,-0.0006] (crowded shorts) AND vix_level < a fitted panic ceiling AND macro_regime > a risk-off floor (composite not deeply risk-off). vix_level and macro_regime are BOUNDED so lt/gt on level is valid. DISCONFIRMER: must beat deep-funding ALONE \u2014 if lone positioning matches net Sharpe, the calm-tape arming gate (the actual claim) is worthless and this is just niche-#4 spec-1 rebuilt. funding_feature null \u2014 positioning, not carry. Exit on funding normalizing up.",
+  "catalyst": "deep-negative funding squeeze while VIX and the macro regime are calm (crypto-local stress)",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 18
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_panic_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "macro_riskoff_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "funding_normalized"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 3,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_floor": {
+      "kind": "float",
+      "lo": -0.006,
+      "hi": -0.0006
+    },
+    "vix_panic_ceiling": {
+      "kind": "float",
+      "lo": 22,
+      "hi": 40
+    },
+    "macro_riskoff_floor": {
+      "kind": "float",
+      "lo": -1.0,
+      "hi": 0.0
+    },
+    "funding_normalized": {
+      "kind": "float",
+      "lo": -0.0002,
+      "hi": 0.0002
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.06,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.35
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 22,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,144 @@
+{
+  "name": "Mid macro-regime (between) + calm VIX arms double-confirmed oversold (bb_z AND RSI)",
+  "rationale": "THESIS: require BOTH oversold definitions to agree (bb_z band-relative AND rsi momentum-relative) to cut false washouts, armed only in a MIDDLE macro_regime band (between) \u2014 the idea is that extreme-high regime readings are late-cycle euphoria where reversion fails on the upside and extreme-low are breakdowns; the durable reversion lives in the middle, with calm vix. Double-confirmation lowers turnover further (rare co-occurrence), so 10bps barely bites. DISCONFIRMER 1 (is the band a disguised one-sided gate?): a macro gt-only sibling tests whether the lower edge of the band matters. DISCONFIRMER 2 (does double-confirmation beat single?): spec-1 (bb_z-only) and spec-2 (rsi-only) under their gates are the single-trigger baselines; if double is not better risk-adjusted it only cost trades. DISCONFIRMER 3 (just reversion?): ungated double-oversold control. DISCONFIRMER 4 (holdout).",
+  "catalyst": "macro_regime in a fitted mid band AND vix calm AND both bb_z and rsi oversold",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "macro_regime"
+      },
+      "op": "between",
+      "threshold": {
+        "param": "regime_band"
+      }
+    },
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      },
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "regime_band": {
+      "kind": "float",
+      "lo": -0.2,
+      "hi": 0.7
+    },
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 16.0,
+      "hi": 26.0
+    },
+    "bbz_floor": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -1.5
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 28.0,
+      "hi": 42.0
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 50.0,
+      "hi": 62.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.28
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 4,
+      "hi": 12,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

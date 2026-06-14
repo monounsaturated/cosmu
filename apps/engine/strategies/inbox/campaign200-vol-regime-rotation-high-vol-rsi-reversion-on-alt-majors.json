@@ -1,0 +1,123 @@
+{
+  "name": "Vol-regime rotation: high-vol RSI reversion on alt majors",
+  "rationale": "THESIS: high-beta alts overshoot harder than BTC/ETH in high-vol regimes \u2014 thinner books and reflexive liquidation cascades stretch them further from fair value, so the high-vol oversold snap-back is mechanically larger on alts. We run the high-vol-armed reversion (vol_realized>floor BOUNDED + RSI<oversold floor BOUNDED) and let the cross-sectional universe select the alt majors (SOL/XRP/ADA/AVAX/LINK/BNB) via min_instruments. DISCONFIRMER: run the IDENTICAL rule restricted to BTC/ETH (the lowest-beta majors). If the low-beta majors do not materially underperform the broader alt set on deflated-Sharpe net of fees, the alt-overshoot premise is false and this is just generic high-vol reversion that happens to include alts \u2014 the asset tilt earns nothing. Also: drop the vol gate to confirm it is not plain oversold-buying.",
+  "catalyst": "Realized vol is elevated and an alt major prints oversold RSI \u2014 a stretched high-beta overshoot primed to snap back.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 6
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vol_realized",
+        "lookback": {
+          "param": "vol_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi",
+        "lookback": {
+          "param": "rsi_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi",
+          "lookback": {
+            "param": "rsi_lb"
+          }
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 4,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vol_lb": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 21,
+      "step": 1
+    },
+    "vol_floor": {
+      "kind": "float",
+      "lo": 0.6,
+      "hi": 1.2
+    },
+    "rsi_lb": {
+      "kind": "int",
+      "lo": 7,
+      "hi": 18,
+      "step": 1
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 18.0,
+      "hi": 33.0
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 48.0,
+      "hi": 60.0
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.09,
+      "hi": 0.26
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 7,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

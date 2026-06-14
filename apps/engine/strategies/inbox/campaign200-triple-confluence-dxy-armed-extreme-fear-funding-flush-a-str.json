@@ -1,0 +1,116 @@
+{
+  "name": "Triple confluence, dxy-armed: extreme fear + funding flush + a strong-dollar macro headwind cross",
+  "rationale": "Thesis: crypto capitulations are sharpest when a macro liquidity headwind \u2014 a strengthening US dollar \u2014 is squeezing risk assets at the same moment the crypto crowd panics (fear_greed extreme-low) and perp leverage flushes (funding_rate low). The dollar axis is the macro trigger; sentiment + funding are the crypto-internal capitulation confirms. dxy DRIFTS, so it is used ONLY via cross_up (the dollar STRENGTHENING into the flush), never a raw level. The bounce is bought as the dollar-driven forced-selling exhausts. Long-only spot, medium hold. Disconfirmer: must beat the fear+funding pair WITHOUT the dxy cross arm on deflated Sharpe after fees; if the pair matches, the dollar axis adds no timing and is noise. Honest FAIL valid.",
+  "catalyst": "a strengthening-dollar cross coinciding with extreme fear and a funding flush",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 20
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fear_extreme"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_flush"
+      }
+    },
+    {
+      "feature": {
+        "name": "dxy"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "dxy_strength_arm"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "fear_recover_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.55
+  },
+  "param_space": {
+    "fear_extreme": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 26
+    },
+    "funding_flush": {
+      "kind": "float",
+      "lo": -0.0005,
+      "hi": 5e-05
+    },
+    "dxy_strength_arm": {
+      "kind": "float",
+      "lo": 98,
+      "hi": 108
+    },
+    "fear_recover_exit": {
+      "kind": "float",
+      "lo": 42,
+      "hi": 58
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.2
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.36
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 5,
+      "hi": 20,
+      "step": 1
+    }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
