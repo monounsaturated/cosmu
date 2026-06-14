@@ -341,6 +341,19 @@ export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyD
         stale={strategy.summary_stale}
         updatedAt={strategy.summary_updated_at}
         specRationale={specRationale}
+        stage={stage}
+        gate={
+          headlineBt
+            ? {
+                passedGates: headlineBt.passed_gates,
+                deflatedSharpe: headlineBt.deflated_sharpe,
+                pbo: headlineBt.pbo,
+                oosReturn: headlineBt.oos_return,
+                oosWindowDays: headlineBt.oos_window_days,
+                maxDd: headlineBt.max_dd
+              }
+            : null
+        }
       />
 
       <PhaseComparison headlineBt={headlineBt} paperPnl={paperPnl} trades={trades} ageDays={ageDays} bestOos={bestOos} />
