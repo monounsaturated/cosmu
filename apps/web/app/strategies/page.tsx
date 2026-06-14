@@ -110,7 +110,7 @@ function SummaryRibbon({ summary, rows }: { summary: PortfolioSummaryResponse; r
       ) : (
         <div className="ribbon-item">
           <span className="ribbon-label">Live</span>
-          <span className="ribbon-val quiet">No Version live — sim only</span>
+          <span className="ribbon-val quiet">No Version live — paper only</span>
         </div>
       )}
 

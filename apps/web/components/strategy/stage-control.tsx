@@ -85,9 +85,9 @@ export function StageControl({
           </p>
         ) : (
           <p className="ai-body">
-            Halt the paper track for <strong style={{ color: "var(--fg)" }}>{strategyName}</strong> and close its simulated
+            Halt the paper track for <strong style={{ color: "var(--fg)" }}>{strategyName}</strong> and close its paper
             positions. <strong style={{ color: "var(--fg)" }}>No real money is involved</strong> — this only stops the
-            simulation. Its stats are kept so you can still review what happened.
+            paper track. Its stats are kept so you can still review what happened.
           </p>
         )}
       </Modal>

@@ -215,8 +215,10 @@ export function LiveSurface({
         <EquityHero label="Total equity" curve={isLive ? equityCurve : []} />
 
         {/* KPI + guard row: 3 money KPIs + 3 guard boxes folded into one line. */}
-        {/* 6 KPI/guard boxes (6/8) + the capital-allocation donut (2/8) on one row. */}
-        <div className="kgrid kpi-guard" style={{ gridTemplateColumns: "repeat(6,1fr) 2fr" }}>
+        {/* The capital-allocation donut (2/8) on the LEFT + 6 KPI/guard boxes (6/8). */}
+        <div className="kgrid kpi-guard" style={{ gridTemplateColumns: "2fr repeat(6,1fr)" }}>
+          {/* Capital allocation by venue — honest empty until something is deployed live. */}
+          <AllocDonut venues={isLive ? venues : []} />
           <MoneyBox
             label="Invested"
             value={usd(liveInvested)}
@@ -261,8 +263,6 @@ export function LiveSurface({
             unit="usd"
             onCapChange={(n) => saveCap({ global_max_notional: n })}
           />
-          {/* Capital allocation by venue (2/8) — honest empty until something is deployed live. */}
-          <AllocDonut venues={isLive ? venues : []} />
         </div>
 
         {/* [Open positions | Recent trades] side by side. */}

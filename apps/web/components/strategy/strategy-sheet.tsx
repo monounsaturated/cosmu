@@ -243,11 +243,13 @@ function Activity({ trades }: { trades: Execution[] }) {
 }
 
 // ── The full sheet body — used by the SidePanel and the standalone page. ──
-export function StrategySheet({ strategy }: { strategy: StrategyDetailResponse }) {
+export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyDetailResponse; stageOverride?: Stage }) {
   const trades = strategy.trades;
   const simCurve = simCurveFromTrades(trades);
   const ledger = ledgerFromTrades(trades);
-  const stage = deriveStage(trades, strategy.backtests);
+  // Prefer the engine's canonical stage (passed from the screener row) so the sheet badge never disagrees
+  // with the table; fall back to the contract-shape heuristic for the standalone /strategy/[id] page.
+  const stage = stageOverride ?? deriveStage(trades, strategy.backtests);
   const ageDays = trackAgeDays(trades);
   const headlineBt = headlineBacktest(strategy.backtests);
   const bestOos = bestOosPct(strategy.backtests);

@@ -22,9 +22,11 @@
 // or cost.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { LeaderboardRow, StrategyDetailResponse } from "@cosmu/contracts-ts";
 import { SidePanel } from "@/components/ui/side-panel";
 import { StrategySheet } from "@/components/strategy/strategy-sheet";
+import type { Stage } from "@/components/strategy/stage-control";
 import { engineFetch } from "@/lib/engine";
 import { cn, formatUsd, numOrNull, signedUsd } from "@/lib/utils";
 
@@ -61,6 +63,8 @@ const STAGE_BADGE_CLASS: Record<LifeStatus, string> = {
 };
 // Pipeline order for the default "Stage" sort (top-to-bottom by lifecycle maturity).
 const STAGE_RANK: Record<LifeStatus, number> = { live: 5, paper: 4, screened: 3, lab: 2, killed: 1 };
+// Map the screener's lifecycle onto the sheet's Stage union so the sheet badge matches the table badge.
+const LIFE_TO_STAGE: Record<LifeStatus, Stage> = { lab: "queued", screened: "backtest", paper: "paper", live: "live", killed: "killed" };
 
 // The Gate's reference scalars (the green threshold line on the DSR bar; the PBO gold ceiling).
 const SHARPE_REF = 2;
@@ -121,7 +125,9 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
   const [visible, setVisible] = useState<Record<ColKey, boolean>>({ ...DEFAULT_VISIBLE });
   const [showPicker, setShowPicker] = useState(false);
   const [sort, setSort] = useState<{ key: ColKey; dir: SortDir }>({ key: "stage", dir: "desc" });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Initial selection from ?v=<version_id> so a strategy link from a dashboard table opens its sheet here.
+  const searchParams = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("v"));
   const dragKey = useRef<ColKey | null>(null);
 
   // Close the column picker on an outside click (the v18 menu behaviour).
@@ -221,6 +227,7 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
           <FilterChip label="Queued" active={filter === "queued"} onClick={() => setFilter("queued")} />
           <FilterChip label="Killed" active={filter === "killed"} onClick={() => setFilter("killed")} />
         </div>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
         <input
           className="search-input"
           value={query}
@@ -260,9 +267,7 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
             </button>
           </div>
         </div>
-        <span className="quiet" style={{ marginLeft: "auto", fontSize: 11 }}>
-          {filtered.length} of {rows.length} · ranked by deflated OOS Sharpe
-        </span>
+        </div>
       </div>
 
       {/* ── ranked screener — horizontal scroll on overflow ── */}
@@ -332,7 +337,11 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
         )}
       </div>
 
-      <SheetPanel id={selectedId} onClose={() => setSelectedId(null)} />
+      <SheetPanel
+        id={selectedId}
+        stage={selectedId ? LIFE_TO_STAGE[lifeStatusOf(rows.find((r) => r.version_id === selectedId)?.status)] : undefined}
+        onClose={() => setSelectedId(null)}
+      />
     </>
   );
 }
@@ -468,7 +477,7 @@ function FilterChip({ label, dot, active, onClick }: { label: string; dot?: stri
 
 // ── the right detail sheet — fetches the full Version detail client-side (via the same-origin proxy) and
 // renders the SHARED StrategySheet. Honest loading + error states. ──
-function SheetPanel({ id, onClose }: { id: string | null; onClose: () => void }) {
+function SheetPanel({ id, stage, onClose }: { id: string | null; stage?: Stage; onClose: () => void }) {
   const [detail, setDetail] = useState<StrategyDetailResponse | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
 
@@ -504,7 +513,7 @@ function SheetPanel({ id, onClose }: { id: string | null; onClose: () => void })
       ) : state === "error" ? (
         <p className="quiet" style={{ fontSize: 12, padding: "20px 4px" }}>Could not load this Version&apos;s detail — the engine did not respond.</p>
       ) : detail ? (
-        <StrategySheet strategy={detail} />
+        <StrategySheet strategy={detail} stageOverride={stage} />
       ) : null}
     </SidePanel>
   );

@@ -102,8 +102,8 @@ async function CostsData() {
       {/* 1 · spend chart — honest empty (no dated series in the contract). */}
       <SpendChartCard totalToDate={totalSpend} />
 
-      {/* 2 + 3 · category tiles (clickable filters) + the cost register they filter. */}
-      <CostsRegister categories={connected ? costs.by_category : []} register={register} computedAt={computed_at} />
+      {/* 2 + 3 · four category tiles (clickable filters) + the cost register they filter. */}
+      <CostsRegister register={register} computedAt={computed_at} />
 
       {/* 4 · per-strategy ROI — the literal opex-vs-alpha question at the strategy grain (engine-only,
           only when the engine attributed opex to a strategy). Net P&L here is the engine-attributed

@@ -10,7 +10,7 @@ import { Suspense } from "react";
 import { engineConfigured, getSettingsKeys } from "../data";
 import { Page, Toolbar } from "@/components/ui/toolbar";
 import { EmptyState, NotConnected } from "@/components/ui/honest-state";
-import { KeysTable, KeysLegend, keyedCounts } from "@/components/keys/keys-table";
+import { KeysTable, keyedCounts } from "@/components/keys/keys-table";
 
 // Always render on-demand with fresh engine data — never statically pre-render (the engine may be offline
 // at build time; on-demand lets the honest not-connected state handle it).
@@ -60,7 +60,6 @@ async function KeysData() {
         <span className="card-lbl">
           Keys · {connCount} of {total} connected
         </span>
-        <KeysLegend />
       </div>
       <div className="card-body">
         <KeysTable rows={keys} />

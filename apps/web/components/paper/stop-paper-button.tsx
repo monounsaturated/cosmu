@@ -48,8 +48,8 @@ export function StopPaperButton() {
           </>
         }
       >
-        Halt every running paper strategy and close their simulated positions. <strong>No real money is
-        involved</strong> — this only stops the simulations and frees their virtual capital. Each one{" "}
+        Halt every running paper strategy and close their paper positions. <strong>No real money is
+        involved</strong> — this only stops the paper tracks and frees their paper capital. Each one{" "}
         <strong>keeps its stats</strong> so you can still review what happened. Live trading is not affected.
         {note ? <div style={{ marginTop: 12, color: "var(--down)", fontSize: 12 }}>{note}</div> : null}
       </Modal>

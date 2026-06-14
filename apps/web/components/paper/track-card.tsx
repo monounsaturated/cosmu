@@ -73,7 +73,7 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
                 return (
                   <tr key={row.version_id} className={cn(i >= LIM && "dash-extra")}>
                     <td>
-                      <Link href={`/strategy/${row.version_id}`} className="strat-link">
+                      <Link href={`/strategies?v=${row.version_id}`} className="strat-link">
                         {row.name}
                       </Link>
                     </td>

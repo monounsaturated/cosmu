@@ -1,35 +1,32 @@
 "use client";
 
-// Costs register + clickable category tiles. The tiles are dynamic filters: clicking a category narrows
-// the register to that category's sources (click again to clear). Client-only state; the rows themselves
-// are computed server-side and passed in (no engine call here).
+// Costs register + the four clickable category tiles. The tiles are dynamic filters: clicking a category
+// narrows the register to that category's sources (click again to clear). All four buckets always show
+// (even at $0). Client-only state; the rows are computed server-side and passed in.
 
 import { useState } from "react";
-import type { CostByCategory } from "@cosmu/contracts-ts";
-import { CategoryTiles, RegisterTable, CardHead, RefreshedAt, type RegisterRow } from "./cost-sections";
-
-// Fold the register's category vocab (infra/ci/data/trading/llm/ai) onto the four tile buckets so a tile
-// click filters the matching register rows.
-const FOLD: Record<string, string> = { infra: "infra", ci: "infra", data: "data", trading: "trading", llm: "ai", ai: "ai" };
-const fold = (c: string) => FOLD[c.toLowerCase()] ?? c.toLowerCase();
+import { CategoryTiles, RegisterTable, CardHead, RefreshedAt, foldTile, TILE_ORDER, type RegisterRow } from "./cost-sections";
 
 export function CostsRegister({
-  categories,
   register,
   computedAt,
 }: {
-  categories: CostByCategory[];
   register: RegisterRow[];
   computedAt: string;
 }) {
   const [active, setActive] = useState<string | null>(null);
-  const filtered = active ? register.filter((r) => fold(r.category) === fold(active)) : register;
-  const pick = (cat: string) => setActive((prev) => (prev && fold(prev) === fold(cat) ? null : cat));
-  const hasCats = categories.some((c) => c.amount > 0);
+
+  // Tile totals come from the register itself (so they include supplier billing), folded into the 4 buckets.
+  const totals: Record<string, number> = { infra: 0, trading: 0, data: 0, ai: 0 };
+  for (const r of register) totals[foldTile(r.category)] += r.amount ?? 0;
+  const tileCats = TILE_ORDER.map((c) => ({ category: c, amount: totals[c] }));
+
+  const filtered = active ? register.filter((r) => foldTile(r.category) === foldTile(active)) : register;
+  const pick = (cat: string) => setActive((prev) => (prev && foldTile(prev) === foldTile(cat) ? null : cat));
 
   return (
     <>
-      {hasCats ? <CategoryTiles categories={categories} active={active} onPick={pick} /> : null}
+      <CategoryTiles categories={tileCats} active={active} onPick={pick} />
       <div className="card" style={{ marginBottom: "var(--gap)" }}>
         <CardHead
           label={`Cost register · ${filtered.length} source${filtered.length === 1 ? "" : "s"}${active ? ` · ${active}` : ""}`}

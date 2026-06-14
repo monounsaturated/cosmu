@@ -100,40 +100,46 @@ export function SpendChartCard({ totalToDate }: { totalToDate: number | null }) 
 // The mockup's `.cat-tiles .cat-tile` grid, fed the REAL CostsResponse.by_category. Each tile shows the
 // lifetime/total $ for the category + a category badge. Renders nothing when the engine returned no
 // categories (never a fabricated split).
+// The four canonical buckets — ALWAYS shown (even at $0), folding the engine's category vocab
+// (ci→infra, llm→ai) into them. No hover tooltip.
+export const TILE_ORDER = ["infra", "trading", "data", "ai"] as const;
+type TileBucket = (typeof TILE_ORDER)[number];
+const TILE_FOLD: Record<string, TileBucket> = { infra: "infra", ci: "infra", data: "data", trading: "trading", llm: "ai", ai: "ai" };
+export const foldTile = (c: string): TileBucket => TILE_FOLD[c.toLowerCase()] ?? "infra";
+
 export function CategoryTiles({
   categories,
   active,
   onPick,
 }: {
   categories: CostByCategory[];
-  /** Active category filter (lowercased match); when set the matching tile is highlighted. */
+  /** Active category filter; when set the matching tile is highlighted. */
   active?: string | null;
   /** When provided the tiles become clickable filters. */
   onPick?: (cat: string) => void;
 }) {
-  const cats = [...categories].filter((c) => c.amount > 0).sort((a, b) => b.amount - a.amount);
-  if (cats.length === 0) return null;
+  const totals: Record<TileBucket, number> = { infra: 0, trading: 0, data: 0, ai: 0 };
+  for (const c of categories) totals[foldTile(c.category)] += c.amount;
   return (
     <div className="cat-tiles">
-      {cats.map((c) => {
-        const isActive = active != null && c.category.toLowerCase() === active.toLowerCase();
+      {TILE_ORDER.map((cat) => {
+        const isActive = active != null && foldTile(active) === cat;
         return (
           <div
             className={cn("cat-tile", onPick && "cat-tile-btn", isActive && "active")}
-            key={c.category}
-            data-tip={`${c.category}: ${formatUsd(c.amount, 2)} — click to filter the register`}
-            onClick={onPick ? () => onPick(c.category) : undefined}
+            key={cat}
+            onClick={onPick ? () => onPick(cat) : undefined}
             role={onPick ? "button" : undefined}
             aria-pressed={onPick ? isActive : undefined}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <CatBadge category={c.category} />
+              <CatBadge category={cat} />
             </div>
             <div className="stat-v" style={{ marginTop: 8 }}>
-              {formatUsd(c.amount)}
+              {formatUsd(totals[cat])}
             </div>
             <div className="stat-s" style={{ textTransform: "capitalize" }}>
-              total · {c.category}
+              total · {cat}
             </div>
           </div>
         );
