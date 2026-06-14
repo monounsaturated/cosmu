@@ -124,6 +124,18 @@ function formatWindow(days: number | null | undefined): string {
   return `${Math.round(days)}d`;
 }
 
+// Annualized return (CAGR) from a TOTAL return % over a window in days — the comparable number across
+// strategies with different test lengths. null when the window is unknown or the inputs are degenerate
+// (total <= -100% would imply a wipeout; we don't annualize that). Years = days/365.25.
+function annualizedPct(totalPct: number | null | undefined, windowDays: number | null | undefined): number | null {
+  if (typeof totalPct !== "number" || !Number.isFinite(totalPct)) return null;
+  if (typeof windowDays !== "number" || !Number.isFinite(windowDays) || windowDays <= 0) return null;
+  const years = windowDays / 365.25;
+  if (years <= 0 || totalPct <= -100) return null;
+  const cagr = Math.pow(1 + totalPct / 100, 1 / years) - 1;
+  return Number.isFinite(cagr) ? cagr * 100 : null;
+}
+
 export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribbon?: ReactNode }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -429,10 +441,18 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
       const oos = Number.isFinite(row.track_return_pct) ? row.track_return_pct : null;
       if (oos === null) return <Dash />;
       const win = formatWindow(row.oos_window_days);
+      // Annualized (CAGR) over the OOS window — the comparable number, since windows differ in length
+      // (a +94% over 6yr is ~12%/yr, not 94%). Shown for every strategy incl. Backtest, so the table carries
+      // a real return even before any paper P&L. Only when we know the window length; else just the total.
+      const ann = annualizedPct(oos, row.oos_window_days);
       return (
-        <div style={{ lineHeight: 1.1 }}>
+        <div style={{ lineHeight: 1.15 }}>
           <span className={cn("tab", oos >= 0 ? "up" : "dn")}>{`${oos >= 0 ? "+" : ""}${oos.toFixed(1)}%`}</span>
-          {win ? <span className="oos-win">{win}</span> : null}
+          {ann !== null ? (
+            <span className="oos-win" data-tip="Annualized (CAGR) over the out-of-sample window — comparable across strategies with different test lengths.">{`${ann >= 0 ? "+" : ""}${ann.toFixed(1)}%/yr`}</span>
+          ) : win ? (
+            <span className="oos-win">{win}</span>
+          ) : null}
         </div>
       );
     }
