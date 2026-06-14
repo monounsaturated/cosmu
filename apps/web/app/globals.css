@@ -987,6 +987,14 @@ th[draggable=true]{cursor:pointer}
    pushing the card taller. */
 .dash-split > .card.dh{display:flex;flex-direction:column;height:100%;min-height:0}
 .dash-split > .card.dh > .card-body{flex:1 1 auto;min-height:0}
+/* DASHBOARD REFLOW: the stats/guard grid sits LEFT of Open positions inside a dash-split. Render it 2 cols
+   (Paper KPIs) / 3 cols (Live money+guard) with full-height rows so it reads as a tidy block matched to the
+   table card's height; kill its own bottom margin (the dash-split gap handles spacing). */
+#dash-paper .dash-split > .kpi-grid{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;margin-bottom:0}
+#dash-live .dash-split > .kpi-guard{grid-template-rows:1fr 1fr;margin-bottom:0}
+/* AllocDonut reused as a full "Capital allocation" card (bottom-left): drop its own kpi-box chrome so the card
+   provides the frame, and let it fill the body. */
+.card-body > .alloc-box{background:transparent;border:none;box-shadow:none;padding:6px 2px;height:100%;width:100%}
 /* DECOUPLE EXPAND: when one card is expanded ("See all" → .dash-open), the OTHER card must NOT stretch up to
    match it — otherwise expanding the positions table visually "opens" the donut/empty card beside it. Once any
    card opens, the non-open siblings size to their OWN content (align-self:start) and stop filling the now-taller

@@ -215,11 +215,9 @@ export function LiveSurface({
         {/* Equity hero ALWAYS on top — the real live equity curve (honest empty until a live track record). */}
         <EquityHero label="Total equity" curve={isLive ? equityCurve : []} />
 
-        {/* KPI + guard row: 3 money KPIs + 3 guard boxes folded into one line. */}
-        {/* The capital-allocation donut (2/8) on the LEFT + 6 KPI/guard boxes (6/8). */}
-        <div className="kgrid kpi-guard" style={{ gridTemplateColumns: "2fr repeat(6,1fr)" }}>
-          {/* Capital allocation by venue — honest empty until something is deployed live. */}
-          <AllocDonut venues={isLive ? venues : []} />
+        {/* Money + guard boxes (left, 3×2) + Open positions (right). */}
+        <div className="kgrid dash-split" style={{ gridTemplateColumns: "minmax(0,3fr) minmax(0,2fr)" }}>
+          <div className="kgrid kpi-guard" style={{ gridTemplateColumns: "repeat(3,1fr)", marginBottom: 0 }}>
           <MoneyBox
             label="Invested"
             value={usd(liveInvested)}
@@ -264,10 +262,8 @@ export function LiveSurface({
             unit="usd"
             onCapChange={(n) => saveCap({ global_max_notional: n })}
           />
-        </div>
+          </div>
 
-        {/* [Open positions | Recent trades] side by side. */}
-        <div className="kgrid dash-split" style={{ gridTemplateColumns: "1fr 1fr" }}>
           {/* Open positions — labelled by money state so a paper position is never read as live capital. */}
           <div className="card dh">
             <div className="card-hdr">
@@ -333,6 +329,20 @@ export function LiveSurface({
               )}
             </div>
           </div>
+
+          </div>
+
+          {/* Capital allocation donut (left) + Recent trades (right). */}
+          <div className="kgrid dash-split" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            {/* Capital allocation by venue — honest "No live capital deployed" until something is live. */}
+            <div className="card dh">
+              <div className="card-hdr">
+                <span className="card-lbl">Capital allocation</span>
+              </div>
+              <div className="card-body">
+                <AllocDonut venues={isLive ? venues : []} />
+              </div>
+            </div>
 
           {/* Recent trades — the engine exposes no live recent-trades endpoint yet, so this is an HONEST
               empty state rather than fabricating fills or reusing SIM trades. */}
