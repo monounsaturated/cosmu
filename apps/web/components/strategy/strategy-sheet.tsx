@@ -324,7 +324,13 @@ export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyD
 
   return (
     <>
-      <StageControl stage={stage} ageDays={ageDays} strategyName={strategy.name} />
+      <StageControl
+        stage={stage}
+        ageDays={ageDays}
+        strategyName={strategy.name}
+        versionId={strategy.version_id}
+        goLiveEligible={stage === "paper" || Boolean(headlineBt?.passed_gates)}
+      />
 
       <MoneyBand data={money} />
 
