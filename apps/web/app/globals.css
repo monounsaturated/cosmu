@@ -820,6 +820,15 @@ body.sb-collapsed .sb-tog .ic-expand{display:inline}
 .guard-box .g-arc{margin-left:auto;flex-shrink:0}
 .cap-in{width:52px;background:var(--surf3);border:1px solid var(--iris-mid);border-radius:5px;color:var(--fg);font-family:inherit;font-size:11px;padding:1px 5px;font-variant-numeric:tabular-nums}
 .cap-in:focus{outline:none}
+.cap-in:disabled{opacity:.4;cursor:not-allowed}
+/* Per-venue On/Off switch in the Rules modal — green pill when enabled, muted when off; a disabled venue is
+   out of the tradable universe (can't arm/trade). */
+.venue-sw{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;padding:2px 9px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--quiet);cursor:pointer;font-family:inherit;transition:all var(--tr)}
+.venue-sw .venue-sw-dot{width:6px;height:6px;border-radius:50%;background:var(--quiet);flex-shrink:0;transition:all var(--tr)}
+.venue-sw:hover:not(:disabled){border-color:var(--border-s)}
+.venue-sw.on{color:var(--up);border-color:oklch(0.78 0.16 160 / 0.32)}
+.venue-sw.on .venue-sw-dot{background:var(--up);box-shadow:0 0 0 2px var(--up-dim)}
+.venue-sw:disabled{opacity:.55;cursor:default}
 .cap-in-wide{width:130px;font-variant-numeric:normal}
 /* Editable cost register: click-to-edit cells, category select, inline row actions. */
 .cost-edit{cursor:pointer;border-radius:4px;padding:0 2px;transition:background .12s,box-shadow .12s}
