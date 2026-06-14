@@ -43,13 +43,45 @@ def _pg_dsn(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(keep), parts.fragment))
 
 
+# WARM READ POOL. A fresh psycopg2 connect to remote Supabase costs ~1.7s (TLS + auth across regions) — and
+# `reading()` opened one PER REQUEST, so every page's first engine call paid the full handshake (the dominant
+# slice of the ~2s API latency). A process-level pool keeps a handful of autocommit READ connections warm and
+# hands them out across requests, dropping that ~1.7s to ~0. Scope is deliberately READ-ONLY (autocommit, no
+# transaction state): the money/write path (connect()/batch()) still opens a fresh transactional connection,
+# so nothing about commit semantics changes. Lazy + keyed by DSN; thread-safe (ThreadedConnectionPool).
+import os as _os  # noqa: E402 — local to the pool helper
+
+_PG_READ_POOLS: dict[str, Any] = {}
+_PG_READ_POOL_LOCK = threading.Lock()
+
+
+def _pg_read_pool(dsn: str) -> Any:
+    pool = _PG_READ_POOLS.get(dsn)
+    if pool is None:
+        with _PG_READ_POOL_LOCK:
+            pool = _PG_READ_POOLS.get(dsn)  # re-check under lock
+            if pool is None:
+                import psycopg2.extras
+                from psycopg2.pool import ThreadedConnectionPool
+
+                maxconn = max(2, int(_os.environ.get("PG_READ_POOL_MAX", "8")))
+                pool = ThreadedConnectionPool(
+                    2, maxconn, dsn, connect_timeout=15, cursor_factory=psycopg2.extras.RealDictCursor
+                )
+                _PG_READ_POOLS[dsn] = pool
+    return pool
+
+
 class _Conn:
     """Uniform connection over sqlite3 / psycopg2: '?' placeholders, dict rows, commit/close.
     Keeps every query in the store/loop/api backend-agnostic — write once, run on either."""
 
-    def __init__(self, raw: Any, is_pg: bool) -> None:
+    def __init__(self, raw: Any, is_pg: bool, *, pool: Any = None) -> None:
         self._raw = raw
         self._pg = is_pg
+        # When set, this connection was borrowed from a warm read pool: close() RETURNS it instead of
+        # tearing down the (expensive-to-reopen) socket. Discarded only on error (see reading).
+        self._pool = pool
 
     def execute(self, sql: str, params: Iterable[Any] = ()) -> Any:
         cur = self._raw.cursor()
@@ -92,8 +124,20 @@ class _Conn:
     def commit(self) -> None:
         self._raw.commit()
 
-    def close(self) -> None:
-        self._raw.close()
+    def close(self, *, discard: bool = False) -> None:
+        """Tear down (fresh connections) or return to the warm pool (borrowed read connections).
+        `discard` forces a pooled connection to be CLOSED on return — used when a read block errored,
+        so a possibly broken/half-dead socket is never handed to the next borrower."""
+        if self._pool is not None:
+            try:
+                self._pool.putconn(self._raw, close=discard or bool(getattr(self._raw, "closed", 0)))
+            except Exception:  # noqa: BLE001 — pool refused it (already closed/full): drop the socket directly
+                try:
+                    self._raw.close()
+                except Exception:  # noqa: BLE001
+                    pass
+        else:
+            self._raw.close()
 
 
 class Writer:
@@ -154,10 +198,22 @@ class Store:
     def _open(self, *, autocommit: bool = False) -> _Conn:
         """Open one raw backend connection. autocommit=True is for read batches (see `reading`)."""
         if self._is_pg:
+            dsn = _pg_dsn(self.settings.database_url)
             import psycopg2
             import psycopg2.extras
+            import psycopg2.pool
 
-            raw = psycopg2.connect(_pg_dsn(self.settings.database_url), connect_timeout=15)
+            # READ path (autocommit) → borrow a WARM connection from the pool (skips the ~1.7s Supabase
+            # handshake). WRITE path → a fresh transactional connection, unchanged (money path untouched).
+            if autocommit:
+                try:
+                    pool = _pg_read_pool(dsn)
+                    raw = pool.getconn()
+                    raw.autocommit = True
+                    return _Conn(raw, True, pool=pool)
+                except psycopg2.pool.PoolError:
+                    pass  # pool exhausted under burst → fall through to a direct connection (old behavior)
+            raw = psycopg2.connect(dsn, connect_timeout=15)
             raw.autocommit = autocommit
             raw.cursor_factory = psycopg2.extras.RealDictCursor
             return _Conn(raw, True)
@@ -187,11 +243,13 @@ class Store:
             return
         con = self._open(autocommit=True)
         _session.con = con
+        ok = False
         try:
             yield
+            ok = True
         finally:
             _session.con = None
-            con.close()
+            con.close(discard=not ok)  # on error, drop the pooled socket; never reuse a broken one
 
     @contextmanager
     def batch(self) -> Iterator[Writer]:
