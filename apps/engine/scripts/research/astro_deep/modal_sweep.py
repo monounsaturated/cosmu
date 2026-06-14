@@ -69,8 +69,8 @@ def _make_clf(model: str, seed: int):
         return LGBMClassifier(
             max_depth=3,
             num_leaves=8,
-            n_estimators=120,
-            learning_rate=0.05,
+            n_estimators=80,
+            learning_rate=0.06,
             reg_lambda=1.0,
             min_child_samples=80,
             subsample=1.0,
@@ -83,10 +83,10 @@ def _make_clf(model: str, seed: int):
 
     return HistGradientBoostingClassifier(
         max_depth=3,
-        max_iter=120,
-        learning_rate=0.05,
+        max_iter=80,
+        learning_rate=0.06,
         l2_regularization=1.0,
-        min_samples_leaf=80,
+        min_samples_leaf=120,
         random_state=seed,
     )
 

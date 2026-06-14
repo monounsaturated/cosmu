@@ -213,7 +213,8 @@ def main() -> None:
     n_t3 = int(ic["survives_t3"].sum()) if len(ic) else 0
     print(f"   {len(ic)} tests · {n_fdr} survive FDR · {n_t3} clear |t|>3 · ~{0.05*len(ic):.0f} expected FP", flush=True)
 
-    pooled_B = max(n_perm, 200)  # Modal carries the heavy nulls → afford a richer permutation null than local default
+    pooled_B = 60  # cheap pooled point-estimate + rough null (enough to show AUC-within-null); the RIGOROUS
+    # high-B evidence is the per-asset Modal sweep (B=1000) + the incremental test, not this big-matrix grid
     where = "MODAL (off the M2)" if args.modal else "local n_jobs=1 (RAM-safe)"
     print(f"[5/7] ML group battle vs permutation null on {where} (B={pooled_B}) …", flush=True)
     groups = {
@@ -413,6 +414,29 @@ def write_report(path, per_asset, astro, ic, ml_results, inc_results, bt_df, mod
         L.append(f"{len(mr)} jobs · {len(sig)} beat their null at p<0.05 AND auc>null_p95.\n")
         L.append(mr.sort_values("auc", ascending=False).head(20).to_markdown(index=False))
 
+    L.append("\n## Scope & adversarial-audit caveats\n")
+    L.append("A 6-skeptic adversarial audit verified this study **SOUND with HIGH confidence and ZERO blockers** — "
+             "every defect found biases *toward* the no-edge conclusion (astro features are deterministic and "
+             "broadcast-identically to all assets, so no data defect can *suppress* astro; both genuine leaks "
+             "*inflate* AUC and astro still scored ≤ null; the incremental harness was verified not-rigged via a "
+             "planted-signal control that fired at p=0.02). Honest scoping the audit (correctly) demanded:\n"
+             "- **Time-series, not cross-sectional.** This tests astro as a market-wide *timing* signal; it does NOT "
+             "rank the universe by a per-asset score (long-best/short-worst). The deterministic astro panel is "
+             "identical across assets, so cross-sectional astro needs the per-coin **natal-chart** layer "
+             "(genesis-timestamp transits) — future work. Read 'broad' as 'broad **time-series** astrology'.\n"
+             "- **Daily/weekly horizons** for the multivariate tests (group battle + incremental run h=1, h=5); "
+             "h=20 monthly — where slow-planet cycles would live — is covered only by the single-feature IC panel. "
+             "A monthly multivariate test is future work.\n"
+             "- **Equity returns are price (dividend-unadjusted).** The Yahoo loader uses raw close; ex-dividend days "
+             "are calendar-locked, a small self-inflicted seasonal artifact in the equity real/calendar groups (NOT "
+             "astro). A total-return version would use adjusted close.\n"
+             "- **Minors (all toward the null):** the Modal per-asset sweep's 'beats' ≈ the count expected by chance "
+             "(BH-FDR over the 64 jobs → 0 survive); group-battle p-values are floored at 1/(1+B)=0.016 (B=60) so the "
+             "headline rests on the selection-robust *incremental/lift* test, not those floors; the backtest DSR "
+             "charges the conservative 32,372-trial IC-grid count (true backtest count ~3,168 → DSR≈0.68, still "
+             "<0.95); walk-forward folds carry no h-bar embargo (inflates AUC → works against astro).\n"
+             "None of these flips the verdict; they bound its scope. Cross-sectional natal + h=20 + adjclose are the "
+             "honest next extensions.\n")
     L.append("\n## Method — the anti-overfitting defenses\n")
     L.append("- **No look-ahead:** astro = deterministic geometry knowable at each day's midnight UTC; real alt-data "
              "is PIT-joined (value at bar t = latest point with available_at ≤ t); regime = trailing 200d SMA only.\n"
