@@ -16,12 +16,16 @@ export function CostsRegister({
 }) {
   const [active, setActive] = useState<string | null>(null);
 
-  // Tile totals come from the register itself (so they include supplier billing), folded into the 4 buckets.
+  // Costs lists only things that actually COST money — free ($0) services are dropped here (they belong on
+  // Keys as data providers, not in the spend register).
+  const paid = register.filter((r) => (r.amount ?? 0) > 0 || r.range != null);
+
+  // Tile totals come from the paid register (so they include supplier billing), folded into the 4 buckets.
   const totals: Record<string, number> = { infra: 0, trading: 0, data: 0, ai: 0 };
-  for (const r of register) totals[foldTile(r.category)] += r.amount ?? 0;
+  for (const r of paid) totals[foldTile(r.category)] += r.amount ?? 0;
   const tileCats = TILE_ORDER.map((c) => ({ category: c, amount: totals[c] }));
 
-  const filtered = active ? register.filter((r) => foldTile(r.category) === foldTile(active)) : register;
+  const filtered = active ? paid.filter((r) => foldTile(r.category) === foldTile(active)) : paid;
   const pick = (cat: string) => setActive((prev) => (prev && foldTile(prev) === foldTile(cat) ? null : cat));
 
   return (

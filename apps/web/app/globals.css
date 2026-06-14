@@ -1007,10 +1007,7 @@ th[draggable=true]{cursor:pointer}
 .mini-tbl th,.mini-tbl td{white-space:nowrap}
 .card-body:has(> table.mini-tbl){overflow-x:auto}
 .tbl-scroll{overflow-x:auto;overflow-y:hidden}
-/* Keys table fits its card: let Service + Description wrap so the table is not absurdly wide / cropped. */
-.key-tbl .k-desc,.key-tbl .k-svc2{white-space:normal}
-.key-tbl .k-desc{max-width:240px}
-.key-tbl .k-svc2{max-width:170px}
+/* Keys table: single-line rows like v18 (compact); the .tbl-scroll wrapper handles any overflow. */
 /* ── Live capital-allocation donut (sits in the KPI row, 2/8 width) ── */
 .alloc-box{display:flex;align-items:center;gap:12px;padding:10px 13px;overflow:hidden}
 .alloc-box .donut{flex-shrink:0}

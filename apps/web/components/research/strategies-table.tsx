@@ -21,13 +21,14 @@
 // field, so "Max DD" and "Fees" honestly read "—" until the engine surfaces them — never a fabricated arc
 // or cost.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import type { LeaderboardRow, StrategyDetailResponse } from "@cosmu/contracts-ts";
 import { SidePanel } from "@/components/ui/side-panel";
 import { StrategySheet } from "@/components/strategy/strategy-sheet";
 import type { Stage } from "@/components/strategy/stage-control";
 import { engineFetch } from "@/lib/engine";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { cn, formatUsd, numOrNull, signedUsd } from "@/lib/utils";
 
 // ── Lifecycle mapping — the screener's local lifecycle normalizer (the canonical paper predicate is the
@@ -87,12 +88,12 @@ type ColDef = {
 };
 
 const COLS: ColDef[] = [
-  { key: "name", label: "Name", width: 200, sort: { dir: "asc", value: (r) => r.name.toLowerCase() } },
+  { key: "name", label: "Name", width: 240, sort: { dir: "asc", value: (r) => r.name.toLowerCase() } },
   { key: "stage", label: "Stage", width: 90, pickable: true, sort: { dir: "desc", value: (r) => STAGE_RANK[lifeStatusOf(r.status)] } },
-  { key: "days", label: "Days", width: 56, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.paper_age_days) ? r.paper_age_days : null) } },
-  { key: "value", label: "Value", width: 84, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.value_usd) } },
-  { key: "pnl", label: "P&L", width: 84, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_usd) } },
-  { key: "pnlpct", label: "P&L %", width: 72, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_pct) } },
+  { key: "days", label: "Days", width: 42, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.paper_age_days) ? r.paper_age_days : null) } },
+  { key: "value", label: "Value", width: 72, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.value_usd) } },
+  { key: "pnl", label: "P&L", width: 66, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_usd) } },
+  { key: "pnlpct", label: "P&L %", width: 58, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_pct) } },
   { key: "dsr", label: "DSR", width: 94, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.deflated_sharpe) ? r.deflated_sharpe : null) } },
   { key: "pbo", label: "PBO", width: 64, pickable: true, sort: { dir: "asc", value: (r) => (Number.isFinite(r.pbo) ? r.pbo : null) } },
   { key: "dd", label: "Max DD", width: 80, pickable: true },
@@ -118,7 +119,7 @@ function formatWindow(days: number | null | undefined): string {
   return `${Math.round(days)}d`;
 }
 
-export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
+export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribbon?: ReactNode }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [order, setOrder] = useState<ColKey[]>([...DEFAULT_ORDER]);
@@ -219,6 +220,7 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
       {/* ── toolbar controls (the left/right of the page Toolbar are passed by the page; this is the
             screener's own filter row used inside the table cell). ── */}
       <div className="toolbar-row" style={{ marginBottom: 8 }}>
+        <span className="page-title">Strategies</span>
         <div className="chip-row" id="filter-chips">
           <FilterChip label="All" active={filter === "all"} onClick={() => setFilter("all")} />
           <FilterChip label="Live" dot="var(--down)" active={filter === "live"} onClick={() => setFilter("live")} />
@@ -267,8 +269,12 @@ export function StrategiesTable({ rows }: { rows: LeaderboardRow[] }) {
             </button>
           </div>
         </div>
+        <ThemeToggle />
         </div>
       </div>
+
+      {/* The live money-split ribbon sits below the toolbar (v18 order). */}
+      {ribbon}
 
       {/* ── ranked screener — horizontal scroll on overflow ── */}
       <div className="screener-wrap">

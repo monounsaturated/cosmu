@@ -24,8 +24,14 @@ export const dynamic = "force-dynamic";
 export default function StrategiesPage() {
   return (
     <Page>
-      <Toolbar title="Strategies" />
-      <Suspense fallback={<div className="skel" style={{ height: 420 }} />}>
+      <Suspense
+        fallback={
+          <>
+            <Toolbar title="Strategies" />
+            <div className="skel" style={{ height: 420 }} />
+          </>
+        }
+      >
         <StrategiesData />
       </Suspense>
     </Page>
@@ -38,35 +44,36 @@ async function StrategiesData() {
 
   if (!connected) {
     return (
-      <NotConnected
-        configured={engineConfigured}
-        what="Every Version is judged in net-of-fee % on its own track — no pooled wallet. The faceted, ranked screener appears here once the engine is connected — no demo rows."
-      />
+      <>
+        <Toolbar title="Strategies" />
+        <NotConnected
+          configured={engineConfigured}
+          what="Every Version is judged in net-of-fee % on its own track — no pooled wallet. The faceted, ranked screener appears here once the engine is connected — no demo rows."
+        />
+      </>
     );
   }
 
   if (rows.length === 0) {
     return (
-      <div className="card">
-        <div className="card-body">
-          <EmptyState
-            title="No Versions yet — the Lab hasn't produced any."
-            hint="Once the Lab authors a batch (or you drop an idea in the inbox) and Versions reach Paper, they show up here grouped by stage."
-          />
+      <>
+        <Toolbar title="Strategies" />
+        <div className="card">
+          <div className="card-body">
+            <EmptyState
+              title="No Versions yet — the Lab hasn't produced any."
+              hint="Once the Lab authors a batch (or you drop an idea in the inbox) and Versions reach Paper, they show up here grouped by stage."
+            />
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   // v18 page-strategies: the `.summary-ribbon` bento cell, then the screener (its own toolbar-row + table
   // bento cells) — nothing else. No population strip, no realtime badge (the sidebar engine dot carries
   // liveness); none of those are in the reference.
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <SummaryRibbon summary={summary} rows={rows} />
-      <StrategiesTable rows={rows} />
-    </div>
-  );
+  return <StrategiesTable rows={rows} ribbon={<SummaryRibbon summary={summary} rows={rows} />} />;
 }
 
 // The v18 `.summary-ribbon` — a calm, dense strip that surfaces the LIVE money split (real capital, real

@@ -55,7 +55,7 @@ export function StageControl({
       </div>
       <div className="panel-actions">
         {canStop ? (
-          <button type="button" className="btn btn-danger btn-xs" onClick={() => setConfirming(true)}>
+          <button type="button" className={live ? "btn btn-danger btn-xs" : "btn btn-xs"} onClick={() => setConfirming(true)}>
             Stop
           </button>
         ) : null}

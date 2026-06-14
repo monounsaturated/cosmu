@@ -21,7 +21,6 @@ import { Page, Toolbar } from "@/components/ui/toolbar";
 import { NotConnectedBanner } from "@/components/ui/honest-state";
 import {
   CardHead,
-  LlmCallsSummary,
   RoiTable,
   SpendChartCard,
   StatStrip,
@@ -96,11 +95,11 @@ async function CostsData() {
     <>
       {!connected ? <NotConnectedBanner configured={engineConfigured} /> : null}
 
-      {/* 0 · stat strip — real totals, honest "—" where a source is missing. */}
-      <StatStrip cells={cells} />
-
-      {/* 1 · spend chart — honest empty (no dated series in the contract). */}
+      {/* 0 · spend chart ON TOP (v18 layout: chart, then the rows of boxes). */}
       <SpendChartCard totalToDate={totalSpend} />
+
+      {/* 1 · stat strip — real totals, honest "—" where a source is missing. */}
+      <StatStrip cells={cells} />
 
       {/* 2 + 3 · four category tiles (clickable filters) + the cost register they filter. */}
       <CostsRegister register={register} computedAt={computed_at} />
@@ -117,23 +116,6 @@ async function CostsData() {
         </div>
       ) : null}
 
-      {/* 5 · LLM calls — engine-only; honest "—"/empty when unavailable. */}
-      <div className="card">
-        <CardHead label="LLM calls" aside={connected ? "strategy authoring" : null} />
-        <div className="card-body">
-          {connected ? (
-            <LlmCallsSummary
-              callCount={costs.llm_calls.call_count}
-              totalCost={costs.llm_calls.total_cost}
-              byTask={costs.llm_calls.by_task}
-            />
-          ) : (
-            <div className="quiet" style={{ fontSize: 12, padding: "6px 0" }}>
-              The LLM call ledger requires the engine. Supplier billing above is fetched directly.
-            </div>
-          )}
-        </div>
-      </div>
     </>
   );
 }

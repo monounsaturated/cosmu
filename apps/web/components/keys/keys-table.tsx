@@ -81,12 +81,11 @@ function Location({ row }: { row: SettingsKeyRow }) {
       <span className="loc-env">public API</span>
     );
   }
-  const localSet = row.present?.local === true;
+  // .env.local stays grey always — the app can't inspect the operator's local file, so it never claims a
+  // local presence it can't verify. Only the deploy host (Railway/Vercel) is colour-coded.
   return (
     <>
-      <span className="loc-env" style={localSet ? { color: "var(--up)" } : undefined}>
-        .env.local
-      </span>
+      <span className="loc-env">.env.local</span>
       {host ? (
         <>
           <span className="loc-sep">·</span>

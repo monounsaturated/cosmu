@@ -89,7 +89,7 @@ export function EquityHero({
         values={values}
         labels={labels}
         color={color}
-        height={210}
+        height={160}
         axis
         onScrub={setScrub}
         emptyHint="No equity curve yet — this fills in once the engine reports a real net-of-fee series. Nothing here is fabricated."

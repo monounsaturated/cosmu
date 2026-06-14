@@ -57,13 +57,14 @@ export function GuardTile({
     else setDraft(String(cap));
   }
 
+  // Same box structure as the money KPI boxes (kpi-box + kpi-label + kpi-val) — no progress bar — so every
+  // box on the Live row shares one style/size. The used value is colour-coded by occupancy; the cap is a
+  // smaller grey, editable inline.
   return (
-    <div className="kpi-box guard-mini">
+    <div className="kpi-box">
       <div className="kpi-label">{label}</div>
-      <div className="gm-val">
-        <span style={{ color: used === null ? "var(--quiet)" : col }}>
-          {used === null ? "—" : fmtVal(used, unit)}
-        </span>{" "}
+      <div className="kpi-val tab" style={{ color: used === null ? "var(--quiet)" : col }}>
+        {used === null ? "—" : fmtVal(used, unit)}{" "}
         {editing ? (
           <input
             className="cap-in"
@@ -89,9 +90,6 @@ export function GuardTile({
             / {fmtVal(cap, unit)}
           </span>
         )}
-      </div>
-      <div className="gm-bar">
-        <div className="gm-fill" style={{ width: `${(frac * 100).toFixed(0)}%`, background: col }} />
       </div>
     </div>
   );
