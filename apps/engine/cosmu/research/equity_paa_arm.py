@@ -184,13 +184,13 @@ def arm(store: Store | None = None) -> dict:
                 "mutation_operator": None,
                 "mutation_rationale": "documented strategy (Keller PAA1 top-6) — deployed via the documented-deploy lane, not the in-sample Gate",
                 "origin": STRATEGY_ORIGIN,
-                "status": "paper",
+                "status": "screened",
                 "created_at": now,
                 "killed_at": None,
                 "kill_reason": None,
             },
         )
-        print(f"\nREGISTERED strategy + version: version_id={version_id}  (status=paper, origin=documented)")
+        print(f"\nREGISTERED strategy + version: version_id={version_id}  (status=screened, origin=documented)")
     else:
         print(f"\nVersion already present: version_id={version_id} (idempotent — clock NOT reset)")
 

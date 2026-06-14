@@ -107,7 +107,7 @@ def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Tra
         FROM strategy_versions sv
         JOIN tracks tr ON tr.strategy_version_id = sv.id
         JOIN backtests b ON b.strategy_version_id = sv.id AND b.kind = 'screen'
-        WHERE sv.status IN ('paper', 'forward_test', 'live') AND b.passed_gates = 1 AND b.holdout_passed = 1
+        WHERE sv.status IN ('screened', 'paper', 'forward_test', 'live') AND b.passed_gates = 1 AND b.holdout_passed = 1
         ORDER BY CAST(b.deflated_sharpe AS REAL) DESC
         LIMIT 12
         """
@@ -355,6 +355,10 @@ def mark_tracks(
         for r in store.rows("SELECT DISTINCT strategy_version_id FROM positions WHERE strategy_version_id IS NOT NULL")
     }
     updated = _update_track_returns(store, tracked)
+    # STAGE PROMOTION: a forward-test entrant is born "screened" (badge: Backtest, backtest evidence only).
+    # The paper clock — THIS function — promotes it to "paper" (badge: Paper) the moment it has accrued a real
+    # forward day, so "Paper" honestly means "has forward evidence", never backtest-only. Badge-only relabel.
+    promoted = _promote_screened_with_forward_evidence(store, tracked)
     store.append_event(
         actor="master",
         kind="tracks_marked",
@@ -365,6 +369,7 @@ def mark_tracks(
             "marked": len(marks),
             "neutral_tracks": len(funding_by_track),
             "tracks_updated": updated,
+            "promoted_to_paper": promoted,
             "equity": float(snapshot["equity"]),
             "pnl": float(snapshot["pnl"]),
         },
@@ -400,6 +405,64 @@ def _update_track_returns(store: Store, version_ids: set[str]) -> int:
         )
         updated += 1
     return updated
+
+
+def _promote_screened_with_forward_evidence(store: Store, version_ids: set[str]) -> int:
+    """Promote screened→paper for any just-marked version that has now accrued >= PAPER_PROMOTE_MIN_DAYS of REAL
+    forward time on its paper clock (its track_opened origin). This is what makes "Paper" honestly mean "has
+    forward evidence", never backtest-only: a forward-test entrant is born "screened" (badge: Backtest) and earns
+    the "Paper" badge only once a genuine forward bar has passed. Badge-only — the live/money gate reads
+    track_opened, NOT status (master/live_eligibility), so this never changes what is live-armable. Idempotent: a
+    version already 'paper', or not yet PAPER_PROMOTE_MIN_DAYS old, is left untouched for the next tick to re-check.
+    Offline-safe: a missing clock origin reads as age 0 → not promoted. Returns the count promoted this tick."""
+    from cosmu.config.settings import PAPER_PROMOTE_MIN_DAYS
+    from cosmu.master.live_eligibility import forward_evidence
+
+    promoted = 0
+    for vid in version_ids:
+        row = store.row("SELECT status FROM strategy_versions WHERE id = ?", (vid,))
+        if row is None or row.get("status") != "screened":
+            continue
+        age = forward_evidence(store, vid).paper_age_days
+        if age < PAPER_PROMOTE_MIN_DAYS:
+            continue
+        store.rows("UPDATE strategy_versions SET status = 'paper' WHERE id = ?", (vid,))
+        store.append_event(
+            actor="master",
+            kind="status_promoted",
+            ref_type="strategy_version",
+            ref_id=vid,
+            payload={"from": "screened", "to": "paper", "reason": "first_forward_day", "paper_age_days": age},
+        )
+        promoted += 1
+    return promoted
+
+
+def reclassify_unforwarded_paper(store: Store) -> int:
+    """The inverse of _promote_screened_with_forward_evidence, for EXISTING rows: demote any status='paper'
+    version that has NOT yet accrued PAPER_PROMOTE_MIN_DAYS of real forward time back to 'screened' (badge:
+    Backtest). Fixes legacy rows the documented-deploy / survivor lanes stamped 'paper' at creation, before any
+    forward mark — so "Paper" honestly means real forward evidence. Idempotent + self-correcting: the paper clock
+    re-promotes each one once it earns a forward day. Badge-only — the live gate reads track_opened, not status.
+    Offline-safe (a missing clock origin reads as age 0 → demoted). Returns the count demoted. Wired into boot via
+    api._lifespan; lives here so the stage-transition logic stays in ONE module with its forward-direction twin."""
+    from cosmu.config.settings import PAPER_PROMOTE_MIN_DAYS
+    from cosmu.master.live_eligibility import forward_evidence
+
+    demoted = 0
+    for r in store.rows("SELECT id FROM strategy_versions WHERE status = 'paper'"):
+        vid = r["id"]
+        if forward_evidence(store, vid).paper_age_days < PAPER_PROMOTE_MIN_DAYS:
+            store.rows("UPDATE strategy_versions SET status = 'screened' WHERE id = ?", (vid,))
+            store.append_event(
+                actor="master",
+                kind="status_demoted",
+                ref_type="strategy_version",
+                ref_id=vid,
+                payload={"from": "paper", "to": "screened", "reason": "no_forward_day_yet"},
+            )
+            demoted += 1
+    return demoted
 
 
 def _accrue_neutral_funding(

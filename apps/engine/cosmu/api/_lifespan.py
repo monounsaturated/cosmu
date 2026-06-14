@@ -27,6 +27,7 @@ async def lifespan(_: FastAPI):
             if not store.row("SELECT id FROM runs LIMIT 1"):
                 facade.run_backtest(seed=11)
             ensure_recommendations()
+            _reclassify_unforwarded_paper_on_startup()
             _scan_inbox_on_startup()
             _fund_tracks_on_startup()
         except Exception:  # noqa: BLE001 — boot tasks are best-effort; never crash the app
@@ -66,10 +67,30 @@ def _fund_tracks_on_startup() -> None:
 
         if store.row("SELECT id FROM positions WHERE CAST(qty AS REAL) != 0 LIMIT 1"):
             return  # already funded — idempotent, don't double-open
-        if not store.row("SELECT sv.id FROM strategy_versions sv JOIN tracks tr ON tr.strategy_version_id = sv.id WHERE sv.status IN ('paper','forward_test','live') LIMIT 1"):
+        # Fund forward-test entrants INCLUDING 'screened': an entrant is born "screened" (badge: Backtest) and
+        # funding it (opening its sim positions) is what STARTS the forward test — the paper clock then promotes
+        # it to "paper" once a real forward day accrues. Omitting 'screened' here would strand every new survivor
+        # unfunded → never marked → never promoted (chicken-and-egg).
+        if not store.row("SELECT sv.id FROM strategy_versions sv JOIN tracks tr ON tr.strategy_version_id = sv.id WHERE sv.status IN ('screened','paper','forward_test','live') LIMIT 1"):
             return  # no survivors yet — honest empty state
         fund_tracks_from_survivors(store, bankroll=settings.sim_bankroll)
     except Exception:  # noqa: BLE001 — funding is best-effort; a data/network hiccup must not break boot
+        pass
+
+
+def _reclassify_unforwarded_paper_on_startup() -> None:
+    """Boot wiring for orchestrator.reclassify_unforwarded_paper: one-shot, idempotent, cross-backend fix for
+    legacy rows the documented-deploy / survivor lanes stamped 'paper' at creation, before any forward mark —
+    demoting them to 'screened' (badge: Backtest) so "Paper" means real forward evidence. Self-correcting: the
+    paper clock re-promotes each once it earns a forward day. Best-effort + offline-safe; never blocks startup.
+    Runs on BOTH backends (Python + store UPDATE), unlike the SQLite-only schema migrate()."""
+    try:
+        from cosmu.orchestrator.loop import reclassify_unforwarded_paper
+
+        demoted = reclassify_unforwarded_paper(store)
+        if demoted:
+            print(f"[boot] reclassified {demoted} unforwarded paper -> screened (no forward day yet)")
+    except Exception:  # noqa: BLE001 — reclassification is best-effort; a data/network hiccup must not break boot
         pass
 
 

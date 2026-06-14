@@ -39,6 +39,12 @@ from cosmu.strategy.spec import StrategySpec
 _FALLBACK_STOP = Decimal("0.95")
 _FALLBACK_TAKE = Decimal("1.10")
 
+# Statuses that are ALIVE in the forward test — a version the executor still steps forward (vs killed/lab/gone,
+# which it stops stepping and liquidates). "screened" is included: a forward-test entrant is born "screened"
+# (badge: Backtest) and IS actively forward-testing — the paper clock promotes it to "paper" once it accrues a
+# real forward day. Omitting it would freeze every new survivor's clock (never stepped → never promoted).
+_ALIVE_STATUSES = ("screened", "paper", "forward_test", "live")
+
 
 @dataclass
 class StepReport:
@@ -76,7 +82,7 @@ def _load_spec_params(store: Store, version_id: str) -> tuple[StrategySpec, dict
     same fallback the finder persists with). None when the row/spec is missing or unparsable — the caller
     skips honestly (mark-only) rather than inventing logic for a position it can't explain."""
     row = store.row("SELECT spec, params, status FROM strategy_versions WHERE id = ?", (version_id,))
-    if row is None or row.get("status") not in ("paper", "forward_test", "live"):
+    if row is None or row.get("status") not in _ALIVE_STATUSES:
         return None
     raw_spec, raw_params = row.get("spec"), row.get("params")
     try:
@@ -179,7 +185,7 @@ def _managed_tracks(store: Store, portfolio: Portfolio, cat: VenueCatalog) -> tu
             # LIQUIDATES at the next mark. An alive track whose spec can't parse stays mark-only (honest
             # skip — never invent logic for it), and flat dead rows just stay skipped.
             status_row = store.row("SELECT status FROM strategy_versions WHERE id = ?", (vid,))
-            dead = status_row is None or status_row.get("status") not in ("paper", "forward_test", "live")
+            dead = status_row is None or status_row.get("status") not in _ALIVE_STATUSES
             if pos is not None and dead:
                 venue_id = _instrument_venue(cat, instrument_id)
                 if venue_id is not None:

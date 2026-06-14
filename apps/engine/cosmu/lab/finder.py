@@ -504,7 +504,10 @@ class StrategyFinder:
                     continue
                 holdout_ok = r.holdout_passed
                 promote = r.promoted and holdout_ok
-                status = "paper" if promote else ("screened" if r.gate_passed else "killed")
+                # Forward-test entrants are born "screened" (badge: Backtest) — they carry only backtest
+                # evidence at birth. The paper clock (mark_tracks) promotes them to "paper" once they accrue
+                # >= 1 real forward day. status is badge-only; the live gate reads track_opened, not status.
+                status = "screened" if r.gate_passed else "killed"
                 kill_reason = None if r.gate_passed else (",".join(r.reasons) or "screened_out")
                 fitted = r.fitted_params or fit_params(spec)
                 params = {**fitted, "config_tag": r.config_tag}

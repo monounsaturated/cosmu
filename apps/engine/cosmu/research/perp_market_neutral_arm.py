@@ -206,13 +206,13 @@ def arm(store: Store | None = None) -> dict:
                 "mutation_rationale": "real-but-underpowered edge (perp-momentum-neutral) — deployed via the "
                                       "deploy lane (positive-OOS + beats-benchmark), not the 0.95 in-sample Gate",
                 "origin": STRATEGY_ORIGIN,
-                "status": "paper",
+                "status": "screened",
                 "created_at": now,
                 "killed_at": None,
                 "kill_reason": None,
             },
         )
-        print(f"\nREGISTERED paper version: version_id={version_id}  (status=paper, origin=documented)")
+        print(f"\nREGISTERED paper version: version_id={version_id}  (status=screened, origin=documented)")
     else:
         print(f"\nPaper version already registered: version_id={version_id} (idempotent — clock NOT reset)")
 
