@@ -7,6 +7,8 @@ description: Orchestrator playbook — turn one big feature request into paralle
 
 The **orchestrator** playbook. The lead chat decomposes a big request into independent work-streams, launches one agent per stream, then merges their PRs into `main` one at a time. Hard-won rule: agents collide unless each owns its own branch and (when heavy) its own worktree.
 
+**This is the speed unlock — reach for it generously, not only for "big" features.** Independent work should run *concurrently*, not in sequence; if a task splits cleanly along file/dir boundaries, fan it out. Tokens are flat-rate (Max sub) — **burn them freely**; the only real cost is local RAM (heavy compute → cloud/Modal) and the merge-train serialization point. Pair fan-out with adversarial verification: a second agent that tries to *refute* the first's output beats trusting one pass.
+
 ## Steps
 1. **Decompose into independent work-streams.** Cut the request along **file boundaries** — each stream touches a different set of files/dirs with minimal overlap. Overlapping streams are not parallel; sequence them or merge them into one stream.
 2. **One branch per agent — `feat/<stream>`.** This is the hard rule: **NEVER run two agents in the same working directory/branch** (proven to cause branch-stomping — one agent's commits clobber the other's). Heavy or many-file streams get their **own git worktree** so their builds and edits never touch a sibling's tree.
