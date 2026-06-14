@@ -21,6 +21,11 @@ async def lifespan(_: FastAPI):
     notifier = SlackNotifier.from_settings(settings)
     notify_health_change(notifier, status="healthy", detail="cosmu-engine started")
 
+    # Pre-open the warm read pool at boot (best-effort) so the FIRST user request — typically the slow
+    # multi-read strategy-detail sheet — never pays the ~1.7s Supabase connection handshake. Without this
+    # the first click after a redeploy hit a cold pool and exceeded the web timeout ("engine did not respond").
+    store.warm_reads()
+
     def _boot():
         try:
             facade = EngineFacade.create(settings)

@@ -25,20 +25,26 @@ router = APIRouter()
 
 @router.get("/strategies/{version_id}", response_model=StrategyDetailResponse)
 def strategy_detail(version_id: str) -> StrategyDetailResponse:
-    row = store.row(
-        "SELECT sv.*, s.name FROM strategy_versions sv JOIN strategies s ON s.id = sv.strategy_id WHERE sv.id = ?",
-        (version_id,),
-    )
-    if row is None:
+    # All reads for this sheet share ONE warm pooled connection (the detail sheet fans out to ~7 reads —
+    # version + executions + backtests + summary + summary_facts' 3 reads; without one connection each was a
+    # separate round-trip and, cold, the per-call handshake pushed it past the web timeout). Nested store reads
+    # (incl. _latest_summary → summary_facts) reuse this connection automatically.
+    with store.reading():
         row = store.row(
-            "SELECT sv.*, s.name FROM strategy_versions sv JOIN strategies s ON s.id = sv.strategy_id ORDER BY sv.created_at DESC LIMIT 1"
+            "SELECT sv.*, s.name FROM strategy_versions sv JOIN strategies s ON s.id = sv.strategy_id WHERE sv.id = ?",
+            (version_id,),
         )
+        if row is None:
+            row = store.row(
+                "SELECT sv.*, s.name FROM strategy_versions sv JOIN strategies s ON s.id = sv.strategy_id ORDER BY sv.created_at DESC LIMIT 1"
+            )
+        if row is not None:
+            version_id = row["id"]
+            executions = store.rows("SELECT * FROM executions WHERE strategy_version_id = ? ORDER BY ts DESC LIMIT 50", (version_id,))
+            backtests = store.rows("SELECT * FROM backtests WHERE strategy_version_id = ? ORDER BY created_at DESC", (version_id,))
+            summary_md, summary_stale, summary_updated_at = _latest_summary(version_id)
     if row is None:
         raise HTTPException(status_code=404, detail="strategy version not found")
-    version_id = row["id"]
-    executions = store.rows("SELECT * FROM executions WHERE strategy_version_id = ? ORDER BY ts DESC LIMIT 50", (version_id,))
-    backtests = store.rows("SELECT * FROM backtests WHERE strategy_version_id = ? ORDER BY created_at DESC", (version_id,))
-    summary_md, summary_stale, summary_updated_at = _latest_summary(version_id)
     return StrategyDetailResponse(
         version_id=version_id,
         name=row["name"],
