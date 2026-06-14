@@ -9,6 +9,7 @@ Author a `StrategySpec` (the typed hypothesis contract) and let the deterministi
 
 ## When to use
 The user describes a trading idea ("fade crowded perp funding", "ORB breakout on BTC") and wants it tried.
+Usually reached via `/strategize` (the single intake router that classifies the intent); reach for this directly only when you already know the spec shape.
 
 ## Steps
 1. **Pick the authoring path:**
@@ -23,3 +24,8 @@ The user describes a trading idea ("fade crowded perp funding", "ORB breakout on
 - `cd apps/engine && python3 -m pytest tests/test_composable_specs.py tests/test_strategy.py -q`
 - The spec compiles (`compile_spec`) and `static_check` passes (no blocked imports, no magic numbers).
 - It appears in `/strategies` at the right stage; a gate-passer earns its own standalone Track.
+
+## The standardized-freedom guardrails (author at scale, never make a mess)
+- **Creation contract:** every `StrategySpec` carries a REQUIRED `rationale` (the *why*) and ≥1 entry condition — `cosmu/strategy/spec.py`; a spec missing them won't construct.
+- **Novelty:** `novelty_gate` (`cosmu/knowledge/memory.py`) prunes a candidate too similar to a recent dead-end or a live spec — enforced by the screening cohort (not the drafter), so a batch fan-out can't flood near-duplicates into the FDR budget. Compose something structurally distinct.
+- **Facets are DERIVED, never hand-tagged:** signal-family ∈ Social · News/Events · Math/Price · Macro/Positioning · On-chain/Flow, plus edge-type/asset/venue/timeframe — all read off the spec (`cosmu/strategy/taxonomy.py`).

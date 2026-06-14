@@ -68,8 +68,11 @@ Dual-Momentum QQQ, Sector Rotation, **PAA, DAA**) each have a `equity_*_arm.py` 
 PAA (Protective Asset Allocation, Keller & Keuning 2016) and DAA (Defensive Asset Allocation,
 Keller & Keuning 2018) were added in the overnight-w2 pass. Both pass the deploy-lane bar:
 positive OOS net of real IBKR fees + risk-adjusted beat of B&H SPY. PAA full-cycle Sharpe 1.09
-(maxDD 18.9% vs SPY 50.8%); DAA full-cycle Sharpe 1.23 (maxDD 19.6% vs SPY 50.8%). NOT
-honest-Gate survivors (0 Gate survivors remain) — deploy-lane only.
+(maxDD 18.9% vs SPY 50.8%); DAA full-cycle Sharpe 1.23 (maxDD 19.6% vs SPY 50.8%). As of
+2026-06-14 **both are honest-Gate survivors** via `equity_taa_cohort.py` on their native
+multi-asset monthly universe: **DAA** is a full STRICT-PASS (DSR 1.000, holdout +0.447, beats
+B&H SPY), **PAA** cleared DSR ≥ 0.95 + real holdout + BH-FDR but not raw-beat-SPY. The
+novel-MINED-edge lane is still 0 survivors.
 
 **One-command runbook (idempotent, SIM-only, offline-safe):**
 ```

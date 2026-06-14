@@ -19,13 +19,22 @@ def overview() -> OverviewResponse:
     All four reads share ONE autocommit Postgres connection (store.reading()) — without this each store.row()
     opens + closes a separate psycopg2 connection (~1s RTT × 5 ≈ 5–7s, over the 5s frontend budget)."""
     with store.reading():
-        snapshots = store.rows("SELECT ts, equity, pnl FROM portfolio_snapshots WHERE scope = 'aggregate' ORDER BY ts ASC LIMIT 120")
-        curve = [Point(ts=row["ts"], value=float(row["equity"])) for row in snapshots]
+        snapshots = store.rows("SELECT ts, pnl FROM portfolio_snapshots WHERE scope = 'aggregate' ORDER BY ts ASC LIMIT 120")
+        # NO POOLED WALLET (locked invariant): the honest Paper equity is the Σ of per-strategy ALLOCATED capital
+        # (each track funds itself with sim_track_capital, ~$1k), NOT the $100k sim_bankroll. The stored aggregate
+        # snapshot's `equity` column = bankroll + P&L (a pooled-wallet artifact), so we IGNORE it and rebuild the
+        # read-out as `allocated + the snapshot's bankroll-independent pnl`. The hero then shows the real allocated
+        # book (e.g. ~$9k across 9 tracks) and its P&L, never the bankroll. Killed tracks drop out of `allocated`
+        # (status != paper) but their realized P&L stays in `pnl` — losses are remembered, capital isn't double-counted.
+        alloc_row = store.row(
+            "SELECT COALESCE(SUM(CAST(t.starting_capital AS REAL)), 0) AS allocated "
+            "FROM tracks t JOIN strategy_versions sv ON sv.id = t.strategy_version_id "
+            "WHERE sv.status IN ('paper', 'forward', 'forward_test')"
+        )
+        allocated = float(alloc_row["allocated"]) if alloc_row and alloc_row["allocated"] is not None else 0.0
+        curve = [Point(ts=row["ts"], value=allocated + float(row["pnl"])) for row in snapshots]
         pnl_net = float(snapshots[-1]["pnl"]) if snapshots else 0.0
-        # equity: read the latest aggregate snapshot directly (same connection) rather than constructing a
-        # Portfolio object that would open a second connection for the same query.
-        equity_row = store.row("SELECT equity FROM portfolio_snapshots WHERE scope = 'aggregate' ORDER BY ts DESC LIMIT 1")
-        equity = float(equity_row["equity"]) if equity_row else float(settings.sim_bankroll)
+        equity = allocated + pnl_net  # honest book = allocated capital + P&L; never the bankroll
         cost_rows = store.rows("SELECT category, SUM(CAST(amount AS REAL)) AS amount FROM costs GROUP BY category")
         costs = [CostSlice(category=r["category"], amount=float(r["amount"] or 0)) for r in cost_rows]
         live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
@@ -47,9 +56,16 @@ def portfolio_summary() -> PortfolioSummaryResponse:
     `live_free` is BUDGET HEADROOM (global_cap − invested), NOT exchange cash; `live_equity` is None until a
     live portfolio snapshot exists (none does yet). One connection for all reads (remote-Postgres latency)."""
     with store.reading():
-        equity_row = store.row("SELECT equity, pnl FROM portfolio_snapshots WHERE scope = 'aggregate' ORDER BY ts DESC LIMIT 1")
-        sim_equity = float(equity_row["equity"]) if equity_row else float(settings.sim_bankroll)
-        sim_pnl_net = float(equity_row["pnl"]) if equity_row else 0.0
+        snap_row = store.row("SELECT pnl FROM portfolio_snapshots WHERE scope = 'aggregate' ORDER BY ts DESC LIMIT 1")
+        sim_pnl_net = float(snap_row["pnl"]) if snap_row else 0.0
+        # sim_equity = Σ per-strategy ALLOCATED capital + P&L (NO pooled wallet; never the sim_bankroll). Mirrors
+        # the /overview read-out so the ribbon and the Paper hero agree on the real allocated book, not $100k.
+        alloc_row = store.row(
+            "SELECT COALESCE(SUM(CAST(t.starting_capital AS REAL)), 0) AS allocated "
+            "FROM tracks t JOIN strategy_versions sv ON sv.id = t.strategy_version_id "
+            "WHERE sv.status IN ('paper', 'forward', 'forward_test')"
+        )
+        sim_equity = (float(alloc_row["allocated"]) if alloc_row and alloc_row["allocated"] is not None else 0.0) + sim_pnl_net
         live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
         caps_row = store.row("SELECT max_notional FROM live_caps WHERE id = 'global'")
         live_global_cap = float(caps_row["max_notional"]) if caps_row else float(settings.live.global_live_cap)

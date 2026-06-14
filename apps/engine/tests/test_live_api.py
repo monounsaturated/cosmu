@@ -51,14 +51,15 @@ def test_live_venues_jurisdiction_and_honest_connection(tmp_path, monkeypatch):
 
 
 def test_portfolio_summary_empty_state_never_labels_sim_as_live(tmp_path, monkeypatch):
-    # No live position → has_live False, every live_* money figure is None (renders "—"), and sim_equity
-    # mirrors the bankroll. The ribbon can NEVER show SIM capital under a live label.
+    # No live position → has_live False, every live_* money figure is None (renders "—"). With NO allocated
+    # paper tracks, sim_equity is 0 (NO pooled wallet — never the $100k sim_bankroll). The ribbon can NEVER
+    # show SIM capital under a live label, nor a phantom bankroll as the paper book.
     c = _client(tmp_path, monkeypatch)
     body = c.get("/portfolio/summary").json()
     assert body["has_live"] is False
     assert body["live_invested"] is None and body["live_free"] is None and body["live_pnl_net"] is None
     assert body["live_equity"] is None  # no live snapshot is ever fabricated
-    assert body["sim_equity"] == 100000.0 and body["live_mode"] == "sim"
+    assert body["sim_equity"] == 0.0 and body["live_mode"] == "sim"  # Σ allocated paper tracks (none here), not the bankroll
     assert body["positions_count_live"] == 0
 
 

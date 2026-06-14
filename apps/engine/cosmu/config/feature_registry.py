@@ -56,7 +56,12 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     # closure (catalog "netflow"), and store route remain so already-banked data is preserved (dormant, no
     # longer gate-weighted), pending an honest relabel to a tier1 perp_long_short_ratio with a real prior.
     FeatureDefinition(name="exchange_netflow", source="exchange", tier="tier0", asset_classes=["crypto"], asof_semantics="provider knowledge time", prior="MISLABELED Binance long/short ratio (perp crowd positioning), NOT on-chain netflow; fabricated prior — disabled pending honest relabel.", enabled=False),
-    FeatureDefinition(name="vix_term_slope", source="fred/cboe", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="daily publication time", prior="Term slope encodes risk regime."),
+    # DISABLED (honesty fix): MISLABELED. It ingests FRED "VIXCLS" — the VIX SPOT level, byte-identical to
+    # vix_level — NOT a term slope (a real one needs VIX3M/VXVCLS minus VIXCLS, which is not ingested). Left
+    # enabled it was a phantom DUPLICATE of vix_level under a false "term slope" prior, inflating the gate's
+    # multiple-testing N for zero added signal. Dropped from feature_names()/the gate universe; the catalog
+    # ingest + store route stay so banked rows are preserved (dormant), pending a real VXVCLS term-structure source.
+    FeatureDefinition(name="vix_term_slope", source="fred/cboe", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="daily publication time", prior="MISLABELED: ingests VIXCLS (the VIX SPOT level) identical to vix_level — NOT a term slope; disabled pending an honest VXVCLS/VIX3M source.", enabled=False),
     FeatureDefinition(name="putcall_ratio", source="cboe", tier="tier0", asset_classes=["equity"], asof_semantics="daily publication time (next-day availability floor)", prior="Sentiment extremes mean-revert at swing horizon.", transform_version="putcall-zscore-v1"),
     FeatureDefinition(name="liquidation_cascade", source="coinglass", tier="tier0", asset_classes=["crypto"], asof_semantics="liquidation bucket close time (next-bucket availability floor)", prior="A spike in total long+short liquidations marks forced deleveraging that overshoots — a cascade exhausts sellers and mean-reverts at the swing horizon.", transform_version="liquidation-cascade-zscore-v1"),
     # Best-effort OSINT ("watching planes"): aircraft activity from the free OpenSky Network as a crude,
