@@ -72,6 +72,18 @@ const STAGE_RANK: Record<LifeStatus, number> = { live: 5, paper: 4, screened: 3,
 // Map the screener's lifecycle onto the sheet's Stage union so the sheet badge matches the table badge.
 const LIFE_TO_STAGE: Record<LifeStatus, Stage> = { lab: "queued", screened: "backtest", paper: "paper", live: "live", killed: "killed" };
 
+// The PnL of the strategy's LATEST stage — so the P&L column is meaningful at every stage, not blank for a
+// backtested strategy. A real paper/live MARK wins when present (paper, live, or a track killed after it
+// traded); otherwise the backtest OOS return. `usd` is null for a pure-backtest stage (a % return on notional,
+// not a funded $ track) — we never fabricate a dollar figure. `source` lets the cell label which stage it is.
+function latestStagePnl(row: LeaderboardRow): { pct: number; usd: number | null; source: "live" | "paper" | "backtest" } | null {
+  const markPct = numOrNull(row.pnl_pct);
+  if (markPct !== null) return { pct: markPct, usd: numOrNull(row.pnl_usd), source: lifeStatusOf(row) === "live" ? "live" : "paper" };
+  const oos = Number.isFinite(row.track_return_pct) ? row.track_return_pct : null;
+  if (oos !== null) return { pct: oos, usd: null, source: "backtest" };
+  return null;
+}
+
 // The Gate's reference scalars (the green threshold line on the DSR bar; the PBO gold ceiling).
 const SHARPE_REF = 2;
 const DSR_STRONG = 0.95;
@@ -98,7 +110,7 @@ const COLS: ColDef[] = [
   { key: "days", label: "Days", width: 42, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.paper_age_days) ? r.paper_age_days : null) } },
   { key: "value", label: "Value", width: 72, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.value_usd) } },
   { key: "pnl", label: "P&L", width: 66, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_usd) } },
-  { key: "pnlpct", label: "P&L %", width: 58, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_pct) } },
+  { key: "pnlpct", label: "P&L %", width: 64, pickable: true, sort: { dir: "desc", value: (r) => latestStagePnl(r)?.pct ?? null } },
   { key: "dsr", label: "DSR", width: 94, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.deflated_sharpe) ? r.deflated_sharpe : null) } },
   { key: "pbo", label: "PBO", width: 64, pickable: true, sort: { dir: "asc", value: (r) => (Number.isFinite(r.pbo) ? r.pbo : null) } },
   { key: "dd", label: "Max DD", width: 80, defaultOn: false, pickable: true },
@@ -301,8 +313,9 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
       {/* The live money-split ribbon sits below the toolbar (v18 order). */}
       {ribbon}
 
-      {/* ── ranked screener — horizontal scroll on overflow ── */}
-      <div className="screener-wrap">
+      {/* ── ranked screener — horizontal scroll on overflow. When the detail panel is open it overlays the
+          right with no backdrop, so we reserve its width (`.panel-open`) and the table scrolls under it. ── */}
+      <div className={cn("screener-wrap", selectedId && "panel-open")}>
         {filtered.length === 0 ? (
           <p className="quiet" style={{ fontSize: 12, padding: "24px 4px", textAlign: "center" }}>No versions match these filters.</p>
         ) : (
@@ -421,9 +434,22 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
           </div>
         );
       }
-      const v = numOrNull(row.pnl_pct);
-      if (v === null) return <Dash />;
-      return <span className={cn("tab", v > 0 ? "up" : v < 0 ? "dn" : "")}>{`${v >= 0 ? "+" : ""}${v.toFixed(0)}%`}</span>;
+      // Stage-aware: paper/live MARK when present, else the backtest OOS return — so a backtested strategy
+      // shows its P&L instead of "—". A small "bt"/"live" tag + tooltip names which stage the number is from.
+      const p = latestStagePnl(row);
+      if (p === null) return <Dash />;
+      const tip =
+        p.source === "backtest"
+          ? "Out-of-sample backtest return — this strategy's latest stage (no paper P&L yet)"
+          : p.source === "live"
+            ? "Live realized + unrealized P&L %"
+            : "Paper (forward-test) P&L %";
+      return (
+        <span className={cn("tab", p.pct > 0 ? "up" : p.pct < 0 ? "dn" : "")} data-tip={tip}>
+          {`${p.pct >= 0 ? "+" : ""}${p.pct.toFixed(0)}%`}
+          {p.source === "backtest" ? <span className="oos-win" style={{ marginLeft: 3 }}>bt</span> : null}
+        </span>
+      );
     }
     case "dsr": {
       const dsr = Number.isFinite(row.deflated_sharpe) ? row.deflated_sharpe : null;
