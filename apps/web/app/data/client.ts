@@ -42,6 +42,8 @@ export type {
   VendorActual,
 } from "@cosmu/contracts-ts";
 
+import { unstable_cache } from "next/cache";
+
 const baseUrl = process.env.API_BASE_URL;
 // Shared secret for the engine's control-plane gate. Server-side only — this module is never bundled
 // into the browser, so the secret stays on the server. Sent as X-API-Key on every engine call.
@@ -57,19 +59,52 @@ export const engineConfigured = Boolean(baseUrl);
 // Server-render must never HANG on a cold/slow engine (Railway cold-start can take many seconds).
 // Guard: AbortSignal.timeout(SSR_TIMEOUT_MS) — a hung engine fails FAST → we render the honest
 // empty/not-connected state in ≤5s instead of blocking the whole SSR until the platform timeout.
-// Note: `next.revalidate` is intentionally omitted. layout.tsx sets `dynamic = "force-dynamic"`,
-// which opts every route out of the Next.js data cache; a per-fetch revalidate would have no effect.
 const SSR_TIMEOUT_MS = 5000;
 
-export async function getJson<T>(path: string, empty: T): Promise<{ data: T; connected: boolean }> {
+// SPEED: layout.tsx keeps every route `force-dynamic` (rendered per-request — no build-time prerender
+// hang, no baked "not connected"). But the SLOW part — the ~2s engine call — is wrapped in the Next
+// data cache via unstable_cache, so repeat navigation and concurrent loads within the TTL reuse one
+// response instead of re-hitting the engine every time. Only SUCCESSFUL reads are cached — the inner
+// fn THROWS on failure, so a transient outage is never cached as a sticky "not connected".
+//
+// Two TTLs: most surfaces run on crons and tolerate ~15s staleness (ENGINE_TTL_S); the live-money /
+// safety reads (positions, venues, portfolio split, rules, autonomy) want near-real-time, so they pass
+// LIVE_TTL_S — short enough that you never act on a stale money figure, long enough to coalesce the
+// burst of parallel calls in one page load. Both tunable via env.
+export const ENGINE_TTL_S = Number(process.env.WEB_ENGINE_TTL_S ?? 15);
+export const LIVE_TTL_S = Number(process.env.WEB_LIVE_TTL_S ?? 3);
+
+// One cached fetcher per distinct TTL (unstable_cache fixes `revalidate` at wrap time, so we memoize a
+// wrapper per TTL value). `path` is the cache-key arg; the TTL is in keyParts so entries never collide.
+const cachedByTtl = new Map<number, (path: string) => Promise<unknown>>();
+function engineFetcher(revalidate: number): (path: string) => Promise<unknown> {
+  let fn = cachedByTtl.get(revalidate);
+  if (!fn) {
+    fn = unstable_cache(
+      async (path: string): Promise<unknown> => {
+        const response = await fetch(`${baseUrl}${path}`, {
+          signal: AbortSignal.timeout(SSR_TIMEOUT_MS),
+          headers: apiSecret ? { "x-api-key": apiSecret } : undefined,
+        });
+        if (!response.ok) throw new Error(`engine ${path} -> ${response.status}`);
+        return response.json();
+      },
+      ["engine-read", String(revalidate)],
+      { revalidate },
+    );
+    cachedByTtl.set(revalidate, fn);
+  }
+  return fn;
+}
+
+export async function getJson<T>(
+  path: string,
+  empty: T,
+  revalidate: number = ENGINE_TTL_S,
+): Promise<{ data: T; connected: boolean }> {
   if (!baseUrl) return { data: empty, connected: false };
   try {
-    const response = await fetch(`${baseUrl}${path}`, {
-      signal: AbortSignal.timeout(SSR_TIMEOUT_MS),
-      headers: apiSecret ? { "x-api-key": apiSecret } : undefined
-    });
-    if (!response.ok) return { data: empty, connected: false };
-    return { data: (await response.json()) as T, connected: true };
+    return { data: (await engineFetcher(revalidate)(path)) as T, connected: true };
   } catch {
     return { data: empty, connected: false };
   }

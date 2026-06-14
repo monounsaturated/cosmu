@@ -1,6 +1,6 @@
 import type { AutonomyStatusResponse, RulesResponse } from "@cosmu/contracts-ts";
 import type { PositionsResponse, LiveVenuesResponse } from "@/components/live/contracts";
-import { getJson } from "./client";
+import { getJson, LIVE_TTL_S } from "./client";
 
 // Structurally-empty, honest default. running:false + paused:false reads correctly as "no machine
 // activity to show", never as a fabricated running state.
@@ -30,19 +30,19 @@ const emptyVenues: LiveVenuesResponse = { jurisdiction: "", global_cap: 0, total
 // counts. `connected:false` renders an honest "machine status unknown" state — never a fake running
 // machine. The deterministic Gate/scorer still disposes; this status only reports, never decides.
 export async function getAutonomyStatus(): Promise<{ status: AutonomyStatusResponse; connected: boolean }> {
-  const { data, connected } = await getJson("/autonomy/status", emptyAutonomyStatus);
+  const { data, connected } = await getJson("/autonomy/status", emptyAutonomyStatus, LIVE_TTL_S);
   return { status: data, connected };
 }
 
 // Live trading positions snapshot for the /live surface. `connected:false` is shown as engine-
 // offline — never presented as armed or live.
 export async function getLivePositions(): Promise<PositionsResponse & { connected: boolean }> {
-  const { data, connected } = await getJson<PositionsResponse>("/live/positions", emptyPositions);
+  const { data, connected } = await getJson<PositionsResponse>("/live/positions", emptyPositions, LIVE_TTL_S);
   return { ...data, connected };
 }
 
 export async function getLiveVenues(): Promise<LiveVenuesResponse & { connected: boolean }> {
-  const { data, connected } = await getJson<LiveVenuesResponse>("/live/venues", emptyVenues);
+  const { data, connected } = await getJson<LiveVenuesResponse>("/live/venues", emptyVenues, LIVE_TTL_S);
   return { ...data, connected };
 }
 
@@ -51,6 +51,6 @@ export async function getLiveVenues(): Promise<LiveVenuesResponse & { connected:
 const emptyRules: RulesResponse = { global_max_notional: 0, max_daily_loss: 0, per_strategy_cap: 0, venues: [] };
 
 export async function getRules(): Promise<{ rules: RulesResponse; connected: boolean }> {
-  const { data, connected } = await getJson<RulesResponse>("/live/rules", emptyRules);
+  const { data, connected } = await getJson<RulesResponse>("/live/rules", emptyRules, LIVE_TTL_S);
   return { rules: data, connected };
 }

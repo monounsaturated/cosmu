@@ -6,7 +6,7 @@ import type {
   PortfolioSummaryResponse,
   StrategyDetailResponse,
 } from "@cosmu/contracts-ts";
-import { getJson } from "./client";
+import { getJson, LIVE_TTL_S } from "./client";
 
 // ── Structurally-empty typing fallbacks (no fabricated numbers, no fake rows) ────────────────
 
@@ -67,7 +67,7 @@ const emptyPortfolioSummary: PortfolioSummaryResponse = {
 };
 
 export async function getPortfolioSummary(): Promise<{ summary: PortfolioSummaryResponse; connected: boolean }> {
-  const { data, connected } = await getJson("/portfolio/summary", emptyPortfolioSummary);
+  const { data, connected } = await getJson("/portfolio/summary", emptyPortfolioSummary, LIVE_TTL_S);
   return { summary: data, connected };
 }
 
