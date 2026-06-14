@@ -1,52 +1,98 @@
 "use client";
 
-// Operator cost overrides — a deterministic, client-side layer over the engine/billing register.
+// Operator cost overrides — a deterministic, client-side layer over the engine/billing register, shaped
+// as the v18 "Subscriptions & renewals" model (source · cadence · last paid · next renewal · /mo ·
+// lifetime · proj/yr).
 //
-// WHY THIS EXISTS: several suppliers don't expose exact spend via API (Anthropic's flat Max subscription,
-// Railway, Modal …), so the register is partly plan-tier *estimates*. This lets the operator pin a real
-// figure they know, or add a cost line the engine can't see at all. It is honest precisely because an
-// operator-entered number is labelled "set" (operator-entered), never dressed up as a fetched "actual".
+// WHY THIS EXISTS: the engine/billing APIs give a current amount for some suppliers, but NOT the renewal
+// calendar (last-paid / next-renewal), the cadence, or lifetime-to-date — and several suppliers don't
+// report exact spend at all (Anthropic's flat Max sub, Railway, Modal). So the operator pins those facts
+// here and the table computes /mo and proj/yr live. It is honest: an operator-entered figure is labelled
+// and never dressed up as a fetched "actual".
 //
 // PERSISTENCE: localStorage on THIS browser. There is no cost-write endpoint in the CostsResponse
-// contract, so this never pretends to reach the backend. It is fully reversible — reset an edit or remove
-// a manual row and the engine figure comes back. Cross-device sync would need a real backend store.
+// contract, so this never pretends to reach the backend. Fully reversible (reset an edit / remove a row).
 
 import { useCallback, useEffect, useState } from "react";
-import type { RegisterRow } from "./cost-sections";
 
-const LS_KEY = "cosmu.costs.overrides.v1";
+const LS_KEY = "cosmu.costs.subs.v1";
 
-// An override of an engine row's numbers (keyed by vendor). null means "unset" (fall back to engine).
-export type RowEdit = { amount?: number | null; budget?: number | null };
+export type Cadence = "monthly" | "yearly" | "usage" | "flat" | "oneoff" | "perfill";
+
+export const CADENCE_LABEL: Record<Cadence, string> = {
+  monthly: "monthly",
+  yearly: "yearly",
+  usage: "usage",
+  flat: "flat",
+  oneoff: "one-off",
+  perfill: "per fill · auto",
+};
+
+// An edit of an engine-seeded subscription row (keyed by source). Any field absent ⇒ use the seed.
+export type SubEdit = {
+  cat?: string;
+  cadence?: Cadence;
+  perMo?: number | null;
+  lastPaid?: string | null;
+  renews?: string | null;
+  lifetime?: number | null;
+};
 
 // A wholly operator-authored cost line the engine never reported.
-export type ManualRow = {
+export type ManualSub = {
   id: string;
-  vendor: string;
-  /** One of the four canonical buckets (infra / trading / data / ai). */
-  category: string;
-  amount: number | null;
-  budget: number | null;
-  note?: string;
+  source: string;
+  cat: string;
+  cadence: Cadence;
+  perMo: number | null;
+  lastPaid: string | null;
+  renews: string | null;
+  lifetime: number | null;
 };
 
 export type CostOverrides = {
-  /** Edits to engine rows, keyed by lowercased vendor. */
-  edits: Record<string, RowEdit>;
-  /** Operator-added cost lines. */
-  added: ManualRow[];
+  edits: Record<string, SubEdit>;
+  added: ManualSub[];
 };
 
 const EMPTY: CostOverrides = { edits: {}, added: [] };
-const keyOf = (v: string) => v.trim().toLowerCase();
+export const subKey = (v: string) => v.trim().toLowerCase();
+
+// The engine-seeded shape handed to the merge (built from the cost register on the server side, mapped to
+// the subscriptions vocabulary on the client).
+export type SubSeed = {
+  source: string;
+  cat: string;
+  cadence: Cadence;
+  perMo: number | null;
+  note?: string | null;
+  /** Provenance of the seed amount: live billing / engine actual / plan-tier estimate. */
+  origin: "live" | "actual" | "est";
+};
+
+// A merged, displayable subscription row.
+export type SubRow = {
+  _id: string;
+  /** engine = untouched seed · edited = operator pinned ≥1 field · manual = operator-authored. */
+  _kind: "engine" | "edited" | "manual";
+  source: string;
+  cat: string;
+  cadence: Cadence;
+  perMo: number | null;
+  lastPaid: string | null;
+  renews: string | null;
+  lifetime: number | null;
+  note?: string | null;
+  seedOrigin?: SubSeed["origin"];
+};
 
 function load(): CostOverrides {
   if (typeof window === "undefined") return EMPTY;
   try {
     const raw = window.localStorage.getItem(LS_KEY);
     if (!raw) return EMPTY;
-    const parsed = JSON.parse(raw) as Partial<CostOverrides>;
-    return { edits: parsed.edits ?? {}, added: Array.isArray(parsed.added) ? parsed.added : [] };
+    const p = JSON.parse(raw) as Partial<CostOverrides>;
+    return { edits: p.edits ?? {}, added: Array.isArray(p.added) ? p.added : [] };
   } catch {
     return EMPTY;
   }
@@ -60,47 +106,50 @@ function persist(o: CostOverrides) {
   }
 }
 
-// A register row tagged with its provenance for the editable view.
-export type DisplayRow = RegisterRow & {
-  /** Stable id: lowercased vendor for engine rows, the manual id for added rows. */
-  _id: string;
-  /** engine = untouched · edited = operator pinned a number · manual = operator-authored line. */
-  _origin: "engine" | "edited" | "manual";
-};
-
-// Merge the engine register with operator overrides into the display set.
-export function mergeOverrides(register: RegisterRow[], ov: CostOverrides): DisplayRow[] {
-  const engine: DisplayRow[] = register.map((r) => {
-    const edit = ov.edits[keyOf(r.vendor)];
-    if (!edit) return { ...r, _id: keyOf(r.vendor), _origin: "engine" };
-    const amount = edit.amount ?? r.amount;
+// Merge engine seeds + operator overrides into the display set.
+export function mergeSubs(seeds: SubSeed[], ov: CostOverrides): SubRow[] {
+  const engine: SubRow[] = seeds.map((s) => {
+    const k = subKey(s.source);
+    const e = ov.edits[k];
+    const base: SubRow = {
+      _id: k,
+      _kind: "engine",
+      source: s.source,
+      cat: s.cat,
+      cadence: s.cadence,
+      perMo: s.perMo,
+      lastPaid: null,
+      renews: null,
+      lifetime: null,
+      note: s.note ?? null,
+      seedOrigin: s.origin,
+    };
+    if (!e) return base;
     return {
-      ...r,
-      amount,
-      budget: edit.budget ?? r.budget,
-      // A pinned amount supersedes any range — it's now a point figure.
-      range: edit.amount != null ? null : r.range,
-      _id: keyOf(r.vendor),
-      _origin: "edited",
+      ...base,
+      _kind: "edited",
+      cat: e.cat ?? base.cat,
+      cadence: e.cadence ?? base.cadence,
+      perMo: e.perMo !== undefined ? e.perMo : base.perMo,
+      lastPaid: e.lastPaid !== undefined ? e.lastPaid : base.lastPaid,
+      renews: e.renews !== undefined ? e.renews : base.renews,
+      lifetime: e.lifetime !== undefined ? e.lifetime : base.lifetime,
     };
   });
-  const manual: DisplayRow[] = ov.added.map((m) => ({
-    vendor: m.vendor,
-    category: m.category,
-    amount: m.amount,
-    range: null,
-    budget: m.budget,
-    period: "manual",
-    source: "est",
-    note: m.note ?? null,
+  const manual: SubRow[] = ov.added.map((m) => ({
     _id: m.id,
-    _origin: "manual",
+    _kind: "manual",
+    source: m.source,
+    cat: m.cat,
+    cadence: m.cadence,
+    perMo: m.perMo,
+    lastPaid: m.lastPaid,
+    renews: m.renews,
+    lifetime: m.lifetime,
   }));
   return [...engine, ...manual];
 }
 
-// The hook: reads overrides on mount (client-only, so SSR renders the plain engine view first), and
-// exposes deterministic mutators that persist immediately.
 export function useCostOverrides() {
   const [ov, setOv] = useState<CostOverrides>(EMPTY);
   const [ready, setReady] = useState(false);
@@ -119,13 +168,14 @@ export function useCostOverrides() {
   }, []);
 
   const editRow = useCallback(
-    (vendor: string, patch: RowEdit) =>
+    (source: string, patch: SubEdit) =>
       apply((prev) => {
-        const k = keyOf(vendor);
-        const merged: RowEdit = { ...prev.edits[k], ...patch };
+        const k = subKey(source);
+        const merged: SubEdit = { ...prev.edits[k], ...patch };
         const edits = { ...prev.edits };
-        // Drop a fully-empty edit so the row cleanly reverts to the engine figure.
-        if (merged.amount == null && merged.budget == null) delete edits[k];
+        // Drop a fully-empty edit so the row cleanly reverts to the engine seed.
+        const empty = Object.values(merged).every((v) => v === undefined);
+        if (empty) delete edits[k];
         else edits[k] = merged;
         return { ...prev, edits };
       }),
@@ -133,10 +183,10 @@ export function useCostOverrides() {
   );
 
   const resetRow = useCallback(
-    (vendor: string) =>
+    (source: string) =>
       apply((prev) => {
         const edits = { ...prev.edits };
-        delete edits[keyOf(vendor)];
+        delete edits[subKey(source)];
         return { ...prev, edits };
       }),
     [apply],
@@ -150,10 +200,13 @@ export function useCostOverrides() {
           ...prev.added,
           {
             id: `m_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-            vendor: "New cost",
-            category: "infra",
-            amount: 0,
-            budget: null,
+            source: "New cost",
+            cat: "infra",
+            cadence: "monthly",
+            perMo: 0,
+            lastPaid: null,
+            renews: null,
+            lifetime: null,
           },
         ],
       })),
@@ -161,7 +214,7 @@ export function useCostOverrides() {
   );
 
   const editManual = useCallback(
-    (id: string, patch: Partial<ManualRow>) =>
+    (id: string, patch: Partial<ManualSub>) =>
       apply((prev) => ({
         ...prev,
         added: prev.added.map((m) => (m.id === id ? { ...m, ...patch } : m)),
@@ -170,8 +223,7 @@ export function useCostOverrides() {
   );
 
   const removeManual = useCallback(
-    (id: string) =>
-      apply((prev) => ({ ...prev, added: prev.added.filter((m) => m.id !== id) })),
+    (id: string) => apply((prev) => ({ ...prev, added: prev.added.filter((m) => m.id !== id) })),
     [apply],
   );
 

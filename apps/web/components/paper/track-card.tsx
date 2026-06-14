@@ -72,12 +72,12 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
                 const pnlCls = pnl === null ? "quiet" : pnl >= 0 ? "up" : "dn";
                 return (
                   <tr key={row.version_id} className={cn(i >= LIM && "dash-extra")}>
-                    <td>
-                      <Link href={`/strategies?v=${row.version_id}`} className="strat-link">
+                    <td className="pos-strat">
+                      <Link href={`/strategies?v=${row.version_id}`} className="strat-link" title={row.name}>
                         {row.name}
                       </Link>
                     </td>
-                    <td className="muted">
+                    <td className="muted pos-pair">
                       {row.asset_class} · {row.venue} · {row.timeframe}
                     </td>
                     <td className="r tab muted">{invested === null ? "—" : formatUsd(invested)}</td>

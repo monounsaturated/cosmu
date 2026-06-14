@@ -814,11 +814,20 @@ body.sb-collapsed .sb-tog .ic-expand{display:inline}
 /* Editable cost register: click-to-edit cells, category select, inline row actions. */
 .cost-edit{cursor:pointer;border-radius:4px;padding:0 2px;transition:background .12s,box-shadow .12s}
 .cost-edit:hover{background:var(--surf3);box-shadow:inset 0 0 0 1px var(--iris-mid)}
-.cat-select{background:var(--surf3);border:1px solid var(--border);border-radius:5px;color:var(--fg);font-family:inherit;font-size:11px;padding:1px 4px;text-transform:capitalize;cursor:pointer}
-.cat-select:focus{outline:none;border-color:var(--iris-mid)}
+.cat-select,.cad-select{background:var(--surf3);border:1px solid var(--border);border-radius:5px;color:var(--fg);font-family:inherit;font-size:11px;padding:1px 4px;text-transform:capitalize;cursor:pointer}
+.cad-select{background:transparent;border-color:transparent;color:var(--muted);text-transform:none;padding:1px 2px}
+.cad-select:hover{background:var(--surf3);border-color:var(--border)}
+.cat-select:focus,.cad-select:focus{outline:none;border-color:var(--iris-mid)}
+.cap-in-date{width:130px;font-variant-numeric:normal;color-scheme:dark}
 .row-act{background:none;border:none;color:var(--muted);font-family:inherit;font-size:10.5px;cursor:pointer;padding:1px 4px;border-radius:4px}
 .row-act:hover{color:var(--iris);background:var(--surf3)}
 .row-act-dn:hover{color:var(--down)}
+/* Subscriptions table keeps the Source column readable; the rest sit tight. */
+.subs-tbl th,.subs-tbl td{padding:6px 9px}
+/* Paper "Open positions" — truncate long strategy names so a row never overflows the card (which would
+   add a horizontal scrollbar to ONE box and break the equal-height split). Ellipsis + native title. */
+.mini-tbl td.pos-strat .strat-link{display:inline-block;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.mini-tbl td.pos-pair{max-width:190px;overflow:hidden;text-overflow:ellipsis}
 .g-ribbon{display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:var(--surf2);border:1px solid var(--border);border-radius:var(--r);padding:9px 14px;margin-bottom:var(--gap);box-shadow:var(--cell-shadow)}
 .g-ribbon .gi{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted)}
 .g-ribbon .gi b{color:var(--fg)}
@@ -994,9 +1003,17 @@ th[draggable=true]{cursor:pointer}
 
 .oos-win{display:block;font-size:9px;color:var(--quiet);line-height:1.1;margin-top:1px;font-variant-numeric:tabular-nums}
 /* ── Keys page (v17c — boxed, ledger-coherent) ── */
-.key-tbl{table-layout:auto;width:100%}
-.key-tbl th,.key-tbl td{padding:6px 10px;white-space:nowrap}
-.key-tbl th.k-st,.key-tbl td.k-st{width:12px;padding-left:2px;padding-right:8px;text-align:center}
+/* table-layout:fixed so the table is exactly 100% of its card and NEVER overflows / crops on load: the
+   Key / Service / Location columns get fixed widths (ellipsis if a value is too long), and Description
+   takes the remaining width and wraps. */
+.key-tbl{table-layout:fixed;width:100%}
+.key-tbl th,.key-tbl td{padding:6px 10px}
+.key-tbl th:not(.k-st),.key-tbl td:not(.k-st){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.key-tbl th.k-st,.key-tbl td.k-st{width:22px;padding-left:2px;padding-right:8px;text-align:center;overflow:visible}
+.key-tbl th:nth-child(2),.key-tbl td:nth-child(2){width:208px}   /* Key (env var) */
+.key-tbl th:nth-child(3),.key-tbl td:nth-child(3){width:150px}   /* Service */
+.key-tbl th:nth-child(5),.key-tbl td:nth-child(5){width:158px}   /* Location */
+.key-tbl .k-desc{white-space:normal;overflow:visible;text-overflow:clip}  /* Description wraps into the rest */
 .kdot{display:inline-block;width:7px;height:7px;border-radius:50%;cursor:none;vertical-align:middle}
 .kdot.s-live{background:var(--up);box-shadow:0 0 0 2.5px color-mix(in oklab,var(--up) 15%,transparent)}
 .kdot.s-pending{background:var(--gold);box-shadow:0 0 0 2.5px color-mix(in oklab,var(--gold) 15%,transparent)}
