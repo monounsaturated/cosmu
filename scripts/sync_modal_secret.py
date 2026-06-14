@@ -33,6 +33,13 @@ WANTED = (
     "FRED_API_KEY",
     "LUNARCRUSH_API_KEY",
     "POLYMARKET_TOKEN",
+    # Cold-tier R2 creds so Modal jobs can READ (lake_run/lake_smoke) and WRITE (export_lake) the Parquet lake.
+    # Their presence does NOT flip the backend — ALT_DATA_BACKEND stays unset (=pg), so the ingest/gate jobs keep
+    # writing Postgres; only the explicit lake_* jobs set parquet (per-process). Optional: absent → those jobs no-op.
+    "R2_ACCOUNT_ID",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "R2_BUCKET",
 )
 
 
