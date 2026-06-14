@@ -6,7 +6,7 @@ import math
 
 from fastapi import APIRouter
 
-from cosmu.api._shared import _json, _metric, store
+from cosmu.api._shared import _json, _metric, oos_window_days as _oos_window_days, store
 from cosmu.api.models import LeaderboardResponse, LeaderboardRow
 from cosmu.master.divergence import divergence as forward_divergence
 from cosmu.master.paper_maturity import maturity as paper_maturity
@@ -14,26 +14,8 @@ from cosmu.strategy.taxonomy import derive_facets
 
 router = APIRouter()
 
-_MONTHS_PER_YEAR = 12
-_DAYS_PER_MONTH = 30.0  # coarse: the backtest OOS window is stored as YYYY-MM, so day precision isn't available.
-
-
-def _oos_window_days(oos_start: object, oos_end: object) -> float | None:
-    """Length of the backtest OOS window in days, derived from its `YYYY-MM` bounds (inclusive of both endpoint
-    months), so the divergence helper can pro-rate the backtest's total OOS return to the marked forward window.
-    Returns None when either bound is missing/malformed — the divergence read-out then fails safe to its honest
-    'insufficient' empty state rather than fabricating an expectation. Coarse by design (the bounds are monthly)."""
-    if oos_start is None or oos_end is None:
-        return None
-    try:
-        sy, sm = (int(p) for p in str(oos_start).split("-")[:2])
-        ey, em = (int(p) for p in str(oos_end).split("-")[:2])
-    except (ValueError, TypeError):
-        return None
-    months = (ey - sy) * _MONTHS_PER_YEAR + (em - sm) + 1  # inclusive of both endpoint months
-    if months <= 0:
-        return None
-    return months * _DAYS_PER_MONTH
+# _oos_window_days now lives in cosmu.api._shared (shared with the strategy-detail router's Backtest column),
+# imported above as the same name so this router's call sites are unchanged.
 
 
 def _money_or_none(value: object) -> float | None:
