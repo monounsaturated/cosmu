@@ -199,14 +199,25 @@ function EditText({ value, onCommit }: { value: string; onCommit: (s: string) =>
   );
 }
 
+// A cost "refreshes" automatically when its /mo is a LIVE billing figure the engine fetched (origin 'live');
+// everything else — engine 'actual'/'est' seeds the operator can pin, edited rows, and manual rows — is
+// operator-maintained ("Manual"). This is what the Refresh column reports.
+function isAuto(r: SubRow): boolean {
+  return r._kind === "engine" && r.seedOrigin === "live";
+}
+
 export function SubscriptionsTable({
   rows,
+  editing,
   onEdit,
   onReset,
   onEditManual,
   onRemoveManual,
 }: {
   rows: SubRow[];
+  // Edit mode: when false the whole table is read-only (the CSS gate .subs-tbl:not(.editing) .cost-edit
+  // disables the inline editors), so the truth source is only mutated in edit mode — a clean view ↔ edit toggle.
+  editing: boolean;
   onEdit: (source: string, patch: Partial<Pick<SubRow, "cat" | "cadence" | "perMo" | "lastPaid" | "renews" | "lifetime">>) => void;
   onReset: (source: string) => void;
   onEditManual: (id: string, patch: Partial<SubRow>) => void;
@@ -222,12 +233,13 @@ export function SubscriptionsTable({
 
   return (
     <div className="tbl-scroll">
-      <table className="mini-tbl subs-tbl">
+      <table className={`mini-tbl subs-tbl${editing ? " editing" : ""}`}>
         <thead>
           <tr>
             <th>Source</th>
             <th>Cat</th>
             <th>Cadence</th>
+            <th>Refresh</th>
             <th className="r">Last paid</th>
             <th className="r">Next renewal</th>
             <th className="r">/ mo</th>
@@ -265,6 +277,14 @@ export function SubscriptionsTable({
                   onChange={(c) => put(r, { cadence: c })}
                 />
               </td>
+              <td>
+                <span
+                  className={`refresh-tag ${isAuto(r) ? "rt-auto" : "rt-manual"}`}
+                  data-tip={isAuto(r) ? "Auto — /mo is a live billing figure the engine fetches" : "Manual — operator-maintained; edit it in this table"}
+                >
+                  {isAuto(r) ? "Auto" : "Manual"}
+                </span>
+              </td>
               <td className="r muted">
                 <EditDate value={r.lastPaid} onCommit={(d) => put(r, { lastPaid: d })} />
               </td>
@@ -297,7 +317,7 @@ export function SubscriptionsTable({
           ))}
           <tr className="sub-row">
             <td style={{ fontWeight: 600, color: "var(--fg)" }}>Total</td>
-            <td colSpan={4} className="quiet" style={{ fontSize: 9.5 }}>
+            <td colSpan={5} className="quiet" style={{ fontSize: 9.5 }}>
               {rows.length} source{rows.length === 1 ? "" : "s"} · run-rate &amp; projection compute live
             </td>
             <td className="r tab" style={{ fontWeight: 600 }}>{money(totMo)}</td>

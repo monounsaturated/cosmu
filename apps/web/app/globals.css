@@ -817,6 +817,17 @@ body.sb-collapsed .sb-tog .ic-expand{display:inline}
 /* Editable cost register: click-to-edit cells, category select, inline row actions. */
 .cost-edit{cursor:pointer;border-radius:4px;padding:0 2px;transition:background .12s,box-shadow .12s}
 .cost-edit:hover{background:var(--surf3);box-shadow:inset 0 0 0 1px var(--iris-mid)}
+/* Edit-mode gate: outside .editing the whole register is READ-ONLY — cells don't click-to-edit (the truth
+   source is only mutated in edit mode). In .editing, every editable cell shows a faint frame so it reads as
+   a sheet you can change (Excel-like). */
+.subs-tbl:not(.editing) .cost-edit{cursor:default;pointer-events:none}
+.subs-tbl.editing .cost-edit{box-shadow:inset 0 0 0 1px var(--border-s)}
+.subs-tbl.editing .cost-edit:hover{box-shadow:inset 0 0 0 1px var(--iris-mid)}
+.sub-edit-on{border-style:solid !important;border-color:var(--iris-mid) !important;background:var(--iris-dim) !important}
+/* Auto/Manual refresh tag — Auto (live billing) reads quiet-green, Manual reads plain grey. */
+.refresh-tag{font-size:9.5px;font-weight:600;letter-spacing:.03em;padding:1px 6px;border-radius:999px;border:1px solid var(--hairline)}
+.refresh-tag.rt-auto{color:var(--up);border-color:oklch(0.78 0.16 160 / 0.3)}
+.refresh-tag.rt-manual{color:var(--muted)}
 .cat-select,.cad-select{background:var(--surf3);border:1px solid var(--border);border-radius:5px;color:var(--fg);font-family:inherit;font-size:11px;padding:1px 4px;text-transform:capitalize;cursor:pointer}
 .cad-select{background:transparent;border-color:transparent;color:var(--muted);text-transform:none;padding:1px 2px}
 .cad-select:hover{background:var(--surf3);border-color:var(--border)}

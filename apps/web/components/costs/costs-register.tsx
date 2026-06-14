@@ -41,6 +41,7 @@ export function CostsRegister({
   computedAt: string;
 }) {
   const [active, setActive] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);  // view ↔ Excel-like edit mode for the truth source
   const { ov, hasOverrides, editRow, resetRow, addRow, editManual, removeManual } = useCostOverrides();
 
   // Seed the subscriptions from the full engine register — unlike a spend-only register, a subscriptions
@@ -65,8 +66,18 @@ export function CostsRegister({
           aside={
             <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <RefreshedAt at={computedAt} />
-              <button type="button" className="sub-add" onClick={addRow} data-tip="Add a cost line the engine can't see">
-                + Add cost
+              {editing ? (
+                <button type="button" className="sub-add" onClick={addRow} data-tip="Add a cost line the engine can't see">
+                  + Add cost
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={editing ? "sub-add sub-edit-on" : "sub-add"}
+                onClick={() => setEditing((v) => !v)}
+                data-tip={editing ? "Lock the table — back to read-only" : "Edit the cost table like a sheet — click any cell to change the truth source"}
+              >
+                {editing ? "Done" : "Edit"}
               </button>
             </span>
           }
@@ -74,6 +85,7 @@ export function CostsRegister({
         <div className="card-body">
           <SubscriptionsTable
             rows={filtered}
+            editing={editing}
             onEdit={editRow}
             onReset={resetRow}
             onEditManual={editManual}
