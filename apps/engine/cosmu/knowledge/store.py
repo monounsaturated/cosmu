@@ -36,6 +36,15 @@ def _is_postgres(url: str) -> bool:
     return url.startswith("postgres://") or url.startswith("postgresql://")
 
 
+def _is_read_sql(query: str) -> bool:
+    """True for a read-only statement (SELECT / WITH). A bare store.rows()/row() running such a query OUTSIDE a
+    reading() block is routed through the warm read pool (skips the ~1.7s Supabase handshake); writes
+    (INSERT/UPDATE/DELETE — store.rows() is overloaded for those in a few call sites) keep the transactional
+    connect() path untouched. Cheap first-keyword check; our writes never start with WITH."""
+    head = query.lstrip()[:8].upper()
+    return head.startswith("SELECT") or head.startswith("WITH")
+
+
 def _pg_dsn(url: str) -> str:
     """Strip libpq-incompatible query params that Supabase pooled URLs carry (pgbouncer, connection_limit)."""
     parts = urlsplit(url)
@@ -290,6 +299,19 @@ class Store:
         if active is not None:
             cur = active.execute(query, params)
             return [] if cur.description is None else [dict(r) for r in cur.fetchall()]
+        # Outside a reading() block: a read-only statement on Postgres borrows a WARM pooled connection
+        # (no per-call handshake — the big win for the many routers that fire bare store.rows() reads). Writes
+        # and the SQLite path keep the plain connect() route, so transactional/local semantics are unchanged.
+        if self._is_pg and _is_read_sql(query):
+            con = self._open(autocommit=True)  # pooled
+            ok = False
+            try:
+                cur = con.execute(query, params)
+                out = [] if cur.description is None else [dict(r) for r in cur.fetchall()]
+                ok = True
+                return out
+            finally:
+                con.close(discard=not ok)  # return to pool, or drop a broken socket on error
         with self.connect() as con:
             cur = con.execute(query, params)
             if cur.description is None:  # non-SELECT (INSERT/UPDATE) — nothing to fetch on either backend
