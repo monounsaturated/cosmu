@@ -6,7 +6,9 @@
 //   • global max notional — the HARD $ blocker: total live notional can never exceed this.
 //   • max daily loss      — the auto-disarm threshold for the day.
 //   • per-venue max notional — a per-venue ceiling, shown alongside each legal venue's REAL deployed_usd and
-//     headroom (cap − deployed) so the operator sizes against actual exposure.
+//     AVAILABLE capital (cap − deployed) so the operator sizes against actual exposure.
+//   • per-venue ACTIVATION — an On/Off switch per venue (POST /universe/venue, applied immediately): a disabled
+//     venue is OUT of the tradable universe, so no strategy can arm or trade on it. The engine keeps ≥1 enabled.
 //
 // SAFETY: setting Rules NEVER arms live — the toggle / keys / gate / kill-switch interlocks still all apply.
 // This control only writes limits. POST /live/rules returns the reconciled RulesResponse; we re-seed the
@@ -17,8 +19,8 @@
 // engine's real numbers; a venue with no cap shows "—" headroom in a `.quiet` span, never a fabricated
 // figure. Offline → an honest note, never a silent success. Jurisdiction is NOT shown.
 
-import { useMemo, useState } from "react";
-import type { RulesResponse, VenueRule } from "@cosmu/contracts-ts";
+import { useEffect, useMemo, useState } from "react";
+import type { RulesResponse, UniverseResponse, VenueRule } from "@cosmu/contracts-ts";
 import { Modal } from "@/components/ui/modal";
 import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn, formatUsd } from "@/lib/utils";
@@ -60,6 +62,44 @@ export function RulesModal({
   const [venues, setVenues] = useState<VenueEdit[]>(() => toEdits(rules.venues));
   const [pending, setPending] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+
+  // Per-venue ENABLED state (the tradable-universe on/off). Read from /universe, toggled via
+  // POST /universe/venue — a DISABLED venue is out of the universe, so NO strategy can arm or trade on it.
+  // This is the operator's "set on/off the activation of a venue". `undefined` = not loaded yet.
+  const [enabledMap, setEnabledMap] = useState<Record<string, boolean>>({});
+  const [toggling, setToggling] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!connected) return;
+    let alive = true;
+    engineFetch("/universe")
+      .then((r) => (r.ok ? (r.json() as Promise<UniverseResponse>) : Promise.reject(new Error(String(r.status)))))
+      .then((d) => alive && setEnabledMap(Object.fromEntries(d.venues.map((v) => [v.id, v.enabled]))))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [connected]);
+
+  async function toggleVenue(venue: string, next: boolean) {
+    if (toggling) return;
+    setNote(null);
+    setToggling(venue);
+    try {
+      const res = await engineFetch("/universe/venue", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ venue_id: venue, enabled: next })
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const d = (await res.json()) as UniverseResponse;
+      setEnabledMap(Object.fromEntries(d.venues.map((v) => [v.id, v.enabled])));
+    } catch {
+      setNote("Couldn’t change that venue — the engine refused (at least one venue must stay enabled).");
+    } finally {
+      setToggling(null);
+    }
+  }
 
   // Live preview of total deployed across venues — the figure the global cap blocks against.
   const totalDeployed = useMemo(() => venues.reduce((s, v) => s + v.deployed_usd, 0), [venues]);
@@ -173,8 +213,8 @@ export function RulesModal({
       {/* Per-venue caps — compact table with deployed + headroom. */}
       <div style={{ marginBottom: 4 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-          <span className="kpi-label" style={{ marginBottom: 0 }}>Per-venue max notional</span>
-          <span className="quiet" style={{ fontSize: 10.5 }}>Blank = uncapped</span>
+          <span className="kpi-label" style={{ marginBottom: 0 }}>Per-venue activation &amp; caps</span>
+          <span className="quiet" style={{ fontSize: 10.5 }}>Off = can&apos;t arm · blank cap = uncapped</span>
         </div>
         {venues.length === 0 ? (
           <div
@@ -189,8 +229,9 @@ export function RulesModal({
               <thead>
                 <tr>
                   <th>Venue</th>
+                  <th>Active</th>
                   <th className="r">Deployed</th>
-                  <th className="r">Headroom</th>
+                  <th className="r" data-tip="Capital still available to deploy on this venue under its cap (cap − deployed). Budget headroom, not a fetched exchange balance.">Available</th>
                   <th className="r">Max notional ($)</th>
                 </tr>
               </thead>
@@ -198,9 +239,27 @@ export function RulesModal({
                 {venues.map((v) => {
                   const cap = parseCap(v.cap);
                   const headroom = cap == null ? null : cap - v.deployed_usd;
+                  const on = enabledMap[v.venue]; // undefined until /universe loads
                   return (
-                    <tr key={v.venue}>
+                    <tr key={v.venue} style={on === false ? { opacity: 0.5 } : undefined}>
                       <td style={{ fontWeight: 500, color: "var(--fg)" }}>{v.name}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className={cn("venue-sw", on && "on")}
+                          disabled={toggling !== null || !connected || on === undefined}
+                          onClick={() => toggleVenue(v.venue, !on)}
+                          data-tip={
+                            on
+                              ? "Enabled — strategies may arm/trade on this venue. Click to disable."
+                              : "Disabled — nothing can arm or trade on this venue. Click to enable."
+                          }
+                          aria-label={`${v.name} ${on ? "enabled" : "disabled"}`}
+                        >
+                          <span className="venue-sw-dot" />
+                          {on === undefined ? "…" : on ? "On" : "Off"}
+                        </button>
+                      </td>
                       <td className="r tab muted">{formatUsd(v.deployed_usd)}</td>
                       <td className={cn("r tab", headroom == null ? "quiet" : headroom < 0 ? "dn" : "up")}>
                         {headroom == null ? "—" : formatUsd(headroom)}
@@ -214,6 +273,7 @@ export function RulesModal({
                           inputMode="decimal"
                           value={v.cap}
                           placeholder="∞"
+                          disabled={on === false}
                           onChange={(e) => setVenueCap(v.venue, e.target.value)}
                           aria-label={`${v.name} max notional`}
                         />
