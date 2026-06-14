@@ -230,8 +230,10 @@ def main() -> None:
         for feat in scalar_ic:
             if feat not in df:
                 continue
-            sig = df[feat].to_numpy(float)
-            sig = sig - np.nanmedian(sig)  # center so sign() is a long/short rule
+            raw = df[feat].to_numpy(float)
+            # PIT centering: trailing expanding median only (NO full-sample look-ahead) so sign() is a long/short rule
+            med = pd.Series(raw).expanding(min_periods=60).median().to_numpy()
+            sig = raw - med
             res = ML.backtest_long_short(df["close"].to_numpy(float), sig, n_trials=n_trials)
             if np.isfinite(res["dsr"]) and (best is None or res["dsr"] > best["dsr"]):
                 best = dict(asset=asset, feature=feat, **res)
