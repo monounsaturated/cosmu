@@ -16,6 +16,15 @@ healthcheckTimeout = 120
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
+# REGION CO-LOCATION (page-speed): pin the single engine replica to europe-west4 (Amsterdam) — the closest
+# Railway region to our Supabase Postgres at aws-1-eu-west-3 (Paris). The engine ran US-default, so every DB
+# read paid a ~150ms+ transatlantic round-trip (a single warm query measured ~0.6s); same-region EU cuts that
+# to ~10-20ms, which is what makes the dashboards feel instant. ONE replica → no extra cost (this is a region
+# pin, NOT horizontal scaling). Everything else the engine talks to is global (Vercel web, Binance,
+# OpenRouter), so moving to EU is strictly closer-to-DB and neutral elsewhere.
+[deploy.multiRegionConfig.europe-west4-drams3a]
+numReplicas = 1
+
 # Bounded, scheduled research pass (NOT a daemon): free-data INGEST ONLY, then exits.
 # The leaky cross-asset gate (no-FDR / trials=5) is DEFAULT OFF on this cron; pass --cross-asset-gate to opt in.
 # Honest BH-FDR gate path (promote_cohort) is untouched and runs via the autonomy cron below.
