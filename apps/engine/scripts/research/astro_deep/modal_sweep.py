@@ -91,6 +91,19 @@ def _make_clf(model: str, seed: int):
     )
 
 
+def _informative_cols(X: np.ndarray) -> np.ndarray:
+    """Indices of columns with >=2 distinct FINITE values. A constant / all-NaN / single-value feature carries
+    NO information and crashes some sklearn HGB binners ('window shape cannot be larger than input array shape'
+    — the binner's sliding-window midpoint over <2 distinct values). Dropping it is correct and version-safe;
+    it uses no label, so there is no leakage."""
+    keep = []
+    for j in range(X.shape[1]):
+        fin = X[:, j][np.isfinite(X[:, j])]
+        if fin.size >= 2 and np.unique(fin).size >= 2:
+            keep.append(j)
+    return np.asarray(keep, dtype=int)
+
+
 def _cv_auc_core(
     X: np.ndarray, y: np.ndarray, folds, model: str = "hgb", seed: int = 0
 ) -> float:
@@ -101,9 +114,17 @@ def _cv_auc_core(
     for tr, te in folds:
         if len(np.unique(y[tr])) < 2:
             continue
+        # PER-FOLD column selection: keep only features with >=2 distinct finite values IN THIS training window.
+        # A real feature that only starts mid-history (funding 2023, social 2020) is all-NaN in the earliest
+        # expanding fold → the sklearn HGB binner crashes ('window shape ...'); dropping it for that fold is both
+        # the fix AND correct walk-forward practice (you can't train on a feature that has no data yet). Uses no
+        # label and only the training slice, so there is no look-ahead.
+        cols = _informative_cols(X[tr])
+        if cols.size == 0:
+            continue
         clf = _make_clf(model, seed)
-        clf.fit(X[tr], y[tr])
-        preds.append(clf.predict_proba(X[te])[:, 1])
+        clf.fit(X[tr][:, cols], y[tr])
+        preds.append(clf.predict_proba(X[te][:, cols])[:, 1])
         truth.append(y[te])
     if not truth:
         return float("nan")
@@ -152,15 +173,17 @@ def _perm_cv_core(payload: dict) -> dict:
     # pre-2023, social pre-2020) and silently disagree with the local path — never impute, never fabricate.
     ok = np.isfinite(y)
     X, y, dates = X[ok], y[ok], dates[ok]
+    cols = _informative_cols(X)  # drop constant/all-NaN columns (version-safe; no leakage)
+    X = X[:, cols] if cols.size else X[:, :0]
 
     base = dict(
         asset=asset, group=group, model=model,
         auc=float("nan"), null_mean=float("nan"), null_p95=float("nan"),
-        p=float("nan"), n=int(len(y)), n_perm=0,
+        p=float("nan"), n=int(len(y)), n_perm=0, n_feat=int(X.shape[1]),
     )
 
     folds = _date_folds(dates)
-    if not folds or len(np.unique(y)) < 2:
+    if not folds or len(np.unique(y)) < 2 or X.shape[1] == 0:
         return base
 
     real = _cv_auc_core(X, y, folds, model=model, seed=seed)
@@ -215,12 +238,14 @@ def _incr_cv_core(payload: dict) -> dict:
     dates = np.asarray(payload["dates"])
     ok = np.isfinite(y)  # keep NaN in features (trees handle it); require a finite label
     Xb, Xe, y, dates = Xb[ok], Xe[ok], y[ok], dates[ok]
+    cb = _informative_cols(Xb); Xb = Xb[:, cb] if cb.size else Xb[:, :0]  # drop constant/all-NaN (version-safe)
+    ce = _informative_cols(Xe); Xe = Xe[:, ce] if ce.size else Xe[:, :0]
 
     base = dict(added=added, horizon=horizon, model=model, auc_base=float("nan"),
                 auc_full=float("nan"), lift=float("nan"), null_mean=float("nan"),
-                p=float("nan"), n=int(len(y)), n_perm=0)
+                p=float("nan"), n=int(len(y)), n_perm=0, n_base=int(Xb.shape[1]), n_extra=int(Xe.shape[1]))
     folds = _date_folds(dates)
-    if not folds or len(np.unique(y)) < 2 or Xe.shape[1] == 0:
+    if not folds or len(np.unique(y)) < 2 or Xe.shape[1] == 0 or Xb.shape[1] == 0:
         return base
     auc_base = _cv_auc_core(Xb, y, folds, model=model, seed=seed)
     auc_full = _cv_auc_core(np.hstack([Xb, Xe]), y, folds, model=model, seed=seed)

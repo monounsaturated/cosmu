@@ -134,16 +134,16 @@ def main() -> None:
             try:
                 return MS.run_sweep_modal(jobs)
             except Exception as e:  # noqa: BLE001
-                print(f"   [modal] perm sweep failed ({type(e).__name__}: {str(e)[:90]}); local n_jobs=3 fallback", flush=True)
-        return MS.run_sweep_local(jobs, n_jobs=3)
+                print(f"   [modal] perm sweep failed ({type(e).__name__}: {str(e)[:90]}); local n_jobs=1 fallback (RAM-safe)", flush=True)
+        return MS.run_sweep_local(jobs, n_jobs=1)  # RAM-safe: sequential, single process, no memmap fan-out
 
     def run_incr(jobs):
         if args.modal and jobs:
             try:
                 return MS.run_incr_modal(jobs)
             except Exception as e:  # noqa: BLE001
-                print(f"   [modal] incr sweep failed ({type(e).__name__}: {str(e)[:90]}); local n_jobs=3 fallback", flush=True)
-        return MS.run_incr_local(jobs, n_jobs=3)
+                print(f"   [modal] incr sweep failed ({type(e).__name__}: {str(e)[:90]}); local n_jobs=1 fallback (RAM-safe)", flush=True)
+        return MS.run_incr_local(jobs, n_jobs=1)  # RAM-safe: sequential, single process
 
     print(f"[1/7] REAL prices: {len(crypto)} crypto + {len(equity)} equities …", flush=True)
     bars = RP.load_crypto_bars(crypto, "1d", days=3650)
@@ -192,6 +192,16 @@ def main() -> None:
     cal_all = CAL_BIN + CAL_CAT
     real_cols = [m for m in real_metrics if any(m in df for df in per_asset.values())]
     real_cols += [c for c in sw_cols if any(c in df for df in per_asset.values())]  # Kp/sunspots/F10.7 are real
+    # Tame heavy-tailed real features (market_cap ~1e12, volume/hashrate ~1e9) with a POINTWISE signed-log1p:
+    # monotonic (preserves all tree-split + Spearman-IC information), NO look-ahead (per-value, no cross-row
+    # stats), and keeps values O(10) so the float32 Modal transport + sklearn HGB binner don't collapse a column
+    # to <2 unique values (the 'window shape cannot be larger than input array shape' crash). Idempotent enough
+    # for this one pass; applied once here so IC, the ML battle, the incremental test, and the sweep all agree.
+    for df in per_asset.values():
+        for c in real_cols:
+            if c in df:
+                v = df[c].to_numpy(float)
+                df[c] = np.sign(v) * np.log1p(np.abs(v))
 
     def enc(df, cols_groups):
         return ML.encode_matrix(df, *cols_groups)
@@ -204,7 +214,7 @@ def main() -> None:
     print(f"   {len(ic)} tests · {n_fdr} survive FDR · {n_t3} clear |t|>3 · ~{0.05*len(ic):.0f} expected FP", flush=True)
 
     pooled_B = max(n_perm, 200)  # Modal carries the heavy nulls → afford a richer permutation null than local default
-    where = "MODAL (off the M2)" if args.modal else "local n_jobs=3"
+    where = "MODAL (off the M2)" if args.modal else "local n_jobs=1 (RAM-safe)"
     print(f"[5/7] ML group battle vs permutation null on {where} (B={pooled_B}) …", flush=True)
     groups = {
         "astro": (astro_cont, astro_circ, astro_bin, astro_cat),
