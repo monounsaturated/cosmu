@@ -213,7 +213,8 @@ def main() -> None:
     n_t3 = int(ic["survives_t3"].sum()) if len(ic) else 0
     print(f"   {len(ic)} tests · {n_fdr} survive FDR · {n_t3} clear |t|>3 · ~{0.05*len(ic):.0f} expected FP", flush=True)
 
-    pooled_B = max(n_perm, 200)  # Modal carries the heavy nulls → afford a richer permutation null than local default
+    pooled_B = 60  # cheap pooled point-estimate + rough null (enough to show AUC-within-null); the RIGOROUS
+    # high-B evidence is the per-asset Modal sweep (B=1000) + the incremental test, not this big-matrix grid
     where = "MODAL (off the M2)" if args.modal else "local n_jobs=1 (RAM-safe)"
     print(f"[5/7] ML group battle vs permutation null on {where} (B={pooled_B}) …", flush=True)
     groups = {
