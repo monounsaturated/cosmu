@@ -71,15 +71,15 @@ async function PaperData() {
       {/* Equity hero ALWAYS on top — the real aggregate paper curve (Σ of all funded tracks, net of fees). */}
       <EquityHero label="Paper equity" curve={overview.equity_curve} />
 
-      {/* Stats (2×2 KPI grid, left) + Open positions (right). */}
-      <div className="kgrid dash-split" style={{ gridTemplateColumns: "minmax(0,2fr) minmax(0,3fr)" }}>
+      {/* Stats (2×2 KPI grid, left) + Capital allocation donut (right). */}
+      <div className="kgrid dash-split" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
         <SimSummary rows={simRows} />
-        <PaperPositions rows={simRows} />
+        <WalletAllocCard rows={simRows} />
       </div>
 
-      {/* Capital allocation donut (left) + Recent trades (right). */}
-      <div className="kgrid dash-split" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        <WalletAllocCard rows={simRows} />
+      {/* Open positions (left) + Recent trades (right). */}
+      <div className="kgrid dash-split" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
+        <PaperPositions rows={simRows} />
         <TrackLedger rows={simRows} />
       </div>
     </div>

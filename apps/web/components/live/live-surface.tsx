@@ -264,6 +264,19 @@ export function LiveSurface({
           />
           </div>
 
+          {/* Capital allocation by venue — honest "No live capital deployed" until something is live. */}
+          <div className="card dh">
+            <div className="card-hdr">
+              <span className="card-lbl">Capital allocation</span>
+            </div>
+            <div className="card-body">
+              <AllocDonut venues={isLive ? venues : []} />
+            </div>
+          </div>
+        </div>
+
+        {/* Open positions (left) + Recent trades (right). */}
+        <div className="kgrid dash-split" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
           {/* Open positions — labelled by money state so a paper position is never read as live capital. */}
           <div className="card dh">
             <div className="card-hdr">
@@ -329,20 +342,6 @@ export function LiveSurface({
               )}
             </div>
           </div>
-
-          </div>
-
-          {/* Capital allocation donut (left) + Recent trades (right). */}
-          <div className="kgrid dash-split" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            {/* Capital allocation by venue — honest "No live capital deployed" until something is live. */}
-            <div className="card dh">
-              <div className="card-hdr">
-                <span className="card-lbl">Capital allocation</span>
-              </div>
-              <div className="card-body">
-                <AllocDonut venues={isLive ? venues : []} />
-              </div>
-            </div>
 
           {/* Recent trades — the engine exposes no live recent-trades endpoint yet, so this is an HONEST
               empty state rather than fabricating fills or reusing SIM trades. */}
