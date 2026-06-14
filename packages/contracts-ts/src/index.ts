@@ -91,6 +91,7 @@ export interface Backtest {
   max_dd: number;
   num_trades: number;
   oos_return: number;
+  oos_window_days?: number | null;
   passed_gates: boolean;
   pbo: number;
   win_rate: number;

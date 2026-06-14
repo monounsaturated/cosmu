@@ -13,23 +13,32 @@ export function AiSummary({
   summaryMd,
   stale,
   updatedAt,
-  model
+  model,
+  specRationale
 }: {
   summaryMd?: string | null;
   stale?: boolean | null;
   updatedAt?: string | null;
   // Real recorded model id, when the source provides one. Falls back to the honest source label.
   model?: string | null;
+  // The strategy's OWN plain-language rationale (a real recorded spec field — what it trades + why the edge
+  // exists). Honest fallback when no operator summary is written yet, so every strategy explains itself in
+  // plain words instead of "no summary yet". Not generated here; lifted verbatim from the spec.
+  specRationale?: string | null;
 }) {
-  const badge = model ?? "operator's agent";
+  // Prefer the operator-agent summary; else fall back to the spec's own rationale. The badge names the real
+  // source so the reader always knows where the text came from — never invented.
+  const rationale = specRationale?.trim() || null;
+  const usingRationale = !summaryMd && Boolean(rationale);
+  const badge = model ?? (usingRationale ? "from the spec" : "operator's agent");
   return (
     <div className="psec ai-sec">
       <div className="ai-head">
         <span
           className="ai-title"
-          data-tip="A plain-language read written from this Version's recorded facts only — what it trades, the hypothesis, what the Gate decided, and the forward-test state. Advisory, not the Gate."
+          data-tip="What this strategy does, in plain words — what it trades and why the edge should exist. Prefers the operator's agent write-up; otherwise the strategy's own recorded rationale. Advisory, not the Gate."
         >
-          AI summary
+          What this does
         </span>
         <span className="ai-badge">{badge}</span>
         {stale ? <span className="ai-badge" style={{ color: "var(--gold)", borderColor: "oklch(0.82 0.14 85 / 0.32)" }}>stale — facts changed</span> : null}
@@ -43,9 +52,11 @@ export function AiSummary({
             </div>
           ) : null}
         </>
+      ) : usingRationale ? (
+        <p className="ai-body" style={{ whiteSpace: "pre-wrap" }}>{rationale}</p>
       ) : (
         <p className="ai-body quiet">
-          No summary yet — the operator&apos;s agent writes a plain-language read from this Version&apos;s recorded facts.
+          No description yet — the operator&apos;s agent writes a plain-language read from this Version&apos;s recorded facts.
           It appears here once written; the engine never auto-generates it.
         </p>
       )}

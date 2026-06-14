@@ -440,7 +440,10 @@ body{
 .eq-title-txt{font-size:10.5px;font-weight:600;color:var(--muted)}
 
 /* phase comparison table */
-.phase-tbl{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px}
+/* width:100% to fill a wide panel, but min-width:max-content so a narrow panel can't crop columns — the
+   .tbl-scroll wrapper then scrolls horizontally (Notion-style). nowrap keeps every cell on one line. */
+.phase-tbl{width:100%;min-width:max-content;border-collapse:collapse;font-size:11.5px;margin-top:8px}
+.phase-tbl th,.phase-tbl td{white-space:nowrap}
 .phase-tbl th{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet);font-weight:700;padding:4px 9px;border-bottom:1px solid var(--hairline);text-align:right}
 .phase-tbl th:first-child{text-align:left}
 .phase-tbl td{padding:5px 9px;border-bottom:1px solid var(--hairline);font-variant-numeric:tabular-nums;text-align:right;color:var(--muted)}
@@ -1052,7 +1055,12 @@ th[draggable=true]{cursor:pointer}
 /* ── horizontal scroll for data tables, like the strategies screener ── */
 .mini-tbl th,.mini-tbl td{white-space:nowrap}
 .card-body:has(> table.mini-tbl){overflow-x:auto}
-.tbl-scroll{overflow-x:auto;overflow-y:hidden}
+/* Notion-style horizontal scroll for wide tables in the strategy sheet: smooth momentum + a slim, quiet
+   scrollbar that only shows when there's overflow, so a narrow panel scrolls instead of cropping. */
+.tbl-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--hairline) transparent;scroll-behavior:smooth}
+.tbl-scroll::-webkit-scrollbar{height:6px}
+.tbl-scroll::-webkit-scrollbar-thumb{background:var(--hairline);border-radius:3px}
+.tbl-scroll::-webkit-scrollbar-track{background:transparent}
 /* Keys table: single-line rows like v18 (compact); the .tbl-scroll wrapper handles any overflow. */
 /* ── Live capital-allocation donut (sits in the KPI row, 2/8 width) ── */
 .alloc-box{display:flex;align-items:center;gap:12px;padding:10px 13px;overflow:hidden}

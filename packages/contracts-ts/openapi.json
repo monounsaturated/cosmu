@@ -462,6 +462,17 @@
             "title": "Oos Return",
             "type": "number"
           },
+          "oos_window_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oos Window Days"
+          },
           "passed_gates": {
             "title": "Passed Gates",
             "type": "boolean"

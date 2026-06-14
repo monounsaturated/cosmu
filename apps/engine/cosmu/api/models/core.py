@@ -132,6 +132,9 @@ class Backtest(BaseModel):
     num_trades: int
     pbo: float
     passed_gates: bool
+    # Length of the OOS window in days (from the YYYY-MM bounds) so the sheet's "Duration" row shows the OOS %
+    # WITH its window ("+8.2% over ~2.4yr") instead of the literal "OOS". None when the bounds are missing.
+    oos_window_days: float | None = None
 
 
 class StrategyDetailResponse(BaseModel):

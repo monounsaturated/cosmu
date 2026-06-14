@@ -14,7 +14,6 @@
 
 import type { Backtest, Execution, Point, StrategyDetailResponse } from "@cosmu/contracts-ts";
 import { MoneyBand, type MoneyBandData } from "./money-band";
-import { GateChips } from "./gate-chips";
 import { AiSummary } from "./ai-summary";
 import { PhasedEquity } from "./phased-equity";
 import { SpecBlocks } from "./spec-view";
@@ -78,7 +77,21 @@ export function bestOosPct(backtests: Backtest[]): number | null {
   return Number.isFinite(v) ? v : null;
 }
 
-// ── Phase comparison: Backtest OOS / Paper / Live side by side. Live is not on this contract → all "—". ──
+// The OOS window as a human span ("~2.4yr" / "~8mo" / "~120d") — the actual length behind the OOS %, so the
+// Duration row reads "~2.4yr" instead of the bare literal "OOS". null when the engine has no window length.
+function formatOosWindow(days: number | null | undefined): string | null {
+  if (!days || days <= 0) return null;
+  if (days >= 360) return `~${(days / 365).toFixed(1)}yr`;
+  if (days >= 60) return `~${Math.round(days / 30)}mo`;
+  return `~${Math.round(days)}d`;
+}
+
+// Gate reference (mirrors gate-chips): PBO must be under 0.50 to pass.
+const PBO_CEILING = 0.5;
+
+// ── Phase comparison: Backtest OOS / Paper / Live side by side. Live is not on this contract → all "—".
+// This table is now the SINGLE home for the gate metrics too (DSR / PBO / Max DD / OOS) — the separate
+// "Gate metrics" chip row was removed, so every measured number lives in one place with its phase columns. ──
 function PhaseComparison({
   headlineBt,
   paperPnl,
@@ -92,43 +105,81 @@ function PhaseComparison({
   ageDays: number | null;
   bestOos: number | null;
 }) {
-  const rows: { metric: string; bt: string; btTone?: string; paper: string; paperTone?: string; live: string }[] = [
+  // `tip` defines each metric ONCE, in plain words (hover) — so a non-expert can read the table without a
+  // glossary elsewhere. These replace the removed gate-metric chips' tooltips.
+  const rows: { metric: string; tip?: string; bt: string; btTone?: string; paper: string; paperTone?: string; live: string }[] = [
     {
       metric: "Return",
+      tip: "Total profit over the out-of-sample test window, after costs. Green = profitable.",
       bt: bestOos !== null ? `${bestOos >= 0 ? "+" : ""}${bestOos.toFixed(1)}%` : "—",
       btTone: bestOos !== null ? (bestOos >= 0 ? "up" : "dn") : undefined,
       paper: paperPnl !== null ? `${paperPnl >= 0 ? "+" : "-"}${formatUsd(Math.abs(paperPnl), 0)}` : "—",
       paperTone: paperPnl !== null ? (paperPnl >= 0 ? "up" : "dn") : undefined,
       live: "—"
     },
-    { metric: "Sharpe (DSR)", bt: headlineBt ? headlineBt.deflated_sharpe.toFixed(2) : "—", paper: "—", live: "—" },
-    { metric: "Max DD", bt: headlineBt ? `${(headlineBt.max_dd * 100).toFixed(1)}%` : "—", paper: "—", live: "—" },
-    { metric: "Trades", bt: headlineBt ? String(headlineBt.num_trades) : "—", paper: trades.length ? String(trades.length) : "—", live: "—" },
-    { metric: "Duration", bt: headlineBt ? "OOS" : "—", paper: ageDays !== null ? `${ageDays}d` : "—", live: "—" }
+    {
+      metric: "Sharpe (DSR)",
+      tip: "Deflated Sharpe Ratio — risk-adjusted return, discounted for how many variants were tried (so luck can't fake an edge). The Gate wants ≥ 0.95.",
+      bt: headlineBt ? headlineBt.deflated_sharpe.toFixed(2) : "—",
+      btTone: headlineBt ? (headlineBt.deflated_sharpe >= 0.95 ? "up" : undefined) : undefined,
+      paper: "—",
+      live: "—"
+    },
+    {
+      metric: "PBO",
+      tip: "Probability of Backtest Overfitting — the chance the result is curve-fit noise, not a real edge. Lower is better; the Gate wants < 0.50.",
+      bt: headlineBt ? headlineBt.pbo.toFixed(2) : "—",
+      btTone: headlineBt ? (headlineBt.pbo < PBO_CEILING ? "up" : "dn") : undefined,
+      paper: "—",
+      live: "—"
+    },
+    {
+      metric: "Max DD",
+      tip: "Maximum Drawdown — the worst peak-to-trough drop in equity over the test. Smaller = less painful to hold.",
+      bt: headlineBt ? `${(headlineBt.max_dd * 100).toFixed(1)}%` : "—",
+      paper: "—",
+      live: "—"
+    },
+    {
+      metric: "Trades",
+      tip: "How many round-trip trades the test took — too few and the result isn't statistically meaningful.",
+      bt: headlineBt ? String(headlineBt.num_trades) : "—",
+      paper: trades.length ? String(trades.length) : "—",
+      live: "—"
+    },
+    {
+      metric: "Duration",
+      tip: "Length of the out-of-sample (OOS) window — the unseen period the strategy was tested on, AFTER the data it was built on. Longer = more trustworthy.",
+      bt: formatOosWindow(headlineBt?.oos_window_days) ?? (headlineBt ? "OOS" : "—"),
+      paper: ageDays !== null ? `${ageDays}d` : "—",
+      live: "—"
+    }
   ];
   return (
     <div className="psec">
       <div className="psec-title">Phase comparison</div>
-      <table className="phase-tbl">
-        <thead>
-          <tr>
-            <th>Metric</th>
-            <th>Backtest OOS</th>
-            <th className="col-paper">Paper</th>
-            <th className="col-live">Live</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.metric}>
-              <td>{r.metric}</td>
-              <td className={r.btTone ?? ""}>{r.bt}</td>
-              <td className={cn("col-paper", r.paperTone)}>{r.paper}</td>
-              <td className="col-live">{r.live}</td>
+      <div className="tbl-scroll">
+        <table className="phase-tbl">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Backtest OOS</th>
+              <th className="col-paper">Paper</th>
+              <th className="col-live">Live</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.metric}>
+                <td data-tip={r.tip}>{r.metric}</td>
+                <td className={r.btTone ?? ""}>{r.bt}</td>
+                <td className={cn("col-paper", r.paperTone)}>{r.paper}</td>
+                <td className="col-live">{r.live}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -254,6 +305,12 @@ export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyD
   const headlineBt = headlineBacktest(strategy.backtests);
   const bestOos = bestOosPct(strategy.backtests);
   const paperPnl = simCurve.length >= 2 ? simCurve[simCurve.length - 1].value : null;
+  // The strategy's own plain-language rationale off the real spec — the honest "what this does" fallback when
+  // no operator summary is written yet (documented strategies carry a rich rationale describing the mechanism).
+  const specRationale =
+    strategy.spec && typeof (strategy.spec as Record<string, unknown>).rationale === "string"
+      ? ((strategy.spec as Record<string, string>).rationale)
+      : null;
 
   const money: MoneyBandData = {
     valueUsd: null,
@@ -273,14 +330,14 @@ export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyD
 
       <PhasedEquity paperCurve={simCurve} />
 
-      <AiSummary summaryMd={strategy.summary_md} stale={strategy.summary_stale} updatedAt={strategy.summary_updated_at} />
+      <AiSummary
+        summaryMd={strategy.summary_md}
+        stale={strategy.summary_stale}
+        updatedAt={strategy.summary_updated_at}
+        specRationale={specRationale}
+      />
 
       <PhaseComparison headlineBt={headlineBt} paperPnl={paperPnl} trades={trades} ageDays={ageDays} bestOos={bestOos} />
-
-      <div className="psec">
-        <div className="psec-title">Gate metrics</div>
-        <GateChips backtest={headlineBt} />
-      </div>
 
       <div className="psec">
         <div className="psec-title">Building blocks</div>
