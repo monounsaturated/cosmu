@@ -1052,6 +1052,13 @@ th[draggable=true]{cursor:pointer}
 .alloc-dot{width:7px;height:7px;border-radius:2px;flex-shrink:0}
 .alloc-empty{font-size:10px;color:var(--quiet);text-align:center;width:100%;line-height:1.4}
 
+/* ── Paper "Capital allocation" donut (its own bento card, bottom row, bigger than the Live KPI-row one) ── */
+.wallet-alloc{display:flex;align-items:center;gap:20px;padding:8px 6px;height:100%}
+.wallet-alloc .wdonut{flex-shrink:0}
+.wallet-alloc .alloc-leg{gap:6px}
+.wallet-alloc .alloc-leg .arow{font-size:11.5px}
+.wallet-alloc .alloc-leg .arow .nm{max-width:100%}
+
 /* ── App infrastructure (not in the reference mockup) ───────────────────────────────────────────
    Loading skeletons for the instant-shell / streamed-data UX. The bento shell paints immediately;
    each page streams its data region behind a <Suspense> whose fallback uses these shimmer blocks. */

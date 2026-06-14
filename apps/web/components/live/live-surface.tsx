@@ -94,17 +94,18 @@ export function LiveSurface({
       return;
     }
     try {
-      const res = await engineFetch("/live/positions");
+      // The two reads are independent — fetch them in PARALLEL (was a sequential waterfall: positions, THEN
+      // summary, ~2× the latency on a Rules save / defund). ONLY positions drives connected-state, so the
+      // summary fetch swallows its own rejection (→ null) — a summary miss must keep the last-known split, NOT
+      // falsely disconnect the surface (matches the prior nested-try/catch behaviour).
+      const [res, sres] = await Promise.all([
+        engineFetch("/live/positions"),
+        engineFetch("/portfolio/summary").catch(() => null),
+      ]);
       if (!res.ok) throw new Error("engine unavailable");
-      const data = (await res.json()) as PositionsResponse;
-      setState(data);
+      setState((await res.json()) as PositionsResponse);
       setConnected(true);
-      try {
-        const sres = await engineFetch("/portfolio/summary");
-        if (sres.ok) setSummary((await sres.json()) as PortfolioSummaryResponse);
-      } catch {
-        /* keep last-known split */
-      }
+      if (sres?.ok) setSummary((await sres.json()) as PortfolioSummaryResponse);
     } catch {
       setConnected(false);
     }
@@ -176,7 +177,7 @@ export function LiveSurface({
 
   return (
     <Page>
-      {/* Toolbar (v18 page-live) — Running/Idle badge on the left; the grey Rules button + danger Stop on the
+      {/* Toolbar (v18 page-live) — Running/Off badge on the left; the grey Rules button + danger Stop on the
           right. Live is launched via the CLI (Commands · `cosmu live launch`), so there is no in-UI arm flow. */}
       <Toolbar
         title="Live"
@@ -186,7 +187,7 @@ export function LiveSurface({
               <span className="run-dot" /> Running
             </span>
           ) : (
-            <span className="badge badge-muted">Idle</span>
+            <span className="badge badge-muted">Off</span>
           )
         }
         right={
