@@ -1,5 +1,14 @@
 # COSMU — MASTER HANDOFF (local orchestrator) · updated 2026-06-07 (post overnight-w1 + overnight-w2)
 
+> ⚠️ **STALE as of 2026-06-14 — read `AGENTS.md` first (the single canonical entry doc).** The body below is the
+> 2026-06-07 world and is superseded on these points: (1) **8 honest-Gate survivors now exist** (deploy-lane TAA via
+> `cosmu/research/equity_taa_cohort.py` — DAA/VAA/ADM strict-pass + PAA/GTAA/RiskParity/TSMOM/HAA DSR+holdout), so
+> "0 honest-Gate PASS" / "search phase done" are wrong; the novel-MINED-edge lane is still 0. (2) **"Paper" = a real
+> paper fill** (`executions.is_paper=1`, gated on `has_paper_fills`); 9 tracks now mark daily. (3) **Go Live** is wired
+> in the UI (StageControl → GoLiveModal → POST `/live/launch`, records intent); live ORDER execution is still deferred.
+> (4) Stage labels are **Backtest → Paper → Live** ("Simulation"/"Forward-test" are dead — see `GLOSSARY.md`). This
+> doc needs a refresh-or-archive decision (see the review flags); until then trust `AGENTS.md` + `docs/DECISIONS.md`.
+
 > Paste-ready context for a fresh **local** master session on `main`. Pair with `docs/DECISIONS.md` (verdict log),
 > `docs/OPEN_THREADS.md` (registry), `docs/STRATEGIES.md` (what's tested). You are the LOCAL orchestrator on the Mac.
 

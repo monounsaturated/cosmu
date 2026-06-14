@@ -36,8 +36,15 @@ Everything you drop flows through the **same Gate** — no shortcut to Live. The
 - **Full picture** → `AGENTS.md` (the canonical entry doc)
 
 ## 5. The one thing that matters right now
-The machine runs but has **0 honest-Gate survivors** — every theory tested has been killed by the honest Gate.
-(Authored = whatever is in `apps/engine/strategies/inbox/`; tested + verdicts = the `gate_verdicts` table,
-surfaced at `/verdicts`. Don't trust any hand-written count — read those.)
-**Priority #1 = find the first real edge** — author funding-carry on the deep funding data and run a tick.
-Everything else (UI, venues, data) is plumbing until one strategy proves net-of-fee profit.
+The machine runs. The novel-**MINED**-edge lane still has **0 survivors** — every *mined* crypto/factor theory has
+been killed by the honest Gate (that's the machine working, not a bug). But the **deploy-lane** documented-TAA
+cohort now has **8 honest survivors** (as of 2026-06-14, via `cosmu/research/equity_taa_cohort.py` on the native
+multi-asset monthly universe, **zero thresholds changed**): **DAA / VAA / ADM** cleared the FULL unchanged 0.95
+Gate incl. beat-B&H; **PAA / GTAA / RiskParity / TSMOM / HAA** cleared deflated-Sharpe ≥ 0.95 + real purged
+holdout + BH-FDR but don't out-RETURN raw SPY (a defensive tilt).
+(Authored = `apps/engine/strategies/inbox/`; tested + verdicts = the `gate_verdicts` table, surfaced at
+`/verdicts`. Don't trust any hand-written count — read those.)
+**Priority #1 = compound the floor** — evolve/replicate the TAA survivors (`/evolve-strategy`) into a deployable
+sleeve and let the live paper track be the fresh OOS arbiter, while still hunting a NOVEL mined edge (the next
+leap needs new data, not more daily sweeps). Live ORDER execution stays deferred until a survivor proves a
+net-of-fee forward record.

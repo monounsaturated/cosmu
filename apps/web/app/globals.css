@@ -1072,10 +1072,7 @@ th[draggable=true]{cursor:pointer}
 .tbl-scroll::-webkit-scrollbar{height:6px}
 .tbl-scroll::-webkit-scrollbar-thumb{background:var(--hairline);border-radius:3px}
 .tbl-scroll::-webkit-scrollbar-track{background:transparent}
-/* ── Go Live badge + modal form ── */
-.golive-badge{cursor:pointer;border:none;font:inherit;font-weight:700;letter-spacing:.02em;transition:filter 120ms,transform 60ms}
-.golive-badge:hover{filter:brightness(1.12)}
-.golive-badge:active{transform:translateY(1px)}
+/* ── Go Live modal form ── */
 .golive-form{display:flex;flex-direction:column;gap:9px}
 .golive-row{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)}
 .golive-row > span{flex:0 0 auto}

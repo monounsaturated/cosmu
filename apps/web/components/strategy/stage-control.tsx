@@ -3,14 +3,17 @@
 // module: StageControl — the v18 strat-sheet top bar (Iris Bento `.psec.panel-top`): a lifecycle
 // `.stage-badge` on the left and the matching action on the right. The stage is DERIVED honestly upstream
 // from the real detail response (see deriveStage in the page) — backtest / paper / live / killed / queued —
-// never fabricated. The action mirrors the stage:
-//   • paper / live → "Stop" (opens an honest confirm; plain about whether real money moves)
-//   • otherwise    → no action. Promotion to paper/live is NOT a manual UI action — the Gate auto-promotes
-//     survivors, and live is launched via the CLI (Commands · `cosmu live launch`).
+// never fabricated. The affordances mirror the stage:
+//   • live CANDIDATE (paper-stage, or a gate-passed backtest) → a small red "Go Live" button next to the
+//     badge opens the GoLiveModal, which POSTs /live/launch (the SAME endpoint the CLI used). Arming only
+//     RECORDS INTENT — the engine enforces the real eligibility gate (paper maturity + regime + caps +
+//     global toggle + kill-switch) and runs testnet first; live ORDER execution is intentionally not wired.
+//   • paper / live → "Stop" on the right (opens an honest confirm; plain about whether real money moves).
+//     Promotion INTO paper is not a manual action — the Gate auto-promotes survivors.
 //
-// The Stop confirm is presentational + honest: it surfaces the affordance and a plain-language dialog. When
-// no real mutation path is wired it stays a clearly-labelled affordance, so we never pretend an action
-// happened that did not.
+// Both controls are honest: Go Live surfaces the engine's verdict verbatim (armed OR refusal reason) and the
+// Stop confirm is a plain-language dialog. Neither fires an order from this sheet, so we never pretend an
+// action happened that did not.
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/modal";
@@ -67,7 +70,7 @@ export function StageControl({
           {ageDays !== null && ageDays > 0 ? <span className="tab" style={{ opacity: 0.8 }}>· {ageDays}d</span> : null}
         </span>
         {canGoLive ? (
-          <button type="button" className="stage-badge sb-live golive-badge" onClick={() => setGoLive(true)} data-tip="Arm this strategy for live trading (Binance spot). Real orders stay behind the toggle, caps + kill-switch.">
+          <button type="button" className="btn btn-danger btn-xs" onClick={() => setGoLive(true)} data-tip="Arm this strategy for live trading (Binance spot). Real orders stay behind the toggle, caps + kill-switch.">
             Go Live
           </button>
         ) : null}

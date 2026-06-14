@@ -4,12 +4,12 @@
 // Its toolbar carries the global ARM state, a grey "Rules" button (opens the hard-limit Rules modal), and a
 // danger Stop control (opens the liquidate modal). Below: the equity hero on top, then a KPI+guard row that
 // FOLDS the guardrails (Daily loss / Max DD / Exposure) as editable-cap guard boxes into the live-vs-sim
-// money line (Invested / Free / P&L), then [Open positions | Recent trades] side by side. The 2-CLICK
-// activation flow (Review & arm → Confirm) and the per-strategy Launch flow are preserved.
+// money line (Invested / Free / P&L), then [Open positions | Recent trades] side by side. Arming is done from
+// the strategy sheet (Go Live → POST `/live/launch`), NOT here — this surface only monitors, Stops, and edits Rules.
 //
 // SAFETY (real money): LIVE IS OFF BY DEFAULT. This component never decides whether an order is real — the
-// engine does, only when toggle ON + keys present + gate PASSED + caps available + not kill-switched. We send
-// confirm only on the explicit second click. Offline → an honest not-connected note, never armed.
+// engine does, only when toggle ON + keys present + gate PASSED + caps available + not kill-switched. There is
+// no arm control on this surface (arming lives on the strategy sheet). Offline → an honest not-connected note, never armed.
 //
 // HONESTY: the KPI row reads the engine's live-vs-sim SPLIT (getPortfolioSummary). When nothing is routed
 // live (`has_live` false) every live money figure is null and renders an explicit "—" — NEVER 0 and NEVER
@@ -178,7 +178,7 @@ export function LiveSurface({
   return (
     <Page>
       {/* Toolbar (v18 page-live) — Running/Off badge on the left; the grey Rules button + danger Stop on the
-          right. Live is launched via the CLI (Commands · `cosmu live launch`), so there is no in-UI arm flow. */}
+          right. Arming is done on the strategy sheet (Go Live → `/live/launch`); this surface only monitors + Stops. */}
       <Toolbar
         title="Live"
         left={
@@ -212,8 +212,12 @@ export function LiveSurface({
 
       {/* id="dash-live" scopes the compact dashboard KPI sizing (globals.css #dash-live .kpi-val/.kpi-box). */}
       <div id="dash-live">
-        {/* Equity hero ALWAYS on top — the real live equity curve (honest empty until a live track record). */}
-        <EquityHero label="Total equity" curve={isLive ? equityCurve : []} />
+        {/* Equity hero ALWAYS on top. Gate the curve on the SAME honest discriminator the money KPIs use
+            (summary.live_equity, which the engine pins to null until a real LIVE portfolio snapshot exists —
+            overview.py) so it shows an honest empty state, never the SIM/paper aggregate `equityCurve`. When
+            live data is wired, repoint `equityCurve` itself to a live-scoped series — feeding the aggregate
+            here would still be wrong even when live_equity is non-null. */}
+        <EquityHero label="Total equity" curve={isLive && summary.live_equity != null ? equityCurve : []} />
 
         {/* Money + guard boxes (left, 3×2) + Open positions (right). */}
         <div className="kgrid dash-split" style={{ gridTemplateColumns: "minmax(0,3fr) minmax(0,2fr)" }}>

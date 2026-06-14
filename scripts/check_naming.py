@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Naming guard — fail if dead vocabulary returns to code/contracts.
 
-The COSMU lifecycle is LOCKED: Lab → Strategies → Paper → Live, NO pooled wallet, money state
+The COSMU lifecycle is LOCKED: Backtest → Paper → Live, NO pooled wallet, money state
 SIM/LIVE (see docs/GLOSSARY.md). This guard scans CODE (Python / TS / TSX / SQL) for the dead spellings
 so a rename can't silently regress. Docs/markdown, the GLOSSARY's dead-list, the one-shot migrations, and
 this script are excluded. Runs in `pnpm verify`; exits non-zero on any hit.
@@ -76,7 +76,7 @@ def main() -> int:
             if pattern.search(line):
                 hits.append(f"{path.relative_to(ROOT)}:{i}: {line.strip()}")
     if hits:
-        print("✗ dead vocabulary found (see docs/GLOSSARY.md — Lab → Strategies → Forward-test → Live, no pooled wallet):")
+        print("✗ dead vocabulary found (see docs/GLOSSARY.md — Backtest → Paper → Live, no pooled wallet):")
         print("\n".join(hits))
         return 1
     print("✓ naming guard: no dead vocabulary in code")

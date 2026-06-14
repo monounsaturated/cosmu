@@ -1,7 +1,8 @@
 // /live — the gated, money screen (Iris Bento). Server-fetches the real positions snapshot, the live-vs-sim
 // money split (getPortfolioSummary), the live equity curve (getOverview), and the editable hard-limit Rules
 // (getRules), then hands them to the client surface which owns the toolbar (ARM state + Rules + Stop), the
-// 2-click activation flow, the Rules / liquidate modals, and an honest not-connected / "—" state.
+// Rules / liquidate modals, and an honest not-connected / "—" state. Arming is done from the strategy sheet's
+// Go Live modal (POST /live/launch), not here — this screen only monitors + Stops.
 //
 // Live is OFF by default and the surface NEVER labels SIM capital as live: when nothing is routed live, every
 // live money figure renders an explicit "—" (the engine returns null), never 0 and never the SIM number.

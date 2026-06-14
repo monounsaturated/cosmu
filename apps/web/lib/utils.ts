@@ -55,6 +55,16 @@ export function isPaperRow(row: { status?: string | null; has_paper_fills?: bool
   return isPaper(row.status) && row.has_paper_fills === true;
 }
 
+// Terminal state: a strategy the Gate or operator has killed/defunded. Its row stays queryable so the record
+// SURVIVES the kill — a CLOSED paper track (killed AND it once traded on paper) keeps its funded amount + final
+// net-of-fee P&L in the Paper "Track record". Losses are remembered, not erased.
+export function isKilled(status: string | null | undefined): boolean {
+  return (status ?? "").toLowerCase() === "killed";
+}
+export function isClosedPaperRow(row: { status?: string | null; has_paper_fills?: boolean | null }): boolean {
+  return isKilled(row.status) && row.has_paper_fills === true;
+}
+
 // Pretty venue display names. The engine stores raw venue ids ("ibkr", "kraken_futures"); the UI shows the
 // recognisable brand. An UNKNOWN id falls back to a title-cased, underscore-split form, so a NEW venue still
 // reads cleanly ("my_new_venue" → "My New Venue") without a code change. "—" for a null/empty venue.
