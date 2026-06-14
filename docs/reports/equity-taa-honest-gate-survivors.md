@@ -123,6 +123,18 @@ These are not knife-edge fits.
 
 **`defensive5` is the best risk-adjusted snipe** — DAA's Sharpe (1.24) at **~half the drawdown** (4.9% vs 8.3%), DSR 1.000, holdout +0.493 (the cohort's strongest). It clears the DSR+holdout bar but not the *strict* gate, because its defensive tilt does not out-*return* raw SPY (it trades return for smoothness) — exactly the expected behaviour of a crash-protected sleeve, and arguably the single most deployable "floor" product. 1/N is not overfitting: no weights are fit, the members are fixed priors, the 3 compositions are pre-declared and FDR-counted. (The earlier `defensive4`, without HAA, is essentially identical — Sharpe 1.23, maxDD 4.7%, holdout +0.484, on a longer window; HAA marginally lifts the holdout.)
 
+## Diversification — what to actually deploy (and when this surface saturates)
+
+Correlation + leave-one-out marginal contribution across the 8 survivors (common window 2008-2026, 215 months):
+
+- The survivors are **moderately correlated (0.40–0.82, none > 0.85)** — eight variations on *defensive multi-asset momentum*, not clones. The most distinct are **VAA** and **HAA** (avg corr 0.51 / 0.54).
+- **Marginal ΔSharpe** when removed from the all-8 ensemble: **HAA +0.054 (the top diversifier)**, RP +0.017, DAA +0.015 — positive; the other five ≈ 0 (their edge is already captured by the rest).
+- The ensemble's real payoff is **drawdown reduction** (defensive5 4.9% vs DAA 8.3%), **not** Sharpe — the shared market/de-risk beta caps Sharpe gains at ~1.24.
+
+**Deploy:** `defensive5` (or all-8) as the diversified floor sleeve; a lean **DAA + HAA + RP** core captures most of the risk-adjusted benefit. HAA was the highest-value addition.
+
+**Saturation signal (honest):** new documented *defensive-momentum rotations* now add only ~±0.05 Sharpe — this surface is near-saturated for Sharpe (further additions mainly smooth drawdown). The next real leap needs a **different risk-premium class or new data** (e.g. cross-exchange crypto funding — the 2026-06-07 pivot — or a trend/carry/credit surface), not another correlated rotation.
+
 ## Next
 
 - The survivors are already armed in SIM via `arm_fleet.py`; the **live forward paper is the fresh OOS arbiter**
