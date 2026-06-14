@@ -260,6 +260,20 @@ class Store:
             _session.con = None
             con.close(discard=not ok)  # on error, drop the pooled socket; never reuse a broken one
 
+    def warm_reads(self) -> None:
+        """Pre-open the warm read pool at BOOT so the first user request never pays the ~1.7s Supabase
+        connection handshake (×2 for the pool's minconn) — that cold spike, landing on the slow multi-read
+        strategy-detail sheet, is what made it exceed the web timeout and read "engine did not respond".
+        Best-effort + offline-safe: a DB hiccup at boot must not crash the app (we just stay cold and pay
+        the handshake lazily on first use). No-op on SQLite (local file open is already cheap)."""
+        if not self._is_pg:
+            return
+        try:
+            with self.reading():
+                self.row("SELECT 1")
+        except Exception:  # noqa: BLE001 — boot warm is best-effort; never crash the app
+            pass
+
     @contextmanager
     def batch(self) -> Iterator[Writer]:
         """One connection + one transaction for many writes (cohort throughput)."""
