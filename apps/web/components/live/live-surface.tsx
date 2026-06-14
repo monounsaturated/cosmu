@@ -70,9 +70,12 @@ export function LiveSurface({
   // false), every live_* money field is null → the UI renders "—", never 0 and never the SIM number.
   const hasLive = summary.has_live;
   const usd = (v: number | null | undefined) => (typeof v === "number" ? formatUsd(v) : "—");
-  const liveInvested = summary.live_invested;
-  const liveFree = summary.live_free;
-  const livePnl = summary.live_pnl_net;
+  // Gate every live money figure on the surface's OWN truth (armed AND on the live venue), not just the
+  // engine's has_live — when nothing is armed live, show an honest "—" rather than leaking the sim split
+  // (which is why Live was mirroring Paper's equity/positions).
+  const liveInvested = isLive ? summary.live_invested : null;
+  const liveFree = isLive ? summary.live_free : null;
+  const livePnl = isLive ? summary.live_pnl_net : null;
   const globalCap = rules.global_max_notional || summary.live_global_cap || state.caps.global_cap;
 
   // Guardrails folded into the KPI line — REAL used/cap only. While disarmed they sit at 0 (the honest safe
@@ -80,7 +83,7 @@ export function LiveSurface({
   // source yet, so its tile is handed `null` and renders an honest "—".
   const dailyLossUsed = hasLive ? state.daily_loss : 0;
   const dailyLossCap = rules.max_daily_loss || state.caps.max_daily_loss;
-  const exposureUsed = hasLive && typeof liveInvested === "number" ? liveInvested : 0;
+  const exposureUsed = isLive && typeof liveInvested === "number" ? liveInvested : 0;
 
   async function refreshAll() {
     if (!ENGINE_CONFIGURED) {
@@ -163,7 +166,8 @@ export function LiveSurface({
   const liqAmount = hasLive && typeof liveInvested === "number" ? formatUsd(liveInvested) : null;
   const liqCount = summary.positions_count_live;
 
-  const positions = state.positions;
+  // Live positions only — when not armed live, do not mirror the sim/paper positions onto the Live screen.
+  const positions = isLive ? state.positions : [];
   const POS_LIM = 4;
   const shownPositions = showAllPositions ? positions : positions.slice(0, POS_LIM);
 
@@ -201,10 +205,10 @@ export function LiveSurface({
       {/* id="dash-live" scopes the compact dashboard KPI sizing (globals.css #dash-live .kpi-val/.kpi-box). */}
       <div id="dash-live">
         {/* Equity hero ALWAYS on top — the real live equity curve (honest empty until a live track record). */}
-        <EquityHero label="Total equity" curve={equityCurve} />
+        <EquityHero label="Total equity" curve={isLive ? equityCurve : []} />
 
         {/* KPI + guard row: 3 money KPIs + 3 guard boxes folded into one line. */}
-        <div className="kgrid kpi-guard" style={{ gridTemplateColumns: "repeat(3,1.05fr) repeat(3,0.92fr)" }}>
+        <div className="kgrid kpi-guard" style={{ gridTemplateColumns: "repeat(6,1fr)" }}>
           <MoneyBox
             label="Invested"
             value={usd(liveInvested)}
@@ -258,9 +262,11 @@ export function LiveSurface({
             <div className="card-hdr">
               <span className="card-lbl">
                 Open positions{" "}
-                <span className={cn("badge", isLive ? "badge-up" : "badge-iris")} style={{ marginLeft: 4 }}>
-                  {isLive ? "Live" : "Paper"}
-                </span>
+                {isLive ? (
+                  <span className="badge badge-up" style={{ marginLeft: 4 }}>
+                    Live
+                  </span>
+                ) : null}
               </span>
               {positions.length > POS_LIM ? (
                 <button className="seeall-btn" onClick={() => setShowAllPositions((v) => !v)}>
