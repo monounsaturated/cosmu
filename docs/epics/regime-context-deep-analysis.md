@@ -226,3 +226,50 @@ deep RL net is actually warranted.
 Phase 0 (substrate) → **Phase 1 (regime layer, highest leverage)** → Phase 2 (robustness gates)
 → Phase 3 (scenario lab) → Phase 4 (fan-out summaries) → Phase 5 (RL, fenced). Phases 3–5 can run
 as parallel sub-agents (one branch each, merge train) once Phase 1 lands.
+
+## 12. Multi-asset breadth (operator 2026-06-14: cosmu is NOT crypto-only)
+
+Source: the BNP video names the desk's universe — **equities, FX, commodities, rates, credit**
+(+ crypto). cosmu spans stocks (Alpaca; IBKR/IG wanted), futures (Kraken Futures; IBKR/IG wanted),
+Polymarket, options (wanted), and crypto. The binding constraint, verified in code: the instrument
+model (`spine/venue.py`) is only `Literal["crypto","equity","prediction"]` and `Instrument` carries
+`tick_size/lot_size/min_notional` but **no contract multiplier, expiry, strike, option_type, or
+trading session**. Several of the video's subtlest lessons are asset-class-specific and land here.
+
+Phase 1 is **multi-asset by construction**: regime axes resolve per asset class (equity regime via
+VIX/credit-spread/2s10s; crypto via DVOL/funding/OI; FX/rates via their own vol) PLUS one
+**cross-asset correlation regime** spanning all classes (the correlation smile — "French PM resigns
+→ CAC + OAT + EUR move together"). The context labels are market-wide and per-class.
+
+New/refined items (each obeys the §1 alignment lock):
+
+- **M1 — Extend the instrument/venue model beyond 3 classes** (ASK-FIRST: core model + likely DDL).
+  Add asset classes (`futures`, `options`, `fx`) and derivatives fields to `Instrument`
+  (`contract_multiplier`, `expiry`, `strike`, `option_type`) + a per-venue **trading session/calendar**.
+  Unlocks futures/options/IBKR/IG; fixes the **multiplier fat-finger** ("process one = process 100")
+  in `master/risk.py` sizing and the **clocks** ("don't price a closed market") for honest per-class
+  freshness. (engine, opus)
+- **M2 — Per-venue execution model: CLOB vs RFQ.** The cost model branches: CLOB = slippage/impact
+  bps (today); RFQ = wide bid-ask + fill-probability + adverse-selection for options/structured/thin
+  Polymarket. "Reveal myself" → don't telegraph size (iceberg/TWAP) on thin books. (engine, opus)
+- **M3 — Options / vol lane on the block registry** (`strategy/blocks.py`). Trade vol, not direction:
+  implied-vs-realized spread + term structure (VIX/DVOL/MOVE) as signals (the "it's red → markets
+  stressed" tell); defined-risk payoff blocks (spread/collar/capital-protected = bond+call); a
+  delta-hedge leg (cover options with futures); Polymarket as discrete-event insurance. Reframe:
+  credit/options/Polymarket are **insurance markets** — cosmu can be insurer (premium/carry) or
+  insured (tail hedge for a funded track). Routed through the SAME Gate. Seeds exist
+  (`dvol-calm-regime-momentum.json`, `polymarket-positioning-risk-flip.json`). (engine, opus)
+- **M4 — Fleet-level correlation-aware funding.** Wire `master/strategy_correlation.py` into
+  funding/rotation as a diversification PREFERENCE (don't fund 10 secretly-identical bets — the
+  desk's "we already have too much risk on those parameters"). Advisory; the Gate still gates,
+  no pooled wallet. (engine, sonnet)
+- **M5 — Negative-skew / short-gamma flag.** In the Phase-4 fan-out, lean on the scorer's existing
+  skew/kurtosis PSR and flag `carry`/`mean-reversion`/premium-selling survivors ("short the put —
+  no upside, only downside") for mandatory correlation-spike/tail scrutiny. (engine, sonnet)
+- **M6 — Per-asset-class cost/notional normalization + the morning call.** Edge & cost in
+  bps-of-notional per class with per-class funding/margin (futures margin vs cash equity vs spot);
+  the Phase-4 fan-out emits a daily cross-asset **morning brief** (overnight crypto+Asia moves;
+  day-ahead earnings/macro/unlocks/OPEX/Polymarket events; exposed tracks). (engine+config, sonnet)
+- **M7 — Jurisdiction restrictions for new TradFi venues.** Populate `restricted_jurisdictions` /
+  `live_legal_in` for IBKR/IG/Kalshi/options (Volcker → cosmu's "legality is one more venue fact").
+  GB is already a supported jurisdiction for IG. (config, sonnet)
