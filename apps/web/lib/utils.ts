@@ -46,6 +46,33 @@ export function isPaper(status: string | null | undefined): boolean {
   return s === "paper" || s === "forward_test" || s === "forward";
 }
 
+// Pretty venue display names. The engine stores raw venue ids ("ibkr", "kraken_futures"); the UI shows the
+// recognisable brand. An UNKNOWN id falls back to a title-cased, underscore-split form, so a NEW venue still
+// reads cleanly ("my_new_venue" → "My New Venue") without a code change. "—" for a null/empty venue.
+const VENUE_LABELS: Record<string, string> = {
+  binance: "Binance",
+  binanceus: "Binance.US",
+  ibkr: "IBKR",
+  kraken: "Kraken",
+  kraken_futures: "Kraken Futures",
+  ig: "IG",
+  hyperliquid: "HyperLiquid",
+  polymarket: "Polymarket",
+  alpaca: "Alpaca",
+  coinbase: "Coinbase",
+  sim: "Sim",
+};
+export function formatVenue(venue: string | null | undefined): string {
+  if (!venue) return "—";
+  const key = venue.trim().toLowerCase();
+  if (VENUE_LABELS[key]) return VENUE_LABELS[key];
+  return key
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 // Compact "how long ago" for timestamps (last tick, last event). Returns null for a null/unparseable
 // input so callers render an honest "—" rather than a fabricated time. Tense-free, terse: "3m", "2h", "5d".
 export function timeAgo(ts: string | null | undefined): string | null {

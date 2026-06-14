@@ -29,7 +29,7 @@ import { StrategySheet } from "@/components/strategy/strategy-sheet";
 import type { Stage } from "@/components/strategy/stage-control";
 import { engineFetch, engineGetJson, enginePeek, enginePrefetch } from "@/lib/engine";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
-import { cn, formatUsd, numOrNull, signedUsd } from "@/lib/utils";
+import { cn, formatUsd, formatVenue, numOrNull, signedUsd } from "@/lib/utils";
 
 // ── Lifecycle mapping — the screener's local lifecycle normalizer (the canonical paper predicate is the
 // shared isPaper in lib/utils; this maps the full engine status onto the 5-stage lifecycle/filter lanes). ──
@@ -376,7 +376,7 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
   switch (col) {
     case "name":
       return (
-        <div className="cell-name" title={row.name}>
+        <div className="cell-name" data-tip={row.name}>
           {row.name}
         </div>
       );
@@ -432,7 +432,7 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
       );
     }
     case "venue":
-      return <span className="muted" style={{ fontSize: 11 }}>{row.venue || "—"}</span>;
+      return <span className="muted" style={{ fontSize: 11 }}>{formatVenue(row.venue)}</span>;
     case "fees":
       // No per-Version fee total on the leaderboard contract — honest "—", never a fabricated cost.
       return <Dash />;

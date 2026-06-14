@@ -18,12 +18,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # and intentionally OUTSIDE GateSettings so it can never leak into the deterministic scorer/FDR/money path.
 PAPER_MIN_DAYS: int = 30
 
-# Stage-promotion threshold (calendar days). A "screened" (badge: Backtest) forward-test entrant is promoted
-# to "paper" (badge: Paper) by the paper clock (orchestrator.mark_tracks) once its track has accrued at least
-# this many days of REAL forward time past its track_opened origin — i.e. it survived a genuine forward bar,
-# not just the opening backtest-seeded snapshot. So "Paper" honestly means "has real forward evidence", never
-# backtest-only. Named constant (never an inline magic number); badge-only — never touches the live/money gate.
-PAPER_PROMOTE_MIN_DAYS: float = 1.0
+# NOTE: the screened→paper badge promotion is now TRADE-based, not time-based — a forward-test entrant earns the
+# "Paper" badge on its FIRST real paper fill (orchestrator.loop._has_paper_fills), so there is no promotion-days
+# threshold constant anymore. PAPER_MIN_DAYS above stays — it is the separate LIVE-readiness maturity gate.
 
 
 class SpendSettings(BaseModel):

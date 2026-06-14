@@ -596,7 +596,7 @@ body.sb-collapsed .sb-collapse-btn svg{transform:rotate(180deg)}
 .search-input::placeholder{color:var(--quiet)}
 .search-input:focus{outline:none;border-color:var(--iris-mid);box-shadow:0 0 0 2px var(--iris-dim)}
 /* ── viewport-clamped tooltip (replaces cropped ::after) ── */
-#tipbox{position:fixed;z-index:200;max-width:230px;background:var(--surf4);border:1px solid var(--border);
+#tipbox{position:fixed;z-index:200;max-width:320px;background:var(--surf4);border:1px solid var(--border);
   border-radius:var(--r-sm);padding:7px 9px;font-size:10.5px;line-height:1.45;color:var(--fg);
   box-shadow:var(--cell-shadow);pointer-events:none;opacity:0;transition:opacity 120ms}
 #tipbox.on{opacity:1}
@@ -826,11 +826,10 @@ body.sb-collapsed .sb-tog .ic-expand{display:inline}
 .subs-tbl th,.subs-tbl td{padding:6px 9px}
 /* Paper "Open positions" — truncate long strategy names so a row never overflows the card (which would
    add a horizontal scrollbar to ONE box and break the equal-height split). Ellipsis + native title. */
-.mini-tbl td.pos-strat .strat-link{display:inline-block;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
-/* Venue + Class split out of the old combined pair cell — two TIGHT columns (a strategy trades a basket, so
-   there is no single symbol to show). Narrow + ellipsis so they never widen the table into a scrollbar. */
-.mini-tbl td.pos-venue{max-width:104px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mini-tbl td.pos-class{max-width:64px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Open-positions table: a wide Strategy name (cropped, full name on the delayed hover tip) + ONE tight Venue
+   column (pretty-printed via formatVenue). Class was dropped — the donut's picker covers asset-class. */
+.mini-tbl td.pos-strat .strat-link{display:inline-block;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.mini-tbl td.pos-venue{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .g-ribbon{display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:var(--surf2);border:1px solid var(--border);border-radius:var(--r);padding:9px 14px;margin-bottom:var(--gap);box-shadow:var(--cell-shadow)}
 .g-ribbon .gi{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted)}
 .g-ribbon .gi b{color:var(--fg)}
@@ -1058,7 +1057,10 @@ th[draggable=true]{cursor:pointer}
 .alloc-empty{font-size:10px;color:var(--quiet);text-align:center;width:100%;line-height:1.4}
 
 /* ── Paper "Capital allocation" donut (its own bento card, bottom row, bigger than the Live KPI-row one) ── */
-.wallet-alloc{display:flex;align-items:center;gap:20px;padding:8px 6px;height:100%}
+/* GRID (not flex) with a minmax(0,1fr) legend column: the legend can never grow past its share, so long names
+   ALWAYS ellipsis instead of pushing the whole card wider than its grid cell (which used to shove the card —
+   and its Venue/Class/Strategy picker — off-screen on the "Strategy" view). */
+.wallet-alloc{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:20px;padding:8px 6px;height:100%;overflow:hidden}
 .wallet-alloc .wdonut{flex-shrink:0}
 .wallet-alloc .alloc-leg{gap:6px}
 .wallet-alloc .alloc-leg .arow{font-size:11.5px}
