@@ -1,20 +1,23 @@
-# STAGE SEMANTICS — "Paper" must mean a strategy has REAL forward evidence (>= PAPER_PROMOTE_MIN_DAYS of marked
-# forward time), never backtest-only. A forward-test entrant is born "screened" (badge: Backtest); the paper clock
-# (orchestrator.mark_tracks) promotes it to "paper" once it survives a real forward day, and a one-shot boot
-# reclassification (orchestrator.reclassify_unforwarded_paper) fixes legacy rows stamped "paper" at creation. Both
-# are BADGE-ONLY relabels — the live/money gate reads track_opened, not status — and fully offline + deterministic.
+# STAGE SEMANTICS — "Paper" must mean a strategy has actually STARTED TRADING on paper: >= 1 REAL paper fill in
+# the executions log (the same signal the detail sheet reads — "no fills yet" / "needs fills for a curve"). A
+# forward-test entrant is born "screened" (badge: Backtest); the paper clock (orchestrator.mark_tracks) promotes
+# it to "paper" on its FIRST real fill, and a one-shot boot reclassification (reclassify_unforwarded_paper) demotes
+# any "paper" row that has no fills (e.g. a documented arm that only holds a static allocation — apply_fill writes
+# positions, never executions). Both are BADGE-ONLY relabels — the live/money gate reads track_opened, not status.
 
 from __future__ import annotations
 
 import datetime as dt
 from decimal import Decimal
 
-from cosmu.config.settings import PAPER_PROMOTE_MIN_DAYS, Settings
+from cosmu.config.settings import Settings
 from cosmu.data.market import Bar
 from cosmu.knowledge.store import Store
 from cosmu.master.portfolio import Portfolio
 from cosmu.orchestrator.loop import PricingRouter, mark_tracks, reclassify_unforwarded_paper
 from cosmu.spine.venue import default_catalog
+
+_TS = dt.datetime(2026, 1, 1, tzinfo=dt.UTC).isoformat()
 
 
 def _store(tmp_path) -> Store:
@@ -36,30 +39,39 @@ class _FakeProvider:
         return [Bar(ts=dt.datetime(2026, 1, 1, tzinfo=dt.UTC), open=c, high=c, low=c, close=c, volume=Decimal("0"))]
 
 
-def _setup_track(store: Store, *, status: str, age_days: float, return_pct: str = "5.00", open_pos: bool = True) -> str:
-    """A funded standalone track at a chosen lifecycle status, whose paper clock (track_opened) started `age_days`
-    ago. Returns the version_id. Mirrors exactly what the funder leaves behind: a tracks row + an open SPY@ibkr
-    position + a track_opened event (the paper-clock origin forward_evidence reads)."""
-    sid = store.insert("strategies", {"name": "TAA fleet", "thesis": "x", "origin": "documented",
-                                      "created_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC).isoformat()})
+def _add_paper_fill(store: Store, vid: str) -> None:
+    """Record ONE real paper fill in the executions log — what makes a version 'has started trading on paper'."""
+    rid = store.insert(
+        "runs",
+        {"strategy_version_id": vid, "mode": "paper", "venue_id": "ibkr", "seed": 1, "started_at": _TS, "status": "completed"},
+    )
+    store.insert(
+        "executions",
+        {"run_id": rid, "strategy_version_id": vid, "instrument_id": "spy-ibkr", "venue_id": "ibkr", "side": "buy",
+         "qty": "25", "price": "400", "fee": "0", "slippage": "0", "order_type": "market", "is_paper": 1,
+         "ts": _TS, "fill_log": "{}"},
+    )
+
+
+def _setup_track(store: Store, *, status: str, with_fill: bool, open_pos: bool = True) -> str:
+    """A funded standalone track at a chosen lifecycle status. `with_fill` records a real paper execution (so the
+    version 'has started trading'); without it the track only HOLDS an allocation (positions, no fills) — exactly
+    the documented-arm case. Returns the version_id."""
+    sid = store.insert("strategies", {"name": "TAA fleet", "thesis": "x", "origin": "documented", "created_at": _TS})
     vid = store.insert(
         "strategy_versions",
-        {"strategy_id": sid, "parent_id": None, "spec": {}, "generated_code": "", "code_hash": f"h-{status}-{age_days}",
+        {"strategy_id": sid, "parent_id": None, "spec": {}, "generated_code": "", "code_hash": f"h-{status}-{with_fill}",
          "params": {}, "mutation_operator": None, "mutation_rationale": "x", "origin": "documented",
-         "status": status, "created_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC).isoformat(),
-         "killed_at": None, "kill_reason": None},
+         "status": status, "created_at": _TS, "killed_at": None, "kill_reason": None},
     )
     store.insert("tracks", {"strategy_version_id": vid, "starting_capital": "10000", "equity": "10000.00",
-                            "return_pct": return_pct, "updated_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC).isoformat()})
+                            "return_pct": "5.00", "updated_at": _TS})
     if open_pos:
         pf = Portfolio(store, bankroll=store.settings.sim_bankroll)
         pf.apply_fill(instrument_id="spy-ibkr", symbol="SPY", venue="ibkr", side=1,
                       qty=Decimal("25"), price=Decimal("400"), fee=Decimal("0"), strategy_version_id=vid)
-    origin_ts = (dt.datetime.now(dt.UTC) - dt.timedelta(days=age_days)).isoformat()
-    store.rows(
-        "INSERT INTO events(ts, actor, kind, ref_type, ref_id, payload) VALUES (?, 'master', 'track_opened', 'strategy_version', ?, ?)",
-        (origin_ts, vid, "{}"),
-    )
+    if with_fill:
+        _add_paper_fill(store, vid)
     return vid
 
 
@@ -71,44 +83,42 @@ def _mark(store: Store) -> None:
     mark_tracks(store, router=PricingRouter(default_catalog(), crypto=_FakeProvider({}), equity=_FakeProvider({"SPY": 440.0})))
 
 
-def test_screened_promotes_to_paper_after_a_forward_day(tmp_path):
-    """The crux: a "screened" (Backtest) entrant whose paper clock has run >= PAPER_PROMOTE_MIN_DAYS is promoted to
-    "paper" by the clock — and a status_promoted event records the honest transition."""
+def test_screened_promotes_to_paper_on_first_real_fill(tmp_path):
+    """The crux: a "screened" (Backtest) entrant that has recorded its FIRST real paper fill is promoted to "paper"
+    by the clock — and a status_promoted event records the honest transition."""
     store = _store(tmp_path)
-    vid = _setup_track(store, status="screened", age_days=PAPER_PROMOTE_MIN_DAYS + 1.0)
+    vid = _setup_track(store, status="screened", with_fill=True)
     assert _status(store, vid) == "screened"
     _mark(store)
     assert _status(store, vid) == "paper"
-    ev = store.row("SELECT payload FROM events WHERE kind = 'status_promoted' AND ref_id = ?", (vid,))
-    assert ev is not None  # the transition is audited, not silent
+    assert store.row("SELECT 1 FROM events WHERE kind = 'status_promoted' AND ref_id = ?", (vid,)) is not None
 
 
-def test_screened_stays_backtest_within_first_forward_day(tmp_path):
-    """A "screened" entrant marked on the SAME day it opened (age < threshold) has NO real forward evidence yet, so
-    it stays "screened" (Backtest) — the same-day re-mark of the seed must never manufacture a "Paper" badge."""
+def test_screened_stays_backtest_with_no_fills(tmp_path):
+    """A "screened" entrant that only HOLDS an allocation (positions, but zero executions — the documented-arm case)
+    has not started trading, so it stays "screened" (Backtest). The mark of a held position must never manufacture
+    a "Paper" badge."""
     store = _store(tmp_path)
-    vid = _setup_track(store, status="screened", age_days=0.0)
+    vid = _setup_track(store, status="screened", with_fill=False)
     _mark(store)
     assert _status(store, vid) == "screened"
     assert store.row("SELECT 1 FROM events WHERE kind = 'status_promoted' AND ref_id = ?", (vid,)) is None
 
 
-def test_reclassify_demotes_unforwarded_legacy_paper(tmp_path):
-    """A legacy row stamped "paper" at creation, before any forward day, is demoted back to "screened" (Backtest) so
-    the badge stops claiming forward evidence it doesn't have."""
+def test_reclassify_demotes_paper_with_no_fills(tmp_path):
+    """A row stamped/promoted to "paper" that never actually traded (no executions) is demoted back to "screened"
+    (Backtest) so the badge stops claiming a paper track it doesn't have."""
     store = _store(tmp_path)
-    vid = _setup_track(store, status="paper", age_days=0.0, open_pos=False)
-    n = reclassify_unforwarded_paper(store)
-    assert n == 1
+    vid = _setup_track(store, status="paper", with_fill=False, open_pos=False)
+    assert reclassify_unforwarded_paper(store) == 1
     assert _status(store, vid) == "screened"
     assert store.row("SELECT 1 FROM events WHERE kind = 'status_demoted' AND ref_id = ?", (vid,)) is not None
 
 
-def test_reclassify_keeps_genuinely_forwarded_paper(tmp_path):
-    """A "paper" row that HAS accrued a real forward day is left alone — reclassification only fixes the mislabeled,
-    never demotes a strategy with genuine forward evidence."""
+def test_reclassify_keeps_paper_that_has_traded(tmp_path):
+    """A "paper" row that HAS a real paper fill is left alone — reclassification only fixes the mislabeled, never
+    demotes a strategy that has genuinely started trading."""
     store = _store(tmp_path)
-    vid = _setup_track(store, status="paper", age_days=PAPER_PROMOTE_MIN_DAYS + 5.0, open_pos=False)
-    n = reclassify_unforwarded_paper(store)
-    assert n == 0
+    vid = _setup_track(store, status="paper", with_fill=True, open_pos=False)
+    assert reclassify_unforwarded_paper(store) == 0
     assert _status(store, vid) == "paper"

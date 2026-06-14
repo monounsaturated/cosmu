@@ -7,19 +7,28 @@
 
 import { useEffect } from "react";
 
+// Deliberate hover delay (ms): you must rest on an element for ~2/3 s before its tip appears. This is what
+// keeps tooltips from flickering as the cursor merely PASSES over a row of cropped names — they only show
+// when you actually pause to read one.
+const TIP_DELAY = 650;
+
 export function TipLayer() {
   useEffect(() => {
     const tip = document.createElement("div");
     tip.id = "tipbox";
     document.body.appendChild(tip);
 
-    function onOver(e: MouseEvent) {
-      const target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]");
-      if (!target) {
-        tip.classList.remove("on");
-        return;
-      }
-      tip.textContent = target.getAttribute("data-tip") ?? "";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let current: HTMLElement | null = null;
+
+    function hide() {
+      tip.classList.remove("on");
+    }
+
+    function show(target: HTMLElement) {
+      const text = target.getAttribute("data-tip") ?? "";
+      if (!text) return;
+      tip.textContent = text;
       tip.classList.add("on");
       const r = target.getBoundingClientRect();
       tip.style.left = "0px";
@@ -35,8 +44,18 @@ export function TipLayer() {
       tip.style.top = `${y}px`;
     }
 
+    function onOver(e: MouseEvent) {
+      const target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]") ?? null;
+      if (target === current) return; // same element (or still none) — let any pending timer ride
+      current = target;
+      clearTimeout(timer);
+      hide();
+      if (target) timer = setTimeout(() => show(target), TIP_DELAY);
+    }
+
     document.addEventListener("mouseover", onOver);
     return () => {
+      clearTimeout(timer);
       document.removeEventListener("mouseover", onOver);
       tip.remove();
     };

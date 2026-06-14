@@ -15,7 +15,7 @@
 import { useState } from "react";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
 import { EmptyState } from "@/components/ui/honest-state";
-import { cn, formatUsd, numOrNull } from "@/lib/utils";
+import { cn, formatUsd, formatVenue, numOrNull } from "@/lib/utils";
 
 const PALETTE = ["var(--iris)", "var(--gold)", "var(--info)", "var(--up)", "var(--down)", "var(--iris-s)"];
 const TOP = 6; // show up to TOP slices; the rest collapse into one "+N more" slice so the legend never overflows.
@@ -27,7 +27,7 @@ const DIMS: { key: Dim; label: string }[] = [
   { key: "strategy", label: "Strategy" },
 ];
 const bucketOf = (r: LeaderboardRow, dim: Dim): string =>
-  dim === "venue" ? r.venue || "—" : dim === "class" ? r.asset_class || "—" : r.name;
+  dim === "venue" ? formatVenue(r.venue) : dim === "class" ? r.asset_class || "—" : r.name;
 
 export function WalletAllocCard({ rows }: { rows: LeaderboardRow[] }) {
   const [dim, setDim] = useState<Dim>("venue");
@@ -105,7 +105,7 @@ export function WalletAllocCard({ rows }: { rows: LeaderboardRow[] }) {
               {arcs.map((a) => (
                 <div className="arow" key={a.name}>
                   <span className="alloc-dot" style={{ background: a.color }} />
-                  <span className="nm" title={a.name}>
+                  <span className="nm" data-tip={a.name}>
                     {a.name}
                   </span>
                   <span className="amt">{formatUsd(a.amount)}</span>

@@ -13,7 +13,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
 import { EmptyState } from "@/components/ui/honest-state";
-import { cn, formatPct, formatUsd, numOrNull } from "@/lib/utils";
+import { cn, formatPct, formatUsd, formatVenue, numOrNull } from "@/lib/utils";
 
 const LIM = 4;
 
@@ -57,7 +57,6 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
               <tr>
                 <th>Strategy</th>
                 <th>Venue</th>
-                <th>Class</th>
                 <th className="r">Size</th>
                 <th className="r">Value</th>
                 <th className="r">P&amp;L</th>
@@ -74,14 +73,11 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
                 return (
                   <tr key={row.version_id} className={cn(i >= LIM && "dash-extra")}>
                     <td className="pos-strat">
-                      <Link href={`/strategies?v=${row.version_id}`} className="strat-link" title={row.name}>
+                      <Link href={`/strategies?v=${row.version_id}`} className="strat-link" data-tip={row.name}>
                         {row.name}
                       </Link>
                     </td>
-                    <td className="muted pos-venue" title={row.venue}>
-                      {row.venue}
-                    </td>
-                    <td className="muted pos-class">{row.asset_class}</td>
+                    <td className="muted pos-venue">{formatVenue(row.venue)}</td>
                     <td className="r tab muted">{invested === null ? "—" : formatUsd(invested)}</td>
                     <td className="r tab">{value === null ? "—" : formatUsd(value)}</td>
                     <td className={cn("r tab", pnlCls)}>
