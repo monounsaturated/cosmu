@@ -33,17 +33,17 @@ from cosmu.research.equity_taa_cohort import StratStreams, _metrics
 # Pre-registered ensemble compositions (by RATIONALE, declared before looking at the ensemble stats).
 ENSEMBLES: dict[str, tuple[str, list[str]]] = {
     "core3":      ("the 3 STRICT-PASS survivors (DAA+VAA+ADM)", ["daa", "vaa", "accel_dual_momentum"]),
-    "defensive4": ("the 4 lowest-drawdown crisis-avoiders (DAA+PAA+GTAA+TSMOM)",
-                   ["daa", "paa", "faber_gtaa", "tsmom_trend"]),
-    "all7":       ("all 7 DSR+holdout survivors", ["daa", "vaa", "accel_dual_momentum", "paa", "faber_gtaa",
-                                                   "risk_parity", "tsmom_trend"]),
+    "defensive5": ("the 5 lowest-DD / best-holdout crisis-avoiders (DAA+PAA+GTAA+TSMOM+HAA)",
+                   ["daa", "paa", "faber_gtaa", "tsmom_trend", "haa"]),
+    "all8":       ("all 8 DSR+holdout survivors", ["daa", "vaa", "accel_dual_momentum", "paa", "faber_gtaa",
+                                                   "risk_parity", "tsmom_trend", "haa"]),
 }
 
 # The member adapters live on the cohort module — resolve by name so we never duplicate strategy logic.
 _MEMBER_ADAPTERS = {
     "daa": cohort._s_daa, "vaa": cohort._s_vaa, "accel_dual_momentum": cohort._s_adm,
     "paa": cohort._s_paa, "faber_gtaa": cohort._s_gtaa, "risk_parity": cohort._s_risk_parity,
-    "tsmom_trend": cohort._s_tsmom,
+    "tsmom_trend": cohort._s_tsmom, "haa": cohort._s_haa,
 }
 
 
