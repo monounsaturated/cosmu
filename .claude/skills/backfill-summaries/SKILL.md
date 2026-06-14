@@ -5,7 +5,9 @@ description: Write/refresh the per-strategy PLAIN-LANGUAGE summaries (research_n
 
 # backfill-summaries
 
-Every strategy Version can carry a 3–6 sentence plain-language summary a non-quant can read: what it trades, the hypothesis, what the deterministic Gate decided and WHY, and where its forward test stands. **The deployed engine never generates this text** — it has no LLM in this path. *You* (Claude Code, flat-rate sub) write the prose from the engine's **deterministic facts**, then PUT it back. The engine stores it as a `research_notes` row (`kind='summary'`, latest wins), serves it on the strategy detail contract, and the web renders it with an honest staleness badge.
+The strategy sheet shows a **fixed two-part summary**: **Part 1 — "What this does"** (the agent prose you write here) and **Part 2 — "Why it's <Stage>"** (rendered DETERMINISTICALLY by the web from the live Gate facts — `components/strategy/ai-summary.tsx:stageReason`; you do NOT write it, so it's always current and can't go stale or be duplicated). Your job is Part 1: a 2–4 sentence plain-language read a non-quant gets — **what it trades, the hypothesis/mechanism, and (if a track exists) where its forward test stands.** Do NOT re-explain the lifecycle stage or the gate verdict in prose — Part 2 owns that. **The deployed engine never generates this text** — it has no LLM in this path. *You* (Claude Code, flat-rate sub) write the prose from the engine's **deterministic facts**, then PUT it back. The engine stores it as a `research_notes` row (`kind='summary'`, latest wins), serves it on the strategy detail contract, and the web renders it as Part 1 with an honest staleness badge.
+
+**This is the canonical RECURRING refresh task** — run it on every regular checkup (and whenever the sheet shows a "stale — facts changed" pill): rewrite Part-1 summaries that are missing OR stale, so the plain-language read stays true as forward tests progress and strategies move through the lifecycle.
 
 **Advisory only.** Summaries narrate; the deterministic Gate alone funds or kills. Nothing here touches the gate/money path.
 
@@ -60,12 +62,12 @@ curl -s "${AUTH[@]}" $API_BASE_URL/strategies/$VID/summary-facts
 
 `facts` contains exactly: `name`, `thesis`, `rationale`, `lane`, `bar_size`, `asset_classes`, `status`, `kill_reason`, `screen` (`oos_return`, `deflated_sharpe`, `max_dd`, `num_trades`, `passed_gates`, `holdout_passed` — or null if never screened), `forward_test` (`return_pct`, `equity`, `starting_capital`, `updated_at` — or null if no track). Keep the returned `facts_hash` — you pin the summary to it.
 
-## 3 — Write the summary (3–6 sentences, noob-readable, FACTS ONLY)
+## 3 — Write Part 1 · "What this does" (2–4 sentences, noob-readable, FACTS ONLY)
 
-Cover, in plain words:
+Cover Part 1, in plain words (**Part 2 — "Why it's <Stage>" — is the UI's deterministic job**; do NOT write the lifecycle/gate-verdict reasoning in prose, it duplicates Part 2 and can drift):
 1. **What it trades** — asset classes + bar size (e.g. "a crypto strategy on 4-hour bars").
-2. **The hypothesis** — restate `thesis`/`rationale` simply; no jargon.
-3. **What the Gate decided and WHY** — `status` + `screen` + `kill_reason`, translated:
+2. **The hypothesis / mechanism** — restate `thesis`/`rationale` simply; no jargon. This is the heart of Part 1.
+3. **(optional) the headline result, ONE line** — you MAY note the bare outcome ("it cleared the Gate" / "the Gate killed it"), but leave the WHY to Part 2. The plain-words vocabulary below is reference for that one line:
 
 | code | plain words |
 |------|-------------|
@@ -80,7 +82,7 @@ Cover, in plain words:
 | `folds_positive` | it lost money in too many of the walk-forward test windows |
 | `screened_out` | it never produced a screenable result (e.g. zero trades) |
 
-4. **Forward-test state, if a track exists** — e.g. "On its own simulated $100,000 track it is up 1.5% (last marked <date>)."
+4. **Forward-test state, if a track exists** — e.g. "On its own simulated $1,000 paper track it is up 1.5% (last marked <date>)." (Each track funds itself with `starting_capital` — default $1,000, NOT a pooled wallet; use the real `forward_test.starting_capital` from the facts.)
 
 **Hard rules:**
 - **Never invent a number that is not in `facts`.** No extrapolation, no "roughly", no annualizing.

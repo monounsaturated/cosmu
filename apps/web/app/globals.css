@@ -1068,9 +1068,25 @@ th[draggable=true]{cursor:pointer}
 .card-body:has(> table.mini-tbl){overflow-x:auto}
 /* Notion-style horizontal scroll for wide tables in the strategy sheet: smooth momentum + a slim, quiet
    scrollbar that only shows when there's overflow, so a narrow panel scrolls instead of cropping. */
-.tbl-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--hairline) transparent;scroll-behavior:smooth}
+/* Notion-style horizontal scroll: smooth + momentum, with DYNAMIC edge shadows that appear only when there's
+   more table off-screen and fade as you reach an edge. Pure CSS (Lea Verou's scrolling-shadows): the two
+   `local` cover layers ride the content and mask the shadow at the extremes; the two `scroll` shadow layers
+   are pinned to the container edges. Cover color = the .psec surface (--surf2) so it works in light + dark. */
+.tbl-scroll{
+  overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;scrollbar-color:var(--hairline) transparent;scroll-behavior:smooth;overscroll-behavior-x:contain;
+  background:
+    linear-gradient(to right, var(--surf2) 28%, transparent) left center,
+    linear-gradient(to left,  var(--surf2) 28%, transparent) right center,
+    radial-gradient(farthest-side at 0 50%, oklch(0 0 0 / 0.28), transparent) left center,
+    radial-gradient(farthest-side at 100% 50%, oklch(0 0 0 / 0.28), transparent) right center;
+  background-repeat:no-repeat;
+  background-size:36px 100%, 36px 100%, 15px 100%, 15px 100%;
+  background-attachment:local, local, scroll, scroll;
+}
 .tbl-scroll::-webkit-scrollbar{height:6px}
 .tbl-scroll::-webkit-scrollbar-thumb{background:var(--hairline);border-radius:3px}
+.tbl-scroll::-webkit-scrollbar-thumb:hover{background:var(--border-s)}
 .tbl-scroll::-webkit-scrollbar-track{background:transparent}
 /* ── Go Live modal form ── */
 .golive-form{display:flex;flex-direction:column;gap:9px}
