@@ -33,6 +33,7 @@ TAA_SYMBOLS = sorted({
     "SPY", "QQQ", "EFA", "EEM", "GLD", "AGG", "LQD", "TLT", "SHY", "IEF", "BIL",  # core 11
     "IWM", "VNQ", "DBC", "TIP",                                                   # HAA additions (Keller 2023)
     "XLB", "XLE", "XLF", "XLI", "XLK", "XLP", "XLU", "XLV", "XLY",                # sector-rotation universe
+    "DBMF", "KMLM",                                                               # managed-futures diversifier overlay
 })
 
 

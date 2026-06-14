@@ -135,6 +135,22 @@ Correlation + leave-one-out marginal contribution across the 8 survivors (common
 
 **Saturation signal (honest):** new documented *defensive-momentum rotations* now add only ~±0.05 Sharpe — this surface is near-saturated for Sharpe (further additions mainly smooth drawdown). The next real leap needs a **different risk-premium class or new data** (e.g. cross-exchange crypto funding — the 2026-06-07 pivot — or a trend/carry/credit surface), not another correlated rotation.
 
+## A DIFFERENT risk premium — managed futures diversifies the floor (`equity_managed_futures_overlay.py`)
+
+The saturation signal said the next leap needs a *different* premium. Tested **managed futures** (time-series trend, long/short across all asset classes — the textbook equity-crisis diversifier), accessed via its liquid wrapper ETFs (DBMF ≈ SG CTA index, KMLM ≈ Mount Lucas) as fixed external priors. A probe first confirmed it is genuinely uncorrelated to the defensive rotations (**corr to defensive-5: DBMF +0.13, KMLM −0.27, CTA −0.33**); long-only commodities (DBC/PDBC/USO/UNG/DBA/GLD) carried no standalone premium and were **rejected** (they drag the blend).
+
+Through the unchanged Gate, on the satellite's (short) window:
+
+| book (DBMF window, 2019–26) | annSR | DSR | holdout | maxDD |
+|---|---|---|---|---|
+| Defensive-5 floor | 1.33 | 0.921 | +0.461 | 9.5% |
+| **Defensive-5 + 20% DBMF** | **1.44** | **0.970** | **+0.472** | **4.5%** |
+| DBMF alone | 0.74 | 0.663 | +0.454 | 18.8% |
+
+Adding a **20% managed-futures satellite** lifts the floor's DSR **0.921 → 0.970 (clears 0.95 on the short window)**, raises the holdout, and **halves the drawdown (9.5% → 4.5%)**. (KMLM blend: Sharpe 1.15 → 1.39.) The standalone managed-futures DSR is capped by short ETF history (DBMF since 2019), but its holdout is positive (+0.45 — the premium is real OOS) and the **blend** is the deployable win.
+
+**Recommended book:** `defensive5` core (80%) + a managed-futures satellite (20%, DBMF/KMLM) — a genuinely two-premium floor: defensive-momentum rotation + uncorrelated trend/crisis-alpha.
+
 ## Next
 
 - The survivors are already armed in SIM via `arm_fleet.py`; the **live forward paper is the fresh OOS arbiter**
