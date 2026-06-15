@@ -1116,16 +1116,24 @@ export interface SourceTrustRow {
 
 export interface StrategyDetailResponse {
   backtests: Backtest[];
+  forward_equity?: Point[];
   generated_code: string;
+  has_paper_fills?: boolean;
   holdout: Record<string, unknown>;
+  invested_usd?: number | null;
   name: string;
   notes_md: string;
   params: Record<string, unknown>;
+  pnl_usd?: number | null;
+  realized_pnl?: number | null;
   spec: Record<string, unknown>;
+  starting_capital?: number | null;
   summary_md?: string | null;
   summary_stale?: boolean | null;
   summary_updated_at?: string | null;
   trades: Execution[];
+  unrealized_pnl?: number | null;
+  value_usd?: number | null;
   version_id: string;
 }
 
