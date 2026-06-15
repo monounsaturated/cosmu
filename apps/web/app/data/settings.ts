@@ -8,5 +8,6 @@ const emptySettingsKeys: SettingsKeysResponse = { rows: [] };
 
 export async function getSettingsKeys(): Promise<{ keys: SettingsKeyRow[]; connected: boolean }> {
   const { data, connected } = await getJson<SettingsKeysResponse>("/settings/keys", emptySettingsKeys);
-  return { keys: data.rows, connected };
+  // Coalesce rows — the default only applies on a failed fetch; a partial success could still omit it.
+  return { keys: data.rows ?? [], connected };
 }

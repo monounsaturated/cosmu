@@ -46,9 +46,13 @@ async function StrategyDetail({ id }: { id: string }) {
     );
   }
 
-  const passed = strategy.backtests.some((bt: Backtest) => bt.passed_gates);
-  const summaryLane = strategyLane(strategy.spec);
-  const bestOos = bestOosPct(strategy.backtests);
+  // The contract declares backtests/holdout non-null, but the engine can omit them. Normalize once so no
+  // `.some`/`.map`/Object.entries below can throw on a partial response and white-screen the page.
+  const backtests = strategy.backtests ?? [];
+  const holdout = strategy.holdout ?? {};
+  const passed = backtests.some((bt: Backtest) => bt.passed_gates);
+  const summaryLane = strategyLane(strategy.spec ?? {});
+  const bestOos = bestOosPct(backtests);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 1000 }}>
@@ -65,7 +69,7 @@ async function StrategyDetail({ id }: { id: string }) {
       <StrategySheet strategy={strategy} />
 
       {/* Per-backtest Gate detail + the full spec/code/notes/holdout, given room on the standalone page. */}
-      <GateTab backtests={strategy.backtests} holdout={strategy.holdout} />
+      <GateTab backtests={backtests} holdout={holdout} />
 
       <div className="card">
         <div className="card-hdr">
@@ -108,8 +112,9 @@ async function StrategyDetail({ id }: { id: string }) {
 }
 
 // ── Per-backtest Gate detail + the untouched holdout, in bento cards. ──
-function GateTab({ backtests, holdout }: { backtests: Backtest[]; holdout: Record<string, unknown> }) {
-  const holdoutRows = Object.entries(holdout).map(([k, v]) => {
+function GateTab({ backtests, holdout }: { backtests: Backtest[] | null | undefined; holdout: Record<string, unknown> | null | undefined }) {
+  const bts = backtests ?? [];
+  const holdoutRows = Object.entries(holdout ?? {}).map(([k, v]) => {
     const label = k.replace(/_/g, " ");
     if (typeof v === "boolean") return { label, value: v ? "yes" : "no", tone: v ? "up" : "dn" };
     if (typeof v === "number") return { label, value: v.toFixed(2), tone: "" };
@@ -120,14 +125,14 @@ function GateTab({ backtests, holdout }: { backtests: Backtest[]; holdout: Recor
     <div className="card">
       <div className="card-hdr">
         <span className="card-lbl" data-tip="Each backtest's deterministic verdict, plus the one-shot untouched holdout that gates promotion.">
-          Gate · {backtests.length}
+          Gate · {bts.length}
         </span>
       </div>
       <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {backtests.length === 0 ? (
+        {bts.length === 0 ? (
           <EmptyState title="No backtests yet." hint="Gate verdicts appear here once this Version has been backtested." />
         ) : (
-          backtests.map((bt) => (
+          bts.map((bt) => (
             <div key={bt.id} className="psec" style={{ margin: 0 }}>
               <div className="psec-title with-btn">
                 <span style={{ textTransform: "uppercase" }}>{bt.kind}</span>

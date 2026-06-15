@@ -45,7 +45,10 @@ const emptyStrategy: StrategyDetailResponse = {
 
 export async function getOverview(): Promise<{ overview: OverviewResponse; connected: boolean }> {
   const { data, connected } = await getJson("/overview", emptyOverview);
-  return { overview: data, connected };
+  // getJson only swaps in the typed default on a FAILED fetch — a successful-but-partial engine response
+  // passes through raw, so a non-null contract field can still arrive null. Coalesce the array fields the
+  // hero derefs (matches the costs.ts data-layer pattern) so a partial /overview can't white-screen.
+  return { overview: { ...data, equity_curve: data.equity_curve ?? [] }, connected };
 }
 
 // GET /portfolio/summary — the honest live-vs-sim money split (LIVE $ · Free · Invested · P&L). When
@@ -73,7 +76,9 @@ export async function getPortfolioSummary(): Promise<{ summary: PortfolioSummary
 
 export async function getLeaderboard(): Promise<{ leaderboard: LeaderboardResponse; connected: boolean }> {
   const { data, connected } = await getJson("/leaderboard", emptyLeaderboard);
-  return { leaderboard: data, connected };
+  // Coalesce rows so every consumer (paper / strategies / research) can `.filter`/`.map` safely even if a
+  // partial /leaderboard omits the array (see getOverview note).
+  return { leaderboard: { ...data, rows: data.rows ?? [] }, connected };
 }
 
 // Realtime worker pulse (realtime-data-lane P3): drives the Strategies-page staleness badge. Honest
@@ -89,7 +94,18 @@ export async function getRealtimeStatus(): Promise<{ realtime: RealtimeStatusRes
 
 export async function getStrategy(id: string): Promise<{ strategy: StrategyDetailResponse; connected: boolean }> {
   const { data, connected } = await getJson(`/strategies/${id}`, emptyStrategy);
-  return { strategy: data, connected };
+  // The detail sheet derefs trades/backtests/holdout (.length, spread, Object.entries) — the contract types
+  // them non-null but the engine can omit them. Coalesce here so a partial /strategies/:id can't crash the
+  // sheet or the standalone page (the components also guard locally; this is the single-source belt).
+  return {
+    strategy: {
+      ...data,
+      trades: data.trades ?? [],
+      backtests: data.backtests ?? [],
+      holdout: data.holdout ?? {},
+    },
+    connected,
+  };
 }
 
 export async function getPopulation(): Promise<{ population: PopulationResponse; connected: boolean }> {

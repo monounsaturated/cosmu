@@ -293,14 +293,18 @@ function Activity({ trades, stage }: { trades: Execution[]; stage: Stage }) {
 
 // ── The full sheet body — used by the SidePanel and the standalone page. ──
 export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyDetailResponse; stageOverride?: Stage }) {
-  const trades = strategy.trades;
+  // The contract declares trades/backtests as non-null, but the engine can omit them (null) — normalize to
+  // empty arrays HERE so every downstream `.length`/spread/`.some` is safe and a partial response can't
+  // white-screen the sheet (the error boundary is the net, this is the guard).
+  const trades = strategy.trades ?? [];
+  const backtests = strategy.backtests ?? [];
   const totalFee = feeTotalFromTrades(trades);
   // Prefer the engine's canonical stage (passed from the screener row) so the sheet badge never disagrees
   // with the table; fall back to the contract-shape heuristic for the standalone /strategy/[id] page.
-  const stage = stageOverride ?? deriveStage(trades, strategy.backtests);
+  const stage = stageOverride ?? deriveStage(trades, backtests);
   const ageDays = trackAgeDays(trades);
-  const headlineBt = headlineBacktest(strategy.backtests);
-  const bestOos = bestOosPct(strategy.backtests);
+  const headlineBt = headlineBacktest(backtests);
+  const bestOos = bestOosPct(backtests);
   // Forward P&L = the engine's MARKED total (realized + unrealized = value − starting_capital), off the
   // scope='track' snapshot — NEVER the cash-flow sum of opening buys. null until the track is marked.
   const paperPnl = strategy.pnl_usd ?? null;

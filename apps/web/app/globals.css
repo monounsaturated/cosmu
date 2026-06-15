@@ -401,7 +401,11 @@ body{
   transition:transform 220ms cubic-bezier(0.16,1,0.3,1);
   overflow:hidden;
 }
-.side-panel.open{transform:translateX(0);box-shadow:-16px 0 48px -8px rgba(0,0,0,.55)}
+/* Open state: no leftward box-shadow — a soft shadow cast over the table read as a "shade" dimming the rows.
+   The panel meets the table with just its crisp `border-left` hairline; the table reserves its width via
+   `.screener-wrap.panel-open` so every row stays fully visible up to the panel edge. The slide stays smooth
+   (the `transform` transition on `.side-panel`). */
+.side-panel.open{transform:translateX(0)}
 .panel-header{
   height:var(--header-h);display:flex;align-items:center;gap:10px;
   padding:0 16px;border-bottom:1px solid var(--hairline);flex-shrink:0;
@@ -856,9 +860,12 @@ body.sb-collapsed .sb-tog .ic-expand{display:inline}
 .subs-tbl th,.subs-tbl td{padding:6px 9px}
 /* Paper "Open positions" — truncate long strategy names so a row never overflows the card (which would
    add a horizontal scrollbar to ONE box and break the equal-height split). Ellipsis + native title. */
-/* Open-positions table: a wide Strategy name (cropped, full name on the delayed hover tip) + ONE tight Venue
-   column (pretty-printed via formatVenue). Class was dropped — the donut's picker covers asset-class. */
-.mini-tbl td.pos-strat .strat-link{display:inline-block;max-width:128px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+/* Open-positions table: a wide Strategy name (cropped, full name on the delayed hover tip) over a quiet
+   instrument line (class · venue · timeframe) — so each row reads like a real positions blotter even before
+   P&L moves. Venue moved into that sub-line; a "Held" age column replaces the standalone Venue column. */
+.mini-tbl td.pos-strat{line-height:1.25}
+.mini-tbl td.pos-strat .strat-link{display:inline-block;max-width:148px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.mini-tbl td.pos-strat .pos-sub{display:block;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9.5px;color:var(--quiet);letter-spacing:.02em;margin-top:1px}
 .mini-tbl td.pos-venue{max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .g-ribbon{display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:var(--surf2);border:1px solid var(--border);border-radius:var(--r);padding:9px 14px;margin-bottom:var(--gap);box-shadow:var(--cell-shadow)}
 .g-ribbon .gi{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted)}

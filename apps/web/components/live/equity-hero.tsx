@@ -43,10 +43,13 @@ export function EquityHero({
   const [scrub, setScrub] = useState<number>(-1);
 
   // Slice the REAL curve by trailing length for the selected range. No fabricated intraday points.
+  // `curve` is typed Point[] but the engine can omit it (null) — normalize so the empty state shows
+  // instead of a white screen.
   const sliced = useMemo(() => {
+    const safe = curve ?? [];
     const r = RANGES.find((x) => x.key === range)!;
-    if (r.days === null) return curve;
-    return curve.slice(-r.days);
+    if (r.days === null) return safe;
+    return safe.slice(-r.days);
   }, [curve, range]);
 
   const values = sliced.map((p) => p.value);

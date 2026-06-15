@@ -45,7 +45,7 @@ async function LiveData() {
       initialSummary={{ ...summary.summary, connected: summary.connected }}
       initialRules={{ ...rules.rules, connected: rules.connected }}
       equityCurve={overview.overview.equity_curve}
-      venues={venuesRes.venues.map((v) => ({ name: v.name, amount: v.deployed_usd }))}
+      venues={(venuesRes.venues ?? []).map((v) => ({ name: v.name, amount: v.deployed_usd }))}
     />
   );
 }

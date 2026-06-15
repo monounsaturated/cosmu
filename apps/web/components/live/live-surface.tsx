@@ -157,7 +157,7 @@ export function LiveSurface({
         body: JSON.stringify({
           global_max_notional: next.global_max_notional,
           max_daily_loss: next.max_daily_loss,
-          venues: next.venues.map((v) => ({ venue: v.venue, max_notional: v.max_notional ?? null }))
+          venues: (next.venues ?? []).map((v) => ({ venue: v.venue, max_notional: v.max_notional ?? null }))
         })
       });
       if (res.ok) setRules((await res.json()) as RulesResponse);
@@ -171,7 +171,8 @@ export function LiveSurface({
   const liqCount = summary.positions_count_live;
 
   // Live positions only — when not armed live, do not mirror the sim/paper positions onto the Live screen.
-  const positions = isLive ? state.positions : [];
+  // `state.positions` is typed non-null but the engine can omit it — guard so `.slice`/`.map` below can't throw.
+  const positions = isLive ? (state.positions ?? []) : [];
   const POS_LIM = 4;
   const shownPositions = showAllPositions ? positions : positions.slice(0, POS_LIM);
 
