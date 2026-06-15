@@ -293,7 +293,11 @@ create table if not exists alt_data (
   value numeric not null,
   ingested_at text not null default (now()::text)
 );
-create index if not exists idx_alt_data_lookup on alt_data (provider, symbol, metric, available_at);
+-- idx_alt_data_lookup (provider,symbol,metric,available_at) was dropped 2026-06-15: it is a strict LEFT-PREFIX
+-- of uq_alt_data_pit below, which already serves read_asof's per-series scan (see migrations/2026-06-15_index_hygiene.sql).
+-- No dedicated funding index: _funding_rate_asof filters provider+symbol+metric (the uq_alt_data_pit equality
+-- prefix) to a small per-symbol set, then sorts it COLLATE "C" — fast without an extra index (and an en_US index
+-- can't serve the COLLATE "C" order anyway).
 -- Covering index for the /scores freshness query: MAX(available_at) per metric across all symbols.
 -- Without this the query does a seqscan over millions of rows (LunarCrush per-symbol backfill).
 create index if not exists idx_alt_data_metric_avail on alt_data (metric, available_at desc);
@@ -303,6 +307,9 @@ create index if not exists idx_alt_data_metric_avail on alt_data (metric, availa
 -- Appends MUST insert ON CONFLICT DO NOTHING (see PgAltDataStore.append) so a racing/repeat insert is a no-op,
 -- never a raise.
 create unique index if not exists uq_alt_data_pit on alt_data (provider, symbol, metric, ts, available_at);
+-- Watermark for the incremental alt_data→DuckLake mirror (cosmu.data.age_out.sync_to_lake): the max
+-- available_at already copied to the cold lake, so each pass copies only newer rows.
+create table if not exists alt_lake_watermark (k text primary key, last_available_at text not null);
 
 -- POINT-IN-TIME UNSTRUCTURED-EVENT store (realtime-data-lane epic §5): typed news/tweet/Polymarket/OSINT
 -- events with TWO clocks — ts = the event's own publish time (event-study axis), available_at = OUR receipt
@@ -437,6 +444,7 @@ create index if not exists idx_backtests_version_kind on backtests(strategy_vers
 create index if not exists idx_executions_run on executions(run_id);
 create index if not exists idx_executions_ts on executions(ts);
 create index if not exists idx_strategy_versions_status on strategy_versions(status);
+create index if not exists idx_strategy_versions_strategy on strategy_versions(strategy_id);  -- unindexed FK
 
 -- Building-block registry (2026-06-11): content-hashed reusable blocks + whole-spec combo_hash.
 -- Dedup (multiple-testing budget) + observational block stats. Never consulted by the Gate.

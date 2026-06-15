@@ -32,7 +32,7 @@ image = (
         copy=True,  # materialize into the layer so the next run_commands can see it
         ignore=["**/__pycache__", "**/*.pyc", "tests/**", "remote/**"],
     )
-    .run_commands("pip install /root/engine")
+    .run_commands("pip install '/root/engine[lake]'")  # [lake] = duckdb, for the cold-tier DuckLake jobs
 )
 
 # A SEPARATE image for the TEST SUITE: runs the full engine suite hermetically off the M2 (the heavy-compute
@@ -109,6 +109,37 @@ def perp_gate_sweep() -> int:
 
 
 @app.function(**_HEAVY)
+def sync_lake() -> int:
+    """Mirror alt_data → the DuckLake cold lake on R2, incrementally (backfill on first run, then aged-out
+    deltas). READ-ONLY on alt_data. Needs the R2 keys in the cosmu-engine secret + duckdb in the image."""
+    return _run(["cosmu.data.age_out"])
+
+
+@app.function(**_HEAVY)
+def prune_alt_data(apply: bool = False, hot_window_days: int = 90) -> int:
+    """GATED Postgres retention: DELETE alt_data older than hot_window_days (funding_rate exempt) ONLY after the
+    DuckLake lake is confirmed to hold the delete window, then VACUUM. DRY-RUN unless apply=True. Run sync_lake
+    first so the lake is current. This is the step that shrinks the hot DB."""
+    args = ["--hot-window-days", str(hot_window_days)]
+    if apply:
+        args.append("--apply")
+    return _run(["cosmu.data.retention", *args])
+
+
+@app.function(schedule=modal.Cron("0 6 * * 1"), **_HEAVY)
+def cold_tier_maintenance() -> int:
+    """WEEKLY (Mon 06:00 UTC), off the Railway box / M2: mirror new alt_data → the DuckLake lake, THEN gated-prune
+    the aged-out (>90d) Postgres rows + VACUUM. The prune deletes ONLY rows the lake is confirmed to hold
+    (funding_rate exempt), so no row is ever lost; if the mirror fails, the prune is skipped. Keeps Postgres at
+    the ~90d hot window and the lake complete. Disable with `modal app stop cosmu-engine` or by removing this
+    schedule + redeploying."""
+    rc = _run(["cosmu.data.age_out"])  # mirror first
+    if rc != 0:
+        return rc  # never prune if the mirror failed — the prune's gate would refuse anyway, but bail early
+    return _run(["cosmu.data.retention", "--apply"])  # gated: lake-completeness checked inside before any DELETE
+
+
+@app.function(**_HEAVY)
 def run_module(module: str, args: list[str] | None = None) -> int:
     """Escape hatch: run any engine module as `python -m <module> [args…]` on Modal compute.
     e.g. modal run apps/engine/remote/app.py --job run_module --module cosmu.research.gate"""
@@ -129,9 +160,10 @@ def tests(paths: str = "tests", expr: str = "") -> int:
 
 
 @app.local_entrypoint()
-def main(job: str = "gate_sweep", module: str = "", args: str = "") -> None:
-    """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|perp_gate_sweep|paper_mark|cost_refresh|run_module]`.
-    For run_module pass --module cosmu.x.y and optional --args "--flag value" (space-split)."""
+def main(job: str = "gate_sweep", module: str = "", args: str = "", apply: bool = False, hot_window_days: int = 90) -> None:
+    """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|perp_gate_sweep|paper_mark|cost_refresh|sync_lake|prune|run_module]`.
+    For run_module pass --module cosmu.x.y and optional --args "--flag value" (space-split).
+    For prune pass --apply to actually delete (default dry-run) and optional --hot-window-days N."""
     jobs = {
         "gate_sweep": gate_sweep,
         "ingest": ingest,
@@ -139,14 +171,17 @@ def main(job: str = "gate_sweep", module: str = "", args: str = "") -> None:
         "forward_mark": paper_mark,  # legacy alias (pre-2026-06-11 vocabulary) — same job
         "cost_refresh": cost_refresh,
         "perp_gate_sweep": perp_gate_sweep,
+        "sync_lake": sync_lake,
         "tests": tests,
     }
     if job == "run_module":
         code = run_module.remote(module, args.split() if args else [])
+    elif job == "prune":
+        code = prune_alt_data.remote(apply=apply, hot_window_days=hot_window_days)
     elif job in jobs:
         code = jobs[job].remote()
     else:
-        raise SystemExit(f"unknown job {job!r}; choose {sorted(jobs) + ['run_module']}")
+        raise SystemExit(f"unknown job {job!r}; choose {sorted(jobs) + ['prune', 'run_module']}")
     print(f"[modal] job={job} exit={code}")
     if code:
         raise SystemExit(code)

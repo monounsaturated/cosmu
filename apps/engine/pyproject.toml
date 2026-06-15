@@ -38,7 +38,7 @@ remote = [
 # ParquetAltDataStore + export_alt_parquet. Opt-in (the default "pg" backend needs none of this), so the
 # Railway image stays lean. Install where you run the parquet backend / migration: pip install -e ".[lake]".
 lake = [
-  "duckdb>=1.1",
+  "duckdb>=1.3",  # >=1.3 for the DuckLake extension (ducklake_store); raw Parquet works on >=1.1
 ]
 # LIVE Polymarket execution (CLOB on Polygon): py-clob-client signs EIP-712 orders + posts to the CLOB. Opt-in
 # — the adapter imports it lazily, so the Railway image / tests stay lean and the adapter is simply `disabled`

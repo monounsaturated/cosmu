@@ -86,15 +86,25 @@ def resolve_alt_store(settings: object, store: object) -> object:
     "parquet" → the DuckDB/Parquet lake (local dir or R2) — the hot/cold data stack. Else HOT: a Postgres URL →
     PgAltDataStore over the knowledge Store, else the JSONL AltDataStore. All three expose the same
     append/read_asof/read_all interface, so the gate/finder/sweep stay backend-agnostic."""
-    if getattr(settings, "alt_data_backend", "pg") == "parquet":
+    backend = getattr(settings, "alt_data_backend", "pg")
+    if backend == "parquet":
         from cosmu.data.providers.parquet_store import ParquetAltDataStore
 
         return ParquetAltDataStore.from_settings(settings)
-    url = getattr(settings, "database_url", "") or ""
-    if url.startswith("postgres://") or url.startswith("postgresql://"):
-        from cosmu.data.altdata import PgAltDataStore
+    if backend in ("ducklake", "tiered"):
+        from cosmu.data.providers.ducklake_store import DuckLakeAltDataStore
 
-        return PgAltDataStore(store)
-    from cosmu.data.altdata import AltDataStore
+        lake = DuckLakeAltDataStore.from_settings(settings)
+        if backend == "ducklake":
+            return lake
+        # "tiered": RESEARCH reads PG-hot ∪ DuckLake-cold so a retention prune never opens a blind spot. The
+        # money/UI paths never reach here — they read raw hot PG directly for sub-ms latency.
+        from cosmu.data.altdata import hot_alt_store
+        from cosmu.data.providers.tiered_store import TieredAltDataStore
 
-    return AltDataStore()
+        return TieredAltDataStore(hot_alt_store(settings, store), lake)
+    # HOT tier (default "pg"): the single hot_alt_store factory (postgres → PgAltDataStore over `store`, else
+    # JSONL) — shared with ingest + the research loop so the read/write store choice can never diverge.
+    from cosmu.data.altdata import hot_alt_store
+
+    return hot_alt_store(settings, store)

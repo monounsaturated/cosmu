@@ -17,16 +17,11 @@ logger = logging.getLogger("cosmu.research.loop")
 
 
 def _default_alt_store():  # noqa: ANN202 - AltDataStore | PgAltDataStore
-    """Pick the alt-data backend the SAME way the API + ingest CLI do: postgres → PgAltDataStore over the
-    Store, else the JSONL AltDataStore. This is the store a scheduled `cosmu.ingest.run` pass fills."""
-    settings = get_settings()
-    if settings.database_url.startswith("postgres://") or settings.database_url.startswith("postgresql://"):
-        from cosmu.data.altdata import PgAltDataStore
+    """The HOT alt-data write store via the single hot_alt_store factory (postgres → PgAltDataStore over the
+    Store, else the JSONL AltDataStore) — the store a scheduled `cosmu.ingest.run` pass fills."""
+    from cosmu.data.altdata import hot_alt_store
 
-        return PgAltDataStore(Store(settings))
-    from cosmu.data.altdata import AltDataStore
-
-    return AltDataStore()
+    return hot_alt_store(get_settings())
 
 
 def _has_cross_asset_data(alt_store) -> bool:  # noqa: ANN001

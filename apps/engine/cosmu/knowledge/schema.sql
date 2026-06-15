@@ -316,11 +316,14 @@ CREATE TABLE IF NOT EXISTS alt_data (
   value NUMERIC NOT NULL,
   ingested_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_alt_data_lookup ON alt_data (provider, symbol, metric, available_at);
+-- idx_alt_data_lookup dropped 2026-06-15 (strict left-prefix of uq_alt_data_pit). No dedicated funding index:
+-- _funding_rate_asof reaches a small per-symbol set via the uq equality prefix, then sorts it — fast as-is.
 -- POINT-IN-TIME uniqueness (mirrors schema_postgres.sql uq_alt_data_pit): exact PIT photocopies collapse at the
 -- DB layer; appends use ON CONFLICT DO NOTHING so a re-appended window is a no-op, never a raise. A real vendor
 -- revision (same ts, DIFFERENT available_at) stays a distinct row.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_alt_data_pit ON alt_data (provider, symbol, metric, ts, available_at);
+-- Watermark for the incremental alt_data→DuckLake mirror (cosmu.data.age_out.sync_to_lake).
+CREATE TABLE IF NOT EXISTS alt_lake_watermark (k TEXT PRIMARY KEY, last_available_at TEXT NOT NULL);
 
 -- POINT-IN-TIME UNSTRUCTURED-EVENT store (realtime-data-lane epic §5): typed news/tweet/Polymarket/OSINT
 -- events with TWO clocks — ts = the event's own publish time (event-study axis), available_at = OUR receipt
@@ -469,6 +472,7 @@ CREATE INDEX IF NOT EXISTS idx_backtests_version_kind ON backtests(strategy_vers
 CREATE INDEX IF NOT EXISTS idx_executions_run ON executions(run_id);
 CREATE INDEX IF NOT EXISTS idx_executions_ts ON executions(ts);
 CREATE INDEX IF NOT EXISTS idx_strategy_versions_status ON strategy_versions(status);
+CREATE INDEX IF NOT EXISTS idx_strategy_versions_strategy ON strategy_versions(strategy_id);  -- unindexed FK
 CREATE INDEX IF NOT EXISTS idx_research_notes_created ON research_notes(created_at);
 -- recall()/novelty always filter `WHERE kind = ?`; without this the append-only graveyard is a full scan.
 CREATE INDEX IF NOT EXISTS idx_research_notes_kind ON research_notes(kind);
