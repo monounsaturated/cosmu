@@ -81,6 +81,11 @@ def main() -> int:
 
     # Force production profile so the engine reads process env (the injected secret), never a file.
     pairs["APP_ENV"] = "production"
+    # Modal is the HEAVY-RESEARCH lane: read the FULL-history cold tier (PG-hot ∪ DuckLake-cold). After the
+    # Supabase prune, PG holds only the ~90d hot window, so research on the default 'pg' backend would see only
+    # 90d — 'tiered' restores full history from the R2 lake. Money/UI read raw PG regardless; writes always go to
+    # PG (hot_alt_store). Railway stays 'pg' (lean — no duckdb/R2 there).
+    pairs["ALT_DATA_BACKEND"] = "tiered"
 
     print(f"→ syncing {len(pairs)} keys to Modal secret '{SECRET_NAME}': {', '.join(sorted(pairs))}")
     if dry_run:
