@@ -79,8 +79,15 @@ def leaderboard() -> LeaderboardResponse:
                 SELECT MAX(ts) FROM portfolio_snapshots p2 WHERE p2.scope = 'track' AND p2.ref_id = p1.ref_id
             )
         ) ps ON ps.ref_id = sv.id
-        ORDER BY CAST(COALESCE(b.deflated_sharpe, 0) AS REAL) DESC
-        LIMIT 20
+        -- ACTIVE-FIRST then strength: a funded/active track must NEVER be ranked off the board by a stronger
+        -- KILLED one. Killed versions hugely outnumber the live ones (graveyard grows unbounded), so a pure
+        -- deflated_sharpe sort + a tight LIMIT silently truncated funded paper tracks below the cut — the
+        -- Paper hero (status-filtered Σ allocated) then disagreed with "Invested" (Σ of the rows that survived
+        -- the cut). Sorting killed last guarantees every non-killed Version is on the board; killed fill the
+        -- rest by strength. LIMIT lifted to 200 so the active tier is never the thing that gets cut.
+        ORDER BY (CASE WHEN sv.status = 'killed' THEN 1 ELSE 0 END),
+                 CAST(COALESCE(b.deflated_sharpe, 0) AS REAL) DESC
+        LIMIT 200
         """
     )
     if not rows:
