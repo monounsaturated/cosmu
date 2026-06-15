@@ -21,3 +21,6 @@ create index if not exists idx_strategy_versions_strategy on strategy_versions (
 -- 4) alt_data is append-heavy and will see a retention DELETE; tighten autovacuum so dead tuples are reclaimed
 --    promptly to the free-space map (keeps bloat bounded without a VACUUM FULL — pg_repack is unavailable on Supabase).
 alter table alt_data set (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.01);
+
+-- 5) Watermark table for the incremental alt_data→DuckLake mirror (cosmu.data.age_out.sync_to_lake).
+create table if not exists alt_lake_watermark (k text primary key, last_available_at text not null);

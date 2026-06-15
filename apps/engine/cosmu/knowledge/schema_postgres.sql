@@ -307,6 +307,9 @@ create index if not exists idx_alt_data_metric_avail on alt_data (metric, availa
 -- Appends MUST insert ON CONFLICT DO NOTHING (see PgAltDataStore.append) so a racing/repeat insert is a no-op,
 -- never a raise.
 create unique index if not exists uq_alt_data_pit on alt_data (provider, symbol, metric, ts, available_at);
+-- Watermark for the incremental alt_data→DuckLake mirror (cosmu.data.age_out.sync_to_lake): the max
+-- available_at already copied to the cold lake, so each pass copies only newer rows.
+create table if not exists alt_lake_watermark (k text primary key, last_available_at text not null);
 
 -- POINT-IN-TIME UNSTRUCTURED-EVENT store (realtime-data-lane epic §5): typed news/tweet/Polymarket/OSINT
 -- events with TWO clocks — ts = the event's own publish time (event-study axis), available_at = OUR receipt

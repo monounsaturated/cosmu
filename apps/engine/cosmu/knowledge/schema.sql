@@ -324,6 +324,8 @@ CREATE INDEX IF NOT EXISTS idx_alt_funding_hot ON alt_data (symbol, available_at
 -- DB layer; appends use ON CONFLICT DO NOTHING so a re-appended window is a no-op, never a raise. A real vendor
 -- revision (same ts, DIFFERENT available_at) stays a distinct row.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_alt_data_pit ON alt_data (provider, symbol, metric, ts, available_at);
+-- Watermark for the incremental alt_data→DuckLake mirror (cosmu.data.age_out.sync_to_lake).
+CREATE TABLE IF NOT EXISTS alt_lake_watermark (k TEXT PRIMARY KEY, last_available_at TEXT NOT NULL);
 
 -- POINT-IN-TIME UNSTRUCTURED-EVENT store (realtime-data-lane epic §5): typed news/tweet/Polymarket/OSINT
 -- events with TWO clocks — ts = the event's own publish time (event-study axis), available_at = OUR receipt
