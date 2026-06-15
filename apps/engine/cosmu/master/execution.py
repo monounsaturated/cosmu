@@ -202,25 +202,50 @@ def execute_orders(
         fee = _pit_fee_for_order(store, venue, intent.symbol, intent.qty, fill_price)
 
         if route_live:
+            # Shape the order to the venue. Crypto uses ccxt-unified symbols; a prediction CLOB (Polymarket)
+            # has NO market order — a share IS a probability, so it trades as a LIMIT at the current mark.
+            # Coercing here (not at the call site) keeps the executor venue-agnostic and prevents the adapter
+            # from raising on a market order it can't place.
+            order_symbol = to_ccxt_symbol(intent.symbol) if venue.kind == "crypto" else intent.symbol
+            order_type = "limit" if venue.kind == "prediction" else intent.order_type
+            limit_price = intent.price if order_type in ("limit", "maker") else None
             order = Order(
-                instrument_id=to_ccxt_symbol(intent.symbol),
+                instrument_id=order_symbol,
                 side=intent.side,
                 qty=intent.qty,
-                order_type=intent.order_type,
-                limit_price=intent.price if intent.order_type in ("limit", "maker") else None,
+                order_type=order_type,
+                limit_price=limit_price,
                 client_order_id=coid,
                 ts=datetime.now(tz=UTC),
             )
-            order_id = adapter.submit(order)  # idempotent on client_order_id
-            store.append_event(
-                actor="master",
-                kind="order_submitted_live",
-                ref_type="strategy_version",
-                ref_id=intent.strategy_version_id,
-                payload={"symbol": intent.symbol, "client_order_id": order_id.client_order_id, "venue": venue_label, "venue_order_id": order_id.venue_order_id},
-            )
-            if intent.side > 0 and intent.take_profit is not None and intent.stop_loss is not None:
-                _try_oco_bracket(adapter, intent, coid, store)
+            # Cross-restart idempotency: a venue without a native client-order-id index (Polymarket CLOB) can't
+            # dedup a re-submit by itself, and the adapter's in-process cache is empty after a restart — so if a
+            # prior run already submitted this coid (event on file) but crashed before booking, DON'T re-submit
+            # (that would place a second real order). The exchanges that DO index client ids (Binance/Alpaca)
+            # are unaffected — this just skips a redundant call. Booking still proceeds via the _already_filled
+            # guard below.
+            if not _already_submitted_live(store, coid):
+                try:
+                    adapter.submit(order)  # idempotent on client_order_id within a process / on indexed venues
+                except Exception as exc:  # noqa: BLE001 — a venue/adapter error must NEVER crash the whole tick
+                    # nor book a phantom fill: audit it (NO exc message — it may carry secret/key material; log
+                    # only the type) and skip THIS order (position unchanged, retried next tick).
+                    store.append_event(
+                        actor="master", kind="order_submit_failed", ref_type="strategy_version",
+                        ref_id=intent.strategy_version_id,
+                        payload={"symbol": intent.symbol, "client_order_id": coid, "venue": venue_label, "error_type": type(exc).__name__},
+                    )
+                    outcomes.append(OrderOutcome(coid, intent.symbol, accepted=False, routed_live=False, venue="sim", issues=["submit_failed"]))
+                    continue
+                store.append_event(
+                    actor="master",
+                    kind="order_submitted_live",
+                    ref_type="strategy_version",
+                    ref_id=intent.strategy_version_id,
+                    payload={"symbol": intent.symbol, "client_order_id": coid, "venue": venue_label},
+                )
+                if intent.side > 0 and intent.take_profit is not None and intent.stop_loss is not None:
+                    _try_oco_bracket(adapter, intent, coid, store)
 
         # Record the fill (deterministic for sim; for live we book the intended fill and reconcile via
         # adapter.fills() out-of-band). Idempotent: a duplicate client_order_id is not re-applied.
@@ -292,6 +317,17 @@ def _venue_caps(store: Store) -> dict[str, Decimal]:
 
 def _already_filled(store: Store, coid: str) -> bool:
     row = store.row("SELECT id FROM executions WHERE fill_log LIKE ? LIMIT 1", (f'%"client_order_id": "{coid}"%',))
+    return row is not None
+
+
+def _already_submitted_live(store: Store, coid: str) -> bool:
+    """True if a live submit for this client_order_id is already on the ledger. The cross-restart double-submit
+    guard for venues that can't dedup client ids natively (Polymarket CLOB): a prior run that submitted but
+    crashed before booking must not re-place a second REAL order on the next tick."""
+    row = store.row(
+        "SELECT id FROM events WHERE kind = 'order_submitted_live' AND payload LIKE ? LIMIT 1",
+        (f'%"client_order_id": "{coid}"%',),
+    )
     return row is not None
 
 

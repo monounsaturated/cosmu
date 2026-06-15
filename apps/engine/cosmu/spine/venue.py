@@ -265,15 +265,21 @@ def default_catalog() -> VenueCatalog:
                     VenueFeeTier(min_volume_30d_usd=Decimal("100000000"), maker_fee_bps=Decimal("0"),    taker_fee_bps=Decimal("2.4")),
                 ],
             ),
-            # Prediction — Polymarket: research / cross-asset signal source (no live wiring).
+            # Prediction — Polymarket: cross-asset signal source AND a LIVE venue (CLOB on Polygon, USDC).
+            # live_enabled=True — execution is wired (cosmu/adapters/exec/polymarket.py); a real order still
+            # needs the signing key + live.mode=="real" + a gate-passed survivor + caps + the toggle (the same
+            # 5 interlocks as Binance), so the catalog flag does NOT arm anything by itself. Fees are 0 bps for
+            # real: the CLOB has no maker/taker fee and settlement is gasless via Polymarket's relayer; the only
+            # binding cost is the order-book half-spread, which the SIM lane already charges. US persons are
+            # restricted (Polymarket blocks the US) — live_legal_in() enforces it per jurisdiction.
             Venue(
                 id="polymarket", name="Polymarket", kind="prediction", adapter="nautilus.polymarket",
                 maker_fee_bps=Decimal("0"), taker_fee_bps=Decimal("0"),
                 min_notional=Decimal("1"), lot_size=Decimal("1"),
-                live_enabled=False, restricted_jurisdictions=["US"],
-                # Zero trading fee, but the cost is DEPTH: the long-tail event markets (where the mispricing
-                # edge lives, small size an advantage) are thin — a wide spread + heavy impact. High defaults
-                # keep the screen honest; refine per-market from live CLOB book depth once ingested.
+                live_enabled=True, restricted_jurisdictions=["US"],
+                # Zero trading fee, but the cost is DEPTH (#241's market-depth model): long-tail event markets
+                # — where the mispricing edge lives — are thin, a wide spread + heavy impact. High defaults keep
+                # the screen honest; refine per-market from live CLOB book depth once ingested.
                 slippage_bps=Decimal("30"), impact_bps=Decimal("150"),
                 region="On-chain (operator-eligible entity)", legal_entity="Polymarket (CLOB, Polygon)",
             ),

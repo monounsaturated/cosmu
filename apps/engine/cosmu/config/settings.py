@@ -175,6 +175,23 @@ class Settings(BaseSettings):
     # (not a secret). Wired into the ingest providers so setting them is all it takes to go live.
     fred_api_key: str | None = Field(default=None, repr=False)
     polymarket_token: str | None = Field(default=None)
+    # Polymarket LIVE execution (CLOB on Polygon, USDC). The signing key is the ONLY thing that unlocks real
+    # orders, and only with live.mode=="real" (the same never-auto-live interlock as Binance/Alpaca); the L2
+    # API creds (key/secret/passphrase) are derived from the signing key by py-clob-client when omitted.
+    # `funder_address` is the proxy/funder wallet positions+fills are keyed to (defaults to the signer);
+    # `signature_type` is the py-clob-client signer kind (0=EOA, 1=email/magic proxy, 2=browser proxy).
+    # TESTNET (Amoy) keys take precedence and never touch real funds. No signing key → the adapter is disabled
+    # and prediction tracks stay on the SIM lane (honest degradation, identical to the unkeyed Binance path).
+    polymarket_private_key: str | None = Field(default=None, repr=False)
+    polymarket_api_key: str | None = Field(default=None, repr=False)
+    polymarket_api_secret: str | None = Field(default=None, repr=False)
+    polymarket_passphrase: str | None = Field(default=None, repr=False)
+    polymarket_funder_address: str | None = Field(default=None)
+    polymarket_signature_type: int = 0
+    polymarket_testnet_private_key: str | None = Field(default=None, repr=False)
+    polymarket_testnet_api_key: str | None = Field(default=None, repr=False)
+    polymarket_testnet_api_secret: str | None = Field(default=None, repr=False)
+    polymarket_testnet_passphrase: str | None = Field(default=None, repr=False)
     binance_api_key: str | None = Field(default=None, repr=False)
     binance_api_secret: str | None = Field(default=None, repr=False)
     binance_testnet_api_key: str | None = Field(default=None, repr=False)

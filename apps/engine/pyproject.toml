@@ -40,6 +40,12 @@ remote = [
 lake = [
   "duckdb>=1.1",
 ]
+# LIVE Polymarket execution (CLOB on Polygon): py-clob-client signs EIP-712 orders + posts to the CLOB. Opt-in
+# — the adapter imports it lazily, so the Railway image / tests stay lean and the adapter is simply `disabled`
+# (paper) when it is absent. Install where you arm live Polymarket: pip install -e ".[live]".
+live = [
+  "py-clob-client>=0.17",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
