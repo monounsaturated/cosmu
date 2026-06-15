@@ -157,6 +157,61 @@ def persist_rejects_watch(
     return written
 
 
+def link_and_open_rejects_tracks(
+    store: Store,
+    run_id: str,
+    version_by_candidate: dict[str, str],
+    *,
+    catalog=None,  # noqa: ANN001 — spine.venue.VenueCatalog; None → default_catalog (resolved lazily)
+) -> int:
+    """ACTIVATE the watch-list: for each rejects_watch row of `run_id` that has no track yet, open a ZERO-CAPITAL
+    paper track (reusing the SAME SIM fund/step machinery survivors use) and STAMP its strategy_version_id back on
+    the row — so the Type-II report can join the reject's realized paper P&L to the gate verdict that rejected it.
+    `version_by_candidate` maps a watched candidate_id (the finder's config_tag) to the persisted strategy_version
+    that already carries the reject's exact spec + fitted params. Returns the number of tracks opened.
+
+    Idempotent + best-effort: a row already carrying a strategy_version_id is skipped (no double-open), and any
+    failure is swallowed + logged — the rejects lane is OBSERVE-ONLY and must never break the gate/research path.
+    Zero capital means the opened track contributes 0 to every money/leaderboard sum; it exists only to MEASURE
+    the gate's Type-II rate, never to move money. The gate's pass/fail is untouched (this runs strictly after it)."""
+    if not version_by_candidate:
+        return 0
+    opened = 0
+    try:
+        from cosmu.master.zero_capital import open_zero_capital_track
+
+        rows = store.rows(
+            "SELECT id, candidate_id, strategy_version_id FROM rejects_watch WHERE cohort_run_id = ?",
+            (run_id,),
+        )
+        for r in rows:
+            if r.get("strategy_version_id"):
+                continue  # already linked → idempotent (never double-open a watched reject's track)
+            vid = version_by_candidate.get(r.get("candidate_id"))
+            if not vid:
+                continue  # no persisted version for this candidate → nothing to observe yet
+            result = open_zero_capital_track(store, vid, catalog=catalog, origin="rejects")
+            # Stamp the version onto the row regardless of whether THIS call opened the track (a pre-existing
+            # track for the version is still the link the report needs) — so the join always resolves.
+            store.rows(
+                "UPDATE rejects_watch SET strategy_version_id = ? WHERE id = ?",
+                (vid, r.get("id")),
+            )
+            if result.opened:
+                opened += 1
+        if opened:
+            store.append_event(
+                actor="master",
+                kind="rejects_tracks_opened",
+                ref_type="gate",
+                ref_id=run_id,
+                payload={"n_opened": opened},
+            )
+    except Exception:  # noqa: BLE001 — an observe-only watch-list open must never break the gate path.
+        log.warning("link_and_open_rejects_tracks failed for run_id=%s", run_id, exc_info=True)
+    return opened
+
+
 @dataclass(frozen=True)
 class Type2Report:
     """The empirical Type-II readout. `n_rejects` watched candidates were zero-capital paper-tracked; `n_with_paper`
