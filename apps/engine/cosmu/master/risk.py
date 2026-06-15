@@ -57,7 +57,7 @@ class PortfolioRiskState(BaseModel):
     # already deployed on THIS order's venue; `venue_max_notional` is the configured cap, or None when no
     # per-venue cap applies (e.g. the order is not live-armed) — None means the check is skipped entirely, so
     # absent config == today's behavior exactly. The caller only sets the cap for live-armed orders, never for
-    # the SIM/forward-test lane.
+    # the SIM/paper lane.
     venue_open_notional: Decimal = Decimal("0")
     venue_max_notional: Decimal | None = None
 

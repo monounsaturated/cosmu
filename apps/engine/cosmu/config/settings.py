@@ -18,7 +18,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # and intentionally OUTSIDE GateSettings so it can never leak into the deterministic scorer/FDR/money path.
 PAPER_MIN_DAYS: int = 30
 
-# NOTE: the screened→paper badge promotion is now TRADE-based, not time-based — a forward-test entrant earns the
+# NOTE: the screened→paper badge promotion is now TRADE-based, not time-based — a paper entrant earns the
 # "Paper" badge on its FIRST real paper fill (orchestrator.loop._has_paper_fills), so there is no promotion-days
 # threshold constant anymore. PAPER_MIN_DAYS above stays — it is the separate LIVE-readiness maturity gate.
 
@@ -175,12 +175,29 @@ class Settings(BaseSettings):
     # (not a secret). Wired into the ingest providers so setting them is all it takes to go live.
     fred_api_key: str | None = Field(default=None, repr=False)
     polymarket_token: str | None = Field(default=None)
+    # Polymarket LIVE execution (CLOB on Polygon, USDC). The signing key is the ONLY thing that unlocks real
+    # orders, and only with live.mode=="real" (the same never-auto-live interlock as Binance/Alpaca); the L2
+    # API creds (key/secret/passphrase) are derived from the signing key by py-clob-client when omitted.
+    # `funder_address` is the proxy/funder wallet positions+fills are keyed to (defaults to the signer);
+    # `signature_type` is the py-clob-client signer kind (0=EOA, 1=email/magic proxy, 2=browser proxy).
+    # TESTNET (Amoy) keys take precedence and never touch real funds. No signing key → the adapter is disabled
+    # and prediction tracks stay on the SIM lane (honest degradation, identical to the unkeyed Binance path).
+    polymarket_private_key: str | None = Field(default=None, repr=False)
+    polymarket_api_key: str | None = Field(default=None, repr=False)
+    polymarket_api_secret: str | None = Field(default=None, repr=False)
+    polymarket_passphrase: str | None = Field(default=None, repr=False)
+    polymarket_funder_address: str | None = Field(default=None)
+    polymarket_signature_type: int = 0
+    polymarket_testnet_private_key: str | None = Field(default=None, repr=False)
+    polymarket_testnet_api_key: str | None = Field(default=None, repr=False)
+    polymarket_testnet_api_secret: str | None = Field(default=None, repr=False)
+    polymarket_testnet_passphrase: str | None = Field(default=None, repr=False)
     binance_api_key: str | None = Field(default=None, repr=False)
     binance_api_secret: str | None = Field(default=None, repr=False)
     binance_testnet_api_key: str | None = Field(default=None, repr=False)
     binance_testnet_api_secret: str | None = Field(default=None, repr=False)
     # Alpaca (US equities): PAPER keys unlock the free paper-trading lane AND the market-data API (IEX feed) —
-    # the equity data+forward-test venue. Live keys are honored ONLY with live.mode=="real" (the same
+    # the equity data+paper venue. Live keys are honored ONLY with live.mode=="real" (the same
     # never-auto-live interlock as Binance). No keys → the adapter is disabled and the equity lane stays on
     # the keyless Yahoo/Stooq path (honest degradation).
     alpaca_paper_api_key: str | None = Field(default=None, repr=False)

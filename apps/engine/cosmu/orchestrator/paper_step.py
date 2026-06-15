@@ -28,7 +28,13 @@ from cosmu.data.backtest import (
 )
 from cosmu.knowledge.store import Store
 from cosmu.master.drift import monitor_drift
-from cosmu.master.execution import IntendedOrder, _already_filled, execute_orders
+from cosmu.master.execution import (
+    IntendedOrder,
+    OrderOutcome,
+    _already_filled,
+    execute_orders,
+    reconcile_fills,
+)
 from cosmu.master.portfolio import Portfolio, PositionView
 from cosmu.orchestrator.loop import PricingRouter, _instrument_venue
 from cosmu.spine.venue import VenueCatalog, default_catalog
@@ -40,8 +46,8 @@ _FALLBACK_STOP = Decimal("0.95")
 _FALLBACK_TAKE = Decimal("1.10")
 
 # Statuses that are ALIVE in the forward test — a version the executor still steps forward (vs killed/lab/gone,
-# which it stops stepping and liquidates). "screened" is included: a forward-test entrant is born "screened"
-# (badge: Backtest) and IS actively forward-testing — the paper clock promotes it to "paper" once it accrues a
+# which it stops stepping and liquidates). "screened" is included: a paper entrant is born "screened"
+# (badge: Backtest) and IS actively paper-trading — the paper clock promotes it to "paper" once it accrues a
 # real forward day. Omitting it would freeze every new survivor's clock (never stepped → never promoted).
 _ALIVE_STATUSES = ("screened", "paper", "forward_test", "live")
 
@@ -74,16 +80,24 @@ class _Managed:
     venue_id: str
     position: PositionView | None  # None ⇒ flat (re-entry candidate)
     liquidate_reason: str | None = None
+    # `status` is the strategy_version status; `routing` is where THIS track's fills go this tick: "sim" (the
+    # default forward-test book) or "live" (status='live' on an armed venue → real CLOB/exchange order). The
+    # managed `position` is read from the matching book, so a live track exits its live position and a
+    # forward-test track exits its sim position.
+    status: str = "screened"
+    routing: str = "sim"
 
 
-def _load_spec_params(store: Store, version_id: str) -> tuple[StrategySpec, dict[str, float]] | None:
-    """The persisted spec + FITTED params for a version — the exact hypothesis the Gate passed. Params drop
-    non-numeric carriers (config_tag); missing fitted params fall back to fit_params(spec) (mid-of-space, the
-    same fallback the finder persists with). None when the row/spec is missing or unparsable — the caller
-    skips honestly (mark-only) rather than inventing logic for a position it can't explain."""
+def _load_spec_params(store: Store, version_id: str) -> tuple[StrategySpec, dict[str, float], str] | None:
+    """The persisted spec + FITTED params + STATUS for a version — the exact hypothesis the Gate passed. Params
+    drop non-numeric carriers (config_tag); missing fitted params fall back to fit_params(spec) (mid-of-space,
+    the same fallback the finder persists with). The status is returned so the executor can route a 'live'
+    track's fills to its real venue adapter. None when the row/spec is missing or unparsable — the caller skips
+    honestly (mark-only) rather than inventing logic for a position it can't explain."""
     row = store.row("SELECT spec, params, status FROM strategy_versions WHERE id = ?", (version_id,))
     if row is None or row.get("status") not in _ALIVE_STATUSES:
         return None
+    status = str(row.get("status"))
     raw_spec, raw_params = row.get("spec"), row.get("params")
     try:
         spec_dict = json.loads(raw_spec) if isinstance(raw_spec, str) else raw_spec
@@ -104,7 +118,7 @@ def _load_spec_params(store: Store, version_id: str) -> tuple[StrategySpec, dict
         from cosmu.evolution.loop import fit_params
 
         params = fit_params(spec)
-    return spec, params
+    return spec, params, status
 
 
 def _bracket_fractions(spec: StrategySpec, params: dict[str, float]) -> tuple[float | None, float | None]:
@@ -160,21 +174,40 @@ def _exit_reason(
     return None
 
 
-def _managed_tracks(store: Store, portfolio: Portfolio, cat: VenueCatalog) -> tuple[list[_Managed], StepReport]:
-    """Resolve every executor-managed track: held sim positions (exit candidates) plus flat-but-funded gate-lane
-    tracks (re-entry candidates). Deploy-lane specs are counted + skipped — their arm modules own rotation."""
+def _managed_tracks(
+    store: Store, portfolio: Portfolio, cat: VenueCatalog, *, armed_venues: frozenset[str] = frozenset()
+) -> tuple[list[_Managed], StepReport]:
+    """Resolve every executor-managed track: held positions (exit candidates) plus flat-but-funded gate-lane
+    tracks (re-entry candidates). Deploy-lane specs are counted + skipped — their arm modules own rotation.
+
+    Book-aware for live ignition: positions are read from BOTH the sim book and the live/testnet book. A track
+    whose status is 'live' AND whose venue is in `armed_venues` (live toggle on + that venue's adapter active)
+    is routed LIVE and managed on its live book; everything else is routed SIM and managed on its sim book
+    exactly as before. When `armed_venues` is empty (no toggle / no keys — every existing run) this is
+    identical to the prior sim-only behaviour. A live position whose venue is NOT armed (keys pulled / live
+    off) is left UNMANAGED this tick (an honest skip + event) — never closed via a fake sim fill."""
     report = StepReport()
-    held = {p.strategy_version_id: p for p in portfolio.positions() if p.strategy_version_id and p.venue == "sim"}
+    positions = portfolio.positions()
+    held_sim = {p.strategy_version_id: p for p in positions if p.strategy_version_id and p.venue == "sim"}
+    held_live = {
+        p.strategy_version_id: p
+        for p in positions
+        if p.strategy_version_id and p.venue in ("live", "testnet")
+    }
     flat_rows = store.rows(
         "SELECT DISTINCT strategy_version_id, symbol, instrument_id FROM positions "
         "WHERE CAST(qty AS REAL) = 0 AND strategy_version_id IS NOT NULL AND venue = 'sim'"
     )
     out: list[_Managed] = []
     seen: set[str] = set()
-    for vid, pos, symbol, instrument_id in (
-        [(vid, p, p.symbol, p.instrument_id) for vid, p in held.items()]
-        + [(r["strategy_version_id"], None, r["symbol"], r["instrument_id"]) for r in flat_rows]
-    ):
+    # Candidates: every track with an open position (live first so a real leg wins over a stale sim row), then
+    # flat funded registration rows (re-entry candidates). `book` records which book the candidate position is in.
+    candidates = (
+        [(vid, p, p.symbol, p.instrument_id, "live") for vid, p in held_live.items()]
+        + [(vid, p, p.symbol, p.instrument_id, "sim") for vid, p in held_sim.items()]
+        + [(r["strategy_version_id"], None, r["symbol"], r["instrument_id"], "sim") for r in flat_rows]
+    )
+    for vid, pos, symbol, instrument_id, book in candidates:
         if vid in seen:
             continue
         seen.add(vid)
@@ -188,12 +221,14 @@ def _managed_tracks(store: Store, portfolio: Portfolio, cat: VenueCatalog) -> tu
             dead = status_row is None or status_row.get("status") not in _ALIVE_STATUSES
             if pos is not None and dead:
                 venue_id = _instrument_venue(cat, instrument_id)
-                if venue_id is not None:
-                    out.append(_Managed(vid, None, {}, symbol, venue_id, pos, liquidate_reason="version_killed"))
+                # A dead LIVE leg can only be liquidated on the venue if it is still armed; otherwise leave it
+                # unmanaged (skip) rather than fake-close it on the sim book.
+                if venue_id is not None and (book != "live" or venue_id in armed_venues):
+                    out.append(_Managed(vid, None, {}, symbol, venue_id, pos, liquidate_reason="version_killed", routing=book))
                     continue
             report.skipped_unmanaged += 1
             continue
-        spec, params = loaded
+        spec, params, status = loaded
         if spec.lane == "deploy":
             report.skipped_deploy += 1
             continue
@@ -204,8 +239,46 @@ def _managed_tracks(store: Store, portfolio: Portfolio, cat: VenueCatalog) -> tu
         if venue_id is None:
             report.skipped_unmanaged += 1  # unknown instrument → can't price/order it honestly
             continue
-        out.append(_Managed(vid, spec, params, symbol, venue_id, pos))
+        # A real (live/testnet) position on a venue that is NOT armed right now can't be managed safely (no
+        # active adapter to close it) — skip + audit, never close it via a sim fill.
+        if held_live.get(vid) is not None and venue_id not in armed_venues:
+            report.skipped_unmanaged += 1
+            store.append_event(
+                actor="master", kind="live_position_unmanaged", ref_type="strategy_version", ref_id=vid,
+                payload={"symbol": symbol, "venue_id": venue_id, "reason": "venue_not_armed"},
+            )
+            continue
+        live_pos = held_live.get(vid)
+        if live_pos is not None:
+            # A real (live/testnet) position is ALWAYS managed on its own book and routed live — exitable on
+            # its own rules regardless of the current status, so a live→paper demotion can never orphan an
+            # open real position. (We only reach here armed: the unarmed-live case skipped above.)
+            routing, book_pos = "live", live_pos
+        elif status == "live" and venue_id in armed_venues:
+            routing, book_pos = "live", None  # flat live track → its entry signal opens on the live book
+        else:
+            routing, book_pos = "sim", held_sim.get(vid)  # forward-test / not-yet-armed → sim book (unchanged)
+        out.append(_Managed(vid, spec, params, symbol, venue_id, book_pos, status=status, routing=routing))
     return out, report
+
+
+def _resolve_live_adapters(store: Store) -> dict[str, object]:
+    """The ACTIVE execution adapter per venue when live is armed — the live-ignition switch. Returns {} (so the
+    executor is SIM-only, unchanged) unless BOTH (a) the global live toggle is ON in the DB AND (b) a venue's
+    adapter resolves active (keys present + live.mode=='real' / testnet keys). Resolving an adapter is itself
+    safe — a venue without keys/mode yields a disabled adapter that is filtered out here — so this can never
+    arm anything by itself; it only HANDS the order path a real adapter when the operator has already armed."""
+    row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
+    if not (row and row["enabled"]):
+        return {}
+    from cosmu.adapters.exec.registry import EXEC_ADAPTER_VENUES, adapter_for
+
+    out: dict[str, object] = {}
+    for venue_id in EXEC_ADAPTER_VENUES:
+        adapter = adapter_for(venue_id, store.settings)
+        if adapter is not None and getattr(adapter, "active", False):
+            out[venue_id] = adapter
+    return out
 
 
 def step_tracks(
@@ -233,7 +306,10 @@ def step_tracks(
     portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
     now = now or datetime.now(tz=UTC)
 
-    tracks, report = _managed_tracks(store, portfolio, cat)
+    # LIVE IGNITION: the active execution adapters per venue when live is armed (DB toggle on + keys + mode).
+    # Empty unless the operator has armed live — so this tick is SIM-only and byte-identical to before by default.
+    live_adapters = _resolve_live_adapters(store)
+    tracks, report = _managed_tracks(store, portfolio, cat, armed_venues=frozenset(live_adapters))
     if bar_sizes is not None:
         tracks = [m for m in tracks if m.spec is not None and m.spec.horizon.bar_size in bar_sizes]
     if not tracks:
@@ -252,7 +328,7 @@ def step_tracks(
     # ONLY for fills the order path ACCEPTED — a gauntlet-rejected order must never put a phantom trade in the
     # ledger (the rejection itself is audited by the order path). The client_order_id is stamped with the
     # DECISION BAR, so re-running the executor on the same bars is a true no-op (no double fills, no churn).
-    pending: list[tuple[IntendedOrder, str, dict]] = []
+    pending: list[tuple[IntendedOrder, str, dict, str]] = []
 
     def _close(m: _Managed, fill: Decimal, reason: str, stamp: str) -> None:
         coid = f"fstep-{m.version_id}-close-{stamp}"
@@ -277,6 +353,7 @@ def step_tracks(
                 "exit",
                 {"version_id": m.version_id, "symbol": m.symbol, "reason": reason,
                  "price": str(fill), "qty": str(m.position.qty)},
+                m.routing,
             )
         )
 
@@ -354,24 +431,49 @@ def step_tracks(
                     ),
                     "entry",
                     {"version_id": m.version_id, "symbol": m.symbol, "price": str(mark), "qty": str(qty)},
+                    m.routing,
                 )
             )
 
     if pending:
-        outcomes = execute_orders(
-            [p[0] for p in pending],
-            live_enabled=False,  # the executor is SIM-only; live exits stay with the live lane
-            kill_switch=False,
-            adapter=None,
-            store=store,
-            portfolio=portfolio,
-            risk=store.settings.risk,
-            catalog=cat,
-        )
+        # Two lanes through the ONE order path. SIM intents (forward-test) fill deterministically with no
+        # adapter, exactly as before. LIVE intents (status='live' on an armed venue) route through that
+        # venue's real adapter with the toggle ON — execute_orders' 5 interlocks (gate-passed, caps,
+        # kill-switch, adapter.active, regime) still decide sim-vs-live per order, so a mis-set flag can only
+        # fail SAFE to a sim fill. Live fills reconcile against the venue's true fills out-of-band.
+        outcome_by_coid: dict[str, OrderOutcome] = {}
+        sim_intents = [io for io, _k, _p, routing in pending if routing == "sim"]
+        if sim_intents:
+            for oc in execute_orders(
+                sim_intents, live_enabled=False, kill_switch=False, adapter=None,
+                store=store, portfolio=portfolio, risk=store.settings.risk, catalog=cat,
+            ):
+                outcome_by_coid[oc.client_order_id] = oc
+        live_intents = [io for io, _k, _p, routing in pending if routing == "live"]
+        if live_intents:
+            from cosmu.master.scheduler import (
+                is_paused,  # local import: avoid an orchestrator import cycle
+            )
+
+            kill = is_paused(store)  # operator pause freezes live routing (orders fail safe to sim)
+            by_venue: dict[str, list[IntendedOrder]] = {}
+            for io in live_intents:
+                by_venue.setdefault(io.venue_id, []).append(io)
+            for venue_id, group in by_venue.items():
+                adapter = live_adapters.get(venue_id)
+                if adapter is None:  # routing is 'live' only for armed venues, so this is defensive
+                    continue
+                for oc in execute_orders(
+                    group, live_enabled=True, kill_switch=kill, adapter=adapter,
+                    store=store, portfolio=portfolio, risk=store.settings.risk, catalog=cat,
+                ):
+                    outcome_by_coid[oc.client_order_id] = oc
+                reconcile_fills(adapter, store, portfolio)  # intended → actual venue fill, out-of-band
         # Counts + events reflect what actually BOOKED. A rejected order was audited by the order path
         # (order_rejected) — it must not appear in the forward ledger as a trade that happened.
-        for (_intent, kind, payload), outcome in zip(pending, outcomes):
-            if not outcome.accepted:
+        for _intent, kind, payload, _routing in pending:
+            outcome = outcome_by_coid.get(_intent.coid())
+            if outcome is None or not outcome.accepted:
                 continue
             if kind == "exit":
                 report.closed += 1

@@ -271,7 +271,7 @@ def report(path, df: pd.DataFrame, *, n_trials: int, segs, n_assets) -> None:
          f"- **Raw best (NO gate — astro's best face):** Sharpe **{best_raw['sharpe'].iloc[0]:.2f}** "
          f"({best_raw['feature'].iloc[0]}/{best_raw['transform'].iloc[0]} on {best_raw['asset'].iloc[0]}).",
          f"- **After Deflated Sharpe at the true {N:,}-trial count:** **{len(survivors)} survive DSR>0.95.** "
-         f"{'⚠️ INVESTIGATE — forward-test required.' if len(survivors) else 'None — the search is noise (the gate working).'}",
+         f"{'⚠️ INVESTIGATE — paper required.' if len(survivors) else 'None — the search is noise (the gate working).'}",
          f"- Trials by segment: {dict(df['segment'].value_counts())}\n",
          "## Raw best 20 (pre-deflation — read skeptically; this is what p-hacking would 'find')\n",
          best_raw[["school", "feature", "transform", "hold", "polarity", "asset", "segment", "n", "n_trades", "sharpe", "net_return", "dsr"]].to_markdown(index=False),

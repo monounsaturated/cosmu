@@ -3,45 +3,36 @@
 // sheet (cosmu-final-v18.html `fundingCarryPanel`/`templatePanel`) as the SECTION STRUCTURE only — every
 // number is bound to a REAL field off StrategyDetailResponse, never the mockup's synthetic arrays.
 //
-// HONESTY: the detail contract carries only spec/params/code/notes/holdout/backtests/trades. So:
-//   • money-band → only P&L + Fees are real (off the fills); Value/Invested render "—".
-//   • equity     → the realized cash-flow curve from real trades only; honest empty when < 2 fills.
+// HONESTY: every number is bound to a REAL field off StrategyDetailResponse. So:
+//   • money-band → Value/Invested/P&L/Fees are the engine's MARKED forward money (latest scope='track'
+//     snapshot − starting_capital, gated on a real paper fill) — the SAME source the leaderboard serves, so the
+//     two surfaces agree. All render "—" until the track is marked; NEVER a fabricated loss from buy notionals.
+//   • equity     → the engine's marked scope='track' equity trajectory (strategy.forward_equity); honest empty
+//     when < 2 marked points. NEVER the cumulative-cash-flow-of-buys curve (which sloped to −100%).
 //   • AI summary → summary_md only; honest "no summary yet" when null.
-//   • gate chips + phase-comparison → the strongest backtest's measured DSR/PBO/Max-DD/OOS/trades; every
-//     cell with no real source (Paper/Live columns, Sharpe-in-paper, …) is an explicit "—".
+//   • gate chips + phase-comparison → the strongest backtest's measured DSR/PBO/Max-DD/OOS/trades; every cell
+//     with no real source (Sharpe-in-paper, the whole Live column, …) is an explicit "—".
 //   • building blocks → derived from the real spec (SpecBlocks); "—" where a block is absent.
-//   • trades → the real Execution blotter; activity → derived from real fills only.
+//   • trades → the real Execution blotter (no fabricated per-fill P&L — an opening buy has $0 realized);
+//     activity → real fills only, with the venue marked "(sim)" while paper.
 
-import type { Backtest, Execution, Point, StrategyDetailResponse } from "@cosmu/contracts-ts";
+import type { Backtest, Execution, StrategyDetailResponse } from "@cosmu/contracts-ts";
 import { MoneyBand, type MoneyBandData } from "./money-band";
 import { AiSummary } from "./ai-summary";
+import { CostBasisSelector } from "./cost-basis-selector";
 import { PhasedEquity } from "./phased-equity";
 import { SpecBlocks } from "./spec-view";
 import { StageControl, type Stage } from "./stage-control";
 import { cn, formatUsd } from "@/lib/utils";
 
-// ── Honest derivations off the real detail response (same logic the prior detail page used) ──
+// ── Honest derivations off the real detail response ──
 
-// Realized cash-flow curve: cumulative (sells add, buys subtract, fees always subtract), seeded at 0.
-export function simCurveFromTrades(trades: Execution[]): Point[] {
-  if (trades.length < 2) return [];
-  let acc = 0;
-  return trades.map((t) => {
-    const gross = t.side === "sell" ? t.qty * t.price : -t.qty * t.price;
-    acc += gross - t.fee;
-    return { ts: t.ts, value: acc };
-  });
-}
-
-export function ledgerFromTrades(trades: Execution[]): { totalFee: number | null; realizedPnl: number | null } {
-  if (trades.length === 0) return { totalFee: null, realizedPnl: null };
-  let totalFee = 0;
-  let pnl = 0;
-  for (const t of trades) {
-    totalFee += t.fee;
-    pnl += (t.side === "sell" ? t.qty * t.price : -t.qty * t.price) - t.fee;
-  }
-  return { totalFee, realizedPnl: pnl };
+// Total fees across the blotter — the ONE money aggregate honestly derivable from raw executions. Realized P&L
+// is NOT (it needs FIFO matching of buys against closing sells); it comes off the contract (strategy.realized_pnl,
+// computed by the engine from positions), never from the fills here. null when there are no fills → "—".
+export function feeTotalFromTrades(trades: Execution[]): number | null {
+  if (trades.length === 0) return null;
+  return trades.reduce((acc, t) => acc + t.fee, 0);
 }
 
 // Stage derived honestly from the contract shape: fills → paper; backtests only → backtest; none → queued.
@@ -113,8 +104,14 @@ function PhaseComparison({
       tip: "Total profit over the out-of-sample test window, after costs. Green = profitable.",
       bt: bestOos !== null ? `${bestOos >= 0 ? "+" : ""}${bestOos.toFixed(1)}%` : "—",
       btTone: bestOos !== null ? (bestOos >= 0 ? "up" : "dn") : undefined,
-      paper: paperPnl !== null ? `${paperPnl >= 0 ? "+" : "-"}${formatUsd(Math.abs(paperPnl), 0)}` : "—",
-      paperTone: paperPnl !== null ? (paperPnl >= 0 ? "up" : "dn") : undefined,
+      // Paper = the engine's marked $ P&L (realized + unrealized), neutral at exact $0 — never a cash-flow sum.
+      paper:
+        paperPnl === null
+          ? "—"
+          : paperPnl === 0
+            ? formatUsd(0, 0)
+            : `${paperPnl > 0 ? "+" : "-"}${formatUsd(Math.abs(paperPnl), 0)}`,
+      paperTone: paperPnl === null || paperPnl === 0 ? undefined : paperPnl > 0 ? "up" : "dn",
       live: "—"
     },
     {
@@ -194,11 +191,9 @@ function dateTimeParts(ts: string): { date: string; time: string } | null {
   };
 }
 
-function fillPnl(t: Execution): number {
-  return (t.side === "sell" ? t.qty * t.price : -t.qty * t.price) - t.fee;
-}
-
-// ── Recent trades — the real Execution blotter (newest first), in the bento `.mini-tbl`. ──
+// ── Recent trades — the real Execution blotter (newest first), in the bento `.mini-tbl`. No per-fill P&L
+// column: an opening BUY has $0 realized P&L by definition, and realized P&L for a close needs FIFO matching
+// the raw blotter can't do — so we show the real Date/Side/Price/Qty/Fee and never a fabricated per-fill number. ──
 function RecentTrades({ trades }: { trades: Execution[] }) {
   if (trades.length === 0) {
     return (
@@ -221,13 +216,11 @@ function RecentTrades({ trades }: { trades: Execution[] }) {
               <th className="r">Price</th>
               <th className="r">Qty</th>
               <th className="r">Fee</th>
-              <th className="r">P&amp;L</th>
             </tr>
           </thead>
           <tbody>
             {ordered.map((t) => {
               const dt = dateTimeParts(t.ts);
-              const pnl = fillPnl(t);
               return (
                 <tr key={t.id}>
                   <td>
@@ -243,10 +236,6 @@ function RecentTrades({ trades }: { trades: Execution[] }) {
                   <td className="r tab">{formatUsd(t.price, 2)}</td>
                   <td className="r tab">{t.qty}</td>
                   <td className="r tab muted">{formatUsd(t.fee, 2)}</td>
-                  <td className={cn("r tab", pnl >= 0 ? "up" : "dn")}>
-                    {pnl >= 0 ? "+" : "-"}
-                    {formatUsd(Math.abs(pnl), 2)}
-                  </td>
                 </tr>
               );
             })}
@@ -257,12 +246,20 @@ function RecentTrades({ trades }: { trades: Execution[] }) {
   );
 }
 
-// ── Activity — derived from real fills only (entered/closed events), newest first. Honest empty otherwise. ──
-function Activity({ trades }: { trades: Execution[] }) {
+// ── Activity — derived from real fills only (entered/closed events), newest first. Honest empty otherwise.
+// No per-fill P&L (an opening buy realizes nothing). While paper, the venue is marked "(sim)": the fill is
+// SIMULATED against that venue's real prices/fees — no real order was placed. ──
+function Activity({ trades, stage }: { trades: Execution[]; stage: Stage }) {
   const ordered = [...trades].sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)).slice(0, 8);
+  const sim = stage === "paper";
   return (
     <div className="psec" id="sheet-activity">
       <div className="psec-title">Activity</div>
+      {sim && ordered.length > 0 ? (
+        <p className="quiet" style={{ fontSize: 11, marginBottom: 6 }}>
+          Simulated paper fills — priced against the venue&apos;s real fees, but no real order is placed.
+        </p>
+      ) : null}
       <div className="act-list">
         {ordered.length === 0 ? (
           <div className="act-row">
@@ -272,17 +269,18 @@ function Activity({ trades }: { trades: Execution[] }) {
         ) : (
           ordered.map((t, i) => {
             const dt = dateTimeParts(t.ts);
-            const pnl = fillPnl(t);
             return (
               <div key={t.id} className={i === 0 ? "act-row cur-ev" : "act-row"}>
                 <span className="act-time">{dt ? `${dt.date}, ${dt.time}` : "—"}</span>
                 <span className="act-text">
                   <strong>{t.side === "buy" ? "Bought" : "Sold"}</strong> {t.qty} @ {formatUsd(t.price, 2)}
-                  {t.venue ? <span className="quiet"> · {t.venue}</span> : null} ·{" "}
-                  <span className={pnl >= 0 ? "up" : "dn"}>
-                    {pnl >= 0 ? "+" : "-"}
-                    {formatUsd(Math.abs(pnl), 2)}
-                  </span>
+                  {t.venue ? (
+                    <span className="quiet">
+                      {" "}
+                      · {t.venue}
+                      {sim ? " (sim)" : ""}
+                    </span>
+                  ) : null}
                 </span>
               </div>
             );
@@ -296,15 +294,16 @@ function Activity({ trades }: { trades: Execution[] }) {
 // ── The full sheet body — used by the SidePanel and the standalone page. ──
 export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyDetailResponse; stageOverride?: Stage }) {
   const trades = strategy.trades;
-  const simCurve = simCurveFromTrades(trades);
-  const ledger = ledgerFromTrades(trades);
+  const totalFee = feeTotalFromTrades(trades);
   // Prefer the engine's canonical stage (passed from the screener row) so the sheet badge never disagrees
   // with the table; fall back to the contract-shape heuristic for the standalone /strategy/[id] page.
   const stage = stageOverride ?? deriveStage(trades, strategy.backtests);
   const ageDays = trackAgeDays(trades);
   const headlineBt = headlineBacktest(strategy.backtests);
   const bestOos = bestOosPct(strategy.backtests);
-  const paperPnl = simCurve.length >= 2 ? simCurve[simCurve.length - 1].value : null;
+  // Forward P&L = the engine's MARKED total (realized + unrealized = value − starting_capital), off the
+  // scope='track' snapshot — NEVER the cash-flow sum of opening buys. null until the track is marked.
+  const paperPnl = strategy.pnl_usd ?? null;
   // The strategy's own plain-language rationale off the real spec — the honest "what this does" fallback when
   // no operator summary is written yet (documented strategies carry a rich rationale describing the mechanism).
   const specRationale =
@@ -312,14 +311,27 @@ export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyD
       ? ((strategy.spec as Record<string, string>).rationale)
       : null;
 
+  // The money band binds to the engine's REAL marked money (same source as the leaderboard), never the fills'
+  // cash flow. P&L = realized + unrealized (= value − starting_capital), so a flat fully-invested track reads
+  // $0.00 — not −100%. pnlPct is % of starting capital (matches the leaderboard's pnl_pct denominator).
   const money: MoneyBandData = {
-    valueUsd: null,
-    investedUsd: null,
-    pnlUsd: ledger.realizedPnl,
-    pnlPct: null,
-    feesUsd: ledger.totalFee,
-    pnlSub: ageDays !== null ? `${ageDays}d · realized` : "realized",
-    feesSub: "off real fills"
+    valueUsd: strategy.value_usd ?? null,
+    investedUsd: strategy.invested_usd ?? null,
+    pnlUsd: strategy.pnl_usd ?? null,
+    pnlPct:
+      strategy.pnl_usd != null && strategy.starting_capital
+        ? (strategy.pnl_usd / strategy.starting_capital) * 100
+        : null,
+    feesUsd: totalFee,
+    // When un-marked the P&L cell is "—"; its sub-line then matches the Value/Invested cells ("not marked yet")
+    // rather than implying a realized+unrealized figure exists.
+    pnlSub:
+      strategy.pnl_usd == null
+        ? "not marked yet"
+        : ageDays !== null
+          ? `${ageDays}d · realized + unrealized`
+          : "realized + unrealized",
+    feesSub: stage === "paper" ? "off simulated fills" : "off real fills"
   };
 
   return (
@@ -334,7 +346,7 @@ export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyD
 
       <MoneyBand data={money} />
 
-      <PhasedEquity paperCurve={simCurve} />
+      <PhasedEquity paperCurve={strategy.forward_equity ?? []} />
 
       <AiSummary
         summaryMd={strategy.summary_md}
@@ -358,6 +370,8 @@ export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyD
 
       <PhaseComparison headlineBt={headlineBt} paperPnl={paperPnl} trades={trades} ageDays={ageDays} bestOos={bestOos} />
 
+      <CostBasisSelector versionId={strategy.version_id} />
+
       <div className="psec">
         <div className="psec-title">Building blocks</div>
         <SpecBlocks spec={strategy.spec} />
@@ -365,7 +379,7 @@ export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyD
 
       <RecentTrades trades={trades} />
 
-      <Activity trades={trades} />
+      <Activity trades={trades} stage={stage} />
     </>
   );
 }

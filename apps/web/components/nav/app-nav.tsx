@@ -1,8 +1,10 @@
 "use client";
 
 // module: app navigation (Iris Bento `.sb-nav` / `.nav-item`). The v18 redesign IS the whole
-// frontend — SIX surfaces, nothing else: Strategies · Paper · Live · Costs · Keys · Commands
-// (landing = Strategies). There is no mobile bottom-dock: the bento sidebar collapses to an icon
+// frontend — SEVEN surfaces: Strategies · Paper · Live · Costs · Research · Keys · Commands
+// (landing = Strategies). Research surfaces the machine's EXPERIMENT MEMORY — every theory tested
+// through the cohort Gate (gate_verdicts), which the Strategies table (Versions only) cannot show.
+// There is no mobile bottom-dock: the bento sidebar collapses to an icon
 // rail at narrow widths via the `@media (max-width:880px)` rules in globals.css. Active state is the
 // current route; optional per-stage counts come from a client fetch in the shell (shown only when real).
 
@@ -42,6 +44,11 @@ const ICONS: Record<string, ReactNode> = {
       <circle cx="10.4" cy="9" r="1" fill="currentColor" stroke="none" />
     </svg>
   ),
+  research: (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 1.7v4.1L2.9 11a1.4 1.4 0 0 0 1.2 2.1h6.8A1.4 1.4 0 0 0 12.1 11L9 5.8V1.7" /><line x1="5.2" y1="1.7" x2="9.8" y2="1.7" /><line x1="4.7" y1="8.4" x2="10.3" y2="8.4" />
+    </svg>
+  ),
   keys: (
     <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="5" cy="5" r="2.5" /><path d="M6.8 6.8l5.4 5.4M9.8 12.2l2-2" />
@@ -54,18 +61,20 @@ const ICONS: Record<string, ReactNode> = {
   )
 };
 
-// The SIX primary surfaces — the entire app, in canonical sidebar order.
+// The primary surfaces — the entire app, in canonical sidebar order.
 export const navItems: NavItem[] = [
   { href: "/strategies", key: "strategies", label: "Strategies", icon: ICONS.strategies },
   { href: "/paper", key: "paper", label: "Paper", icon: ICONS.paper },
   { href: "/live", key: "live", label: "Live", icon: ICONS.live },
   { href: "/costs", key: "costs", label: "Costs", icon: ICONS.costs },
+  { href: "/research/experiments", key: "research", label: "Research", icon: ICONS.research },
   { href: "/keys", key: "keys", label: "Keys", icon: ICONS.keys },
   { href: "/commands", key: "commands", label: "Commands", icon: ICONS.commands }
 ];
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/strategies") return pathname.startsWith("/strategies") || pathname.startsWith("/strategy");
+  if (href === "/research/experiments") return pathname.startsWith("/research");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

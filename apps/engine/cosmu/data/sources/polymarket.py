@@ -158,6 +158,29 @@ class PolymarketClobSource:
             for day, vals in sorted(by_day.items())
         ]
 
+    def resolve_token(self, symbol: str) -> str | None:
+        """Best-effort core-symbol -> CLOB YES-token-id for the execution adapter. A symbol that is already a
+        numeric/hex CLOB token id passes through; otherwise the macro-market discovery is keyword-matched
+        against each market's question (the synthetic catalog label, e.g. 'PM-FED-CUT-2026', tokenized on
+        '-'/'_'). Returns the best (most liquid) match's YES token, else None — the adapter then treats the
+        symbol verbatim. Pure-discovery + offline-injectable via the same _gamma_fetcher."""
+        s = symbol.strip()
+        if s.isdigit() or (s.startswith("0x") and len(s) > 10):
+            return s
+        words = {w for w in s.lower().replace("pm-", "").replace("-", " ").replace("_", " ").split() if len(w) > 2}
+        if not words:
+            return None
+        best: tuple[int, float, str] | None = None  # (overlap, liquidity, token)
+        for m in self._discover_macro_markets():
+            q = (m.get("question") or "").lower()
+            overlap = sum(1 for w in words if w in q)
+            if overlap == 0:
+                continue
+            cand = (overlap, float(m.get("liquidity") or 0), str(m["clob_token_id"]))
+            if best is None or cand[:2] > best[:2]:
+                best = cand
+        return best[2] if best else None
+
     def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
         if metric not in ("pm_implied_prob", "pm_prob_velocity", "pm_book_depth"):
             return []
@@ -195,3 +218,9 @@ class PolymarketClobSource:
             AltDataPoint(ts=day, available_at=day, value=cnt / n)
             for day, cnt in sorted(active.items())
         ][-limit:]
+
+
+def resolve_clob_token(symbol: str) -> str | None:
+    """Module-level convenience: resolve a core symbol to its CLOB YES-token id via live Gamma discovery.
+    Used by the Polymarket execution adapter's lazy resolver; returns None on any failure (best-effort)."""
+    return PolymarketClobSource().resolve_token(symbol)

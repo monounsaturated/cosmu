@@ -79,8 +79,15 @@ def leaderboard() -> LeaderboardResponse:
                 SELECT MAX(ts) FROM portfolio_snapshots p2 WHERE p2.scope = 'track' AND p2.ref_id = p1.ref_id
             )
         ) ps ON ps.ref_id = sv.id
-        ORDER BY CAST(COALESCE(b.deflated_sharpe, 0) AS REAL) DESC
-        LIMIT 20
+        -- ACTIVE-FIRST then strength: a funded/active track must NEVER be ranked off the board by a stronger
+        -- KILLED one. Killed versions hugely outnumber the live ones (graveyard grows unbounded), so a pure
+        -- deflated_sharpe sort + a tight LIMIT silently truncated funded paper tracks below the cut — the
+        -- Paper hero (status-filtered Σ allocated) then disagreed with "Invested" (Σ of the rows that survived
+        -- the cut). Sorting killed last guarantees every non-killed Version is on the board; killed fill the
+        -- rest by strength. LIMIT lifted to 200 so the active tier is never the thing that gets cut.
+        ORDER BY (CASE WHEN sv.status = 'killed' THEN 1 ELSE 0 END),
+                 CAST(COALESCE(b.deflated_sharpe, 0) AS REAL) DESC
+        LIMIT 200
         """
     )
     if not rows:
@@ -97,7 +104,9 @@ def leaderboard() -> LeaderboardResponse:
       # built is skipped (logged), so the rest of the floor still renders. (derive_facets is also bulletproof.)
       try:
         # net_pct is the net-of-fee return the maturity signal reads — same field surfaced on the row.
-        net_pct = _metric(row["oos_return"]) * 100 - 0.18
+        # oos_return is ALREADY net-of-fee at the screened venue (the backtest charged that venue's fee +
+        # slippage); surface it straight — no fabricated 0.18 round-trip haircut on top of an already-net number.
+        net_pct = _metric(row["oos_return"]) * 100
         # ADVISORY ONLY (master/paper_maturity.py): surfaced, never a gate. The paper clock runs from the
         # track's first mark; live_ready recommends a matured + net-positive track. The operator decides.
         mat = paper_maturity(row["funded_at"], net_pct)

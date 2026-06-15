@@ -257,6 +257,28 @@ export interface CorrelationsResponse {
   survivors: CorrelationFinding[];
 }
 
+export interface CostBasisCell {
+  basis: string;
+  cost_ratio: number;
+  fee_bps: number;
+  holds: boolean;
+  impact_bps: number;
+  label: string;
+  net_return_pct: number;
+  num_trades: number;
+  slippage_bps: number;
+  venue_id: string | null;
+}
+
+export interface CostBasisResponse {
+  available: boolean;
+  cells: CostBasisCell[];
+  gross_return_pct: number | null;
+  name: string;
+  reason: string | null;
+  version_id: string;
+}
+
 export interface CostByCategory {
   amount: number;
   category: string;
@@ -1094,16 +1116,24 @@ export interface SourceTrustRow {
 
 export interface StrategyDetailResponse {
   backtests: Backtest[];
+  forward_equity?: Point[];
   generated_code: string;
+  has_paper_fills?: boolean;
   holdout: Record<string, unknown>;
+  invested_usd?: number | null;
   name: string;
   notes_md: string;
   params: Record<string, unknown>;
+  pnl_usd?: number | null;
+  realized_pnl?: number | null;
   spec: Record<string, unknown>;
+  starting_capital?: number | null;
   summary_md?: string | null;
   summary_stale?: boolean | null;
   summary_updated_at?: string | null;
   trades: Execution[];
+  unrealized_pnl?: number | null;
+  value_usd?: number | null;
   version_id: string;
 }
 
@@ -1186,11 +1216,15 @@ export interface VenueFeeInfo {
   configured: boolean;
   fee_tiers: VenueFeeTierInfo[];
   id: string;
+  impact_bps: number;
   kind: "crypto" | "equity" | "prediction";
+  legal_entity: string | null;
   live_enabled: boolean;
   maker_fee_bps: number;
   min_notional: number;
   name: string;
+  region: string | null;
+  slippage_bps: number;
   taker_fee_bps: number;
 }
 

@@ -154,6 +154,26 @@ class StrategyDetailResponse(BaseModel):
     summary_md: str | None = None
     summary_stale: bool | None = None
     summary_updated_at: str | None = None
+    # REAL marked forward money — the SAME honest source the leaderboard/costs routers already serve, NEVER the
+    # execution cash flow and NEVER tracks.equity (the stale backtest SEED). `value_usd` = latest scope='track'
+    # snapshot equity (marked positions_value + cash). `invested_usd` = deployed cost basis (Σ avg_price*qty over
+    # the version's positions). `realized_pnl` = Σ positions.realized_pnl (0 until a CLOSE — an opening buy books
+    # only its fee, so a buy-and-hold track is honestly 0, never -100%). `unrealized_pnl` = pnl_usd - realized_pnl.
+    # `pnl_usd` = value_usd - starting_capital (identical to the leaderboard's pnl_usd, so the two surfaces agree).
+    # ALL of these are None until the track has BOTH a real paper fill (`has_paper_fills`) AND a marked snapshot —
+    # the sheet then renders "—" across the whole money band (never a split where one cell is real and another "—",
+    # and never a fabricated loss from buy notionals).
+    has_paper_fills: bool = False
+    value_usd: float | None = None
+    invested_usd: float | None = None
+    realized_pnl: float | None = None
+    unrealized_pnl: float | None = None
+    pnl_usd: float | None = None
+    starting_capital: float | None = None
+    # The honest forward EQUITY trajectory = the scope='track' portfolio_snapshot history (marked value over time),
+    # oldest-first. The sheet's equity chart renders THIS — never the cumulative-cash-flow-of-buys curve (which
+    # sloped to -100%). Empty until the track is marked → the chart shows its honest empty state.
+    forward_equity: list[Point] = []
 
 
 class SummaryFactsResponse(BaseModel):
@@ -342,6 +362,10 @@ class VenueFeeInfo(BaseModel):
     maker_fee_bps: float
     taker_fee_bps: float
     min_notional: float
+    slippage_bps: float        # per-venue market depth: the fixed half-spread the backtest charges here
+    impact_bps: float          # per-venue market depth: the size-aware impact coefficient
+    region: str | None         # operating region / hosting hint (honest metadata — NOT the legality gate)
+    legal_entity: str | None   # the regulated entity we'd contract with (honest metadata — NOT the gate)
     fee_tiers: list[VenueFeeTierInfo]
     configured: bool    # True = API keys are in Railway env; False = venue inert, grey-out in UI
     live_enabled: bool  # whether the venue has a real-money execution adapter at all

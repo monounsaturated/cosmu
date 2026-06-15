@@ -6,7 +6,7 @@ import json
 
 from fastapi import APIRouter, HTTPException
 
-from cosmu.adapters.exec.binance import resolve_mode
+from cosmu.adapters.exec.registry import live_mode
 from cosmu.api._shared import _brain_reference_bars, _metric, _portfolio, settings, store
 from cosmu.api.models import (
     ActivateRequest,
@@ -26,11 +26,11 @@ from cosmu.api.models import (
     RulesRequest,
     RulesResponse,
     SetJurisdictionRequest,
-    VenueRule,
     VenueCatalogResponse,
     VenueFeeInfo,
     VenueFeeTierInfo,
     VenueInstrumentInfo,
+    VenueRule,
 )
 from cosmu.knowledge.store import utcnow
 from cosmu.spine.universe import venue_rows
@@ -40,8 +40,10 @@ router = APIRouter()
 
 
 def _live_mode() -> str:
-    """The mode GET /live/positions reports — the adapter's resolved mode (testnet/live) or sim if disabled."""
-    mode = resolve_mode(settings)
+    """The mode GET /live/positions reports — the aggregate resolved mode across ALL wired venues (testnet/live)
+    or sim if every venue is disabled. Aggregate (not Binance-only) so a Polymarket/Alpaca-armed state shows
+    honestly instead of falsely reading 'sim'."""
+    mode = live_mode(settings)
     return mode if mode in ("testnet", "live") else "sim"
 
 
@@ -136,7 +138,7 @@ def live_positions() -> LivePositionsResponse:
     with store.reading():
         pf = _portfolio()
         live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
-        armed = bool(live_row and live_row["enabled"]) and resolve_mode(settings) != "disabled"
+        armed = bool(live_row and live_row["enabled"]) and live_mode(settings) != "disabled"
         caps = LiveCaps(**_live_caps_row())
         daily = pf.daily_loss()
         positions = [
@@ -153,13 +155,14 @@ def live_positions() -> LivePositionsResponse:
     return LivePositionsResponse(armed=armed, mode=_live_mode(), daily_loss=float(daily.daily_loss), caps=caps, positions=positions)
 
 
-# Which venues have LIVE execution credentials wired. Only Binance has an execution adapter + keys today;
-# the others are legal-but-unwired ("not connected") until their adapter ships. Secrets stay server-side —
-# the UI only ever sees the boolean.
+# Which venues have LIVE execution credentials wired (Binance, Alpaca, Polymarket have execution adapters).
+# Delegates to the exec registry so key-presence has ONE source of truth shared with the live ignition; a
+# venue with no adapter (or no keys) reports False — legal-but-unwired ("not connected"). Secrets stay
+# server-side — the UI only ever sees the boolean.
 def _venue_connected(venue_id: str) -> bool:
-    if venue_id == "binance":
-        return bool(settings.binance_api_key and settings.binance_api_secret)
-    return False
+    from cosmu.adapters.exec.registry import keys_present
+
+    return keys_present(venue_id, settings)
 
 
 def _current_jurisdiction() -> str:
@@ -237,7 +240,7 @@ def _venue_cap_rows() -> dict[str, float]:
 def live_rules() -> RulesResponse:
     """The live-trading Rules the operator edits: the hard global $ blocker + daily-loss + per-venue caps,
     with each legal venue's real deployed capital + headroom. The per-venue caps are enforced deterministically
-    in the order gauntlet (only when live is armed — the SIM/forward-test lane is never constrained)."""
+    in the order gauntlet (only when live is armed — the SIM/paper lane is never constrained)."""
     catalog = default_catalog()
     with store.reading():
         country = _current_jurisdiction()
@@ -319,6 +322,10 @@ def live_venue_catalog() -> VenueCatalogResponse:
             maker_fee_bps=float(v.maker_fee_bps),
             taker_fee_bps=float(v.taker_fee_bps),
             min_notional=float(v.min_notional),
+            slippage_bps=float(v.slippage_bps),
+            impact_bps=float(v.impact_bps),
+            region=v.region,
+            legal_entity=v.legal_entity,
             fee_tiers=[
                 VenueFeeTierInfo(
                     min_volume_30d_usd=float(t.min_volume_30d_usd),
@@ -371,7 +378,7 @@ def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
 
     # HARD live-eligibility gate: paper maturity (>= PAPER_MIN_DAYS net-positive) AND regime.
     # `override_paper` waives ONLY the paper precondition (logged below), never the regime gate.
-    from cosmu.master.live_eligibility import paper_clock_origin, live_eligibility_verdict
+    from cosmu.master.live_eligibility import live_eligibility_verdict, paper_clock_origin
 
     reference = _brain_reference_bars()
     verdict = live_eligibility_verdict(store, request.version_id, reference, override=request.override_paper)

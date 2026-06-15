@@ -73,7 +73,7 @@ def _fund_tracks_on_startup() -> None:
 
         if store.row("SELECT id FROM positions WHERE CAST(qty AS REAL) != 0 LIMIT 1"):
             return  # already funded — idempotent, don't double-open
-        # Fund forward-test entrants INCLUDING 'screened': an entrant is born "screened" (badge: Backtest) and
+        # Fund paper entrants INCLUDING 'screened': an entrant is born "screened" (badge: Backtest) and
         # funding it (opening its sim positions) is what STARTS the forward test — the paper clock then promotes
         # it to "paper" once a real forward day accrues. Omitting 'screened' here would strand every new survivor
         # unfunded → never marked → never promoted (chicken-and-egg).
@@ -86,14 +86,14 @@ def _fund_tracks_on_startup() -> None:
 
 def _kickstart_paper_fills_on_startup() -> None:
     """Boot wiring for orchestrator.kickstart_paper_fills: back-fill the documented arms' real held allocation
-    into the executions ledger so a forward-testing arm reads "Paper" (with a fill blotter) instead of stuck on
+    into the executions ledger so a paper-trading arm reads "Paper" (with a fill blotter) instead of stuck on
     "Backtest". One-shot + idempotent (skips versions that already have fills). Best-effort; never blocks boot."""
     try:
         from cosmu.orchestrator.loop import kickstart_paper_fills
 
         n = kickstart_paper_fills(store)
         if n:
-            print(f"[boot] kickstarted {n} forward-testing arm(s) screened -> paper (recorded held legs as fills)")
+            print(f"[boot] kickstarted {n} paper-trading arm(s) screened -> paper (recorded held legs as fills)")
     except Exception:  # noqa: BLE001 — best-effort; a data/network hiccup must not break boot
         pass
 

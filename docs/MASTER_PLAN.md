@@ -17,7 +17,7 @@ The engine is **~85% real, deterministic, and honest.** Confirmed in code:
 - **Data**: 11+ point-in-time sources wired (`ingest/run.py`): funding, Fear&Greed, GDELT news, FRED macro, Polymarket odds, Coinglass liquidations, CBOE put/call, Binance basis/OI/netflow, Reddit, LunarCrush (key-gated), ADSB OSINT. Stored point-in-time in `alt_data` with `read_asof` (no look-ahead).
 - **ML** (`ml/survival.py`, `ml/regime.py`): classical survival model that **orders** which gate-passers validate first (never vetoes); regime classifier. **No RL.**
 - **Mind** (`mind/`): 7-analyst debate panel, reflections persisted; reasons only, never funds/fires.
-- **Venues/execution** (`spine/venue.py`, `master/execution.py`): Binance spot live-capable behind **5 interlocks**; IBKR + Polymarket **data-only**. Sim fill on any interlock fail.
+- **Venues/execution** (`spine/venue.py`, `master/execution.py`, `adapters/exec/registry.py`): Binance spot + Polymarket CLOB (Polygon/USDC, prediction) **live-capable** behind **5 interlocks** (venue-agnostic ignition resolver); IBKR + Alpaca **data-only**. Sim fill on any interlock fail.
 - **DB** (`knowledge/schema_postgres.sql`): 26 tables incl. append-only `events` (money-truth ledger), global `trials` ledger (DSR deflation), `alt_data`, `tracks`, pgvector on `skills`/`sources`.
 
 ## 2. The real remaining gaps (this is the actual work)
@@ -25,7 +25,7 @@ The engine is **~85% real, deterministic, and honest.** Confirmed in code:
 2. **CI is manual-dispatch only.** GitHub Actions (`verify.yml`) is `workflow_dispatch`-only — OFF by default (we are not paying for it). The **pre-push hook is the gate** (naming + contracts drift + engine tests + typecheck — `.githooks/pre-push`); bypassing it (`--no-verify`) can ship a broken `main` since push = deploy. Re-enable PR-triggered CI only if branch protection is ever added.
 3. **Authoring lacks adversarial disconfirmers.** Only ~6 hard-coded briefs; the gate culls junk but the author isn't structurally pushed to test anti-patterns.
 4. **Self-reinforcement of *logic* — primitive shipped, now armable.** The `/evolve-strategy` skill isolates a gate-passed signal, grafts it onto other assets, and recombines survivors into a new cohort for re-Gating. As of 2026-06-14 it **can fire**: the deploy-lane TAA cohort has **8 honest-Gate survivors** to compound/evolve (3 strict-pass: DAA/VAA/ADM; 5 DSR+holdout: PAA/GTAA/RiskParity/TSMOM/HAA — `cosmu/research/equity_taa_cohort.py`). The novel-MINED-edge lane remains 0.
-5. **Breadth not live**: xAI/Grok Twitter signal (key exists, source not wired), IBKR live execution (data-only), event/news *scoring*.
+5. **Breadth not live**: xAI/Grok Twitter signal (key exists, source not wired), IBKR live execution (data-only), event/news *scoring*. Polymarket is now live-capable (exec adapter + ignition wired); the remaining prediction last-mile is the autonomous funding+pricing lane (per-market odds ingest + a PricingRouter prediction leg + a gate-passed prediction strategy).
 6. **Cockpit improved but incomplete**: full frontend overhaul shipped (#155, 2026-06-07) — premium design system, grouped nav, all surfaces refreshed, zero emojis. Remaining thin: source-trust scorecard and news/intel dashboard.
 7. **Heavy compute lane shipped** (Modal — `apps/engine/remote/app.py`; `pnpm modal:gate` / `modal:ingest`, scale-to-zero). The remaining gap is wiring more research runners through it on a schedule, not the lane itself.
 
