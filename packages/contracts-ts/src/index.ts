@@ -1208,11 +1208,15 @@ export interface VenueFeeInfo {
   configured: boolean;
   fee_tiers: VenueFeeTierInfo[];
   id: string;
+  impact_bps: number;
   kind: "crypto" | "equity" | "prediction";
+  legal_entity: string | null;
   live_enabled: boolean;
   maker_fee_bps: number;
   min_notional: number;
   name: string;
+  region: string | null;
+  slippage_bps: number;
   taker_fee_bps: number;
 }
 

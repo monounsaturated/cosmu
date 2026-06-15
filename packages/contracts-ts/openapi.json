@@ -6158,6 +6158,10 @@
             "title": "Id",
             "type": "string"
           },
+          "impact_bps": {
+            "title": "Impact Bps",
+            "type": "number"
+          },
           "kind": {
             "enum": [
               "crypto",
@@ -6166,6 +6170,17 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "legal_entity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Entity"
           },
           "live_enabled": {
             "title": "Live Enabled",
@@ -6183,6 +6198,21 @@
             "title": "Name",
             "type": "string"
           },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "slippage_bps": {
+            "title": "Slippage Bps",
+            "type": "number"
+          },
           "taker_fee_bps": {
             "title": "Taker Fee Bps",
             "type": "number"
@@ -6195,6 +6225,10 @@
           "maker_fee_bps",
           "taker_fee_bps",
           "min_notional",
+          "slippage_bps",
+          "impact_bps",
+          "region",
+          "legal_entity",
           "fee_tiers",
           "configured",
           "live_enabled"

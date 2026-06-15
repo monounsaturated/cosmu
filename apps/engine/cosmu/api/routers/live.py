@@ -319,6 +319,10 @@ def live_venue_catalog() -> VenueCatalogResponse:
             maker_fee_bps=float(v.maker_fee_bps),
             taker_fee_bps=float(v.taker_fee_bps),
             min_notional=float(v.min_notional),
+            slippage_bps=float(v.slippage_bps),
+            impact_bps=float(v.impact_bps),
+            region=v.region,
+            legal_entity=v.legal_entity,
             fee_tiers=[
                 VenueFeeTierInfo(
                     min_volume_30d_usd=float(t.min_volume_30d_usd),

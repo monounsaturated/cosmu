@@ -148,3 +148,15 @@ def test_fee_schedule_bridge_reflects_venue_and_volume() -> None:
     plan = choose_order(gross_edge_bps=30.0, fee=base, spread_bps=4.0)
     assert plan.order_type in {"maker", "market"}
     assert plan.expected_net_bps < 30.0  # fees + spread eat into gross edge
+
+
+def test_venue_catalog_api_surfaces_depth_and_region() -> None:
+    """The read-only venue catalog now lists per-venue market depth + jurisdiction provenance, not just fees —
+    so the UI can show 'fees · depth · region · entity' per venue. A thin event book surfaces a wider spread."""
+    from cosmu.api.routers.live import live_venue_catalog
+
+    by = {v.id: v for v in live_venue_catalog().venues}
+    assert by["binance"].slippage_bps > 0 and by["binance"].impact_bps > 0
+    assert by["okx"].region and by["okx"].legal_entity and "Malta" in by["okx"].legal_entity
+    # Polymarket's thin long-tail book surfaces a wider half-spread than Binance's deep spot book.
+    assert by["polymarket"].slippage_bps > by["binance"].slippage_bps

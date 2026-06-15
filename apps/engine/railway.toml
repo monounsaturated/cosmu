@@ -91,3 +91,11 @@ command = "python3 -m cosmu.research.arm_fleet"
 [[cron]]
 schedule = "50 23 * * *"
 command = "python3 -m cosmu.ingest.venue_fees_refresh"
+
+# VENUE METADATA: daily snapshot of each crypto venue's last price + 24h notional volume per (venue, symbol),
+# priced by that venue's OWN data adapter (OKX/Kraken-Futures/Hyperliquid/Binance — not one asset-class source),
+# into the PIT venue_metadata store. The "what trades where, how deep, at what price" data the app lists +
+# later code reads (read_pit_venue_metadata). READ-ONLY market data, offline-safe, never moves money.
+[[cron]]
+schedule = "55 23 * * *"
+command = "python3 -m cosmu.ingest.venue_metadata_refresh"
