@@ -8,11 +8,9 @@
 --    scan. Dropping it reclaims a large slice of alt_data's index bloat (indexes ~1.4x the heap) at zero read cost.
 drop index if exists idx_alt_data_lookup;
 
--- 2) Tiny PARTIAL index for the hot funding money read (orchestrator/loop.py _funding_rate_asof: the latest
---    binance funding_rate per perp symbol, every mark tick) — a single backward index seek instead of leaning
---    on the wide uq index. Partial → only the funding rows, so it stays small.
-create index if not exists idx_alt_funding_hot on alt_data (symbol, available_at desc)
-  where provider = 'binance' and metric = 'funding_rate';
+-- 2) No dedicated funding index: _funding_rate_asof uses the uq_alt_data_pit equality prefix (provider, symbol,
+--    metric) to reach a small per-symbol set, then sorts COLLATE "C" — fast; an en_US index can't serve a
+--    COLLATE "C" order anyway. (Left intentionally absent.)
 
 -- 3) Unindexed foreign key: strategy_versions.strategy_id references strategies(id) with no index, so
 --    strategies→versions joins / lineage walks seq-scan. (Postgres does NOT auto-index FKs.)

@@ -295,9 +295,9 @@ create table if not exists alt_data (
 );
 -- idx_alt_data_lookup (provider,symbol,metric,available_at) was dropped 2026-06-15: it is a strict LEFT-PREFIX
 -- of uq_alt_data_pit below, which already serves read_asof's per-series scan (see migrations/2026-06-15_index_hygiene.sql).
--- Tiny PARTIAL index for the hot funding money read (orchestrator/loop.py _funding_rate_asof, every mark tick).
-create index if not exists idx_alt_funding_hot on alt_data (symbol, available_at desc)
-  where provider = 'binance' and metric = 'funding_rate';
+-- No dedicated funding index: _funding_rate_asof filters provider+symbol+metric (the uq_alt_data_pit equality
+-- prefix) to a small per-symbol set, then sorts it COLLATE "C" — fast without an extra index (and an en_US index
+-- can't serve the COLLATE "C" order anyway).
 -- Covering index for the /scores freshness query: MAX(available_at) per metric across all symbols.
 -- Without this the query does a seqscan over millions of rows (LunarCrush per-symbol backfill).
 create index if not exists idx_alt_data_metric_avail on alt_data (metric, available_at desc);
