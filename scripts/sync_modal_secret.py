@@ -33,6 +33,12 @@ WANTED = (
     "FRED_API_KEY",
     "LUNARCRUSH_API_KEY",
     "POLYMARKET_TOKEN",
+    # Cloudflare R2 — the cold-tier DuckLake lake (cosmu.data.ducklake_store / age_out / retention) needs these
+    # so the heavy lake jobs (backfill, sync, prune) run on Modal compute, not the M2.
+    "R2_ACCOUNT_ID",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "R2_BUCKET",
 )
 
 

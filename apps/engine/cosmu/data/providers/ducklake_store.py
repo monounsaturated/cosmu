@@ -28,9 +28,13 @@ _TABLE = "lake.alt_data"
 
 
 def _pg_catalog_dsn(url: str) -> str:
-    """A clean libpq DSN for the DuckLake postgres catalog: normalise the scheme and DROP the query string
-    (`?pgbouncer=true` etc. — DuckDB's libpq rejects unknown params)."""
-    return re.sub(r"^postgres(ql)?(\+\w+)?://", "postgresql://", url).split("?", 1)[0]
+    """A clean SESSION-mode libpq DSN for DuckLake catalog DDL / VACUUM / the source attach: normalise the
+    scheme, DROP the query string (`?pgbouncer=true` — DuckDB's libpq rejects unknown params), and map Supabase's
+    TRANSACTION pooler port (6543) to the SESSION pooler port (5432). DuckLake's catalog transactions and VACUUM
+    need a real session, which the transaction pooler (pgbouncer) does not provide — so the deployed/synced
+    pooler URL is rewritten to session mode here (a direct `:5432` URL passes through unchanged)."""
+    dsn = re.sub(r"^postgres(ql)?(\+\w+)?://", "postgresql://", url).split("?", 1)[0]
+    return dsn.replace(":6543/", ":5432/")
 
 
 def _is_remote(path: str) -> bool:

@@ -81,7 +81,7 @@ def test_from_settings_picks_catalog_and_data_path(tmp_path):
     r2 = DuckLakeAltDataStore.from_settings(Settings(
         database_url="postgresql://u:p@h:6543/postgres?pgbouncer=true",
         r2_account_id="a", r2_access_key_id="k", r2_secret_access_key="s", r2_bucket="cosmu-lake"))
-    assert r2.catalog == "postgres:postgresql://u:p@h:6543/postgres"  # query string stripped for libpq
+    assert r2.catalog == "postgres:postgresql://u:p@h:5432/postgres"  # query stripped + transaction(6543)→session(5432)
     assert r2.data_path == "r2://cosmu-lake/alt_lake"
 
 
