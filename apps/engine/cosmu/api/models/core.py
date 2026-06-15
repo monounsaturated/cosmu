@@ -342,6 +342,10 @@ class VenueFeeInfo(BaseModel):
     maker_fee_bps: float
     taker_fee_bps: float
     min_notional: float
+    slippage_bps: float        # per-venue market depth: the fixed half-spread the backtest charges here
+    impact_bps: float          # per-venue market depth: the size-aware impact coefficient
+    region: str | None         # operating region / hosting hint (honest metadata — NOT the legality gate)
+    legal_entity: str | None   # the regulated entity we'd contract with (honest metadata — NOT the gate)
     fee_tiers: list[VenueFeeTierInfo]
     configured: bool    # True = API keys are in Railway env; False = venue inert, grey-out in UI
     live_enabled: bool  # whether the venue has a real-money execution adapter at all
