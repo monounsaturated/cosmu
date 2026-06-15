@@ -26,13 +26,14 @@ app = modal.App("cosmu-engine")
 # so `cosmu` is a real importable package (no PYTHONPATH gymnastics, no dep drift — the image IS the lockfile).
 image = (
     modal.Image.debian_slim(python_version="3.12")
+    .apt_install("postgresql-client")  # pg_dump/pg_restore for the daily_backup job (Supabase has no managed backups on Free)
     .add_local_dir(
         str(ENGINE_DIR),
         remote_path="/root/engine",
         copy=True,  # materialize into the layer so the next run_commands can see it
         ignore=["**/__pycache__", "**/*.pyc", "tests/**", "remote/**"],
     )
-    .run_commands("pip install '/root/engine[lake]'")  # [lake] = duckdb, for the cold-tier DuckLake jobs
+    .run_commands("pip install '/root/engine[lake,ops]'")  # [lake]=duckdb (DuckLake jobs), [ops]=boto3 (R2 backup upload)
 )
 
 # A SEPARATE image for the TEST SUITE: runs the full engine suite hermetically off the M2 (the heavy-compute
@@ -139,6 +140,16 @@ def cold_tier_maintenance() -> int:
     return _run(["cosmu.data.retention", "--apply"])  # gated: lake-completeness checked inside before any DELETE
 
 
+@app.function(schedule=modal.Cron("0 5 * * *"), **_HEAVY)
+def daily_backup() -> int:
+    """DAILY (05:00 UTC) self-managed money-truth backup — replaces Supabase's managed daily backups, which are
+    GONE on the Free plan. `pg_dump -Fc` of the control plane + DuckLake catalog (EXCLUDES the alt_data rows —
+    they live in the R2 lake, parity-proven), uploaded to r2://<bucket>/backups/pg/ + last-14 retention. Needs
+    postgresql-client (in the image), DATABASE_URL + R2 keys (in the cosmu-engine secret). Restore:
+    pg_restore --no-owner --clean --if-exists -d '<session DSN :5432>' <file>."""
+    return _run(["cosmu.data.pg_backup"])
+
+
 @app.function(**_HEAVY)
 def run_module(module: str, args: list[str] | None = None) -> int:
     """Escape hatch: run any engine module as `python -m <module> [args…]` on Modal compute.
@@ -161,7 +172,7 @@ def tests(paths: str = "tests", expr: str = "") -> int:
 
 @app.local_entrypoint()
 def main(job: str = "gate_sweep", module: str = "", args: str = "", apply: bool = False, hot_window_days: int = 90) -> None:
-    """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|perp_gate_sweep|paper_mark|cost_refresh|sync_lake|prune|run_module]`.
+    """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|perp_gate_sweep|paper_mark|cost_refresh|sync_lake|daily_backup|prune|run_module]`.
     For run_module pass --module cosmu.x.y and optional --args "--flag value" (space-split).
     For prune pass --apply to actually delete (default dry-run) and optional --hot-window-days N."""
     jobs = {
@@ -172,6 +183,7 @@ def main(job: str = "gate_sweep", module: str = "", args: str = "", apply: bool 
         "cost_refresh": cost_refresh,
         "perp_gate_sweep": perp_gate_sweep,
         "sync_lake": sync_lake,
+        "daily_backup": daily_backup,
         "tests": tests,
     }
     if job == "run_module":

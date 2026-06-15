@@ -46,6 +46,12 @@ lake = [
 live = [
   "py-clob-client>=0.17",
 ]
+# OPS tooling that talks to object storage directly (the daily pg_dump→R2 backup uploads via boto3, since
+# DuckDB can only write query results, not an arbitrary dump file). Lazy-imported, so the engine/tests stay
+# lean without it. Installed in the Modal image (where the daily_backup cron runs): pip install -e ".[ops]".
+ops = [
+  "boto3>=1.34",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
