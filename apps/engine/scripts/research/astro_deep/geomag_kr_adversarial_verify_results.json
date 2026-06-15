@@ -1,0 +1,52 @@
+{
+  "cell": "crypto_EW|h1|p90",
+  "nulls": {
+    "obs_bps": -24.97,
+    "n": 3141,
+    "n_storm": 1083,
+    "circ_sd_bps": 16.25,
+    "p_circ": 0.1091,
+    "ar_sd_bps": 15.32,
+    "p_ar": 0.1035,
+    "p_iaaft": 0.1075
+  },
+  "oos": {
+    "first70": -22.53,
+    "last30": -27.32,
+    "firstHalf": -43.41,
+    "secondHalf": -7.56,
+    "span": "2017-11-07\u21922026-06-13"
+  },
+  "economic": {
+    "strat": {
+      "ann_ret_pct": 30.62,
+      "sharpe": 0.447,
+      "n": 3142
+    },
+    "bench": {
+      "ann_ret_pct": 19.99,
+      "sharpe": 0.242,
+      "n": 3142
+    },
+    "edge_ann_pct": 10.63,
+    "edge_ci95_pct": [
+      -17.94,
+      39.39
+    ],
+    "n_flips": 235,
+    "edge_positive_prob": 0.762
+  },
+  "fwer": {
+    "n_cells": 18,
+    "best_cell": "crypto_EW|h5|p90",
+    "obs_best_bps": 89.22,
+    "fwer_null_median_bps": 98.42,
+    "fwer_null_p95_bps": 178.05,
+    "p_fwer": 0.604
+  },
+  "survives": false,
+  "survives_null": false,
+  "oos_same_sign": true,
+  "econ_ok": false,
+  "fwer_ok": false
+}

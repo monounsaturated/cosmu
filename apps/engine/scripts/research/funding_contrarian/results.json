@@ -1,0 +1,94 @@
+{
+  "selected": {
+    "mode": "long_flat",
+    "k": 1.0
+  },
+  "oos_sharpe": 0.237,
+  "bh_oos_sharpe": -0.8009,
+  "oos_net_mean_bps": 1.135,
+  "oos_cum_pct": 2.78,
+  "bh_cum_pct": -56.4,
+  "p_null": 0.5295,
+  "deflated_sharpe_p": 0.7533,
+  "n_trials": 6,
+  "per_symbol_oos_positive": [
+    14,
+    30
+  ],
+  "tradeable": false,
+  "sweep": [
+    {
+      "mode": "long_flat",
+      "k": 1.0,
+      "is_sharpe": 0.5094,
+      "oos_sharpe": 0.237,
+      "is_mean_bps": 2.1403,
+      "oos_mean_bps": 1.135,
+      "full_sharpe": 0.3911
+    },
+    {
+      "mode": "long_flat",
+      "k": 2.0,
+      "is_sharpe": 0.3999,
+      "oos_sharpe": 0.6294,
+      "is_mean_bps": 0.562,
+      "oos_mean_bps": 1.572,
+      "full_sharpe": 0.5039
+    },
+    {
+      "mode": "long_flat",
+      "k": 1.5,
+      "is_sharpe": 0.2446,
+      "oos_sharpe": 0.3771,
+      "is_mean_bps": 0.6001,
+      "oos_mean_bps": 1.2085,
+      "full_sharpe": 0.3038
+    },
+    {
+      "mode": "long_short",
+      "k": 1.0,
+      "is_sharpe": -0.726,
+      "oos_sharpe": 0.4824,
+      "is_mean_bps": -4.8817,
+      "oos_mean_bps": 2.2891,
+      "full_sharpe": -0.3347
+    },
+    {
+      "mode": "long_short",
+      "k": 2.0,
+      "is_sharpe": -0.8356,
+      "oos_sharpe": 0.6587,
+      "is_mean_bps": -3.2773,
+      "oos_mean_bps": 1.646,
+      "full_sharpe": -0.3816
+    },
+    {
+      "mode": "long_short",
+      "k": 1.5,
+      "is_sharpe": -0.942,
+      "oos_sharpe": 0.4167,
+      "is_mean_bps": -4.7478,
+      "oos_mean_bps": 1.3353,
+      "full_sharpe": -0.5259
+    }
+  ],
+  "signal_timing_shift_null": {
+    "long_flat_k1.0": {
+      "oos_sr": 0.237,
+      "oos_p": 0.005,
+      "full_p": 0.077
+    },
+    "long_flat_k1.5": {
+      "oos_sr": 0.377,
+      "oos_p": 0.022,
+      "full_p": 0.157
+    },
+    "long_flat_k2.0": {
+      "oos_sr": 0.629,
+      "oos_p": 0.03,
+      "full_p": 0.1
+    }
+  },
+  "leadlag_causal_check": "asymmetric, peaks at L=0/+1 (causal), future-signal L<0 strongly negative -> genuinely causal, NOT astro-style symmetric artifact; decays by L+2",
+  "interpretation": "faint REAL causal contrarian timing OOS (long_flat, shift-null p<0.05) but does NOT survive Deflated-Sharpe at 6 trials (p=0.75) nor full-sample shift-null (p>=0.077); OOS beats B&H only because B&H was a -56% bear leg. Not tradeable."
+}

@@ -1,0 +1,7 @@
+signal,rule,n,sh_tr,sh_oos,ann_oos,bh_oos,edge_oos_pp,p_null,dsr
+composite,R1_long_flat,943,1.141,-0.421,-18.97,-61.7,42.73,0.0,0.412
+composite,R2_long_short,943,0.399,0.935,40.43,-61.7,102.13,0.0085,0.354
+mom_only,R1_long_flat,943,1.25,-0.465,-19.42,-61.7,42.28,0.0,0.465
+mom_only,R2_long_short,943,0.621,0.805,33.42,-61.7,95.11,0.0015,0.421
+macro_only,R1_long_flat,943,0.522,-1.256,-53.64,-61.7,8.05,0.4645,0.05
+macro_only,R2_long_short,943,-0.68,-0.984,-48.24,-61.7,13.46,0.0,0.006

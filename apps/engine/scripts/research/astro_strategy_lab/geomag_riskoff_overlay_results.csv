@@ -1,0 +1,4 @@
+window,n,sharpe_overlay,sharpe_bh,ann_overlay_pct,ann_bh_pct,edge_pp
+full,3222,0.468,0.272,37.47,25.31,12.16
+train,2094,0.59,0.36,58.96,39.16,19.8
+oos,1128,0.117,0.049,4.98,3.15,1.83
