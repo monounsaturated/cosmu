@@ -26,12 +26,17 @@ if TYPE_CHECKING:  # avoid importing the heavy store/spec at module load — onl
     from cosmu.knowledge.store import Store
     from cosmu.strategy.spec import StrategySpec
 
-Lane = Literal["gate", "deploy"]
+Lane = Literal["gate", "deploy", "explore"]
 
 # A deploy-lane evaluator is a `taa.validate()`-style callable: it runs the documented strategy on REAL prices and
 # returns its deployment-bar verdict dict (the one carrying the "deployable" key). The router does not care which
 # documented strategy it is — the runner supplies the right module's `validate` so the router stays a pure dispatcher.
 DeployValidate = Callable[..., dict[str, Any]]
+
+# An explore-lane evaluator is the SAME `promote_cohort` the gate-lane uses — the explore lane NEVER has a softer
+# bar. The difference is timing + capital, not the threshold: an explore spec lives in a ZERO-CAPITAL paper/observe
+# disposition until it actually clears this honest gate, at which point it GRADUATES to the gate-lane. So routing an
+# explore spec through `evaluate_by_lane` simply applies the unchanged gate (the graduation test); nothing is loosened.
 
 
 def lane_of(spec: StrategySpec) -> Lane:
@@ -68,6 +73,11 @@ def evaluate_by_lane(
     deploy-lane: runs the supplied `deploy_validate(**validate_kwargs)` — the documented strategy's positive-OOS
         DEPLOYMENT bar (`taa.validate()`-style), NOT the 0.95 in-sample Gate. Returns its verdict dict.
 
+    explore-lane: the GRADUATION test for a vibe. Until graduation an explore spec carries zero capital and is
+        observed on paper (it never reaches here). When a caller DOES route it here it is run through the SAME
+        `promote_cohort` the gate-lane uses — i.e. the explore lane's bar IS the honest gate, with nothing relaxed.
+        A spec that clears it has graduated; a caller flips its lane to "gate". Same required inputs as gate-lane.
+
     The router only chooses the path and forwards arguments; it does not invent a verdict, and it never relaxes a
     threshold. A lane whose required inputs are missing raises ValueError loudly (so a mis-wired runner fails fast
     rather than silently mis-routing — the very failure this module exists to kill)."""
@@ -82,10 +92,27 @@ def evaluate_by_lane(
             )
         return deploy_validate(**(validate_kwargs or {}))
 
-    # gate-lane (the default for every existing spec): the 0.95 deflated-Sharpe + BH-FDR cohort gate.
+    # gate-lane (default) AND explore-lane graduation both run the SAME honest cohort gate — the explore lane is a
+    # disposition (zero-capital paper observation) NOT a softer threshold, so its graduation test IS this gate.
     if store is None or candidates is None or gates is None:
         raise ValueError(
-            f"spec {spec.name!r} is gate-lane but requires `store`, `candidates`, and `gates` — the gate-lane "
+            f"spec {spec.name!r} is {lane}-lane but requires `store`, `candidates`, and `gates` — this lane "
             f"judges a cohort against the 0.95 deflated-Sharpe bar + BH-FDR, not a single spec in isolation."
         )
     return promote_cohort(store, list(candidates), gates, **(promote_kwargs or {}))
+
+
+def is_explore(spec: StrategySpec) -> bool:
+    """True iff the spec is in the zero-capital VIBE/EXPLORE disposition — observed on paper, NOT yet gate-judged.
+    A thin read used by the explore graduation path to decide which tracks to re-test against the unchanged gate."""
+    return lane_of(spec) == "explore"
+
+
+def graduated_spec(spec: StrategySpec) -> StrategySpec:
+    """An explore spec PROMOTED to the gate-lane after it cleared the honest gate — the only lane transition the
+    vibe lane makes. Pure: returns a copy with lane='gate' (so the rest of the system treats it as a normal
+    gate-lane survivor); a non-explore spec is returned unchanged. NEVER loosens anything — graduation happens
+    only after `evaluate_by_lane`/`promote_cohort` already promoted the candidate on the unchanged 0.95 bar."""
+    if lane_of(spec) != "explore":
+        return spec
+    return spec.model_copy(update={"lane": "gate"})

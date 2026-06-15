@@ -301,6 +301,33 @@ def run_tick(
         store.append_event(actor="master", kind="autonomy_funding_failed", ref_type="autonomy", payload={"error": type(exc).__name__})
         notify_tick_error(notifier, kind="autonomy_funding_failed", error=type(exc).__name__)
 
+    # 4b) REJECTS WATCH-LIST Type-II readout — OBSERVE-ONLY. The gate is correctly strict (we NEVER loosen it),
+    # but a strict gate has a Type-II / false-negative rate we never measured. The finder banded gate-rejected-
+    # but-CLOSE candidates into rejects_watch and zero-capital paper-tracked them; here we compute the EMPIRICAL
+    # Type-II estimate (how often a watched reject performed like a survivor on forward paper evidence) and audit
+    # it as an event each tick — so the "is the gate too strict?" question is answered with data, never by softening
+    # anything. Best-effort + offline-safe: a report failure can never abort an already-gated tick.
+    try:
+        from cosmu.master.rejects_lane import rejects_type2_report
+
+        t2 = rejects_type2_report(store)
+        store.append_event(
+            actor="master",
+            kind="rejects_type2_report",
+            ref_type="gate",
+            ref_id="aggregate",
+            payload={
+                "n_rejects": t2.n_rejects,
+                "n_with_paper": t2.n_with_paper,
+                "n_survivors_marked": t2.n_survivors_marked,
+                "survivor_median_return": t2.survivor_median_return,
+                "n_false_negatives": t2.n_false_negatives,
+                "false_negative_rate": t2.false_negative_rate,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001 — the Type-II readout is observe-only; never aborts a tick
+        store.append_event(actor="master", kind="rejects_type2_failed", ref_type="gate", payload={"error": type(exc).__name__})
+
     # 5) EMIT human-facing recommendations (watch the survivor 4 weeks; flag a source that stopped paying).
     rec_ids = _emit_recommendations(store, survivors=survivor_names, ingested=ingested)
 

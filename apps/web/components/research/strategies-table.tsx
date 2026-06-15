@@ -29,6 +29,7 @@ import { StrategySheet } from "@/components/strategy/strategy-sheet";
 import type { Stage } from "@/components/strategy/stage-control";
 import { engineFetch, engineGetJson, enginePeek, enginePrefetch } from "@/lib/engine";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { provenanceOf } from "@/lib/provenance";
 import { cn, formatUsd, formatVenue, numOrNull, signedUsd } from "@/lib/utils";
 
 // ── Lifecycle mapping — the screener's local lifecycle normalizer (the canonical paper predicate is the
@@ -92,7 +93,7 @@ const PBO_CEILING = 0.5;
 // ── COLS — each column a lens onto a REAL row field. `sort` makes the header click-to-sort; `defaultOn:
 // false` columns start hidden (the v18 opt-ins). `min` feeds the colgroup so columns size correctly. ──
 type SortDir = "asc" | "desc";
-type ColKey = "name" | "stage" | "life" | "days" | "trades" | "value" | "pnl" | "pnlpct" | "dsr" | "pbo" | "dd" | "oos" | "venue" | "fees" | "origin";
+type ColKey = "name" | "stage" | "life" | "days" | "trades" | "value" | "pnl" | "pnlpct" | "dsr" | "pbo" | "dd" | "oos" | "provenance" | "venue" | "fees" | "origin";
 type ColDef = {
   key: ColKey;
   label: string;
@@ -118,6 +119,9 @@ const COLS: ColDef[] = [
   { key: "pbo", label: "PBO", width: 64, pickable: true, sort: { dir: "asc", value: (r) => (Number.isFinite(r.pbo) ? r.pbo : null) } },
   { key: "dd", label: "Max DD", width: 80, defaultOn: false, pickable: true },
   { key: "oos", label: "OOS", width: 70, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.track_return_pct) ? r.track_return_pct : null) } },
+  // Provenance bucket (Quant / Vibe / Astro) derived from the row's origin + referenced features — an opt-in
+  // facet so the operator can read WHO authored each edge without it crowding the default view.
+  { key: "provenance", label: "Source", pickerLabel: "Provenance", width: 76, defaultOn: false, pickable: true, sort: { dir: "asc", value: (r) => provenanceOf(r.origin, r.features).label } },
   { key: "venue", label: "Venue", width: 72, defaultOn: false, pickable: true, sort: { dir: "asc", value: (r) => r.venue } },
   { key: "fees", label: "Fees", pickerLabel: "Fees paid", width: 74, defaultOn: false, pickable: true },
   { key: "origin", label: "Origin", width: 82, defaultOn: false, pickable: true, sort: { dir: "asc", value: (r) => r.origin } }
@@ -413,6 +417,7 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
       <SheetPanel
         id={selectedId}
         stage={selectedId ? LIFE_TO_STAGE[lifeStatusOf(rows.find((r) => r.version_id === selectedId))] : undefined}
+        origin={selectedId ? (rows.find((r) => r.version_id === selectedId)?.origin ?? null) : null}
         onClose={() => setSelectedId(null)}
       />
     </>
@@ -512,6 +517,11 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
         </div>
       );
     }
+    case "provenance": {
+      // Bucketed provenance badge (Quant / Vibe / Astro) — derived from the row's origin + referenced features.
+      const prov = provenanceOf(row.origin, row.features);
+      return <span className={prov.badgeClass} data-tip={prov.tip}>{prov.label}</span>;
+    }
     case "venue":
       return <span className="muted" style={{ fontSize: 11 }}>{formatVenue(row.venue)}</span>;
     case "fees":
@@ -577,7 +587,7 @@ function FilterChip({ label, dot, active, onClick }: { label: string; dot?: stri
 
 // ── the right detail sheet — fetches the full Version detail client-side (via the same-origin proxy) and
 // renders the SHARED StrategySheet. Honest loading + error states. ──
-function SheetPanel({ id, stage, onClose }: { id: string | null; stage?: Stage; onClose: () => void }) {
+function SheetPanel({ id, stage, origin, onClose }: { id: string | null; stage?: Stage; origin?: string | null; onClose: () => void }) {
   const [detail, setDetail] = useState<StrategyDetailResponse | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
 
@@ -620,7 +630,7 @@ function SheetPanel({ id, stage, onClose }: { id: string | null; stage?: Stage; 
       ) : state === "error" ? (
         <p className="quiet" style={{ fontSize: 12, padding: "20px 4px" }}>Could not load this Version&apos;s detail — the engine did not respond.</p>
       ) : detail ? (
-        <StrategySheet strategy={detail} stageOverride={stage} />
+        <StrategySheet strategy={detail} stageOverride={stage} origin={origin} />
       ) : null}
     </SidePanel>
   );

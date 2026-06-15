@@ -38,6 +38,7 @@ class NlIntakeResult:
     signals: list[PrecomputedSignal]
     draft: AuthorDraft
     queued: QueuedIdea | None = None  # the inbox drop (None when queue is skipped / store absent)
+    explore_version_id: str | None = None  # the explore-lane version opened (None when explore is off / draft invalid)
     notes: list[str] = field(default_factory=list)
 
 
@@ -78,6 +79,7 @@ def run_pipeline(
     llm: InterpretFn | None = None,
     queue: bool = True,
     inbox_dir: Path | None = None,
+    explore: bool = False,
 ) -> NlIntakeResult:
     """Run the full NL→strategy chain on one document and (optionally) drop the synthesized brief into the inbox.
 
@@ -85,6 +87,12 @@ def run_pipeline(
     offline). `store` enables the audited event trail + the inbox queue. `queue=False` runs the chain WITHOUT
     writing to the inbox (preview/dry-run). Returns the full NlIntakeResult audit trail. Offline-safe; the only
     side effects are Store events + (when queue) one strategies/inbox/*.md file — the Gate later disposes.
+
+    `explore=True` routes the synthesized vibe into the VIBE/EXPLORE disposition INSTEAD of the strict gate: the
+    drafted spec is persisted lane='explore' (paper, ZERO capital) and a zero-capital paper track is opened so the
+    SIM executor observes its own logic forward (observe-only). A vibe GRADUATES to the gate-lane only if it later
+    clears the unchanged gate — explore NEVER loosens or bypasses the gate, it just lets a low-confidence idea be
+    watched on paper first. Default False keeps every existing caller byte-for-byte unchanged (queue-to-gate path).
     """
     notes: list[str] = []
 
@@ -161,7 +169,31 @@ def run_pipeline(
     )
 
     queued: QueuedIdea | None = None
-    if queue and store is not None:
+    explore_version_id: str | None = None
+    if explore and store is not None and draft.valid:
+        # VIBE/EXPLORE disposition: a low-confidence NL idea is NOT shoved at the strict gate. Persist the drafted
+        # spec lane='explore' (paper, ZERO capital) and open a zero-capital paper track so the SIM executor
+        # observes its own logic forward. It graduates to the gate-lane only if it later clears the unchanged gate.
+        from cosmu.master.zero_capital import enter_explore
+
+        result = enter_explore(store, draft.spec)
+        explore_version_id = result.strategy_version_id if (result and result.opened) else None
+        _record(
+            store,
+            "nl_explored",
+            {
+                "source": str(source),
+                "content_hash": content_hash,
+                "name": draft.spec.name,
+                "version_id": explore_version_id,
+                "opened": bool(result and result.opened),
+            },
+        )
+        if explore_version_id is None:
+            notes.append("explore requested but the vibe could not be paper-tracked (unresolved symbol / duplicate)")
+    elif explore and (store is None or not draft.valid):
+        notes.append("explore requested but skipped (no store or invalid draft) — chain ran without paper-tracking")
+    elif queue and store is not None:
         # Drop the synthesized brief into the EXISTING inbox intake — this is the ONLY write into the pipeline
         # the rest of the system already owns (the boot scan / autonomy tick translates + gates it). We queue the
         # standardized BRIEF (not a raw spec) so the existing scanner re-runs the deterministic author path and
@@ -183,5 +215,6 @@ def run_pipeline(
         signals=signals,
         draft=draft,
         queued=queued,
+        explore_version_id=explore_version_id,
         notes=notes,
     )

@@ -287,16 +287,26 @@ def incr_cv(payload: dict) -> dict:
 # ── Drivers ───────────────────────────────────────────────────────────────────────────────────────
 
 
-def run_sweep_modal(jobs: list[dict]) -> list[dict]:
+def run_sweep_modal(jobs: list[dict], *, return_exceptions: bool = False) -> list[dict]:
     """Fan out one ephemeral Modal container per job and collect the result dicts.
 
     Uses an ephemeral `app.run()` context (no deployment, scale-to-zero) so nothing is left running.
     Returns a list of {asset, group, model, auc, null_mean, null_p95, p, n, n_perm} — same shape as
-    run_sweep_local. Order follows .map() (input order).
+    run_sweep_local. Order follows .map() (input order) by default.
+
+    `return_exceptions=True` (opt-in, behavior-preserving default) survives a flaky job: a container that loses
+    its gRPC stream surfaces its exception as a list element instead of aborting the whole map — the caller can
+    then drop/inspect those rows. When set, outputs are UNORDERED (order_outputs=False) so a slow/failed job does
+    not stall the stream. Existing callers (default False) keep the strict ordered, fail-fast behavior.
     """
     if not jobs:
         return []
     with app.run():
+        if return_exceptions:
+            return [
+                r for r in perm_cv.map(jobs, order_outputs=False, return_exceptions=True)
+                if not isinstance(r, Exception)
+            ]
         return list(perm_cv.map(jobs))
 
 

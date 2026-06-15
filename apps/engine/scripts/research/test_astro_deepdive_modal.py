@@ -68,6 +68,51 @@ def test_prepare_only_empty_pairs_aborts() -> None:
         raise AssertionError("expected SystemExit on empty pairs")
 
 
+# ── PHASE1 resilience helpers (resume-from-mirror + bounded retry) — offline, no network/Modal ──────
+
+
+def test_slab_resume_guard_skips_existing_local_parquet(tmp_path) -> None:
+    """_slab_done returns True once a slab's local-mirror Parquet exists (so a re-run SKIPS that pair),
+    and False before it is written — proving resume-from-store without touching R2 or the network."""
+    import pandas as pd
+
+    m = _entry_module()
+
+    class _Store:  # minimal stand-in for LabStore's resume-relevant surface (local mirror only)
+        local = tmp_path
+        r2_ready = False
+
+        def r2_uri(self, batch_id):
+            return f"r2://x/{batch_id}.parquet"
+
+    store = _Store()
+    assert m._slab_done(store, "BTCUSDT", "1d") is False  # nothing written yet
+    p = tmp_path / (m._slab_batch_id("BTCUSDT", "1d") + ".parquet")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({"ts": [1, 2], "close": [10.0, 11.0]}).to_parquet(p)
+    assert m._slab_done(store, "BTCUSDT", "1d") is True  # now present → skip on re-run
+
+
+def test_fetch_month_zip_404_returns_none_without_retry_loop(monkeypatch) -> None:
+    """A genuine 404 (month not published / pair not live) returns None immediately — honest absence, never
+    fabricated bars, and never burns the full retry budget on a permanent miss."""
+    import urllib.error
+    import urllib.request
+
+    m = _entry_module()
+    calls = {"n": 0}
+
+    def _raise_404(*a, **k):
+        calls["n"] += 1
+        raise urllib.error.HTTPError("u", 404, "nope", {}, None)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(urllib.request, "urlopen", _raise_404)
+    cols = ["open_time", "open", "high", "low", "close", "volume",
+            "close_time", "qav", "trades", "tbav", "tbqv", "ignore"]
+    out = m._fetch_month_zip("http://x/none.zip", cols, attempts=4, timeout=1)
+    assert out is None and calls["n"] == 1  # stopped on the 404, did not retry
+
+
 # ── helpers: import the entry harness by path (it shares a name with the package, so load it explicitly) ──
 
 
