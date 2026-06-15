@@ -26,7 +26,17 @@ app = modal.App("cosmu-engine")
 # so `cosmu` is a real importable package (no PYTHONPATH gymnastics, no dep drift — the image IS the lockfile).
 image = (
     modal.Image.debian_slim(python_version="3.12")
-    .apt_install("postgresql-client")  # pg_dump/pg_restore for the daily_backup job (Supabase has no managed backups on Free)
+    .apt_install("curl", "ca-certificates")
+    # pg_dump 17 for the daily_backup job. Supabase runs Postgres 17.x and pg_dump REFUSES to dump a server newer
+    # than itself; Debian's default postgresql-client is v15 (→ "server version mismatch"). Pull the official PGDG
+    # apt repo and install the v17 client (codename auto-detected so it survives a base-image bump).
+    .run_commands(
+        "install -d /usr/share/postgresql-common/pgdg",
+        "curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc",
+        'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main" > /etc/apt/sources.list.d/pgdg.list',
+        "apt-get update",
+        "apt-get install -y --no-install-recommends postgresql-client-17",
+    )
     .add_local_dir(
         str(ENGINE_DIR),
         remote_path="/root/engine",
