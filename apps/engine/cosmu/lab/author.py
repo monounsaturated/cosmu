@@ -55,6 +55,15 @@ class AuthorDraft:
     valid: bool
     issues: list[str]
     requires_approval: bool
+    # Who authored this draft — "human" (chat/UI), "agent" (the LLM master fanning out briefs), or "import"
+    # (pine/url). Drives the novelty policy below (hard reject for agent batches, advisory for a human) and is the
+    # provenance the flywheel can later grade winners by.
+    authored_by: str = "human"
+    # Structural-novelty verdict (deterministic, offline): did this candidate clear the novelty gate vs. recent
+    # dead-ends + complexity? For an agent author a False here is a hard issue (keeps the master from flooding
+    # near-duplicates into the Gate's multiple-testing budget); for a human it is advisory only.
+    novelty_ok: bool = True
+    novelty_reason: str = "novel"
     guardrails: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     # What long-term memory told the brain (audit trail): dead structures avoided + winner patterns leaned into.
@@ -94,6 +103,7 @@ def draft_from_brief(
     store: Store | None = None,
     prior_art: list[str] | None = None,        # features the propose-only research bus surfaced (rag prior-art)
     research_citations: list[str] | None = None,
+    authored_by: str = "human",  # "human" | "agent" | "import" — drives the novelty policy (hard for agent batches)
     chat=None,  # noqa: ANN001 — injectable LLM seam (lab.llm.ChatFn); None → real OpenRouter seam from settings
 ) -> AuthorDraft:
     text = brief.lower()
@@ -179,6 +189,27 @@ def draft_from_brief(
     spec.rationale = brief.strip()[:400] or spec.rationale
 
     issues = validate_spec(spec)
+
+    # Structural novelty — the "never try the same strategy twice" guard. The deterministic novelty_gate (offline,
+    # keyless) rejects a candidate that is too close to a recently-killed dead-end or too complex. For the AGENT
+    # batch author this is a HARD reject (so the master can fan out hundreds of briefs without flooding the Gate's
+    # multiple-testing budget with near-duplicates); for a HUMAN it is advisory (a note) — re-running a known
+    # structure on purpose is a legitimate human choice. Skipped with no store (cold start / tests). Advisory only:
+    # a read hiccup never breaks authoring (the deterministic Gate still disposes).
+    novelty_ok, novelty_reason = True, "novel"
+    if store is not None:
+        try:
+            from cosmu.knowledge.memory import novelty_gate
+
+            novelty_ok, novelty_reason = novelty_gate(spec, store)
+        except Exception as exc:  # noqa: BLE001 — novelty is advisory plumbing; a hiccup must not break authoring
+            notes.append(f"novelty check unavailable ({type(exc).__name__})")
+        else:
+            if not novelty_ok:
+                notes.append(f"novelty: {novelty_reason}")
+                if authored_by == "agent":
+                    issues = [*issues, f"not_novel:{novelty_reason}"]
+
     entry_feats = [c.feature.name for c in spec.entry]
     sources = sorted({_SOURCE_BY_FEATURE.get(f, "parquet_bars") for f in entry_feats})
     requires_approval = any(k in text for k in ("go live", "live", "real money", "real capital", "fund", "deploy capital"))
@@ -205,6 +236,9 @@ def draft_from_brief(
         valid=not issues,
         issues=issues,
         requires_approval=requires_approval,
+        authored_by=authored_by,
+        novelty_ok=novelty_ok,
+        novelty_reason=novelty_reason,
         guardrails=guardrails,
         notes=notes,
         memory_avoided=memory_avoided,

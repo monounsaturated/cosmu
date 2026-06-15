@@ -666,6 +666,20 @@ def feature_names() -> set[str]:
     return {feature.name for feature in FEATURE_REGISTRY if feature.enabled}
 
 
+def registry_version() -> str:
+    """A deterministic 16-char content hash of the ENABLED feature registry — each feature's (name, source,
+    transform_version). Pinned into a promotion's freeze so a survivor stays reproducible: if a feature's source
+    or frozen transform later changes, this hash changes and the live lane can flag that the strategy is no longer
+    running against the registry it was proven on. Keyless/offline (sha256), stable across processes."""
+    import hashlib
+
+    payload = ";".join(
+        f"{f.name}|{f.source}|{f.transform_version or ''}"
+        for f in sorted((f for f in FEATURE_REGISTRY if f.enabled), key=lambda f: f.name)
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
 def features_for(asset_classes: list[str]) -> list[FeatureDefinition]:
     wanted = set(asset_classes)
     return [

@@ -51,6 +51,8 @@ create table if not exists strategy_versions (
   mutation_rationale text,
   origin text not null,
   status text not null,
+  -- Provenance: "human" | "agent" | "import". Nullable so pre-migration rows stay valid (read as unknown).
+  authored_by text,
   created_at text not null,
   killed_at text,
   kill_reason text
@@ -81,8 +83,34 @@ create table if not exists backtests (
   kurtosis numeric,
   n_obs integer,
   regime_spread integer,
+  -- Cost assumptions the backtest was scored under (venue + fee/slippage/impact bps). Nullable; lets a promotion
+  -- freeze the gate-time cost model so live can detect a venue repricing instead of trading an unproven fee.
+  venue_id text,
+  fee_bps numeric,
+  slippage_bps numeric,
+  impact_bps numeric,
   created_at text not null
 );
+
+-- The PROMOTION RECORD — the single frozen source of truth for replicating a gate-survivor in live (see schema.sql
+-- for the full rationale). One row per promoted version. The LLM never writes it.
+create table if not exists strategy_promotions (
+  id text primary key,
+  strategy_version_id text not null unique references strategy_versions(id),
+  lane text not null,
+  params_hash text not null,
+  params text not null,
+  feature_registry_version text,
+  universe_snapshot text,
+  fee_model_snapshot text,
+  gate_score text,
+  proven_regimes text,
+  forward_clock_origin text,
+  net_return_pct numeric,
+  promoted_at text not null
+);
+
+create index if not exists idx_strategy_promotions_version on strategy_promotions(strategy_version_id);
 
 create table if not exists runs (
   id text primary key,

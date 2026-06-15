@@ -66,6 +66,22 @@ The agent's standardized self-knowledge, surfaced on the **Mind** page (`/mind`)
 | **Feature** | A named, point-in-time data signal from the **feature registry** (`apps/engine/cosmu/config/feature_registry.py`). Specs reference features by name only. |
 | **Composable module** | A reusable, named entry/exit building block (e.g. `multi_tp`, `break_even+runner`, `ma_trend_filter`, `orb`, `fvg_retest`/`fvg_multiple`) that a Version declares instead of re-deriving structure. See the create-strategy skill. |
 | **Inbox** | `apps/engine/strategies/inbox/` — drop a `*.md` / `*.pine` / `*.json` strategy file here; it is scanned on deploy/boot, parsed to a `StrategySpec`, and flows through `static_check → Lab → Finder → Gate`. |
+| **Creation Contract** | The hard, machine-enforced floor every authored spec must clear in `validate_spec` (`apps/engine/cosmu/strategy/static_check.py`): all thresholds are `ParamRef`s in `param_space` (no magic numbers); every referenced feature exists in the registry; a non-empty `entry`; a non-empty `rationale` (the disconfirmable WHY); valid horizon + universe. Authoring (chat/inbox/pine/compiler) all call it — research cohorts are the known gap. See the create-strategy skill's checklist. |
+| **Novelty gate** | The deterministic "never try the same strategy twice" guard (`novelty_gate`, `apps/engine/cosmu/knowledge/memory.py`): rejects a candidate too close to a recently-killed dead-end or too complex. **Hard reject for `authored_by="agent"`** batches (the inbox flood guard), **advisory** for a human's intentional re-run. |
+| **`authored_by`** | Provenance of a draft — `human` (chat/UI), `agent` (the LLM master fanning out a theme batch), or `import` (pine/url). Recorded as the `strategize_authored` event actor; drives the novelty policy above. |
+
+### Taxonomy facets — the controlled vocabulary (derived, never hand-tagged)
+
+Every leaderboard row's facets are a **pure function of the typed spec** (`apps/engine/cosmu/strategy/taxonomy.py`) — never a manual tag, so they can't drift from the strategy's real inputs. Use these exact words:
+
+| Facet | Closed value set |
+|-------|------------------|
+| **signal_family** | `social` · `news_events` · `math_price` · `macro_positioning` · `onchain_flow` (derived from each referenced feature's registry `source`) |
+| **edge_type** | `carry` · `breakout` · `event` · `mean-reversion` · `momentum` · `structural` (derived from setup legs + features) |
+| **lane** | `gate` (novel, in-sample-mined → the 0.95 deflated-Sharpe + BH-FDR bar) · `deploy` (externally-documented, decades of OOS → the positive-OOS deployment bar) |
+| **direction** | `1` long/spot · `-1` short/perp · `0` signal-decides |
+| **asset_class** | `crypto` · `equity` · `fx` · `prediction` |
+| **timeframe** | `1h` · `4h` · `1d` |
 
 ## Canonical identifiers (code ↔ DB ↔ API)
 

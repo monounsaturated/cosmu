@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS strategy_versions (
   mutation_rationale TEXT,
   origin TEXT NOT NULL,
   status TEXT NOT NULL,
+  -- Provenance: "human" (chat/UI), "agent" (the LLM master fanning out briefs), or "import" (pine/url). Nullable
+  -- so pre-migration rows stay valid (read as unknown). Lets the flywheel grade winners by who authored them.
+  authored_by TEXT,
   created_at TEXT NOT NULL,
   killed_at TEXT,
   kill_reason TEXT
@@ -78,8 +81,39 @@ CREATE TABLE IF NOT EXISTS backtests (
   kurtosis NUMERIC,
   n_obs INTEGER,
   regime_spread INTEGER,
+  -- The COST ASSUMPTIONS this backtest was scored under — the venue it priced against + the fee/slippage/impact
+  -- (bps) charged per fill. Persisted so a promotion can FREEZE the gate-time cost model and live can detect drift
+  -- (a venue repricing) instead of silently trading at a fee the edge was never proven against. Nullable:
+  -- pre-migration rows + non-screen kinds leave them unset (readers coalesce NULL → unknown, the prior behaviour).
+  venue_id TEXT,
+  fee_bps NUMERIC,
+  slippage_bps NUMERIC,
+  impact_bps NUMERIC,
   created_at TEXT NOT NULL
 );
+
+-- The PROMOTION RECORD — the single, frozen source of truth for replicating a gate-survivor in live. One row per
+-- promoted version (idempotent on strategy_version_id). It snapshots EVERYTHING live needs to reproduce the exact
+-- thing the Gate judged: the fitted params + their hash (drift detection vs a re-fit), the venue fee model the
+-- edge was proven against, the data/feature-registry version, the universe, the gate score, and the proven-regime
+-- passport. live_eligibility + the live step read THIS, not a scattered reconstruction. The LLM never writes it.
+CREATE TABLE IF NOT EXISTS strategy_promotions (
+  id TEXT PRIMARY KEY,
+  strategy_version_id TEXT NOT NULL UNIQUE REFERENCES strategy_versions(id),
+  lane TEXT NOT NULL,                 -- "gate" | "deploy" — which bar this survivor cleared
+  params_hash TEXT NOT NULL,          -- sha256 of the canonical fitted params (live must run THESE, not a re-fit)
+  params TEXT NOT NULL,               -- the frozen fitted params (JSON) — verbatim, no magic numbers re-derived
+  feature_registry_version TEXT,      -- content hash of the enabled registry at promotion (detects feature drift)
+  universe_snapshot TEXT,             -- JSON: venues + asset_classes the spec traded
+  fee_model_snapshot TEXT,            -- JSON {venue_id: {maker_bps, taker_bps}} the gate priced against
+  gate_score TEXT,                    -- JSON: deflated_sharpe / oos_return / passed_gates / holdout_passed
+  proven_regimes TEXT,                -- JSON list — the regime passport (mirrors track_opened)
+  forward_clock_origin TEXT,          -- the paper clock origin (first track_opened ts), for the forward window
+  net_return_pct NUMERIC,             -- the forward net-of-fee return at promotion time (a snapshot)
+  promoted_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_strategy_promotions_version ON strategy_promotions(strategy_version_id);
 
 CREATE TABLE IF NOT EXISTS runs (
   id TEXT PRIMARY KEY,

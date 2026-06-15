@@ -25,6 +25,12 @@ from cosmu.strategy.spec import Condition, FeatureRef, MetaLabel, ParamRef, Stra
 
 _REGIMES = ("bull", "bear", "chop")
 
+# The default per-fill cost assumptions (bps): a fixed half-spread slippage + a participation-scaled market
+# impact. Named so the writers that PERSIST a backtest's cost assumptions (lab/finder._backtest_row) record the
+# exact values the backtest charged — not a re-typed literal that could silently drift from the signature default.
+DEFAULT_SLIPPAGE_BPS = Decimal("5")
+DEFAULT_IMPACT_BPS = Decimal("50")
+
 
 @dataclass(frozen=True)
 class Trade:
@@ -72,8 +78,8 @@ def run_strategy_backtest(
     market: dict[str, list[Bar]],
     *,
     fee_bps: Decimal,
-    slippage_bps: Decimal = Decimal("5"),
-    impact_bps: Decimal = Decimal("50"),
+    slippage_bps: Decimal = DEFAULT_SLIPPAGE_BPS,
+    impact_bps: Decimal = DEFAULT_IMPACT_BPS,
     size_multiplier: float = 1.0,
     alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
     size_series: dict[str, float] | None = None,
@@ -101,8 +107,8 @@ def run_strategy_backtest_detailed(
     market: dict[str, list[Bar]],
     *,
     fee_bps: Decimal,
-    slippage_bps: Decimal = Decimal("5"),
-    impact_bps: Decimal = Decimal("50"),
+    slippage_bps: Decimal = DEFAULT_SLIPPAGE_BPS,
+    impact_bps: Decimal = DEFAULT_IMPACT_BPS,
     size_multiplier: float = 1.0,
     alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
     size_series: dict[str, float] | None = None,
