@@ -1,0 +1,26 @@
+-- Migration: lifecycle-trace audit vocabulary (2026-06-15).
+--
+-- ADDITIVE + NON-BREAKING: this is NOT a schema change. The strategy lifecycle trace
+-- (cosmu/master/lifecycle.py) reuses the EXISTING append-only `events` table verbatim — no new
+-- table, column, index, or constraint. It only introduces NEW event-kind strings written via
+-- store.append_event(kind=...). `events.kind` is a free-text column with no CHECK/enum, so these
+-- new kinds need no DDL to be accepted; this file exists purely to REGISTER the closed vocabulary
+-- so future readers/migrations know what these kinds mean.
+--
+-- New event kinds (ref_type = 'strategy_version', ref_id = version_id):
+--   screened_passed  -- the deterministic gate passed a screen; a track is about to open
+--   paper_started    -- the standalone paper track opened (the paper clock begins)
+--   paper_matured    -- the paper track reached >= PAPER_MIN_DAYS net-positive (forward-proven)
+--   live_eligible    -- both HARD preconditions (paper maturity AND proven regime) now pass
+--   live_armed       -- a human armed/launched the strategy live
+--   live_disarmed    -- the strategy was defunded / disarmed
+--   strategy_killed  -- the strategy was graveyarded / killed
+--
+-- These are an AUDIT layer: they never gate, promote, or arm money. The existing operational events
+-- (track_opened, live_launched, live_defunded, …) and the live_eligibility / execution interlocks
+-- remain the sole authority over what can trade. The read side (api/routers/readiness.py) composes the
+-- live_eligibility + paper_maturity + regime verdicts over this trace — it is read-only.
+--
+-- How to apply: NOTHING to run. SQLite applies schema.sql at boot (unchanged); Postgres/Supabase has the
+-- events table already (free-text kind). This file is documentation of the additive vocabulary only.
+-- Idempotent by construction — there is no statement to run.

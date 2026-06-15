@@ -518,6 +518,10 @@ class FarmLoop:
                     "proven_regimes": proven,
                 },
             )
+            # ADDITIVE lifecycle-trace audit marks (see master/lifecycle.py): the screen passed and the paper
+            # clock now begins. Write-only journaling on the same transaction — never gates/promotes/arms.
+            b.append_event(actor="master", kind="screened_passed", ref_type="strategy_version", ref_id=version_id, payload={"lane": cand.lane, "proven_regimes": proven})
+            b.append_event(actor="master", kind="paper_started", ref_type="strategy_version", ref_id=version_id, payload={"lane": cand.lane, "proven_regimes": proven})
 
         return (
             Evaluated(

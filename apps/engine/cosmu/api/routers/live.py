@@ -33,6 +33,7 @@ from cosmu.api.models import (
     VenueInstrumentInfo,
 )
 from cosmu.knowledge.store import utcnow
+from cosmu.master.lifecycle import emit_lifecycle_event
 from cosmu.spine.universe import venue_rows
 from cosmu.spine.venue import SUPPORTED_JURISDICTIONS, default_catalog
 
@@ -126,6 +127,9 @@ def live_defund(request: DefundRequest) -> DefundResponse:
         defunded = [str(r["strategy_version_id"] or "pool") for r in rows]
     pf.mark_to_market({})
     store.append_event(actor="human", kind="live_defunded", ref_type="live_caps", ref_id="global", payload={"scope": request.scope, "defunded": defunded})
+    # ADDITIVE lifecycle-trace audit mark (see master/lifecycle.py): each defunded version reached disarmed.
+    for _vid in defunded:
+        emit_lifecycle_event(store, _vid, "live_disarmed", {"scope": request.scope})
     return DefundResponse(ok=True, defunded=defunded)
 
 
@@ -416,6 +420,8 @@ def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
             "readiness": readiness, "overridden": verdict.overridden,
         },
     )
+    # ADDITIVE lifecycle-trace audit mark (see master/lifecycle.py): the version reached the armed stage.
+    emit_lifecycle_event(store, request.version_id, "live_armed", {"venue_id": request.venue_id, "symbol": request.symbol, "overridden": verdict.overridden})
     return LaunchActivateResponse(
         armed=True, version_id=request.version_id, venue_id=request.venue_id, symbol=request.symbol,
         budget=request.budget, caps=caps, eligible=eligible, paper_days=ft_days,
