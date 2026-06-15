@@ -1,11 +1,11 @@
 "use client";
 
 // module: PhasedEquity — the v18 strat-sheet equity panel (Iris Bento `.psec` → `.eq-head` title +
-// `.eqwrap` curve + `.eq-axis`). The strategy-detail contract carries ONLY the trade blotter, so the one
-// honest series we can draw is the realized cash-flow curve derived upstream from the real fills. There is
-// no separate "Backtest / Paper / Live" series on this contract, so we do NOT fake a phase selector with
-// fabricated curves — we draw the single real curve and label it plainly. When there are < 2 fills the
-// EquityChart renders its honest empty state — never a fabricated line.
+// `.eqwrap` curve + `.eq-axis`). The honest series is the engine's MARKED scope='track' equity trajectory
+// (StrategyDetailResponse.forward_equity) — the track's marked book value over time, NOT a cash-flow curve.
+// There is no separate "Backtest / Paper / Live" series on this contract, so we draw the single real marked
+// curve and label it plainly. When there are < 2 marked points the EquityChart renders its honest empty
+// state — never a fabricated line.
 
 import { useMemo, useState } from "react";
 import type { Point } from "@cosmu/contracts-ts";
@@ -15,9 +15,9 @@ import { formatUsd } from "@/lib/utils";
 export function PhasedEquity({
   paperCurve,
   height = 120,
-  label = "Equity — realized P&L"
+  label = "Equity — marked value"
 }: {
-  // Forward (paper) equity curve, derived from real fills upstream. < 2 points = honest empty.
+  // Marked equity trajectory (scope='track' snapshots, marked book value). < 2 points = honest empty.
   paperCurve: Point[];
   height?: number;
   label?: string;
@@ -32,12 +32,9 @@ export function PhasedEquity({
     [paperCurve]
   );
 
-  // Scrub mirrors the hovered cumulative value into the title (honest — it's the real series value).
+  // Scrub mirrors the hovered marked value into the title (honest — it's the real snapshot equity).
   const [hover, setHover] = useState<number>(-1);
-  const headValue =
-    hover >= 0 && hover < values.length
-      ? `${values[hover] >= 0 ? "+" : "-"}${formatUsd(Math.abs(values[hover]), 2)}`
-      : null;
+  const headValue = hover >= 0 && hover < values.length ? formatUsd(values[hover], 2) : null;
 
   return (
     <div className="psec">
@@ -49,9 +46,9 @@ export function PhasedEquity({
         labels={labels}
         axis
         height={height}
-        valueFormat={(i) => `${values[i] >= 0 ? "+" : "-"}${formatUsd(Math.abs(values[i]), 2)}`}
+        valueFormat={(i) => formatUsd(values[i], 2)}
         onScrub={setHover}
-        emptyHint="No equity curve yet — this fills in once this Version has ≥ 2 fills on its track."
+        emptyHint="No equity curve yet — this fills in once this Version is marked on its track (≥ 2 snapshots)."
       />
     </div>
   );

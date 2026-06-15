@@ -5714,14 +5714,38 @@
             "title": "Backtests",
             "type": "array"
           },
+          "forward_equity": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Point"
+            },
+            "title": "Forward Equity",
+            "type": "array"
+          },
           "generated_code": {
             "title": "Generated Code",
             "type": "string"
+          },
+          "has_paper_fills": {
+            "default": false,
+            "title": "Has Paper Fills",
+            "type": "boolean"
           },
           "holdout": {
             "additionalProperties": true,
             "title": "Holdout",
             "type": "object"
+          },
+          "invested_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invested Usd"
           },
           "name": {
             "title": "Name",
@@ -5736,10 +5760,43 @@
             "title": "Params",
             "type": "object"
           },
+          "pnl_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Usd"
+          },
+          "realized_pnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realized Pnl"
+          },
           "spec": {
             "additionalProperties": true,
             "title": "Spec",
             "type": "object"
+          },
+          "starting_capital": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starting Capital"
           },
           "summary_md": {
             "anyOf": [
@@ -5780,6 +5837,28 @@
             },
             "title": "Trades",
             "type": "array"
+          },
+          "unrealized_pnl": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unrealized Pnl"
+          },
+          "value_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Usd"
           },
           "version_id": {
             "title": "Version Id",

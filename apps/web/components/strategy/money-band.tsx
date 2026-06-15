@@ -1,10 +1,10 @@
 // module: MoneyBand — the v18 strat-sheet money band (Iris Bento `.money-band` → four `.mb-cell`s:
 // Value · Invested · P&L · Fees). It answers "what is this track worth and what has it cost" at a glance.
-// HONEST BY CONSTRUCTION: the strategy-detail contract carries only the trade blotter, so only P&L
-// (cumulative realized cash flow off the fills) and Fees (summed Execution.fee) are real numbers here.
-// Value and Invested are NOT on this contract — they render an explicit "—" in a quiet `.mb-sub`, never
-// fabricated or faked from 0. Server-safe; every value is passed in already-derived. All dollar values
-// render through formatUsd so the $ is always shown.
+// HONEST BY CONSTRUCTION: every figure is passed in already-derived from the engine's MARKED forward money
+// (StrategyDetailResponse value_usd / invested_usd / pnl_usd — the SAME source the leaderboard serves), never
+// the fills' cash flow. Until the track is marked the caller passes null and the cell renders an explicit "—"
+// in a quiet `.mb-sub`, never fabricated or faked from 0. Exact $0 P&L renders NEUTRAL (no sign, no colour) —
+// a flat track is honestly flat, not a gain. Server-safe; all dollar values render through formatUsd.
 
 import { cn, formatUsd } from "@/lib/utils";
 
@@ -42,23 +42,32 @@ function Cell({ label, value, sub, valueClass }: { label: string; value: string;
 
 export function MoneyBand({ data }: { data: MoneyBandData }) {
   const pnlClass = toneClass(data.pnlUsd);
-  const pnlValue = data.pnlUsd === null ? "—" : `${data.pnlUsd >= 0 ? "+" : "-"}${formatUsd(Math.abs(data.pnlUsd), 2)}`;
-  const pnlSub =
-    data.pnlPct !== null
-      ? `${data.pnlPct >= 0 ? "+" : ""}${data.pnlPct.toFixed(1)}%${data.pnlSub ? ` · ${data.pnlSub}` : ""}`
-      : data.pnlSub ?? null;
+  // Exact $0 renders neutral (no +/- sign) — a flat track is flat, not a gain. Non-zero carries its sign.
+  const pnlValue =
+    data.pnlUsd === null
+      ? "—"
+      : data.pnlUsd === 0
+        ? formatUsd(0, 2)
+        : `${data.pnlUsd > 0 ? "+" : "-"}${formatUsd(Math.abs(data.pnlUsd), 2)}`;
+  const pctText =
+    data.pnlPct === null
+      ? null
+      : data.pnlPct === 0
+        ? "0.0%"
+        : `${data.pnlPct > 0 ? "+" : "-"}${Math.abs(data.pnlPct).toFixed(1)}%`;
+  const pnlSub = pctText !== null ? `${pctText}${data.pnlSub ? ` · ${data.pnlSub}` : ""}` : data.pnlSub ?? null;
 
   return (
     <div className="money-band">
       <Cell
         label="Value"
         value={data.valueUsd !== null ? formatUsd(data.valueUsd, 2) : "—"}
-        sub={data.valueUsd !== null ? "marked now" : "not on track record"}
+        sub={data.valueUsd !== null ? "marked now" : "not marked yet"}
       />
       <Cell
         label="Invested"
         value={data.investedUsd !== null ? formatUsd(data.investedUsd, 2) : "—"}
-        sub={data.investedUsd !== null ? "committed" : "not on track record"}
+        sub={data.investedUsd !== null ? "committed" : "not marked yet"}
       />
       <Cell label="P&L" value={pnlValue} sub={pnlSub} valueClass={pnlClass} />
       <Cell

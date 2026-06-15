@@ -502,3 +502,69 @@ def test_costs_net_edge_zero_for_funded_but_unfilled_track(tmp_path, monkeypatch
     _add_cost(store, vid)
     row = next(r for r in client.get("/costs").json()["per_strategy"] if r["version_id"] == vid)
     assert row["net"] == 0.0, "no real paper fill → $0 realized edge, never the seed/snapshot"
+
+
+def _add_position(store: Store, vid: str, *, qty: str, avg_price: str, realized: str = "0") -> None:
+    """A HELD position row — what the detail money band reads for invested (Σ avg*qty) + realized P&L."""
+    store.insert(
+        "positions",
+        {"strategy_version_id": vid, "instrument_id": "spy-ibkr", "symbol": "SPY", "venue": "ibkr",
+         "qty": qty, "avg_price": avg_price, "realized_pnl": realized, "last_was_loss": 0, "updated_at": utcnow()},
+    )
+
+
+def test_detail_money_is_marked_snapshot_never_the_seed(tmp_path, monkeypatch):
+    # REGRESSION (the fabricated -$1000 lie): a FLAT, fully-invested paper track must read VALUE = marked
+    # scope='track' snapshot equity, P&L = value − starting_capital (= $0), realized = Σ positions.realized_pnl
+    # (= $0) — NEVER tracks.equity (the rosy +4% backtest SEED) and NEVER the opening-buy cash flow.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Flat fully-invested detail"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)                       # tracks.equity SEEDED at 104000 on 100000 (rosy +4%)
+    _add_paper_fill(store, vid)                          # a real is_paper=1 fill
+    _add_position(store, vid, qty="250", avg_price="400")  # 250*400 = 100000 deployed cost basis
+    store.insert(
+        "portfolio_snapshots",
+        {"scope": "track", "ref_id": vid, "ts": utcnow(), "equity": "100000.00", "cash": "0",
+         "positions_value": "100000.00", "pnl": "0.00", "drawdown": "0"},  # marked FLAT at starting_capital
+    )
+    body = client.get(f"/strategies/{vid}").json()
+    assert body["has_paper_fills"] is True
+    assert math.isclose(body["value_usd"], 100000.0, abs_tol=1e-6), "VALUE = marked snapshot, NOT the 104000 seed"
+    assert math.isclose(body["invested_usd"], 100000.0, abs_tol=1e-6)
+    assert math.isclose(body["realized_pnl"], 0.0, abs_tol=1e-6)
+    assert math.isclose(body["pnl_usd"], 0.0, abs_tol=1e-6), "flat track = $0 P&L, never buy notionals/seed"
+    assert math.isclose(body["unrealized_pnl"], 0.0, abs_tol=1e-6)
+    assert body["forward_equity"] and math.isclose(body["forward_equity"][-1]["value"], 100000.0, abs_tol=1e-6)
+
+
+def test_detail_money_all_none_without_a_snapshot_day0(tmp_path, monkeypatch):
+    # Day-0 split-state guard: a track with a fill + positions but NO marked snapshot yet must read ALL money
+    # fields None — never a split band (invested $ shown while value/P&L are "—"), matching the leaderboard.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Filled but unmarked detail"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)
+    _add_paper_fill(store, vid)
+    _add_position(store, vid, qty="250", avg_price="400")
+    body = client.get(f"/strategies/{vid}").json()  # NO portfolio_snapshots row
+    assert body["has_paper_fills"] is True
+    assert body["value_usd"] is None and body["invested_usd"] is None
+    assert body["pnl_usd"] is None and body["realized_pnl"] is None and body["unrealized_pnl"] is None
+    assert body["forward_equity"] == []
+
+
+def test_detail_money_all_none_without_a_fill(tmp_path, monkeypatch):
+    # No real paper fill → all money None (a funded-but-unfilled documented arm reads "—", same as leaderboard).
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "No fills detail"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)
+    store.insert(
+        "portfolio_snapshots",
+        {"scope": "track", "ref_id": vid, "ts": utcnow(), "equity": "104000.00", "cash": "0",
+         "positions_value": "104000.00", "pnl": "4000.00", "drawdown": "0"},  # marked, but no is_paper fill
+    )
+    body = client.get(f"/strategies/{vid}").json()
+    assert body["has_paper_fills"] is False
+    assert body["value_usd"] is None and body["pnl_usd"] is None and body["forward_equity"] == []
