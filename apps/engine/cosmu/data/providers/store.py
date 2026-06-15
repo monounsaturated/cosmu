@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from cosmu.data._iso import iso_utc
+
 from ._types import AltDataPoint
 
 logger = logging.getLogger("cosmu.data.store")
@@ -38,7 +40,7 @@ class AltDataStore:
         path = self._path(provider, symbol, metric)
         with path.open("a") as fh:
             for p in points:
-                fh.write(json.dumps({"ts": p.ts.isoformat(), "available_at": p.available_at.isoformat(), "value": p.value}) + "\n")
+                fh.write(json.dumps({"ts": iso_utc(p.ts), "available_at": iso_utc(p.available_at), "value": p.value}) + "\n")
 
     def read_asof(self, provider: str, symbol: str, metric: str, as_of: datetime) -> list[AltDataPoint]:
         path = self._path(provider, symbol, metric)
@@ -87,9 +89,9 @@ class PgAltDataStore:
         if not points:
             return
         now = utcnow()
-        avails = [p.available_at.isoformat() for p in points]
+        avails = [iso_utc(p.available_at) for p in points]
         rows = [
-            (provider, symbol, metric, p.ts.isoformat(), avail, float(p.value), now)
+            (provider, symbol, metric, iso_utc(p.ts), avail, float(p.value), now)
             for p, avail in zip(points, avails, strict=True)
         ]
         # Batched multi-row insert: one round-trip per ~1000 rows, not per row. Row-by-row over the
@@ -122,26 +124,44 @@ class PgAltDataStore:
             )
 
     def read_asof(self, provider: str, symbol: str, metric: str, as_of: datetime) -> list[AltDataPoint]:
-        # Latest-revision row (max id) per ts among rows available by `as_of`, ordered by ts. Uses a window
-        # function instead of Postgres-only `DISTINCT ON (ts)` so it runs IDENTICALLY on SQLite — the old
+        # Latest-revision row (LATEST available_at) per ts among rows available by `as_of`, ordered by ts. Uses a
+        # window function instead of Postgres-only `DISTINCT ON (ts)` so it runs IDENTICALLY on SQLite — the old
         # `DISTINCT ON` errored on SQLite, which made read_pit_fee silently return its fallback for every local/
-        # test fee read (prod/Postgres was unaffected). On Postgres the result is unchanged (max-id per ts).
+        # test fee read. Ordering by available_at (NOT id) is the true PIT revision winner and is what makes the
+        # Parquet/DuckLake read byte-identical; uq_alt_data_pit guarantees available_at is unique per (series,ts),
+        # so no secondary tiebreak is needed. as_of is canonicalized so the string<= cut matches the stored form.
         rows = self.store.rows(
             "SELECT ts, available_at, value FROM ("
-            "  SELECT ts, available_at, value, row_number() OVER (PARTITION BY ts ORDER BY id DESC) AS rn "
+            "  SELECT ts, available_at, value, row_number() OVER (PARTITION BY ts ORDER BY available_at DESC) AS rn "
             "  FROM alt_data WHERE provider = ? AND symbol = ? AND metric = ? AND available_at <= ?"
             ") t WHERE rn = 1 ORDER BY ts",
-            (provider, symbol, metric, as_of.isoformat()),
+            (provider, symbol, metric, iso_utc(as_of)),
         )
         return [AltDataPoint(ts=datetime.fromisoformat(r["ts"]), available_at=datetime.fromisoformat(r["available_at"]), value=float(r["value"])) for r in rows]
 
     def read_all(self, provider: str, symbol: str, metric: str) -> list[AltDataPoint]:
         """Full revision history (see AltDataStore.read_all) — the per-bar as-of join collapses it correctly."""
         rows = self.store.rows(
-            "SELECT ts, available_at, value FROM alt_data WHERE provider = ? AND symbol = ? AND metric = ? ORDER BY available_at, id",
+            "SELECT ts, available_at, value FROM alt_data WHERE provider = ? AND symbol = ? AND metric = ? ORDER BY available_at, ts",
             (provider, symbol, metric),
         )
         return [AltDataPoint(ts=datetime.fromisoformat(r["ts"]), available_at=datetime.fromisoformat(r["available_at"]), value=float(r["value"])) for r in rows]
+
+
+def hot_alt_store(settings: Any, store: Any = None) -> Any:
+    """The SINGLE factory for the HOT (write + money/UI) alt-data store: a Postgres URL → PgAltDataStore over the
+    knowledge Store, else the JSONL AltDataStore. Ingest, the research loop, and resolve_alt_store's non-cold
+    branch ALL route through this, so the choice can never diverge again (it did: two ingest paths hardcoded PG
+    while the read resolver could pick the lake). Writes ALWAYS land in PG (the hot tier) — this NEVER returns the
+    cold Parquet/lake store; the cold tier is a read-only research path chosen by resolve_alt_store."""
+    url = getattr(settings, "database_url", "") or ""
+    if url.startswith(("postgres://", "postgresql://")):
+        if store is None:
+            from cosmu.knowledge.store import Store
+
+            store = Store(settings)
+        return PgAltDataStore(store)
+    return AltDataStore()
 
 
 # Default routing: the gate asks for a SEMANTIC metric name; the store keyed it under the ingesting

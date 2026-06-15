@@ -35,11 +35,13 @@ def export_alt_data(*, root: str | None = None) -> dict:
 
     target = f"{dst.root}/alt_data"
     # PARTITION_BY (provider, metric) writes provider=…/metric=… dirs; the file keeps symbol/ts/available_at/
-    # value/ingested_at — exactly ParquetAltDataStore's read schema. value→DOUBLE (source NUMERIC/TEXT); the two
-    # timestamps stay ISO-8601 TEXT (string<= PIT comparison, parsed on read — identical to the PG path).
+    # value/ingested_at — exactly ParquetAltDataStore's read schema. value→VARCHAR (the source NUMERIC kept as
+    # EXACT text — a DOUBLE cast rounds 18-significant-digit values and would make a lake-fed backtest read a
+    # different funding_rate/TVL than the PG path); the two timestamps stay ISO-8601 TEXT (string<= PIT
+    # comparison, parsed on read — identical to the PG path).
     con.execute(
         f"COPY (SELECT provider, symbol, metric, CAST(ts AS VARCHAR) AS ts, "
-        f'  CAST(available_at AS VARCHAR) AS available_at, CAST("value" AS DOUBLE) AS "value", '
+        f'  CAST(available_at AS VARCHAR) AS available_at, CAST("value" AS VARCHAR) AS "value", '
         f"  CAST(ingested_at AS VARCHAR) AS ingested_at FROM {src_table}) "
         f"TO '{target}' (FORMAT parquet, PARTITION_BY (provider, metric), OVERWRITE_OR_IGNORE)"
     )

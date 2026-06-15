@@ -316,7 +316,10 @@ CREATE TABLE IF NOT EXISTS alt_data (
   value NUMERIC NOT NULL,
   ingested_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_alt_data_lookup ON alt_data (provider, symbol, metric, available_at);
+-- idx_alt_data_lookup dropped 2026-06-15 (strict left-prefix of uq_alt_data_pit). Tiny PARTIAL index for the
+-- hot funding money read (orchestrator/loop.py _funding_rate_asof, every mark tick):
+CREATE INDEX IF NOT EXISTS idx_alt_funding_hot ON alt_data (symbol, available_at DESC)
+  WHERE provider = 'binance' AND metric = 'funding_rate';
 -- POINT-IN-TIME uniqueness (mirrors schema_postgres.sql uq_alt_data_pit): exact PIT photocopies collapse at the
 -- DB layer; appends use ON CONFLICT DO NOTHING so a re-appended window is a no-op, never a raise. A real vendor
 -- revision (same ts, DIFFERENT available_at) stays a distinct row.
@@ -469,6 +472,7 @@ CREATE INDEX IF NOT EXISTS idx_backtests_version_kind ON backtests(strategy_vers
 CREATE INDEX IF NOT EXISTS idx_executions_run ON executions(run_id);
 CREATE INDEX IF NOT EXISTS idx_executions_ts ON executions(ts);
 CREATE INDEX IF NOT EXISTS idx_strategy_versions_status ON strategy_versions(status);
+CREATE INDEX IF NOT EXISTS idx_strategy_versions_strategy ON strategy_versions(strategy_id);  -- unindexed FK
 CREATE INDEX IF NOT EXISTS idx_research_notes_created ON research_notes(created_at);
 -- recall()/novelty always filter `WHERE kind = ?`; without this the append-only graveyard is a full scan.
 CREATE INDEX IF NOT EXISTS idx_research_notes_kind ON research_notes(kind);

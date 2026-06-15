@@ -541,7 +541,20 @@ def _accrue_neutral_funding(
         if perp_mark is not None and perp_mark > 0 and rate is not None:
             total = accrue_funding(store, track, funding_rate=rate, perp_mark=perp_mark)
         else:
-            total = track.funding_accrued  # no fresh rate/mark → carry the prior cumulative forward unchanged
+            # No fresh rate/mark → accrue nothing this tick (carry the prior cumulative forward unchanged). But a
+            # LIVE perp leg WITH a fresh mark and NO funding rate is a DATA GAP (the alt_data funding series fell
+            # behind / aged out), not "no funding due" — surface it LOUDLY instead of silently under-accruing P&L.
+            # Invariant: the alt_data hot-retention horizon MUST exceed the funding mark cadence (cold-tier plan).
+            # The cumulative is still carried unchanged; only the silence is removed.
+            if perp_mark is not None and perp_mark > 0 and rate is None:
+                store.append_event(
+                    actor="loop",
+                    kind="funding_rate_missing",
+                    ref_type="strategy_version",
+                    ref_id=track.strategy_version_id,
+                    payload={"symbol": track.perp.symbol},
+                )
+            total = track.funding_accrued
         out[track.strategy_version_id] = total
     return out
 
