@@ -3395,6 +3395,36 @@
         "title": "LeaderboardRow",
         "type": "object"
       },
+      "LifecycleMark": {
+        "description": "One audit mark on the version's journey, read off the events ledger.",
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ts",
+          "actor",
+          "payload"
+        ],
+        "title": "LifecycleMark",
+        "type": "object"
+      },
       "LineageEntry": {
         "properties": {
           "operator": {
@@ -3485,6 +3515,62 @@
           "max_daily_loss"
         ],
         "title": "LiveCaps",
+        "type": "object"
+      },
+      "LiveEligibilityView": {
+        "properties": {
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "forward_ready": {
+            "title": "Forward Ready",
+            "type": "boolean"
+          },
+          "min_days": {
+            "title": "Min Days",
+            "type": "integer"
+          },
+          "net_return_pct": {
+            "title": "Net Return Pct",
+            "type": "number"
+          },
+          "overridden": {
+            "title": "Overridden",
+            "type": "boolean"
+          },
+          "paper_age_days": {
+            "title": "Paper Age Days",
+            "type": "number"
+          },
+          "proven_regimes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Proven Regimes",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "regime_eligible": {
+            "title": "Regime Eligible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "eligible",
+          "forward_ready",
+          "paper_age_days",
+          "net_return_pct",
+          "min_days",
+          "regime_eligible",
+          "proven_regimes",
+          "overridden",
+          "reason"
+        ],
+        "title": "LiveEligibilityView",
         "type": "object"
       },
       "LivePosition": {
@@ -4469,6 +4555,34 @@
         "title": "OverviewResponse",
         "type": "object"
       },
+      "PaperMaturityView": {
+        "properties": {
+          "live_ready": {
+            "title": "Live Ready",
+            "type": "boolean"
+          },
+          "min_days": {
+            "title": "Min Days",
+            "type": "integer"
+          },
+          "net_return_pct": {
+            "title": "Net Return Pct",
+            "type": "number"
+          },
+          "paper_age_days": {
+            "title": "Paper Age Days",
+            "type": "number"
+          }
+        },
+        "required": [
+          "paper_age_days",
+          "net_return_pct",
+          "live_ready",
+          "min_days"
+        ],
+        "title": "PaperMaturityView",
+        "type": "object"
+      },
       "PineSample": {
         "properties": {
           "name": {
@@ -4762,6 +4876,57 @@
         "title": "PortfolioSummaryResponse",
         "type": "object"
       },
+      "ReadinessResponse": {
+        "description": "The composed lifecycle-trace detail for one version: the three existing verdicts (live-eligibility,\npaper maturity, current regime) PLUS the ordered lifecycle audit trace and the latest stage reached. This is\nan advisory READ \u2014 it never arms money; the live-arming interlocks remain the sole authority.",
+        "properties": {
+          "current_regime": {
+            "$ref": "#/components/schemas/RegimeView"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "live_eligibility": {
+            "$ref": "#/components/schemas/LiveEligibilityView"
+          },
+          "paper_maturity": {
+            "$ref": "#/components/schemas/PaperMaturityView"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "trace": {
+            "items": {
+              "$ref": "#/components/schemas/LifecycleMark"
+            },
+            "title": "Trace",
+            "type": "array"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "stage",
+          "eligible",
+          "current_regime",
+          "live_eligibility",
+          "paper_maturity",
+          "trace"
+        ],
+        "title": "ReadinessResponse",
+        "type": "object"
+      },
       "RealtimeStatusResponse": {
         "description": "The worker's visible pulse. `enabled` mirrors the env toggle; `status` is derived server-side:\n'off' (disabled, no expectation of beats) \u00b7 'fresh' (last beat within the stale threshold) \u00b7\n'stale' (enabled but the last beat is old \u2014 the badge state) \u00b7 'never' (enabled, no beat recorded).",
         "properties": {
@@ -4969,6 +5134,29 @@
           "by_label"
         ],
         "title": "RegimeCoverage",
+        "type": "object"
+      },
+      "RegimeView": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "trend": {
+            "title": "Trend",
+            "type": "string"
+          },
+          "vol_bucket": {
+            "title": "Vol Bucket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "vol_bucket",
+          "trend"
+        ],
+        "title": "RegimeView",
         "type": "object"
       },
       "RulesRequest": {
@@ -7516,6 +7704,46 @@
           }
         },
         "summary": "Portfolio Summary"
+      }
+    },
+    "/readiness/{version_id}": {
+      "get": {
+        "description": "Compose the three existing deterministic verdicts for one version into a single lifecycle-trace view,\nand attach its audit trace from the events ledger. Read-only: reuses live_eligibility_verdict (which itself\ncomposes paper_maturity + current_regime), so this surface can never disagree with the live-arming gate. All\nreads share one connection.",
+        "operationId": "readiness_detail_readiness__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Readiness Detail"
       }
     },
     "/realtime/status": {

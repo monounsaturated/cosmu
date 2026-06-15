@@ -669,6 +669,13 @@ export interface LeaderboardRow {
   version_id: string;
 }
 
+export interface LifecycleMark {
+  actor: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  ts: string;
+}
+
 export interface LineageEntry {
   operator?: string | null;
   origin?: string | null;
@@ -686,6 +693,18 @@ export interface LiveCaps {
   global_cap: number;
   max_daily_loss: number;
   per_strategy_cap: number;
+}
+
+export interface LiveEligibilityView {
+  eligible: boolean;
+  forward_ready: boolean;
+  min_days: number;
+  net_return_pct: number;
+  overridden: boolean;
+  paper_age_days: number;
+  proven_regimes: string[];
+  reason: string;
+  regime_eligible: boolean;
 }
 
 export interface LivePosition {
@@ -880,6 +899,13 @@ export interface OverviewResponse {
   pnl_net: number;
 }
 
+export interface PaperMaturityView {
+  live_ready: boolean;
+  min_days: number;
+  net_return_pct: number;
+  paper_age_days: number;
+}
+
 export interface PineSample {
   name: string;
   source: string;
@@ -935,6 +961,16 @@ export interface PortfolioSummaryResponse {
   sim_pnl_net: number;
 }
 
+export interface ReadinessResponse {
+  current_regime: RegimeView;
+  eligible: boolean;
+  live_eligibility: LiveEligibilityView;
+  paper_maturity: PaperMaturityView;
+  stage: string | null;
+  trace: LifecycleMark[];
+  version_id: string;
+}
+
 export interface RealtimeStatusResponse {
   consumers?: Record<string, unknown> | null;
   enabled: boolean;
@@ -975,6 +1011,12 @@ export interface RegimeCoverage {
   covered: number;
   grid: RegimeCell[];
   total: number;
+}
+
+export interface RegimeView {
+  label: string;
+  trend: string;
+  vol_bucket: string;
 }
 
 export interface RulesRequest {
