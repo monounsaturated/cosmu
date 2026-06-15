@@ -1,6 +1,6 @@
 # LIVE IGNITION (orchestrator/paper_step.py): a status='live' track on an ARMED venue routes its orders
 # through that venue's real ExecutionAdapter (live book), while everything else stays SIM. Safe by default:
-# with the live toggle off / no keys, a 'live' track still forward-tests in SIM — no real order is possible.
+# with the live toggle off / no keys, a 'live' track still paper-trades in SIM — no real order is possible.
 # Tested offline with a fake active adapter (no chain/network).
 
 from __future__ import annotations
@@ -156,7 +156,7 @@ def test_live_position_exit_also_routes_live(tmp_path, monkeypatch):
 
 
 def test_unarmed_live_track_stays_sim(tmp_path):
-    """SAFE DEFAULT: a status='live' track with NO armed venue (toggle off / no keys) forward-tests in SIM —
+    """SAFE DEFAULT: a status='live' track with NO armed venue (toggle off / no keys) paper-trades in SIM —
     it never routes a real order. This is the byte-identical-to-before behaviour every existing run relies on."""
     store = _store(tmp_path)
     vid = _persist_survivor(store)

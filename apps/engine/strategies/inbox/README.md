@@ -6,7 +6,7 @@ Drop a strategy file here and the engine picks it up. Each file is one **Version
 
 - Accepted file types: `*.md` (YAML front-matter + thesis prose), `*.json` (raw spec), `*.pine` (TradingView Pine — auto-translated, thresholds lifted into a fitted `param_space`).
 - The inbox is **scanned on deploy/boot.** Each file is parsed to a `StrategySpec`, run through `static_check`, then enters the Lab.
-- Flow: `inbox → static_check → Lab → Finder → Gate`. A Version that clears the **Gate** earns its own standalone **Track** — a $100k SIM forward-test (no pooled wallet, no cross-strategy allocation). **Live stays off** until armed.
+- Flow: `inbox → static_check → Lab → Finder → Gate`. A Version that clears the **Gate** earns its own standalone **Track** — a SIM track funded at the configured `sim_track_capital` (default $1,000; no pooled wallet, no cross-strategy allocation). **Live stays off** until armed.
 - These are **data files**, not code. The engine owns the scanner that reads them; authors only write the spec.
 
 ## The format (`.md`)

@@ -81,9 +81,9 @@ class _Managed:
     position: PositionView | None  # None ⇒ flat (re-entry candidate)
     liquidate_reason: str | None = None
     # `status` is the strategy_version status; `routing` is where THIS track's fills go this tick: "sim" (the
-    # default forward-test book) or "live" (status='live' on an armed venue → real CLOB/exchange order). The
+    # default paper book) or "live" (status='live' on an armed venue → real CLOB/exchange order). The
     # managed `position` is read from the matching book, so a live track exits its live position and a
-    # forward-test track exits its sim position.
+    # paper track exits its sim position.
     status: str = "screened"
     routing: str = "sim"
 
@@ -257,7 +257,7 @@ def _managed_tracks(
         elif status == "live" and venue_id in armed_venues:
             routing, book_pos = "live", None  # flat live track → its entry signal opens on the live book
         else:
-            routing, book_pos = "sim", held_sim.get(vid)  # forward-test / not-yet-armed → sim book (unchanged)
+            routing, book_pos = "sim", held_sim.get(vid)  # paper / not-yet-armed → sim book (unchanged)
         out.append(_Managed(vid, spec, params, symbol, venue_id, book_pos, status=status, routing=routing))
     return out, report
 
@@ -436,7 +436,7 @@ def step_tracks(
             )
 
     if pending:
-        # Two lanes through the ONE order path. SIM intents (forward-test) fill deterministically with no
+        # Two lanes through the ONE order path. SIM intents (paper) fill deterministically with no
         # adapter, exactly as before. LIVE intents (status='live' on an armed venue) route through that
         # venue's real adapter with the toggle ON — execute_orders' 5 interlocks (gate-passed, caps,
         # kill-switch, adapter.active, regime) still decide sim-vs-live per order, so a mis-set flag can only

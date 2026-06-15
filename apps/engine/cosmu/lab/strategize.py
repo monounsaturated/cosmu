@@ -69,7 +69,7 @@ _WORD_COUNTS: dict[str, int] = {"a couple": 2, "a few": 3, "some": 3, "several":
 _THEME_LEAD_RE = re.compile(r"\b(?:on|about|around|from|for|using|with|themed?(?: on| around)?)\s+(.+)$", re.IGNORECASE)
 # Default batch size when phrasing says "a batch / some" with no explicit number.
 _DEFAULT_BATCH = 3
-_MAX_BATCH = 16  # hard cap so a runaway "generate 1000" can't flood the inbox; surfaced in notes when clamped.
+_MAX_BATCH = 64  # hard cap so a runaway "generate 1000" can't flood the inbox; surfaced in notes when clamped.
 
 
 @dataclass
