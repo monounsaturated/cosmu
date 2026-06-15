@@ -45,6 +45,10 @@ class CohortPersist:
     audit_trustworthy: str | None = None
     holdout: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
+    # OBSERVE-ONLY rejects watch-list (master/rejects_lane). Default OFF so every existing caller is byte-for-byte
+    # unchanged. When True, AFTER the verdict row is written we additionally zero-capital watch the gate-rejected-
+    # but-CLOSE candidates to measure the gate's Type-II rate — best-effort, never touches the gate's pass/fail.
+    watch_rejects: bool = False
 
 
 def durable_persist(*, run_id: str, hypothesis: str, source: str, data_source: str = "live", **extra: Any) -> CohortPersist:
@@ -129,6 +133,15 @@ def persist_cohort_verdict(persist: CohortPersist, candidates: list[Any], promot
             ref_id=persist.run_id,
             payload={"source": persist.source, "decision": decision, "n_promoted": len(promoted)},
         )
+        # OBSERVE-ONLY hook: zero-capital watch the gate-rejected-but-CLOSE candidates (Type-II measurement).
+        # Opt-in (default OFF), best-effort INSIDE this try (a watch-list failure must never break the verdict),
+        # and strictly downstream of the verdict — it reads the promotions, never the gate's pass/fail.
+        if persist.watch_rejects:
+            from cosmu.master.rejects_lane import identify_rejects, persist_rejects_watch
+
+            persist_rejects_watch(
+                persist.store, identify_rejects(promotions, candidates), persist.run_id
+            )
         return True
     except Exception:  # noqa: BLE001 — a verdict-persist failure must never break the research/gate path.
         log.warning("persist_cohort_verdict failed for run_id=%s source=%s", persist.run_id, persist.source, exc_info=True)

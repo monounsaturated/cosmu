@@ -140,9 +140,64 @@ class MetaLabel(BaseModel):
     sizing: Literal["skip", "proportional"] = "skip"
 
 
+class EventFilter(BaseModel):
+    """A point-in-time predicate over a cosmu.data.events_store.MarketEvent. An entry fires on a bar when a
+    matching event became KNOWN to us in that bar's interval (joined on `available_at`, never `ts` — a scraped
+    archive is honestly available at scrape time, never backdated). `source` matches the event provider
+    (gdelt | cryptopanic | rss | xai_twitter | polymarket | ...); None => any provider. `kind` matches the
+    extractor's typed `event_type` (None => any). `min_magnitude` requires the extractor's surprise/magnitude
+    in [0,1] to clear a floor (None => no magnitude floor; an unextracted event has magnitude None and is kept
+    only when min_magnitude is None). `direction` requires the extractor's signed claim (-1|0|+1; None => any
+    side). No magic numbers leak into entry/exit — the magnitude floor is the only knob and it lives here as a
+    typed, fitted-or-fixed field, mirroring how condition thresholds stay off the price path."""
+
+    source: str | None = None
+    kind: str | None = None
+    min_magnitude: float | None = None
+    direction: Literal[-1, 0, 1] | None = None
+
+
+class EventEntrySignal(BaseModel):
+    """The entry leg of an event strategy: a single EventFilter whose match opens a position on the NEXT bar
+    (same prior-bar-signal / next-bar-fill discipline as every indicator entry). `cooldown_bars` suppresses
+    re-entry for N bars after a fired entry so one clustered news burst is one trade, not a flurry (>=0;
+    0 => no suppression, the prior-firing-per-bar default)."""
+
+    filter: EventFilter
+    cooldown_bars: int = 0
+
+
+class EventRegimeShift(BaseModel):
+    """OPTIONAL slow-regime overlay for event strategies (strategy_kind='regime' reserved): a matching event
+    TILTS exposure for `hold_bars` bars rather than opening a discrete trade. Typed now so the discriminator
+    has all three lanes; the backtest treats it as a long-lived entry filter. None on the EventSetup => a
+    discrete event-entry strategy (the default)."""
+
+    filter: EventFilter
+    hold_bars: int
+
+
+class EventSetup(BaseModel):
+    """The event-strategy payload hung off StrategySpec.event (None for every indicator spec, so existing specs
+    are byte-identical). `entry` is the discrete event-entry signal; `regime` is the reserved slow-tilt overlay.
+    Exactly one of them is the active leg — `entry` for strategy_kind='event', `regime` for 'regime'."""
+
+    entry: EventEntrySignal | None = None
+    regime: EventRegimeShift | None = None
+
+
 class StrategySpec(BaseModel):
     name: str
     rationale: str
+    # First-class strategy TYPE discriminator the router uses to pick the evaluator path: "indicator" = the
+    # price/TA + alt-condition backtest (every existing spec — the default keeps them all valid and unchanged);
+    # "event" = entries fire on a typed MarketEvent matching `event.entry.filter` (point-in-time on available_at)
+    # and route through cosmu/data/event_backtest.py; "regime" = the reserved slow-tilt overlay (event.regime).
+    # The same downstream gate scores all three — only the entry-generation path differs.
+    strategy_kind: Literal["indicator", "event", "regime"] = "indicator"
+    # The event/alt payload — REQUIRED when strategy_kind is "event"/"regime", None for indicator specs (so a
+    # plain indicator spec is byte-identical to before). See EventSetup.
+    event: EventSetup | None = None
     # Evaluation lane — the TYPED discriminator the master uses to pick the correct evaluator path, so routing is
     # explicit on the spec instead of an accident of which function a runner happens to call (the silent mis-routing
     # that killed long-only equity in the gate-lane). "gate" = a NOVEL in-sample-mined hypothesis: judged by the

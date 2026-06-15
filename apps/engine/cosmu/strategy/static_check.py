@@ -47,7 +47,10 @@ def validate_spec(spec: StrategySpec) -> list[str]:
     # master agent can author at scale without silently dropping the strategy's intent. (Quality heuristics —
     # boilerplate length, narrative-vs-structure contradictions — stay ADVISORY in the authoring skills; these two
     # are the hard correctness invariants, true of every existing spec in the corpus.)
-    if not spec.entry:
+    # EXCEPTION: event/regime specs have NO price/TA entry by design — their trigger is the MarketEvent match
+    # (event payload), so the "entry required" invariant applies only to indicator specs. Mirror is_event_kind
+    # inline (don't import event_router — it pulls the backtest engines into this lightweight validator).
+    if not spec.entry and getattr(spec, "strategy_kind", "indicator") not in ("event", "regime"):
         issues.append("no_entry_conditions")
     if not (spec.rationale or "").strip():
         issues.append("empty_rationale")

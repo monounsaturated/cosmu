@@ -538,3 +538,22 @@ CREATE TABLE IF NOT EXISTS version_combos (
 );
 CREATE INDEX IF NOT EXISTS idx_version_blocks_hash ON version_blocks(block_hash);
 CREATE INDEX IF NOT EXISTS idx_version_combos_hash ON version_combos(combo_hash);
+
+-- Rejects watch-list (OBSERVE-ONLY): gate-rejected-but-CLOSE candidates (DSR in the watch band, survived FDR,
+-- not killed by a critical/risk filter) zero-capital paper-tracked to measure the gate's Type-II / false-negative
+-- rate. NEVER changes the gate's pass/fail — read only for the empirical Type-II report. See master/rejects_lane.py.
+CREATE TABLE IF NOT EXISTS rejects_watch (
+  id TEXT PRIMARY KEY,
+  cohort_run_id TEXT NOT NULL,
+  candidate_id TEXT NOT NULL,
+  strategy_version_id TEXT,
+  deflated_sharpe_prob NUMERIC NOT NULL,
+  band_min NUMERIC NOT NULL,
+  band_max NUMERIC NOT NULL,
+  net_profit NUMERIC NOT NULL DEFAULT 0,
+  reasons TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  UNIQUE (cohort_run_id, candidate_id)
+);
+CREATE INDEX IF NOT EXISTS idx_rejects_watch_cohort ON rejects_watch(cohort_run_id);
+CREATE INDEX IF NOT EXISTS idx_rejects_watch_version ON rejects_watch(strategy_version_id);
