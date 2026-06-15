@@ -22,6 +22,7 @@ from cosmu.knowledge.store import Store
 from cosmu.lab.finder import StrategyFinder, VariantResult
 from cosmu.master.scorer import BacktestMetrics, ScoreVerdict
 from cosmu.spine.engine import EngineFacade
+from cosmu.spine.venue import default_catalog
 from cosmu.strategy.compiler import compile_spec
 
 # A deliberately non-canonical, non-$1000/$10000 value: if ANY seeding path carries a hardcoded literal instead
@@ -67,7 +68,7 @@ def test_finder_promotion_stamps_starting_capital_from_settings(tmp_path):
         deflated_sharpe=0.9, profit_factor=2.0, net_profit=0.04, gate_passed=True, reasons=[],
         fitted_params=fitted, promoted=True, holdout_passed=True,
     )
-    finder._persist(spec, [survivor], {})
+    finder._persist(spec, [survivor], {}, default_catalog().venue_for(spec.universe.venues))
     vid = survivor.version_id
     assert vid is not None
 
