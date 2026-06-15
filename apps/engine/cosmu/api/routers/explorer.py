@@ -9,8 +9,10 @@ import math
 
 from fastapi import APIRouter
 
-from cosmu.api._shared import _json, _metric, store
+from cosmu.api._shared import _json, _metric, settings, store
 from cosmu.api.models import (
+    CostBasisCell,
+    CostBasisResponse,
     ExplorerDetailResponse,
     ExplorerListResponse,
     ExplorerPoint,
@@ -18,6 +20,7 @@ from cosmu.api.models import (
     ExplorerTrade,
     ExplorerVersion,
 )
+from cosmu.research.cost_basis import compute_version_cost_basis
 from cosmu.strategy.taxonomy import derive_facets
 
 router = APIRouter()
@@ -286,4 +289,35 @@ def explorer_detail(version_id: str) -> ExplorerDetailResponse:
         equity_curve=equity_curve,
         trades=trades,
         stats=stats,
+    )
+
+
+@router.get("/explorer/{version_id}/cost-basis", response_model=CostBasisResponse)
+def explorer_cost_basis(version_id: str) -> CostBasisResponse:
+    """Per-basis performance for the fee-basis selector — No fees / venue-1 / venue-2 / … — RECOMPUTED on demand
+    from the spec + fitted params on real cached bars (reusing the pure backtest, never a new sim path). The
+    relative ordering across bases is the point ("which venue keeps more of the edge"); offline or for an asset
+    class not yet wired it returns available=False + reason, an honest "—" rather than a fabricated number."""
+    report = compute_version_cost_basis(store, version_id, settings=settings)
+    return CostBasisResponse(
+        version_id=report.version_id,
+        name=report.name,
+        available=report.available,
+        reason=report.reason,
+        gross_return_pct=report.gross_return_pct,
+        cells=[
+            CostBasisCell(
+                basis=item.basis,
+                label=item.label,
+                venue_id=item.venue_id,
+                fee_bps=item.fee_bps,
+                slippage_bps=item.slippage_bps,
+                impact_bps=item.impact_bps,
+                net_return_pct=item.net_return_pct,
+                cost_ratio=item.cost_ratio,
+                num_trades=item.num_trades,
+                holds=item.holds,
+            )
+            for item in report.items
+        ],
     )

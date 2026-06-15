@@ -257,6 +257,28 @@ export interface CorrelationsResponse {
   survivors: CorrelationFinding[];
 }
 
+export interface CostBasisCell {
+  basis: string;
+  cost_ratio: number;
+  fee_bps: number;
+  holds: boolean;
+  impact_bps: number;
+  label: string;
+  net_return_pct: number;
+  num_trades: number;
+  slippage_bps: number;
+  venue_id: string | null;
+}
+
+export interface CostBasisResponse {
+  available: boolean;
+  cells: CostBasisCell[];
+  gross_return_pct: number | null;
+  name: string;
+  reason: string | null;
+  version_id: string;
+}
+
 export interface CostByCategory {
   amount: number;
   category: string;
@@ -1164,6 +1186,8 @@ export interface UniverseResponse {
 }
 
 export interface ValidationError {
+  ctx?: Record<string, unknown>;
+  input?: string;
   loc: string | number[];
   msg: string;
   type: string;
