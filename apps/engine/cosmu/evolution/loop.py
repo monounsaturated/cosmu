@@ -585,7 +585,7 @@ class FarmLoop:
 
 
 # THE crypto screen universe — the symbols every Binance gate-lane candidate is screened against. The funder
-# reads this too (orchestrator/loop.py): a survivor forward-tests ONLY on a symbol its gate evidence covered.
+# reads this too (orchestrator/loop.py): a survivor paper-trades ONLY on a symbol its gate evidence covered.
 CRYPTO_SCREEN_UNIVERSE: tuple[str, ...] = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")
 
 

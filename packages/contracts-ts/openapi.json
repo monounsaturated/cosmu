@@ -1263,6 +1263,128 @@
         "title": "CorrelationsResponse",
         "type": "object"
       },
+      "CostBasisCell": {
+        "description": "A strategy's net performance under ONE cost basis \u2014 either the friction-free baseline (\"No fees\") or a\nspecific venue's REAL fee + market depth. This is what the fee-basis selector swaps between.",
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "cost_ratio": {
+            "title": "Cost Ratio",
+            "type": "number"
+          },
+          "fee_bps": {
+            "title": "Fee Bps",
+            "type": "number"
+          },
+          "holds": {
+            "title": "Holds",
+            "type": "boolean"
+          },
+          "impact_bps": {
+            "title": "Impact Bps",
+            "type": "number"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "net_return_pct": {
+            "title": "Net Return Pct",
+            "type": "number"
+          },
+          "num_trades": {
+            "title": "Num Trades",
+            "type": "integer"
+          },
+          "slippage_bps": {
+            "title": "Slippage Bps",
+            "type": "number"
+          },
+          "venue_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Id"
+          }
+        },
+        "required": [
+          "basis",
+          "label",
+          "venue_id",
+          "fee_bps",
+          "slippage_bps",
+          "impact_bps",
+          "net_return_pct",
+          "cost_ratio",
+          "num_trades",
+          "holds"
+        ],
+        "title": "CostBasisCell",
+        "type": "object"
+      },
+      "CostBasisResponse": {
+        "description": "Per-basis performance for the fee-basis selector (None / venue-1 / venue-2 / \u2026), RECOMPUTED on demand\nfrom the spec + fitted params on real cached bars \u2014 a self-consistent cross-basis comparison (the relative\nordering across bases is the point; absolute level may differ from the stored single-venue backtest).\n\n`available` is False (with `reason`) when the market can't be loaded (offline, or an asset class whose\nrecompute isn't wired yet) \u2014 an honest \"\u2014\", never a fabricated number. The \"none\" cell is the gross\n(friction-free) baseline; `gross_return_pct` mirrors it for convenience.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/CostBasisCell"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "gross_return_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Return Pct"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "available",
+          "reason",
+          "gross_return_pct",
+          "cells"
+        ],
+        "title": "CostBasisResponse",
+        "type": "object"
+      },
       "CostByCategory": {
         "properties": {
           "amount": {
@@ -5928,6 +6050,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -6792,6 +6921,46 @@
           }
         },
         "summary": "Explorer Detail"
+      }
+    },
+    "/explorer/{version_id}/cost-basis": {
+      "get": {
+        "description": "Per-basis performance for the fee-basis selector \u2014 No fees / venue-1 / venue-2 / \u2026 \u2014 RECOMPUTED on demand\nfrom the spec + fitted params on real cached bars (reusing the pure backtest, never a new sim path). The\nrelative ordering across bases is the point (\"which venue keeps more of the edge\"); offline or for an asset\nclass not yet wired it returns available=False + reason, an honest \"\u2014\" rather than a fabricated number.",
+        "operationId": "explorer_cost_basis_explorer__version_id__cost_basis_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostBasisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Explorer Cost Basis"
       }
     },
     "/health": {

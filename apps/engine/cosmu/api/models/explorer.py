@@ -86,3 +86,36 @@ class ExplorerDetailResponse(BaseModel):
     equity_curve: list[ExplorerPoint]   # empty when no trades recorded
     trades: list[ExplorerTrade]          # empty when no fills
     stats: ExplorerStats
+
+
+class CostBasisCell(BaseModel):
+    """A strategy's net performance under ONE cost basis — either the friction-free baseline ("No fees") or a
+    specific venue's REAL fee + market depth. This is what the fee-basis selector swaps between."""
+
+    basis: str                 # "none" (no-fee baseline) | a venue id, e.g. "binance"
+    label: str                 # display label, e.g. "No fees" / "Binance"
+    venue_id: str | None       # None for the no-fee baseline; the venue id otherwise
+    fee_bps: float             # per-side taker fee applied (0 for the no-fee basis)
+    slippage_bps: float        # half-spread applied (the venue's market depth)
+    impact_bps: float          # size-aware impact coefficient applied
+    net_return_pct: float      # net return under this basis (%)
+    cost_ratio: float          # fraction of the friction-free edge surviving this basis, 0..1
+    num_trades: int
+    holds: bool                # the edge stays net-positive under this basis
+
+
+class CostBasisResponse(BaseModel):
+    """Per-basis performance for the fee-basis selector (None / venue-1 / venue-2 / …), RECOMPUTED on demand
+    from the spec + fitted params on real cached bars — a self-consistent cross-basis comparison (the relative
+    ordering across bases is the point; absolute level may differ from the stored single-venue backtest).
+
+    `available` is False (with `reason`) when the market can't be loaded (offline, or an asset class whose
+    recompute isn't wired yet) — an honest "—", never a fabricated number. The "none" cell is the gross
+    (friction-free) baseline; `gross_return_pct` mirrors it for convenience."""
+
+    version_id: str
+    name: str
+    available: bool
+    reason: str | None                 # why unavailable, when available is False
+    gross_return_pct: float | None     # the friction-free baseline edge (%) — equals the "none" cell's net
+    cells: list[CostBasisCell]

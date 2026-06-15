@@ -1,4 +1,4 @@
-# The Alpaca equities lane shipped key-gated in #172 but nothing selected it — the forward-test clock's
+# The Alpaca equities lane shipped key-gated in #172 but nothing selected it — the paper clock's
 # PricingRouter equity leg was hardwired to keyless Yahoo. This wires the lane: the equity leg PREFERS Alpaca
 # (IEX, dividend-adjusted) when ALPACA keys are configured and degrades honestly to Yahoo without them, while
 # the crypto leg stays on Binance. Widening the /universe "has data" sets to include the equity venue must NOT

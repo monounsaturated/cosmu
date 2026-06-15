@@ -15,6 +15,7 @@
 import type { Backtest, Execution, Point, StrategyDetailResponse } from "@cosmu/contracts-ts";
 import { MoneyBand, type MoneyBandData } from "./money-band";
 import { AiSummary } from "./ai-summary";
+import { CostBasisSelector } from "./cost-basis-selector";
 import { PhasedEquity } from "./phased-equity";
 import { SpecBlocks } from "./spec-view";
 import { StageControl, type Stage } from "./stage-control";
@@ -357,6 +358,8 @@ export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyD
       />
 
       <PhaseComparison headlineBt={headlineBt} paperPnl={paperPnl} trades={trades} ageDays={ageDays} bestOos={bestOos} />
+
+      <CostBasisSelector versionId={strategy.version_id} />
 
       <div className="psec">
         <div className="psec-title">Building blocks</div>

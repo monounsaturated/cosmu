@@ -96,8 +96,8 @@ def execute_orders(
     outcomes: list[OrderOutcome] = []
     run_id = _run_id(store)
     daily = portfolio.daily_loss()
-    # Per-venue hard caps (Rules modal) apply ONLY when live is armed — so the SIM/forward-test lane (live off,
-    # the default) is NEVER constrained by a live $-cap (which would silently distort the forward-test). Read
+    # Per-venue hard caps (Rules modal) apply ONLY when live is armed — so the SIM/paper lane (live off,
+    # the default) is NEVER constrained by a live $-cap (which would silently distort the paper). Read
     # once per batch; enforced deterministically in the gauntlet via venue_max_notional.
     venue_caps = _venue_caps(store) if live_enabled else {}
 

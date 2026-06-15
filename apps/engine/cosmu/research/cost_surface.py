@@ -25,9 +25,13 @@ from cosmu.strategy.spec import StrategySpec
 # `alt_by_symbol` funding join, not by a per-cell flag. So asset_type here is a LABEL dimension that records
 # which market structure the cell describes; the caller supplies a perp spec + funding alt-data to actually
 # price the funding leg.
-# TODO(backtest): run_strategy_backtest takes no `asset_type`/`venue` argument — fees are the only per-venue
-# lever we can vary per cell today. If a dedicated perp/spot execution flag is ever needed, add it to
-# run_strategy_backtest (data/backtest.py) rather than faking it here. (Collision guard: do NOT edit it now.)
+# Per-venue COST is now a real three-lever cell — fee_bps + slippage_bps + impact_bps — each sourced from the
+# venue catalog (Venue.cost_inputs): the backtest is priced at the target venue's fee AND its market depth, so a
+# deep Binance book and a thin Polymarket event book no longer share one slippage assumption. What stays a
+# LABEL (not a backtest arg) is `asset_type`: run_strategy_backtest takes no `asset_type`/`venue` object — perp
+# behaviour (short leg, funding accrual) is driven by the SPEC (spec.direction / spec.funding_feature) and the
+# PIT `alt_by_symbol` funding join, not a per-cell flag. If a dedicated perp/spot execution flag is ever needed,
+# add it to run_strategy_backtest (data/backtest.py) rather than faking it here.
 ASSET_TYPES = ("spot", "perp")
 
 
@@ -194,20 +198,29 @@ def venue_fee_scenarios(
     catalog=None,  # noqa: ANN001 — VenueCatalog; default-imported lazily to keep this module import-light
     volume_30d_usd: Decimal = Decimal("0"),
     asset_types: Sequence[str] = ("spot",),
-    slippage_bps: Decimal = Decimal("5"),
-    impact_bps: Decimal = Decimal("50"),
+    slippage_bps: Decimal | None = None,
+    impact_bps: Decimal | None = None,
+    per_venue_depth: bool = True,
     include_fee_free: bool = True,
 ) -> list[CostScenario]:
-    """One scenario per venue priced at that venue's REAL taker fee (the effective tier for `volume_30d_usd`),
-    plus an optional fee-free baseline cell per venue. This is what makes cross-venue ordering honest — Binance
-    (10 bps) vs Kraken (26 bps) vs Coinbase (60 bps) are the actual fee walls, not a paper assumption."""
+    """One scenario per venue priced at that venue's REAL taker fee (the effective tier for `volume_30d_usd`)
+    AND that venue's REAL market depth (slippage + impact), plus an optional fee-free cell per venue. This is
+    what makes cross-venue ordering honest — Binance (10 bps, deep) vs Kraken (26 bps) vs Coinbase (60 bps) vs a
+    THIN Polymarket event book are the actual fee+depth walls a strategy hits, not one paper assumption.
+
+    Depth resolution per venue: an explicit `slippage_bps`/`impact_bps` (not None) overrides for ALL venues
+    (back-compat — a fee-only sweep passes 0/0 to isolate the fee lever); otherwise `per_venue_depth=True`
+    reads each venue's own slippage_bps/impact_bps from the catalog, and `per_venue_depth=False` falls back to
+    the legacy global 5/50."""
     if catalog is None:
         from cosmu.spine.venue import default_catalog
 
         catalog = default_catalog()
     grid: list[CostScenario] = []
     for venue_id in venues:
-        _, taker = catalog.venue(venue_id).effective_fee(volume_30d_usd)
+        taker, v_slip, v_impact = catalog.venue(venue_id).cost_inputs(volume_30d_usd)
+        slip = slippage_bps if slippage_bps is not None else (v_slip if per_venue_depth else Decimal("5"))
+        impact = impact_bps if impact_bps is not None else (v_impact if per_venue_depth else Decimal("50"))
         for asset_type in asset_types:
             fees = [Decimal("0"), taker] if include_fee_free else [taker]
             for fee in fees:
@@ -216,8 +229,8 @@ def venue_fee_scenarios(
                         fee_bps=fee,
                         venue=venue_id,
                         asset_type=asset_type,
-                        slippage_bps=Decimal(str(slippage_bps)),
-                        impact_bps=Decimal(str(impact_bps)),
+                        slippage_bps=Decimal(str(slip)),
+                        impact_bps=Decimal(str(impact)),
                     )
                 )
     return grid
