@@ -24,8 +24,6 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   async redirects() {
     return [
-      // forward_test → paper rename: the old name lands on the Paper dashboard.
-      { source: "/forward-test", destination: "/paper", permanent: false },
       // Research surface entry: the bare path lands on its only page, the Experiments memory.
       { source: "/research", destination: "/research/experiments", permanent: false },
       // Every folded surface (and its sub-paths) → the Strategies screener, the new home.

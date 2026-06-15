@@ -18,7 +18,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # and intentionally OUTSIDE GateSettings so it can never leak into the deterministic scorer/FDR/money path.
 PAPER_MIN_DAYS: int = 30
 
-# NOTE: the screened→paper badge promotion is now TRADE-based, not time-based — a forward-test entrant earns the
+# NOTE: the screened→paper badge promotion is now TRADE-based, not time-based — a paper entrant earns the
 # "Paper" badge on its FIRST real paper fill (orchestrator.loop._has_paper_fills), so there is no promotion-days
 # threshold constant anymore. PAPER_MIN_DAYS above stays — it is the separate LIVE-readiness maturity gate.
 
@@ -180,7 +180,7 @@ class Settings(BaseSettings):
     binance_testnet_api_key: str | None = Field(default=None, repr=False)
     binance_testnet_api_secret: str | None = Field(default=None, repr=False)
     # Alpaca (US equities): PAPER keys unlock the free paper-trading lane AND the market-data API (IEX feed) —
-    # the equity data+forward-test venue. Live keys are honored ONLY with live.mode=="real" (the same
+    # the equity data+paper venue. Live keys are honored ONLY with live.mode=="real" (the same
     # never-auto-live interlock as Binance). No keys → the adapter is disabled and the equity lane stays on
     # the keyless Yahoo/Stooq path (honest degradation).
     alpaca_paper_api_key: str | None = Field(default=None, repr=False)

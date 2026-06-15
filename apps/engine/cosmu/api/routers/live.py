@@ -237,7 +237,7 @@ def _venue_cap_rows() -> dict[str, float]:
 def live_rules() -> RulesResponse:
     """The live-trading Rules the operator edits: the hard global $ blocker + daily-loss + per-venue caps,
     with each legal venue's real deployed capital + headroom. The per-venue caps are enforced deterministically
-    in the order gauntlet (only when live is armed — the SIM/forward-test lane is never constrained)."""
+    in the order gauntlet (only when live is armed — the SIM/paper lane is never constrained)."""
     catalog = default_catalog()
     with store.reading():
         country = _current_jurisdiction()

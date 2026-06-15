@@ -51,7 +51,7 @@ export function stageReason(stage: Stage, g: GateFacts): string {
       }
       return `It's screening in Backtest and has NOT cleared the Gate${dsr ? ` (deflated-Sharpe ${dsr} — below the strict 0.95 bar, max drawdown ${absPct(g!.maxDd)})` : ""}. That's the machine working as designed: the Gate is deliberately strict, so most ideas are honestly refused here rather than risked.`;
     case "paper":
-      return `It earned Paper by clearing the Gate${g ? ` (deflated-Sharpe ${dsr}, OOS ${pct(g.oosReturn)})` : ""} and is now forward-testing on live market data with NO real money. A ≥30 paper-day net-of-fee proof is the live-readiness signal; the operator decides if and when to arm it live.`;
+      return `It earned Paper by clearing the Gate${g ? ` (deflated-Sharpe ${dsr}, OOS ${pct(g.oosReturn)})` : ""} and is now paper-trading on live market data with NO real money. A ≥30 paper-day net-of-fee proof is the live-readiness signal; the operator decides if and when to arm it live.`;
     case "live":
       return "It's armed for live trading: it cleared the Gate and matured in Paper, and the operator armed it behind the interlocks (global toggle + venue keys + caps + kill-switch). A real order fires only while every interlock holds.";
     case "killed":

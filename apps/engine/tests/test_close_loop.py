@@ -85,7 +85,7 @@ def test_survivors_open_standalone_tracks_and_real_positions(tmp_path):
     # each survivor proves on its OWN standalone track — funded count == tracks registered (no pooled competition)
     assert funding.funded == len(funding.funded_tracks)
     # H2 (deep review): funding REGISTERS the track FLAT — a real zero-qty registration row, never a static
-    # long. The track's first position is opened by the forward-test executor when ITS OWN entry signal fires.
+    # long. The track's first position is opened by the paper executor when ITS OWN entry signal fires.
     rows = store.rows("SELECT qty FROM positions WHERE strategy_version_id IS NOT NULL")
     assert len(rows) >= 1
     assert all(Decimal(str(r["qty"])) == 0 for r in rows)
@@ -227,7 +227,7 @@ def test_survivor_with_no_funding_venue_is_skipped_not_forced_onto_crypto(tmp_pa
 
 
 def test_crypto_survivors_fund_on_their_screened_universe(tmp_path):
-    """H3 (deep review): a crypto survivor forward-tests on a symbol its gate evidence actually covered — the
+    """H3 (deep review): a crypto survivor paper-trades on a symbol its gate evidence actually covered — the
     screened universe (CRYPTO_SCREEN_UNIVERSE), round-robined ACROSS that pool for multiple survivors — never
     an arbitrary catalog rotation onto an instrument it was never screened on."""
     from cosmu.evolution.loop import CRYPTO_SCREEN_UNIVERSE

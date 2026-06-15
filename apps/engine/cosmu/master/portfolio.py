@@ -62,7 +62,7 @@ class Portfolio:
         return [self._to_view(r) for r in rows]
 
     def register_track(self, *, instrument_id: str, symbol: str, venue: str, strategy_version_id: str) -> None:
-        """Register a FLAT track: a zero-qty position row that makes the version visible to the forward-test
+        """Register a FLAT track: a zero-qty position row that makes the version visible to the paper
         executor (its flat-row query) WITHOUT opening a trade. The funder calls this instead of buying at the
         mark — the track's FIRST entry is then its own spec's signal, so the forward record measures the
         strategy from bar one, never buy-and-hold-from-funding-day. Idempotent: an existing row (any qty)

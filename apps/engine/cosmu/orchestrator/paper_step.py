@@ -40,8 +40,8 @@ _FALLBACK_STOP = Decimal("0.95")
 _FALLBACK_TAKE = Decimal("1.10")
 
 # Statuses that are ALIVE in the forward test — a version the executor still steps forward (vs killed/lab/gone,
-# which it stops stepping and liquidates). "screened" is included: a forward-test entrant is born "screened"
-# (badge: Backtest) and IS actively forward-testing — the paper clock promotes it to "paper" once it accrues a
+# which it stops stepping and liquidates). "screened" is included: a paper entrant is born "screened"
+# (badge: Backtest) and IS actively paper-trading — the paper clock promotes it to "paper" once it accrues a
 # real forward day. Omitting it would freeze every new survivor's clock (never stepped → never promoted).
 _ALIVE_STATUSES = ("screened", "paper", "forward_test", "live")
 

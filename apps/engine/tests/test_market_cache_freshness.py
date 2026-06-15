@@ -200,7 +200,7 @@ def test_yahoo_drops_the_in_progress_session_and_repairs_on_close(tmp_path, monk
 
 
 def test_equity_cache_is_refetched_when_missing_the_latest_session(tmp_path, monkeypatch):
-    """The pre-fix providers served ANY existing cache forever — a forward-test mark could freeze at whenever
+    """The pre-fix providers served ANY existing cache forever — a paper mark could freeze at whenever
     the cache file was created. A cache missing the latest expected closed session must refetch (and merge)."""
     from cosmu.data.market import StooqDailyBarsProvider
 
