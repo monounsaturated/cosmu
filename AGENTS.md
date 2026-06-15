@@ -127,6 +127,13 @@ The REAL limit is **local RAM, not tokens** — push heavy *compute* (`next buil
 - **Ask first**: schema changes, new vendor/spend, live-execution changes, broad renames.
 - **Never**: LLM fires a live order, agent defines its own fitness, hand-maintain Python↔TS types, commit secrets, martingale/revenge sizing.
 
+## Communication style (all agents — when explaining to the operator)
+Always explain **simply and concretely**:
+1. **No analogies** — say the real thing (the number, the field, the file:line), never a metaphor.
+2. **Numbered parts** (1 / 2 / 3) and **ranked** by what matters most first.
+3. **Emojis when they add clarity** (✅ done · ❌ no · ⚠️ caution) — not decoration.
+4. **Plain words over jargon**; match the operator's language (reply in French when asked).
+
 ## Read order (one doc, not all)
 1. **This file** — invariants, env, skills.
 2. **`docs/MASTER_PLAN.md`** — the single operating plan: verified state, real gaps, target, roadmap (waves). Start here for "what now?".

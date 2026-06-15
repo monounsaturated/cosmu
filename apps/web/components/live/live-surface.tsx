@@ -184,9 +184,22 @@ export function LiveSurface({
         title="Live"
         left={
           armed ? (
-            <span className="badge badge-run" style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
-              <span className="run-dot" /> Running
-            </span>
+            // Make the money-reality UNMISTAKABLE in the badge itself: testnet = fake money (the safe default),
+            // live = real funds, sim = internal only. A bare "Running" could be misread as real money — it must
+            // never say "Running" without naming which money it is on. `state.mode` is the engine's resolved mode.
+            state.mode === "live" ? (
+              <span className="badge badge-dn" style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                <span className="run-dot" style={{ background: "var(--down)" }} /> LIVE · real money
+              </span>
+            ) : state.mode === "testnet" ? (
+              <span className="badge badge-gold" style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                <span className="run-dot" style={{ background: "var(--gold)" }} /> TESTNET · test money (not real)
+              </span>
+            ) : (
+              <span className="badge badge-run" style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                <span className="run-dot" /> Running · sim
+              </span>
+            )
           ) : (
             <span className="badge badge-muted">Off</span>
           )
