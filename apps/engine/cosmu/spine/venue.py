@@ -38,6 +38,19 @@ class Venue(BaseModel):
     # ISO-3166 alpha-2 country codes where live trading is NOT legally/operationally available to us.
     # Empty = available everywhere we operate. This is why jurisdiction PICKS the live crypto venue.
     restricted_jurisdictions: list[str] = Field(default_factory=list)
+    # --- per-venue MARKET DEPTH (the other half of trading cost the fee schedule doesn't capture) ---
+    # A strategy must be screened/papered at the depth of the venue it would actually trade on, not one global
+    # assumption: a deep spot book (Binance) fills near mid, a thin event market (Polymarket long-tail) pays a
+    # wide spread + heavy impact. `slippage_bps` is the fixed half-spread; `impact_bps` is the size-aware
+    # market-impact coefficient (cost scales with order notional / bar volume). Both feed run_strategy_backtest.
+    # These are conservative per-venue DEFAULTS (documented estimates, refined from live book/volume ingest, not
+    # fabricated precision) — the same 5/50 the backtest used globally before, now venue-specific.
+    slippage_bps: Decimal = Decimal("5")
+    impact_bps: Decimal = Decimal("50")
+    # --- honest jurisdiction/provenance metadata (queryable, NOT enforced — legality stays
+    # restricted_jurisdictions + live_enabled, the only two load-bearing fields) ---
+    region: str | None = None        # operating region / hosting hint, e.g. "EU" / "Global ex-US" / "On-chain"
+    legal_entity: str | None = None  # the regulated entity we'd contract with, e.g. "OKX Europe Ltd (Malta)"
 
     def effective_fee(self, volume_30d_usd: Decimal | float = Decimal("0")) -> tuple[Decimal, Decimal]:
         """(maker_bps, taker_bps) for a trailing-30d USD volume — the richest tier met, else the base."""
@@ -47,6 +60,13 @@ class Venue(BaseModel):
             return (self.maker_fee_bps, self.taker_fee_bps)
         best = max(eligible, key=lambda t: t.min_volume_30d_usd)
         return (best.maker_fee_bps, best.taker_fee_bps)
+
+    def cost_inputs(self, volume_30d_usd: Decimal | float = Decimal("0")) -> tuple[Decimal, Decimal, Decimal]:
+        """The full per-venue trading-cost triple (taker_bps, slippage_bps, impact_bps) the backtest needs to
+        price this venue honestly — fee at the effective volume tier, plus this venue's market depth. One call so
+        a caller never re-pairs a venue's fee with the wrong (global) depth."""
+        _, taker = self.effective_fee(volume_30d_usd)
+        return (taker, self.slippage_bps, self.impact_bps)
 
     def live_legal_in(self, country_code: str) -> bool:
         """Can we run LIVE here from this jurisdiction? Needs live wiring AND no legal restriction."""
@@ -126,6 +146,8 @@ def default_catalog() -> VenueCatalog:
                 maker_fee_bps=Decimal("10"), taker_fee_bps=Decimal("10"),
                 min_notional=Decimal("10"), lot_size=Decimal("0.0001"),
                 live_enabled=True, restricted_jurisdictions=["US"],
+                slippage_bps=Decimal("5"), impact_bps=Decimal("40"),
+                region="Global ex-US", legal_entity="Binance",
                 fee_tiers=[
                     VenueFeeTier(min_volume_30d_usd=Decimal("0"), maker_fee_bps=Decimal("10"), taker_fee_bps=Decimal("10")),
                     VenueFeeTier(min_volume_30d_usd=Decimal("1000000"), maker_fee_bps=Decimal("9"), taker_fee_bps=Decimal("10")),
@@ -140,6 +162,8 @@ def default_catalog() -> VenueCatalog:
                 maker_fee_bps=Decimal("16"), taker_fee_bps=Decimal("26"),
                 min_notional=Decimal("10"), lot_size=Decimal("0.0001"),
                 live_enabled=True, restricted_jurisdictions=[],
+                slippage_bps=Decimal("7"), impact_bps=Decimal("55"),
+                region="Global", legal_entity="Payward Inc / Payward Europe Ltd (MiCA)",
                 fee_tiers=[
                     VenueFeeTier(min_volume_30d_usd=Decimal("0"), maker_fee_bps=Decimal("16"), taker_fee_bps=Decimal("26")),
                     VenueFeeTier(min_volume_30d_usd=Decimal("100000"), maker_fee_bps=Decimal("14"), taker_fee_bps=Decimal("24")),
@@ -154,6 +178,8 @@ def default_catalog() -> VenueCatalog:
                 maker_fee_bps=Decimal("40"), taker_fee_bps=Decimal("60"),
                 min_notional=Decimal("1"), lot_size=Decimal("0.000001"),
                 live_enabled=True, restricted_jurisdictions=[],
+                slippage_bps=Decimal("8"), impact_bps=Decimal("60"),
+                region="Global", legal_entity="Coinbase Inc",
                 fee_tiers=[
                     VenueFeeTier(min_volume_30d_usd=Decimal("0"), maker_fee_bps=Decimal("40"), taker_fee_bps=Decimal("60")),
                     VenueFeeTier(min_volume_30d_usd=Decimal("10000"), maker_fee_bps=Decimal("25"), taker_fee_bps=Decimal("40")),
@@ -168,6 +194,8 @@ def default_catalog() -> VenueCatalog:
                 maker_fee_bps=Decimal("0.5"), taker_fee_bps=Decimal("0.5"),
                 min_notional=Decimal("1"), lot_size=Decimal("1"),
                 live_enabled=True, restricted_jurisdictions=[],
+                slippage_bps=Decimal("2"), impact_bps=Decimal("25"),
+                region="Global", legal_entity="Interactive Brokers LLC",
             ),
             # Equity — Alpaca: commission-free DATA + paper (paper) venue. Not a live execution path yet,
             # so live_enabled stays False — it feeds the lab and the incubation clock, it does not move money.
@@ -176,6 +204,8 @@ def default_catalog() -> VenueCatalog:
                 maker_fee_bps=Decimal("0"), taker_fee_bps=Decimal("0"),
                 min_notional=Decimal("1"), lot_size=Decimal("1"),
                 live_enabled=False, restricted_jurisdictions=[],
+                slippage_bps=Decimal("3"), impact_bps=Decimal("35"),
+                region="US", legal_entity="Alpaca Securities LLC",
             ),
             # Crypto — OKX: MiCA-compliant EU entity (OKX Europe Ltd, Malta). Spot + perp data source;
             # cheaper than Binance at high volume (spot: 8/10 bps retail, 2/3 bps at >$400M).
@@ -186,6 +216,8 @@ def default_catalog() -> VenueCatalog:
                 maker_fee_bps=Decimal("8"), taker_fee_bps=Decimal("10"),
                 min_notional=Decimal("1"), lot_size=Decimal("0.00001"),
                 live_enabled=False, restricted_jurisdictions=["US"],
+                slippage_bps=Decimal("5"), impact_bps=Decimal("45"),
+                region="EU (MiCA)", legal_entity="OKX Europe Ltd (Malta)",
                 fee_tiers=[
                     VenueFeeTier(min_volume_30d_usd=Decimal("0"),         maker_fee_bps=Decimal("8"),   taker_fee_bps=Decimal("10")),
                     VenueFeeTier(min_volume_30d_usd=Decimal("1000000"),   maker_fee_bps=Decimal("7"),   taker_fee_bps=Decimal("9")),
@@ -204,6 +236,8 @@ def default_catalog() -> VenueCatalog:
                 maker_fee_bps=Decimal("2"), taker_fee_bps=Decimal("5"),
                 min_notional=Decimal("1"), lot_size=Decimal("1"),
                 live_enabled=False, restricted_jurisdictions=["US"],
+                slippage_bps=Decimal("4"), impact_bps=Decimal("50"),
+                region="EU/UK", legal_entity="Crypto Facilities Ltd (FCA) / Payward Europe Ltd (MiCA)",
                 fee_tiers=[
                     VenueFeeTier(min_volume_30d_usd=Decimal("0"),         maker_fee_bps=Decimal("2"),    taker_fee_bps=Decimal("5")),
                     VenueFeeTier(min_volume_30d_usd=Decimal("1000000"),   maker_fee_bps=Decimal("1.5"),  taker_fee_bps=Decimal("4")),
@@ -222,6 +256,8 @@ def default_catalog() -> VenueCatalog:
                 maker_fee_bps=Decimal("1.5"), taker_fee_bps=Decimal("4.5"),
                 min_notional=Decimal("1"), lot_size=Decimal("0.0001"),
                 live_enabled=False, restricted_jurisdictions=[],
+                slippage_bps=Decimal("6"), impact_bps=Decimal("60"),
+                region="On-chain (non-KYC)", legal_entity="Hyperliquid (self-custodial DEX, Arbitrum/HyperEVM)",
                 fee_tiers=[
                     VenueFeeTier(min_volume_30d_usd=Decimal("0"),         maker_fee_bps=Decimal("1.5"),  taker_fee_bps=Decimal("4.5")),
                     VenueFeeTier(min_volume_30d_usd=Decimal("5000000"),   maker_fee_bps=Decimal("1.2"),  taker_fee_bps=Decimal("4")),
@@ -235,6 +271,11 @@ def default_catalog() -> VenueCatalog:
                 maker_fee_bps=Decimal("0"), taker_fee_bps=Decimal("0"),
                 min_notional=Decimal("1"), lot_size=Decimal("1"),
                 live_enabled=False, restricted_jurisdictions=["US"],
+                # Zero trading fee, but the cost is DEPTH: the long-tail event markets (where the mispricing
+                # edge lives, small size an advantage) are thin — a wide spread + heavy impact. High defaults
+                # keep the screen honest; refine per-market from live CLOB book depth once ingested.
+                slippage_bps=Decimal("30"), impact_bps=Decimal("150"),
+                region="On-chain (operator-eligible entity)", legal_entity="Polymarket (CLOB, Polygon)",
             ),
         ],
         instruments=[

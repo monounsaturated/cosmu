@@ -59,7 +59,10 @@ def explorer_list() -> ExplorerListResponse:
         if facets.asset_class:
             assets_set.add(facets.asset_class)
 
-        net_pct = _metric(row["oos_return"]) * 100 - 0.18
+        # oos_return is ALREADY net-of-fee at the venue it was screened on (run_strategy_backtest charges that
+        # venue's taker fee + slippage). Surface it straight — no extra fabricated haircut. The friction-free
+        # gross and the net under OTHER venues come from the on-demand cost-basis recompute, never a constant.
+        net_pct = _metric(row["oos_return"]) * 100
 
         versions.append(
             ExplorerVersion(
@@ -169,9 +172,12 @@ def explorer_detail(version_id: str) -> ExplorerDetailResponse:
         deflated_sharpe = dsr
         oos = _finite(bt_row.get("oos_return"))
         if oos is not None:
-            gross_return_pct = round(oos * 100, 2)
-            # Net = gross minus a nominal 0.18% round-trip cost assumption
-            net_return_pct = round(oos * 100 - 0.18, 2)
+            # oos_return is the NET-of-fee return at the screened venue (the backtest already charged that
+            # venue's fee + slippage), so surface it AS net — not "gross". A true friction-free gross requires
+            # re-running the backtest at zero cost; that (and the net under other venues) is served on demand by
+            # GET /strategies/{id}/cost-basis, never faked here with a magic constant.
+            net_return_pct = round(oos * 100, 2)
+            gross_return_pct = None
         mdd = _finite(bt_row.get("max_dd"))
         max_dd = round(mdd * 100, 2) if mdd is not None else None
         nt = bt_row.get("num_trades")
@@ -194,8 +200,9 @@ def explorer_detail(version_id: str) -> ExplorerDetailResponse:
             except Exception:
                 gate_reason = None
 
-    # cost_ratio: fees paid / |gross cash out| (only meaningful if we have fills and gross > 0)
-    if equity_curve and gross_return_pct and gross_return_pct > 0:
+    # cost_ratio: fees paid / |gross cash out| — computed directly from the real fills (independent of the
+    # stored return), so it survives gross_return_pct being honestly None.
+    if equity_curve:
         total_fees = sum(float(fill["fee"]) for fill in exec_rows)
         gross_cash = sum(
             float(fill["price"]) * float(fill["qty"])

@@ -97,7 +97,9 @@ def leaderboard() -> LeaderboardResponse:
       # built is skipped (logged), so the rest of the floor still renders. (derive_facets is also bulletproof.)
       try:
         # net_pct is the net-of-fee return the maturity signal reads — same field surfaced on the row.
-        net_pct = _metric(row["oos_return"]) * 100 - 0.18
+        # oos_return is ALREADY net-of-fee at the screened venue (the backtest charged that venue's fee +
+        # slippage); surface it straight — no fabricated 0.18 round-trip haircut on top of an already-net number.
+        net_pct = _metric(row["oos_return"]) * 100
         # ADVISORY ONLY (master/paper_maturity.py): surfaced, never a gate. The paper clock runs from the
         # track's first mark; live_ready recommends a matured + net-positive track. The operator decides.
         mat = paper_maturity(row["funded_at"], net_pct)
