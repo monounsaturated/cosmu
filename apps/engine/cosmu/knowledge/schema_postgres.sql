@@ -496,3 +496,22 @@ create table if not exists version_combos (
 );
 create index if not exists idx_version_blocks_hash on version_blocks(block_hash);
 create index if not exists idx_version_combos_hash on version_combos(combo_hash);
+
+-- Index registry (2026-06-15): operator-defined, deterministically-scored point-in-time composite series.
+-- DEFINITIONS only — VALUES live point-in-time in alt_data (provider='index', metric=idx_<id>). See schema.sql.
+create table if not exists indexes (
+  id text primary key,
+  name text not null,
+  rationale text not null,
+  kind text not null,
+  definition text not null,
+  entities text not null,
+  metric text not null,
+  market_wide integer not null,
+  transform_version text not null,
+  cadence_minutes integer not null,
+  status text not null,
+  created_at text not null,
+  updated_at text not null
+);
+create index if not exists idx_indexes_status on indexes(status);

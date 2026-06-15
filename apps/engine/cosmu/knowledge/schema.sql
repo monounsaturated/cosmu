@@ -557,3 +557,23 @@ CREATE TABLE IF NOT EXISTS rejects_watch (
 );
 CREATE INDEX IF NOT EXISTS idx_rejects_watch_cohort ON rejects_watch(cohort_run_id);
 CREATE INDEX IF NOT EXISTS idx_rejects_watch_version ON rejects_watch(strategy_version_id);
+-- Index registry (2026-06-15): operator-defined, deterministically-scored point-in-time composite series
+-- (single_account · social_bucket · event_topic · prompt_rubric). DEFINITIONS only — the VALUES live
+-- point-in-time in alt_data (provider='index', symbol='MARKET' or entity, metric=idx_<id>). Strategies later
+-- key off an index by its metric. Frozen transform_version pins the scoring so ranking is stable/reproducible.
+CREATE TABLE IF NOT EXISTS indexes (
+  id TEXT PRIMARY KEY,                -- slug; the series metric is idx_<id>
+  name TEXT NOT NULL,
+  rationale TEXT NOT NULL,            -- the WHY (on the record at author time)
+  kind TEXT NOT NULL,                 -- single_account | social_bucket | event_topic | prompt_rubric
+  definition TEXT NOT NULL,           -- canonical JSON (handles / topic / prompt)
+  entities TEXT NOT NULL,             -- canonical JSON list; [] = one MARKET-wide series
+  metric TEXT NOT NULL,               -- idx_<id> (the alt_data metric strategies read)
+  market_wide INTEGER NOT NULL,       -- 1 = single MARKET series; 0 = per-entity
+  transform_version TEXT NOT NULL,    -- frozen scoring version (stable ranking / reproducibility)
+  cadence_minutes INTEGER NOT NULL,
+  status TEXT NOT NULL,               -- draft | active | paused
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_indexes_status ON indexes(status);

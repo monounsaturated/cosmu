@@ -22,6 +22,7 @@ import { AiSummary } from "./ai-summary";
 import { CostBasisSelector } from "./cost-basis-selector";
 import { PhasedEquity } from "./phased-equity";
 import { SpecBlocks } from "./spec-view";
+import { RegistryBlocks } from "./registry-blocks";
 import { StageControl, type Stage } from "./stage-control";
 import { cn, formatUsd } from "@/lib/utils";
 
@@ -379,6 +380,7 @@ export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyD
       <div className="psec">
         <div className="psec-title">Building blocks</div>
         <SpecBlocks spec={strategy.spec} />
+        <RegistryBlocks versionId={strategy.version_id} />
       </div>
 
       <RecentTrades trades={trades} />

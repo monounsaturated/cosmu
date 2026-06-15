@@ -1158,3 +1158,33 @@ th[draggable=true]{cursor:pointer}
 
 /* right-aligned action group inside a .toolbar-row (title left, controls + theme toggle right) */
 .toolbar-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0}
+
+/* ── Composition surface: pipeline funnel + funded-rate bar + similar-strategies list ───────────────── */
+/* button-classes reused as Next <Link> (anchors) must not pick up a default underline */
+a.btn-col-picker,a.seeall-btn{text-decoration:none}
+/* funded-rate micro-bar (per-block "how often this ingredient survives the Gate") */
+.fund-bar{position:relative;height:5px;border-radius:3px;background:var(--surf3);overflow:hidden;flex:1;min-width:46px}
+.fund-bar > i{position:absolute;inset:0 auto 0 0;border-radius:3px}
+/* the attrition funnel — bars sized by count; tone tints Paper (iris)/Live (up)/Killed (down) */
+.funnel{display:flex;flex-direction:column;gap:7px}
+.funnel-stage{display:flex;align-items:center}
+.funnel-bar{position:relative;height:34px;border-radius:var(--r-xs);background:var(--surf3);border:1px solid var(--border);
+  display:flex;align-items:center;gap:7px;padding:0 12px;min-width:64px;transition:width var(--tr)}
+.funnel-bar .fn-count{font-weight:700;font-size:15px;letter-spacing:-.02em}
+.funnel-bar .fn-label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet)}
+.funnel-bar.fn-iris{border-color:var(--iris-mid);background:var(--iris-dim)}
+.funnel-bar.fn-up{border-color:oklch(0.78 0.16 160 / 0.30);background:var(--up-dim)}
+.funnel-bar.fn-dead{border-color:oklch(0.70 0.17 18 / 0.24);background:var(--down-dim)}
+.funnel-bar.fn-dead .fn-count{color:var(--down)}
+/* similar-strategies list (shared-block lineage) on the per-Version sheet */
+.similar-list{display:flex;flex-direction:column;gap:4px}
+.similar-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 9px;border-radius:var(--r-xs);
+  border:1px solid var(--border);background:var(--surf2);text-decoration:none;transition:border-color var(--tr)}
+.similar-row:hover{border-color:var(--border-s)}
+.similar-name{font-size:11.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.similar-meta{display:flex;align-items:center;gap:7px;flex-shrink:0}
+/* Define-index form fields (reuse .search-input for inputs/selects/textareas) */
+.idx-field{display:flex;flex-direction:column;gap:3px}
+.idx-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--quiet)}
+textarea.search-input{width:100%;resize:vertical;font-family:inherit;line-height:1.45;padding:6px 9px}
+select.search-input{cursor:pointer}

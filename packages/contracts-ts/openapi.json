@@ -3039,6 +3039,418 @@
         "title": "InboxQueueResponse",
         "type": "object"
       },
+      "IndexCard": {
+        "description": "One row on the Indexes table \u2014 the definition at a glance + its current value/health.",
+        "properties": {
+          "cadence_minutes": {
+            "title": "Cadence Minutes",
+            "type": "integer"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "definition": {
+            "additionalProperties": true,
+            "title": "Definition",
+            "type": "object"
+          },
+          "entities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          },
+          "health": {
+            "$ref": "#/components/schemas/IndexHealthModel"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "market_wide": {
+            "title": "Market Wide",
+            "type": "boolean"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "n_strategies_using": {
+            "title": "N Strategies Using",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "rationale",
+          "kind",
+          "definition",
+          "status",
+          "market_wide",
+          "metric",
+          "entities",
+          "cadence_minutes",
+          "created_at",
+          "health",
+          "n_strategies_using"
+        ],
+        "title": "IndexCard",
+        "type": "object"
+      },
+      "IndexDefineResponse": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexCard"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "available",
+          "index"
+        ],
+        "title": "IndexDefineResponse",
+        "type": "object"
+      },
+      "IndexDetail": {
+        "description": "Full index view: definition + health + the stored series + strategies built on it.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexCard"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/IndexSeries"
+            },
+            "title": "Series",
+            "type": "array"
+          },
+          "strategies_using": {
+            "items": {
+              "$ref": "#/components/schemas/IndexStrategyRef"
+            },
+            "title": "Strategies Using",
+            "type": "array"
+          }
+        },
+        "required": [
+          "available",
+          "index",
+          "series",
+          "strategies_using"
+        ],
+        "title": "IndexDetail",
+        "type": "object"
+      },
+      "IndexHealthModel": {
+        "description": "Freshness + ranking-stability readout for one index (deterministic; honest empties).",
+        "properties": {
+          "freshness": {
+            "title": "Freshness",
+            "type": "string"
+          },
+          "latest_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest At"
+          },
+          "latest_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Value"
+          },
+          "n_points": {
+            "title": "N Points",
+            "type": "integer"
+          },
+          "reliability": {
+            "title": "Reliability",
+            "type": "string"
+          },
+          "stability": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stability"
+          },
+          "staleness_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staleness Hours"
+          },
+          "transform_version": {
+            "title": "Transform Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "n_points",
+          "latest_value",
+          "latest_at",
+          "staleness_hours",
+          "freshness",
+          "stability",
+          "reliability",
+          "transform_version"
+        ],
+        "title": "IndexHealthModel",
+        "type": "object"
+      },
+      "IndexSeries": {
+        "description": "One stored symbol's point-in-time series (symbol='MARKET' for a market-wide index).",
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/IndexSeriesPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol",
+          "points"
+        ],
+        "title": "IndexSeries",
+        "type": "object"
+      },
+      "IndexSeriesPoint": {
+        "properties": {
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "ts",
+          "value"
+        ],
+        "title": "IndexSeriesPoint",
+        "type": "object"
+      },
+      "IndexSpec": {
+        "additionalProperties": false,
+        "description": "One operator-defined index. `kind` picks the source + scorer; `definition` carries the kind-specific\npayload (validated below). The series is stored in alt_data under provider='index', metric=`metric`,\nsymbol='MARKET' (market-wide) or per entity. Authored once, then computed every cadence by the deterministic\npipeline \u2014 the value is ALWAYS scored the same way for the same input (frozen transform_version).",
+        "properties": {
+          "cadence_minutes": {
+            "default": 60,
+            "maximum": 1440.0,
+            "minimum": 5.0,
+            "title": "Cadence Minutes",
+            "type": "integer"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "definition": {
+            "additionalProperties": true,
+            "title": "Definition",
+            "type": "object"
+          },
+          "entities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          },
+          "id": {
+            "description": "slug, stable: a-z 0-9 _ - (2..48 chars). The metric becomes idx_<id>.",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "single_account",
+              "social_bucket",
+              "event_topic",
+              "prompt_rubric"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "rationale": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "status": {
+            "default": "draft",
+            "enum": [
+              "draft",
+              "active",
+              "paused"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "transform_version": {
+            "default": "index-v1",
+            "title": "Transform Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "rationale",
+          "kind"
+        ],
+        "title": "IndexSpec",
+        "type": "object"
+      },
+      "IndexStrategyRef": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "name",
+          "status"
+        ],
+        "title": "IndexStrategyRef",
+        "type": "object"
+      },
+      "IndexesResponse": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "indexes": {
+            "items": {
+              "$ref": "#/components/schemas/IndexCard"
+            },
+            "title": "Indexes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "available",
+          "indexes"
+        ],
+        "title": "IndexesResponse",
+        "type": "object"
+      },
       "InfraLine": {
         "description": "One static monthly infra cost line from MASTER_PLAN \u00a79. amount is the midpoint estimate;\namount_min/amount_max are the range. Source is the authoritative static seed \u2014 no billing API.",
         "properties": {
@@ -3528,6 +3940,36 @@
         "title": "LeaderboardRow",
         "type": "object"
       },
+      "LifecycleMark": {
+        "description": "One audit mark on the version's journey, read off the events ledger.",
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ts",
+          "actor",
+          "payload"
+        ],
+        "title": "LifecycleMark",
+        "type": "object"
+      },
       "LineageEntry": {
         "properties": {
           "operator": {
@@ -3618,6 +4060,62 @@
           "max_daily_loss"
         ],
         "title": "LiveCaps",
+        "type": "object"
+      },
+      "LiveEligibilityView": {
+        "properties": {
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "forward_ready": {
+            "title": "Forward Ready",
+            "type": "boolean"
+          },
+          "min_days": {
+            "title": "Min Days",
+            "type": "integer"
+          },
+          "net_return_pct": {
+            "title": "Net Return Pct",
+            "type": "number"
+          },
+          "overridden": {
+            "title": "Overridden",
+            "type": "boolean"
+          },
+          "paper_age_days": {
+            "title": "Paper Age Days",
+            "type": "number"
+          },
+          "proven_regimes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Proven Regimes",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "regime_eligible": {
+            "title": "Regime Eligible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "eligible",
+          "forward_ready",
+          "paper_age_days",
+          "net_return_pct",
+          "min_days",
+          "regime_eligible",
+          "proven_regimes",
+          "overridden",
+          "reason"
+        ],
+        "title": "LiveEligibilityView",
         "type": "object"
       },
       "LivePosition": {
@@ -4602,6 +5100,34 @@
         "title": "OverviewResponse",
         "type": "object"
       },
+      "PaperMaturityView": {
+        "properties": {
+          "live_ready": {
+            "title": "Live Ready",
+            "type": "boolean"
+          },
+          "min_days": {
+            "title": "Min Days",
+            "type": "integer"
+          },
+          "net_return_pct": {
+            "title": "Net Return Pct",
+            "type": "number"
+          },
+          "paper_age_days": {
+            "title": "Paper Age Days",
+            "type": "number"
+          }
+        },
+        "required": [
+          "paper_age_days",
+          "net_return_pct",
+          "live_ready",
+          "min_days"
+        ],
+        "title": "PaperMaturityView",
+        "type": "object"
+      },
       "PineSample": {
         "properties": {
           "name": {
@@ -4895,6 +5421,57 @@
         "title": "PortfolioSummaryResponse",
         "type": "object"
       },
+      "ReadinessResponse": {
+        "description": "The composed lifecycle-trace detail for one version: the three existing verdicts (live-eligibility,\npaper maturity, current regime) PLUS the ordered lifecycle audit trace and the latest stage reached. This is\nan advisory READ \u2014 it never arms money; the live-arming interlocks remain the sole authority.",
+        "properties": {
+          "current_regime": {
+            "$ref": "#/components/schemas/RegimeView"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "live_eligibility": {
+            "$ref": "#/components/schemas/LiveEligibilityView"
+          },
+          "paper_maturity": {
+            "$ref": "#/components/schemas/PaperMaturityView"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "trace": {
+            "items": {
+              "$ref": "#/components/schemas/LifecycleMark"
+            },
+            "title": "Trace",
+            "type": "array"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "stage",
+          "eligible",
+          "current_regime",
+          "live_eligibility",
+          "paper_maturity",
+          "trace"
+        ],
+        "title": "ReadinessResponse",
+        "type": "object"
+      },
       "RealtimeStatusResponse": {
         "description": "The worker's visible pulse. `enabled` mirrors the env toggle; `status` is derived server-side:\n'off' (disabled, no expectation of beats) \u00b7 'fresh' (last beat within the stale threshold) \u00b7\n'stale' (enabled but the last beat is old \u2014 the badge state) \u00b7 'never' (enabled, no beat recorded).",
         "properties": {
@@ -5102,6 +5679,29 @@
           "by_label"
         ],
         "title": "RegimeCoverage",
+        "type": "object"
+      },
+      "RegimeView": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "trend": {
+            "title": "Trend",
+            "type": "string"
+          },
+          "vol_bucket": {
+            "title": "Vol Bucket",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "vol_bucket",
+          "trend"
+        ],
+        "title": "RegimeView",
         "type": "object"
       },
       "RulesRequest": {
@@ -7091,6 +7691,100 @@
         "summary": "Health"
       }
     },
+    "/indexes": {
+      "get": {
+        "operationId": "indexes_indexes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Indexes"
+      },
+      "post": {
+        "description": "Register (or update by id) an index DEFINITION. Validation of the kind-specific definition happens in\nIndexSpec (FastAPI returns 422 on a bad shape). This never computes the series \u2014 the compute pass does.",
+        "operationId": "define_index_indexes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndexSpec"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexDefineResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Define Index"
+      }
+    },
+    "/indexes/{index_id}": {
+      "get": {
+        "operationId": "index_detail_indexes__index_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "index_id",
+            "required": true,
+            "schema": {
+              "title": "Index Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Index Detail"
+      }
+    },
     "/intelligence": {
       "get": {
         "operationId": "intelligence_intelligence_get",
@@ -7802,6 +8496,46 @@
           }
         },
         "summary": "Portfolio Summary"
+      }
+    },
+    "/readiness/{version_id}": {
+      "get": {
+        "description": "Compose the three existing deterministic verdicts for one version into a single lifecycle-trace view,\nand attach its audit trace from the events ledger. Read-only: reuses live_eligibility_verdict (which itself\ncomposes paper_maturity + current_regime), so this surface can never disagree with the live-arming gate. All\nreads share one connection.",
+        "operationId": "readiness_detail_readiness__version_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Readiness Detail"
       }
     },
     "/realtime/status": {

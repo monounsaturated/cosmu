@@ -22,6 +22,7 @@
 // or cost.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { LeaderboardRow, StrategyDetailResponse } from "@cosmu/contracts-ts";
 import { SidePanel } from "@/components/ui/side-panel";
@@ -267,6 +268,18 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
           <FilterChip label="Killed" active={filter === "killed"} onClick={() => setFilter("killed")} />
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        <Link
+          href="/strategies/composition"
+          className="btn-col-picker"
+          data-tip="Pipeline funnel + the building-block leaderboard — how strategies are composed and how they flow Backtest → Paper → Live across the whole population."
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <rect x="1" y="1.5" width="10" height="2.2" rx="0.6" />
+            <rect x="2.4" y="5" width="7.2" height="2.2" rx="0.6" />
+            <rect x="3.6" y="8.5" width="4.8" height="2.2" rx="0.6" />
+          </svg>
+          Composition
+        </Link>
         <input
           className="search-input"
           value={query}
@@ -443,7 +456,7 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
           ? "Out-of-sample backtest return — this strategy's latest stage (no paper P&L yet)"
           : p.source === "live"
             ? "Live realized + unrealized P&L %"
-            : "Paper (paper) P&L %";
+            : "Paper P&L % (the standalone paper track)";
       return (
         <span className={cn("tab", p.pct > 0 ? "up" : p.pct < 0 ? "dn" : "")} data-tip={tip}>
           {`${p.pct >= 0 ? "+" : ""}${p.pct.toFixed(0)}%`}

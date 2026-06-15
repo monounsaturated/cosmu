@@ -1,4 +1,7 @@
 import type {
+  BlockLeaderboardResponse,
+  IndexDetail,
+  IndexesResponse,
   RealtimeStatusResponse,
   LeaderboardResponse,
   OverviewResponse,
@@ -111,4 +114,32 @@ export async function getStrategy(id: string): Promise<{ strategy: StrategyDetai
 export async function getPopulation(): Promise<{ population: PopulationResponse; connected: boolean }> {
   const { data, connected } = await getJson("/population", emptyPopulation);
   return { population: data, connected };
+}
+
+// GET /blocks — the building-block (ingredient) leaderboard: which signal/filter/exit/sizing blocks recur
+// across Versions and how often they survive the Gate (observational only — NEVER funds). `available:false`
+// is the honest state until the strategy_blocks migration is applied on the store (engine fails open, no
+// fabricated rows).
+const emptyBlocks: BlockLeaderboardResponse = { available: false, rows: [] };
+
+export async function getBlocks(): Promise<{ blocks: BlockLeaderboardResponse; connected: boolean }> {
+  const { data, connected } = await getJson("/blocks", emptyBlocks);
+  return { blocks: data, connected };
+}
+
+// GET /indexes — the operator's standardized, deterministically-scored point-in-time indexes (social account/
+// bucket · event topic · prompt rubric). `available:false` is the honest "registry not active" state until the
+// 2026-06-15 migration is applied. Strategies later key off an index by its metric (idx_<id>).
+const emptyIndexes: IndexesResponse = { available: false, indexes: [] };
+
+export async function getIndexes(): Promise<{ indexes: IndexesResponse; connected: boolean }> {
+  const { data, connected } = await getJson("/indexes", emptyIndexes);
+  return { indexes: data, connected };
+}
+
+const emptyIndexDetail: IndexDetail = { available: false, index: null, series: [], strategies_using: [] };
+
+export async function getIndex(id: string): Promise<{ detail: IndexDetail; connected: boolean }> {
+  const { data, connected } = await getJson(`/indexes/${id}`, emptyIndexDetail);
+  return { detail: data, connected };
 }

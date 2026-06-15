@@ -598,6 +598,81 @@ export interface InboxQueueResponse {
   items: InboxQueueItem[];
 }
 
+export interface IndexCard {
+  cadence_minutes: number;
+  created_at: string | null;
+  definition: Record<string, unknown>;
+  entities: string[];
+  health: IndexHealthModel;
+  id: string;
+  kind: string;
+  market_wide: boolean;
+  metric: string;
+  n_strategies_using: number;
+  name: string;
+  rationale: string;
+  status: string;
+}
+
+export interface IndexDefineResponse {
+  available: boolean;
+  error?: string | null;
+  index: IndexCard | null;
+  ok: boolean;
+}
+
+export interface IndexDetail {
+  available: boolean;
+  index: IndexCard | null;
+  series: IndexSeries[];
+  strategies_using: IndexStrategyRef[];
+}
+
+export interface IndexHealthModel {
+  freshness: string;
+  latest_at: string | null;
+  latest_value: number | null;
+  n_points: number;
+  reliability: string;
+  stability: number | null;
+  staleness_hours: number | null;
+  transform_version: string;
+}
+
+export interface IndexSeries {
+  points: IndexSeriesPoint[];
+  symbol: string;
+}
+
+export interface IndexSeriesPoint {
+  ts: string;
+  value: number;
+}
+
+export interface IndexSpec {
+  cadence_minutes?: number;
+  created_at?: string | null;
+  definition?: Record<string, unknown>;
+  entities?: string[];
+  id: string;
+  kind: "single_account" | "social_bucket" | "event_topic" | "prompt_rubric";
+  name: string;
+  rationale: string;
+  status?: "draft" | "active" | "paused";
+  transform_version?: string;
+}
+
+export interface IndexStrategyRef {
+  name: string;
+  status: string;
+  version_id: string;
+}
+
+export interface IndexesResponse {
+  available: boolean;
+  indexes: IndexCard[];
+}
+
 export interface InfraLine {
   amount: number;
   amount_max: number;
@@ -692,6 +767,13 @@ export interface LeaderboardRow {
   version_id: string;
 }
 
+export interface LifecycleMark {
+  actor: string;
+  kind: string;
+  payload: Record<string, unknown>;
+  ts: string;
+}
+
 export interface LineageEntry {
   operator?: string | null;
   origin?: string | null;
@@ -709,6 +791,18 @@ export interface LiveCaps {
   global_cap: number;
   max_daily_loss: number;
   per_strategy_cap: number;
+}
+
+export interface LiveEligibilityView {
+  eligible: boolean;
+  forward_ready: boolean;
+  min_days: number;
+  net_return_pct: number;
+  overridden: boolean;
+  paper_age_days: number;
+  proven_regimes: string[];
+  reason: string;
+  regime_eligible: boolean;
 }
 
 export interface LivePosition {
@@ -903,6 +997,13 @@ export interface OverviewResponse {
   pnl_net: number;
 }
 
+export interface PaperMaturityView {
+  live_ready: boolean;
+  min_days: number;
+  net_return_pct: number;
+  paper_age_days: number;
+}
+
 export interface PineSample {
   name: string;
   source: string;
@@ -958,6 +1059,16 @@ export interface PortfolioSummaryResponse {
   sim_pnl_net: number;
 }
 
+export interface ReadinessResponse {
+  current_regime: RegimeView;
+  eligible: boolean;
+  live_eligibility: LiveEligibilityView;
+  paper_maturity: PaperMaturityView;
+  stage: string | null;
+  trace: LifecycleMark[];
+  version_id: string;
+}
+
 export interface RealtimeStatusResponse {
   consumers?: Record<string, unknown> | null;
   enabled: boolean;
@@ -998,6 +1109,12 @@ export interface RegimeCoverage {
   covered: number;
   grid: RegimeCell[];
   total: number;
+}
+
+export interface RegimeView {
+  label: string;
+  trend: string;
+  vol_bucket: string;
 }
 
 export interface RulesRequest {

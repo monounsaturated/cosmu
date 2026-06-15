@@ -1,10 +1,11 @@
 "use client";
 
 // module: app navigation (Iris Bento `.sb-nav` / `.nav-item`). The v18 redesign IS the whole
-// frontend — SEVEN surfaces: Strategies · Paper · Live · Costs · Research · Keys · Commands
-// (landing = Strategies). Research surfaces the machine's EXPERIMENT MEMORY — every theory tested
-// through the cohort Gate (gate_verdicts), which the Strategies table (Versions only) cannot show.
-// There is no mobile bottom-dock: the bento sidebar collapses to an icon
+// frontend — EIGHT surfaces: Strategies · Indexes · Paper · Live · Costs · Research · Keys · Commands
+// (landing = Strategies). Indexes (2026-06-15) is the operator-defined, deterministically-scored
+// signal-index registry that strategies later key off. Research surfaces the machine's EXPERIMENT
+// MEMORY — every theory tested through the cohort Gate (gate_verdicts), which the Strategies table
+// (Versions only) cannot show. There is no mobile bottom-dock: the bento sidebar collapses to an icon
 // rail at narrow widths via the `@media (max-width:880px)` rules in globals.css. Active state is the
 // current route; optional per-stage counts come from a client fetch in the shell (shown only when real).
 
@@ -25,6 +26,12 @@ const ICONS: Record<string, ReactNode> = {
       <circle cx="3.2" cy="4" r="1.1" fill="currentColor" stroke="none" /><line x1="6.2" y1="4" x2="13" y2="4" />
       <circle cx="3.2" cy="7.5" r="1.1" fill="currentColor" stroke="none" /><line x1="6.2" y1="7.5" x2="13" y2="7.5" />
       <circle cx="3.2" cy="11" r="1.1" fill="currentColor" stroke="none" /><line x1="6.2" y1="11" x2="13" y2="11" />
+    </svg>
+  ),
+  indexes: (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.7 10.5l3-3.4 2.4 2 3.4-4.4" /><circle cx="12.2" cy="3.4" r="1" fill="currentColor" stroke="none" />
+      <line x1="1.7" y1="13" x2="13" y2="13" />
     </svg>
   ),
   paper: (
@@ -64,6 +71,7 @@ const ICONS: Record<string, ReactNode> = {
 // The primary surfaces — the entire app, in canonical sidebar order.
 export const navItems: NavItem[] = [
   { href: "/strategies", key: "strategies", label: "Strategies", icon: ICONS.strategies },
+  { href: "/indexes", key: "indexes", label: "Indexes", icon: ICONS.indexes },
   { href: "/paper", key: "paper", label: "Paper", icon: ICONS.paper },
   { href: "/live", key: "live", label: "Live", icon: ICONS.live },
   { href: "/costs", key: "costs", label: "Costs", icon: ICONS.costs },

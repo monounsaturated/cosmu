@@ -195,6 +195,17 @@ from cosmu.api.models.explorer import (  # noqa: F401
     ExplorerTrade,
     ExplorerVersion,
 )
+from cosmu.api.models.indexes import (  # noqa: F401
+    IndexCard,
+    IndexDefineResponse,
+    IndexDetail,
+    IndexHealthModel,
+    IndexSeries,
+    IndexSeriesPoint,
+    IndexSpec,
+    IndexStrategyRef,
+    IndexesResponse,
+)
 
 __all__ = [
     # core
@@ -371,4 +382,14 @@ __all__ = [
     "ExplorerStats",
     "ExplorerTrade",
     "ExplorerVersion",
+    # indexes
+    "IndexCard",
+    "IndexDefineResponse",
+    "IndexDetail",
+    "IndexHealthModel",
+    "IndexSeries",
+    "IndexSeriesPoint",
+    "IndexSpec",
+    "IndexStrategyRef",
+    "IndexesResponse",
 ]
