@@ -3897,6 +3897,17 @@
             "title": "Track Return Pct",
             "type": "number"
           },
+          "trades": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trades"
+          },
           "value_usd": {
             "anyOf": [
               {

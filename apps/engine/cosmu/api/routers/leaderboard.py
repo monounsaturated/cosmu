@@ -62,10 +62,12 @@ def leaderboard() -> LeaderboardResponse:
     rows = store.rows(
         """
         SELECT sv.id, s.name, sv.status, sv.spec, sv.origin, b.deflated_sharpe, b.oos_return, b.pbo,
-               b.oos_start, b.oos_end, ev.funded_at,
+               b.oos_start, b.oos_end, b.num_trades AS bt_trades, ev.funded_at,
                tr.starting_capital, ps.equity AS tr_equity,
                EXISTS(SELECT 1 FROM executions e WHERE e.strategy_version_id = sv.id
-                      AND CAST(e.is_paper AS INTEGER) = 1) AS has_paper_fills
+                      AND CAST(e.is_paper AS INTEGER) = 1) AS has_paper_fills,
+               (SELECT COUNT(*) FROM executions e2 WHERE e2.strategy_version_id = sv.id
+                      AND CAST(e2.is_paper AS INTEGER) = 1) AS paper_trades
         FROM strategy_versions sv
         JOIN strategies s ON s.id = sv.strategy_id
         LEFT JOIN backtests b ON b.strategy_version_id = sv.id
@@ -143,6 +145,11 @@ def leaderboard() -> LeaderboardResponse:
         value_usd = _money_or_none(row["tr_equity"]) if has_paper_fills else None
         start_usd = _money_or_none(row["starting_capital"])
         pnl_usd = (value_usd - start_usd) if (value_usd is not None and start_usd is not None) else None
+        # Trades at the LATEST stage — paper fills when the track has genuinely traded (has_paper_fills), else
+        # the strongest backtest's round-trips — so the count matches the stage the rest of the row reports
+        # (paper money vs backtest OOS). None when neither exists (a queued Version with no backtest, no fills).
+        _bt_trades = row["bt_trades"]
+        trades = int(row["paper_trades"]) if has_paper_fills else (int(_bt_trades) if _bt_trades is not None else None)
         # Facets are DERIVED from the spec's named features (taxonomy.py) — no manual tagging — so the
         # Strategies filters always reflect the strategy's real inputs and structure.
         facets = derive_facets(_json(row["spec"]), row["origin"])
@@ -166,6 +173,7 @@ def leaderboard() -> LeaderboardResponse:
                 divergence_status=div.status,
                 divergence_gap_pct=div.gap_pct if div.status != "insufficient" else None,
                 has_paper_fills=has_paper_fills,
+                trades=trades,
                 value_usd=value_usd,
                 pnl_usd=pnl_usd,
                 pnl_pct=paper_return_pct,

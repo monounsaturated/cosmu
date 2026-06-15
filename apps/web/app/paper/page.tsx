@@ -85,8 +85,9 @@ async function PaperData() {
         <WalletAllocCard rows={simRows} />
       </div>
 
-      {/* Open positions (active, left) + Track record (closed paper tracks, right). */}
-      <div className="kgrid dash-split" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
+      {/* Open positions (active, left) + Track record (closed paper tracks, right). `dash-tables` decouples
+          their heights so expanding Open positions ("See all") never resizes/moves the Track record card. */}
+      <div className="kgrid dash-split dash-tables" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
         <PaperPositions rows={simRows} />
         <ClosedTracks rows={closedRows} />
       </div>

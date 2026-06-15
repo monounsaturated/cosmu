@@ -91,6 +91,10 @@ class LeaderboardRow(BaseModel):
     # Paper cohort off THIS (not raw status), so a funded-but-never-filled documented arm can never show
     # "Paper" while its own sheet says "no fills yet". When false, the marked money fields below are None.
     has_paper_fills: bool = False
+    # Trades made at the strategy's LATEST stage — the count of paper fills (executions, is_paper=1) when the
+    # track has traded, else the strongest backtest's round-trips (`backtests.num_trades`). So the number always
+    # matches the stage the rest of the row reports (paper money vs backtest OOS). `null` when neither exists.
+    trades: int | None = None
     value_usd: float | None = None
     pnl_usd: float | None = None
     pnl_pct: float | None = None

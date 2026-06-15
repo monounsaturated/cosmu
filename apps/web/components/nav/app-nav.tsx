@@ -1,11 +1,12 @@
 "use client";
 
 // module: app navigation (Iris Bento `.sb-nav` / `.nav-item`). The v18 redesign IS the whole
-// frontend — EIGHT surfaces: Strategies · Indexes · Paper · Live · Costs · Research · Keys · Commands
+// frontend — SEVEN surfaces: Strategies · Paper · Live · Indexes · Costs · Keys · Commands
 // (landing = Strategies). Indexes (2026-06-15) is the operator-defined, deterministically-scored
-// signal-index registry that strategies later key off. Research surfaces the machine's EXPERIMENT
-// MEMORY — every theory tested through the cohort Gate (gate_verdicts), which the Strategies table
-// (Versions only) cannot show. There is no mobile bottom-dock: the bento sidebar collapses to an icon
+// signal-index registry that strategies later key off. (The old Research/experiment-memory route was
+// dropped from the nav to declutter — its gate_verdicts data stays in the DB + /verdicts API and is
+// meant to become a generated report, not a daily surface.) There is no mobile bottom-dock: the bento
+// sidebar collapses to an icon
 // rail at narrow widths via the `@media (max-width:880px)` rules in globals.css. Active state is the
 // current route; optional per-stage counts come from a client fetch in the shell (shown only when real).
 
@@ -71,18 +72,16 @@ const ICONS: Record<string, ReactNode> = {
 // The primary surfaces — the entire app, in canonical sidebar order.
 export const navItems: NavItem[] = [
   { href: "/strategies", key: "strategies", label: "Strategies", icon: ICONS.strategies },
-  { href: "/indexes", key: "indexes", label: "Indexes", icon: ICONS.indexes },
   { href: "/paper", key: "paper", label: "Paper", icon: ICONS.paper },
   { href: "/live", key: "live", label: "Live", icon: ICONS.live },
+  { href: "/indexes", key: "indexes", label: "Indexes", icon: ICONS.indexes },
   { href: "/costs", key: "costs", label: "Costs", icon: ICONS.costs },
-  { href: "/research/experiments", key: "research", label: "Research", icon: ICONS.research },
   { href: "/keys", key: "keys", label: "Keys", icon: ICONS.keys },
   { href: "/commands", key: "commands", label: "Commands", icon: ICONS.commands }
 ];
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/strategies") return pathname.startsWith("/strategies") || pathname.startsWith("/strategy");
-  if (href === "/research/experiments") return pathname.startsWith("/research");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

@@ -1037,6 +1037,12 @@ th[draggable=true]{cursor:pointer}
    card opens, the non-open siblings size to their OWN content (align-self:start) and stop filling the now-taller
    row. Collapsed (no .dash-open present) the stretch still applies, so both cards stay equal height. */
 .dash-split:has(> .card.dash-open) > .card.dh:not(.dash-open){align-self:start;height:auto}
+/* MONEY-TABLE ROW (Open positions | Track record, + the Live equivalents): each card sizes to its OWN content
+   and STAYS that height — so expanding one ("See all" → .dash-open) never resizes or moves the card beside it.
+   This overrides the row stretch ONLY for these table rows; the KPI/donut row above keeps its equal-height
+   stretch. Fixes the "neighbour card changes size when I open See all" reflow. */
+.dash-split.dash-tables{align-items:start}
+.dash-split.dash-tables > .card.dh{height:auto}
 @media (max-width:1100px){ .dash-split{grid-template-columns:1fr!important} }
 @media (max-width:880px){
   /* collapse the sidebar to icons — hide the nav LABELS, not just the brand */

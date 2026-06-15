@@ -293,8 +293,9 @@ export function LiveSurface({
           </div>
         </div>
 
-        {/* Open positions (left) + Recent trades (right). */}
-        <div className="kgrid dash-split" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
+        {/* Open positions (left) + Recent trades (right). `dash-tables` decouples their heights so expanding
+            Open positions ("See all") never resizes/moves the Recent-trades card beside it. */}
+        <div className="kgrid dash-split dash-tables" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
           {/* Open positions — labelled by money state so a paper position is never read as live capital. */}
           <div className="card dh">
             <div className="card-hdr">

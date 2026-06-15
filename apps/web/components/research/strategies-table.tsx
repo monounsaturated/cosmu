@@ -22,7 +22,6 @@
 // or cost.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { LeaderboardRow, StrategyDetailResponse } from "@cosmu/contracts-ts";
 import { SidePanel } from "@/components/ui/side-panel";
@@ -93,7 +92,7 @@ const PBO_CEILING = 0.5;
 // ── COLS — each column a lens onto a REAL row field. `sort` makes the header click-to-sort; `defaultOn:
 // false` columns start hidden (the v18 opt-ins). `min` feeds the colgroup so columns size correctly. ──
 type SortDir = "asc" | "desc";
-type ColKey = "name" | "stage" | "life" | "days" | "value" | "pnl" | "pnlpct" | "dsr" | "pbo" | "dd" | "oos" | "venue" | "fees" | "origin";
+type ColKey = "name" | "stage" | "life" | "days" | "trades" | "value" | "pnl" | "pnlpct" | "dsr" | "pbo" | "dd" | "oos" | "venue" | "fees" | "origin";
 type ColDef = {
   key: ColKey;
   label: string;
@@ -109,6 +108,9 @@ const COLS: ColDef[] = [
   { key: "name", label: "Name", width: 240, sort: { dir: "asc", value: (r) => r.name.toLowerCase() } },
   { key: "stage", label: "Stage", width: 90, pickable: true, sort: { dir: "desc", value: (r) => STAGE_RANK[lifeStatusOf(r)] } },
   { key: "days", label: "Days", width: 42, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.paper_age_days) ? r.paper_age_days : null) } },
+  // Trades made at the strategy's LATEST stage (paper/live fills when it has traded, else the backtest's
+  // round-trips) — so the count always matches the stage the rest of the row reports. Honest "—" when absent.
+  { key: "trades", label: "Trades", width: 58, pickable: true, sort: { dir: "desc", value: (r) => (typeof r.trades === "number" ? r.trades : null) } },
   { key: "value", label: "Value", width: 72, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.value_usd) } },
   { key: "pnl", label: "P&L", width: 66, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_usd) } },
   { key: "pnlpct", label: "P&L %", width: 64, pickable: true, sort: { dir: "desc", value: (r) => latestStagePnl(r)?.pct ?? null } },
@@ -172,10 +174,31 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
     return () => document.removeEventListener("mousedown", onDoc);
   }, [showPicker]);
 
+  // One row per STRATEGY (by name), kept at its LATEST stage — a strategy with several Versions (e.g. an old
+  // killed v1 + a paper v2) appears ONCE, as the most-advanced Version; a tie within a stage is broken by the
+  // strongest DSR. So each strategy is a single line reporting THAT stage's data (the stage-aware P&L / Trades
+  // cells below). The per-Version detail is still one click away in the sheet.
+  const dedupedRows = useMemo(() => {
+    const best = new Map<string, LeaderboardRow>();
+    for (const r of rows) {
+      const prev = best.get(r.name);
+      if (!prev) {
+        best.set(r.name, r);
+        continue;
+      }
+      const rRank = STAGE_RANK[lifeStatusOf(r)];
+      const pRank = STAGE_RANK[lifeStatusOf(prev)];
+      const rDsr = numOrNull(r.deflated_sharpe) ?? -Infinity;
+      const pDsr = numOrNull(prev.deflated_sharpe) ?? -Infinity;
+      if (rRank > pRank || (rRank === pRank && rDsr > pDsr)) best.set(r.name, r);
+    }
+    return [...best.values()];
+  }, [rows]);
+
   // ── search → filter → sort ──
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const searched = rows.filter((r) => {
+    const searched = dedupedRows.filter((r) => {
       if (q && !(r.name.toLowerCase().includes(q) || r.features.some((f) => f.toLowerCase().includes(q)) || r.edge_type.toLowerCase().includes(q))) {
         return false;
       }
@@ -204,7 +227,7 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
       }
       return tieByDsr(a, b);
     });
-  }, [rows, query, filter, sort]);
+  }, [dedupedRows, query, filter, sort]);
 
   const visibleCols = useMemo(() => order.map((k) => COL_BY_KEY[k]).filter((c) => visible[c.key]), [order, visible]);
   const minWidth = useMemo(() => visibleCols.reduce((sum, c) => sum + c.width, 0), [visibleCols]);
@@ -268,18 +291,6 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
           <FilterChip label="Killed" active={filter === "killed"} onClick={() => setFilter("killed")} />
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-        <Link
-          href="/strategies/composition"
-          className="btn-col-picker"
-          data-tip="Pipeline funnel + the building-block leaderboard — how strategies are composed and how they flow Backtest → Paper → Live across the whole population."
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-            <rect x="1" y="1.5" width="10" height="2.2" rx="0.6" />
-            <rect x="2.4" y="5" width="7.2" height="2.2" rx="0.6" />
-            <rect x="3.6" y="8.5" width="4.8" height="2.2" rx="0.6" />
-          </svg>
-          Composition
-        </Link>
         <input
           className="search-input"
           value={query}
@@ -430,6 +441,12 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
     case "days": {
       const days = Number.isFinite(row.paper_age_days) ? Math.floor(row.paper_age_days) : 0;
       return days > 0 ? <span className="tab">{days}</span> : <Dash />;
+    }
+    case "trades": {
+      const t = typeof row.trades === "number" ? row.trades : null;
+      return t === null ? <Dash /> : (
+        <span className="tab" data-tip="Trades at this strategy's latest stage — paper/live fills when it has traded, else the backtest's round-trips.">{t}</span>
+      );
     }
     case "value": {
       const v = numOrNull(row.value_usd);

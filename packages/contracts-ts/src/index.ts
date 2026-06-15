@@ -762,6 +762,7 @@ export interface LeaderboardRow {
   status: string;
   timeframe: string;
   track_return_pct: number;
+  trades?: number | null;
   value_usd?: number | null;
   venue: string;
   version_id: string;
