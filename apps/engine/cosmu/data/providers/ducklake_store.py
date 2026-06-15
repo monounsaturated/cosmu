@@ -86,6 +86,11 @@ class DuckLakeAltDataStore:
                 "DuckLakeAltDataStore needs DuckDB — install the lake extra: pip install -e 'apps/engine[lake]'"
             ) from e
         con = duckdb.connect(database=":memory:")
+        # Single-threaded: DuckLake opens a Postgres CATALOG connection per worker thread, and DuckDB defaults
+        # threads to the (often many) detected cores — on Modal that blew past Supabase's session-pooler cap
+        # (EMAXCONNSESSION, pool_size 15). One thread = a couple of catalog connections, well under the cap. The
+        # cold-tier ingest/sweeps are single-threaded anyway (see the class docstring), so throughput is unchanged.
+        con.execute("SET threads TO 1")
         con.execute("INSTALL ducklake; LOAD ducklake;")
         if _is_remote(self.data_path) and self._r2:
             con.execute("INSTALL httpfs; LOAD httpfs;")
