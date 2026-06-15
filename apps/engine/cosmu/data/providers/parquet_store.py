@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from cosmu.data._iso import iso_utc
+
 from ._types import AltDataPoint
 
 logger = logging.getLogger("cosmu.data.parquet_store")
@@ -91,11 +93,13 @@ class ParquetAltDataStore:
         con = self.conn()
         con.execute(
             "CREATE OR REPLACE TEMP TABLE _w "
-            "(symbol VARCHAR, ts VARCHAR, available_at VARCHAR, value DOUBLE, ingested_at VARCHAR)"
+            "(symbol VARCHAR, ts VARCHAR, available_at VARCHAR, value VARCHAR, ingested_at VARCHAR)"
         )
+        # value stored as TEXT (str of the float) — byte-exact with the PG NUMERIC→VARCHAR export path, no DOUBLE
+        # rounding; ts/available_at canonicalized (iso_utc) so the string<= PIT read matches PgAltDataStore exactly.
         con.executemany(
             "INSERT INTO _w VALUES (?, ?, ?, ?, ?)",
-            [(symbol, p.ts.isoformat(), p.available_at.isoformat(), float(p.value), now) for p in points],
+            [(symbol, iso_utc(p.ts), iso_utc(p.available_at), str(float(p.value)), now) for p in points],
         )
         target_dir = f"{self.root}/alt_data/provider={provider}/metric={metric}"
         if not _is_remote(self.root):
@@ -116,20 +120,29 @@ class ParquetAltDataStore:
         PgAltDataStore.read_asof. ISO-8601 TEXT sorts chronologically, so `available_at <= ?` (string) and the
         revision tiebreak match the PG path exactly."""
         rows = self._query(
+            # Latest available_at per ts (the PIT revision winner) — IDENTICAL to PgAltDataStore.read_asof. The
+            # secondary `ingested_at ASC` keeps the EARLIEST-ingested copy of an exact (ts, available_at)
+            # photocopy, mirroring PG's uq_alt_data_pit ON CONFLICT DO NOTHING (first write wins).
             "SELECT ts, available_at, value FROM ("
             "  SELECT ts, available_at, value, row_number() OVER "
-            "    (PARTITION BY ts ORDER BY available_at DESC, ingested_at DESC) rn "
+            "    (PARTITION BY ts ORDER BY available_at DESC, ingested_at ASC) rn "
             f"  FROM read_parquet('{self._partition_glob(provider, metric)}') WHERE symbol = ? AND available_at <= ?"
             ") t WHERE rn = 1 ORDER BY ts",
-            [symbol, as_of.isoformat()],
+            [symbol, iso_utc(as_of)],
         )
         return [AltDataPoint(ts=datetime.fromisoformat(r[0]), available_at=datetime.fromisoformat(r[1]), value=float(r[2])) for r in rows]
 
     def read_all(self, provider: str, symbol: str, metric: str) -> list[AltDataPoint]:
         """Full revision history (the per-bar as-of join collapses it) — same contract as PgAltDataStore."""
         rows = self._query(
-            f"SELECT ts, available_at, value FROM read_parquet('{self._partition_glob(provider, metric)}') "
-            "WHERE symbol = ? ORDER BY available_at, ts",
+            # Dedup exact PIT photocopies (same ts AND available_at; keep the earliest ingest — mirrors PG's
+            # uq_alt_data_pit ON CONFLICT DO NOTHING) so read_all is tuple-identical to PgAltDataStore even
+            # though the append-only lake can physically hold a re-appended window across files.
+            "SELECT ts, available_at, value FROM ("
+            "  SELECT ts, available_at, value, row_number() OVER "
+            "    (PARTITION BY ts, available_at ORDER BY ingested_at ASC) rn "
+            f"  FROM read_parquet('{self._partition_glob(provider, metric)}') WHERE symbol = ?"
+            ") t WHERE rn = 1 ORDER BY available_at, ts",
             [symbol],
         )
         return [AltDataPoint(ts=datetime.fromisoformat(r[0]), available_at=datetime.fromisoformat(r[1]), value=float(r[2])) for r in rows]
@@ -150,7 +163,7 @@ class ParquetAltDataStore:
         tmp = part_dir / f"part_{uuid4().hex}.parquet.tmp"
         con.execute(
             f"COPY (SELECT symbol, ts, available_at, value, ingested_at FROM ("
-            f"  SELECT *, row_number() OVER (PARTITION BY symbol, ts, available_at ORDER BY ingested_at DESC) rn "
+            f"  SELECT *, row_number() OVER (PARTITION BY symbol, ts, available_at ORDER BY ingested_at ASC) rn "
             f"  FROM read_parquet('{glob}')) WHERE rn = 1) TO '{tmp}' (FORMAT parquet)"
         )
         kept = int(con.execute(f"SELECT count(*) FROM read_parquet('{tmp}')").fetchone()[0])

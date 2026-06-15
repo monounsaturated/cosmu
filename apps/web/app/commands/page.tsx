@@ -41,7 +41,7 @@ const GROUPS: Group[] = [
   {
     stage: "Test & judge",
     cmds: [
-      { name: "/run-gate", desc: "Run the deterministic real-data Gate and report the verdict — fund a forward-test track, or kill with reasons" },
+      { name: "/run-gate", desc: "Run the deterministic real-data Gate and report the verdict — fund a paper track, or kill with reasons" },
       { name: "/evolve-strategy", desc: "Isolate a gate-passed signal, graft it onto other assets, recombine survivors — route the cohort back through the Gate" },
       { name: "/debug-strategy", desc: "Post-mortem a dead or zero-trade Version — why it died, what to learn" },
       { name: "/variance-attribution", desc: "Decompose a funded track's paper→live divergence into named, signed buckets (fees · slippage · funding · decay · regime)" },

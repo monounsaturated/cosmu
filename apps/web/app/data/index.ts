@@ -4,15 +4,7 @@
 
 export * from "./client";
 export * from "./overview";
-export * from "./brain";
-export * from "./mind";
-export * from "./recommendations";
-export * from "./inbox";
-export * from "./learning";
 export * from "./costs";
 export * from "./live";
-export * from "./intelligence";
 export * from "./settings";
-export * from "./experiments";
-export * from "./explorer";
-export * from "./correlations";
+export * from "./research";

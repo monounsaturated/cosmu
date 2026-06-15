@@ -106,6 +106,94 @@ def test_live_route_when_all_conditions_hold(tmp_path):
     assert store.row("SELECT id FROM executions WHERE is_paper = 0") is not None
 
 
+class _RecordingAdapter:
+    """A live adapter that records (or rejects) submits — for the venue-shaping + submit-guard tests."""
+
+    def __init__(self, venue="polymarket", mode="testnet", *, raises=False):
+        from cosmu.core.interfaces import AssetClass
+
+        self.venue = venue
+        self.asset_class = AssetClass.PREDICTION if venue == "polymarket" else AssetClass.CRYPTO
+        self.mode = mode
+        self.orders: list = []
+        self._raises = raises
+
+    @property
+    def active(self) -> bool:
+        return True
+
+    def submit(self, order):
+        from cosmu.core.interfaces import OrderId
+
+        if self._raises:
+            raise RuntimeError("venue rejected the order")
+        self.orders.append(order)
+        return OrderId(venue=self.venue, client_order_id=order.client_order_id, venue_order_id="V1")
+
+    def cancel(self, order_id):  # pragma: no cover
+        pass
+
+    def positions(self):
+        return []
+
+    def fills(self, since):
+        return []
+
+
+def test_prediction_order_is_coerced_to_limit_at_the_mark(tmp_path):
+    """A prediction CLOB (Polymarket) has no market order. The executor's default order_type is 'market', so
+    the order path MUST coerce a prediction order to a LIMIT at the mark (the share probability) before submit
+    — else the adapter rejects it. Also: the symbol is NOT ccxt-mangled for a non-crypto venue."""
+    store = _store(tmp_path)
+    adapter = _RecordingAdapter(venue="polymarket", mode="testnet")
+    intent = _ok_intent(
+        strategy_version_id="pm1", symbol="PM-FED-CUT-2026", venue_id="polymarket",
+        qty=Decimal("10"), price=Decimal("0.42"), stop_loss=Decimal("0.30"), take_profit=Decimal("0.60"),
+    )
+    _, outcomes = _run(store, [intent], live_enabled=True, adapter=adapter)
+    assert outcomes[0].routed_live is True and outcomes[0].venue == "testnet"
+    assert len(adapter.orders) == 1
+    o = adapter.orders[0]
+    assert o.order_type == "limit" and o.limit_price == Decimal("0.42")  # market → limit at the mark
+    assert o.instrument_id == "PM-FED-CUT-2026"  # not ccxt-mangled (prediction venue)
+
+
+def test_submit_failure_is_audited_and_skipped_never_crashes(tmp_path):
+    """A venue/adapter error on submit MUST NOT crash the tick nor book a phantom fill — it is audited and the
+    order is skipped (position unchanged, retried next tick)."""
+    store = _store(tmp_path)
+    adapter = _RecordingAdapter(venue="polymarket", mode="testnet", raises=True)
+    intent = _ok_intent(
+        strategy_version_id="pm2", symbol="PM-FED-CUT-2026", venue_id="polymarket",
+        qty=Decimal("10"), price=Decimal("0.42"), stop_loss=Decimal("0.30"), take_profit=Decimal("0.60"),
+    )
+    pf, outcomes = _run(store, [intent], live_enabled=True, adapter=adapter)  # must NOT raise
+    assert outcomes[0].accepted is False and "submit_failed" in outcomes[0].issues
+    ev = store.row("SELECT payload FROM events WHERE kind = 'order_submit_failed'")
+    assert ev is not None
+    # SECURITY: the raw exception message is NOT persisted (it can carry key/secret material) — only the type.
+    import json as _json
+    payload = _json.loads(ev["payload"]) if isinstance(ev["payload"], str) else ev["payload"]
+    assert payload.get("error_type") == "RuntimeError" and "error" not in payload
+    assert store.row("SELECT id FROM executions WHERE strategy_version_id = 'pm2'") is None  # nothing booked
+    assert pf.position("pm-fed-cut", "testnet", strategy_version_id="pm2") is None
+
+
+def test_live_submit_not_repeated_after_a_prior_submit_event(tmp_path):
+    """Cross-restart double-submit guard: once a live submit for a client_order_id is on the ledger, a re-run
+    must NOT place a second REAL order (Polymarket CLOB has no native client-id dedup). Re-running the same
+    intent calls the adapter exactly once."""
+    store = _store(tmp_path)
+    adapter = _RecordingAdapter(venue="polymarket", mode="testnet")
+    intent = _ok_intent(
+        strategy_version_id="pm3", symbol="PM-FED-CUT-2026", venue_id="polymarket",
+        qty=Decimal("10"), price=Decimal("0.42"), stop_loss=Decimal("0.30"), take_profit=Decimal("0.60"),
+    )
+    _run(store, [intent], live_enabled=True, adapter=adapter)   # first run submits
+    _run(store, [intent], live_enabled=True, adapter=adapter)   # re-run (e.g. after a restart) must NOT re-submit
+    assert len(adapter.orders) == 1  # exactly one real order, never two
+
+
 def test_kill_switch_blocks_live_route(tmp_path):
     store = _store(tmp_path)
 

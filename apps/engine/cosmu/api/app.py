@@ -31,6 +31,7 @@ from cosmu.api.routers import (
     evolution,
     explorer,
     health,
+    indexes,
     intelligence,
     lab,
     leaderboard,
@@ -82,7 +83,9 @@ async def _require_api_key(request: Request, call_next):
     secret = getattr(_shared_mod.settings, "api_secret_key", None)
     if secret and request.method != "OPTIONS" and request.url.path not in _AUTH_EXEMPT_PATHS:
         presented = request.headers.get("x-api-key") or ""
-        if not hmac.compare_digest(presented, secret):
+        # Compare as BYTES: hmac.compare_digest raises TypeError on non-ASCII str (e.g. a key with a
+        # smart-quote / stray byte), which would surface as a confusing 500 instead of a clean 401.
+        if not hmac.compare_digest(presented.encode("utf-8"), secret.encode("utf-8")):
             return JSONResponse(status_code=401, content={"detail": "missing or invalid x-api-key"})
     return await call_next(request)
 
@@ -119,6 +122,7 @@ for _module in (
     realtime,
     blocks,
     readiness,
+    indexes,
 ):
     app.include_router(_module.router)
 
@@ -138,7 +142,7 @@ for _module in (
 # canonical _shared) — a write to app.store/app.settings must update all of them.
 _INJECTABLE_MODULES = (
     _shared_mod, autonomy, console, correlations, costs, events, evolution, explorer, health,
-    intelligence, lab, leaderboard, live, memory, mind, overview, population,
+    indexes, intelligence, lab, leaderboard, live, memory, mind, overview, population,
     recommendations, research, scores, settings_router, skills, spine,
     strategies, strategy, toggle, universe, verdicts,
 )

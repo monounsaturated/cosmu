@@ -1,8 +1,9 @@
 "use client";
 
 // The dashboard equity hero (Iris Bento `.dash-hero`, shared by Paper + Live). A faithful port of the
-// mockup's equityBlock(): a hero label + headline value + signed delta, a `.tf-seg` 1D/7D/30D/All range
-// selector, and the interactive EquityChart whose crosshair scrub drives the headline (setHead/restoreHead).
+// mockup's equityBlock(): a hero label + headline value + signed delta, a `.tf-seg` 7D/30D/All range
+// selector (1D is dropped — a single point is meaningless; see RANGES below), and the interactive EquityChart
+// whose crosshair scrub drives the headline (setHead/restoreHead).
 //
 // HONESTY: it is fed ONLY the real `equity_curve` (Point[] {ts,value}) the engine returns. With an empty
 // series the EquityChart renders its own honest empty state and the headline shows "—" — never a fabricated
@@ -42,10 +43,13 @@ export function EquityHero({
   const [scrub, setScrub] = useState<number>(-1);
 
   // Slice the REAL curve by trailing length for the selected range. No fabricated intraday points.
+  // `curve` is typed Point[] but the engine can omit it (null) — normalize so the empty state shows
+  // instead of a white screen.
   const sliced = useMemo(() => {
+    const safe = curve ?? [];
     const r = RANGES.find((x) => x.key === range)!;
-    if (r.days === null) return curve;
-    return curve.slice(-r.days);
+    if (r.days === null) return safe;
+    return safe.slice(-r.days);
   }, [curve, range]);
 
   const values = sliced.map((p) => p.value);

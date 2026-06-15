@@ -63,7 +63,7 @@ def test_one_tick_runs_end_to_end_paper_only_and_audited(tmp_path):
     assert payload["live_enabled"] is False
 
     # A funded track was REGISTERED (a real zero-qty registration row — H2 deep-review fix: the funder
-    # never opens a static long; the forward-test executor opens the first position when the spec's own
+    # never opens a static long; the paper executor opens the first position when the spec's own
     # entry signal fires on its clock, not inside the tick).
     pos = store.row("SELECT qty FROM positions WHERE strategy_version_id IS NOT NULL LIMIT 1")
     assert pos is not None

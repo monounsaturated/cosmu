@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol
-from cosmu.data.backtest import run_strategy_backtest
+from cosmu.data.backtest import DEFAULT_IMPACT_BPS, DEFAULT_SLIPPAGE_BPS, run_strategy_backtest
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
@@ -50,6 +50,10 @@ class _Screened:
     metrics: BacktestMetrics
     survival_score: float
     proven: list[str]
+    # The cost assumptions the screen was scored under (the venue it priced against + its taker fee), carried so
+    # _persist can record them on the backtest row and the promotion freeze can pin the gate-time fee model.
+    venue_id: str = ""
+    fee_bps: float = 0.0
     parent: _Screened | None = None
 
 
@@ -382,6 +386,19 @@ class FarmLoop:
         except Exception:  # noqa: BLE001 — the flywheel is additive; it never blocks a gated cohort
             pass
 
+        # FREEZE each gate-passing survivor into its strategy_promotions record — the single source of truth live
+        # reads to replicate the verdict (frozen params + hash, fee model, registry version, regimes). Post-commit
+        # (the version + track_opened rows are durable now) and best-effort: a freeze hiccup never unwinds a
+        # promotion the deterministic Gate already disposed.
+        try:
+            from cosmu.master.promotion import freeze_promotion
+
+            for ev in evaluated:
+                if ev.passed and ev.version_id:
+                    freeze_promotion(self.store, ev.version_id)
+        except Exception:  # noqa: BLE001 — freeze is durable bookkeeping, never blocks a gated cohort
+            pass
+
     # ------------------------------------------------------------------ internals
 
     def _novelty_ok(self, spec: StrategySpec, live_specs: list[StrategySpec]) -> bool:
@@ -405,7 +422,7 @@ class FarmLoop:
         except ValueError:
             return None  # invalid spec — never persisted, counted as invalid
 
-        metrics = self._screen(cand, compiled.code_hash, seed)
+        metrics, venue = self._screen(cand, compiled.code_hash, seed)
         # THE choke point: every farmed candidate is one more hypothesis the Deflated Sharpe / FDR must deflate
         # against — otherwise authoring more candidates per tick manufactures significance by sheer count.
         register_trial(self.store, float(metrics.sharpe_per_obs), source="farmloop", label=cand.spec.name)
@@ -416,6 +433,7 @@ class FarmLoop:
         return _Screened(
             cand=cand, params=params, compiled=compiled, metrics=metrics,
             survival_score=survival_score, proven=proven,
+            venue_id=venue.id, fee_bps=float(venue.taker_fee_bps),
         )
 
     def _persist(self, sc: _Screened, trials: TrialStats, survival, parent_vid: str | None, b: Writer) -> tuple[Evaluated, str]:  # noqa: ANN001
@@ -486,6 +504,12 @@ class FarmLoop:
                 "kurtosis": str(metrics.kurtosis),
                 "n_obs": metrics.n_obs,
                 "regime_spread": sum(1 for pnl in metrics.regime_returns.values() if pnl > 0),
+                # Cost assumptions this screen was scored under (venue + taker fee + default slippage/impact) —
+                # frozen into the promotion so live can detect a venue repricing the edge was never proven through.
+                "venue_id": sc.venue_id,
+                "fee_bps": str(sc.fee_bps),
+                "slippage_bps": str(DEFAULT_SLIPPAGE_BPS),
+                "impact_bps": str(DEFAULT_IMPACT_BPS),
                 "created_at": utcnow(),
             },
         )
@@ -540,8 +564,9 @@ class FarmLoop:
             version_id,
         )
 
-    def _screen(self, cand: Candidate, code_hash: str, seed: int) -> BacktestMetrics:
-        """Cheap real-data screen over Binance spot bars.
+    def _screen(self, cand: Candidate, code_hash: str, seed: int):  # noqa: ANN201 — (BacktestMetrics, venue catalog row)
+        """Cheap real-data screen over Binance spot bars. Returns the metrics AND the venue it priced against (so
+        the persist path records the gate-time cost assumptions).
 
         The screen is deterministic for a fixed bar cache and fitted params. It is still the
         cheap tier, but its return/drawdown/trade-count fields now come from actual venue OHLCV
@@ -556,13 +581,14 @@ class FarmLoop:
             for symbol in symbols
         }
         venue = default_catalog().venue_for(cand.spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
-        return run_strategy_backtest(
+        metrics = run_strategy_backtest(
             cand.spec,
             fit_params(cand.spec),
             market,
             fee_bps=venue.taker_fee_bps,
             alt_by_symbol=self._alt_by_symbol(cand.spec, market),
         )
+        return metrics, venue
 
     def _alt_store(self):  # noqa: ANN202 — AltDataStore | PgAltDataStore
         """The point-in-time alt-data store, chosen the SAME way ingest/api do: postgres URL → PgAltDataStore
@@ -589,7 +615,7 @@ class FarmLoop:
 
 
 # THE crypto screen universe — the symbols every Binance gate-lane candidate is screened against. The funder
-# reads this too (orchestrator/loop.py): a survivor forward-tests ONLY on a symbol its gate evidence covered.
+# reads this too (orchestrator/loop.py): a survivor paper-trades ONLY on a symbol its gate evidence covered.
 CRYPTO_SCREEN_UNIVERSE: tuple[str, ...] = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")
 
 

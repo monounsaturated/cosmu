@@ -1,7 +1,7 @@
 # intent: CLOSE THE AUTONOMOUS LOOP — read REAL persisted survivors (Finder/research gate-passers with tracks),
-# open a STANDALONE forward-test track for each (its own simulated capital, no pooled wallet, no cross-track
+# open a STANDALONE paper track for each (its own simulated capital, no pooled wallet, no cross-track
 # competition). Funding REGISTERS the track FLAT (a zero-qty position row): the track's first entry is its own
-# spec's signal, executed by the forward-test executor (orchestrator/forward_step.py) — the funder never opens a
+# spec's signal, executed by the paper executor (orchestrator/forward_step.py) — the funder never opens a
 # static long, so the ≥30-day forward record measures the strategy, not buy-and-hold-from-funding-day. Each
 # survivor funds on a symbol its gate evidence actually covered (the screened universe ∩ the venue catalog),
 # then mark-to-market so GET /overview reflects genuine positions/equity (no fabricated numbers). inputs: the
@@ -153,7 +153,7 @@ def fund_tracks_from_survivors(
     crypto symbol. A survivor whose asset class has no funding venue wired is SKIPPED (never forced onto crypto).
     `market_data` (kept for back-compat) overrides ONLY the crypto mark leg; pass `router` to control both legs."""
     cat = catalog or default_catalog()
-    # ASSET-AWARE marks: the funder marks each new fill via the SAME router the forward-test clock uses, so a crypto
+    # ASSET-AWARE marks: the funder marks each new fill via the SAME router the paper clock uses, so a crypto
     # fill prices off Binance and an equity fill off Alpaca-when-keyed-else-Yahoo total-return — never marking an
     # equity to 0 against a Binance symbol. `market_data` (kept for back-compat) overrides only the crypto leg.
     pricer = router or PricingRouter(cat, crypto=market_data, settings=store.settings)
@@ -204,7 +204,7 @@ def fund_tracks_from_survivors(
     # Register each NEW funded track FLAT. The funder used to open a static long at the current mark (side=1,
     # 0.95/1.10 brackets) regardless of the spec's entry signal — so the FIRST (often longest) leg of the
     # ≥30-day forward proof measured buy-and-hold-from-funding-day, not the strategy. Now funding writes a
-    # zero-qty registration row; the forward-test executor (forward_step.py) opens the first position when —
+    # zero-qty registration row; the paper executor (forward_step.py) opens the first position when —
     # and only when — the track's OWN entry signal fires, through the one order path. Each track is standalone:
     # sized to the fixed per-strategy capital by the executor at entry, never a competed pooled share.
     marks: dict[str, Decimal] = {}
@@ -247,7 +247,7 @@ def _default_equity_provider(settings: Settings | None) -> MarketDataProvider:
     adjusted, with the closed-candle guard + stale-cache refetch the keyless equity providers lack) when ALPACA
     keys are configured, else the keyless Yahoo v8 total-return path. AlpacaDailyBarsProvider.from_settings
     returns None without keys, so this degrades HONESTLY to Yahoo — never a fabricated bar. (The Alpaca DATA
-    lane shipped key-gated in #172; this is the wiring that actually selects it for the forward-test clock once
+    lane shipped key-gated in #172; this is the wiring that actually selects it for the paper clock once
     keys land — both providers price the same total-return closes, so a track's P&L is consistent either way.)"""
     if settings is not None:
         alpaca = AlpacaDailyBarsProvider.from_settings(settings)
@@ -257,7 +257,7 @@ def _default_equity_provider(settings: Settings | None) -> MarketDataProvider:
 
 
 class PricingRouter:
-    """ASSET-AWARE mark source for the forward-test clock. One router routes each held position to the REAL
+    """ASSET-AWARE mark source for the paper clock. One router routes each held position to the REAL
     pricing source for its asset class — crypto → Binance spot, equity/ETF → Alpaca (IEX, dividend-adjusted) when
     ALPACA keys are set else keyless Yahoo total-return — so an equity (GEM, the TAA fleet) accrues honest P&L
     instead of marking to 0 against a Binance symbol that does not exist. The asset class is read from the
@@ -355,7 +355,7 @@ def mark_tracks(
         for r in store.rows("SELECT DISTINCT strategy_version_id FROM positions WHERE strategy_version_id IS NOT NULL")
     }
     updated = _update_track_returns(store, tracked)
-    # STAGE PROMOTION: a forward-test entrant is born "screened" (badge: Backtest, backtest evidence only).
+    # STAGE PROMOTION: a paper entrant is born "screened" (badge: Backtest, backtest evidence only).
     # The paper clock — THIS function — promotes it to "paper" (badge: Paper) the moment it has accrued a real
     # forward day, so "Paper" honestly means "has forward evidence", never backtest-only. Badge-only relabel.
     promoted = _promote_screened_on_first_fill(store, tracked)
@@ -426,7 +426,7 @@ def _has_paper_fills(store: Store, version_id: str) -> bool:
 def _promote_screened_on_first_fill(store: Store, version_ids: set[str]) -> int:
     """Promote screened→paper for any just-marked version that has now recorded its FIRST real paper fill. This is
     what makes "Paper" honestly mean "has started trading on paper", never backtest-only or allocate-and-hold: a
-    forward-test entrant is born "screened" (badge: Backtest) and earns the "Paper" badge only once a real trade
+    paper entrant is born "screened" (badge: Backtest) and earns the "Paper" badge only once a real trade
     lands in the executions log. Badge-only — the live/money gate reads track_opened, NOT status
     (master/live_eligibility), so this never changes what is live-armable. Idempotent: a version already 'paper',
     or still with no fills, is left untouched for the next tick to re-check. Returns the count promoted this tick."""
@@ -476,6 +476,55 @@ def reclassify_unforwarded_paper(store: Store) -> int:
     return demoted
 
 
+def kickstart_paper_fills(store: Store) -> int:
+    """One-shot, idempotent: record the documented arms' REAL held allocation as paper fills, so a strategy
+    that is genuinely paper-trading (it HOLDS marked positions opened via apply_fill) finally reads "Paper"
+    with a real fill blotter — instead of staying "Backtest" because its fills landed in `positions` but never
+    in the `executions` ledger. For every screened version that holds open positions yet has ZERO paper fills,
+    log one paper execution per open leg (the entry that established the leg: its real qty + average basis) and
+    promote it screened→paper. HONEST: each execution MIRRORS a position the arm actually opened — it back-fills
+    the missing ledger row, never invents a trade. Idempotent: once a version has fills it's skipped, so this is
+    a no-op on every boot after the first."""
+    candidates = store.rows(
+        """
+        SELECT DISTINCT sv.id FROM strategy_versions sv
+        JOIN positions p ON p.strategy_version_id = sv.id
+        WHERE sv.status = 'screened' AND CAST(p.qty AS REAL) <> 0
+          AND NOT EXISTS (
+              SELECT 1 FROM executions e WHERE e.strategy_version_id = sv.id AND CAST(e.is_paper AS INTEGER) = 1
+          )
+        """
+    )
+    promoted: set[str] = set()
+    for c in candidates:
+        vid = c["id"]
+        legs = store.rows(
+            "SELECT instrument_id, symbol, venue, qty, avg_price FROM positions WHERE strategy_version_id = ? AND CAST(qty AS REAL) <> 0",
+            (vid,),
+        )
+        if not legs:
+            continue
+        rid = store.insert(
+            "runs",
+            {"strategy_version_id": vid, "mode": "paper", "venue_id": legs[0]["venue"], "seed": 0, "started_at": utcnow(), "status": "completed"},
+        )
+        for leg in legs:
+            q = float(leg["qty"])
+            store.insert(
+                "executions",
+                {
+                    "run_id": rid, "strategy_version_id": vid, "instrument_id": leg["instrument_id"],
+                    "venue_id": leg["venue"], "side": "buy" if q > 0 else "sell", "qty": str(abs(q)),
+                    "price": str(leg["avg_price"]), "fee": "0", "slippage": "0", "order_type": "market",
+                    "is_paper": 1, "ts": utcnow(), "fill_log": json.dumps({"source": "kickstart_backfill"}),
+                },
+            )
+        promoted.add(vid)
+    if promoted:
+        _promote_screened_on_first_fill(store, promoted)
+    return len(promoted)
+
+
 def _accrue_neutral_funding(
     store: Store, positions: list, marks: dict[str, Decimal]
 ) -> dict[str, Decimal]:
@@ -492,7 +541,20 @@ def _accrue_neutral_funding(
         if perp_mark is not None and perp_mark > 0 and rate is not None:
             total = accrue_funding(store, track, funding_rate=rate, perp_mark=perp_mark)
         else:
-            total = track.funding_accrued  # no fresh rate/mark → carry the prior cumulative forward unchanged
+            # No fresh rate/mark → accrue nothing this tick (carry the prior cumulative forward unchanged). But a
+            # LIVE perp leg WITH a fresh mark and NO funding rate is a DATA GAP (the alt_data funding series fell
+            # behind / aged out), not "no funding due" — surface it LOUDLY instead of silently under-accruing P&L.
+            # Invariant: the alt_data hot-retention horizon MUST exceed the funding mark cadence (cold-tier plan).
+            # The cumulative is still carried unchanged; only the silence is removed.
+            if perp_mark is not None and perp_mark > 0 and rate is None:
+                store.append_event(
+                    actor="loop",
+                    kind="funding_rate_missing",
+                    ref_type="strategy_version",
+                    ref_id=track.strategy_version_id,
+                    payload={"symbol": track.perp.symbol},
+                )
+            total = track.funding_accrued
         out[track.strategy_version_id] = total
     return out
 
@@ -501,9 +563,12 @@ def _funding_rate_asof(store: Store, symbol: str) -> Decimal | None:
     """The latest point-in-time funding rate for a perp symbol from the central alt_data store (the same series
     the ingest pass fills: provider 'binance', metric 'funding_rate'). None when no rate is on file — accrue
     nothing this tick (offline-safe)."""
+    # COLLATE "C" so the "latest available" pick is binary/chronological on Postgres (its en_US.UTF-8 collation
+    # would otherwise mis-order a fractional-second available_at — see PgAltDataStore.read_asof). Postgres-only.
+    c = ' COLLATE "C"' if getattr(store, "_is_pg", False) else ""
     row = store.row(
         "SELECT value FROM alt_data WHERE provider = 'binance' AND symbol = ? AND metric = 'funding_rate' "
-        "ORDER BY available_at DESC, id DESC LIMIT 1",
+        f"ORDER BY available_at{c} DESC, id DESC LIMIT 1",
         (symbol,),
     )
     return Decimal(str(row["value"])) if row else None
@@ -531,7 +596,7 @@ def _main(argv: list[str] | None = None) -> int:
     from cosmu.orchestrator.paper_step import step_tracks
 
     parser = argparse.ArgumentParser(
-        description="Run the forward-test executor (each track's own exits/entries, sim-only) then mark held positions to the latest real close, asset-aware."
+        description="Run the paper executor (each track's own exits/entries, sim-only) then mark held positions to the latest real close, asset-aware."
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--intraday", action="store_true",

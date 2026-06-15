@@ -1,6 +1,6 @@
 # STAGE SEMANTICS — "Paper" must mean a strategy has actually STARTED TRADING on paper: >= 1 REAL paper fill in
 # the executions log (the same signal the detail sheet reads — "no fills yet" / "needs fills for a curve"). A
-# forward-test entrant is born "screened" (badge: Backtest); the paper clock (orchestrator.mark_tracks) promotes
+# paper entrant is born "screened" (badge: Backtest); the paper clock (orchestrator.mark_tracks) promotes
 # it to "paper" on its FIRST real fill, and a one-shot boot reclassification (reclassify_unforwarded_paper) demotes
 # any "paper" row that has no fills (e.g. a documented arm that only holds a static allocation — apply_fill writes
 # positions, never executions). Both are BADGE-ONLY relabels — the live/money gate reads track_opened, not status.
@@ -14,7 +14,7 @@ from cosmu.config.settings import Settings
 from cosmu.data.market import Bar
 from cosmu.knowledge.store import Store
 from cosmu.master.portfolio import Portfolio
-from cosmu.orchestrator.loop import PricingRouter, mark_tracks, reclassify_unforwarded_paper
+from cosmu.orchestrator.loop import PricingRouter, _has_paper_fills, mark_tracks, reclassify_unforwarded_paper
 from cosmu.spine.venue import default_catalog
 
 _TS = dt.datetime(2026, 1, 1, tzinfo=dt.UTC).isoformat()
@@ -122,3 +122,31 @@ def test_reclassify_keeps_paper_that_has_traded(tmp_path):
     vid = _setup_track(store, status="paper", with_fill=True, open_pos=False)
     assert reclassify_unforwarded_paper(store) == 0
     assert _status(store, vid) == "paper"
+
+
+def test_kickstart_paper_fills_promotes_holding_arm(tmp_path):
+    # A documented arm that HOLDS an open position (apply_fill) but has NO recorded executions is "screened"
+    # (Backtest). kickstart_paper_fills back-fills its held leg as a paper fill and promotes it screened->paper,
+    # so a genuinely paper-trading arm reads "Paper" with a real blotter. Idempotent: a second run is a no-op.
+    from cosmu.orchestrator.loop import kickstart_paper_fills
+
+    store = _store(tmp_path)
+    vid = _setup_track(store, status="screened", with_fill=False, open_pos=True)  # holds a leg, no fills
+    assert _status(store, vid) == "screened"
+    assert not _has_paper_fills(store, vid)
+
+    n = kickstart_paper_fills(store)
+    assert n == 1
+    assert _status(store, vid) == "paper"  # promoted on its now-recorded fill
+    assert _has_paper_fills(store, vid)  # the held leg is now in the executions ledger
+    assert kickstart_paper_fills(store) == 0  # idempotent — already has fills
+
+
+def test_kickstart_skips_arm_with_no_open_position(tmp_path):
+    # A screened version with NO open position is NOT kickstarted (nothing was actually allocated/traded).
+    from cosmu.orchestrator.loop import kickstart_paper_fills
+
+    store = _store(tmp_path)
+    vid = _setup_track(store, status="screened", with_fill=False, open_pos=False)
+    assert kickstart_paper_fills(store) == 0
+    assert _status(store, vid) == "screened"

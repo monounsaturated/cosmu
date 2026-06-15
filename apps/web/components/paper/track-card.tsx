@@ -20,6 +20,21 @@ const LIM = 4;
 // finite-number guard (the shared honest-"—" helper).
 const num = numOrNull;
 
+// The instrument-line under the strategy name (class · venue · timeframe) — the real facets the engine
+// derives from the spec, so each row reads like a real positions blotter even before P&L moves. Skips any
+// empty facet rather than printing a bare "·".
+function instrumentLine(r: LeaderboardRow): string {
+  return [r.asset_class, formatVenue(r.venue), r.timeframe].filter((s) => s && s !== "—").join(" · ");
+}
+
+// How long the track has been funded — real `paper_age_days`. A fresh track reads "<1d"/"today" so a $0
+// P&L is legible as "just entered" rather than "no data". Never fabricated.
+function heldLabel(ageDays: number | null): string {
+  if (ageDays === null || ageDays <= 0) return "today";
+  if (ageDays < 1) return "<1d";
+  return `${Math.round(ageDays)}d`;
+}
+
 export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
   const [open, setOpen] = useState(false);
 
@@ -56,7 +71,7 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
             <thead>
               <tr>
                 <th>Strategy</th>
-                <th>Venue</th>
+                <th>Held</th>
                 <th className="r">Size</th>
                 <th className="r">Value</th>
                 <th className="r">P&amp;L</th>
@@ -70,15 +85,19 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
                 const pct = num(row.pnl_pct);
                 // Invested = current value − net P&L, only when both real marks exist.
                 const invested = value !== null && pnl !== null ? value - pnl : null;
-                const pnlCls = pnl === null ? "quiet" : pnl >= 0 ? "up" : "dn";
+                // Tone: green/red only when P&L has actually moved. An exact $0 (freshly entered, mark = cost)
+                // is NEUTRAL — never a misleading green "+0.00%" that reads like a gain.
+                const pnlCls = pnl === null ? "quiet" : pnl > 0 ? "up" : pnl < 0 ? "dn" : "muted";
+                const instr = instrumentLine(row);
                 return (
                   <tr key={row.version_id} className={cn(i >= LIM && "dash-extra")}>
                     <td className="pos-strat">
                       <Link href={`/strategies?v=${row.version_id}`} className="strat-link" data-tip={row.name}>
                         {row.name}
                       </Link>
+                      {instr ? <span className="pos-sub">{instr}</span> : null}
                     </td>
-                    <td className="muted pos-venue">{formatVenue(row.venue)}</td>
+                    <td className="muted tab">{heldLabel(num(row.paper_age_days))}</td>
                     <td className="r tab muted">{invested === null ? "—" : formatUsd(invested)}</td>
                     <td className="r tab">{value === null ? "—" : formatUsd(value)}</td>
                     <td className={cn("r tab", pnlCls)}>{pnl === null ? "—" : formatUsd(pnl)}</td>

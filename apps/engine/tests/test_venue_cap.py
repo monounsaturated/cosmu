@@ -45,7 +45,7 @@ def test_venue_cap_allows_within_the_limit():
 
 def test_no_venue_cap_when_unconfigured_is_todays_behavior():
     # venue_max_notional=None → the check is skipped entirely, even with huge prior deployment (regression guard
-    # for the SIM/forward-test lane, which is never fed a per-venue cap).
+    # for the SIM/paper lane, which is never fed a per-venue cap).
     d = validate_order_full(_entry("1"), _VENUE, _INSTR, _RISK,
                             _state(venue_open_notional=Decimal("999999"), venue_max_notional=None))
     assert "venue_cap" not in d.issues

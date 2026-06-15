@@ -8,9 +8,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from cosmu.config.settings import get_settings
+from cosmu.data.universe import perp_universe
 from cosmu.data.altdata import (
     AltDataProvider,
-    AltDataStore,
     BinanceBasisProvider,
     BinanceOpenInterestProvider,
     CboePutCallProvider,
@@ -203,15 +203,11 @@ class Providers:
 
 
 def _default_store():  # noqa: ANN202 - AltDataStore | PgAltDataStore
-    """Pick the backend the SAME way the API does: postgres URL → PgAltDataStore over the Store, else the
-    JSONL AltDataStore. ZERO keys required — both are append-only point-in-time stores with one interface."""
-    settings = get_settings()
-    if settings.database_url.startswith("postgres://") or settings.database_url.startswith("postgresql://"):
-        from cosmu.data.altdata import PgAltDataStore
-        from cosmu.knowledge.store import Store
+    """The HOT alt-data write store via the single hot_alt_store factory (postgres URL → PgAltDataStore over the
+    Store, else the JSONL AltDataStore). Writes ALWAYS land in PG (the hot tier) — the cold lake is a read path."""
+    from cosmu.data.altdata import hot_alt_store
 
-        return PgAltDataStore(Store(settings))
-    return AltDataStore()
+    return hot_alt_store(get_settings())
 
 
 def _safe(source: str, fn: Callable[[], int]) -> int:
@@ -255,7 +251,7 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
         from cosmu.data.altdata import PgAltDataStore
 
         store = PgAltDataStore(store)
-    symbols = list(symbols) if symbols is not None else list(DEFAULT_SYMBOLS)
+    symbols = list(symbols) if symbols is not None else perp_universe()
     p = providers if providers is not None else Providers.from_settings(get_settings())
 
     # Run-level cache: the single FRED provider feeds several semantic features off the SAME series

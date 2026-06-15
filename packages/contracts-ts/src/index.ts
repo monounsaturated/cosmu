@@ -91,6 +91,7 @@ export interface Backtest {
   max_dd: number;
   num_trades: number;
   oos_return: number;
+  oos_window_days?: number | null;
   passed_gates: boolean;
   pbo: number;
   win_rate: number;
@@ -254,6 +255,28 @@ export interface CorrelationsResponse {
   latest_run_id: string | null;
   stability: CorrelationStability[];
   survivors: CorrelationFinding[];
+}
+
+export interface CostBasisCell {
+  basis: string;
+  cost_ratio: number;
+  fee_bps: number;
+  holds: boolean;
+  impact_bps: number;
+  label: string;
+  net_return_pct: number;
+  num_trades: number;
+  slippage_bps: number;
+  venue_id: string | null;
+}
+
+export interface CostBasisResponse {
+  available: boolean;
+  cells: CostBasisCell[];
+  gross_return_pct: number | null;
+  name: string;
+  reason: string | null;
+  version_id: string;
 }
 
 export interface CostByCategory {
@@ -575,6 +598,81 @@ export interface InboxQueueResponse {
   items: InboxQueueItem[];
 }
 
+export interface IndexCard {
+  cadence_minutes: number;
+  created_at: string | null;
+  definition: Record<string, unknown>;
+  entities: string[];
+  health: IndexHealthModel;
+  id: string;
+  kind: string;
+  market_wide: boolean;
+  metric: string;
+  n_strategies_using: number;
+  name: string;
+  rationale: string;
+  status: string;
+}
+
+export interface IndexDefineResponse {
+  available: boolean;
+  error?: string | null;
+  index: IndexCard | null;
+  ok: boolean;
+}
+
+export interface IndexDetail {
+  available: boolean;
+  index: IndexCard | null;
+  series: IndexSeries[];
+  strategies_using: IndexStrategyRef[];
+}
+
+export interface IndexHealthModel {
+  freshness: string;
+  latest_at: string | null;
+  latest_value: number | null;
+  n_points: number;
+  reliability: string;
+  stability: number | null;
+  staleness_hours: number | null;
+  transform_version: string;
+}
+
+export interface IndexSeries {
+  points: IndexSeriesPoint[];
+  symbol: string;
+}
+
+export interface IndexSeriesPoint {
+  ts: string;
+  value: number;
+}
+
+export interface IndexSpec {
+  cadence_minutes?: number;
+  created_at?: string | null;
+  definition?: Record<string, unknown>;
+  entities?: string[];
+  id: string;
+  kind: "single_account" | "social_bucket" | "event_topic" | "prompt_rubric";
+  name: string;
+  rationale: string;
+  status?: "draft" | "active" | "paused";
+  transform_version?: string;
+}
+
+export interface IndexStrategyRef {
+  name: string;
+  status: string;
+  version_id: string;
+}
+
+export interface IndexesResponse {
+  available: boolean;
+  indexes: IndexCard[];
+}
+
 export interface InfraLine {
   amount: number;
   amount_max: number;
@@ -664,6 +762,7 @@ export interface LeaderboardRow {
   status: string;
   timeframe: string;
   track_return_pct: number;
+  trades?: number | null;
   value_usd?: number | null;
   venue: string;
   version_id: string;
@@ -1135,16 +1234,24 @@ export interface SourceTrustRow {
 
 export interface StrategyDetailResponse {
   backtests: Backtest[];
+  forward_equity?: Point[];
   generated_code: string;
+  has_paper_fills?: boolean;
   holdout: Record<string, unknown>;
+  invested_usd?: number | null;
   name: string;
   notes_md: string;
   params: Record<string, unknown>;
+  pnl_usd?: number | null;
+  realized_pnl?: number | null;
   spec: Record<string, unknown>;
+  starting_capital?: number | null;
   summary_md?: string | null;
   summary_stale?: boolean | null;
   summary_updated_at?: string | null;
   trades: Execution[];
+  unrealized_pnl?: number | null;
+  value_usd?: number | null;
   version_id: string;
 }
 
@@ -1227,11 +1334,15 @@ export interface VenueFeeInfo {
   configured: boolean;
   fee_tiers: VenueFeeTierInfo[];
   id: string;
+  impact_bps: number;
   kind: "crypto" | "equity" | "prediction";
+  legal_entity: string | null;
   live_enabled: boolean;
   maker_fee_bps: number;
   min_notional: number;
   name: string;
+  region: string | null;
+  slippage_bps: number;
   taker_fee_bps: number;
 }
 

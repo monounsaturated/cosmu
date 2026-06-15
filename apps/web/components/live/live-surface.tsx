@@ -4,12 +4,12 @@
 // Its toolbar carries the global ARM state, a grey "Rules" button (opens the hard-limit Rules modal), and a
 // danger Stop control (opens the liquidate modal). Below: the equity hero on top, then a KPI+guard row that
 // FOLDS the guardrails (Daily loss / Max DD / Exposure) as editable-cap guard boxes into the live-vs-sim
-// money line (Invested / Free / P&L), then [Open positions | Recent trades] side by side. The 2-CLICK
-// activation flow (Review & arm → Confirm) and the per-strategy Launch flow are preserved.
+// money line (Invested / Free / P&L), then [Open positions | Recent trades] side by side. Arming is done from
+// the strategy sheet (Go Live → POST `/live/launch`), NOT here — this surface only monitors, Stops, and edits Rules.
 //
 // SAFETY (real money): LIVE IS OFF BY DEFAULT. This component never decides whether an order is real — the
-// engine does, only when toggle ON + keys present + gate PASSED + caps available + not kill-switched. We send
-// confirm only on the explicit second click. Offline → an honest not-connected note, never armed.
+// engine does, only when toggle ON + keys present + gate PASSED + caps available + not kill-switched. There is
+// no arm control on this surface (arming lives on the strategy sheet). Offline → an honest not-connected note, never armed.
 //
 // HONESTY: the KPI row reads the engine's live-vs-sim SPLIT (getPortfolioSummary). When nothing is routed
 // live (`has_live` false) every live money figure is null and renders an explicit "—" — NEVER 0 and NEVER
@@ -157,7 +157,7 @@ export function LiveSurface({
         body: JSON.stringify({
           global_max_notional: next.global_max_notional,
           max_daily_loss: next.max_daily_loss,
-          venues: next.venues.map((v) => ({ venue: v.venue, max_notional: v.max_notional ?? null }))
+          venues: (next.venues ?? []).map((v) => ({ venue: v.venue, max_notional: v.max_notional ?? null }))
         })
       });
       if (res.ok) setRules((await res.json()) as RulesResponse);
@@ -171,21 +171,35 @@ export function LiveSurface({
   const liqCount = summary.positions_count_live;
 
   // Live positions only — when not armed live, do not mirror the sim/paper positions onto the Live screen.
-  const positions = isLive ? state.positions : [];
+  // `state.positions` is typed non-null but the engine can omit it — guard so `.slice`/`.map` below can't throw.
+  const positions = isLive ? (state.positions ?? []) : [];
   const POS_LIM = 4;
   const shownPositions = showAllPositions ? positions : positions.slice(0, POS_LIM);
 
   return (
     <Page>
       {/* Toolbar (v18 page-live) — Running/Off badge on the left; the grey Rules button + danger Stop on the
-          right. Live is launched via the CLI (Commands · `cosmu live launch`), so there is no in-UI arm flow. */}
+          right. Arming is done on the strategy sheet (Go Live → `/live/launch`); this surface only monitors + Stops. */}
       <Toolbar
         title="Live"
         left={
           armed ? (
-            <span className="badge badge-run" style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
-              <span className="run-dot" /> Running
-            </span>
+            // Make the money-reality UNMISTAKABLE in the badge itself: testnet = fake money (the safe default),
+            // live = real funds, sim = internal only. A bare "Running" could be misread as real money — it must
+            // never say "Running" without naming which money it is on. `state.mode` is the engine's resolved mode.
+            state.mode === "live" ? (
+              <span className="badge badge-dn" style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                <span className="run-dot" style={{ background: "var(--down)" }} /> LIVE · real money
+              </span>
+            ) : state.mode === "testnet" ? (
+              <span className="badge badge-gold" style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                <span className="run-dot" style={{ background: "var(--gold)" }} /> TESTNET · test money (not real)
+              </span>
+            ) : (
+              <span className="badge badge-run" style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                <span className="run-dot" /> Running · sim
+              </span>
+            )
           ) : (
             <span className="badge badge-muted">Off</span>
           )
@@ -212,8 +226,12 @@ export function LiveSurface({
 
       {/* id="dash-live" scopes the compact dashboard KPI sizing (globals.css #dash-live .kpi-val/.kpi-box). */}
       <div id="dash-live">
-        {/* Equity hero ALWAYS on top — the real live equity curve (honest empty until a live track record). */}
-        <EquityHero label="Total equity" curve={isLive ? equityCurve : []} />
+        {/* Equity hero ALWAYS on top. Gate the curve on the SAME honest discriminator the money KPIs use
+            (summary.live_equity, which the engine pins to null until a real LIVE portfolio snapshot exists —
+            overview.py) so it shows an honest empty state, never the SIM/paper aggregate `equityCurve`. When
+            live data is wired, repoint `equityCurve` itself to a live-scoped series — feeding the aggregate
+            here would still be wrong even when live_equity is non-null. */}
+        <EquityHero label="Total equity" curve={isLive && summary.live_equity != null ? equityCurve : []} />
 
         {/* Money + guard boxes (left, 3×2) + Open positions (right). */}
         <div className="kgrid dash-split" style={{ gridTemplateColumns: "minmax(0,3fr) minmax(0,2fr)" }}>
@@ -275,8 +293,9 @@ export function LiveSurface({
           </div>
         </div>
 
-        {/* Open positions (left) + Recent trades (right). */}
-        <div className="kgrid dash-split" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
+        {/* Open positions (left) + Recent trades (right). `dash-tables` decouples their heights so expanding
+            Open positions ("See all") never resizes/moves the Recent-trades card beside it. */}
+        <div className="kgrid dash-split dash-tables" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
           {/* Open positions — labelled by money state so a paper position is never read as live capital. */}
           <div className="card dh">
             <div className="card-hdr">

@@ -181,10 +181,12 @@ def _content_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _write_spec(store: Store, spec: StrategySpec, *, intent: str, brief: str, directory: Path) -> str:
+def _write_spec(store: Store, spec: StrategySpec, *, intent: str, brief: str, directory: Path, authored_by: str = "human") -> str:
     """Write a typed, already-validated StrategySpec to the inbox as `.json` (the scanner gates it verbatim — no
     re-drafting, so the authored structure is preserved) and record an audited `strategize_authored` event for
-    tracking. Returns the file path written. Content-addressed filename → re-authoring the same spec is idempotent."""
+    tracking. Returns the file path written. Content-addressed filename → re-authoring the same spec is idempotent.
+    `authored_by` is the event actor (human chat vs the agent batch master) so the flywheel can grade winners by
+    who wrote them — no schema change, the events table actor is free-text."""
     directory.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(spec.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
     chash = _content_hash(payload)
@@ -192,7 +194,7 @@ def _write_spec(store: Store, spec: StrategySpec, *, intent: str, brief: str, di
     path = directory / filename
     path.write_text(payload, encoding="utf-8")
     store.append_event(
-        actor="human",
+        actor=authored_by,
         kind="strategize_authored",
         ref_type="strategy_spec",
         payload={
@@ -214,12 +216,14 @@ def _author_one(
     intent: str,
     directory: Path,
     llm_enabled: bool,
+    authored_by: str = "human",  # "agent" for the theme-batch master → hard novelty reject (inbox flood guard)
     chat=None,  # noqa: ANN001 — injectable LLM seam (lab.llm.ChatFn) so CI runs offline
 ) -> AuthoredSpec:
     """Draft ONE brief into a typed spec (reusing draft_from_brief — same no-magic-numbers guarantee), validate
-    it, and write the valid ones to the inbox. Never raises into the router."""
+    it, and write the valid ones to the inbox. Never raises into the router. `authored_by` flows to draft_from_brief
+    so an agent batch hard-rejects near-duplicates (a human's intentional re-run stays advisory)."""
     try:
-        draft = draft_from_brief(brief, llm_enabled=llm_enabled, store=store, chat=chat)
+        draft = draft_from_brief(brief, llm_enabled=llm_enabled, store=store, authored_by=authored_by, chat=chat)
     except Exception as exc:  # noqa: BLE001 — authoring is best-effort; a bad brief is reported, not fatal
         return AuthoredSpec(name=brief[:48], brief=brief, valid=False, issues=[f"author_error:{type(exc).__name__}"])
     issues = draft.issues or validate_spec(draft.spec)
@@ -227,7 +231,7 @@ def _author_one(
         name=draft.spec.name, brief=brief, valid=not issues, issues=issues, notes=list(draft.notes)
     )
     if not issues:
-        authored.path = _write_spec(store, draft.spec, intent=intent, brief=brief, directory=directory)
+        authored.path = _write_spec(store, draft.spec, intent=intent, brief=brief, directory=directory, authored_by=authored_by)
     return authored
 
 
@@ -268,7 +272,8 @@ def strategize(
             route.notes.append(f"requested {n} clamped to {_MAX_BATCH} (inbox flood guard)")
         briefs = _theme_briefs(resolved, count)
         route.authored = [
-            _author_one(store, b, intent=intent, directory=directory, llm_enabled=llm_enabled, chat=chat) for b in briefs
+            _author_one(store, b, intent=intent, directory=directory, llm_enabled=llm_enabled, authored_by="agent", chat=chat)
+            for b in briefs
         ]
         route.count = len(route.authored)
         route.reason = f"theme batch → authored {sum(a.valid for a in route.authored)}/{count} specs varying '{resolved}'"

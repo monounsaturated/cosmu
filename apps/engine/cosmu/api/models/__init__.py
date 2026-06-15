@@ -186,12 +186,25 @@ from cosmu.api.models.verdicts import (  # noqa: F401
     VerdictsResponse,
 )
 from cosmu.api.models.explorer import (  # noqa: F401
+    CostBasisCell,
+    CostBasisResponse,
     ExplorerDetailResponse,
     ExplorerListResponse,
     ExplorerPoint,
     ExplorerStats,
     ExplorerTrade,
     ExplorerVersion,
+)
+from cosmu.api.models.indexes import (  # noqa: F401
+    IndexCard,
+    IndexDefineResponse,
+    IndexDetail,
+    IndexHealthModel,
+    IndexSeries,
+    IndexSeriesPoint,
+    IndexSpec,
+    IndexStrategyRef,
+    IndexesResponse,
 )
 
 __all__ = [
@@ -361,10 +374,22 @@ __all__ = [
     "VerdictRow",
     "VerdictsResponse",
     # explorer
+    "CostBasisCell",
+    "CostBasisResponse",
     "ExplorerDetailResponse",
     "ExplorerListResponse",
     "ExplorerPoint",
     "ExplorerStats",
     "ExplorerTrade",
     "ExplorerVersion",
+    # indexes
+    "IndexCard",
+    "IndexDefineResponse",
+    "IndexDetail",
+    "IndexHealthModel",
+    "IndexSeries",
+    "IndexSeriesPoint",
+    "IndexSpec",
+    "IndexStrategyRef",
+    "IndexesResponse",
 ]

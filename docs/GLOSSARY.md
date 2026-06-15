@@ -2,7 +2,7 @@
 
 The single source of truth for product terms. **DB tables, API fields, UI labels, and docs all use these exact words.** If a name here and a name in code/UI disagree, this file wins — fix the other side (ask before a broad rename; see `AGENTS.md`).
 
-> **The lifecycle is LOCKED:** **Backtest → Paper → Live.** There is **NO pooled wallet** — each survivor proves itself on its **own standalone track**. The stage name is **"Paper"** everywhere — front AND back (operator decision 2026-06-11). The dead words **"Paper"** and **"Simulation"** (as stage names) and **"Incubate"** must not reappear in UI/labels or code. **Legacy note for agents:** `paper` == formerly `paper`; the prod DB may carry `paper` status rows / `paper_promotion_watch` event kinds until the 2026-06-11 migration is applied — readers stay tolerant (`IN ('paper', 'paper', ...)`) until then. `executions.is_paper` (the "this fill was simulated" boolean) is orthogonal and unchanged.
+> **The lifecycle is LOCKED:** **Backtest → Paper → Live.** There is **NO pooled wallet** — each survivor proves itself on its **own standalone track**. The stage name is **"Paper"** everywhere — front AND back (operator decision 2026-06-11). The dead words **"Forward-test"** and **"Simulation"** (as stage names) and **"Incubate"** must not reappear in UI/labels or code. **Legacy note for agents:** `paper` == formerly `forward_test`; the prod DB may carry `forward_test` status rows / `forward_test_promotion_watch` event kinds until the 2026-06-11 migration is applied — readers stay tolerant (`IN ('paper', 'forward_test', ...)`) until then. `executions.is_paper` (the "this fill was simulated" boolean) is orthogonal and unchanged.
 
 ## Strategy lifecycle
 
@@ -18,7 +18,7 @@ The single source of truth for product terms. **DB tables, API fields, UI labels
 | Term | One-line definition |
 |------|---------------------|
 | **Backtest** | Discovery + screening. The research brain, Strategy Finder, and the Gate run Walk-Forward OOS + holdout on historical data — no real money, no live prices. Formerly called "Lab". |
-| **Paper** | Validation on live data. Each gate-passed Version gets its own standalone SIM track (default **$1,000**, `sim_track_capital`). The daily clock first **EXECUTES** each gate-lane track's own spec/params on the latest real bars — its stop / take / time-stop / signal-exit closes the position, its entry signal re-enters (`orchestrator/paper_step.py`, sim fills with real fees + slippage) — then **marks** every held position to the real close. Deploy-lane rotation arms rotate via their own arm modules (stale legs close first). A **≥ 30 paper-day net-of-fee proof** is the recommended live-readiness signal (advisory — the operator decides; the 5 interlocks are the hard gate). A paper track keeps running after 30 days — until the operator kills it (the history is training data). Formerly called "Simulation", before that "Paper", and in v1 "Paper" — back to "Paper" by operator decision 2026-06-11. |
+| **Paper** | Validation on live data. Each gate-passed Version gets its own standalone SIM track (default **$1,000**, `sim_track_capital`). The daily clock first **EXECUTES** each gate-lane track's own spec/params on the latest real bars — its stop / take / time-stop / signal-exit closes the position, its entry signal re-enters (`orchestrator/paper_step.py`, sim fills with real fees + slippage) — then **marks** every held position to the real close. Deploy-lane rotation arms rotate via their own arm modules (stale legs close first). A **≥ 30 paper-day net-of-fee proof** is the recommended live-readiness signal (advisory — the operator decides; the 5 interlocks are the hard gate). A paper track keeps running after 30 days — until the operator kills it (the history is training data). Formerly called "Forward-test", before that "Simulation", and in v1 "Paper" — back to "Paper" by operator decision 2026-06-11. |
 | **Live** | Real money. Off by default; only gate-passing Versions promote, and only when the live toggle is armed. Live bots are launched manually with dedicated capital (1-button + confirm). |
 
 ## Judging
@@ -66,6 +66,22 @@ The agent's standardized self-knowledge, surfaced on the **Mind** page (`/mind`)
 | **Feature** | A named, point-in-time data signal from the **feature registry** (`apps/engine/cosmu/config/feature_registry.py`). Specs reference features by name only. |
 | **Composable module** | A reusable, named entry/exit building block (e.g. `multi_tp`, `break_even+runner`, `ma_trend_filter`, `orb`, `fvg_retest`/`fvg_multiple`) that a Version declares instead of re-deriving structure. See the create-strategy skill. |
 | **Inbox** | `apps/engine/strategies/inbox/` — drop a `*.md` / `*.pine` / `*.json` strategy file here; it is scanned on deploy/boot, parsed to a `StrategySpec`, and flows through `static_check → Lab → Finder → Gate`. |
+| **Creation Contract** | The hard, machine-enforced floor every authored spec must clear in `validate_spec` (`apps/engine/cosmu/strategy/static_check.py`): all thresholds are `ParamRef`s in `param_space` (no magic numbers); every referenced feature exists in the registry; a non-empty `entry`; a non-empty `rationale` (the disconfirmable WHY); valid horizon + universe. Authoring (chat/inbox/pine/compiler) all call it — research cohorts are the known gap. See the create-strategy skill's checklist. |
+| **Novelty gate** | The deterministic "never try the same strategy twice" guard (`novelty_gate`, `apps/engine/cosmu/knowledge/memory.py`): rejects a candidate too close to a recently-killed dead-end or too complex. **Hard reject for `authored_by="agent"`** batches (the inbox flood guard), **advisory** for a human's intentional re-run. |
+| **`authored_by`** | Provenance of a draft — `human` (chat/UI), `agent` (the LLM master fanning out a theme batch), or `import` (pine/url). Recorded as the `strategize_authored` event actor; drives the novelty policy above. |
+
+### Taxonomy facets — the controlled vocabulary (derived, never hand-tagged)
+
+Every leaderboard row's facets are a **pure function of the typed spec** (`apps/engine/cosmu/strategy/taxonomy.py`) — never a manual tag, so they can't drift from the strategy's real inputs. Use these exact words:
+
+| Facet | Closed value set |
+|-------|------------------|
+| **signal_family** | `social` · `news_events` · `math_price` · `macro_positioning` · `onchain_flow` (derived from each referenced feature's registry `source`) |
+| **edge_type** | `carry` · `breakout` · `event` · `mean-reversion` · `momentum` · `structural` (derived from setup legs + features) |
+| **lane** | `gate` (novel, in-sample-mined → the 0.95 deflated-Sharpe + BH-FDR bar) · `deploy` (externally-documented, decades of OOS → the positive-OOS deployment bar) |
+| **direction** | `1` long/spot · `-1` short/perp · `0` signal-decides |
+| **asset_class** | `crypto` · `equity` · `fx` · `prediction` |
+| **timeframe** | `1h` · `4h` · `1d` |
 
 ## Canonical identifiers (code ↔ DB ↔ API)
 

@@ -72,6 +72,18 @@ const STAGE_RANK: Record<LifeStatus, number> = { live: 5, paper: 4, screened: 3,
 // Map the screener's lifecycle onto the sheet's Stage union so the sheet badge matches the table badge.
 const LIFE_TO_STAGE: Record<LifeStatus, Stage> = { lab: "queued", screened: "backtest", paper: "paper", live: "live", killed: "killed" };
 
+// The PnL of the strategy's LATEST stage — so the P&L column is meaningful at every stage, not blank for a
+// backtested strategy. A real paper/live MARK wins when present (paper, live, or a track killed after it
+// traded); otherwise the backtest OOS return. `usd` is null for a pure-backtest stage (a % return on notional,
+// not a funded $ track) — we never fabricate a dollar figure. `source` lets the cell label which stage it is.
+function latestStagePnl(row: LeaderboardRow): { pct: number; usd: number | null; source: "live" | "paper" | "backtest" } | null {
+  const markPct = numOrNull(row.pnl_pct);
+  if (markPct !== null) return { pct: markPct, usd: numOrNull(row.pnl_usd), source: lifeStatusOf(row) === "live" ? "live" : "paper" };
+  const oos = Number.isFinite(row.track_return_pct) ? row.track_return_pct : null;
+  if (oos !== null) return { pct: oos, usd: null, source: "backtest" };
+  return null;
+}
+
 // The Gate's reference scalars (the green threshold line on the DSR bar; the PBO gold ceiling).
 const SHARPE_REF = 2;
 const DSR_STRONG = 0.95;
@@ -80,7 +92,7 @@ const PBO_CEILING = 0.5;
 // ── COLS — each column a lens onto a REAL row field. `sort` makes the header click-to-sort; `defaultOn:
 // false` columns start hidden (the v18 opt-ins). `min` feeds the colgroup so columns size correctly. ──
 type SortDir = "asc" | "desc";
-type ColKey = "name" | "stage" | "life" | "days" | "value" | "pnl" | "pnlpct" | "dsr" | "pbo" | "dd" | "oos" | "venue" | "fees" | "origin";
+type ColKey = "name" | "stage" | "life" | "days" | "trades" | "value" | "pnl" | "pnlpct" | "dsr" | "pbo" | "dd" | "oos" | "venue" | "fees" | "origin";
 type ColDef = {
   key: ColKey;
   label: string;
@@ -96,9 +108,12 @@ const COLS: ColDef[] = [
   { key: "name", label: "Name", width: 240, sort: { dir: "asc", value: (r) => r.name.toLowerCase() } },
   { key: "stage", label: "Stage", width: 90, pickable: true, sort: { dir: "desc", value: (r) => STAGE_RANK[lifeStatusOf(r)] } },
   { key: "days", label: "Days", width: 42, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.paper_age_days) ? r.paper_age_days : null) } },
+  // Trades made at the strategy's LATEST stage (paper/live fills when it has traded, else the backtest's
+  // round-trips) — so the count always matches the stage the rest of the row reports. Honest "—" when absent.
+  { key: "trades", label: "Trades", width: 58, pickable: true, sort: { dir: "desc", value: (r) => (typeof r.trades === "number" ? r.trades : null) } },
   { key: "value", label: "Value", width: 72, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.value_usd) } },
   { key: "pnl", label: "P&L", width: 66, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_usd) } },
-  { key: "pnlpct", label: "P&L %", width: 58, pickable: true, sort: { dir: "desc", value: (r) => numOrNull(r.pnl_pct) } },
+  { key: "pnlpct", label: "P&L %", width: 64, pickable: true, sort: { dir: "desc", value: (r) => latestStagePnl(r)?.pct ?? null } },
   { key: "dsr", label: "DSR", width: 94, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.deflated_sharpe) ? r.deflated_sharpe : null) } },
   { key: "pbo", label: "PBO", width: 64, pickable: true, sort: { dir: "asc", value: (r) => (Number.isFinite(r.pbo) ? r.pbo : null) } },
   { key: "dd", label: "Max DD", width: 80, defaultOn: false, pickable: true },
@@ -124,6 +139,18 @@ function formatWindow(days: number | null | undefined): string {
   return `${Math.round(days)}d`;
 }
 
+// Annualized return (CAGR) from a TOTAL return % over a window in days — the comparable number across
+// strategies with different test lengths. null when the window is unknown or the inputs are degenerate
+// (total <= -100% would imply a wipeout; we don't annualize that). Years = days/365.25.
+function annualizedPct(totalPct: number | null | undefined, windowDays: number | null | undefined): number | null {
+  if (typeof totalPct !== "number" || !Number.isFinite(totalPct)) return null;
+  if (typeof windowDays !== "number" || !Number.isFinite(windowDays) || windowDays <= 0) return null;
+  const years = windowDays / 365.25;
+  if (years <= 0 || totalPct <= -100) return null;
+  const cagr = Math.pow(1 + totalPct / 100, 1 / years) - 1;
+  return Number.isFinite(cagr) ? cagr * 100 : null;
+}
+
 export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribbon?: ReactNode }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -147,10 +174,31 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
     return () => document.removeEventListener("mousedown", onDoc);
   }, [showPicker]);
 
+  // One row per STRATEGY (by name), kept at its LATEST stage — a strategy with several Versions (e.g. an old
+  // killed v1 + a paper v2) appears ONCE, as the most-advanced Version; a tie within a stage is broken by the
+  // strongest DSR. So each strategy is a single line reporting THAT stage's data (the stage-aware P&L / Trades
+  // cells below). The per-Version detail is still one click away in the sheet.
+  const dedupedRows = useMemo(() => {
+    const best = new Map<string, LeaderboardRow>();
+    for (const r of rows) {
+      const prev = best.get(r.name);
+      if (!prev) {
+        best.set(r.name, r);
+        continue;
+      }
+      const rRank = STAGE_RANK[lifeStatusOf(r)];
+      const pRank = STAGE_RANK[lifeStatusOf(prev)];
+      const rDsr = numOrNull(r.deflated_sharpe) ?? -Infinity;
+      const pDsr = numOrNull(prev.deflated_sharpe) ?? -Infinity;
+      if (rRank > pRank || (rRank === pRank && rDsr > pDsr)) best.set(r.name, r);
+    }
+    return [...best.values()];
+  }, [rows]);
+
   // ── search → filter → sort ──
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const searched = rows.filter((r) => {
+    const searched = dedupedRows.filter((r) => {
       if (q && !(r.name.toLowerCase().includes(q) || r.features.some((f) => f.toLowerCase().includes(q)) || r.edge_type.toLowerCase().includes(q))) {
         return false;
       }
@@ -179,7 +227,7 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
       }
       return tieByDsr(a, b);
     });
-  }, [rows, query, filter, sort]);
+  }, [dedupedRows, query, filter, sort]);
 
   const visibleCols = useMemo(() => order.map((k) => COL_BY_KEY[k]).filter((c) => visible[c.key]), [order, visible]);
   const minWidth = useMemo(() => visibleCols.reduce((sum, c) => sum + c.width, 0), [visibleCols]);
@@ -289,8 +337,9 @@ export function StrategiesTable({ rows, ribbon }: { rows: LeaderboardRow[]; ribb
       {/* The live money-split ribbon sits below the toolbar (v18 order). */}
       {ribbon}
 
-      {/* ── ranked screener — horizontal scroll on overflow ── */}
-      <div className="screener-wrap">
+      {/* ── ranked screener — horizontal scroll on overflow. When the detail panel is open it overlays the
+          right with no backdrop, so we reserve its width (`.panel-open`) and the table scrolls under it. ── */}
+      <div className={cn("screener-wrap", selectedId && "panel-open")}>
         {filtered.length === 0 ? (
           <p className="quiet" style={{ fontSize: 12, padding: "24px 4px", textAlign: "center" }}>No versions match these filters.</p>
         ) : (
@@ -393,6 +442,12 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
       const days = Number.isFinite(row.paper_age_days) ? Math.floor(row.paper_age_days) : 0;
       return days > 0 ? <span className="tab">{days}</span> : <Dash />;
     }
+    case "trades": {
+      const t = typeof row.trades === "number" ? row.trades : null;
+      return t === null ? <Dash /> : (
+        <span className="tab" data-tip="Trades at this strategy's latest stage — paper/live fills when it has traded, else the backtest's round-trips.">{t}</span>
+      );
+    }
     case "value": {
       const v = numOrNull(row.value_usd);
       return v === null ? <Dash /> : <span className="tab">{formatUsd(v)}</span>;
@@ -409,9 +464,22 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
           </div>
         );
       }
-      const v = numOrNull(row.pnl_pct);
-      if (v === null) return <Dash />;
-      return <span className={cn("tab", v > 0 ? "up" : v < 0 ? "dn" : "")}>{`${v >= 0 ? "+" : ""}${v.toFixed(0)}%`}</span>;
+      // Stage-aware: paper/live MARK when present, else the backtest OOS return — so a backtested strategy
+      // shows its P&L instead of "—". A small "bt"/"live" tag + tooltip names which stage the number is from.
+      const p = latestStagePnl(row);
+      if (p === null) return <Dash />;
+      const tip =
+        p.source === "backtest"
+          ? "Out-of-sample backtest return — this strategy's latest stage (no paper P&L yet)"
+          : p.source === "live"
+            ? "Live realized + unrealized P&L %"
+            : "Paper P&L % (the standalone paper track)";
+      return (
+        <span className={cn("tab", p.pct > 0 ? "up" : p.pct < 0 ? "dn" : "")} data-tip={tip}>
+          {`${p.pct >= 0 ? "+" : ""}${p.pct.toFixed(0)}%`}
+          {p.source === "backtest" ? <span className="oos-win" style={{ marginLeft: 3 }}>bt</span> : null}
+        </span>
+      );
     }
     case "dsr": {
       const dsr = Number.isFinite(row.deflated_sharpe) ? row.deflated_sharpe : null;
@@ -429,10 +497,18 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
       const oos = Number.isFinite(row.track_return_pct) ? row.track_return_pct : null;
       if (oos === null) return <Dash />;
       const win = formatWindow(row.oos_window_days);
+      // Annualized (CAGR) over the OOS window — the comparable number, since windows differ in length
+      // (a +94% over 6yr is ~12%/yr, not 94%). Shown for every strategy incl. Backtest, so the table carries
+      // a real return even before any paper P&L. Only when we know the window length; else just the total.
+      const ann = annualizedPct(oos, row.oos_window_days);
       return (
-        <div style={{ lineHeight: 1.1 }}>
+        <div style={{ lineHeight: 1.15 }}>
           <span className={cn("tab", oos >= 0 ? "up" : "dn")}>{`${oos >= 0 ? "+" : ""}${oos.toFixed(1)}%`}</span>
-          {win ? <span className="oos-win">{win}</span> : null}
+          {ann !== null ? (
+            <span className="oos-win" data-tip="Annualized (CAGR) over the out-of-sample window — comparable across strategies with different test lengths.">{`${ann >= 0 ? "+" : ""}${ann.toFixed(1)}%/yr`}</span>
+          ) : win ? (
+            <span className="oos-win">{win}</span>
+          ) : null}
         </div>
       );
     }

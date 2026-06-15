@@ -64,6 +64,7 @@ _FLEET: list[_Entry] = [
     _Entry("dual_momentum",      "cosmu.research.equity_dual_momentum_arm",       "Global Equities Momentum (GEM)"),
     _Entry("paa",                "cosmu.research.equity_paa_arm",                 "Protective Asset Allocation (PAA)"),
     _Entry("daa",                "cosmu.research.equity_daa_arm",                 "Defensive Asset Allocation (DAA)"),
+    _Entry("haa",                "cosmu.research.equity_haa_arm",                 "Hybrid Asset Allocation (HAA, Keller 2023)"),
 ]
 
 # Status codes used in the per-strategy result

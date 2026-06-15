@@ -8,15 +8,17 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from cosmu.api._shared import _json, store
+from cosmu.api._shared import _json, oos_window_days, store
 from cosmu.api.models import (
     Backtest,
     Execution,
+    Point,
     StrategyDetailResponse,
     StrategySummaryPutRequest,
     StrategySummaryPutResponse,
     SummaryFactsResponse,
 )
+from cosmu.api.routers.leaderboard import _money_or_none  # the shared finite-or-None money coercion (never null→0)
 from cosmu.knowledge.store import utcnow
 from cosmu.research.summary_facts import facts_hash, summary_facts
 
@@ -43,6 +45,30 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
             executions = store.rows("SELECT * FROM executions WHERE strategy_version_id = ? ORDER BY ts DESC LIMIT 50", (version_id,))
             backtests = store.rows("SELECT * FROM backtests WHERE strategy_version_id = ? ORDER BY created_at DESC", (version_id,))
             summary_md, summary_stale, summary_updated_at = _latest_summary(version_id)
+            # HONEST forward money for the sheet's money band + equity chart — the SAME pattern the leaderboard
+            # serves (marked scope='track' snapshot − starting_capital, gated on a real paper fill), NEVER the
+            # execution cash flow and NEVER tracks.equity (the rosy backtest seed). All-or-nothing: every money
+            # figure is real only when the track has BOTH a paper fill AND a marked snapshot, else all None.
+            has_paper_fills = bool(store.row(
+                "SELECT 1 FROM executions WHERE strategy_version_id = ? AND CAST(is_paper AS INTEGER) = 1 LIMIT 1",
+                (version_id,),
+            ))
+            tr = store.row("SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (version_id,))
+            snap_rows = store.rows(
+                "SELECT ts, equity FROM portfolio_snapshots WHERE scope = 'track' AND ref_id = ? ORDER BY ts ASC",
+                (version_id,),
+            )
+            pos_rows = store.rows("SELECT qty, avg_price, realized_pnl FROM positions WHERE strategy_version_id = ?", (version_id,))
+            marked = bool(snap_rows) and has_paper_fills
+            start_usd = _money_or_none(tr["starting_capital"]) if tr else None
+            value_usd = _money_or_none(snap_rows[-1]["equity"]) if marked else None
+            # realized = Σ positions.realized_pnl over ALL rows (incl. closed qty=0 legs, mirroring portfolio.py);
+            # invested = deployed cost basis = Σ avg_price*qty over OPEN rows. Both 0 for a freshly-opened buy-and-hold.
+            realized_pnl = float(sum(float(r["realized_pnl"]) for r in pos_rows)) if marked else None
+            invested_usd = float(sum(float(r["avg_price"]) * float(r["qty"]) for r in pos_rows)) if marked else None
+            pnl_usd = (value_usd - start_usd) if (value_usd is not None and start_usd is not None) else None
+            unrealized_pnl = (pnl_usd - realized_pnl) if (pnl_usd is not None and realized_pnl is not None) else None
+            forward_equity = [Point(ts=s["ts"], value=float(s["equity"])) for s in snap_rows] if marked else []
     if row is None:
         raise HTTPException(status_code=404, detail="strategy version not found")
     return StrategyDetailResponse(
@@ -56,7 +82,7 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
             for trade in executions
         ],
         backtests=[
-            Backtest(id=bt["id"], kind=bt["kind"], oos_return=float(bt["oos_return"]), deflated_sharpe=float(bt["deflated_sharpe"]), max_dd=float(bt["max_dd"]), win_rate=float(bt["win_rate"]), num_trades=int(bt["num_trades"]), pbo=float(bt["pbo"]), passed_gates=bool(bt["passed_gates"]))
+            Backtest(id=bt["id"], kind=bt["kind"], oos_return=float(bt["oos_return"]), deflated_sharpe=float(bt["deflated_sharpe"]), max_dd=float(bt["max_dd"]), win_rate=float(bt["win_rate"]), num_trades=int(bt["num_trades"]), pbo=float(bt["pbo"]), passed_gates=bool(bt["passed_gates"]), oos_window_days=oos_window_days(bt["oos_start"], bt["oos_end"]))
             for bt in backtests
         ],
         notes_md="Deterministic WFO accepted this version for the standardized track. Live capital remains gated by the global toggle, sim survival, regime fit, and caps.",
@@ -64,6 +90,14 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
         summary_md=summary_md,
         summary_stale=summary_stale,
         summary_updated_at=summary_updated_at,
+        has_paper_fills=has_paper_fills,
+        value_usd=value_usd,
+        invested_usd=invested_usd,
+        realized_pnl=realized_pnl,
+        unrealized_pnl=unrealized_pnl,
+        pnl_usd=pnl_usd,
+        starting_capital=start_usd,
+        forward_equity=forward_equity,
     )
 
 

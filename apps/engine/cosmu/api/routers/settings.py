@@ -25,17 +25,25 @@ def _key_table() -> list[tuple[str, str, str, str, str, str, bool]]:
     env = os.environ
     return [
         ("API_SECRET_KEY", "API secret", "Locks the control-plane API — the web app sends it; nobody else can call the engine.", "required", "free", "railway", bool(settings.api_secret_key)),
+        # The two vars the WEB needs on Vercel to reach the engine (the proxy forwards to API_BASE_URL with the
+        # secret; NEXT_PUBLIC_API_BASE_URL drives the connected/offline state). The engine runs on Railway and
+        # cannot observe Vercel's env, so their presence is left honestly unverified (see _settings_key_rows).
+        ("API_BASE_URL", "Engine URL (web→Vercel)", "The engine URL the web's server proxy forwards to. Set on Vercel.", "required", "free", "vercel", False),
+        ("NEXT_PUBLIC_API_BASE_URL", "Engine URL (public)", "Public engine URL the web reads to show connected vs offline. Set on Vercel.", "required", "free", "vercel", False),
         ("XAI_API_KEY", "xAI (Grok)", "LLM strategy authoring (preferred). Research still runs offline without it.", "optional", "paid", "railway", bool(settings.xai_api_key)),
         ("OPENROUTER_API_KEY", "OpenRouter", "LLM authoring fallback when xAI is not set.", "optional", "paid", "railway", bool(settings.openrouter_api_key)),
         ("LUNARCRUSH_API_KEY", "LunarCrush", "Social-sentiment scores + a real (non-synthetic) edge-gate verdict.", "optional", "paid", "railway", bool(settings.lunarcrush_api_key)),
         ("FRED_API_KEY", "FRED", "Macro-regime cross-asset source (free key).", "optional", "free", "railway", bool(settings.fred_api_key)),
         ("POLYMARKET_TOKEN", "Polymarket", "Prediction-market risk-on cross-asset source (a market token id, not a secret).", "optional", "free", "railway", bool(settings.polymarket_token)),
+        ("POLYMARKET_PRIVATE_KEY", "Polymarket (live)", "Real-money execution on the Polymarket CLOB (Polygon, USDC). Only needed once you arm live prediction trading.", "live-only", "free", "railway", bool(settings.polymarket_private_key)),
+        ("POLYMARKET_FUNDER_ADDRESS", "Polymarket (live)", "The proxy/funder wallet live positions + fills are keyed to (not a secret). Defaults to the signer.", "live-only", "free", "railway", bool(settings.polymarket_funder_address)),
+        ("POLYMARKET_TESTNET_PRIVATE_KEY", "Polymarket (testnet)", "Paper execution against the Polymarket Amoy (Polygon testnet) CLOB.", "optional", "free", "railway", bool(settings.polymarket_testnet_private_key)),
         ("BINANCE_API_KEY", "Binance (live)", "Real-money execution on Binance spot. Only needed once you arm live trading.", "live-only", "free", "railway", bool(settings.binance_api_key)),
         ("BINANCE_API_SECRET", "Binance (live)", "Real-money execution on Binance spot. Only needed once you arm live trading.", "live-only", "free", "railway", bool(settings.binance_api_secret)),
         ("BINANCE_TESTNET_API_KEY", "Binance (testnet)", "Paper execution against Binance testnet (testnet.binance.vision).", "optional", "free", "railway", bool(settings.binance_testnet_api_key)),
         ("BINANCE_TESTNET_API_SECRET", "Binance (testnet)", "Paper execution against Binance testnet (testnet.binance.vision).", "optional", "free", "railway", bool(settings.binance_testnet_api_secret)),
-        ("ALPACA_PAPER_API_KEY", "Alpaca (paper)", "US equities market data (IEX) + free paper execution — the equity forward-test lane.", "optional", "free", "railway", bool(settings.alpaca_paper_api_key)),
-        ("ALPACA_PAPER_API_SECRET", "Alpaca (paper)", "US equities market data (IEX) + free paper execution — the equity forward-test lane.", "optional", "free", "railway", bool(settings.alpaca_paper_api_secret)),
+        ("ALPACA_PAPER_API_KEY", "Alpaca (paper)", "US equities market data (IEX) + free paper execution — the equity paper lane.", "optional", "free", "railway", bool(settings.alpaca_paper_api_key)),
+        ("ALPACA_PAPER_API_SECRET", "Alpaca (paper)", "US equities market data (IEX) + free paper execution — the equity paper lane.", "optional", "free", "railway", bool(settings.alpaca_paper_api_secret)),
         ("ALPACA_API_KEY", "Alpaca (live)", "Real-money US equities execution on Alpaca. Only needed once you arm live trading.", "live-only", "free", "railway", bool(settings.alpaca_api_key)),
         ("ALPACA_API_SECRET", "Alpaca (live)", "Real-money US equities execution on Alpaca. Only needed once you arm live trading.", "live-only", "free", "railway", bool(settings.alpaca_api_secret)),
         ("SLACK_WEBHOOK_URL", "Slack alerts", "Ops alerts to a Slack channel.", "optional", "free", "railway", bool(env.get("SLACK_WEBHOOK_URL"))),
@@ -62,17 +70,23 @@ def _settings_key_rows() -> list[SettingsKeyRow]:
     is_prod = getattr(settings, "environment", "local") == "production"
     rows: list[SettingsKeyRow] = []
     for env_var, service, description, requirement, cost, host, configured in _key_table():
-        present = KeyPresence(
-            local=None if is_prod else configured,
-            host=configured if is_prod else None,
-        )
-        observed = present.host if is_prod else present.local  # the side we can actually see
-        if observed:
-            status = "connected"
-        elif requirement in ("required", "live-only"):
-            status = "missing"  # expected but absent on the side we observe
+        if host == "vercel":
+            # The engine runs on Railway and CANNOT observe Vercel's env. These web vars are indexed so the
+            # operator knows to set them, but presence stays honestly UNVERIFIED — never a fabricated red/green.
+            present = KeyPresence(local=None, host=None)
+            status = "unverified"
         else:
-            status = "unset"  # optional and absent
+            present = KeyPresence(
+                local=None if is_prod else configured,
+                host=configured if is_prod else None,
+            )
+            observed = present.host if is_prod else present.local  # the side we can actually see
+            if observed:
+                status = "connected"
+            elif requirement in ("required", "live-only"):
+                status = "missing"  # expected but absent on the side we observe
+            else:
+                status = "unset"  # optional and absent
         rows.append(
             SettingsKeyRow(
                 key=service,

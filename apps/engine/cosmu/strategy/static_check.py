@@ -42,6 +42,18 @@ def validate_spec(spec: StrategySpec) -> list[str]:
         issues.append("universe_too_small")
     if spec.horizon.min_hold_days < 1 or spec.horizon.max_hold_days < spec.horizon.min_hold_days:
         issues.append("invalid_horizon")
+    # Completeness contract: a hypothesis with no entry conditions never fires, and an empty rationale loses the
+    # WHY — the disconfirmable thesis the Gate is testing and the summary is written from. Both are required so the
+    # master agent can author at scale without silently dropping the strategy's intent. (Quality heuristics —
+    # boilerplate length, narrative-vs-structure contradictions — stay ADVISORY in the authoring skills; these two
+    # are the hard correctness invariants, true of every existing spec in the corpus.)
+    # EXCEPTION: event/regime specs have NO price/TA entry by design — their trigger is the MarketEvent match
+    # (event payload), so the "entry required" invariant applies only to indicator specs. Mirror is_event_kind
+    # inline (don't import event_router — it pulls the backtest engines into this lightweight validator).
+    if not spec.entry and getattr(spec, "strategy_kind", "indicator") not in ("event", "regime"):
+        issues.append("no_entry_conditions")
+    if not (spec.rationale or "").strip():
+        issues.append("empty_rationale")
     return issues
 
 

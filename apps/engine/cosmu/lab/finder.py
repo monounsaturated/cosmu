@@ -20,7 +20,7 @@ from decimal import Decimal
 
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
-from cosmu.data.backtest import run_strategy_backtest_detailed
+from cosmu.data.backtest import DEFAULT_IMPACT_BPS, DEFAULT_SLIPPAGE_BPS, run_strategy_backtest_detailed
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.data.universe import CORE_PERP_UNIVERSE
 from cosmu.evolution.loop import fit_params
@@ -30,6 +30,7 @@ from cosmu.knowledge.store import Store, Writer, utcnow
 from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_cohort
 from cosmu.master.holdout import HoldoutLedger
+from cosmu.master.promotion import freeze_promotion
 from cosmu.master.scorer import BacktestMetrics, TrialStats, cscv_pbo, score
 from cosmu.master.trials import register_trial
 from cosmu.ml.regime import proven_regimes
@@ -370,7 +371,7 @@ class StrategyFinder:
             except Exception:  # noqa: BLE001 — audit trail is best-effort; the verdict itself is already set
                 pass
         if persist:
-            self._persist(spec, results, market)
+            self._persist(spec, results, market, venue)
 
         # Experiment-tracking hook (thin, best-effort): log EVERY screened variant to the registry with its
         # exact fitted config + run seed + data_version + metrics — so the run is comparable to past runs and
@@ -491,7 +492,7 @@ class StrategyFinder:
 
     # ------------------------------------------------------------------ persistence (config library)
 
-    def _persist(self, spec: StrategySpec, results: list[VariantResult], market: dict[str, list[Bar]]) -> None:
+    def _persist(self, spec: StrategySpec, results: list[VariantResult], market: dict[str, list[Bar]], venue) -> None:  # noqa: ANN001 — venue catalog row
         """Write the config library: one strategies row + one strategy_versions row per variant (origin='finder',
         config_tag carried in params), the screen backtest, and — for promoted+holdout-passing variants — a track,
         a `track_opened` event (the paper clock origin + proven-regime passport that master/live_eligibility
@@ -531,7 +532,7 @@ class StrategyFinder:
                     },
                 )
                 r.version_id = version_id
-                b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, holdout_ok))
+                b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, holdout_ok, venue))
                 if promote:
                     _capital = self.settings.sim_track_capital
                     equity = _capital * (Decimal("1") + r.metrics.oos_return)
@@ -589,6 +590,17 @@ class StrategyFinder:
                     r.version_id,
                     lambda r=r: {"passed": r.holdout_passed, "deflated_sharpe": round(float(r.metrics.holdout_deflated_sharpe), 6)},
                 )
+
+        # FREEZE each promoted survivor into its strategy_promotions record — the single source of truth live
+        # reads to replicate the Gate's verdict (frozen params + hash, fee model, registry version, regimes).
+        # Runs AFTER the batch commits so it sees the committed version + track_opened rows. Best-effort: a freeze
+        # hiccup must never unwind a valid promotion (the gate already disposed; the freeze is durable bookkeeping).
+        for r in results:
+            if r.version_id and r.promoted and r.holdout_passed:
+                try:
+                    freeze_promotion(self.store, r.version_id)
+                except Exception:  # noqa: BLE001 — freeze is durable bookkeeping, never blocks a real promotion
+                    pass
 
     def _ensure_strategy(self, b: Writer, spec: StrategySpec) -> str:
         existing = self.store.row("SELECT id FROM strategies WHERE name = ? AND origin = 'finder'", (spec.name,))
@@ -688,7 +700,7 @@ def _round_trip_cost(metrics: BacktestMetrics, venue) -> float:  # noqa: ANN001
     return fee * 2.0 * float(metrics.num_trades)
 
 
-def _backtest_row(version_id: str, m: BacktestMetrics, deflated: float, passed: bool, holdout_ok: bool) -> dict:
+def _backtest_row(version_id: str, m: BacktestMetrics, deflated: float, passed: bool, holdout_ok: bool, venue) -> dict:  # noqa: ANN001 — venue catalog row
     return {
         "strategy_version_id": version_id,
         "kind": "screen",
@@ -712,6 +724,12 @@ def _backtest_row(version_id: str, m: BacktestMetrics, deflated: float, passed: 
         "kurtosis": str(m.kurtosis),
         "n_obs": m.n_obs,
         "regime_spread": sum(1 for pnl in m.regime_returns.values() if pnl > 0),
+        # The cost assumptions this screen was scored under — the venue it priced against (taker fee) + the
+        # backtest's default slippage/impact. Frozen into the promotion so live can detect a venue repricing.
+        "venue_id": venue.id,
+        "fee_bps": str(venue.taker_fee_bps),
+        "slippage_bps": str(DEFAULT_SLIPPAGE_BPS),
+        "impact_bps": str(DEFAULT_IMPACT_BPS),
         "created_at": utcnow(),
     }
 

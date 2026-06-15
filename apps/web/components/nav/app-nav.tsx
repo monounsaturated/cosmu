@@ -1,8 +1,12 @@
 "use client";
 
 // module: app navigation (Iris Bento `.sb-nav` / `.nav-item`). The v18 redesign IS the whole
-// frontend — SIX surfaces, nothing else: Strategies · Paper · Live · Costs · Keys · Commands
-// (landing = Strategies). There is no mobile bottom-dock: the bento sidebar collapses to an icon
+// frontend — SEVEN surfaces: Strategies · Paper · Live · Indexes · Costs · Keys · Commands
+// (landing = Strategies). Indexes (2026-06-15) is the operator-defined, deterministically-scored
+// signal-index registry that strategies later key off. (The old Research/experiment-memory route was
+// dropped from the nav to declutter — its gate_verdicts data stays in the DB + /verdicts API and is
+// meant to become a generated report, not a daily surface.) There is no mobile bottom-dock: the bento
+// sidebar collapses to an icon
 // rail at narrow widths via the `@media (max-width:880px)` rules in globals.css. Active state is the
 // current route; optional per-stage counts come from a client fetch in the shell (shown only when real).
 
@@ -25,6 +29,12 @@ const ICONS: Record<string, ReactNode> = {
       <circle cx="3.2" cy="11" r="1.1" fill="currentColor" stroke="none" /><line x1="6.2" y1="11" x2="13" y2="11" />
     </svg>
   ),
+  indexes: (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1.7 10.5l3-3.4 2.4 2 3.4-4.4" /><circle cx="12.2" cy="3.4" r="1" fill="currentColor" stroke="none" />
+      <line x1="1.7" y1="13" x2="13" y2="13" />
+    </svg>
+  ),
   paper: (
     <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="2.6" width="9" height="10.8" rx="1.6" /><rect x="5.4" y="1.5" width="4.2" height="2.3" rx="0.8" />
@@ -42,6 +52,11 @@ const ICONS: Record<string, ReactNode> = {
       <circle cx="10.4" cy="9" r="1" fill="currentColor" stroke="none" />
     </svg>
   ),
+  research: (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 1.7v4.1L2.9 11a1.4 1.4 0 0 0 1.2 2.1h6.8A1.4 1.4 0 0 0 12.1 11L9 5.8V1.7" /><line x1="5.2" y1="1.7" x2="9.8" y2="1.7" /><line x1="4.7" y1="8.4" x2="10.3" y2="8.4" />
+    </svg>
+  ),
   keys: (
     <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="5" cy="5" r="2.5" /><path d="M6.8 6.8l5.4 5.4M9.8 12.2l2-2" />
@@ -54,11 +69,12 @@ const ICONS: Record<string, ReactNode> = {
   )
 };
 
-// The SIX primary surfaces — the entire app, in canonical sidebar order.
+// The primary surfaces — the entire app, in canonical sidebar order.
 export const navItems: NavItem[] = [
   { href: "/strategies", key: "strategies", label: "Strategies", icon: ICONS.strategies },
   { href: "/paper", key: "paper", label: "Paper", icon: ICONS.paper },
   { href: "/live", key: "live", label: "Live", icon: ICONS.live },
+  { href: "/indexes", key: "indexes", label: "Indexes", icon: ICONS.indexes },
   { href: "/costs", key: "costs", label: "Costs", icon: ICONS.costs },
   { href: "/keys", key: "keys", label: "Keys", icon: ICONS.keys },
   { href: "/commands", key: "commands", label: "Commands", icon: ICONS.commands }

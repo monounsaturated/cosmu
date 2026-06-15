@@ -212,7 +212,14 @@ body{
 .screener-wrap{
   border-radius:var(--r);overflow-x:auto;overflow-y:hidden;
   box-shadow:var(--cell-shadow);
+  scroll-behavior:smooth;-webkit-overflow-scrolling:touch;
+  transition:margin-right 220ms cubic-bezier(0.16,1,0.3,1);
 }
+/* The detail side-panel overlays the right of the screen with NO backdrop (the table stays visible). Reserve
+   its width on the right when open so the screener's scroll viewport ends at the panel's LEFT edge — every
+   column can now scroll into the visible strip instead of hiding permanently under the panel. Width + slide
+   timing match `.side-panel` (var(--panel-w) capped at 54vw). */
+.screener-wrap.panel-open{margin-right:min(var(--panel-w),54vw)}
 .screener-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
 .col-name{width:215px;min-width:155px}
 .col-stage{width:92px}
@@ -394,7 +401,11 @@ body{
   transition:transform 220ms cubic-bezier(0.16,1,0.3,1);
   overflow:hidden;
 }
-.side-panel.open{transform:translateX(0);box-shadow:-16px 0 48px -8px rgba(0,0,0,.55)}
+/* Open state: no leftward box-shadow — a soft shadow cast over the table read as a "shade" dimming the rows.
+   The panel meets the table with just its crisp `border-left` hairline; the table reserves its width via
+   `.screener-wrap.panel-open` so every row stays fully visible up to the panel edge. The slide stays smooth
+   (the `transform` transition on `.side-panel`). */
+.side-panel.open{transform:translateX(0)}
 .panel-header{
   height:var(--header-h);display:flex;align-items:center;gap:10px;
   padding:0 16px;border-bottom:1px solid var(--hairline);flex-shrink:0;
@@ -440,7 +451,10 @@ body{
 .eq-title-txt{font-size:10.5px;font-weight:600;color:var(--muted)}
 
 /* phase comparison table */
-.phase-tbl{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px}
+/* width:100% to fill a wide panel, but min-width:max-content so a narrow panel can't crop columns — the
+   .tbl-scroll wrapper then scrolls horizontally (Notion-style). nowrap keeps every cell on one line. */
+.phase-tbl{width:100%;min-width:max-content;border-collapse:collapse;font-size:11.5px;margin-top:8px}
+.phase-tbl th,.phase-tbl td{white-space:nowrap}
 .phase-tbl th{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet);font-weight:700;padding:4px 9px;border-bottom:1px solid var(--hairline);text-align:right}
 .phase-tbl th:first-child{text-align:left}
 .phase-tbl td{padding:5px 9px;border-bottom:1px solid var(--hairline);font-variant-numeric:tabular-nums;text-align:right;color:var(--muted)}
@@ -810,10 +824,30 @@ body.sb-collapsed .sb-tog .ic-expand{display:inline}
 .guard-box .g-arc{margin-left:auto;flex-shrink:0}
 .cap-in{width:52px;background:var(--surf3);border:1px solid var(--iris-mid);border-radius:5px;color:var(--fg);font-family:inherit;font-size:11px;padding:1px 5px;font-variant-numeric:tabular-nums}
 .cap-in:focus{outline:none}
+.cap-in:disabled{opacity:.4;cursor:not-allowed}
+/* Per-venue On/Off switch in the Rules modal — green pill when enabled, muted when off; a disabled venue is
+   out of the tradable universe (can't arm/trade). */
+.venue-sw{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;padding:2px 9px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--quiet);cursor:pointer;font-family:inherit;transition:all var(--tr)}
+.venue-sw .venue-sw-dot{width:6px;height:6px;border-radius:50%;background:var(--quiet);flex-shrink:0;transition:all var(--tr)}
+.venue-sw:hover:not(:disabled){border-color:var(--border-s)}
+.venue-sw.on{color:var(--up);border-color:oklch(0.78 0.16 160 / 0.32)}
+.venue-sw.on .venue-sw-dot{background:var(--up);box-shadow:0 0 0 2px var(--up-dim)}
+.venue-sw:disabled{opacity:.55;cursor:default}
 .cap-in-wide{width:130px;font-variant-numeric:normal}
 /* Editable cost register: click-to-edit cells, category select, inline row actions. */
 .cost-edit{cursor:pointer;border-radius:4px;padding:0 2px;transition:background .12s,box-shadow .12s}
 .cost-edit:hover{background:var(--surf3);box-shadow:inset 0 0 0 1px var(--iris-mid)}
+/* Edit-mode gate: outside .editing the whole register is READ-ONLY — cells don't click-to-edit (the truth
+   source is only mutated in edit mode). In .editing, every editable cell shows a faint frame so it reads as
+   a sheet you can change (Excel-like). */
+.subs-tbl:not(.editing) .cost-edit{cursor:default;pointer-events:none}
+.subs-tbl.editing .cost-edit{box-shadow:inset 0 0 0 1px var(--border-s)}
+.subs-tbl.editing .cost-edit:hover{box-shadow:inset 0 0 0 1px var(--iris-mid)}
+.sub-edit-on{border-style:solid !important;border-color:var(--iris-mid) !important;background:var(--iris-dim) !important}
+/* Auto/Manual refresh tag — Auto (live billing) reads quiet-green, Manual reads plain grey. */
+.refresh-tag{font-size:9.5px;font-weight:600;letter-spacing:.03em;padding:1px 6px;border-radius:999px;border:1px solid var(--hairline)}
+.refresh-tag.rt-auto{color:var(--up);border-color:oklch(0.78 0.16 160 / 0.3)}
+.refresh-tag.rt-manual{color:var(--muted)}
 .cat-select,.cad-select{background:var(--surf3);border:1px solid var(--border);border-radius:5px;color:var(--fg);font-family:inherit;font-size:11px;padding:1px 4px;text-transform:capitalize;cursor:pointer}
 .cad-select{background:transparent;border-color:transparent;color:var(--muted);text-transform:none;padding:1px 2px}
 .cad-select:hover{background:var(--surf3);border-color:var(--border)}
@@ -826,9 +860,12 @@ body.sb-collapsed .sb-tog .ic-expand{display:inline}
 .subs-tbl th,.subs-tbl td{padding:6px 9px}
 /* Paper "Open positions" — truncate long strategy names so a row never overflows the card (which would
    add a horizontal scrollbar to ONE box and break the equal-height split). Ellipsis + native title. */
-/* Open-positions table: a wide Strategy name (cropped, full name on the delayed hover tip) + ONE tight Venue
-   column (pretty-printed via formatVenue). Class was dropped — the donut's picker covers asset-class. */
-.mini-tbl td.pos-strat .strat-link{display:inline-block;max-width:128px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+/* Open-positions table: a wide Strategy name (cropped, full name on the delayed hover tip) over a quiet
+   instrument line (class · venue · timeframe) — so each row reads like a real positions blotter even before
+   P&L moves. Venue moved into that sub-line; a "Held" age column replaces the standalone Venue column. */
+.mini-tbl td.pos-strat{line-height:1.25}
+.mini-tbl td.pos-strat .strat-link{display:inline-block;max-width:148px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.mini-tbl td.pos-strat .pos-sub{display:block;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9.5px;color:var(--quiet);letter-spacing:.02em;margin-top:1px}
 .mini-tbl td.pos-venue{max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .g-ribbon{display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:var(--surf2);border:1px solid var(--border);border-radius:var(--r);padding:9px 14px;margin-bottom:var(--gap);box-shadow:var(--cell-shadow)}
 .g-ribbon .gi{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted)}
@@ -1000,6 +1037,12 @@ th[draggable=true]{cursor:pointer}
    card opens, the non-open siblings size to their OWN content (align-self:start) and stop filling the now-taller
    row. Collapsed (no .dash-open present) the stretch still applies, so both cards stay equal height. */
 .dash-split:has(> .card.dash-open) > .card.dh:not(.dash-open){align-self:start;height:auto}
+/* MONEY-TABLE ROW (Open positions | Track record, + the Live equivalents): each card sizes to its OWN content
+   and STAYS that height — so expanding one ("See all" → .dash-open) never resizes or moves the card beside it.
+   This overrides the row stretch ONLY for these table rows; the KPI/donut row above keeps its equal-height
+   stretch. Fixes the "neighbour card changes size when I open See all" reflow. */
+.dash-split.dash-tables{align-items:start}
+.dash-split.dash-tables > .card.dh{height:auto}
 @media (max-width:1100px){ .dash-split{grid-template-columns:1fr!important} }
 @media (max-width:880px){
   /* collapse the sidebar to icons — hide the nav LABELS, not just the brand */
@@ -1044,15 +1087,46 @@ th[draggable=true]{cursor:pointer}
 .k-desc{color:var(--quiet);font-size:10.5px}
 .loc-env{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:var(--quiet)}
 .loc-sep{color:var(--quiet);font-size:10px;margin:0 4px}
-.loc-host{font-size:10px;font-weight:600}
-.loc-host.h-live{color:var(--up)}.loc-host.h-pending{color:var(--gold)}.loc-host.h-error{color:var(--down)}.loc-host.h-off{color:var(--quiet)}
+/* Host name (Railway/Vercel) is a plain GREY label — presence lives in the status dot, not the location. */
+.loc-host{font-size:10px;font-weight:500;color:var(--muted)}
 .key-legend{display:flex;gap:13px;font-size:9px;text-transform:none;letter-spacing:0;color:var(--quiet);font-weight:500}
 .key-legend .lg{display:inline-flex;align-items:center;gap:5px}
 .key-legend .kdot{cursor:default}
 /* ── horizontal scroll for data tables, like the strategies screener ── */
 .mini-tbl th,.mini-tbl td{white-space:nowrap}
 .card-body:has(> table.mini-tbl){overflow-x:auto}
-.tbl-scroll{overflow-x:auto;overflow-y:hidden}
+/* Notion-style horizontal scroll for wide tables in the strategy sheet: smooth momentum + a slim, quiet
+   scrollbar that only shows when there's overflow, so a narrow panel scrolls instead of cropping. */
+/* Notion-style horizontal scroll: smooth + momentum, with DYNAMIC edge shadows that appear only when there's
+   more table off-screen and fade as you reach an edge. Pure CSS (Lea Verou's scrolling-shadows): the two
+   `local` cover layers ride the content and mask the shadow at the extremes; the two `scroll` shadow layers
+   are pinned to the container edges. Cover color = the .psec surface (--surf2) so it works in light + dark. */
+.tbl-scroll{
+  overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;scrollbar-color:var(--hairline) transparent;scroll-behavior:smooth;overscroll-behavior-x:contain;
+  background:
+    linear-gradient(to right, var(--surf2) 28%, transparent) left center,
+    linear-gradient(to left,  var(--surf2) 28%, transparent) right center,
+    radial-gradient(farthest-side at 0 50%, oklch(0 0 0 / 0.28), transparent) left center,
+    radial-gradient(farthest-side at 100% 50%, oklch(0 0 0 / 0.28), transparent) right center;
+  background-repeat:no-repeat;
+  background-size:36px 100%, 36px 100%, 15px 100%, 15px 100%;
+  background-attachment:local, local, scroll, scroll;
+}
+.tbl-scroll::-webkit-scrollbar{height:6px}
+.tbl-scroll::-webkit-scrollbar-thumb{background:var(--hairline);border-radius:3px}
+.tbl-scroll::-webkit-scrollbar-thumb:hover{background:var(--border-s)}
+.tbl-scroll::-webkit-scrollbar-track{background:transparent}
+/* ── Go Live modal form ── */
+.golive-form{display:flex;flex-direction:column;gap:9px}
+.golive-row{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px;color:var(--muted)}
+.golive-row > span{flex:0 0 auto}
+.golive-input{flex:1 1 auto;max-width:200px;background:var(--surface-2,rgba(255,255,255,.04));border:1px solid var(--hairline);border-radius:7px;padding:6px 9px;color:var(--fg);font:inherit;font-size:12px;font-variant-numeric:tabular-nums}
+.golive-input:focus{outline:none;border-color:var(--iris-s)}
+.golive-caps{display:flex;flex-direction:column;gap:7px;padding:9px 0;margin:2px 0;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
+.golive-confirm{display:flex;align-items:flex-start;gap:8px;font-size:11.5px;color:var(--muted);line-height:1.4;margin-top:2px}
+.golive-confirm input{margin-top:2px;flex:0 0 auto}
+.golive-result{min-height:40px}
 /* Keys table: single-line rows like v18 (compact); the .tbl-scroll wrapper handles any overflow. */
 /* ── Live capital-allocation donut (sits in the KPI row, 2/8 width) ── */
 .alloc-box{display:flex;align-items:center;gap:12px;padding:10px 13px;overflow:hidden}
@@ -1090,3 +1164,33 @@ th[draggable=true]{cursor:pointer}
 
 /* right-aligned action group inside a .toolbar-row (title left, controls + theme toggle right) */
 .toolbar-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0}
+
+/* ── Composition surface: pipeline funnel + funded-rate bar + similar-strategies list ───────────────── */
+/* button-classes reused as Next <Link> (anchors) must not pick up a default underline */
+a.btn-col-picker,a.seeall-btn{text-decoration:none}
+/* funded-rate micro-bar (per-block "how often this ingredient survives the Gate") */
+.fund-bar{position:relative;height:5px;border-radius:3px;background:var(--surf3);overflow:hidden;flex:1;min-width:46px}
+.fund-bar > i{position:absolute;inset:0 auto 0 0;border-radius:3px}
+/* the attrition funnel — bars sized by count; tone tints Paper (iris)/Live (up)/Killed (down) */
+.funnel{display:flex;flex-direction:column;gap:7px}
+.funnel-stage{display:flex;align-items:center}
+.funnel-bar{position:relative;height:34px;border-radius:var(--r-xs);background:var(--surf3);border:1px solid var(--border);
+  display:flex;align-items:center;gap:7px;padding:0 12px;min-width:64px;transition:width var(--tr)}
+.funnel-bar .fn-count{font-weight:700;font-size:15px;letter-spacing:-.02em}
+.funnel-bar .fn-label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet)}
+.funnel-bar.fn-iris{border-color:var(--iris-mid);background:var(--iris-dim)}
+.funnel-bar.fn-up{border-color:oklch(0.78 0.16 160 / 0.30);background:var(--up-dim)}
+.funnel-bar.fn-dead{border-color:oklch(0.70 0.17 18 / 0.24);background:var(--down-dim)}
+.funnel-bar.fn-dead .fn-count{color:var(--down)}
+/* similar-strategies list (shared-block lineage) on the per-Version sheet */
+.similar-list{display:flex;flex-direction:column;gap:4px}
+.similar-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 9px;border-radius:var(--r-xs);
+  border:1px solid var(--border);background:var(--surf2);text-decoration:none;transition:border-color var(--tr)}
+.similar-row:hover{border-color:var(--border-s)}
+.similar-name{font-size:11.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.similar-meta{display:flex;align-items:center;gap:7px;flex-shrink:0}
+/* Define-index form fields (reuse .search-input for inputs/selects/textareas) */
+.idx-field{display:flex;flex-direction:column;gap:3px}
+.idx-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--quiet)}
+textarea.search-input{width:100%;resize:vertical;font-family:inherit;line-height:1.45;padding:6px 9px}
+select.search-input{cursor:pointer}

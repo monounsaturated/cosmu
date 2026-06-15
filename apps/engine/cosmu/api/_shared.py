@@ -14,6 +14,27 @@ from cosmu.master.portfolio import Portfolio
 
 ORIGIN_TO_LANE = {"seed": "seed", "mutation": "exploit", "wildcard": "explore", "pine": "pine", "agent": "exploit"}
 
+_MONTHS_PER_YEAR = 12
+_DAYS_PER_MONTH = 30.0  # coarse: the backtest OOS window is stored as YYYY-MM, so day precision isn't available.
+
+
+def oos_window_days(oos_start: object, oos_end: object) -> float | None:
+    """Length of the backtest OOS window in days, derived from its `YYYY-MM` bounds (inclusive of both endpoint
+    months). Lets the UI show the OOS return WITH its window ("+8.2% over ~2.4yr") and feeds the divergence
+    pro-rating. Returns None when either bound is missing/malformed. Coarse by design (the bounds are monthly).
+    Shared by the leaderboard router AND the strategy-detail router (the Backtest contract column)."""
+    if oos_start is None or oos_end is None:
+        return None
+    try:
+        sy, sm = (int(p) for p in str(oos_start).split("-")[:2])
+        ey, em = (int(p) for p in str(oos_end).split("-")[:2])
+    except (ValueError, TypeError):
+        return None
+    months = (ey - sy) * _MONTHS_PER_YEAR + (em - sm) + 1  # inclusive of both endpoint months
+    if months <= 0:
+        return None
+    return months * _DAYS_PER_MONTH
+
 
 settings = get_settings()
 try:

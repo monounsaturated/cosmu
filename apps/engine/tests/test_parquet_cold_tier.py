@@ -66,6 +66,28 @@ def test_read_all_parity_with_postgres(tmp_path):
     assert a == b
 
 
+def test_pit_photocopy_dedups_identically_to_postgres(tmp_path):
+    """An exact PIT photocopy (same ts AND available_at, re-appended) collapses to ONE row on BOTH backends —
+    PG via uq_alt_data_pit ON CONFLICT, the lake via dedup-on-read — so read_all/read_asof stay tuple-identical
+    even though the append-only lake physically holds the duplicate in a second file. The old parquet read
+    (tiebreak `ingested_at DESC`, no read_all dedup) silently diverged from PG here; this pins the fix."""
+    pg, cold = _pg(tmp_path), ParquetAltDataStore(tmp_path / "lake")
+    pts = _series()
+    pg.append(_P, _S, _M, pts)
+    cold.append(_P, _S, _M, pts)
+    photocopy = [pts[5]]                # identical ts / available_at / value
+    pg.append(_P, _S, _M, photocopy)    # ON CONFLICT DO NOTHING → no-op in PG
+    cold.append(_P, _S, _M, photocopy)  # a second physical file in the lake partition
+    a = sorted((p.ts, p.available_at, p.value) for p in pg.read_all(_P, _S, _M))
+    b = sorted((p.ts, p.available_at, p.value) for p in cold.read_all(_P, _S, _M))
+    assert a == b and len(b) == len(pts)  # lake deduped the photocopy on read
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    for d in range(0, 40):
+        as_of = base + timedelta(days=d)
+        assert [(p.ts, p.value) for p in pg.read_asof(_P, _S, _M, as_of)] == \
+               [(p.ts, p.value) for p in cold.read_asof(_P, _S, _M, as_of)], f"read_asof divergence at day {d}"
+
+
 def test_read_miss_returns_empty_never_raises(tmp_path):
     cold = ParquetAltDataStore(tmp_path / "lake")
     assert cold.read_asof(_P, _S, _M, datetime(2026, 1, 1, tzinfo=UTC)) == []

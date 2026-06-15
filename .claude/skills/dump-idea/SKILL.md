@@ -5,7 +5,7 @@ description: Natural-language strategy intake — turn a loose idea (chat or .md
 
 # dump-idea
 
-Capture a half-formed idea as a real spec without losing the thesis. Compose from named building blocks — **no magic numbers** (thresholds go in `param_space`). For a fully-specified strategy use `/create-strategy`; for Pine code use `/import-pine`.
+Capture a half-formed idea as a real spec without losing the thesis. Compose from named building blocks — **no magic numbers** (thresholds go in `param_space`). The single front door for any loose idea is `/strategize` (it routes here automatically); use this directly only when you already know it's a free-text dump. For a fully-specified strategy use `/create-strategy`; for Pine code use `/import-pine`.
 
 ## Steps
 1. **Read the idea** — from chat, or a `.md` file the user points to.
@@ -18,3 +18,5 @@ Capture a half-formed idea as a real spec without losing the thesis. Compose fro
 ## Verify
 - `static_check` + `compile_spec` pass on the written spec (no magic numbers, no inert signal).
 - The spec file names a real venue and a feature that exists in `feature_registry`.
+- The spec carries a `rationale` (the thesis/why) — required by the creation contract (`cosmu/strategy/spec.py`).
+- Near-duplicates get pruned downstream by `novelty_gate` (`cosmu/knowledge/memory.py`); compose something structurally distinct from recent dead-ends.

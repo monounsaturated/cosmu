@@ -51,6 +51,8 @@ create table if not exists strategy_versions (
   mutation_rationale text,
   origin text not null,
   status text not null,
+  -- Provenance: "human" | "agent" | "import". Nullable so pre-migration rows stay valid (read as unknown).
+  authored_by text,
   created_at text not null,
   killed_at text,
   kill_reason text
@@ -81,8 +83,34 @@ create table if not exists backtests (
   kurtosis numeric,
   n_obs integer,
   regime_spread integer,
+  -- Cost assumptions the backtest was scored under (venue + fee/slippage/impact bps). Nullable; lets a promotion
+  -- freeze the gate-time cost model so live can detect a venue repricing instead of trading an unproven fee.
+  venue_id text,
+  fee_bps numeric,
+  slippage_bps numeric,
+  impact_bps numeric,
   created_at text not null
 );
+
+-- The PROMOTION RECORD — the single frozen source of truth for replicating a gate-survivor in live (see schema.sql
+-- for the full rationale). One row per promoted version. The LLM never writes it.
+create table if not exists strategy_promotions (
+  id text primary key,
+  strategy_version_id text not null unique references strategy_versions(id),
+  lane text not null,
+  params_hash text not null,
+  params text not null,
+  feature_registry_version text,
+  universe_snapshot text,
+  fee_model_snapshot text,
+  gate_score text,
+  proven_regimes text,
+  forward_clock_origin text,
+  net_return_pct numeric,
+  promoted_at text not null
+);
+
+create index if not exists idx_strategy_promotions_version on strategy_promotions(strategy_version_id);
 
 create table if not exists runs (
   id text primary key,
@@ -293,7 +321,11 @@ create table if not exists alt_data (
   value numeric not null,
   ingested_at text not null default (now()::text)
 );
-create index if not exists idx_alt_data_lookup on alt_data (provider, symbol, metric, available_at);
+-- idx_alt_data_lookup (provider,symbol,metric,available_at) was dropped 2026-06-15: it is a strict LEFT-PREFIX
+-- of uq_alt_data_pit below, which already serves read_asof's per-series scan (see migrations/2026-06-15_index_hygiene.sql).
+-- No dedicated funding index: _funding_rate_asof filters provider+symbol+metric (the uq_alt_data_pit equality
+-- prefix) to a small per-symbol set, then sorts it COLLATE "C" — fast without an extra index (and an en_US index
+-- can't serve the COLLATE "C" order anyway).
 -- Covering index for the /scores freshness query: MAX(available_at) per metric across all symbols.
 -- Without this the query does a seqscan over millions of rows (LunarCrush per-symbol backfill).
 create index if not exists idx_alt_data_metric_avail on alt_data (metric, available_at desc);
@@ -303,6 +335,9 @@ create index if not exists idx_alt_data_metric_avail on alt_data (metric, availa
 -- Appends MUST insert ON CONFLICT DO NOTHING (see PgAltDataStore.append) so a racing/repeat insert is a no-op,
 -- never a raise.
 create unique index if not exists uq_alt_data_pit on alt_data (provider, symbol, metric, ts, available_at);
+-- Watermark for the incremental alt_data→DuckLake mirror (cosmu.data.age_out.sync_to_lake): the max
+-- available_at already copied to the cold lake, so each pass copies only newer rows.
+create table if not exists alt_lake_watermark (k text primary key, last_available_at text not null);
 
 -- POINT-IN-TIME UNSTRUCTURED-EVENT store (realtime-data-lane epic §5): typed news/tweet/Polymarket/OSINT
 -- events with TWO clocks — ts = the event's own publish time (event-study axis), available_at = OUR receipt
@@ -437,6 +472,7 @@ create index if not exists idx_backtests_version_kind on backtests(strategy_vers
 create index if not exists idx_executions_run on executions(run_id);
 create index if not exists idx_executions_ts on executions(ts);
 create index if not exists idx_strategy_versions_status on strategy_versions(status);
+create index if not exists idx_strategy_versions_strategy on strategy_versions(strategy_id);  -- unindexed FK
 
 -- Building-block registry (2026-06-11): content-hashed reusable blocks + whole-spec combo_hash.
 -- Dedup (multiple-testing budget) + observational block stats. Never consulted by the Gate.
@@ -460,3 +496,22 @@ create table if not exists version_combos (
 );
 create index if not exists idx_version_blocks_hash on version_blocks(block_hash);
 create index if not exists idx_version_combos_hash on version_combos(combo_hash);
+
+-- Index registry (2026-06-15): operator-defined, deterministically-scored point-in-time composite series.
+-- DEFINITIONS only — VALUES live point-in-time in alt_data (provider='index', metric=idx_<id>). See schema.sql.
+create table if not exists indexes (
+  id text primary key,
+  name text not null,
+  rationale text not null,
+  kind text not null,
+  definition text not null,
+  entities text not null,
+  metric text not null,
+  market_wide integer not null,
+  transform_version text not null,
+  cadence_minutes integer not null,
+  status text not null,
+  created_at text not null,
+  updated_at text not null
+);
+create index if not exists idx_indexes_status on indexes(status);

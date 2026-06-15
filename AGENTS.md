@@ -32,14 +32,14 @@ Stack:
 - **Deterministic funding gate.** A deterministic scorer — not any LLM — is the only judge that funds SIM tracks: deflated Sharpe, CSCV-PBO, holdout, regime folds, **and a cohort-level Benjamini-Hochberg FDR**. The FDR control is wired into the deployed `FarmLoop.run_cohort` (`GateSettings.fdr_q`, default 0.10): a candidate that clears `score()` but fails BH-FDR across its cohort is demoted (`passed_gates→0`, status `killed`, Track removed) before the orchestrator can fund it — so authoring more candidates per tick can't manufacture a winner. `must_beat_buy_and_hold` is **WIRED** (default `True` in `research/gate.py:PREREGISTERED_BAR`, mirrored in `master/scorer.py`).
 
 ## Lifecycle
-**Lab (discover)** → **Strategies (screened)** → **Paper (proven, per-strategy, SIM)** → **Live (you launch winners).**
+**Backtest (discover + screen)** → **Paper (proven, per-strategy, SIM)** → **Live (you launch winners).**
 NO pooled wallet — each survivor proves itself on its **own standalone track**. Live is OFF by default behind **5 interlocks**: toggle on + real keys + gate passed + caps available + no kill-switch. All five, or nothing moves.
 
 ## The Mind (`/mind` · `GET /mind`)
 The agent's standardized self-knowledge in one surface: **what it knows** (data sources + freshness), **how it thinks** (a TradingAgents-style analyst panel — Technical · Macro · Sentiment · Social&News · Positioning · OSINT, plus ML-survival and Memory pillars — that debates a consensus), and **what it has learned** (memory, the ML model, regime coverage, gate efficiency). Each perspective reads the agent's **existing** point-in-time signals; one with no data **abstains** (never fabricates). **Railguard:** the Mind only *reasons* — it never funds or fires; the deterministic Gate alone disposes. LLMs may narrate, **never** in the scoring/gate/money path. See `cosmu/mind/` + `docs/GLOSSARY.md` (The Mind).
 
 ## Running strategies (cheapest → priciest)
-Add strategies via the **inbox** (`apps/engine/strategies/inbox/*.json|*.md|*.pine`, scanned on deploy) or the Lab's autonomous author. To author a batch safely, copy `scripts/seed_inbox_strategies.py` — it **validates every spec against the real compiler** (static_check + `compile_spec`) before writing, so nothing magic-number'd or inert lands. Then to screen/backtest:
+Add strategies via the **inbox** (`apps/engine/strategies/inbox/*.json|*.md|*.pine`, scanned on deploy) or the Lab's autonomous author. To author a batch safely, copy `scripts/seed_inbox_strategies.py` — it **validates every spec against the real compiler** (static_check + `compile_spec`) before writing, so nothing magic-number'd or inert lands. **Standardized freedom** (author at scale without a mess): every spec needs a required `rationale` + ≥1 entry condition (the creation contract, `cosmu/strategy/spec.py`); the screening cohort runs a `novelty_gate` (`cosmu/knowledge/memory.py`) that prunes near-duplicates of dead-ends or live strategies; and the leaderboard facets (signal-family ∈ Social/News·Events/Math·Price/Macro·Positioning/On-chain·Flow, plus edge-type/asset/venue/timeframe) are DERIVED from the spec, never hand-tagged (`cosmu/strategy/taxonomy.py`). Then to screen/backtest:
 1. **Local, $0 (default):** `PYTHONPATH=apps/engine python3 -m cosmu.lab.finder --seed-real` — deterministic, offline-capable (cached Binance bars). Fine for a few specs.
 2. **Cloud Claude Code session:** a *full* cohort / walk-forward sweep that would OOM the 16 GB Air. Same command, real compute, **$0 API** (flat Max sub). This is the smart default for anything heavy.
 3. **Railway (deployed):** the 4h cron runs the cohort + gate on real bars **automatically** — you don't trigger it. Railway is the small always-on box, NOT for heavy sweeps.
@@ -55,7 +55,7 @@ Cheapest path = author+validate locally → screen locally or in a cloud session
 
 ## Dev gate (before every push)
 ```
-pnpm verify          # = naming:check && contracts:generate && engine:test && typecheck && build
+pnpm verify          # = naming:check && contracts:generate && contracts:check-drift && engine:test && typecheck && build
 ```
 Mostly offline, no keys required. **Run `pnpm verify` before every push.** It now ends with `build` (the real
 `next build`) — that's the step that catches a Vercel-breaking page before you push, e.g. a prerender crash on
@@ -126,6 +126,13 @@ The REAL limit is **local RAM, not tokens** — push heavy *compute* (`next buil
 - **LLM-optional** + offline-testable everywhere (mock network, inject providers).
 - **Ask first**: schema changes, new vendor/spend, live-execution changes, broad renames.
 - **Never**: LLM fires a live order, agent defines its own fitness, hand-maintain Python↔TS types, commit secrets, martingale/revenge sizing.
+
+## Communication style (all agents — when explaining to the operator)
+Always explain **simply and concretely**:
+1. **No analogies** — say the real thing (the number, the field, the file:line), never a metaphor.
+2. **Numbered parts** (1 / 2 / 3) and **ranked** by what matters most first.
+3. **Emojis when they add clarity** (✅ done · ❌ no · ⚠️ caution) — not decoration.
+4. **Plain words over jargon**; match the operator's language (reply in French when asked).
 
 ## Read order (one doc, not all)
 1. **This file** — invariants, env, skills.

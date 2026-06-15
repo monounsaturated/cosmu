@@ -5,6 +5,94 @@
 > Done — do NOT re-add: all pre-2026-06-07 items above plus the following.
 > **Merged 2026-06-09/10 (audit fix-wave — do NOT re-add):** paper EXECUTOR (`orchestrator/paper_step.py` — tracks run their OWN exits/re-entries; funder funds once; sim fills pay 5 bps slippage; reduce_only gauntlet lane) · matrix sweep alt-data join (the sweep now actually searches funding/social/news specs) · rotation arms close stale legs (`arm_rotation.py`, all 10 equity arms + daily re-arm cron) · API shared-secret auth enforced (docs/KEYS.md is now true) · spine/evolution track capital unified to `sim_track_capital` · Gate calibration pinned by test · pre-push hook now runs naming+drift+pytest+typecheck · autonomy cron default ON · /correlations + autonomy-tick web contract fixes + ~1,100 dead web lines removed · order-path positions mark via instrument's real venue.
 
+## 🧭 ALIGNMENT CHECK — 2026-06-14 (north star: autonomous profit, net of every fee) — for later edit/merge
+> Verdict: **DRIFTING into polish.** The last ~15 commits are a web visual rebuild (v18, "the front IS the design") + Costs/Keys/UI sweeps; the money funnel is untouched. We have a beautiful monitoring surface for a machine that has **not yet made its first dollar**. (Read-only judgment from git+backlog; fresh container has no prod DB to query the live funnel/ML training directly.)
+> **Funnel:** authored (58 inbox specs) → screened → **gate-passed = 0 ← BOTTLENECK** → funded 0 → live 0. Root cause is upstream: 102 features DECLARED, but the gate has not been run on DEEP/BROAD ingested data (robust backfill + new-source ingest still open + operator-gated).
+> **Top 3 focus (everything else waits):**
+> 1. **Deepen + broaden FREE data** — robust full backfill + activate all free sources across the ~30 perp universe + multi-timeframe + the ~unsearched alt-joined features (the stated #1 unblock; local/Railway/Modal — needs the data network a cloud agent lacks).
+> 2. **Run the gate on the lucrative set** (funding-carry · cross-sectional momentum · funding-contrarian · vol-regime) across the wide universe → **first honest survivor or honest fail**.
+> 3. **Wire SIM→live ignition** (the "live has no ignition wire" P0: `/live/defund` via the order path · derive `gate_passed` inside `execute_orders` · live-exit/reduce_only lane) so a survivor can be proven with real money + variance-attribution.
+> **STOP / PARK:** freeze web/UI visual rebuilds + Costs-page polish at "good enough to monitor"; **park new feature epics — INCLUDING the 2026-06-14 regime/context + multi-asset epic BUILD (below)** — until the funnel produces ≥1 funded survivor. Plans stay recorded; build resumes after a survivor exists. ML/RL/regime sophistication only widens the multiple-testing surface until there's a real edge to compound.
+## 🧭 EPIC (2026-06-15 operator session — composition view + discretionary lane + alt-data finish)
+> Theme: deepen the operator's view of HOW strategies are composed (mix-and-match), open a *capped* discretionary
+> live lane (operator decision — a deliberate, bounded change to the money-path invariant), and FINISH the
+> stubbed alt-data sentiment-index plumbing rather than buy redundant vendors. Source: operator chat 2026-06-15.
+> A full built-vs-gap review this session confirmed the codebase is healthy (authentic / memory / no-dupes /
+> lean / low lock-in) — so the work below is surfacing + finishing, not rebuilding.
+
+- [x] **Strategy composition + pipeline view (web)** — SHIPPED 2026-06-15 (this branch): per-Version `RegistryBlocks`
+  (GET /blocks/version/{id} → each block's population recurrence + Gate funded-rate + "similar strategies" by
+  shared blocks) on the strategy sheet; new `/strategies/composition` (pipeline funnel from /population:
+  Authored→Backtest/Queued→Paper→Live + Killed/kill-rate + lane/origin breakdown; building-block leaderboard with
+  the collapse-on-demand affordance). Reached from the screener toolbar; nav stays 6. Honest not-connected /
+  available:false / empty states. **Remaining: apply the `strategy_blocks` migration on Supabase** so /blocks
+  flips from available:false to live (operator). (web — DONE; operator: migration)
+
+- [x] **EPIC: Indexes — operator-defined standardized signal series (full detail: `docs/epics/indexes.md`)** —
+  SHIPPED 2026-06-15 (this branch): the first-class **Indexes** surface. `cosmu/indexes/` (spec · registry ·
+  compute · monitor · routing · run) layered on the CANONICAL scorers (REUSES `cosmu/lab/indexes.py` LLM-as-judge
+  for text + `cosmu/mind/authority.py` for social — NOT a second scoring path), the additive `indexes` table (+
+  2026-06-15 migration), `GET/POST /indexes` + `GET /indexes/{id}`, and a web **/indexes** page (table +
+  Define-index form) + **/indexes/[id]** detail (definition · health · series · strategies-using). 4 kinds:
+  event_topic · prompt_rubric · single_account · social_bucket. Deterministic scoring (frozen transform +
+  content-hash cache + temp 0 → stable ranking), PIT storage, honest empties, LLM never on the money path. 41
+  offline tests green; web typecheck + build green; contracts regenerated (additive). OPERATOR: (a) apply
+  `migrations/2026-06-15_indexes.sql` on Supabase; (b) define indexes; (c) run the HEAVY compute pass on
+  **Modal/cron** (`python3 -m cosmu.indexes.run`, needs XAI/OpenRouter key for text + voices handles in
+  `config/voices.py` for social). FOLLOW-UP (next): wire `store_provider_with_indexes` into the gate/backtest
+  sites so strategies key off an index end-to-end (the "strategies on top" step). (engine+web)
+
+- [ ] **EPIC: Capped DISCRETIONARY LIVE lane (DESIGN-FIRST — operator must approve the design before any code
+  touches real orders).** Operator decision 2026-06-15: allow a non-FDR-gated strategy (e.g. an LLM/event-driven
+  "act like a human on tweets" strategy) to move SMALL, hard-capped REAL money. This is a deliberate, bounded
+  exception to "the deterministic Gate is the SOLE funder of real money" — so it ships ONLY with the safety
+  design below, and the LLM still NEVER fires the order itself (the deterministic order path + risk gauntlet do).
+  Safety design (the spec to approve):
+  (1) **A lighter, named admission check stands in for the FDR cohort gate** — NOT "no check": the strategy must
+      clear an honest event-study/credibility bar (a real, pre-registered SCAR verdict from `research/event_study.py`
+      and/or a min `voice_scoreboard` skill) before it can be armed. Volume can't manufacture admission.
+  (2) **Its own interlocks, stricter than the standard 5:** a dedicated `discretionary` lane flag (off by default),
+      a hard per-trade cap + a hard daily-spend cap + a global discretionary-capital cap (all separate from the
+      gate-lane caps), the kill-switch, and venue key-gating. Any one missing ⇒ sim fill, no real order.
+  (3) **Memoryless sizing preserved** (no martingale/revenge), SL/TP still required, every decision + fill audited
+      with the admitting check recorded, and a paper twin runs alongside for SIM↔live variance attribution.
+  (4) **Auto-disarm on the daily-loss cap and on edge decay** (reuse `master/drift.py`), same as gate-lane tracks.
+  INVARIANT kept: the LLM proposes/admits via the deterministic check; it never defines its own success metric and
+  never fires the order. Acceptance: a discretionary strategy can be armed live within the caps, every guardrail
+  is exercised by tests, and the audit trail shows the admitting check + the fill. (engine+web, opus — DESIGN PR
+  first: write the spec to `docs/epics/`, get operator sign-off, THEN implement.)
+
+- [ ] **Finish the stubbed alt-data sentiment plumbing (no new spend).** (a) Reconcile the two influencer-scoring
+  paths: `data/sources/xai_twitter.py:InfluencerHitRateStore` is a stub (always 0.5) while `ingest/voices_pass.py`
+  is the REAL Brier-skill/PageRank pipeline → make xai_twitter consume the voices `social_authority` features (or
+  delete the stub and route influencer-weighting through voices) so there is ONE credibility source of truth.
+  (b) Add the first-class **Index intake lane** (#multi-lane epic): register a social-influencer composite as an
+  `alt_data` feature a strategy keys off (the PIT features already accrue — `author_authority`,
+  `authority_weighted_claim_signal`; the lane is what's missing). NOT buying Perplexity/HGPT — they duplicate the
+  ~36 wired free+xAI sources. (engine, opus)
+
+- [ ] **Event-study CHAT front-door (the rigorous "read tweets → snipe coins" loop, operator-facing).** The
+  `research/event_study.py` factory is BUILT (FDR-controlled) but only CLI+JSON. Add an API endpoint + a small web
+  surface so an operator can run entity×topic → price-impact → auto-generated gated StrategySpecs from the app/chat.
+  Union with the 2026-06-13 "conversational event-study factory" backlog item; depends on realtime-epic P1. (engine+web, opus)
+
+- [ ] **Standardize Claude Code as the lean main interface.** (a) A response-format house style / output contract
+  for skills (every skill ends with a standardized result block: what ran · verdict · next action · links) so
+  Claude Code output is uniform and parseable. (b) Pre-filled, copy-ready prompts on the `/commands` page (the web
+  can't *launch* a Claude Code session, so copy-to-clipboard prompts per common task is the affordance). (config+web, sonnet)
+
+- [ ] **Charts: replace the hand-rolled SVG with a real library** (operator: "nice data visualizations"). The
+  equity/cost charts are bespoke SVG today (honest + working). Move to Tremor/Recharts per VISION §11 for real
+  tooltips, range pickers, drawdown shading, equity-vs-benchmark. (web, sonnet)
+
+- [ ] **Tech-debt: green the naming gate + harden the contracts pipeline.** (a) The naming guard is RED on `main`
+  (73 legacy `forward-test` prose hits in engine files since the 2026-06-11 rename added the ban) — so the
+  pre-push gate currently only passes via `--no-verify`. Sweep the dead spelling (NOTE: some live in API
+  `description=`/argparse strings that feed `openapi.json`, so the sweep needs a `pnpm contracts:generate` + a
+  contracts commit — that's why it wasn't folded into the UI PR). (b) Wire `generate_contracts.py` into the
+  pre-push hook for a continuous drift-check. (c) Relabel the disabled mislabeled features (`exchange_netflow`
+  = long/short ratio, `vix_term_slope` = duplicate of vix_level). Good `/groom` + `/tech-debt` work. (engine+config, sonnet)
+
 ## 🧭 EPICS (2026-06-11 operator session — interface consolidation + real-time lane)
 - [x] **Rename forward_test → paper everywhere** — DONE 2026-06-11 (this branch): status writes are `paper`, readers tolerate legacy `forward_test` until `apps/engine/cosmu/knowledge/migrations/2026-06-11_forward_test_to_paper.sql` is applied by hand in Supabase (operator mission); naming guard now bans the dead spellings; GLOSSARY carries the legacy note. (engine+web, sonnet)
 - [ ] **EPIC: Real-time data lane** — bots live · data live · marks live. Tiered plan (fast crons → always-on worker + websockets → profit-gated paid social), full detail in **`docs/epics/realtime-data-lane.md`**. Tier 1 (15-min ingest cron + hourly mark-to-market) is a ~½-day quick win that unblocks honest "24h perf" on the web. (engine+infra, opus)
@@ -32,6 +120,23 @@
 - [ ] **Claude-assisted TradingView research (NOT a data source).** Let Claude Code drive TradingView (desktop via computer-use, or web via Chrome MCP) for VISUAL sanity-checks + Pine-script/indicator HARVEST only. Explicitly NOT a market-data pipeline — pixels aren't PIT series and you already have the data free from venue APIs. Low priority. (config, sonnet)
 
 - [ ] **DECIDED — MetaTrader (MT4/MT5) API: SKIP.** Retail FX/CFD world (broker spreads/markups, B-book conflicts, variable data quality, synthetic CFDs). IBKR covers the same real assets on real markets; Hyperliquid covers crypto perps. Only flicker of value = a free FX/commodity demo + easy Python API — doesn't fit crypto-first and adds a messy source. Park unless a specific retail-FX need appears. (decision)
+
+## 🧠 EPIC (2026-06-14 operator session — regime/context deep-analysis layer) — full detail in `docs/epics/regime-context-deep-analysis.md`
+> Theme: make the system REGIME-AWARE end-to-end (trend × vol × macro × risk-on × correlation), wire the BANKED robustness gates (CPCV `master/cpcv.py`, slippage-stress `data/slippage.py`) + a correlation-smile stress, add a scenario/stress lab (historical replay + Monte-Carlo) and a PARALLEL propose-only deep-analysis fan-out that summarizes each survivor — plus a fenced, propose-only RL lane (operator: ASAP). Source: operator chat 2026-06-14 (BNP trading-floor reflection — the "correlation smile"). **Compute tier PENDING operator pick** (price table in the epic doc §8); default recommend **Tier B** (Modal + `[ml]` extra, ~$0–60/mo; defer paid data until a survivor proves the need). **Alignment lock:** every new capability is (a) a PIT feature/label that must earn OOS, (b) a deterministic robustness gate that only TIGHTENS, or (c) propose-only analysis summarized for the operator — nothing new touches the scorer (`master/scorer.py`) or the money path. Much of this is WIRING existing/banked code, not greenfield.
+- [ ] **Phase 0 — substrate**: deepen history (`/manage-data`) + wire DuckDB/Parquet cold tier + (optional) Modal heavy-compute lane (`apps/engine/remote/app.py`). Overlaps existing "DuckDB over Parquet", "Hot/cold tiering", "Compute Phase 2". (engine+infra, sonnet)
+- [ ] **Phase 1 — multi-axis context/regime labeler (PIT)** ⭐ — new `research/context.py` (trend × vol × macro × risk-on × correlation incl. `correlated_decline`); store as `alt_data` metrics (schema-free), register in `feature_registry`, add daily ingest lane; replace `_regime_labels()` (`data/backtest.py:308/675`) so per-trade tagging + `proven_regimes`/`regime_eligible` (`ml/regime.py:78`) use the REAL composite regime. No-repaint + shuffle-placebo tested. (engine, opus)
+- [ ] **Phase 2 — wire robustness gates + correlation-smile stress** (only ever HARDER): CPCV → champion validation · slippage-stress → scoring (kill FRAGILE) · regime-conditioned folds (≥2 real regimes AND survive bear/high-vol/correlated_decline) · forced correlation→1 / liquidity-dry shock. Behind `GateSettings` flags, out of LLM path. TOUCHES THE CORE → operator sign-off before `PREREGISTERED_BAR` moves. Overlaps "Gate hardening: full PREREGISTERED_BAR". (engine, opus)
+- [ ] **Phase 3 — scenario/stress lab** (propose-only): new `research/scenario_engine.py` — historical replay (2008/COVID/2022) + quarantined synthetic shocks (vol/slip/funding/corr/regime) + block-bootstrap MC → `research_notes` kind='scenario' + advisory fragility score in app (never the gate). New `/stress-test` skill. (engine, opus)
+- [ ] **Phase 4 — parallel deep-analysis fan-out + auto-summaries**: after the Gate, spawn smaller propose-only sub-agents (regime-match `ml/regime_hypothesis.py` · scenario · cross-asset correlation → feeds `/evolve-strategy` · attribution · drift); Claude writes plain-language per-survivor summaries into `research_notes` (the `/backfill-summaries` pattern). New `/analyze` skill (fan-out; NOT the web `deep-research` skill). Slice agents default Sonnet/Haiku. Overlaps "Cross-strategy correlation signals". (engine+config, opus)
+- [ ] **Phase 5 — RL experiment lane (ASAP, fenced)**: new `evolution/rl_lane.py` — RL policy trained offline on real bars (Modal), output FROZEN into a deterministic `StrategySpec` (thresholds → `param_space`), routed through the SAME FarmLoop Gate + BH-FDR. Reward = the Gate's net-of-cost objective (no bespoke fitness). Research/paper lane only; never touches scorer/money/live. Extends "Multi-lane INTAKE (ML|Prompt|Index)" + "Deeper ML geometric/vectorial". (engine+infra, opus)
+- [ ] **MULTI-ASSET breadth (operator 2026-06-14 — cosmu is NOT crypto-only; epic §12).** The video names the desk's universe (equities·FX·commodities·rates·credit + crypto). Binding constraint verified in `spine/venue.py`: asset class is only `Literal["crypto","equity","prediction"]` and `Instrument` lacks multiplier/expiry/strike/option_type/session. Phase 1 regime is multi-asset by construction (per-class axes + one cross-asset correlation regime). (engine, opus)
+  - [ ] **M1 — extend instrument/venue model** beyond 3 classes (+`futures`/`options`/`fx`, +`contract_multiplier`/`expiry`/`strike`/`option_type`, +per-venue session/calendar). Fixes the multiplier fat-finger in `master/risk.py` sizing + the clocks (don't price a closed market). **ASK-FIRST (core model + likely DDL).** (engine, opus)
+  - [ ] **M2 — per-venue execution model CLOB vs RFQ** (slippage/impact vs wide-spread + fill-probability + adverse-selection for options/structured/thin Polymarket; no size-telegraphing on thin books). (engine, opus)
+  - [ ] **M3 — options/vol lane on `strategy/blocks.py`** (implied-vs-realized + term structure VIX/DVOL/MOVE; defined-risk payoff blocks spread/collar/capital-protected=bond+call; delta-hedge leg; Polymarket as event-insurance; credit/options/PM = insurance markets cosmu can write or buy). Seeds: `dvol-calm-regime-momentum.json`, `polymarket-positioning-risk-flip.json`. Same Gate. (engine, opus)
+  - [ ] **M4 — fleet correlation-aware funding** — wire `master/strategy_correlation.py` into funding/rotation as a diversification preference (don't fund 10 secretly-identical bets); advisory, Gate still gates, no pooled wallet. Subsumes "Cross-strategy correlation signals". (engine, sonnet)
+  - [ ] **M5 — negative-skew / short-gamma flag** in the Phase-4 fan-out (lean on the scorer's skew/kurtosis PSR; force carry/mean-reversion/premium-selling survivors through the correlation-spike tail scenario). (engine, sonnet)
+  - [ ] **M6 — per-class cost/notional normalization + automated cross-asset "morning call"** (bps-of-notional + per-class funding/margin; daily brief: overnight crypto+Asia moves, day-ahead earnings/macro/unlocks/OPEX/PM events, exposed tracks). (engine+config, sonnet)
+  - [ ] **M7 — jurisdiction restrictions for new TradFi venues** (IBKR/IG/Kalshi/options via `restricted_jurisdictions`/`live_legal_in`; Volcker → "legality is one more venue fact"; GB already supported for IG). (config, sonnet)
 
 ## ⚡ EPIC: realtime-data-lane (docs/epics/realtime-data-lane.md — operator-approved 2026-06-11; sequencing P0→P4)
 - [x] **P0 / Tier 1** (2026-06-11): closed-candle bar guard (the PRE-LIVE freshness fix) · ingest cron 6h→15min · hourly mark + intraday (1h/4h) executor lane · 00:10 UTC crypto-daily clock. Verify post-deploy: `tracks.updated_at` ≤ ~70 min stale.

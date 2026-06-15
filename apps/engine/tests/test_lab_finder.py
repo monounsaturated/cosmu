@@ -18,8 +18,10 @@ from cosmu.master.live_eligibility import (
     live_eligibility_verdict,
     proven_regimes_for,
 )
+from cosmu.master.promotion import promotion_record
 from cosmu.master.scorer import BacktestMetrics
 from cosmu.research.fixtures import edge_bearing_screen_market
+from cosmu.spine.venue import default_catalog
 from cosmu.strategy.compiler import compile_spec
 
 
@@ -124,13 +126,30 @@ def test_finder_promotion_opens_forward_clock_and_is_live_eligible(tmp_path):
         deflated_sharpe=0.9, profit_factor=2.0, net_profit=0.04, gate_passed=True, reasons=[],
         fitted_params=fitted, promoted=True, holdout_passed=True,
     )
-    finder._persist(spec, [survivor], {})
+    venue = default_catalog().venue_for(spec.universe.venues)
+    finder._persist(spec, [survivor], {}, venue)
     vid = survivor.version_id
     assert vid is not None
 
     # Promotion opened the paper clock and recorded the proven-regime passport (only the net-positive regime).
     assert paper_clock_origin(finder.store, vid) is not None
     assert proven_regimes_for(finder.store, vid) == {"bull"}
+
+    # Promotion also FROZE the live-replication record: frozen params + hash, the venue fee model the edge was
+    # priced against, the registry version, and the proven regimes — the single source of truth live reads.
+    frozen = promotion_record(finder.store, vid)
+    assert frozen is not None
+    # The numeric knobs live actually uses are frozen verbatim (config_tag is a label, dropped before fitting).
+    numeric = {k: v for k, v in frozen["params"].items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    assert frozen["params_hash"] and numeric == fitted
+    assert venue.id in frozen["fee_model_snapshot"]
+    assert frozen["fee_model_snapshot"][venue.id]["taker_bps"] == float(venue.taker_fee_bps)
+    assert frozen["proven_regimes"] == ["bull"]
+    assert frozen["feature_registry_version"]
+    # The screen backtest recorded the cost assumptions it was scored under (so live can detect a repricing).
+    bt = finder.store.row("SELECT venue_id, fee_bps FROM backtests WHERE strategy_version_id = ? AND kind = 'screen'", (vid,))
+    assert bt["venue_id"] == venue.id
+    assert float(bt["fee_bps"]) == float(venue.taker_fee_bps)
     # The pre-existing finder_survivor event is still written (track_opened is ADDED, not a replacement).
     survivor_events = finder.store.rows(
         "SELECT COUNT(*) AS n FROM events WHERE kind = 'finder_survivor' AND ref_id = ?", (vid,)

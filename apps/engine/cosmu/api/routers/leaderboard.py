@@ -6,7 +6,7 @@ import math
 
 from fastapi import APIRouter
 
-from cosmu.api._shared import _json, _metric, store
+from cosmu.api._shared import _json, _metric, oos_window_days as _oos_window_days, store
 from cosmu.api.models import LeaderboardResponse, LeaderboardRow
 from cosmu.master.divergence import divergence as forward_divergence
 from cosmu.master.paper_maturity import maturity as paper_maturity
@@ -14,26 +14,8 @@ from cosmu.strategy.taxonomy import derive_facets
 
 router = APIRouter()
 
-_MONTHS_PER_YEAR = 12
-_DAYS_PER_MONTH = 30.0  # coarse: the backtest OOS window is stored as YYYY-MM, so day precision isn't available.
-
-
-def _oos_window_days(oos_start: object, oos_end: object) -> float | None:
-    """Length of the backtest OOS window in days, derived from its `YYYY-MM` bounds (inclusive of both endpoint
-    months), so the divergence helper can pro-rate the backtest's total OOS return to the marked forward window.
-    Returns None when either bound is missing/malformed — the divergence read-out then fails safe to its honest
-    'insufficient' empty state rather than fabricating an expectation. Coarse by design (the bounds are monthly)."""
-    if oos_start is None or oos_end is None:
-        return None
-    try:
-        sy, sm = (int(p) for p in str(oos_start).split("-")[:2])
-        ey, em = (int(p) for p in str(oos_end).split("-")[:2])
-    except (ValueError, TypeError):
-        return None
-    months = (ey - sy) * _MONTHS_PER_YEAR + (em - sm) + 1  # inclusive of both endpoint months
-    if months <= 0:
-        return None
-    return months * _DAYS_PER_MONTH
+# _oos_window_days now lives in cosmu.api._shared (shared with the strategy-detail router's Backtest column),
+# imported above as the same name so this router's call sites are unchanged.
 
 
 def _money_or_none(value: object) -> float | None:
@@ -80,10 +62,12 @@ def leaderboard() -> LeaderboardResponse:
     rows = store.rows(
         """
         SELECT sv.id, s.name, sv.status, sv.spec, sv.origin, b.deflated_sharpe, b.oos_return, b.pbo,
-               b.oos_start, b.oos_end, ev.funded_at,
+               b.oos_start, b.oos_end, b.num_trades AS bt_trades, ev.funded_at,
                tr.starting_capital, ps.equity AS tr_equity,
                EXISTS(SELECT 1 FROM executions e WHERE e.strategy_version_id = sv.id
-                      AND CAST(e.is_paper AS INTEGER) = 1) AS has_paper_fills
+                      AND CAST(e.is_paper AS INTEGER) = 1) AS has_paper_fills,
+               (SELECT COUNT(*) FROM executions e2 WHERE e2.strategy_version_id = sv.id
+                      AND CAST(e2.is_paper AS INTEGER) = 1) AS paper_trades
         FROM strategy_versions sv
         JOIN strategies s ON s.id = sv.strategy_id
         LEFT JOIN backtests b ON b.strategy_version_id = sv.id
@@ -97,8 +81,15 @@ def leaderboard() -> LeaderboardResponse:
                 SELECT MAX(ts) FROM portfolio_snapshots p2 WHERE p2.scope = 'track' AND p2.ref_id = p1.ref_id
             )
         ) ps ON ps.ref_id = sv.id
-        ORDER BY CAST(COALESCE(b.deflated_sharpe, 0) AS REAL) DESC
-        LIMIT 20
+        -- ACTIVE-FIRST then strength: a funded/active track must NEVER be ranked off the board by a stronger
+        -- KILLED one. Killed versions hugely outnumber the live ones (graveyard grows unbounded), so a pure
+        -- deflated_sharpe sort + a tight LIMIT silently truncated funded paper tracks below the cut — the
+        -- Paper hero (status-filtered Σ allocated) then disagreed with "Invested" (Σ of the rows that survived
+        -- the cut). Sorting killed last guarantees every non-killed Version is on the board; killed fill the
+        -- rest by strength. LIMIT lifted to 200 so the active tier is never the thing that gets cut.
+        ORDER BY (CASE WHEN sv.status = 'killed' THEN 1 ELSE 0 END),
+                 CAST(COALESCE(b.deflated_sharpe, 0) AS REAL) DESC
+        LIMIT 200
         """
     )
     if not rows:
@@ -115,7 +106,9 @@ def leaderboard() -> LeaderboardResponse:
       # built is skipped (logged), so the rest of the floor still renders. (derive_facets is also bulletproof.)
       try:
         # net_pct is the net-of-fee return the maturity signal reads — same field surfaced on the row.
-        net_pct = _metric(row["oos_return"]) * 100 - 0.18
+        # oos_return is ALREADY net-of-fee at the screened venue (the backtest charged that venue's fee +
+        # slippage); surface it straight — no fabricated 0.18 round-trip haircut on top of an already-net number.
+        net_pct = _metric(row["oos_return"]) * 100
         # ADVISORY ONLY (master/paper_maturity.py): surfaced, never a gate. The paper clock runs from the
         # track's first mark; live_ready recommends a matured + net-positive track. The operator decides.
         mat = paper_maturity(row["funded_at"], net_pct)
@@ -152,6 +145,11 @@ def leaderboard() -> LeaderboardResponse:
         value_usd = _money_or_none(row["tr_equity"]) if has_paper_fills else None
         start_usd = _money_or_none(row["starting_capital"])
         pnl_usd = (value_usd - start_usd) if (value_usd is not None and start_usd is not None) else None
+        # Trades at the LATEST stage — paper fills when the track has genuinely traded (has_paper_fills), else
+        # the strongest backtest's round-trips — so the count matches the stage the rest of the row reports
+        # (paper money vs backtest OOS). None when neither exists (a queued Version with no backtest, no fills).
+        _bt_trades = row["bt_trades"]
+        trades = int(row["paper_trades"]) if has_paper_fills else (int(_bt_trades) if _bt_trades is not None else None)
         # Facets are DERIVED from the spec's named features (taxonomy.py) — no manual tagging — so the
         # Strategies filters always reflect the strategy's real inputs and structure.
         facets = derive_facets(_json(row["spec"]), row["origin"])
@@ -175,6 +173,7 @@ def leaderboard() -> LeaderboardResponse:
                 divergence_status=div.status,
                 divergence_gap_pct=div.gap_pct if div.status != "insufficient" else None,
                 has_paper_fills=has_paper_fills,
+                trades=trades,
                 value_usd=value_usd,
                 pnl_usd=pnl_usd,
                 pnl_pct=paper_return_pct,

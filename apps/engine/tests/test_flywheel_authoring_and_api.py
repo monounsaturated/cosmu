@@ -412,3 +412,159 @@ def test_leaderboard_metric_coercion_handles_nan_and_none():
     assert _metric("0.04") == 0.04  # sqlite stores some metrics as REAL-as-text
     assert _metric(1.5) == 1.5
     assert _metric(0.0) == 0.0
+
+
+def test_leaderboard_active_track_never_truncated_by_a_stronger_killed_one(tmp_path, monkeypatch):
+    # REGRESSION: the board ranks ALL versions together and killed ones hugely outnumber the active. A funded
+    # paper track must sort ABOVE a killed version even when the killed has a higher deflated_sharpe — else a
+    # stronger graveyard entry pushes a live track off the board and the Paper hero (Σ allocated, status-filtered)
+    # disagrees with "Invested" (Σ of the rows that survived the cut). Active-first ordering keeps every
+    # non-killed Version on the board.
+    client, store = _client(tmp_path, monkeypatch)
+
+    paper_spec = seed_momentum_spec(); paper_spec.name = "Funded paper track"
+    paper_vid = _persist_version(store, paper_spec, passed=True)  # status=paper, deflated_sharpe 0.6
+
+    killed_spec = seed_meanrev_spec(); killed_spec.name = "Strong but killed"
+    killed_vid = _persist_version(store, killed_spec, passed=False)  # status=killed, deflated_sharpe 0.6
+    store.insert(  # a STRONGER backtest for the killed version → it would outrank the paper track on dSR alone
+        "backtests",
+        {
+            "strategy_version_id": killed_vid, "kind": "screen", "oos_return": "0.05", "sharpe": "2", "sortino": "2",
+            "deflated_sharpe": "2.5", "max_dd": "0.1", "win_rate": "0.6", "num_trades": 50, "pbo": "0.1",
+            "trials_counted": 1, "regime_label": "mixed", "folds_positive": 4,
+            "passed_gates": 0, "holdout_passed": 1, "created_at": utcnow(),
+        },
+    )
+
+    ids = [r["version_id"] for r in client.get("/leaderboard").json()["rows"]]
+    assert paper_vid in ids and killed_vid in ids, "both versions must be on the board"
+    assert ids.index(paper_vid) < ids.index(killed_vid), "an active track must rank above a stronger KILLED one"
+
+
+def _add_cost(store: Store, vid: str, amount: str = "5.00") -> None:
+    """One opex row attributed to a Version — what makes it appear in the /costs per-strategy table."""
+    store.insert(
+        "costs",
+        {"ts": utcnow(), "vendor": "modal", "category": "compute", "amount": amount,
+         "currency": "USD", "strategy_version_id": vid, "meta": "{}"},
+    )
+
+
+def test_costs_net_edge_is_marked_pnl_never_the_backtest_seed(tmp_path, monkeypatch):
+    # REGRESSION: per-strategy "net edge" must be the REAL marked forward P&L (scope='track' snapshot −
+    # starting_capital), NEVER tracks.equity (seeded with the rosy backtest at funding). A track seeded at a
+    # +$4k backtest equity but marked FLAT reads net 0 — the backtest can never surface as realized edge.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Seeded-but-flat"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)  # tracks.equity SEEDED at 104000 on 100000 (the rosy +4% backtest)
+    _add_paper_fill(store, vid)
+    store.insert(  # the honest marked snapshot: FLAT at starting_capital (no real forward movement)
+        "portfolio_snapshots",
+        {"scope": "track", "ref_id": vid, "ts": utcnow(), "equity": "100000.00", "cash": "0",
+         "positions_value": "100000.00", "pnl": "0.00", "drawdown": "0"},
+    )
+    _add_cost(store, vid)
+    row = next(r for r in client.get("/costs").json()["per_strategy"] if r["version_id"] == vid)
+    assert row["net"] == 0.0, "net must be the FLAT marked P&L, never the +$4k backtest seed in tracks.equity"
+
+
+def test_costs_net_edge_reflects_a_real_marked_gain(tmp_path, monkeypatch):
+    # Once genuinely marked up, net edge IS that marked $ P&L (101_500 − 100_000 = +1_500).
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Marked-up cost edge"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)
+    _add_paper_fill(store, vid)
+    store.insert(
+        "portfolio_snapshots",
+        {"scope": "track", "ref_id": vid, "ts": utcnow(), "equity": "101500.00", "cash": "0",
+         "positions_value": "101500.00", "pnl": "1500.00", "drawdown": "0"},
+    )
+    _add_cost(store, vid)
+    row = next(r for r in client.get("/costs").json()["per_strategy"] if r["version_id"] == vid)
+    assert math.isclose(row["net"], 1500.0, abs_tol=1e-6)
+
+
+def test_costs_net_edge_zero_for_funded_but_unfilled_track(tmp_path, monkeypatch):
+    # The documented-arm case: a track funded + marked but with NO real paper fill has $0 realized edge — never
+    # the seed, never a fabricated number. Mirrors the leaderboard's has_paper_fills honesty gate.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Funded unfilled"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)  # seeded +$4k, but NO _add_paper_fill
+    store.insert(
+        "portfolio_snapshots",
+        {"scope": "track", "ref_id": vid, "ts": utcnow(), "equity": "104000.00", "cash": "0",
+         "positions_value": "104000.00", "pnl": "4000.00", "drawdown": "0"},
+    )
+    _add_cost(store, vid)
+    row = next(r for r in client.get("/costs").json()["per_strategy"] if r["version_id"] == vid)
+    assert row["net"] == 0.0, "no real paper fill → $0 realized edge, never the seed/snapshot"
+
+
+def _add_position(store: Store, vid: str, *, qty: str, avg_price: str, realized: str = "0") -> None:
+    """A HELD position row — what the detail money band reads for invested (Σ avg*qty) + realized P&L."""
+    store.insert(
+        "positions",
+        {"strategy_version_id": vid, "instrument_id": "spy-ibkr", "symbol": "SPY", "venue": "ibkr",
+         "qty": qty, "avg_price": avg_price, "realized_pnl": realized, "last_was_loss": 0, "updated_at": utcnow()},
+    )
+
+
+def test_detail_money_is_marked_snapshot_never_the_seed(tmp_path, monkeypatch):
+    # REGRESSION (the fabricated -$1000 lie): a FLAT, fully-invested paper track must read VALUE = marked
+    # scope='track' snapshot equity, P&L = value − starting_capital (= $0), realized = Σ positions.realized_pnl
+    # (= $0) — NEVER tracks.equity (the rosy +4% backtest SEED) and NEVER the opening-buy cash flow.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Flat fully-invested detail"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)                       # tracks.equity SEEDED at 104000 on 100000 (rosy +4%)
+    _add_paper_fill(store, vid)                          # a real is_paper=1 fill
+    _add_position(store, vid, qty="250", avg_price="400")  # 250*400 = 100000 deployed cost basis
+    store.insert(
+        "portfolio_snapshots",
+        {"scope": "track", "ref_id": vid, "ts": utcnow(), "equity": "100000.00", "cash": "0",
+         "positions_value": "100000.00", "pnl": "0.00", "drawdown": "0"},  # marked FLAT at starting_capital
+    )
+    body = client.get(f"/strategies/{vid}").json()
+    assert body["has_paper_fills"] is True
+    assert math.isclose(body["value_usd"], 100000.0, abs_tol=1e-6), "VALUE = marked snapshot, NOT the 104000 seed"
+    assert math.isclose(body["invested_usd"], 100000.0, abs_tol=1e-6)
+    assert math.isclose(body["realized_pnl"], 0.0, abs_tol=1e-6)
+    assert math.isclose(body["pnl_usd"], 0.0, abs_tol=1e-6), "flat track = $0 P&L, never buy notionals/seed"
+    assert math.isclose(body["unrealized_pnl"], 0.0, abs_tol=1e-6)
+    assert body["forward_equity"] and math.isclose(body["forward_equity"][-1]["value"], 100000.0, abs_tol=1e-6)
+
+
+def test_detail_money_all_none_without_a_snapshot_day0(tmp_path, monkeypatch):
+    # Day-0 split-state guard: a track with a fill + positions but NO marked snapshot yet must read ALL money
+    # fields None — never a split band (invested $ shown while value/P&L are "—"), matching the leaderboard.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Filled but unmarked detail"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)
+    _add_paper_fill(store, vid)
+    _add_position(store, vid, qty="250", avg_price="400")
+    body = client.get(f"/strategies/{vid}").json()  # NO portfolio_snapshots row
+    assert body["has_paper_fills"] is True
+    assert body["value_usd"] is None and body["invested_usd"] is None
+    assert body["pnl_usd"] is None and body["realized_pnl"] is None and body["unrealized_pnl"] is None
+    assert body["forward_equity"] == []
+
+
+def test_detail_money_all_none_without_a_fill(tmp_path, monkeypatch):
+    # No real paper fill → all money None (a funded-but-unfilled documented arm reads "—", same as leaderboard).
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "No fills detail"
+    vid = _persist_version(store, spec, passed=True)
+    _open_seeded_track(store, vid)
+    store.insert(
+        "portfolio_snapshots",
+        {"scope": "track", "ref_id": vid, "ts": utcnow(), "equity": "104000.00", "cash": "0",
+         "positions_value": "104000.00", "pnl": "4000.00", "drawdown": "0"},  # marked, but no is_paper fill
+    )
+    body = client.get(f"/strategies/{vid}").json()
+    assert body["has_paper_fills"] is False
+    assert body["value_usd"] is None and body["pnl_usd"] is None and body["forward_equity"] == []

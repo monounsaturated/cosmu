@@ -13,7 +13,7 @@
     "db:reset:local": "node scripts/reset-local-db.mjs",
     "dev": "pnpm contracts:generate && pnpm --parallel --filter @cosmu/web dev",
     "engine:api": "PYTHONPATH=apps/engine python3 -m cosmu.api.app",
-    "engine:test": "PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests",
+    "engine:test": "PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests -n auto --dist=loadfile",
     "start": "pnpm --filter @cosmu/web start",
     "start:api": "PYTHONPATH=apps/engine python3 -m cosmu.api.app",
     "start:web": "pnpm --filter @cosmu/web start",

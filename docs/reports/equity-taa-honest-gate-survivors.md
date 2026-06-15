@@ -55,7 +55,7 @@ window straddles the boundary. Computed mechanically inside `metrics_with_holdou
 
 ---
 
-## Full cohort (12 candidates · window 2006→2026 · cohort CSCV-PBO 0.043)
+## Full cohort (13 candidates · window 2006→2026 · cohort CSCV-PBO 0.043)
 
 | strategy | annSR | DSR | holdoutDSR | maxDD | IS tot vs SPY | verdict |
 |---|---|---|---|---|---|---|
@@ -66,6 +66,7 @@ window straddles the boundary. Computed mechanically inside `metrics_with_holdou
 | Faber GTAA (5-asset, 10mo SMA) | 1.19 | 0.999 | +0.483 | 5.2% | +159% / +340% | DSR+HOLDOUT¹ |
 | Risk Parity (inverse-vol) | 1.25 | 0.999 | +0.477 | 11.1% | +164% / +334% | DSR+HOLDOUT¹ |
 | Time-Series Momentum (TSMOM) | 0.97 | 0.982 | +0.493 | 6.8% | +134% / +357% | DSR+HOLDOUT¹ |
+| **HAA** (Hybrid Asset Allocation, Keller 2023) | 1.16 | 0.996 | **+0.491** | 8.9% | +283% / +370% | DSR+HOLDOUT¹ ² |
 | Dual Momentum QQQ | 0.95 | 0.980 | +0.465 | **25.7%** | +735% / +353% | fail: maxDD |
 | Sector-Momentum Rotation | 0.91 | **0.945** | +0.392 | 15.4% | +297% / +443% | fail: DSR<0.95 |
 | Global Equities Momentum (GEM) | 0.74 | **0.876** | +0.403 | 21.5% | +267% / +353% | fail: DSR (slow) |
@@ -76,6 +77,11 @@ window straddles the boundary. Computed mechanically inside `metrics_with_holdou
 does **not** out-*return* B&H SPY in the bull in-sample. These are risk-adjusted-superior crisis-avoidance books;
 the DSR already credits the risk-adjustment, but the literal `require_beat_buy_and_hold` raw-total-return hurdle
 (SPY is not a multi-asset rotation's native basket) is not met. Reported transparently, not waved through.
+
+² HAA (Keller 2023, `equity_haa.py`) was added after backfilling its total-return universe (TIP/VNQ/DBC/IWM via
+keyless Yahoo v8). Single TIP canary + simple-average 1/3/6/12-mo momentum, top-4 of 8 offensive, BIL/IEF cash —
+structurally distinct from DAA. It has the **strongest holdout DSR of the whole cohort (+0.491)** — its edge
+persists most into the unseen tail — at an 8.9% in-sample drawdown.
 
 ---
 
@@ -93,6 +99,57 @@ the DSR already credits the risk-adjustment, but the literal `require_beat_buy_a
 - **It matches the gate's design intent.** The maxDD cap correctly kills naked SPY (50.8% DD); the 0.95 DSR
   correctly kills the slow GEM (0.876). DAA passes because its drawdown *is* small (8.3%) and its Sharpe *is*
   high — that's the edge, not a loophole.
+
+## Follow-on (same day) — replicability + ensemble
+
+**Replicability** (`equity_taa_robustness.py`). A real snipe must survive its own parameter neighbourhood. Sweeping fee {1,2,3,5}bps · in-sample start-shift {0,+12,+24,+36mo} · DAA top-N {3..8} · ADM bond sleeve (AGG/TLT), Gating **every** variant deflated against the entire 27-variant search:
+
+| survivor | clears | replicability |
+|---|---|---|
+| **DAA** | 12/12 | **100%** — DSR pinned at 1.000 across all fees/starts/top-N |
+| **ADM** | 8/8 | **100%** — robust to fees, starts, AGG/TLT sleeve |
+| **VAA** | 6/7 | 86% — only cracks at +36mo start-shift (loses the GFC window; holdout actually *higher* there) |
+
+These are not knife-edge fits.
+
+**Ensemble** (`equity_taa_ensemble.py`). Recombine the winning logic — equal-weight (1/N, nothing fit) blends of the survivors. Three differently-triggered defensive rotations diversify into a strictly better risk-adjusted book:
+
+| book | DSR | holdout | annSR | maxDD | bar |
+|---|---|---|---|---|---|
+| **defensive5** (DAA+PAA+GTAA+TSMOM+HAA) | **1.000** | **+0.493** | **1.24** | **4.9%** | DSR+holdout |
+| all8 | 1.000 | +0.492 | 1.24 | 5.9% | DSR+holdout |
+| core3 (DAA+VAA+ADM) | 1.000 | +0.464 | 1.13 | 12.7% | STRICT-PASS |
+| *best single (DAA)* | *1.000* | *+0.447* | *1.23* | *8.3%* | *STRICT-PASS* |
+
+**`defensive5` is the best risk-adjusted snipe** — DAA's Sharpe (1.24) at **~half the drawdown** (4.9% vs 8.3%), DSR 1.000, holdout +0.493 (the cohort's strongest). It clears the DSR+holdout bar but not the *strict* gate, because its defensive tilt does not out-*return* raw SPY (it trades return for smoothness) — exactly the expected behaviour of a crash-protected sleeve, and arguably the single most deployable "floor" product. 1/N is not overfitting: no weights are fit, the members are fixed priors, the 3 compositions are pre-declared and FDR-counted. (The earlier `defensive4`, without HAA, is essentially identical — Sharpe 1.23, maxDD 4.7%, holdout +0.484, on a longer window; HAA marginally lifts the holdout.)
+
+## Diversification — what to actually deploy (and when this surface saturates)
+
+Correlation + leave-one-out marginal contribution across the 8 survivors (common window 2008-2026, 215 months):
+
+- The survivors are **moderately correlated (0.40–0.82, none > 0.85)** — eight variations on *defensive multi-asset momentum*, not clones. The most distinct are **VAA** and **HAA** (avg corr 0.51 / 0.54).
+- **Marginal ΔSharpe** when removed from the all-8 ensemble: **HAA +0.054 (the top diversifier)**, RP +0.017, DAA +0.015 — positive; the other five ≈ 0 (their edge is already captured by the rest).
+- The ensemble's real payoff is **drawdown reduction** (defensive5 4.9% vs DAA 8.3%), **not** Sharpe — the shared market/de-risk beta caps Sharpe gains at ~1.24.
+
+**Deploy:** `defensive5` (or all-8) as the diversified floor sleeve; a lean **DAA + HAA + RP** core captures most of the risk-adjusted benefit. HAA was the highest-value addition.
+
+**Saturation signal (honest):** new documented *defensive-momentum rotations* now add only ~±0.05 Sharpe — this surface is near-saturated for Sharpe (further additions mainly smooth drawdown). The next real leap needs a **different risk-premium class or new data** (e.g. cross-exchange crypto funding — the 2026-06-07 pivot — or a trend/carry/credit surface), not another correlated rotation.
+
+## A DIFFERENT risk premium — managed futures diversifies the floor (`equity_managed_futures_overlay.py`)
+
+The saturation signal said the next leap needs a *different* premium. Tested **managed futures** (time-series trend, long/short across all asset classes — the textbook equity-crisis diversifier), accessed via its liquid wrapper ETFs (DBMF ≈ SG CTA index, KMLM ≈ Mount Lucas) as fixed external priors. A probe first confirmed it is genuinely uncorrelated to the defensive rotations (**corr to defensive-5: DBMF +0.13, KMLM −0.27, CTA −0.33**); long-only commodities (DBC/PDBC/USO/UNG/DBA/GLD) carried no standalone premium and were **rejected** (they drag the blend).
+
+Through the unchanged Gate, on the satellite's (short) window:
+
+| book (DBMF window, 2019–26) | annSR | DSR | holdout | maxDD |
+|---|---|---|---|---|
+| Defensive-5 floor | 1.33 | 0.921 | +0.461 | 9.5% |
+| **Defensive-5 + 20% DBMF** | **1.44** | **0.970** | **+0.472** | **4.5%** |
+| DBMF alone | 0.74 | 0.663 | +0.454 | 18.8% |
+
+Adding a **20% managed-futures satellite** lifts the floor's DSR **0.921 → 0.970 (clears 0.95 on the short window)**, raises the holdout, and **halves the drawdown (9.5% → 4.5%)**. (KMLM blend: Sharpe 1.15 → 1.39.) The standalone managed-futures DSR is capped by short ETF history (DBMF since 2019), but its holdout is positive (+0.45 — the premium is real OOS) and the **blend** is the deployable win.
+
+**Recommended book:** `defensive5` core (80%) + a managed-futures satellite (20%, DBMF/KMLM) — a genuinely two-premium floor: defensive-momentum rotation + uncorrelated trend/crisis-alpha.
 
 ## Next
 

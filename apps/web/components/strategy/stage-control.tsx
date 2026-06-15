@@ -3,17 +3,21 @@
 // module: StageControl — the v18 strat-sheet top bar (Iris Bento `.psec.panel-top`): a lifecycle
 // `.stage-badge` on the left and the matching action on the right. The stage is DERIVED honestly upstream
 // from the real detail response (see deriveStage in the page) — backtest / paper / live / killed / queued —
-// never fabricated. The action mirrors the stage:
-//   • paper / live → "Stop" (opens an honest confirm; plain about whether real money moves)
-//   • otherwise    → no action. Promotion to paper/live is NOT a manual UI action — the Gate auto-promotes
-//     survivors, and live is launched via the CLI (Commands · `cosmu live launch`).
+// never fabricated. The affordances mirror the stage:
+//   • live CANDIDATE (paper-stage, or a gate-passed backtest) → a small red "Go Live" button next to the
+//     badge opens the GoLiveModal, which POSTs /live/launch (the SAME endpoint the CLI used). Arming only
+//     RECORDS INTENT — the engine enforces the real eligibility gate (paper maturity + regime + caps +
+//     global toggle + kill-switch) and runs testnet first; live ORDER execution is intentionally not wired.
+//   • paper / live → "Stop" on the right (opens an honest confirm; plain about whether real money moves).
+//     Promotion INTO paper is not a manual action — the Gate auto-promotes survivors.
 //
-// The Stop confirm is presentational + honest: it surfaces the affordance and a plain-language dialog. When
-// no real mutation path is wired it stays a clearly-labelled affordance, so we never pretend an action
-// happened that did not.
+// Both controls are honest: Go Live surfaces the engine's verdict verbatim (armed OR refusal reason) and the
+// Stop confirm is a plain-language dialog. Neither fires an order from this sheet, so we never pretend an
+// action happened that did not.
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/modal";
+import { GoLiveModal } from "./go-live-modal";
 
 export type Stage = "queued" | "backtest" | "paper" | "live" | "killed";
 
@@ -35,23 +39,41 @@ const STAGE_LABEL: Record<Stage, string> = {
 export function StageControl({
   stage,
   ageDays,
-  strategyName
+  strategyName,
+  versionId,
+  defaultSymbol,
+  goLiveEligible
 }: {
   stage: Stage;
   ageDays: number | null;
   strategyName: string;
+  // Needed to arm this exact Version live via the Go Live modal (POST /live/launch).
+  versionId?: string;
+  defaultSymbol?: string | null;
+  // Whether to show the "Go Live" affordance: a live CANDIDATE (paper-stage, or a gate-passed backtest). The
+  // engine's /live/launch enforces the REAL eligibility gate (paper maturity + regime) and refuses honestly —
+  // this just surfaces the entry point so the operator can see + drive the flow.
+  goLiveEligible?: boolean;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [goLive, setGoLive] = useState(false);
   const canStop = stage === "paper" || stage === "live";
   const live = stage === "live";
+  // Red "Go Live" sits next to the stage badge for a live candidate we can attempt to arm (not already live).
+  const canGoLive = Boolean(goLiveEligible) && stage !== "live" && stage !== "killed" && Boolean(versionId);
 
   return (
     <div className="psec panel-top" style={{ margin: 0 }}>
-      <div>
+      <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
         <span className={STAGE_BADGE_CLASS[stage]} style={{ display: "inline-flex" }}>
           {STAGE_LABEL[stage]}
           {ageDays !== null && ageDays > 0 ? <span className="tab" style={{ opacity: 0.8 }}>· {ageDays}d</span> : null}
         </span>
+        {canGoLive ? (
+          <button type="button" className="btn btn-danger btn-xs" onClick={() => setGoLive(true)} data-tip="Arm this strategy for live trading (Binance spot). Real orders stay behind the toggle, caps + kill-switch.">
+            Go Live
+          </button>
+        ) : null}
       </div>
       <div className="panel-actions">
         {canStop ? (
@@ -60,6 +82,16 @@ export function StageControl({
           </button>
         ) : null}
       </div>
+
+      {canGoLive && versionId ? (
+        <GoLiveModal
+          open={goLive}
+          onClose={() => setGoLive(false)}
+          versionId={versionId}
+          strategyName={strategyName}
+          defaultSymbol={defaultSymbol}
+        />
+      ) : null}
 
       <Modal
         open={confirming}
