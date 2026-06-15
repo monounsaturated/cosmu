@@ -43,8 +43,23 @@ image = (
         copy=True,  # materialize into the layer so the next run_commands can see it
         ignore=["**/__pycache__", "**/*.pyc", "tests/**", "remote/**"],
     )
-    .run_commands("pip install '/root/engine[lake,ops]'")  # [lake]=duckdb (DuckLake jobs), [ops]=boto3 (R2 backup upload)
+    .run_commands("pip install '/root/engine[lake,ops]'")  # [lake]=duckdb (DuckLake + R2 Parquet lake_* jobs), [ops]=boto3 (R2 backup upload)
 )
+
+# Crypto bar cache for the gate sweep. Binance's REST API geo-blocks cloud IPs (Modal is US) → a live fetch
+# returns nothing, so the gate sees "no-data" and refuses every spec. We bundle the LOCAL daily bar cache into
+# the image (deterministic, point-in-time, ~a few MB for 1d) and point COSMU_BINANCE_CACHE at it. Opt-in via
+# COSMU_BARS_SRC (set on the operator Mac, e.g. /Users/.../.cosmu/market_data) so the committed image stays
+# Mac-path-free; only the daily files ship (1h/4h ignored to keep the layer lean). The bars never leave the
+# image; all WRITES still go to the same Supabase.
+_BARS_SRC = os.environ.get("COSMU_BARS_SRC")
+_BARS_REMOTE = "/root/market_data"
+if _BARS_SRC and Path(_BARS_SRC).exists():
+    # Bake COSMU_BINANCE_CACHE into the image env so the CONTAINER (where COSMU_BARS_SRC is unset) points the
+    # bar loader at the bundled daily cache — without this the runtime never knows the bars were shipped.
+    image = image.add_local_dir(
+        _BARS_SRC, remote_path=_BARS_REMOTE, copy=True, ignore=["**/*_1h.json", "**/*_4h.json"]
+    ).env({"COSMU_BINANCE_CACHE": _BARS_REMOTE})
 
 # A SEPARATE image for the TEST SUITE: runs the full engine suite hermetically off the M2 (the heavy-compute
 # lane; the M2 OOM'd running it serially). It copies the WHOLE repo (not just apps/engine) — a few cross-cutting
@@ -73,12 +88,20 @@ engine_secret = modal.Secret.from_name("cosmu-engine")
 
 # Beefy defaults for a sweep; tune per job. Bursty → scale-to-zero between runs (~$0 idle).
 _HEAVY = dict(image=image, secrets=[engine_secret], timeout=60 * 60, cpu=4.0, memory=8192)
+# Lake jobs scan/write the 13.5M-row Parquet hoard (LunarCrush ~99%) — 32GB so a partitioned COPY or a deep
+# DuckDB scan never spills to swap. Same image/secret; the R2_* creds in the secret make the lake reachable.
+_LAKE = dict(image=image, secrets=[engine_secret], timeout=60 * 60, cpu=4.0, memory=32768)
 
 
-def _run(module_args: list[str]) -> int:
-    """Run `python -m <module> [args…]` against the installed engine, streaming output back to the caller."""
+def _run(module_args: list[str], *, extra_env: dict[str, str] | None = None) -> int:
+    """Run `python -m <module> [args…]` against the installed engine, streaming output back to the caller.
+    `extra_env` overrides process env for THIS run only (e.g. ALT_DATA_BACKEND=parquet for a lake read) —
+    never the shared secret, so the ingest/gate crons keep their default (Postgres) backend."""
     env = {**os.environ}
     env.setdefault("APP_ENV", "production")  # process-env secrets only, like the deployed engine
+    # COSMU_BINANCE_CACHE is baked into the image env when bars are bundled (see above) → inherited here.
+    if extra_env:
+        env.update(extra_env)
     proc = subprocess.run([sys.executable, "-m", *module_args], cwd="/root/engine", env=env)
     return proc.returncode
 
@@ -117,6 +140,45 @@ def perp_gate_sweep() -> int:
     funding regimes). Reports skew/tail/cost_ratio per scenario — the Phase 0 P0.6 perp cost surface.
     Needs the offline funding cache; run `ingest` first to populate it (or funding will be empty)."""
     return _run(["cosmu.research.perp_gate_sweep"])
+
+
+@app.function(**_LAKE)
+def export_lake() -> int:
+    """Refresh the COLD R2 Parquet lake from Postgres, OFF the operator's Mac. DuckDB's postgres-scanner streams
+    alt_data → Hive-partitioned Parquet on r2://<bucket> in one COPY; idempotent (OVERWRITE). 32GB + the
+    streamed write means the LunarCrush-dominated 13.5M rows never thrash. Needs R2_* + DATABASE_URL in the secret."""
+    return _run(["cosmu.data.export_alt_parquet"])
+
+
+@app.function(**_LAKE)
+def lake_run(module: str, args: list[str] | None = None) -> int:
+    """Deep-ML hatch: run any engine module with alt-data READS routed to the R2 lake (ALT_DATA_BACKEND=parquet
+    for THIS process only — never the shared secret, so ingest/gate keep writing Postgres). DuckDB scans the
+    columnar lake with predicate pushdown. NOTE: bar series still load from the local cache (not yet on R2), so
+    bar-dependent sweeps (matrix_search) need bars-on-R2 first; alt-data-only research works today.
+    e.g. modal run apps/engine/remote/app.py --job lake_run --module cosmu.research.scan_signals"""
+    return _run([module, *(args or [])], extra_env={"ALT_DATA_BACKEND": "parquet"})
+
+
+@app.function(image=image, secrets=[engine_secret], timeout=10 * 60, cpu=2.0, memory=4096)
+def lake_smoke() -> int:
+    """Prove the R2 cold lake is READABLE from Modal compute: build the cold store from the secret's R2 creds,
+    count rows + read one PIT series. No flag flip, no writes. Non-zero exit if the lake is unreachable/empty
+    (e.g. R2_* missing from the secret, or export_lake never ran)."""
+    from datetime import UTC, datetime
+
+    from cosmu.config.settings import get_settings
+    from cosmu.data.providers.parquet_store import ParquetAltDataStore
+
+    cold = ParquetAltDataStore.from_settings(get_settings())
+    if not str(cold.root).startswith(("r2://", "s3://")):
+        print(f"[lake_smoke] NOT REMOTE root={cold.root} — R2_* missing from the Modal secret (run sync_modal_secret.py)")
+        return 1
+    con = cold.conn()
+    rows = int(con.execute(f"SELECT count(*) FROM read_parquet('{cold.root}/alt_data/**/*.parquet')").fetchone()[0])
+    probe = cold.read_asof("defillama", "MARKET", "defi_tvl", datetime.now(UTC))
+    print(f"[lake_smoke] root={cold.root} rows={rows:,} defi_tvl_points={len(probe)} last={probe[-1].value if probe else None}")
+    return 0 if rows > 0 else 1
 
 
 @app.function(**_HEAVY)
@@ -182,9 +244,11 @@ def tests(paths: str = "tests", expr: str = "") -> int:
 
 @app.local_entrypoint()
 def main(job: str = "gate_sweep", module: str = "", args: str = "", apply: bool = False, hot_window_days: int = 90) -> None:
-    """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|perp_gate_sweep|paper_mark|cost_refresh|sync_lake|daily_backup|prune|run_module]`.
-    For run_module pass --module cosmu.x.y and optional --args "--flag value" (space-split).
-    For prune pass --apply to actually delete (default dry-run) and optional --hot-window-days N."""
+    """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|perp_gate_sweep|paper_mark|cost_refresh|
+    sync_lake|daily_backup|prune|export_lake|lake_smoke|lake_run|tests|run_module]`.
+    For run_module/lake_run pass --module cosmu.x.y and optional --args "--flag value" (space-split).
+    For prune pass --apply to actually delete (default dry-run) and optional --hot-window-days N.
+    export_lake refreshes the R2 Parquet lake; lake_smoke verifies R2 read access."""
     jobs = {
         "gate_sweep": gate_sweep,
         "ingest": ingest,
@@ -194,16 +258,19 @@ def main(job: str = "gate_sweep", module: str = "", args: str = "", apply: bool 
         "perp_gate_sweep": perp_gate_sweep,
         "sync_lake": sync_lake,
         "daily_backup": daily_backup,
+        "export_lake": export_lake,
+        "lake_smoke": lake_smoke,
         "tests": tests,
     }
-    if job == "run_module":
-        code = run_module.remote(module, args.split() if args else [])
+    if job in ("run_module", "lake_run"):
+        fn = run_module if job == "run_module" else lake_run
+        code = fn.remote(module, args.split() if args else [])
     elif job == "prune":
         code = prune_alt_data.remote(apply=apply, hot_window_days=hot_window_days)
     elif job in jobs:
         code = jobs[job].remote()
     else:
-        raise SystemExit(f"unknown job {job!r}; choose {sorted(jobs) + ['prune', 'run_module']}")
+        raise SystemExit(f"unknown job {job!r}; choose {sorted(jobs) + ['prune', 'run_module', 'lake_run']}")
     print(f"[modal] job={job} exit={code}")
     if code:
         raise SystemExit(code)

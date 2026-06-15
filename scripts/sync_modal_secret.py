@@ -33,8 +33,10 @@ WANTED = (
     "FRED_API_KEY",
     "LUNARCRUSH_API_KEY",
     "POLYMARKET_TOKEN",
-    # Cloudflare R2 — the cold-tier DuckLake lake (cosmu.data.ducklake_store / age_out / retention) needs these
-    # so the heavy lake jobs (backfill, sync, prune) run on Modal compute, not the M2.
+    # Cloudflare R2 creds — the cold tier needs these so the heavy lake jobs run on Modal compute, not the M2:
+    # the DuckLake lane (cosmu.data.ducklake_store / age_out / retention → sync_lake, prune) AND the Parquet lane
+    # (export_lake / lake_run / lake_smoke). Shipping the creds does NOT by itself flip a backend; ALT_DATA_BACKEND
+    # is set explicitly below (=tiered for Modal research). Optional: absent → those lake jobs no-op.
     "R2_ACCOUNT_ID",
     "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY",
