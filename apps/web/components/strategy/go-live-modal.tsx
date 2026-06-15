@@ -8,8 +8,9 @@
 //
 // SAFETY, in plain words (shown to the operator): arming records intent; a REAL order is submitted only when
 // ALL hold — global live toggle ON + venue keys present + gate passed + caps available + no kill-switch — and
-// the engine runs TESTNET first. Only Binance spot is wired to actually execute today; every other venue is
-// shown but cannot arm ("not connected").
+// the engine runs TESTNET first. Venues with a wired execution adapter (Binance spot, Alpaca equities,
+// Polymarket prediction CLOB) can arm once their keys are on the server; every other venue is shown but cannot
+// arm ("not connected").
 
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
@@ -71,6 +72,9 @@ export function GoLiveModal({
 
   const selected = venues?.find((v) => v.id === venueId);
   const venueConfigured = selected?.configured ?? venueId === "binance";
+  // Polymarket (prediction CLOB) trades YES/NO shares priced 0–1 (a probability), addressed by a market label
+  // or CLOB token id — not a 'BTCUSDT'-style pair — so the symbol hint + budget framing adapt to the venue.
+  const isPrediction = selected?.kind === "prediction";
 
   async function submit() {
     setError(null);
@@ -164,9 +168,16 @@ export function GoLiveModal({
           <p className="ai-body" style={{ marginBottom: 12 }}>
             Arming records intent. A <strong>real order</strong> is submitted only when ALL hold: global live toggle
             ON · venue keys present · gate passed · caps available · no kill-switch. The engine runs{" "}
-            <strong>testnet first</strong> — validate there before switching to live mode. Only <strong>Binance spot</strong>{" "}
-            is wired to execute today; other venues are shown but can&apos;t arm.
+            <strong>testnet first</strong> — validate there before switching to live mode. A venue can arm only once
+            its keys are on the server (the rest show &ldquo;not connected&rdquo;).
           </p>
+          {isPrediction ? (
+            <p className="quiet" style={{ fontSize: 11, marginBottom: 12 }}>
+              <strong>Polymarket</strong> trades prediction-market shares priced <strong>0–1</strong> (a probability);
+              orders are <strong>limit</strong> orders at that price, and Budget/caps are USDC notional. US-restricted —
+              set a non-US jurisdiction to arm.
+            </p>
+          ) : null}
 
           <label className="golive-row">
             <span>Venue</span>
@@ -181,12 +192,19 @@ export function GoLiveModal({
           </label>
 
           <label className="golive-row">
-            <span>Symbol</span>
-            <input className="golive-input" value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="BTCUSDT" />
+            <span>{isPrediction ? "Market (label or CLOB token id)" : "Symbol"}</span>
+            <input
+              className="golive-input"
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value)}
+              placeholder={isPrediction ? "PM-FED-CUT-2026" : "BTCUSDT"}
+            />
           </label>
 
           <label className="golive-row">
-            <span data-tip="Capital this strategy may deploy live.">Budget ($)</span>
+            <span data-tip={isPrediction ? "USDC notional this strategy may deploy (shares × probability)." : "Capital this strategy may deploy live."}>
+              {isPrediction ? "Budget (USDC)" : "Budget ($)"}
+            </span>
             <input className="golive-input" type="number" min={0} value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
           </label>
 

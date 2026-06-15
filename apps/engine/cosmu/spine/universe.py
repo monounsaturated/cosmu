@@ -10,12 +10,15 @@ from cosmu.spine.venue import default_catalog
 # Venues/asset classes with a real, ALWAYS-AVAILABLE data path wired today (drives the /universe "has data"
 # badge). binance: crypto spot. alpaca: US equities — the equity mark leg is keyless Yahoo total-return by
 # default and prefers Alpaca IEX when keys are set (orchestrator.loop.PricingRouter), so an equity position
-# always marks; equities are NOT a "no data yet" class. The rest are modelled in the catalog but can't trade
-# yet. NOTE: membership here means "a keyless/always-available data path exists" — never add a venue on
-# key-presence alone (a key-gated-ONLY venue would make has_data a lie when keys are absent). The crypto
-# Finder/cohort gate is `has_live_data` below (a separate, crypto-specific check), NOT this display set.
-VENUES_WITH_DATA: frozenset[str] = frozenset({"binance", "alpaca"})
-CLASSES_WITH_DATA: frozenset[str] = frozenset({"crypto", "equity"})
+# always marks; equities are NOT a "no data yet" class. polymarket: prediction odds via the PUBLIC Gamma +
+# CLOB prices-history APIs (no key) — ingested as pm_implied_prob/velocity/depth and read as point-in-time
+# odds by PredictionDataAdapter, so a prediction instrument always has data. The rest are modelled in the
+# catalog but can't trade yet. NOTE: membership here means "a keyless/always-available data path exists" —
+# never add a venue on key-presence alone (a key-gated-ONLY venue would make has_data a lie when keys are
+# absent). The crypto Finder/cohort gate is `has_live_data` below (a separate, crypto-specific check), NOT
+# this display set.
+VENUES_WITH_DATA: frozenset[str] = frozenset({"binance", "alpaca", "polymarket"})
+CLASSES_WITH_DATA: frozenset[str] = frozenset({"crypto", "equity", "prediction"})
 # Venues with a real CRYPTO data path. has_live_data() gates the crypto-specific ORB/FVG Finder + cohort seed,
 # so it asks SPECIFICALLY whether a crypto data venue is live — widening VENUES_WITH_DATA for equity UI honesty
 # must not let the crypto Finder fire on an empty crypto universe (audit 2026-06-13).

@@ -41,6 +41,8 @@ app needs two **server-side** vars to reach the engine:
 | LunarCrush | `LUNARCRUSH_API_KEY` | Social-sentiment scores **and a real (non-synthetic) edge-gate verdict**. Until a real source is wired, the gate shows an honest "needs real data" state — never a synthetic PASS. | optional | paid | Engine env (Railway) |
 | FRED | `FRED_API_KEY` | Macro-regime cross-asset source (free key from the St. Louis Fed). | optional | free | Engine env (Railway) |
 | Polymarket | `POLYMARKET_TOKEN` | Prediction-market risk-on cross-asset source. A market token id, **not a secret**. | optional | free | Engine env (Railway) |
+| Polymarket (live) | `POLYMARKET_PRIVATE_KEY` (+ optional `POLYMARKET_API_KEY` / `POLYMARKET_API_SECRET` / `POLYMARKET_PASSPHRASE` / `POLYMARKET_FUNDER_ADDRESS` / `POLYMARKET_SIGNATURE_TYPE`) | Real-money execution on the Polymarket CLOB (Polygon, USDC). Honored ONLY with `live.mode=="real"`; testnet key takes precedence. L2 API creds are derived from the signing key when omitted. Install `pip install -e ".[live]"` (py-clob-client). | live-only | free | Engine env (Railway) |
+| Polymarket (testnet) | `POLYMARKET_TESTNET_PRIVATE_KEY` (+ optional testnet API creds) | Paper execution against the Polymarket Amoy (Polygon testnet) CLOB. | optional | free | Engine env (Railway) |
 | Binance (live) | `BINANCE_API_KEY` / `BINANCE_API_SECRET` | Real-money execution on Binance spot. Only needed once you arm live trading. | live-only | free | Engine env (Railway) |
 | Binance (testnet) | `BINANCE_TESTNET_API_KEY` / `BINANCE_TESTNET_API_SECRET` | Paper execution against Binance testnet (testnet.binance.vision). | optional | free | Engine env (Railway) |
 | Alpaca (paper) | `ALPACA_PAPER_API_KEY` / `ALPACA_PAPER_API_SECRET` | US equities market data (IEX feed) + free paper execution — the equity data/forward-test lane (`adapters/data/alpaca.py`, `adapters/exec/alpaca.py`). Free account at alpaca.markets. | optional | free | Engine env (Railway) |
@@ -63,3 +65,10 @@ app needs two **server-side** vars to reach the engine:
   demo into a genuine stop-or-go verdict on real data.
 - **Binance live keys** — present keys never auto-arm anything. Live requires: real-data gate pass + a
   two-click confirmation on the Live screen.
+- **Polymarket live keys** (`POLYMARKET_PRIVATE_KEY`) — the Polygon signing key for the CLOB execution
+  adapter (`adapters/exec/polymarket.py`). Same never-auto-live interlock as Binance: honored ONLY with
+  `live.mode=="real"`, and `POLYMARKET_TESTNET_PRIVATE_KEY` (Amoy) always takes precedence. The signing key
+  is read once into the adapter's factory closure and is never stored on the instance, logged, or returned.
+  Supplying `POLYMARKET_API_KEY`/`_SECRET`/`_PASSPHRASE` (the CLOB L2 creds) avoids a per-resolve network
+  derive; absent them, py-clob-client derives them from the signing key. CLOB trading is fee-free (0 bps) and
+  gasless via Polymarket's relayer; the binding cost is the order-book spread, already charged in SIM.

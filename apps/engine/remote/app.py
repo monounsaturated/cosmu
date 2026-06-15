@@ -35,6 +35,27 @@ image = (
     .run_commands("pip install /root/engine")
 )
 
+# A SEPARATE image for the TEST SUITE: runs the full engine suite hermetically off the M2 (the heavy-compute
+# lane; the M2 OOM'd running it serially). It copies the WHOLE repo (not just apps/engine) — a few cross-cutting
+# tests scan repo-root context (.claude/skills, apps/web routes), so an engine-only image false-fails them — and
+# installs the dev+live+lake extras (pytest/xdist, py-clob-client, duckdb) so every test is collectable. Heavy
+# dirs (node_modules/.git/.venv/.next/.cosmu) are excluded. Tests build temp sqlite + offline fixtures → no
+# secret/DB needed.
+REPO_ROOT = ENGINE_DIR.parent.parent  # apps/engine -> apps -> repo root
+test_image = (
+    modal.Image.debian_slim(python_version="3.12")
+    .add_local_dir(
+        str(REPO_ROOT),
+        remote_path="/root/repo",
+        copy=True,
+        ignore=[
+            "**/node_modules", "**/.git", "**/.venv", "**/.next", "**/.cosmu", "**/.turbo",
+            "**/dist", "**/.pytest_cache", "**/__pycache__", "**/*.pyc", "**/*.sqlite3", ".claude/worktrees",
+        ],
+    )
+    .run_commands("pip install '/root/repo/apps/engine[dev,live,lake]'")
+)
+
 # Runtime env: the SAME values the Railway backend reads. APP_ENV=production makes Settings read process env
 # only (no committed file). Sync it from .env.local with:  python3 scripts/sync_modal_secret.py
 engine_secret = modal.Secret.from_name("cosmu-engine")
@@ -94,6 +115,19 @@ def run_module(module: str, args: list[str] | None = None) -> int:
     return _run([module, *(args or [])])
 
 
+@app.function(image=test_image, timeout=60 * 30, cpu=8.0, memory=16384)
+def tests(paths: str = "tests", expr: str = "") -> int:
+    """Run the engine pytest suite on Modal compute (off the M2) — parallel (-n auto, loadfile distribution,
+    xdist-safe). Hermetic: temp sqlite + offline fixtures, no secret/DB needed. `paths` scopes files (space-
+    split), `expr` is a -k filter. e.g. modal run apps/engine/remote/app.py --job tests"""
+    env = {**os.environ, "APP_ENV": "test"}
+    cmd = [sys.executable, "-m", "pytest", *paths.split(), "-n", "auto", "--dist=loadfile", "-q",
+           "-p", "no:cacheprovider", "-rfE", "--tb=line"]  # -rfE: name every failed/errored test in the summary
+    if expr:
+        cmd += ["-k", expr]
+    return subprocess.run(cmd, cwd="/root/repo/apps/engine", env=env).returncode
+
+
 @app.local_entrypoint()
 def main(job: str = "gate_sweep", module: str = "", args: str = "") -> None:
     """`modal run apps/engine/remote/app.py [--job gate_sweep|ingest|perp_gate_sweep|paper_mark|cost_refresh|run_module]`.
@@ -105,6 +139,7 @@ def main(job: str = "gate_sweep", module: str = "", args: str = "") -> None:
         "forward_mark": paper_mark,  # legacy alias (pre-2026-06-11 vocabulary) — same job
         "cost_refresh": cost_refresh,
         "perp_gate_sweep": perp_gate_sweep,
+        "tests": tests,
     }
     if job == "run_module":
         code = run_module.remote(module, args.split() if args else [])

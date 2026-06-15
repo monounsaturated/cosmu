@@ -50,6 +50,36 @@ def test_live_venues_jurisdiction_and_honest_connection(tmp_path, monkeypatch):
     assert "secret" not in c.get("/live/venues").text.lower()  # no secret ever leaks
 
 
+def test_live_venues_polymarket_is_fr_legal_us_blocked(tmp_path, monkeypatch):
+    """Polymarket is a live-enabled venue legal in FR but US-restricted — /live/venues must list it for FR and
+    DROP it for US (jurisdiction picks the live venue set)."""
+    c = _client(tmp_path, monkeypatch)
+    fr = {v["id"] for v in c.get("/live/venues").json()["venues"]}
+    assert "polymarket" in fr
+    c.post("/live/jurisdiction", json={"code": "US"})
+    us = {v["id"] for v in c.get("/live/venues").json()["venues"]}
+    assert "polymarket" not in us  # Polymarket blocks US persons
+
+
+def test_live_positions_reports_aggregate_testnet_mode_for_polymarket(tmp_path, monkeypatch):
+    """The /live mode is AGGREGATE across venues: a Polymarket-only testnet key (no Binance) must report
+    mode='testnet' + armed once the toggle is on — not 'sim' (the old Binance-only check)."""
+    from fastapi.testclient import TestClient
+
+    settings = Settings(
+        database_url=f"sqlite:///{tmp_path}/live_pm.sqlite3",
+        polymarket_testnet_private_key="0xtestnetkey",  # only Polymarket is keyed
+        live=LiveSettings(),
+    )
+    store = Store(settings)
+    monkeypatch.setattr(app_mod, "settings", settings)
+    monkeypatch.setattr(app_mod, "store", store)
+    c = TestClient(app_mod.app)
+    c.post("/toggle/live", json={"enabled": True, "confirm": True})
+    body = c.get("/live/positions").json()
+    assert body["mode"] == "testnet" and body["armed"] is True
+
+
 def test_portfolio_summary_empty_state_never_labels_sim_as_live(tmp_path, monkeypatch):
     # No live position → has_live False, every live_* money figure is None (renders "—"). With NO allocated
     # paper tracks, sim_equity is 0 (NO pooled wallet — never the $100k sim_bankroll). The ribbon can NEVER
