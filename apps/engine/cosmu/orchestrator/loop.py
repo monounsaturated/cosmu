@@ -563,9 +563,12 @@ def _funding_rate_asof(store: Store, symbol: str) -> Decimal | None:
     """The latest point-in-time funding rate for a perp symbol from the central alt_data store (the same series
     the ingest pass fills: provider 'binance', metric 'funding_rate'). None when no rate is on file — accrue
     nothing this tick (offline-safe)."""
+    # COLLATE "C" so the "latest available" pick is binary/chronological on Postgres (its en_US.UTF-8 collation
+    # would otherwise mis-order a fractional-second available_at — see PgAltDataStore.read_asof). Postgres-only.
+    c = ' COLLATE "C"' if getattr(store, "_is_pg", False) else ""
     row = store.row(
         "SELECT value FROM alt_data WHERE provider = 'binance' AND symbol = ? AND metric = 'funding_rate' "
-        "ORDER BY available_at DESC, id DESC LIMIT 1",
+        f"ORDER BY available_at{c} DESC, id DESC LIMIT 1",
         (symbol,),
     )
     return Decimal(str(row["value"])) if row else None

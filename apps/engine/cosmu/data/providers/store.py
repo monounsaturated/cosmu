@@ -130,19 +130,26 @@ class PgAltDataStore:
         # test fee read. Ordering by available_at (NOT id) is the true PIT revision winner and is what makes the
         # Parquet/DuckLake read byte-identical; uq_alt_data_pit guarantees available_at is unique per (series,ts),
         # so no secondary tiebreak is needed. as_of is canonicalized so the string<= cut matches the stored form.
+        # COLLATE "C": Postgres's default en_US.UTF-8 collation compares text PUNCTUATION non-binarily, so a
+        # string `<=` on ISO timestamps disagrees with chronological order (a fractional-second `…:00.005+00:00`
+        # sorts BEFORE the `…:00+00:00` cut → a sub-second LOOK-AHEAD leak) AND diverges from DuckDB's binary
+        # compare (breaking PG↔lake parity). "C" forces byte order = chronological = lake-identical. SQLite is
+        # already binary and "C" is not a valid SQLite collation, so the collate is Postgres-only.
+        c = ' COLLATE "C"' if getattr(self.store, "_is_pg", False) else ""
         rows = self.store.rows(
             "SELECT ts, available_at, value FROM ("
-            "  SELECT ts, available_at, value, row_number() OVER (PARTITION BY ts ORDER BY available_at DESC) AS rn "
-            "  FROM alt_data WHERE provider = ? AND symbol = ? AND metric = ? AND available_at <= ?"
-            ") t WHERE rn = 1 ORDER BY ts",
+            f"  SELECT ts, available_at, value, row_number() OVER (PARTITION BY ts ORDER BY available_at{c} DESC) AS rn "
+            f"  FROM alt_data WHERE provider = ? AND symbol = ? AND metric = ? AND available_at{c} <= ?"
+            f") t WHERE rn = 1 ORDER BY ts{c}",
             (provider, symbol, metric, iso_utc(as_of)),
         )
         return [AltDataPoint(ts=datetime.fromisoformat(r["ts"]), available_at=datetime.fromisoformat(r["available_at"]), value=float(r["value"])) for r in rows]
 
     def read_all(self, provider: str, symbol: str, metric: str) -> list[AltDataPoint]:
         """Full revision history (see AltDataStore.read_all) — the per-bar as-of join collapses it correctly."""
+        c = ' COLLATE "C"' if getattr(self.store, "_is_pg", False) else ""  # binary order = chronological = lake parity
         rows = self.store.rows(
-            "SELECT ts, available_at, value FROM alt_data WHERE provider = ? AND symbol = ? AND metric = ? ORDER BY available_at, ts",
+            f"SELECT ts, available_at, value FROM alt_data WHERE provider = ? AND symbol = ? AND metric = ? ORDER BY available_at{c}, ts{c}",
             (provider, symbol, metric),
         )
         return [AltDataPoint(ts=datetime.fromisoformat(r["ts"]), available_at=datetime.fromisoformat(r["available_at"]), value=float(r["value"])) for r in rows]
