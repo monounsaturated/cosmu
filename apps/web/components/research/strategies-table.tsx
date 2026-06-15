@@ -443,7 +443,7 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
           ? "Out-of-sample backtest return — this strategy's latest stage (no paper P&L yet)"
           : p.source === "live"
             ? "Live realized + unrealized P&L %"
-            : "Paper (forward-test) P&L %";
+            : "Paper (paper) P&L %";
       return (
         <span className={cn("tab", p.pct > 0 ? "up" : p.pct < 0 ? "dn" : "")} data-tip={tip}>
           {`${p.pct >= 0 ? "+" : ""}${p.pct.toFixed(0)}%`}

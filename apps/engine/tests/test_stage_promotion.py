@@ -1,6 +1,6 @@
 # STAGE SEMANTICS — "Paper" must mean a strategy has actually STARTED TRADING on paper: >= 1 REAL paper fill in
 # the executions log (the same signal the detail sheet reads — "no fills yet" / "needs fills for a curve"). A
-# forward-test entrant is born "screened" (badge: Backtest); the paper clock (orchestrator.mark_tracks) promotes
+# paper entrant is born "screened" (badge: Backtest); the paper clock (orchestrator.mark_tracks) promotes
 # it to "paper" on its FIRST real fill, and a one-shot boot reclassification (reclassify_unforwarded_paper) demotes
 # any "paper" row that has no fills (e.g. a documented arm that only holds a static allocation — apply_fill writes
 # positions, never executions). Both are BADGE-ONLY relabels — the live/money gate reads track_opened, not status.
@@ -127,7 +127,7 @@ def test_reclassify_keeps_paper_that_has_traded(tmp_path):
 def test_kickstart_paper_fills_promotes_holding_arm(tmp_path):
     # A documented arm that HOLDS an open position (apply_fill) but has NO recorded executions is "screened"
     # (Backtest). kickstart_paper_fills back-fills its held leg as a paper fill and promotes it screened->paper,
-    # so a genuinely forward-testing arm reads "Paper" with a real blotter. Idempotent: a second run is a no-op.
+    # so a genuinely paper-trading arm reads "Paper" with a real blotter. Idempotent: a second run is a no-op.
     from cosmu.orchestrator.loop import kickstart_paper_fills
 
     store = _store(tmp_path)

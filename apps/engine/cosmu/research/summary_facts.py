@@ -1,7 +1,7 @@
 # intent: assemble the DETERMINISTIC facts a per-strategy plain-language summary is written from, plus the
 # sha256 staleness pin. inputs: a Store + strategy_version_id. outputs: a JSON-able facts dict (strategy
 # name/thesis, spec rationale/lane/bar_size/asset_classes, status/kill_reason, best screen backtest metrics,
-# forward-test track state) and facts_hash(facts). invariants: READ-ONLY over existing tables (strategies,
+# paper track state) and facts_hash(facts). invariants: READ-ONLY over existing tables (strategies,
 # strategy_versions, backtests, tracks) — no schema change; no LLM, no network — the summary TEXT is written
 # EXTERNALLY (Claude Code on the flat sub), the engine only stores/serves it; facts_hash is sha256 over
 # canonical JSON (sort_keys + compact separators) with floats rounded first, so the same facts always pin the
@@ -85,7 +85,7 @@ def _best_screen(store: Store, version_id: str) -> dict[str, Any] | None:
 
 
 def _forward_test(store: Store, version_id: str) -> dict[str, Any] | None:
-    """The standalone forward-test track's current state, when one exists. Marks move equity/return_pct (and
+    """The standalone paper track's current state, when one exists. Marks move equity/return_pct (and
     updated_at), so a summary written before a re-mark honestly reads stale — that is the point of the pin."""
     row = store.row(
         "SELECT return_pct, equity, starting_capital, updated_at FROM tracks WHERE strategy_version_id = ?",

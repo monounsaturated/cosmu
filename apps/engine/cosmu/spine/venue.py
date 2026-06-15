@@ -282,7 +282,7 @@ def default_catalog() -> VenueCatalog:
             Instrument(id="btc-usdt-binance", venue_id="binance", symbol="BTCUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.00001"), min_notional=Decimal("10")),
             Instrument(id="eth-usdt-binance", venue_id="binance", symbol="ETHUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.0001"), min_notional=Decimal("10")),
             # The rest of the crypto SCREEN universe (evolution/loop.py CRYPTO_SCREEN_UNIVERSE) — real Binance
-            # spot filters. Without these a survivor screened on BNB/SOL/XRP could only forward-test on BTC/ETH,
+            # spot filters. Without these a survivor screened on BNB/SOL/XRP could only paper on BTC/ETH,
             # i.e. on an instrument its gate evidence never covered.
             Instrument(id="bnb-usdt-binance", venue_id="binance", symbol="BNBUSDT", asset_class="crypto", tick_size=Decimal("0.1"), lot_size=Decimal("0.001"), min_notional=Decimal("10")),
             Instrument(id="sol-usdt-binance", venue_id="binance", symbol="SOLUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.001"), min_notional=Decimal("10")),
@@ -321,7 +321,7 @@ def default_catalog() -> VenueCatalog:
             Instrument(id="xlu-ibkr", venue_id="ibkr", symbol="XLU", asset_class="equity", tick_size=Decimal("0.01"), lot_size=Decimal("1"), min_notional=Decimal("1")),
             Instrument(id="xlv-ibkr", venue_id="ibkr", symbol="XLV", asset_class="equity", tick_size=Decimal("0.01"), lot_size=Decimal("1"), min_notional=Decimal("1")),
             Instrument(id="xly-ibkr", venue_id="ibkr", symbol="XLY", asset_class="equity", tick_size=Decimal("0.01"), lot_size=Decimal("1"), min_notional=Decimal("1")),
-            # Alpaca equity universe — MIRRORS the IBKR set above so any equity survivor can forward-test on a real
+            # Alpaca equity universe — MIRRORS the IBKR set above so any equity survivor can paper on a real
             # broker's paper account (Alpaca, commission-free, dividend-adjusted IEX) instead of the internal sim,
             # the moment ALPACA_PAPER keys land. Same symbols/tick/lot as IBKR; data marks via Alpaca-when-keyed
             # else keyless Yahoo (orchestrator.loop.PricingRouter). live_enabled stays False (paper/data only).

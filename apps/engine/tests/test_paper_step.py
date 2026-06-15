@@ -52,7 +52,7 @@ def _persist_survivor(
     signal_exit_floor: float | None = None,
     bar_size: str = "1d",
 ) -> str:
-    """A gate-passed forward-test survivor with a REAL evaluable spec (ret_Nd momentum, fitted sl/tp), the exact
+    """A gate-passed paper survivor with a REAL evaluable spec (ret_Nd momentum, fitted sl/tp), the exact
     rows the funder reads and the executor manages."""
     now = "2024-01-01T00:00:00Z"
     exits: dict = {"stop_loss": {"param": "sl"}, "take_profit": {"param": "tp"}, "signal_exits": []}

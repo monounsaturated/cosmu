@@ -24,7 +24,7 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       // forward_test → paper rename: the old name lands on the Paper dashboard.
-      { source: "/forward-test", destination: "/paper", permanent: false },
+      { source: "/paper", destination: "/paper", permanent: false },
       // Every folded surface (and its sub-paths) → the Strategies screener, the new home.
       ...FOLDED_TO_STRATEGIES.flatMap((src) => [
         { source: src, destination: "/strategies", permanent: false },
