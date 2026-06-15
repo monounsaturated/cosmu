@@ -25,9 +25,13 @@ from cosmu.strategy.spec import Condition, FeatureRef, MetaLabel, ParamRef, Stra
 
 _REGIMES = ("bull", "bear", "chop")
 
-# The default per-fill cost assumptions (bps): a fixed half-spread slippage + a participation-scaled market
-# impact. Named so the writers that PERSIST a backtest's cost assumptions (lab/finder._backtest_row) record the
-# exact values the backtest charged — not a re-typed literal that could silently drift from the signature default.
+# THE single cost model both simulators share: research/gate.py::_simulate imports these constants + the
+# `_slippage` participation curve below, so the single-signal Gate and the StrategySpec backtest charge the
+# IDENTICAL slippage + market impact on every fill — they cannot disagree on net-of-fee profit. The fixed
+# half-spread is the floor; impact scales with participation (order notional / bar quote-volume) so larger
+# size erodes the edge (the capacity dimension). Named (DEFAULT_*) so the writers that PERSIST a backtest's
+# cost assumptions (lab/finder._backtest_row) record the EXACT values charged — never a re-typed literal that
+# could silently drift. These are the run_strategy_backtest defaults.
 DEFAULT_SLIPPAGE_BPS = Decimal("5")
 DEFAULT_IMPACT_BPS = Decimal("50")
 

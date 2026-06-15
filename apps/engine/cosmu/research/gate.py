@@ -9,6 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from cosmu.data.altdata import AltDataProvider, NewsProvider, read_pit_fee, read_pit_fee_resolver, rolling_zscore
+from cosmu.data.backtest import DEFAULT_IMPACT_BPS, DEFAULT_SLIPPAGE_BPS
 from cosmu.data.market import Bar
 from cosmu.data.sources.multiasset import MULTIASSET_METRICS
 from cosmu.experiments import ExperimentRecord, data_version, log_experiments
@@ -43,7 +44,12 @@ _HOLD_BARS = (5, 10)
 # Static catalog fallback fee (bps → fraction) used when no PIT fee snapshot is available.
 # A per-bar PIT read (read_pit_fee) is preferred; this is only the offline/pre-first-ingest default.
 _FEE_FALLBACK_BPS: float = float(default_catalog().venue("binance").taker_fee_bps)
-_SLIP = 0.0005
+# Cost model: the Gate's `_simulate` shares the EXACT slippage + market-impact curve and bps defaults that
+# `data/backtest.py::run_strategy_backtest` uses (DEFAULT_SLIPPAGE_BPS half-spread + DEFAULT_IMPACT_BPS
+# participation-scaled impact via `_slippage`). The old flat 5bps-no-impact model is gone, so a single-signal
+# Gate can no longer bless a fill the StrategySpec backtest could not trade.
+_BASE_SLIP: float = float(DEFAULT_SLIPPAGE_BPS) / 10000.0
+_IMPACT: float = float(DEFAULT_IMPACT_BPS) / 10000.0
 _STOP = 0.08
 _TAKE = 0.16
 
@@ -314,8 +320,13 @@ def _simulate(
 
     Returns (equity_curve, trades).  Each trade is (net_pnl, regime, gross_pnl) where
     gross_pnl is the price-only return (slippage only, no fees) — used to compute cost_ratio.
+
+    Cost model: slippage is the SHARED participation-scaled curve from `data/backtest.py::_slippage`
+    (half-spread `_BASE_SLIP` + `_IMPACT * sqrt(notional/bar_quote_volume)`), with the SAME bps defaults
+    the StrategySpec backtest uses. There is no separate softer Gate cost model: a fill the Gate prices is
+    priced identically by `run_strategy_backtest`, so the two cannot disagree on net-of-fee profit.
     """
-    from cosmu.data.backtest import _regime_labels
+    from cosmu.data.backtest import _regime_labels, _slippage
 
     closes = [float(b.close) for b in bars]
     regimes = _regime_labels(closes)
@@ -332,16 +343,20 @@ def _simulate(
     for i in range(1, len(bars)):
         b = bars[i]
         fee = fee_fn(b.ts)
+        # Per-bar slippage on the SAME participation basis the backtest uses: the prospective entry notional
+        # (cash * 0.2) against this bar's quote-volume. Applied to entry AND any exit on this bar, exactly as
+        # `_run_symbol` computes one `slip` per bar from `_entry_notional`.
+        slip = _slippage(_BASE_SLIP, _IMPACT, cash * 0.2, b)
         if pos > 0:
             stop_p = entry * (1 - _STOP)
             take_p = entry * (1 + _TAKE)
             xp: float | None = None
             if float(b.low) <= stop_p:
-                xp = stop_p * (1 - _SLIP)
+                xp = stop_p * (1 - slip)
             elif float(b.high) >= take_p:
-                xp = take_p * (1 - _SLIP)
+                xp = take_p * (1 - slip)
             elif i - entry_idx >= params.hold_bars:
-                xp = float(b.open) * (1 - _SLIP)
+                xp = float(b.open) * (1 - slip)
             if xp is not None:
                 cash += pos * xp * (1 - fee)
                 net_pnl = (xp * (1 - fee) - entry * (1 + entry_fee)) / entry
@@ -353,7 +368,7 @@ def _simulate(
                 entry_fee = 0.0
         if pos == 0 and i - 1 < len(signal) and signal[i - 1]:
             notional = cash * 0.2
-            fill = float(b.open) * (1 + _SLIP)
+            fill = float(b.open) * (1 + slip)
             pos = notional * (1 - fee) / fill
             cash -= notional
             entry = fill
@@ -361,8 +376,12 @@ def _simulate(
             entry_idx = i
         equity.append(cash + pos * closes[i])
     if pos > 0:
-        fee = fee_fn(bars[-1].ts)
-        xp = closes[-1] * (1 - _SLIP)
+        b = bars[-1]
+        fee = fee_fn(b.ts)
+        # Forced final close: slip on the actual open-leg notional vs the last bar, mirroring `_run_symbol`'s
+        # closing `_slippage(base_slip, impact, position*closes[-1], bars[-1])`.
+        slip = _slippage(_BASE_SLIP, _IMPACT, pos * closes[-1], b)
+        xp = closes[-1] * (1 - slip)
         cash += pos * xp * (1 - fee)
         net_pnl = (xp * (1 - fee) - entry * (1 + entry_fee)) / entry
         gross_pnl = (xp - entry) / entry
