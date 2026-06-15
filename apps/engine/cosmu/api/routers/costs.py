@@ -42,20 +42,43 @@ def costs() -> CostsResponse:
             equity = float(_portfolio().equity())
         except Exception:  # noqa: BLE001 — equity is best-effort; the cost page must render without it
             equity = 0.0
+        # net edge = the REAL net-of-fee forward P&L (marked scope='track' snapshot − starting_capital), NOT
+        # tracks.equity. tracks.equity is SEEDED with the rosy backtest number at funding (e.g. +100%), so
+        # subtracting starting_capital surfaced a fabricated "net edge" the moment a track carried a cost.
+        # We mirror the leaderboard's honesty: derive from the marked snapshot, and only once the track has
+        # genuinely traded on paper (a real is_paper=1 fill) — a funded-but-unfilled / un-marked track has $0
+        # realized edge, never the backtest. Day-0 = 0, exactly like the Paper P&L read-out.
         per_rows = store.rows(
             """
             SELECT sv.id AS version_id, s.name AS name,
                    SUM(CAST(c.amount AS REAL)) AS opex,
-                   COALESCE(CAST(tr.equity AS REAL) - CAST(tr.starting_capital AS REAL), 0) AS net
+                   tr.starting_capital AS starting_capital, ps.equity AS marked_equity,
+                   EXISTS(SELECT 1 FROM executions e WHERE e.strategy_version_id = sv.id
+                          AND CAST(e.is_paper AS INTEGER) = 1) AS has_paper_fills
             FROM costs c
             JOIN strategy_versions sv ON sv.id = c.strategy_version_id
             JOIN strategies s ON s.id = sv.strategy_id
             LEFT JOIN tracks tr ON tr.strategy_version_id = sv.id
-            GROUP BY sv.id, s.name, tr.equity, tr.starting_capital
+            LEFT JOIN (
+                SELECT ref_id, equity FROM portfolio_snapshots p1
+                WHERE scope = 'track' AND ts = (
+                    SELECT MAX(ts) FROM portfolio_snapshots p2 WHERE p2.scope = 'track' AND p2.ref_id = p1.ref_id
+                )
+            ) ps ON ps.ref_id = sv.id
+            GROUP BY sv.id, s.name, tr.starting_capital, ps.equity
             """
         )
+
+        def _net_edge(row: dict) -> float:  # noqa: ANN001 — local honesty helper
+            if not bool(row["has_paper_fills"]) or row["marked_equity"] is None or row["starting_capital"] is None:
+                return 0.0
+            try:
+                return float(row["marked_equity"]) - float(row["starting_capital"])
+            except (TypeError, ValueError):
+                return 0.0
+
         per_strategy = [
-            CostPerStrategy(version_id=r["version_id"], name=r["name"], opex=round(float(r["opex"] or 0), 6), net=round(float(r["net"] or 0), 6))
+            CostPerStrategy(version_id=r["version_id"], name=r["name"], opex=round(float(r["opex"] or 0), 6), net=round(_net_edge(r), 6))
             for r in per_rows
         ]
 

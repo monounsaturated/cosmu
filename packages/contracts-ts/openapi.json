@@ -6050,13 +6050,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -7423,7 +7416,7 @@
     },
     "/live/rules": {
       "get": {
-        "description": "The live-trading Rules the operator edits: the hard global $ blocker + daily-loss + per-venue caps,\nwith each legal venue's real deployed capital + headroom. The per-venue caps are enforced deterministically\nin the order gauntlet (only when live is armed \u2014 the SIM/forward-test lane is never constrained).",
+        "description": "The live-trading Rules the operator edits: the hard global $ blocker + daily-loss + per-venue caps,\nwith each legal venue's real deployed capital + headroom. The per-venue caps are enforced deterministically\nin the order gauntlet (only when live is armed \u2014 the SIM/paper lane is never constrained).",
         "operationId": "live_rules_live_rules_get",
         "responses": {
           "200": {
