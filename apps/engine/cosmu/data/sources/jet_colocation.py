@@ -34,6 +34,19 @@
 #   `offline=True` (or no network / any parse failure) -> bundled deterministic fixture, NO HTTP, NEVER an
 #   exception. The fixture has same-airport co-location days (=> events), different-airport days (=> no
 #   event), and a deliberately ABSENT day to exercise the "gaps are None, not 0" invariant.
+#
+# RATE LIMIT / CALL BUDGET (live path — read before touching the fetch loop):
+#   OpenSky's anonymous /flights/aircraft free tier is roughly ~400 requests/day. A single trailing-window
+#   query therefore CANNOT afford one HTTP request per (aircraft x day): a 30-day window over the ~12 seed
+#   aircraft would burn ~360 requests for ONE ticker and exhaust the daily budget in a single pass.
+#   We therefore fetch each aircraft's flight track ONCE over the FULL window [window_start, window_end)
+#   and bucket arrivals by UTC day in memory (so the per-day aggregation reads cached data). That is
+#   ~num_aircraft requests per window instead of num_aircraft x window_days — a ~window_days-fold reduction.
+#   The sweep result is MEMOIZED per (window_start, window_end) on the source instance so repeated queries
+#   within the same ingest pass (e.g. several tickers sharing the same window) re-use the same fetched tracks
+#   without re-hitting the API. This is a PURE call-reduction: it changes no computed value and no PIT/offline
+#   semantics — a per-day fetch and a window fetch sliced to that day yield the same {icao24: airport} map.
+#   The cache lives only for the source instance's lifetime (one ingest pass); it is NOT a persisted store.
 
 from __future__ import annotations
 
@@ -175,7 +188,11 @@ def _fetch_aircraft_arrivals(base_url: str, icao24: str, begin: int, end: int, t
 def _live_arrivals_for_day(base_url: str, obs_day: date, timeout: float) -> dict[str, str] | None:
     """Live path: for every tracked aircraft, fetch its arrivals on `obs_day` (UTC) and keep the LAST
     estArrivalAirport seen that day. Returns {icao24: airport} for aircraft that arrived somewhere.
-    Returns None if EVERY tracked aircraft query failed (no data knowable => gap, not an empty day)."""
+    Returns None if EVERY tracked aircraft query failed (no data knowable => gap, not an empty day).
+
+    NOTE: kept for the single-day code path and for callers that need exactly one day. The trailing-window
+    query() uses _live_arrivals_by_day() instead, which fetches each aircraft ONCE over the whole window and
+    buckets by day — far fewer HTTP requests for the same per-day result (see the RATE LIMIT note up top)."""
     begin = _day_to_unix(obs_day)
     end = begin + 86_400
     arrivals: dict[str, str] = {}
@@ -191,6 +208,56 @@ def _live_arrivals_for_day(base_url: str, obs_day: date, timeout: float) -> dict
                 if airport:
                     arrivals[icao24.lower()] = str(airport)
     return arrivals if any_success else None
+
+
+def _flight_arrival_day(flight: dict) -> date | None:
+    """The UTC calendar day a flight ARRIVED, from its `lastSeen` (arrival) Unix timestamp.
+    None if the timestamp is missing or unparseable — such a flight cannot be attributed to a day."""
+    ts = flight.get("lastSeen")
+    if not isinstance(ts, (int, float)):
+        return None
+    try:
+        return datetime.fromtimestamp(int(ts), tz=UTC).date()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _live_arrivals_by_day(
+    base_url: str, days: list[date], timeout: float
+) -> dict[date, dict[str, str] | None]:
+    """CALL-REDUCING live path for a trailing window. Fetch each tracked aircraft's flight track ONCE over
+    the full span [min(days) 00:00 UTC, max(days)+1 00:00 UTC) and bucket arrivals by UTC day, instead of
+    one HTTP request per (aircraft x day). Returns {obs_day: {icao24: airport} | None} for exactly the
+    requested `days`.
+
+    Per-day semantics are IDENTICAL to _live_arrivals_for_day():
+      * keep the LAST estArrivalAirport seen for an aircraft on a given day (response order preserved);
+      * a day is a real (possibly empty) reading iff at least one aircraft had >=1 flight arriving that day,
+        else None (a gap — no data knowable, never a fabricated empty day).
+    This is a pure call-reduction; the resulting per-day maps match the per-day fetch byte-for-byte."""
+    if not days:
+        return {}
+    span_begin = _day_to_unix(min(days))
+    span_end = _day_to_unix(max(days)) + 86_400
+    requested = set(days)
+    # day -> True once any aircraft contributes a flight arriving that day (mirrors per-day `any_success`).
+    had_data: dict[date, bool] = {}
+    # day -> {icao24: airport}; later flights on the same day overwrite (LAST-seen wins), matching per-day.
+    arrivals: dict[date, dict[str, str]] = defaultdict(dict)
+    for hexes in _AIRCRAFT_BY_TICKER.values():
+        for icao24 in hexes:
+            flights = _fetch_aircraft_arrivals(base_url, icao24, span_begin, span_end, timeout)
+            if not flights:
+                continue
+            for f in flights:
+                arr_day = _flight_arrival_day(f)
+                if arr_day is None or arr_day not in requested:
+                    continue
+                had_data[arr_day] = True  # a non-empty flight on this day == the per-day query succeeding
+                airport = f.get("estArrivalAirport")
+                if airport:
+                    arrivals[arr_day][icao24.lower()] = str(airport)
+    return {d: (arrivals.get(d, {}) if had_data.get(d) else None) for d in days}
 
 
 @dataclass
@@ -233,6 +300,13 @@ class JetColocationSource:
     _fixture: dict[str, dict[str, str]] = field(
         default_factory=lambda: {k: dict(v) for k, v in _FIXTURE_ARRIVALS_BY_DAY.items()}
     )
+    # Per-ingest-pass MEMO of the live window sweep: (first_day, last_day) -> {obs_day: arrivals|None}.
+    # Populated by _window_arrivals(); lets repeated queries within one pass (e.g. several tickers sharing a
+    # window) re-use already-fetched aircraft tracks instead of re-hitting the rate-limited OpenSky API.
+    # Lives only for the instance lifetime — NOT a persisted cache, so no staleness/PIT risk across passes.
+    _window_cache: dict[tuple[date, date], dict[date, dict[str, str] | None]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     @property
     def low_confidence(self) -> bool:
@@ -264,16 +338,39 @@ class JetColocationSource:
             return self._fixture.get(obs_day.isoformat())  # absent key -> None (gap)
         return _live_arrivals_for_day(self.base_url, obs_day, self.timeout)
 
+    def _window_arrivals(self, days: list[date]) -> dict[date, dict[str, str] | None]:
+        """Raw arrivals for a whole trailing window as {obs_day: {icao24: airport} | None}.
+
+        OFFLINE: per-day fixture lookups (no HTTP — preserves the offline-safe / no-network guarantee).
+        ONLINE: a SINGLE memoized window sweep (one HTTP request per aircraft over the full span, bucketed
+        by day) instead of one request per (aircraft x day). The sweep is cached on the instance keyed by
+        (first_day, last_day), so several queries within one ingest pass that share a window do not re-fetch.
+        This is a pure CALL-REDUCTION: the per-day maps are byte-identical to _arrivals_for_day()."""
+        if not days:
+            return {}
+        if self.offline:
+            return {d: self._arrivals_for_day(d) for d in days}
+        key = (min(days), max(days))
+        cached = self._window_cache.get(key)
+        if cached is None:
+            cached = _live_arrivals_by_day(self.base_url, days, self.timeout)
+            self._window_cache[key] = cached
+        # Return only the requested days (the cache spans the same key, but be defensive).
+        return {d: cached.get(d) for d in days}
+
+    def _events_from_arrivals(self, target: str, arrivals: dict[str, str] | None) -> int | None:
+        """Co-location events for `target` given one day's raw arrivals (None passthrough = gap)."""
+        if arrivals is None:
+            return None  # gap day — None, not 0
+        grouped = _arrivals_by_ticker_for_day(arrivals)
+        return detect_colocation_events(grouped, target)
+
     def colocation_events_for_day(self, target: str, obs_day: date) -> int | None:
         """Co-location event count for `target` on one `obs_day`. None means the day is a gap (no data) OR
         the target is not tracked; an int (incl. 0) means we HAD data for the day."""
         if target not in _AIRCRAFT_BY_TICKER:
             return None
-        arrivals = self._arrivals_for_day(obs_day)
-        if arrivals is None:
-            return None  # gap day — None, not 0
-        grouped = _arrivals_by_ticker_for_day(arrivals)
-        return detect_colocation_events(grouped, target)
+        return self._events_from_arrivals(target, self._arrivals_for_day(obs_day))
 
     def query(self, scope: str, as_of: datetime, *, limit: int = 4096) -> SourceFeature:
         """Trailing-window co-location intensity for ticker `scope` knowable at `as_of`.
@@ -296,11 +393,14 @@ class JetColocationSource:
                 prior=self.prior,
                 low_confidence=self.low_confidence,
             )
+        # Fetch the whole window ONCE (online: one memoized sweep, one request per aircraft; offline: fixture)
+        # instead of a per-day fetch loop — see the RATE LIMIT note up top. The aggregation below is identical.
+        window_days = [latest_day - timedelta(days=i) for i in range(self.window_days)]
+        arrivals_by_day = self._window_arrivals(window_days)
         total = 0
         any_data = False
-        for i in range(self.window_days):
-            obs_day = latest_day - timedelta(days=i)
-            events = self.colocation_events_for_day(scope, obs_day)
+        for obs_day in window_days:
+            events = self._events_from_arrivals(scope, arrivals_by_day.get(obs_day))
             if events is not None:
                 any_data = True
                 total += events
