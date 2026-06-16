@@ -20,20 +20,65 @@ if TYPE_CHECKING:
 
 _SOURCE_BY_FEATURE = {f.name: f.source for f in FEATURE_REGISTRY}
 
-# brief keyword → registry feature (the LLM-free intent map; an LLM slots in here when a key is set)
+# brief keyword → registry feature (the LLM-free intent map; an LLM slots in here when a key is set).
+# Extended to cover all major feature families so diverse theme angles produce structurally distinct specs
+# that clear novelty_gate min_distance=0.25 (different feature sets → Jaccard distance ≥ 0.25).
 _FEATURE_HINTS: dict[str, str] = {
+    # ── price / TA ─────────────────────────────────────────────────────────────
     "rsi": "rsi", "oversold": "rsi", "overbought": "rsi",
-    "funding": "funding_rate", "basis": "perp_spot_basis", "open interest": "open_interest",
     "momentum": "ret_Nd", "trend": "ret_Nd", "breakout": "ret_Nd", "return": "ret_Nd",
-    "volatility": "vol_realized", "vol": "vol_realized",
-    "adx": "adx", "bollinger": "bb_z", "band": "bb_z", "atr": "atr",
-    "vix": "vix_level", "dollar": "dxy", "dxy": "dxy",
-    "odds": "pm_implied_prob", "probability": "pm_implied_prob",
-    # OSINT air-activity: a free-text brief about watching planes / flights auto-detects the low-confidence
-    # ADS-B macro-proxy feature so it can earn (or fail to earn) its place via the deterministic gate.
+    "volatility": "vol_realized", "vol ": "vol_realized", "realized vol": "vol_realized",
+    "adx": "adx", "bollinger": "bb_z", "band": "bb_z", "z-score": "bb_z", "washout": "bb_z",
+    "atr": "atr", "range": "atr", "sizing": "atr",
+    "cross-sectional": "xsec_momentum_rank", "rank": "xsec_momentum_rank",
+    # ── perp / derivatives ─────────────────────────────────────────────────────
+    "funding": "funding_rate", "basis": "perp_spot_basis", "open interest": "open_interest",
+    "liquidation": "liquidation_cascade", "cascade": "liquidation_cascade",
+    "dvol": "dvol", "implied vol": "dvol", "options": "dvol",
+    # ── macro / cross-asset ────────────────────────────────────────────────────
+    "vix": "vix_level", "fear index": "vix_level",
+    "dollar": "dxy", "dxy": "dxy", "usd": "dxy",
+    "macro": "macro_regime", "regime": "macro_regime",
+    "yield curve": "yield_curve_2s10s", "yield": "yield_curve_2s10s", "2s10s": "yield_curve_2s10s",
+    "credit": "credit_spread", "spread": "credit_spread",
+    "fed": "fed_funds_rate", "rates": "fed_funds_rate", "federal reserve": "fed_funds_rate",
+    "gold": "gold_xau", "xau": "gold_xau",
+    "oil": "wti_crude", "crude": "wti_crude", "wti": "wti_crude",
+    "spx": "spx_index", "s&p": "spx_index", "equity index": "spx_index",
+    "eurusd": "eurusd", "euro": "eurusd",
+    "risk-on": "xasset_risk_appetite", "risk appetite": "xasset_risk_appetite", "cross-asset": "xasset_risk_appetite",
+    "nfci": "nfci", "financial conditions": "nfci",
+    "balance sheet": "fed_balance_sheet_usd", "fed balance": "fed_balance_sheet_usd",
+    "net liquidity": "net_liquidity_usd", "liquidity": "net_liquidity_usd",
+    # ── on-chain ───────────────────────────────────────────────────────────────
+    "hashrate": "btc_hashrate", "hash": "btc_hashrate",
+    "mempool": "btc_mempool_size",
+    "active addresses": "btc_active_addresses", "addresses": "btc_active_addresses",
+    "defi": "defi_tvl", "tvl": "defi_tvl",
+    "stablecoin": "stablecoin_mcap", "usdt supply": "stablecoin_mcap",
+    "stablecoin flow": "stablecoin_net_flow_usd", "usdc flow": "stablecoin_net_flow_usd",
+    "btc dominance": "cg_btc_dominance", "dominance": "cg_btc_dominance",
+    "exchange netflow": "exchange_netflow", "exchange flow": "exchange_netflow",
+    # ── sentiment / social ─────────────────────────────────────────────────────
+    "sentiment": "social_sentiment", "social": "social_volume", "social volume": "social_volume",
+    "galaxy": "galaxy_score", "lunarcrush": "galaxy_score",
+    "alt rank": "alt_rank", "alternative rank": "alt_rank",
+    "reddit": "reddit_sentiment", "reddit post": "reddit_post_volume",
+    "twitter": "twitter_sentiment", "x.com": "twitter_sentiment",
+    "news": "news_sentiment", "headline": "news_sentiment",
+    "google trends": "gtrends_search_interest", "search interest": "gtrends_search_interest",
+    "wikipedia": "wiki_pageviews_zscore", "wiki": "wiki_pageviews_zscore",
+    "cryptopanic": "cryptopanic_bullish_votes",
+    "fear": "fear_greed", "fear & greed": "fear_greed", "fear and greed": "fear_greed",
+    "social attention": "social_attention_z", "attention": "social_excess_attention_z",
+    # ── polymarket / prediction ────────────────────────────────────────────────
+    "odds": "pm_implied_prob", "probability": "pm_implied_prob", "polymarket": "pm_implied_prob",
+    "prediction market": "pm_risk_on",
+    # ── OSINT / macro-proxy ────────────────────────────────────────────────────
     "plane": "osint_air_activity", "planes": "osint_air_activity", "aircraft": "osint_air_activity",
     "flight": "osint_air_activity", "flights": "osint_air_activity", "aviation": "osint_air_activity",
     "ads-b": "osint_air_activity", "adsb": "osint_air_activity", "opensky": "osint_air_activity",
+    "earthquake": "usgs_earthquake_count", "kp index": "noaa_kp_index",
 }
 
 _ASSET_HINTS = {
@@ -84,13 +129,22 @@ _TEMPLATE_BUILDERS = {
 
 def _template_from_text(text: str) -> str:
     """The deterministic intent→template matcher (the keyless fallback). An LLM proposal, when present, overrides
-    this choice — but the proposal can only pick one of these same magic-number-free templates."""
-    if any(k in text for k in ("revert", "reversion", "oversold", "mean", "dip", "bounce")):
+    this choice — but the proposal can only pick one of these same magic-number-free templates.
+    Extended to detect more angle-specific priors so diverse theme angles map to different templates
+    (structural distance) even when the brief text is similar."""
+    if any(k in text for k in ("revert", "reversion", "oversold", "mean", "dip", "bounce",
+                                "washout", "dislocation", "contrarian", "fade", "extreme print",
+                                "z-score", "band", "bollinger")):
         return "mean_reversion"
-    if any(k in text for k in ("funding", "carry", "basis", "leverage")):
+    if any(k in text for k in ("funding", "carry", "basis", "leverage", "persistence",
+                                "regime persist", "positive carry", "low funding", "uncrowded",
+                                "carry reversal", "accumulation")):
         return "carry"
-    if any(k in text for k in ("momentum", "trend", "breakout")):
+    if any(k in text for k in ("momentum", "trend", "breakout", "adx", "confirmed",
+                                "dual-horizon", "dual horizon", "multi-horizon",
+                                "atr sizing", "volume confirm", "continuation")):
         return "momentum"
+    # divergence/gate angles → breakout template (different features + param ranges)
     return "breakout"
 
 
