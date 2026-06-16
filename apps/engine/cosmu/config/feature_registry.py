@@ -106,6 +106,7 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     FeatureDefinition(name="rsi", source="parquet_bars", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="bar close time", prior="RSI captures overextension."),
     FeatureDefinition(name="adx", source="parquet_bars", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="bar close time", prior="ADX separates trend from chop."),
     FeatureDefinition(name="bb_z", source="parquet_bars", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="bar close time", prior="Band z-score captures statistically unusual price."),
+    FeatureDefinition(name="bb_width", source="parquet_bars", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="bar close time", prior="Bollinger Bandwidth (±2σ band width / basis) measures range compression — a squeeze (low width) marks the coiled, low-vol range a reversion edge needs; an expansion flags the range breaking into a trend."),
     FeatureDefinition(name="vol_realized", source="parquet_bars", tier="tier0", asset_classes=["crypto", "equity"], asof_semantics="bar close time", prior="Realized vol gates capacity and risk."),
     # --- social feeds (tier1, low-confidence until validated OOS): Reddit crowd sentiment (free, no key) and
     # LunarCrush social metrics (key-gated; empty without a key). The gate down-weights tier1 until it pays. ---

@@ -190,6 +190,28 @@ SPECS: list[dict] = [
             "time_stop": {"kind": "int", "lo": 2, "hi": 9, "step": 1},
         },
     },
+    {
+        "name": "Bollinger squeeze-release reversion (regime-break protected)",
+        "rationale": "A compressed Bollinger band (low bandwidth) marks a coiled, low-volatility range — the exact market a mean-reversion edge wants and the one a grid bot is built for. Buy the washout (deeply negative band z-score) INSIDE that squeeze and target the snap back toward the basis. The disconfirmer is the exit most range strategies LACK: if ADX spikes the range has BROKEN into a trend, so close immediately rather than averaging down through the floor. Distinct from the other reversion specs by (a) gating entry on band COMPRESSION (bb_width), not realized vol, and (b) a regime-break ADX signal-exit, not only a z-score mean-revert exit.",
+        "catalyst": "downside washout inside a compressed (squeezed) Bollinger band",
+        "universe": _u(), "horizon": {"bar_size": "4h", "min_hold_days": 1, "max_hold_days": 6},
+        "entry": [
+            {"feature": {"name": "bb_width"}, "op": "lt", "threshold": {"param": "squeeze_ceiling"}},
+            {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+        ],
+        "exit": {"stop_loss": {"param": "stop"}, "take_profit": {"param": "tp"}, "time_stop_days": {"param": "time_stop"},
+                 "signal_exits": [
+                     {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}},
+                     {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_break"}},
+                 ]},
+        "risk": _risk(),
+        "param_space": {
+            "squeeze_ceiling": {"kind": "float", "lo": 0.04, "hi": 0.20}, "bbz_floor": {"kind": "float", "lo": -3.0, "hi": -1.2},
+            "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 1.0}, "adx_break": {"kind": "float", "lo": 25, "hi": 40},
+            "stop": {"kind": "float", "lo": 0.04, "hi": 0.14}, "tp": {"kind": "float", "lo": 0.05, "hi": 0.20},
+            "time_stop": {"kind": "int", "lo": 1, "hi": 6, "step": 1},
+        },
+    },
 ]
 
 

@@ -810,7 +810,7 @@ def sum_funding_per_bar(points: list[AltDataPoint], bars: list[Bar]) -> dict[str
 
 
 # TA features computed directly, per-symbol, from the bar series in `_feature_matrix` below.
-_BAR_TA_FEATURES = frozenset({"ret_Nd", "rsi", "bb_z", "vol_realized", "atr", "adx"})
+_BAR_TA_FEATURES = frozenset({"ret_Nd", "rsi", "bb_z", "vol_realized", "atr", "adx", "bb_width"})
 
 # COHORT-COMPUTED features: real, point-in-time features that are NOT ingested into the alt store and NOT
 # bar-TA either — they are COMPUTED by a research cohort and handed to the backtest via the caller's `alt`
@@ -857,6 +857,8 @@ def _feature_matrix(
             out[name] = _rsi(closes, lookback)
         elif name == "bb_z":
             out[name] = _bb_z(closes, lookback)
+        elif name == "bb_width":
+            out[name] = _bb_width(closes, lookback)
         elif name == "vol_realized":
             out[name] = _realized_vol(closes, lookback)
         elif name == "atr":
@@ -1129,6 +1131,21 @@ def _bb_z(values: list[float], lookback: int) -> list[float | None]:
         mean = statistics.fmean(window)
         std = statistics.pstdev(window)
         out[idx] = (values[idx] - mean) / std if std else 0.0
+    return out
+
+
+def _bb_width(values: list[float], lookback: int) -> list[float | None]:
+    """Bollinger Bandwidth: the ±2σ band width normalized by the basis — (upper - lower) / mid = 4·σ / mean
+    (the textbook ta.bbw / TradingView Bollinger Bandwidth). LOW = a compressed, coiled range (the squeeze a
+    reversion edge wants); a rising value = the range expanding into a trend. Dimensionless, so it compares
+    across assets and time. Same rolling window as `_bb_z`; None until `lookback` bars exist, 0.0 on a flat
+    basis (no width)."""
+    out: list[float | None] = [None] * len(values)
+    for idx in range(lookback, len(values)):
+        window = values[idx - lookback + 1 : idx + 1]
+        mean = statistics.fmean(window)
+        std = statistics.pstdev(window)
+        out[idx] = (4.0 * std / mean) if mean else 0.0
     return out
 
 
