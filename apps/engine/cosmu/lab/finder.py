@@ -20,11 +20,7 @@ from decimal import Decimal
 
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
-from cosmu.data.backtest import (
-    DEFAULT_IMPACT_BPS,
-    DEFAULT_SLIPPAGE_BPS,
-    run_strategy_backtest_detailed,
-)
+from cosmu.data.backtest import run_strategy_backtest_detailed
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.data.universe import CORE_PERP_UNIVERSE
 from cosmu.evolution.loop import fit_params
@@ -374,8 +370,10 @@ class StrategyFinder:
             r.holdout_passed = False
         for r in (r for r in results if r.promoted):
             champion = run_strategy_backtest_detailed(
-                spec, dict(r.fitted_params), market, fee_bps=venue.taker_fee_bps, alt_by_symbol=alt
-            )  # include_holdout defaults True — this is the single exam look for this champion
+                spec, dict(r.fitted_params), market, fee_bps=venue.taker_fee_bps,
+                slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps, alt_by_symbol=alt,
+            )  # include_holdout defaults True — this is the single exam look for this champion; charge the
+            #    venue's OWN depth (half-spread + impact), not the global 5/50 — same cost model as the screen
             r.metrics = r.metrics.model_copy(
                 update={"holdout_deflated_sharpe": champion.metrics.holdout_deflated_sharpe}
             )
@@ -449,9 +447,12 @@ class StrategyFinder:
         # exactly once, for the promoted champion(s), in find()'s champion-only holdout step. A 256-variant grid
         # simulating the exam per variant was the structural holdout-reuse channel the deep review flagged.
         detailed = run_strategy_backtest_detailed(
-            spec, variant.params, market, fee_bps=venue.taker_fee_bps, alt_by_symbol=alt_by_symbol,
+            spec, variant.params, market, fee_bps=venue.taker_fee_bps,
+            slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps,
+            alt_by_symbol=alt_by_symbol,
             include_holdout=False,
-        )
+        )  # price at the SPEC's venue depth — a thin-book venue (Polymarket 30/150, Coinbase 8/60) pays the
+        #   wide spread + heavy impact it really would, instead of falling back to the global 5/50
         metrics = detailed.metrics
         net_profit = float(metrics.oos_return) - _round_trip_cost(metrics, venue)
         result = VariantResult(
@@ -749,11 +750,12 @@ def _backtest_row(version_id: str, m: BacktestMetrics, deflated: float, passed: 
         "n_obs": m.n_obs,
         "regime_spread": sum(1 for pnl in m.regime_returns.values() if pnl > 0),
         # The cost assumptions this screen was scored under — the venue it priced against (taker fee) + the
-        # backtest's default slippage/impact. Frozen into the promotion so live can detect a venue repricing.
+        # SAME venue's market depth the backtest actually charged. Frozen into the promotion so live can detect
+        # a venue repricing (record the values charged, never the global default — they can now differ per venue).
         "venue_id": venue.id,
         "fee_bps": str(venue.taker_fee_bps),
-        "slippage_bps": str(DEFAULT_SLIPPAGE_BPS),
-        "impact_bps": str(DEFAULT_IMPACT_BPS),
+        "slippage_bps": str(venue.slippage_bps),
+        "impact_bps": str(venue.impact_bps),
         "created_at": utcnow(),
     }
 

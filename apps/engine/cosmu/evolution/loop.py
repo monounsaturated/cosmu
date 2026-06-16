@@ -50,10 +50,13 @@ class _Screened:
     metrics: BacktestMetrics
     survival_score: float
     proven: list[str]
-    # The cost assumptions the screen was scored under (the venue it priced against + its taker fee), carried so
-    # _persist can record them on the backtest row and the promotion freeze can pin the gate-time fee model.
+    # The cost assumptions the screen was scored under (the venue it priced against + its taker fee + the SAME
+    # venue's market depth the backtest charged), carried so _persist records the EXACT values on the backtest
+    # row and the promotion freeze pins the gate-time cost model — never the global default (depth is per-venue).
     venue_id: str = ""
     fee_bps: float = 0.0
+    slippage_bps: float = float(DEFAULT_SLIPPAGE_BPS)
+    impact_bps: float = float(DEFAULT_IMPACT_BPS)
     parent: _Screened | None = None
 
 
@@ -434,6 +437,7 @@ class FarmLoop:
             cand=cand, params=params, compiled=compiled, metrics=metrics,
             survival_score=survival_score, proven=proven,
             venue_id=venue.id, fee_bps=float(venue.taker_fee_bps),
+            slippage_bps=float(venue.slippage_bps), impact_bps=float(venue.impact_bps),
         )
 
     def _persist(self, sc: _Screened, trials: TrialStats, survival, parent_vid: str | None, b: Writer) -> tuple[Evaluated, str]:  # noqa: ANN001
@@ -504,12 +508,13 @@ class FarmLoop:
                 "kurtosis": str(metrics.kurtosis),
                 "n_obs": metrics.n_obs,
                 "regime_spread": sum(1 for pnl in metrics.regime_returns.values() if pnl > 0),
-                # Cost assumptions this screen was scored under (venue + taker fee + default slippage/impact) —
-                # frozen into the promotion so live can detect a venue repricing the edge was never proven through.
+                # Cost assumptions this screen was scored under (venue + taker fee + the SAME venue's market
+                # depth the backtest charged) — frozen into the promotion so live can detect a venue repricing
+                # the edge was never proven through. Record the values charged, never the global default.
                 "venue_id": sc.venue_id,
                 "fee_bps": str(sc.fee_bps),
-                "slippage_bps": str(DEFAULT_SLIPPAGE_BPS),
-                "impact_bps": str(DEFAULT_IMPACT_BPS),
+                "slippage_bps": str(sc.slippage_bps),
+                "impact_bps": str(sc.impact_bps),
                 "created_at": utcnow(),
             },
         )
@@ -579,6 +584,11 @@ class FarmLoop:
             fit_params(cand.spec),
             market,
             fee_bps=venue.taker_fee_bps,
+            # Charge the SPEC's own venue depth (half-spread + size-aware impact), not the global 5/50 — a
+            # thin-book venue (Polymarket 30/150, Coinbase 8/60, Hyperliquid 6/60) pays the real cost it would
+            # live, so a strategy can't pass the screen on costs it'd never survive on its actual venue.
+            slippage_bps=venue.slippage_bps,
+            impact_bps=venue.impact_bps,
             alt_by_symbol=self._alt_by_symbol(cand.spec, market),
         )
         return metrics, venue
