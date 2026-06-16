@@ -263,6 +263,9 @@ def _run_variant(
         if len(bars) < 80:
             continue
         split = max(40, int(len(bars) * 0.8))
+        # The lookback window acts as an implicit embargo: signal[split] uses only bars[:split] (the rolling
+        # z-score at position i reads alt[i-lookback:i]), so no OOS data contaminates IS. No explicit purge
+        # needed for this alt-data gate (which never funds). The holdout starts immediately after split.
         z = rolling_zscore(alt, params.lookback)
         signal = [v is not None and v > params.z_threshold for v in z]
         v_eq, v_trades = _simulate(bars[:split], signal[:split], params, store=store, symbol=symbol)

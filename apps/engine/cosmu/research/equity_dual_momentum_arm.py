@@ -102,7 +102,7 @@ def _backtest_row(version_id: str, v: dict) -> dict:
         "regime_label": "mixed",
         "folds_positive": 6,  # positive across the regimes tested (2008 bear, bulls, chop)
         "passed_gates": 1,    # cleared the DEPLOYMENT bar (positive OOS net of fees + ~half drawdown), not the 0.95 Gate
-        "holdout_passed": 1,  # OOS leg positive net of fees
+        "holdout_passed": 1 if oos.total_return > 0 else 0,  # REAL OOS leg positive net of fees
         "created_at": utcnow(),
         # NB: only REAL `backtests` columns — sharpe_per_obs/skew/kurtosis/n_obs/regime_spread do NOT exist in the
         # Postgres schema; inserting them raises AFTER the version commits → half-armed (no track → invisible in Sim).
