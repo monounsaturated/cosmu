@@ -50,9 +50,10 @@ def test_identify_rejects_bands_a_synthetic_cohort():
         _Promo("edge_hi", promoted=False, deflated_sharpe_prob=0.95, survived_fdr=True, reasons=["fdr"]),
         # In band but flunked FDR → correctly dead, never a false negative.
         _Promo("no_fdr", promoted=False, deflated_sharpe_prob=0.92, survived_fdr=False, reasons=["fdr"]),
-        # In band + survived FDR but rejected on a RISK floor → a TRUE negative, not Type-II.
+        # In band + survived FDR but rejected on a RISK floor (max_drawdown) → a TRUE negative, never watched.
         _Promo("risky", promoted=False, deflated_sharpe_prob=0.94, survived_fdr=True,
                reasons=["deflated_sharpe", "max_drawdown"]),
+        # In band + survived FDR, failed ONLY buy_and_hold → B&H is DEMOTED, so this IS watched (kept + paper-tested).
         _Promo("loser", promoted=False, deflated_sharpe_prob=0.91, survived_fdr=True,
                reasons=["buy_and_hold"]),
     ]
@@ -60,12 +61,13 @@ def test_identify_rejects_bands_a_synthetic_cohort():
     watched = identify_rejects(promos, band_min=0.90, band_max=0.95)
     ids = [r.candidate_id for r in watched]
 
-    # Only the two clean statistical near-misses are watched, ranked by descending DSR (closest first).
-    assert ids == ["close_a", "close_b"]
+    # The clean statistical near-misses AND the buy_and_hold-only reject (B&H demoted), ranked by descending closeness.
+    assert ids == ["close_a", "loser", "close_b"]
     assert all(isinstance(r, RejectsCandidate) for r in watched)
     assert watched[0].deflated_sharpe_prob == 0.93
     assert watched[0].net_profit == 0.11
-    # Every critical reason was correctly excluded from the watch-list.
+    assert "risky" not in ids  # a genuine RISK floor (max_drawdown) is never watched
+    # No genuine RISK FLOOR reason is ever watched (buy_and_hold is no longer one of them).
     for r in watched:
         assert not CRITICAL_REJECT_REASONS.intersection(r.reasons)
 
@@ -78,11 +80,59 @@ def test_default_band_is_widened_to_080_for_the_type_ii_observe_net():
         _Promo("near_082", promoted=False, deflated_sharpe_prob=0.82, survived_fdr=True, reasons=["deflated_sharpe"]),
         _Promo("below_078", promoted=False, deflated_sharpe_prob=0.78, survived_fdr=True, reasons=["deflated_sharpe"]),
         _Promo("near_082_no_fdr", promoted=False, deflated_sharpe_prob=0.82, survived_fdr=False, reasons=["fdr"]),
-        _Promo("near_082_econ", promoted=False, deflated_sharpe_prob=0.82, survived_fdr=True, reasons=["buy_and_hold"]),
+        _Promo("near_082_risk", promoted=False, deflated_sharpe_prob=0.82, survived_fdr=True, reasons=["max_drawdown"]),
     ]
-    # DEFAULT band (no band_min/band_max passed) — the wider net catches 0.82 but never a real negative.
+    # DEFAULT band (no band_min/band_max passed) — the wider net catches 0.82 but never a real RISK-floor negative.
     watched = {r.candidate_id for r in identify_rejects(promos)}
-    assert watched == {"near_082"}  # 0.78 still below; FDR-fail + economic-floor still excluded
+    assert watched == {"near_082"}  # 0.78 below band; FDR-fail (no holdout) excluded; max_drawdown risk-floor excluded
+
+
+def test_oos_strong_path_admits_deflation_killed_books_with_strong_holdout():
+    """PATH 2: a candidate the IN-SAMPLE multiple-testing penalty killed (DSR~0, flunked FDR) but that is
+    individually CLEAN (PBO + folds passed), profitable, and has a STRONG purged OOS holdout is admitted to the
+    zero-capital watch lane — the textbook over-rejection to measure forward. Mirrors the 6 real prod books
+    (e.g. triple-barrier meta-labeled momentum: net +0.285, OOS holdout +0.449, killed by deflated_sharpe+fdr+B&H)."""
+
+    @dataclass(frozen=True)
+    class _Metrics:
+        holdout_deflated_sharpe: float | None
+
+    @dataclass(frozen=True)
+    class _Cand2:
+        id: str
+        net_profit: float
+        metrics: _Metrics
+
+    promos = [
+        # killed by in-sample deflation/FDR + B&H, but PBO+folds CLEAN and strong holdout → admitted (oos_strong)
+        _Promo("oos_win", promoted=False, deflated_sharpe_prob=0.0, survived_fdr=False,
+               reasons=["buy_and_hold", "deflated_sharpe", "fdr"]),
+        # same shape but WEAK holdout (< floor) → no genuine OOS evidence → NOT admitted
+        _Promo("oos_weak", promoted=False, deflated_sharpe_prob=0.0, survived_fdr=False,
+               reasons=["buy_and_hold", "deflated_sharpe", "fdr"]),
+        # strong holdout but FAILED PBO → individually overfit → NOT admitted
+        _Promo("pbo_fail", promoted=False, deflated_sharpe_prob=0.0, survived_fdr=False,
+               reasons=["deflated_sharpe", "fdr", "pbo"]),
+        # strong holdout but a real RISK floor (max_drawdown) → TRUE negative → NOT admitted
+        _Promo("dd_fail", promoted=False, deflated_sharpe_prob=0.0, survived_fdr=False,
+               reasons=["deflated_sharpe", "fdr", "max_drawdown"]),
+        # strong holdout but NEGATIVE net → not a kept book → NOT admitted
+        _Promo("loss", promoted=False, deflated_sharpe_prob=0.0, survived_fdr=False,
+               reasons=["deflated_sharpe", "fdr"]),
+    ]
+    cands = [
+        _Cand2("oos_win", 0.285, _Metrics(0.449)),
+        _Cand2("oos_weak", 0.10, _Metrics(0.05)),
+        _Cand2("pbo_fail", 0.20, _Metrics(0.40)),
+        _Cand2("dd_fail", 0.20, _Metrics(0.40)),
+        _Cand2("loss", -0.05, _Metrics(0.40)),
+    ]
+    watched = identify_rejects(promos, cands)
+    assert {r.candidate_id for r in watched} == {"oos_win"}
+    win = watched[0]
+    assert win.admission == "oos_strong"
+    assert win.holdout_dsr == 0.449
+    assert win.net_profit == 0.285  # net read from the candidate metrics, not the (zero) promotion default
 
 
 def test_identify_rejects_respects_custom_band_and_degenerate_band():
