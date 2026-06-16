@@ -47,7 +47,7 @@ ALIVE_STATUSES: frozenset[str] = {SCREENED} | PAPER_ALIASES | {LIVE}
 
 
 def is_paper(status: str | None) -> bool:
-    """True when ``status`` is the paper/forward-test stage (mirrors web ``isPaper``)."""
+    """True when ``status`` is the paper stage (mirrors web ``isPaper``)."""
     return status in PAPER_ALIASES
 
 
