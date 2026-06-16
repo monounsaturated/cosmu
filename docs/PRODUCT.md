@@ -8,25 +8,19 @@
 Heavy/rare operations (authoring, migrations, research spelunking) live in Claude Code + `docs/`,
 never as new pages. Customization is config, not clutter.
 
-**Canonical shipped nav** (source of truth: `apps/web/components/nav/app-nav.tsx` — desktop icon-rail
-sidebar + mobile bottom-tab bar). Eight primary surfaces + three secondary under "More":
+**Canonical shipped nav** (source of truth: `apps/web/app/` directories + `apps/web/next.config.ts`). Seven primary surfaces; landing page (`/`) redirects to Strategies:
 
 | | Route | Label | Decision it serves |
 |---|---|---|---|
-| 1 | `/` | **Overview** | Are we making money / is the machine healthy? |
-| 2 | `/lab` | **Lab** | Idea → spec → verdict (authoring + screening) |
-| 3 | `/verdicts` | **Theories** | Every theory tested + its honest Gate verdict |
-| 4 | `/strategies` | **Strategies** | Backtest · Simulation · Live (the faceted leaderboard + detail) |
-| 5 | `/explorer` | **Explorer** | Pick · chart · compare |
-| 6 | `/mind` | **Mind** | What the agent knows, thinks, and has learned (the committee) |
-| 7 | `/costs` | **Costs** | What is it costing? |
-| 8 | `/console` | **Console** | Decide · steer · arm |
-| More | `/live` | **Live** (gated) | Positions · caps (dimmed until armed) |
-| More | `/settings` | **Settings** | Keys · universe · data |
-| More | `/commands` | **Commands** | Run from Claude Code |
+| 1 | `/strategies` | **Strategies** | Backtest · Paper · Live (the faceted leaderboard + detail) — default landing |
+| 2 | `/paper` | **Paper** | Forward-test tracking — per-strategy paper fill history |
+| 3 | `/live` | **Live** | Armed live positions · caps (dimmed until armed) |
+| 4 | `/indexes` | **Indexes** | Operator-defined alt-data signal indexes |
+| 5 | `/costs` | **Costs** | What is it costing? (trading fees + infra + LLM spend) |
+| 6 | `/keys` | **Keys** | Venue credentials (present/absent status only — keys are server-side) |
+| 7 | `/commands` | **Commands** | Run from Claude Code — copy-ready prompts |
 
-There is **no `/paper` "wallet" route** — the Overview is a read-out (Σ of standalone tracks), not a pooled
-wallet. Strategy detail lives under `/strategies/{id}` (and `/strategy/{id}`), not as a separate nav item.
+Previous surfaces (Overview, Lab, Theories/Verdicts, Explorer, Mind, Scores, Console, Settings) are folded: their backend data keeps accruing, but they redirect to `/strategies` in the UI. Strategy detail lives under `/strategies/{id}` (and `/strategy/{id}`), not as a separate nav item. Research/Experiments lives at `/research/experiments` (un-folded exception).
 
 ---
 
@@ -51,16 +45,15 @@ no UI ever fires a live order — the UI only *reports* and *proposes* (VISION �
 ## 2. The core surfaces, and the single decision each serves
 
 (See the canonical nav table above for the full shipped route list. The epics below detail the surfaces
-that carry the primary decisions; the others — Lab, Theories, Explorer, Costs, Settings, Commands — are
-authoring/inspection surfaces that compose the same endpoints.)
+that carry the primary decisions; the others — Indexes, Costs, Keys, Commands — are inspection/configuration
+surfaces that compose the same endpoints.)
 
 | Surface | The one decision it serves | Source of truth |
 |---|---|---|
-| **Overview** (`/`) | *Are we making money — should I keep the machine running / spending as is?* | `/overview`, `/costs`, `/mind`, `/intelligence`, `/autonomy/status` |
 | **Strategies** (`/strategies`, Leaderboard) | *Which strategies deserve my attention / capital, on what edge?* | `/leaderboard` (faceted, real fields) |
 | **Strategy detail** (`/strategies/{id}`) | *Is this one strategy's edge real and live-ready?* | `/strategies/{id}` |
-| **Console** (`/console`) | *What needs my call right now, and how do I steer / arm?* | `/recommendations`, `/console/command`, `/toggle/live`, `/autonomy/*` |
-| **Mind** (`/mind`, monitoring) | *What does the committee believe, what does it know, what has it learned?* | `/mind`, `/scores`, `/mind/source-trust` |
+| **Paper** (`/paper`) | *How is the forward test going — is the paper edge tracking the backtest?* | `/leaderboard` filtered to paper tracks |
+| **Live** (`/live`) | *What positions are armed, what are the caps, is the kill-switch reachable?* | `/live` positions + venue status |
 
 Every number on every surface carries a **money-state** (SIM / LIVE) and an **honest empty/offline state**:
 when the engine is unreachable we say so; when it is connected but empty we say *that*. **Synthetic numbers
@@ -136,7 +129,7 @@ never ship** — the product has no demo money state.
 - **Contracts, not hand-typing.** Every field is consumed from `@cosmu/contracts-ts`, generated from the engine's Pydantic → OpenAPI. New UI fields are added on the engine model first (VISION §17 "Schema drift").
 - **Derived, not tagged.** A strategy's signal-family and edge-type are *computed* from the features its spec references — there is no manual taxonomy to drift (`cosmu/strategy/taxonomy.py`).
 - **The UI never moves money.** It reports and proposes; arming live is an explicit two-click confirm and the deterministic gate is the only thing that lets capital flow.
-- **Lean, finance-grade, dark.** shadcn-style primitives + Tremor-equivalent charts (Recharts) + dense tables. Desktop-first, mobile bottom-nav. No page exists that doesn't help you decide or earn.
+- **Lean, finance-grade, dark.** Dense tables, real charts with tooltips and drawdown shading, equity-vs-benchmark overlays. Desktop-first, mobile bottom-nav. No page exists that doesn't help you decide or earn.
 
 ---
 
@@ -144,5 +137,6 @@ never ship** — the product has no demo money state.
 
 Authoring strategies, migrations, deep research, data backfills, and source onboarding are **Claude Code +
 `docs/` skills**, not app pages (VISION §1). The app is a clean *monitoring + steering* surface. The lifecycle
-(lab → forward → live) is a **filter inside Strategies**, not a set of tabs. Costs and Scores are **folded into**
-Dashboard and Mind respectively — they inform a decision there; they are not standalone destinations.
+(lab → paper → live) is a **filter inside Strategies**, not a set of tabs. Overview, Console, Lab, Mind, and
+Scores are folded into `/strategies` (backend data keeps accruing; the pages redirect). Costs and Keys are
+standalone nav surfaces — lightweight inspection, not a dashboard replacement.
