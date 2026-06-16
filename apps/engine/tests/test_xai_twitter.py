@@ -212,11 +212,12 @@ def test_ingest_influencer_sentiment_market_wide(tmp_path) -> None:
 
 
 def test_run_once_includes_twitter_counts(tmp_path) -> None:
-    """run_once includes twitter_sentiment and twitter_influencer_sentiment in its count dict."""
+    """run_once includes twitter_sentiment in its count dict.
+    twitter_influencer_sentiment is DISABLED (stub returns 0.5 = byte-identical duplicate; BACKLOG.md:65)
+    so it is no longer ingested and not present in the count dict."""
     from cosmu.ingest.run import Providers, run_once
-    from cosmu.data.altdata import FixtureAltDataProvider, AltDataPoint
+    from cosmu.data.altdata import FixtureAltDataProvider
 
-    _T0 = datetime(2024, 1, 1, tzinfo=UTC)
     empty = FixtureAltDataProvider({})  # returns [] for all metrics
 
     providers = Providers(
@@ -229,13 +230,14 @@ def test_run_once_includes_twitter_counts(tmp_path) -> None:
     counts = run_once(store, symbols=["BTCUSDT"], providers=providers)
 
     assert "twitter_sentiment" in counts
-    assert "twitter_influencer_sentiment" in counts
     assert counts["twitter_sentiment"] == 1
-    assert counts["twitter_influencer_sentiment"] == 1
+    # twitter_influencer_sentiment disabled: not in counts (stub = byte-identical duplicate of twitter_sentiment)
+    assert "twitter_influencer_sentiment" not in counts
 
 
 def test_no_key_in_run_once_counts_zero(tmp_path) -> None:
-    """Without a key the xAI provider returns [] → counts for twitter features are 0 (never aborts)."""
+    """Without a key the xAI provider returns [] → count for twitter_sentiment is 0 (never aborts).
+    twitter_influencer_sentiment is disabled and not counted at all."""
     from cosmu.ingest.run import Providers, run_once
     from cosmu.data.altdata import FixtureAltDataProvider
 
@@ -252,7 +254,7 @@ def test_no_key_in_run_once_counts_zero(tmp_path) -> None:
     counts = run_once(store, symbols=["BTCUSDT"], providers=providers)
 
     assert counts["twitter_sentiment"] == 0
-    assert counts["twitter_influencer_sentiment"] == 0
+    assert "twitter_influencer_sentiment" not in counts
 
 
 # ---------------------------------------------------------------------------
@@ -281,3 +283,19 @@ def test_feature_registry_contains_twitter_features() -> None:
     # Source must be xai
     assert ts.source == "xai"
     assert tis.source == "xai"
+
+
+def test_twitter_influencer_disabled_twitter_sentiment_enabled() -> None:
+    """twitter_influencer_sentiment is DISABLED (stub hit-rate = byte-identical to twitter_sentiment).
+    twitter_sentiment remains ENABLED (real signal, registered in store-backed registry)."""
+    from cosmu.config.feature_registry import FEATURE_REGISTRY, feature_names
+
+    ts = next(f for f in FEATURE_REGISTRY if f.name == "twitter_sentiment")
+    tis = next(f for f in FEATURE_REGISTRY if f.name == "twitter_influencer_sentiment")
+
+    assert ts.enabled is True, "twitter_sentiment must stay enabled"
+    assert tis.enabled is False, "twitter_influencer_sentiment must be disabled until real hit-rate store is wired"
+
+    active = feature_names()
+    assert "twitter_sentiment" in active
+    assert "twitter_influencer_sentiment" not in active

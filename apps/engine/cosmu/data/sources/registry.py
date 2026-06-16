@@ -60,6 +60,28 @@ class DataSource(Protocol):
 
 
 @dataclass
+class StoreBackedProvider:
+    """An AltDataProvider that reads already-ingested data from the alt_data table (via a PgAltDataStore
+    or AltDataStore). READ-ONLY, PIT-honest: fetch_series delegates to store.read_asof which returns values
+    whose available_at <= now. No LLM, no network — reads what ingest has already written. Used by
+    StoreBackedAltMetricSource so registry.query() never makes a live LLM or network call."""
+
+    store: object  # PgAltDataStore / AltDataStore / TieredAltDataStore — any with .read_asof
+    db_provider: str  # the provider key in the alt_data table (e.g. "xai" for twitter_sentiment)
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list:
+        """Return up to `limit` PIT-ordered AltDataPoints from the store, newest first."""
+        from datetime import datetime, timezone
+
+        try:
+            pts = self.store.read_asof(self.db_provider, symbol, metric, datetime.now(tz=timezone.utc))
+        except Exception:  # noqa: BLE001 — a store hiccup never crashes the registry query
+            return []
+        # read_asof returns chronologically ordered (oldest→newest). Return last `limit` entries.
+        return pts[-limit:] if limit > 0 else []
+
+
+@dataclass
 class AltMetricSource:
     """Adapts an existing AltDataProvider metric (funding_rate / fear_greed / risk_on / macro_regime /
     liquidations / putcall_ratio / OSINT) into a named, point-in-time DataSource. The provider already
@@ -285,6 +307,42 @@ def default_source_registry(
     for src in make_stablecoin_flow_sources():
         reg.register(src)
 
+    # twitter_sentiment: reads already-ingested xAI/Grok data from the store (PIT-honest, $0 per query —
+    # no live LLM call here; ingest/run.py writes the store from XaiTwitterProvider). Registered as a
+    # store-backed AltMetricSource so registry.query("twitter_sentiment") works without KeyError.
+    # The store argument is optional (None → no-op offline): caller passes the hot store when available.
+    if alt_provider is None:
+        # Live path: build a thin store-backed provider wrapping the hot alt_data store.
+        # Deferred import to avoid cycles (altdata → store → registry is fine; avoid circular at module load).
+        try:
+            from cosmu.data.altdata import hot_alt_store
+            from cosmu.config.settings import get_settings
+
+            _tw_store = hot_alt_store(get_settings())
+            _tw_provider = StoreBackedProvider(store=_tw_store, db_provider="xai")
+            reg.register(AltMetricSource(
+                "twitter_sentiment", "sentiment", "twitter_sentiment",
+                "Real-time crypto Twitter/X crowd sentiment (xAI/Grok, influencer-weighted); "
+                "low-confidence until validated OOS. Reads the ingested store (PIT-honest, $0 per query).",
+                _tw_provider,
+                transform_version="xai-twitter-sentiment-v1",
+                confidence=0.4,
+                market_wide=True,
+            ))
+        except Exception:  # noqa: BLE001 — no live store (offline CI) → skip, don't KeyError later
+            pass
+    else:
+        # Injected-provider path (tests): the caller supplies a fixture AltDataProvider; use it directly.
+        reg.register(AltMetricSource(
+            "twitter_sentiment", "sentiment", "twitter_sentiment",
+            "Real-time crypto Twitter/X crowd sentiment (xAI/Grok, influencer-weighted); "
+            "low-confidence until validated OOS. Reads the ingested store (PIT-honest, $0 per query).",
+            alt_provider,
+            transform_version="xai-twitter-sentiment-v1",
+            confidence=0.4,
+            market_wide=True,
+        ))
+
     return reg
 
 
@@ -295,6 +353,7 @@ __all__ = [
     "NewsSentimentSource",
     "SourceFeature",
     "SourceKind",
+    "StoreBackedProvider",
     "default_source_registry",
     "rolling_zscore",
 ]

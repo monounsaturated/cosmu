@@ -92,7 +92,7 @@ This table is the **source of truth for infra/cost**; an in-app **cost/infra vie
 **Wave 1 — foundations + highest integrity/ROI**
 - W1.1 ~~CI GitHub Action on PRs~~ **SUPERSEDED** — CI is now `workflow_dispatch`-only (OFF, not paying for Actions); the **pre-push hook (naming + drift + engine tests + typecheck) is the gate**. Re-enable PR-triggered CI only if branch protection is added.
 - W1.2 Paper **maturity signal** (compute + surface ≥30d net-positive as *advisory* live-readiness; do NOT hard-block — human decides) — *engine · cloud · opus · PR*
-- W1.3 xAI/Grok **Twitter source + influencer scoring** (follow `/add-data-source`) — *engine · cloud · sonnet · worktree · PR*
+- ~~W1.3 xAI/Grok **Twitter source + influencer scoring**~~ **SHIPPED** — `data/sources/xai_twitter.py` + `twitter_sentiment` ingested into the store; registered in `default_source_registry`; read by the research brain in `gather_context`. `twitter_influencer_sentiment` **DISABLED** until the real `InfluencerHitRateStore` is wired (stub returns 0.5 = byte-identical duplicate; `BACKLOG.md:65`). `gtrends_search_interest` **QUARANTINED** (revision_safety hazard — rescales history) until `profile-source` validates it.
 - W1.4 **Launch-live modal + dynamic fees + venue key-gating** (pick asset/venue, live fees, budget default $100, grey-out venues with no keys; prep crypto+equities) — *web+engine · cloud · sonnet · PR*
 - W1.5 **Cost/ROI + infra view** (wire `costs`+`llm_calls` writers; render the infra cost table + per-strategy ROI) — *web+engine · cloud · sonnet · PR*
 

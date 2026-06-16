@@ -162,12 +162,12 @@ def _fetch_lunarcrush(store: Any, symbols: list[str], providers: Any) -> int:
 
 
 def _fetch_xai(store: Any, symbols: list[str], providers: Any) -> int:
-    total = 0
-    for metric in ("twitter_sentiment", "twitter_influencer_sentiment"):
-        total += ingest_market_wide_numeric(
-            store, providers.xai_twitter, source_metric=metric, stored_metric=metric, provider_name="xai",
-        )
-    return total
+    # Only ingest twitter_sentiment. twitter_influencer_sentiment is DISABLED (feature_registry.py) because
+    # the InfluencerHitRateStore stub returns 0.5 for all authors → it is byte-identical to twitter_sentiment,
+    # inflating the gate's N with a duplicate signal. Re-enable once the real hit-rate store is wired.
+    return ingest_market_wide_numeric(
+        store, providers.xai_twitter, source_metric="twitter_sentiment", stored_metric="twitter_sentiment", provider_name="xai",
+    )
 
 
 def _fetch_gdelt_tone(store: Any, symbols: list[str], providers: Any) -> int:
@@ -258,6 +258,14 @@ def _fetch_rss_news(store: Any, symbols: list[str], providers: Any) -> int:
 
 
 def _fetch_gtrends(store: Any, symbols: list[str], providers: Any) -> int:
+    # QUARANTINED — revision_safety hazard: Google Trends rescales its entire history when a new data point
+    # is added, making the series look-ahead contaminated (backfill changes past values). This means any
+    # strategy that used gtrends_search_interest in backtest saw a version of history that was NOT available
+    # at the time of each bar (the rescaling was a future event). Until profile-source validates revision_safety,
+    # this source is PAPER/BACKFILL only: the ingest fetches data but the Gate is not allowed to use it in
+    # live production screens. The data is still accumulated so profile-source can run a revision-safety audit.
+    # The SourceSpec note in managed_sources() documents this hazard; the feature_registry marks it as
+    # low-confidence. DO NOT remove this guard without a passing profile-source revision_safety validation.
     return ingest_market_wide_numeric(
         store, providers.gtrends, source_metric="gtrends_search_interest", stored_metric="gtrends_search_interest", provider_name="gtrends",
     )
