@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -69,11 +69,28 @@ class BacktestResult:
     val_returns: list[float]
     holdout_returns: list[float]
     symbol_trades: dict[str, int]
+    # PER-SYMBOL validation breakdown {symbol: {"return","sharpe","max_drawdown","trades"}} — the SAME strategy's
+    # individual result on EACH symbol it was tested on, BEFORE the cross-sectional pool. The keystone for "which
+    # symbols does this edge actually hold on?": out-of-asset generalization, deploy-where-confirmed (vs the
+    # arbitrary round-robin), and the frontend per-symbol display. Additive + default-empty (existing callers,
+    # incl. the two empty-result paths below, are untouched).
+    per_symbol: dict[str, dict[str, float]] = field(default_factory=dict)
 
     @property
     def min_symbol_trades(self) -> int:
         counts = list(self.symbol_trades.values())
         return min(counts) if counts else 0
+
+    @property
+    def symbols_tested(self) -> list[str]:
+        """Every symbol the strategy was evaluated on (the breadth of this backtest)."""
+        return list(self.per_symbol)
+
+    @property
+    def positive_symbols(self) -> list[str]:
+        """Symbols whose INDIVIDUAL validation return was positive — where the edge actually held. The set a
+        'deploy-where-confirmed' router should prefer over an arbitrary round-robin pick."""
+        return [s for s, m in self.per_symbol.items() if m.get("return", 0.0) > 0.0]
 
 
 def run_strategy_backtest(
@@ -152,6 +169,7 @@ def run_strategy_backtest_detailed(
     validation_runs: list[SymbolRun] = []
     holdout_runs: list[SymbolRun] = []
     symbol_trades: dict[str, int] = {}
+    per_symbol: dict[str, dict[str, float]] = {}
     for symbol, bars in market.items():
         if len(bars) < 80:
             continue
@@ -160,6 +178,13 @@ def run_strategy_backtest_detailed(
         v_run = _run_symbol(spec, params, val_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt, size_series)
         validation_runs.append(v_run)
         symbol_trades[symbol] = len(v_run.trades)
+        # the SAME strategy's standalone validation result on THIS symbol (pre-pool) — un-collapses the metric.
+        per_symbol[symbol] = {
+            "return": round(v_run.total_return, 8),
+            "sharpe": round(v_run.sharpe, 6),
+            "max_drawdown": round(v_run.max_drawdown, 6),
+            "trades": float(len(v_run.trades)),
+        }
         if holdout_bars and include_holdout:
             holdout_runs.append(_run_symbol(spec, params, holdout_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt, size_series))
 
@@ -214,6 +239,7 @@ def run_strategy_backtest_detailed(
         val_returns=list(val.bar_returns),
         holdout_returns=list(holdout.bar_returns),
         symbol_trades=symbol_trades,
+        per_symbol=per_symbol,
     )
 
 
