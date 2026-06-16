@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol
-from cosmu.data.backtest import DEFAULT_IMPACT_BPS, DEFAULT_SLIPPAGE_BPS, run_strategy_backtest
+from cosmu.data.backtest import DEFAULT_IMPACT_BPS, DEFAULT_SLIPPAGE_BPS, run_strategy_backtest_detailed
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
@@ -128,9 +128,10 @@ def fdr_culled_vids(evaluated: list[Evaluated], q: float) -> set[str]:
     return {e.version_id for e, ok in zip(evaluated, survives, strict=True) if e.passed and not ok}
 
 
-# Minimum trades per symbol in the pooled backtest — mirrors finder.py:62. A pooled trade_count of 30
-# on 5 symbols averages 6 trades/symbol, not 30; the gate must see at least this per symbol to avoid a
-# strategy that concentrates all activity on one name and presents phantom breadth.
+# Minimum trades on the THINNEST screened symbol — a true per-symbol-minimum test, mirroring finder.py:62
+# (which checks trades_by_tag per config). The screen reads BacktestResult.min_symbol_trades. A strategy that
+# books 30 trades all on ONE of six symbols (five with zero) has min_symbol_trades=0 and is killed; a pooled
+# `num_trades >= n*5` total would have waved it through. This is what catches phantom cross-sectional breadth.
 _MIN_TRADES_PER_SYMBOL = 5
 
 
@@ -432,7 +433,7 @@ class FarmLoop:
         except ValueError:
             return None  # invalid spec — never persisted, counted as invalid
 
-        metrics, venue = self._screen(cand, compiled.code_hash, seed)
+        metrics, venue, min_symbol_trades = self._screen(cand, compiled.code_hash, seed)
         # THE choke point: every farmed candidate is one more hypothesis the Deflated Sharpe / FDR must deflate
         # against — register the trial BEFORE the per-symbol floor check (a backtested hypothesis is counted even
         # if it lacks per-symbol breadth, so the deflation ledger never under-counts thin-book specs).
@@ -441,12 +442,12 @@ class FarmLoop:
         # (the strategy's live-eligibility passport). Computed from the SCREEN metrics — never a veto.
         survival_score = round(survival.score_features(features_from_metrics(metrics)), 6)
         proven = sorted(proven_regimes(metrics.regime_returns))
-        # Per-symbol trade floor: pooled trade_count ≥ n_symbols × _MIN_TRADES_PER_SYMBOL. A strategy that
-        # concentrates all 30 trades on one of five symbols presents phantom breadth — flag as pre_kill so
-        # _persist counts it as generated+killed (not invalid) since the trial was already registered above.
-        enabled_venues, enabled_classes = self._enabled()
-        n_symbols = len(_binance_symbols(cand.spec, enabled_venues, enabled_classes)) or 1
-        pre_kill = "min_trades_per_symbol" if metrics.num_trades < n_symbols * _MIN_TRADES_PER_SYMBOL else None
+        # Per-symbol trade floor (mirrors finder.py:62): require >= _MIN_TRADES_PER_SYMBOL trades on the THINNEST
+        # screened symbol, not a pooled total. A pooled count of 30 met by 30 trades on ONE of six symbols (five
+        # with zero) is phantom breadth — a pooled `num_trades >= n*5` test would wave it through; the per-symbol
+        # MINIMUM catches it. Flag as pre_kill so _persist counts it as generated+killed (the trial is already
+        # registered above). min_symbol_trades is 0 when no symbol traded → always killed, as intended.
+        pre_kill = "min_trades_per_symbol" if min_symbol_trades < _MIN_TRADES_PER_SYMBOL else None
         return _Screened(
             cand=cand, params=params, compiled=compiled, metrics=metrics,
             survival_score=survival_score, proven=proven,
@@ -578,9 +579,10 @@ class FarmLoop:
             version_id,
         )
 
-    def _screen(self, cand: Candidate, code_hash: str, seed: int):  # noqa: ANN201 — (BacktestMetrics, venue catalog row)
-        """Cheap real-data screen over Binance spot bars. Returns the metrics AND the venue it priced against (so
-        the persist path records the gate-time cost assumptions).
+    def _screen(self, cand: Candidate, code_hash: str, seed: int):  # noqa: ANN201 — (BacktestMetrics, venue, min_symbol_trades)
+        """Cheap real-data screen over Binance spot bars. Returns the metrics, the venue it priced against (so
+        the persist path records the gate-time cost assumptions), AND the per-symbol trade MINIMUM (the smallest
+        validation trade count across the screened symbols — the true per-symbol breadth, see _screen_and_register).
 
         The screen is deterministic for a fixed bar cache and fitted params. It is still the
         cheap tier, but its return/drawdown/trade-count fields now come from actual venue OHLCV
@@ -595,7 +597,10 @@ class FarmLoop:
             for symbol in symbols
         }
         venue = default_catalog().venue_for(cand.spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
-        metrics = run_strategy_backtest(
+        # Detailed backtest: `.metrics` is BYTE-IDENTICAL to run_strategy_backtest (which is a thin .metrics
+        # wrapper over this), so no verdict drifts — but it also exposes per-symbol trade counts so the
+        # per-symbol floor can test the true MINIMUM-per-symbol (finder.py semantic), not a pooled total.
+        result = run_strategy_backtest_detailed(
             cand.spec,
             fit_params(cand.spec),
             market,
@@ -607,7 +612,7 @@ class FarmLoop:
             impact_bps=venue.impact_bps,
             alt_by_symbol=self._alt_by_symbol(cand.spec, market),
         )
-        return metrics, venue
+        return result.metrics, venue, result.min_symbol_trades
 
     def _alt_store(self):  # noqa: ANN202 — AltDataStore | PgAltDataStore
         """The point-in-time alt-data store, chosen the SAME way ingest/api do: postgres URL → PgAltDataStore

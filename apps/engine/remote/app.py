@@ -77,6 +77,11 @@ test_image = (
         ignore=[
             "**/node_modules", "**/.git", "**/.venv", "**/.next", "**/.cosmu", "**/.turbo",
             "**/dist", "**/.pytest_cache", "**/__pycache__", "**/*.pyc", "**/*.sqlite3", ".claude/worktrees",
+            # NEVER bundle local dotenv secrets into the test image. The `tests` job runs with APP_ENV=test,
+            # which now maps to .env.local (config/settings.py) — so a bundled .env.local would make the Modal
+            # suite read the PROD DATABASE_URL + real keys. The job has NO Modal secret attached, so excluding
+            # these files is what keeps it hermetic (temp sqlite + offline fixtures, as the header promises).
+            "**/.env.local", "**/.env*.local",
         ],
     )
     .run_commands("pip install '/root/repo/apps/engine[dev,live,lake]'")
