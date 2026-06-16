@@ -85,7 +85,7 @@ async function CostsData() {
         ? "engine not connected"
         : costs.llm_calls.call_count === 0
           ? "no calls yet"
-          : `${costs.llm_calls.call_count.toLocaleString()} calls`,
+          : `${costs.llm_calls.call_count.toLocaleString()} calls${costs.llm_calls.total_cost === 0 ? " · free tier" : ""}`,
     },
   ];
 

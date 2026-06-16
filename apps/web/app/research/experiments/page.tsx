@@ -12,7 +12,7 @@ import { engineConfigured } from "../../data";
 import { getExperiments, type ExperimentTheory } from "../../data/research";
 import { Page, Toolbar } from "@/components/ui/toolbar";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
-import { cn } from "@/lib/utils";
+import { cn, fmtTz } from "@/lib/utils";
 
 // On-demand: the engine may be offline at build time; the honest not-connected/empty states must reflect the
 // real moment, never a baked snapshot.
@@ -173,7 +173,7 @@ function TheoryRow({ t }: { t: ExperimentTheory }) {
         {t.decision}
       </td>
       <td className="r tab quiet" style={{ fontSize: 11 }}>
-        {(t.ts ?? "").slice(0, 10)}
+        {fmtTz(t.ts, { year: "numeric", month: "short", day: "numeric" })}
       </td>
     </tr>
   );

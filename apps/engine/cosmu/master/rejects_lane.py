@@ -21,26 +21,40 @@ from cosmu.knowledge.store import Store, utcnow
 
 log = logging.getLogger(__name__)
 
-# Gate-rejection reasons that are CRITICAL — a candidate rejected for ANY of these is NOT a near-miss worth
-# watching: it failed a risk/economic floor (it lost money vs buy-and-hold, drew down past the cap, or never
-# traded enough to mean anything), not the statistical-significance gate. We watch only candidates whose ONLY
-# rejection reasons are statistical near-misses (deflated_sharpe / pbo / folds_positive / fdr), because those are
-# precisely where a too-strict gate would manufacture a false negative. The risk floors are correctly strict and
-# a rejection on them is a TRUE negative, never a Type-II candidate. (Reason strings mirror master/scorer.py.)
-CRITICAL_REJECT_REASONS = frozenset({"max_drawdown", "buy_and_hold", "min_trades", "holdout"})
+# The genuine risk/economic FLOORS — a rejection on ANY of these is a TRUE negative, never a Type-II candidate:
+# the book drew down past the cap, never traded enough to mean anything, or its purged OOS holdout was sign-
+# negative. A reject FREE of these is a statistical/benchmark near-miss — precisely where a too-strict gate
+# manufactures a false negative — so the lane watches it (zero capital). (Reason strings mirror master/scorer.py.)
+#
+# NOTE (2026-06-16): 'buy_and_hold' was DEMOTED out of this set. Failing to OUT-RETURN an explosive asset in a
+# bull sample is a BENCHMARK choice, not a risk failure: a positive, individually-clean book that merely didn't
+# beat HODL is exactly what we want to KEEP + paper-test (B&H is a reference, not a north star). buy_and_hold is
+# now a displayed reason on the watch row, never a watch-DISQUALIFIER.
+RISK_FLOOR_REASONS = frozenset({"max_drawdown", "min_trades", "holdout"})
+CRITICAL_REJECT_REASONS = RISK_FLOOR_REASONS  # back-compat alias (same meaning now that B&H is demoted)
+
+# OOS-holdout admission floor (PATH 2). A candidate the IN-SAMPLE multiple-testing penalty (deflated_sharpe / fdr)
+# killed, but whose REAL purged+embargoed OOS holdout Sharpe is significantly positive (P(SR>0) >= 0.70, i.e.
+# holdout_dsr >= 0.20 on the PSR-0.5 scale) AND that is individually clean (PBO + folds passed) AND made money, is
+# the textbook over-rejection to MEASURE forward. Mirrors the equity deploy holdout floor (DEPLOY_MIN_HOLDOUT_DSR).
+OOS_HOLDOUT_WATCH_FLOOR = 0.20
 
 
 @dataclass(frozen=True)
 class RejectsCandidate:
     """One gate-rejected candidate the lane has decided to WATCH. It is NOT promoted and carries ZERO capital —
     it exists only so we can measure, after the fact, how it would have performed vs the survivors. `reasons` is
-    the gate's own rejection reasons (guaranteed free of any CRITICAL_REJECT_REASONS), so the report can confirm
-    these are genuine statistical near-misses, never risk-floor failures."""
+    the gate's own rejection reasons (guaranteed free of any RISK_FLOOR_REASONS), so the report can confirm these
+    are genuine statistical/benchmark near-misses, never risk-floor failures. `admission` records WHICH path let
+    it in (a DSR near-miss vs a strong out-of-sample holdout the in-sample penalty killed); `holdout_dsr` is the
+    REAL purged+embargoed OOS holdout Sharpe (PSR-0.5), the evidence behind the 'oos_strong' path."""
 
     candidate_id: str
     deflated_sharpe_prob: float
     net_profit: float
     reasons: list[str] = field(default_factory=list)
+    holdout_dsr: float | None = None
+    admission: str = "dsr_near_miss"  # 'dsr_near_miss' (in-band + survived FDR) | 'oos_strong' (strong OOS holdout)
 
 
 def identify_rejects(
@@ -53,56 +67,87 @@ def identify_rejects(
     #                           near-miss, never a real negative — so band_min only sets how far down the DSR ladder
     #                           we look. Observation is free and the directive is "don't over-discard," so err WIDE.
 ) -> list[RejectsCandidate]:
-    """The watch-list selector. A Promotion is a CLOSE reject (a Type-II candidate) iff ALL hold:
-      - it was NOT promoted (the gate rejected it),
-      - its deflated-Sharpe probability is in the watch band [band_min, band_max) — it cleared a SOLID majority of
-        the way to the 0.95 promotion floor (default ≥0.80) but fell short,
-      - it SURVIVED Benjamini-Hochberg FDR (so it is not a multiple-testing artifact — a reject that flunked FDR
-        is correctly dead, never a false negative),
-      - NONE of its rejection reasons is a CRITICAL filter (max_drawdown / buy_and_hold / min_trades / holdout):
-        a risk/economic-floor rejection is a TRUE negative, not something the gate got wrong.
+    """The watch-list selector. A non-promoted Promotion enters the zero-capital watch-list via EITHER path, and
+    NEVER if it failed a genuine risk floor (RISK_FLOOR_REASONS = max_drawdown / min_trades / holdout):
+
+      PATH 1 — DSR NEAR-MISS: it SURVIVED BH-FDR and its deflated-Sharpe probability is in the band
+        [band_min, band_max) — it cleared a SOLID majority of the way to the 0.95 floor (default ≥0.80) but fell
+        short. The "is the deflated-Sharpe bar too strict?" candidate.
+
+      PATH 2 — OOS-STRONG: the IN-SAMPLE multiple-testing penalty (deflated_sharpe / fdr) killed it, but it is
+        individually CLEAN (PBO + folds passed), made money (net > 0), and its REAL purged+embargoed OOS holdout
+        Sharpe is significantly positive (holdout_dsr ≥ OOS_HOLDOUT_WATCH_FLOOR). This captures the over-rejection
+        the deflation manufactures on a correlated/crowded cohort — observed forward, NEVER re-promoted. Requires
+        the candidate's metrics (via `candidates`) to carry `holdout_deflated_sharpe`.
+
+    buy_and_hold is NOT disqualifying for either path (DEMOTED — see RISK_FLOOR_REASONS): a positive book that
+    merely didn't out-return a bull asset is precisely what we keep + paper-test.
 
     `promotions`/`candidates` are duck-typed (attribute access) so this module never imports cohort — mirroring
-    verdict_log's one-way dependency. `candidates` is OPTIONAL and used only to carry net_profit when a Promotion
-    lacks it (it does not, currently; the param keeps the signature symmetric with persist_rejects_watch and lets
-    a caller pass richer Candidate metrics later). Pure + side-effect-free: it reads the verdict, never writes it.
+    verdict_log's one-way dependency. `candidates` carries net_profit and (on `.metrics.holdout_deflated_sharpe`)
+    the OOS holdout PATH 2 reads. Pure + side-effect-free: it reads the verdict, never writes it.
     """
     if band_min >= band_max:
         # A degenerate band can never select anything; refuse silently rather than mis-banding the watch-list.
         return []
     profit_by_id: dict[str, float] = {}
+    holdout_by_id: dict[str, float] = {}
     for c in candidates or []:
         cid = getattr(c, "id", None)
-        if cid is not None:
-            profit_by_id[cid] = float(getattr(c, "net_profit", 0.0) or 0.0)
+        if cid is None:
+            continue
+        profit_by_id[cid] = float(getattr(c, "net_profit", 0.0) or 0.0)
+        metrics = getattr(c, "metrics", None)
+        h = getattr(metrics, "holdout_deflated_sharpe", None) if metrics is not None else None
+        if h is not None:
+            holdout_by_id[cid] = float(h)
 
     out: list[RejectsCandidate] = []
     for p in promotions:
         if getattr(p, "promoted", False):
             continue  # a promoted candidate is a survivor, not a reject — nothing to watch
-        if not getattr(p, "survived_fdr", False):
-            continue  # flunked FDR → correctly dead (multiple-testing artifact), not a false negative
-        dsr = float(getattr(p, "deflated_sharpe_prob", 0.0) or 0.0)
-        if not (band_min <= dsr < band_max):
-            continue  # outside the CLOSE band → either a survivor's territory or a clear reject, not a near-miss
-        reasons = list(getattr(p, "reasons", []) or [])
-        if CRITICAL_REJECT_REASONS.intersection(reasons):
-            continue  # rejected on a risk/economic floor → a TRUE negative, never a Type-II candidate
         cid = getattr(p, "candidate_id", None)
         if cid is None:
             continue
+        reasons = list(getattr(p, "reasons", []) or [])
+        if RISK_FLOOR_REASONS.intersection(reasons):
+            continue  # rejected on a risk/economic floor → a TRUE negative, never a Type-II candidate
+        dsr = float(getattr(p, "deflated_sharpe_prob", 0.0) or 0.0)
         net = profit_by_id.get(cid, float(getattr(p, "net_profit", 0.0) or 0.0))
+        holdout = holdout_by_id.get(cid)
+
+        # PATH 1 — DSR near-miss: survived FDR AND in the close band (not a multiple-testing artifact).
+        near_miss = bool(getattr(p, "survived_fdr", False)) and (band_min <= dsr < band_max)
+        # PATH 2 — OOS-strong: in-sample penalty killed it, but it is individually clean (PBO + folds passed),
+        # profitable, and its REAL purged OOS holdout is significantly positive. Observe forward regardless of FDR.
+        oos_strong = (
+            net > 0.0
+            and holdout is not None
+            and holdout >= OOS_HOLDOUT_WATCH_FLOOR
+            and "pbo" not in reasons
+            and "folds_positive" not in reasons
+        )
+        if not (near_miss or oos_strong):
+            continue
         out.append(
             RejectsCandidate(
                 candidate_id=cid,
                 deflated_sharpe_prob=dsr,
                 net_profit=net,
                 reasons=reasons,
+                holdout_dsr=holdout,
+                admission="dsr_near_miss" if near_miss else "oos_strong",
             )
         )
-    # Rank the watch-list by how CLOSE it came (descending DSR), so the report and any UI surface the nearest
-    # misses first — the most informative false-negative candidates.
-    out.sort(key=lambda r: r.deflated_sharpe_prob, reverse=True)
+
+    # Rank by unified CLOSENESS = max(in-sample DSR, holdout PSR=holdout_dsr+0.5) descending, so the nearest misses
+    # surface first — and an OOS-strong reject (in-sample DSR ~0 but a high holdout PSR) is not buried beneath
+    # weaker DSR near-misses.
+    def _closeness(r: RejectsCandidate) -> float:
+        hold_psr = (r.holdout_dsr + 0.5) if r.holdout_dsr is not None else 0.0
+        return max(r.deflated_sharpe_prob, hold_psr)
+
+    out.sort(key=_closeness, reverse=True)
     return out
 
 

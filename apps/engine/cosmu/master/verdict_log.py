@@ -51,10 +51,18 @@ class CohortPersist:
     watch_rejects: bool = False
 
 
-def durable_persist(*, run_id: str, hypothesis: str, source: str, data_source: str = "live", **extra: Any) -> CohortPersist:
+def durable_persist(
+    *, run_id: str, hypothesis: str, source: str, data_source: str = "live", watch_rejects: bool = True, **extra: Any
+) -> CohortPersist:
     """One-liner factory for a research runner: build a CohortPersist pointed at the REAL configured store
     (prod Postgres on Modal/Railway via DATABASE_URL, local SQLite otherwise). Lets any cohort runner opt into
-    durable experiment-memory with `persist=durable_persist(run_id=..., hypothesis=..., source=...)`."""
+    durable experiment-memory with `persist=durable_persist(run_id=..., hypothesis=..., source=...)`.
+
+    `watch_rejects` defaults ON (2026-06-16): every research cohort now records its gate-rejected-but-CLOSE
+    candidates to the zero-capital Type-II watch-list (observe-only, best-effort — never moves money, never
+    breaks the verdict). This is what keeps a positive, individually-clean book that the multiple-testing penalty
+    or the (demoted) buy-and-hold hurdle killed under forward observation — see master/rejects_lane.py. Pass
+    watch_rejects=False to opt a run out."""
     from cosmu.config.settings import get_settings
 
     return CohortPersist(
@@ -63,6 +71,7 @@ def durable_persist(*, run_id: str, hypothesis: str, source: str, data_source: s
         hypothesis=hypothesis,
         source=source,
         data_source=data_source,
+        watch_rejects=watch_rejects,
         extra=dict(extra),
     )
 

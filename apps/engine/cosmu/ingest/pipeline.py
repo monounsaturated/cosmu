@@ -24,8 +24,8 @@ class IngestSummary:
 class MemoizingProvider:
     """Wraps an AltDataProvider so each (symbol, metric, limit) is fetched AT MOST ONCE per run — the
     run-level cache that kills redundant external calls. The clearest win: a single FRED provider feeds
-    several semantic features off the SAME series (VIXCLS → vix_level + vix_term_slope, T10Y2Y →
-    macro_regime + yield_curve_2s10s); without memoization that is two live calls per shared series. The
+    several semantic features off the SAME series (T10Y2Y → macro_regime + yield_curve_2s10s); without
+    memoization that is two live calls per shared series. The
     cache lives for the wrapper's lifetime (one ingest pass), so a fresh run always re-pulls fresh data."""
 
     def __init__(self, inner: AltDataProvider) -> None:

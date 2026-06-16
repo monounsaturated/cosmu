@@ -12,10 +12,26 @@ from cosmu.spine.engine import EngineFacade
 from cosmu.spine.universe import has_live_data
 
 
+def _guard_production_auth(s) -> None:
+    """FAIL CLOSED: refuse to start the API in production without API_SECRET_KEY. The x-api-key middleware
+    (app.py) is a NO-OP when the key is unset, so a keyless prod boot would silently expose the entire
+    money-moving control plane (live activate/launch/rules) unauthenticated. Scoped to API startup ONLY —
+    Modal cron jobs / CLI build Settings without this lifespan, so the worker fleet is never blocked even though
+    it also runs APP_ENV=production. `environment` maps both the qa and production profiles to 'production'
+    (config/settings.py), so both are covered; local/test leave auth optional as documented."""
+    if getattr(s, "environment", None) == "production" and not getattr(s, "api_secret_key", None):
+        raise RuntimeError(
+            "API_SECRET_KEY is required in production — refusing to start the control plane unauthenticated. "
+            "Set API_SECRET_KEY on the engine service (and ensure the Vercel proxy forwards x-api-key)."
+        )
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     import asyncio
     import threading
+
+    _guard_production_auth(settings)  # fail closed before any boot task touches the control plane
 
     from cosmu.notify.slack import SlackNotifier, notify_health_change
 

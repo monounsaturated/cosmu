@@ -122,22 +122,80 @@ class _EdgeBearingBars:
         return self._by_symbol.get(symbol, self._default)[-limit:]
 
 
-def gather_context(bus: ToolBus, *, symbol: str = "BTCUSDT", offline: bool = True) -> dict[str, object]:
+def _web_query_from_symbol(symbol: str, brief: str | None = None) -> str:
+    """Derive a meaningful Tavily/web search query from the symbol and optional brief.
+    Avoids the hardcoded "crypto swing strategy edge" that covered the same ground every tick."""
+    coin = symbol[:-4].upper() if symbol.upper().endswith("USDT") else symbol.upper()
+    if brief:
+        # Condense the brief to its first 80 chars as the topic anchor.
+        topic = brief[:80].rstrip()
+        return f"{coin} trading edge {topic}"
+    return f"{coin} crypto trading strategy signal 2024 2025"
+
+
+def gather_context(
+    bus: ToolBus,
+    *,
+    symbol: str = "BTCUSDT",
+    offline: bool = True,
+    store: "Store | None" = None,
+    brief: str | None = None,
+) -> dict[str, object]:
     """Read context off the propose-only tool bus before authoring. Pure context — NO execution, NO scoring.
-    Returns a small machine-readable digest the author/LLM would condition on."""
-    return {
+    Returns a small machine-readable digest the author/LLM would condition on.
+
+    Enhancements over the original:
+    - web_search query is derived from brief/symbol (not hardcoded "crypto swing strategy edge").
+    - tweets: the already-ingested twitter_sentiment is read PIT-honestly from the store ($0, no live call).
+    - xai_live: the xAI live_search tool is called (key-gated; degrades offline to fixture) for current
+      X/web market intelligence; this is the live-search complement to the static web_search.
+    """
+    web_query = _web_query_from_symbol(symbol, brief)
+    ctx: dict[str, object] = {
         "tools": [t["name"] for t in bus.list_tools()],
-        "web_search": bus.call("web_search", {"query": "crypto swing strategy edge"}),
+        "web_search": bus.call("web_search", {"query": web_query}),
         "news_read": bus.call("news_read", {"symbol": symbol, "limit": 4, "offline": offline}),
         "social": bus.call("social", {"symbol": symbol}),
         "rag_read": bus.call("rag_read", {"query": "prior art"}),
         "pine_fetch": bus.call("pine_fetch", {}),
+        "xai_live": bus.call("xai_live", {"query": web_query}) if "xai_live" in {t["name"] for t in bus.list_tools()} else {"ok": False, "source": "offline", "results": []},
     }
+
+    # Read already-ingested twitter_sentiment from the store (PIT-honest, $0 per research pass —
+    # no live LLM call here; ingest/run.py writes this data from XaiTwitterProvider).
+    ctx["tweets"] = _read_store_tweets(store, symbol=symbol)
+    return ctx
+
+
+def _read_store_tweets(store: "Store | None", *, symbol: str = "BTCUSDT") -> dict[str, object]:
+    """Read the latest twitter_sentiment points from the ingested alt_data store (PIT-honest, $0).
+    Returns a small digest: {"ok": bool, "source": "store"|"none", "points": [{"value": float, "ts": str}]}.
+    Fails silently (returns {"ok": False, ...}) so a missing store or empty series never aborts the pass."""
+    if store is None:
+        return {"ok": False, "source": "none", "points": []}
+    try:
+        from datetime import UTC, datetime
+        from cosmu.data.providers.store import PgAltDataStore
+
+        alt_store = PgAltDataStore(store)
+        pts = alt_store.read_asof("xai", "MARKET", "twitter_sentiment", datetime.now(tz=UTC))
+        if not pts:
+            return {"ok": True, "source": "store", "points": []}
+        # Return the last 5 points (most recent; read_asof orders oldest→newest)
+        recent = pts[-5:]
+        return {
+            "ok": True,
+            "source": "store",
+            "points": [{"value": float(p.value), "ts": p.ts.isoformat()} for p in recent],
+        }
+    except Exception:  # noqa: BLE001 — missing store/table is normal offline; never aborts the pass
+        return {"ok": False, "source": "none", "points": []}
 
 
 def _prior_art_from_context(context: dict[str, object]) -> tuple[list[str], list[str]]:
     """Distill the propose-only research bus digest into (prior_art_features, citations) the author can condition
     on. Features come from rag_read prior-art matches; citations are short source titles for the audit trail.
+    Also folds in twitter_sentiment signal from ingested store and xai_live results.
     Read-only and deterministic — the offline fixtures yield the same digest in CI."""
     feats: list[str] = []
     cites: list[str] = []
@@ -154,6 +212,27 @@ def _prior_art_from_context(context: dict[str, object]) -> tuple[list[str], list
         title = r.get("title")
         if title:
             cites.append(f"web: {title}")
+    # Fold in xAI live-search results (real-time X/web intelligence, key-gated).
+    xai = context.get("xai_live") if isinstance(context.get("xai_live"), dict) else {}
+    for r in ((xai or {}).get("results", []) or [])[:2]:  # type: ignore[union-attr]
+        title = r.get("title")
+        if title:
+            cites.append(f"xai-live: {title}")
+    # Fold twitter_sentiment signal: if the store returned points, note the feature as available context so
+    # the author is aware crowd sentiment data is ingested. The numeric value conditions the brief's direction
+    # (bullish/bearish tilt); a missing or empty store is a no-op (never fabricates).
+    tweets = context.get("tweets") if isinstance(context.get("tweets"), dict) else {}
+    tweet_pts = (tweets or {}).get("points", [])  # type: ignore[union-attr]
+    if tweet_pts:
+        if "twitter_sentiment" not in feats:
+            feats.append("twitter_sentiment")
+        # Summarize direction for the citation trail.
+        try:
+            last_val = float(tweet_pts[-1]["value"])
+            direction = "bullish" if last_val > 0.1 else ("bearish" if last_val < -0.1 else "neutral")
+        except (KeyError, IndexError, TypeError, ValueError):
+            direction = "unknown"
+        cites.append(f"store-tweets: twitter_sentiment latest={direction} (n={len(tweet_pts)} pts)")
     return feats, cites
 
 
@@ -233,8 +312,17 @@ def run_research_pass(
     survivor track-open path is exercised deterministically with no network. Production must never run with
     edge_market=True. `persist=True` writes a research_pass event so the API can read the run
     (authored/gated/survivors/graveyard) without re-running — not CLI-only."""
-    bus = tool_bus or research_tool_bus()
-    context = gather_context(bus)
+    if tool_bus is None:
+        # Build the bus with server-side keys so the xAI live_search tool can run (key-gated; offline → fixture).
+        try:
+            from cosmu.config.settings import get_settings as _get_settings
+            _s = _get_settings()
+            bus = research_tool_bus(xai_key=_s.xai_api_key)
+        except Exception:  # noqa: BLE001 — settings unavailable offline → no-key bus (fixtures only)
+            bus = research_tool_bus()
+    else:
+        bus = tool_bus
+    context = gather_context(bus, store=store)
     # CLOSE THE AGENTIC LOOP: distil the gathered tool-bus context into prior-art features the author conditions
     # on. Gather (read-only tools) → author (informed proposal) → the DETERMINISTIC screen/gate disposes.
     prior_art, research_citations = _prior_art_from_context(context)

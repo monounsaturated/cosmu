@@ -71,6 +71,17 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
             forward_equity = [Point(ts=s["ts"], value=float(s["equity"])) for s in snap_rows] if marked else []
     if row is None:
         raise HTTPException(status_code=404, detail="strategy version not found")
+    # HONEST holdout: the headline backtest's REAL recorded one-shot-holdout verdict (holdout_passed) + its
+    # deflated Sharpe — NEVER a hardcoded constant. {} when the version carries no backtest evidence. (Was
+    # holdout={"passed": True, "deflated_sharpe": 0.35, "seen_once": True} for EVERY version — fabricated.)
+    _hb = next((b for b in backtests if b.get("passed_gates")), None) or (
+        max(backtests, key=lambda b: float(b["deflated_sharpe"])) if backtests else None
+    )
+    holdout = (
+        {"passed": bool(_hb["holdout_passed"]), "deflated_sharpe": float(_hb["deflated_sharpe"]), "seen_once": True}
+        if _hb is not None
+        else {}
+    )
     return StrategyDetailResponse(
         version_id=version_id,
         name=row["name"],
@@ -86,7 +97,7 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
             for bt in backtests
         ],
         notes_md="Deterministic WFO accepted this version for the standardized track. Live capital remains gated by the global toggle, sim survival, regime fit, and caps.",
-        holdout={"passed": True, "deflated_sharpe": 0.35, "seen_once": True},
+        holdout=holdout,
         summary_md=summary_md,
         summary_stale=summary_stale,
         summary_updated_at=summary_updated_at,

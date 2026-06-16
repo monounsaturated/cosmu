@@ -128,7 +128,80 @@ def _rag_read(payload: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "source": "offline", "query": query, "matches": matches or _RAG_FIXTURES}
 
 
-def register_research_tools(bus: ToolBus, *, lunarcrush_key: str | None = None, web_search_key: str | None = None) -> ToolBus:
+# --- xAI live-search tool (mirrors _web_search but POSTs to xAI with live_search tool) --------
+
+_XAI_BASE_URL = "https://api.x.ai/v1"
+_XAI_MODEL = "grok-3-mini"
+
+_XAI_LIVE_FIXTURES: list[dict[str, str]] = [
+    {"title": "X/Twitter live: BTC funding rate spike", "snippet": "Traders flagging extreme perpetual funding rates on BTC — possible unwind ahead.", "url": "https://x.ai"},
+    {"title": "X/Twitter live: ETH accumulation thesis", "snippet": "ETH structural support still intact; bulls holding key levels.", "url": "https://x.ai"},
+]
+
+
+def _http_post_json(url: str, payload: dict, headers: dict[str, str] | None = None, timeout: float = 30.0) -> dict | None:
+    """Best-effort POST JSON → JSON response. Returns None on any failure so the tool degrades to its offline
+    fixture rather than crashing the research pass (LLM/network-optional, never load-bearing)."""
+    import urllib.request as _ur
+
+    data = json.dumps(payload).encode("utf-8")
+    req = _ur.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json", "User-Agent": "cosmu-engine/0.1", **(headers or {})},
+        method="POST",
+    )
+    try:
+        with _ur.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:  # noqa: BLE001 — context-gathering is best-effort; degrade to fixture
+        return None
+
+
+def _xai_live_search(payload: dict[str, Any]) -> dict[str, Any]:
+    """Query xAI's live_search tool for current strategy/market intelligence.
+
+    Key is bound server-side (never from the LLM payload). No key → offline fixture.
+    The xAI model with tools:[{"type":"live_search"}] returns real-time results from X/the web.
+    Errors degrade to the offline fixture so the research pass is never aborted by this tool."""
+    query = str(payload.get("query", "")).strip()
+    api_key = payload.get("_api_key")  # injected server-side by the bus factory, never from the LLM
+    if api_key and query:
+        prompt = (
+            f"Use the live_search tool to find the most recent and relevant information about: {query}\n\n"
+            "Return a JSON array of objects, each with: "
+            '{"title": "<source/headline>", "snippet": "<1-3 sentence summary>", "url": "<url if available>"}. '
+            "Return raw JSON only — no markdown, no commentary."
+        )
+        resp = _http_post_json(
+            f"{_XAI_BASE_URL}/chat/completions",
+            {
+                "model": _XAI_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "tools": [{"type": "live_search"}],
+                "tool_choice": "auto",
+                "temperature": 0,
+                "max_tokens": 1024,
+            },
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        if resp:
+            content = (resp.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+            content = content.strip()
+            if content.startswith("```"):
+                content = "\n".join(content.split("\n")[1:])
+            if content.endswith("```"):
+                content = content[: content.rfind("```")]
+            try:
+                results = json.loads(content.strip())
+                if isinstance(results, list) and results:
+                    return {"ok": True, "source": "xai_live", "query": query, "results": results[:8]}
+            except (ValueError, TypeError):
+                pass
+    return {"ok": True, "source": "offline", "query": query, "results": _XAI_LIVE_FIXTURES}
+
+
+def register_research_tools(bus: ToolBus, *, lunarcrush_key: str | None = None, web_search_key: str | None = None, xai_key: str | None = None) -> ToolBus:
     """Extend an existing lab ToolBus with the propose-only research tools. Keys are bound server-side here
     (closed over), so the LLM payload can never carry a secret. Returns the same bus for chaining."""
 
@@ -143,10 +216,15 @@ def register_research_tools(bus: ToolBus, *, lunarcrush_key: str | None = None, 
     bus.register(ToolDefinition(name="social", intent="Read LunarCrush social metrics (galaxy score, social volume, sentiment).", readonly=True, handler=_bind(_social, lunarcrush_key)))
     bus.register(ToolDefinition(name="pine_fetch", intent="Fetch a community Pine script from the curated corpus to translate (read-only).", readonly=True, handler=_pine_fetch))
     bus.register(ToolDefinition(name="rag_read", intent="Read relevant prior art and structured research notes (read-only).", readonly=True, handler=_rag_read))
+    # xAI live_search: real-time X/web results for current strategy intelligence. Key-gated (no XAI_API_KEY →
+    # offline fixture). The xAI model is called with tools:[{"type":"live_search"}] — LLM only reads the web and
+    # summarizes; it NEVER touches the gate, scoring, or money path. Registered AFTER web_search so the two are
+    # both available on the bus; gather_context calls both for complementary coverage.
+    bus.register(ToolDefinition(name="xai_live", intent="Query xAI live-search for real-time X/web market intelligence (read-only context).", readonly=True, handler=_bind(_xai_live_search, xai_key)))
     return bus
 
 
-def research_tool_bus(*, lunarcrush_key: str | None = None, web_search_key: str | None = None) -> ToolBus:
+def research_tool_bus(*, lunarcrush_key: str | None = None, web_search_key: str | None = None, xai_key: str | None = None) -> ToolBus:
     """The default lab bus (market_data_read / backtest_research / rag_read) PLUS the research tools.
     Built so any agent can discover + call them. Execution can never be registered (the bus rejects it)."""
     from cosmu.lab.tools.registry import default_tool_bus
@@ -154,4 +232,4 @@ def research_tool_bus(*, lunarcrush_key: str | None = None, web_search_key: str 
     bus = default_tool_bus()
     # default_tool_bus already registers a stub rag_read; the richer fixture-backed one replaces it.
     bus._tools.pop("rag_read", None)  # noqa: SLF001 — same package, intentional replace of the stub
-    return register_research_tools(bus, lunarcrush_key=lunarcrush_key, web_search_key=web_search_key)
+    return register_research_tools(bus, lunarcrush_key=lunarcrush_key, web_search_key=web_search_key, xai_key=xai_key)

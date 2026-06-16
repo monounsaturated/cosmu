@@ -1,6 +1,8 @@
 import type {
   BlockLeaderboardResponse,
+  IndexCard,
   IndexDetail,
+  IndexHealthModel,
   IndexesResponse,
   RealtimeStatusResponse,
   LeaderboardResponse,
@@ -134,12 +136,47 @@ const emptyIndexes: IndexesResponse = { available: false, indexes: [] };
 
 export async function getIndexes(): Promise<{ indexes: IndexesResponse; connected: boolean }> {
   const { data, connected } = await getJson("/indexes", emptyIndexes);
-  return { indexes: data, connected };
+  // Coalesce each card's health/entities/definition (a partial /indexes row would white-screen the table,
+  // which derefs idx.health.* and idx.entities.join — same belt-and-suspenders as getIndex/getStrategy).
+  const indexes: IndexesResponse = { ...data, indexes: (data.indexes ?? []).map(coalesceIndexCard) };
+  return { indexes, connected };
 }
 
 const emptyIndexDetail: IndexDetail = { available: false, index: null, series: [], strategies_using: [] };
 
+// A safe IndexHealthModel for a present-but-partial card (the engine can omit `health` even though the
+// contract types it non-null). The detail page + the indexes-table deref h.transform_version / .freshness /
+// .reliability / .latest_value etc. unguarded — coalesce here so a partial card renders "—"/"never", never a
+// white screen. Mirrors getStrategy's belt-and-suspenders coalescing.
+const emptyIndexHealth: IndexHealthModel = {
+  freshness: "never",
+  latest_at: null,
+  latest_value: null,
+  n_points: 0,
+  reliability: "untested",
+  stability: null,
+  staleness_hours: null,
+  transform_version: "—",
+};
+
+function coalesceIndexCard(card: IndexCard): IndexCard {
+  return {
+    ...card,
+    health: card.health ?? emptyIndexHealth,
+    entities: card.entities ?? [],
+    definition: card.definition ?? {},
+  };
+}
+
 export async function getIndex(id: string): Promise<{ detail: IndexDetail; connected: boolean }> {
   const { data, connected } = await getJson(`/indexes/${id}`, emptyIndexDetail);
-  return { detail: data, connected };
+  // getJson only swaps the typed default on a FAILED fetch — a successful-but-partial /indexes/:id passes
+  // through raw, so card.health / .entities / .definition can be missing and the page derefs them. Coalesce.
+  const detail: IndexDetail = {
+    ...data,
+    index: data.index ? coalesceIndexCard(data.index) : data.index,
+    series: data.series ?? [],
+    strategies_using: data.strategies_using ?? [],
+  };
+  return { detail, connected };
 }

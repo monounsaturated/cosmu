@@ -14,8 +14,8 @@ from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.knowledge.store import Store
 from cosmu.lab.finder import StrategyFinder, VariantResult, build_grid
 from cosmu.master.live_eligibility import (
-    paper_clock_origin,
     live_eligibility_verdict,
+    paper_clock_origin,
     proven_regimes_for,
 )
 from cosmu.master.promotion import promotion_record
@@ -172,9 +172,17 @@ def test_finder_promotion_opens_forward_clock_and_is_live_eligible(tmp_path):
     assert matured_flat.forward_ready is False  # +0.00% forward → "paper not proven"
     assert matured_flat.eligible is False
 
-    # Only once REAL net-positive forward P&L accrues (the paper clock writes tracks.return_pct from marks) does a
-    # matured, proven-regime track become forward-ready + armable.
+    # Only once REAL net-positive forward P&L accrues (return_pct from marks) AND the track has actually traded
+    # forward (>= 1 real paper fill) does a matured, proven-regime track become forward-ready + armable.
     finder.store.rows("UPDATE tracks SET return_pct = ? WHERE strategy_version_id = ?", ("3.5", vid))
+    finder.store.rows(
+        "INSERT INTO runs(id, strategy_version_id, mode, venue_id, seed, started_at, status) "
+        "VALUES ('r-fp', ?, 'sandbox', 'binance', 1, ?, 'completed')", (vid, now.isoformat()))
+    finder.store.rows(
+        "INSERT INTO executions(id, run_id, strategy_version_id, instrument_id, venue_id, side, qty, price, fee, "
+        "slippage, order_type, is_paper, ts, fill_log) "
+        "VALUES ('e-fp', 'r-fp', ?, 'binance:BTCUSDT', 'binance', 'buy', '1', '100', '0.1', '0', 'market', 1, ?, '{}')",
+        (vid, now.isoformat()))
     matured = live_eligibility_verdict(
         finder.store, vid, _bull_bars(), now=now + timedelta(days=PAPER_MIN_DAYS + 5)
     )

@@ -95,13 +95,44 @@ class _ExoticStub:
         return self._kp
 
 
+class _CoinGeckoStub:
+    """Stub coingecko bridge carrying a `_fetcher` the catalog closure injects into the source. Returns a
+    market_chart-shaped payload for the per-coin metrics (the same wide payload for every metric/coin)."""
+
+    def __init__(self, n_days: int) -> None:
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        rows = [[int((base + timedelta(days=i)).timestamp() * 1000), 1_000.0 + i] for i in range(n_days)]
+        # market_chart returns BOTH keys; the source reads whichever the metric maps to.
+        self._payload = {"market_caps": rows, "total_volumes": rows}
+
+    def _fetcher(self, _url: str) -> dict:
+        return self._payload
+
+
+class _GdeltCountsStub:
+    """Stub gdelt_counts bridge carrying a `_fetcher` the catalog closure injects into the source."""
+
+    def __init__(self, n_days: int) -> None:
+        base = datetime(2024, 1, 1, tzinfo=UTC)
+        data = [
+            {"date": (base + timedelta(days=i)).strftime("%Y%m%dT000000Z"), "value": 100 + i}
+            for i in range(n_days)
+        ]
+        self._payload = {"timeline": [{"series": "vol", "data": data}]}
+
+    def _fetcher(self, _url: str) -> dict:
+        return self._payload
+
+
 class _Providers:
     """Minimal duck-typed Providers carrying only the backfill seams the closures read."""
 
-    def __init__(self, *, weather=None, wiki_pageviews=None, exotic_controls=None) -> None:
+    def __init__(self, *, weather=None, wiki_pageviews=None, exotic_controls=None, coingecko=None, gdelt_counts=None) -> None:
         self.weather = weather
         self.wiki_pageviews = wiki_pageviews
         self.exotic_controls = exotic_controls
+        self.coingecko = coingecko
+        self.gdelt_counts = gdelt_counts
 
 
 # --------------------------------------------------------------------------- weather
@@ -163,6 +194,44 @@ def test_exotic_controls_backfill_returns_hundreds(tmp_path):
             assert p.available_at <= _NOW
     again = mgr.backfill("exotic_controls", days=400, symbols=["MARKET"])
     assert again["results"]["noaa_kp_index"]["written"] == 0
+
+
+# --------------------------------------------------------------------------- coingecko
+
+
+def test_coingecko_backfill_returns_deep_per_coin_series(tmp_path):
+    mgr = _manager(tmp_path, _Providers(coingecko=_CoinGeckoStub(n_days=200)))
+    result = mgr.backfill("coingecko", days=400, symbols=["BTCUSDT"])
+    assert result["kind"] == "alt_history"
+    # Per-coin daily series backfill DEEP (the whole reason this exists), not one snapshot/pass.
+    for metric in ("cg_market_cap", "cg_total_volume"):
+        r = result["results"][metric]
+        assert r["written"] > 100, f"{metric} should be deep, got {r['written']}"
+        stored = mgr._get_store().read_asof("coingecko", "BTCUSDT", metric, _NOW)
+        assert len(stored) == r["written"]
+        for p in stored:
+            assert p.available_at <= _NOW
+            assert p.available_at > p.ts  # PIT: obs day stamped distinctly from the +1d availability
+    again = mgr.backfill("coingecko", days=400, symbols=["BTCUSDT"])
+    assert again["results"]["cg_market_cap"]["written"] == 0  # idempotent
+
+
+# --------------------------------------------------------------------------- gdelt counts
+
+
+def test_gdelt_counts_backfill_returns_deep_per_symbol_series(tmp_path):
+    mgr = _manager(tmp_path, _Providers(gdelt_counts=_GdeltCountsStub(n_days=200)))
+    result = mgr.backfill("gdelt_counts", days=400, symbols=["BTCUSDT"])
+    assert result["kind"] == "alt_history"
+    r = result["results"]["gdelt_news_volume"]
+    assert r["written"] > 100  # deep history, not a single snapshot
+    stored = mgr._get_store().read_asof("gdelt_counts", "BTCUSDT", "gdelt_news_volume", _NOW)
+    assert len(stored) == r["written"]
+    for p in stored:
+        assert p.available_at <= _NOW
+        assert p.available_at > p.ts  # PIT: obs day stamped distinctly from the +1d availability
+    again = mgr.backfill("gdelt_counts", days=400, symbols=["BTCUSDT"])
+    assert again["results"]["gdelt_news_volume"]["written"] == 0  # idempotent
 
 
 def test_backfill_without_seam_does_not_crash(tmp_path):

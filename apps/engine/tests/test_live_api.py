@@ -225,10 +225,12 @@ def _client_with_keys(tmp_path, monkeypatch):
     return TestClient(app_mod.app), store
 
 
-def _seed_survivor(store: Store, vid: str, *, age_days: float, net_pct: float, proven=("chop",)) -> None:
+def _seed_survivor(store: Store, vid: str, *, age_days: float, net_pct: float, proven=("chop",), fills: int = 1) -> None:
     """A gate-passed paper survivor WITH a track: strategies + strategy_versions(paper) +
     backtests(passed_gates=1) + a tracks row (net-of-fee return) + a track_opened event whose ts is the
-    paper clock origin (backdated `age_days`) carrying the proven-regime passport."""
+    paper clock origin (backdated `age_days`) carrying the proven-regime passport, and `fills` REAL forward
+    paper fills (is_paper=1, after the origin) — live-eligibility now requires the track actually traded
+    forward, not just aged + net-positive (default 1; pass 0 to simulate a never-traded track)."""
     now = datetime.now(tz=UTC)
     sid = store.insert("strategies", {"name": f"s-{vid}", "thesis": "t", "origin": "seed", "created_at": utcnow()})
     store.insert(
@@ -255,12 +257,24 @@ def _seed_survivor(store: Store, vid: str, *, age_days: float, net_pct: float, p
             "equity": str(100000 * (1 + net_pct / 100)), "return_pct": str(net_pct), "updated_at": utcnow(),
         },
     )
-    ts = (now - timedelta(days=age_days)).isoformat()
+    origin = now - timedelta(days=age_days)
+    ts = origin.isoformat()
     with store.batch() as w:
         w.execute(
             "INSERT INTO events(ts, actor, kind, ref_type, ref_id, payload) VALUES (?, 'master', 'track_opened', 'strategy_version', ?, ?)",
             (ts, vid, json.dumps({"proven_regimes": list(proven)})),
         )
+        if fills > 0:
+            w.execute(
+                "INSERT INTO runs(id, strategy_version_id, mode, venue_id, seed, started_at, status) VALUES (?, ?, 'sandbox', 'binance', 1, ?, 'completed')",
+                (f"run-{vid}", vid, ts),
+            )
+            for i in range(fills):
+                w.execute(
+                    "INSERT INTO executions(id, run_id, strategy_version_id, instrument_id, venue_id, side, qty, price, fee, slippage, order_type, is_paper, ts, fill_log) "
+                    "VALUES (?, ?, ?, 'binance:BTCUSDT', 'binance', 'buy', '1', '100', '0.1', '0', 'market', 1, ?, '{}')",
+                    (f"ex-{vid}-{i}", f"run-{vid}", vid, (origin + timedelta(hours=i + 1)).isoformat()),
+                )
 
 
 def _launch_body(vid: str, **over) -> dict:

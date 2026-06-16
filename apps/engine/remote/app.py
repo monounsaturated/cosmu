@@ -91,6 +91,9 @@ _HEAVY = dict(image=image, secrets=[engine_secret], timeout=60 * 60, cpu=4.0, me
 # Lake jobs scan/write the 13.5M-row Parquet hoard (LunarCrush ~99%) — 32GB so a partitioned COPY or a deep
 # DuckDB scan never spills to swap. Same image/secret; the R2_* creds in the secret make the lake reachable.
 _LAKE = dict(image=image, secrets=[engine_secret], timeout=60 * 60, cpu=4.0, memory=32768)
+# Light profile for the I/O-bound / cheap-probe schedules (ingest, mark, cost, heartbeat) — keeps the fleet's
+# Modal spend small (these aren't compute, they're network + a few queries). gate_sweep stays _HEAVY.
+_LIGHT = dict(image=image, secrets=[engine_secret], timeout=20 * 60, cpu=1.0, memory=2048)
 
 
 def _run(module_args: list[str], *, extra_env: dict[str, str] | None = None) -> int:
@@ -114,25 +117,59 @@ def gate_sweep() -> int:
     return _run(["cosmu.master.scheduler"])
 
 
-@app.function(**_HEAVY)
+@app.function(schedule=modal.Cron("0 * * * *"), **_LIGHT)
 def ingest() -> int:
-    """Free-data INGEST ONLY (mirrors the 6h Railway cron). The leaky cross-asset gate is DEFAULT OFF;
+    """Free-data INGEST ONLY (hourly — replaces the dead Railway */15 cron; the canary the heartbeat watches).
+    The leaky cross-asset gate is DEFAULT OFF;
     pass --cross-asset-gate to opt in. Honest BH-FDR gate path (promote_cohort) runs via gate_sweep."""
     return _run(["cosmu.research.loop", "--ingest"])
 
 
-@app.function(**_HEAVY)
+@app.function(**_LIGHT)
 def paper_mark() -> int:
-    """Re-mark held SIM positions against the latest real close (paper clock, paper-only, no orders)."""
+    """Re-mark held SIM positions against the latest real close (paper clock, paper-only, no orders).
+    Scheduled via the combined `tick` (Modal Free = 5 schedules max); also runnable on-demand."""
     return _run(["cosmu.orchestrator.loop"])
 
 
-@app.function(schedule=modal.Cron("0 */6 * * *"), **_HEAVY)
+@app.function(**_HEAVY)
+def arm_fleet() -> int:
+    """Re-arm + advance the documented equity cohort (Faber/ADM/VAA/PAA/DAA/…) so the forward paper clock
+    ticks for the arm-based tracks too (paper_mark only re-marks position-backed tracks). Scheduled via the
+    combined `tick`. SIM only — never an order."""
+    return _run(["cosmu.research.arm_fleet"])
+
+
+@app.function(**_LIGHT)
 def cost_refresh() -> int:
     """Fetch live vendor spend (OpenRouter, Railway, Modal, xAI ledger), check budget thresholds,
-    emit Slack alerts + recommendation rows. Runs every 6 h via Modal Cron (same cadence as the
-    Railway cron) so vendor_actuals stay fresh in the /costs dashboard."""
+    emit Slack alerts + recommendation rows. Mirrors the 6h Railway cron."""
     return _run(["cosmu.costs.refresh"])
+
+
+@app.function(schedule=modal.Cron("30 * * * *"), **_LIGHT)
+def heartbeat() -> int:
+    """HOURLY dead-man's-switch (:30, after the :00 ingest): Slack-alert if the fleet's ingest/tick/mark signals
+    go stale — the alarm that was MISSING when the Railway crons died silently for ~10 days. Read-only; exits
+    non-zero on a stale fleet so the Modal run also flags red. Logic in cosmu/ops/heartbeat.py."""
+    return _run(["cosmu.ops.heartbeat"])
+
+
+@app.function(schedule=modal.Cron("0 */4 * * *"), **_HEAVY)
+def tick() -> int:
+    """EVERY 4h — the full forward cycle in ONE scheduled slot (Modal Free caps schedules at 5, so discovery +
+    paper clock + cohort re-arm share this slot). Discovery (author → deterministic gate/FDR → fund SIM
+    survivors) + advance the paper clock (mark held positions + re-arm the documented equity cohort), and refresh
+    vendor-cost budgets once/day. SIM only by invariant — NEVER an order. The standalone gate_sweep / paper_mark /
+    arm_fleet / cost_refresh functions stay for on-demand `modal run`."""
+    from datetime import UTC, datetime
+
+    rc = _run(["cosmu.master.scheduler"])   # discovery: author → gate/FDR → fund SIM survivors
+    _run(["cosmu.orchestrator.loop"])        # paper clock: mark held positions to the latest real close
+    _run(["cosmu.research.arm_fleet"])       # advance the documented equity cohort's forward clock
+    if datetime.now(UTC).hour < 4:           # ~once/day (the 00:00 UTC tick): vendor-cost budget alerts
+        _run(["cosmu.costs.refresh"])
+    return rc
 
 
 @app.function(**_HEAVY)
@@ -251,11 +288,14 @@ def main(job: str = "gate_sweep", module: str = "", args: str = "", apply: bool 
     For prune pass --apply to actually delete (default dry-run) and optional --hot-window-days N.
     export_lake refreshes the R2 Parquet lake; lake_smoke verifies R2 read access."""
     jobs = {
+        "tick": tick,
         "gate_sweep": gate_sweep,
         "ingest": ingest,
         "paper_mark": paper_mark,
         "forward_mark": paper_mark,  # legacy alias (pre-2026-06-11 vocabulary) — same job
+        "arm_fleet": arm_fleet,
         "cost_refresh": cost_refresh,
+        "heartbeat": heartbeat,
         "perp_gate_sweep": perp_gate_sweep,
         "sync_lake": sync_lake,
         "daily_backup": daily_backup,

@@ -74,7 +74,9 @@ export function LifecycleTrace({ versionId }: { versionId: string }) {
       </div>
       {state === "loading" ? (
         <div className="skel" style={{ height: 64 }} />
-      ) : state === "error" ? (
+      ) : state === "error" || (data && (!data.paper_maturity || !data.live_eligibility)) ? (
+        // A partial readiness payload (the contract types the nested verdicts non-null, but the engine can omit
+        // them) would white-screen LifecycleBody/litIndex on deref — fall back to the honest could-not-load note.
         <p className="quiet" style={{ fontSize: 11 }}>Could not load the lifecycle trace — the engine did not respond. Nothing is fabricated.</p>
       ) : data ? (
         <LifecycleBody data={data} />
