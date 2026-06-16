@@ -392,15 +392,17 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     # xAI/Grok Twitter sentiment (key-gated: no-op without XAI_API_KEY; market-wide, LLM scores text only).
     # PAID-call throttle: skipped while the stored series is fresher than llm_source_min_interval_minutes —
     # the 15-min cron must not turn LiveSearch+scoring into 96 paid pulls/day.
+    # NOTE: only twitter_sentiment is ingested. twitter_influencer_sentiment is DISABLED (feature_registry.py:
+    # InfluencerHitRateStore stub returns 0.5 for all authors → byte-identical duplicate → gate N inflation).
+    # Re-enable once the real hit-rate store is wired (BACKLOG.md:65).
     llm_min_iv = get_settings().llm_source_min_interval_minutes
-    for _tw_metric in ("twitter_sentiment", "twitter_influencer_sentiment"):
-        if _llm_source_fresh(store, "xai", _tw_metric, llm_min_iv):
-            counts[_tw_metric] = 0
-            continue
-        counts[_tw_metric] = _safe(
-            _tw_metric,
-            lambda m=_tw_metric: ingest_market_wide_numeric(
-                store, p.xai_twitter, source_metric=m, stored_metric=m, provider_name="xai"
+    if _llm_source_fresh(store, "xai", "twitter_sentiment", llm_min_iv):
+        counts["twitter_sentiment"] = 0
+    else:
+        counts["twitter_sentiment"] = _safe(
+            "twitter_sentiment",
+            lambda: ingest_market_wide_numeric(
+                store, p.xai_twitter, source_metric="twitter_sentiment", stored_metric="twitter_sentiment", provider_name="xai"
             ),
         )
     # Event/news scorer: typed, dated, point-in-time signal (sign × magnitude). The LLM standardizes text

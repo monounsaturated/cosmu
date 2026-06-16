@@ -47,13 +47,20 @@ def test_scan_universe_reads_the_registry_not_a_hardcoded_list():
 
 def test_scan_universe_picks_up_the_ten_new_altdata_features():
     # the 10 newly-registered alt-data sources must all be in the scan's universe (× asset × horizon downstream).
+    # NOTE: gtrends_search_interest is QUARANTINED (revision_safety hazard: Google Trends rescales history
+    # → look-ahead contamination). It is excluded from feature_names() / scan_universe() until profile-source
+    # validates revision_safety = PASS. All other 9 new alt-data features remain enabled and scannable.
     universe = {name for name, _ in scan_universe()}
     new_altdata = {
         "weather_hub_stress", "astro_lunar_phase", "wiki_pageviews", "usgs_earthquake_count",
-        "rss_news_count", "gtrends_search_interest", "fear_greed", "opensky_daily_flights",
+        "rss_news_count", "fear_greed", "opensky_daily_flights",
         "reddit_post_volume", "cryptopanic_bullish_votes",
     }
     assert new_altdata <= universe, f"new alt-data not scanned: {new_altdata - universe}"
+    # gtrends is quarantined → must NOT be in the scan universe
+    assert "gtrends_search_interest" not in universe, (
+        "gtrends_search_interest is quarantined (revision_safety hazard) and must not be scanned"
+    )
 
 
 def test_scan_universe_excludes_disabled_and_supports_subset_filter():

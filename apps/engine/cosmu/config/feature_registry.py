@@ -170,6 +170,11 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
             "Accounts with higher empirical accuracy carry more weight. tier1 + low-confidence until validated OOS."
         ),
         transform_version=TWITTER_TRANSFORM_VERSION,
+        # DISABLED: the InfluencerHitRateStore (xai_twitter.py:113) is still a stub returning 0.5 for every
+        # account → twitter_influencer_sentiment is byte-identical to twitter_sentiment at all times, inflating
+        # the gate's effective N (two entries, one signal). Re-enable once the real hit-rate store is wired
+        # (BACKLOG.md:65: route through mind/authority.py social_authority or populate influencer_hit_rates table).
+        enabled=False,
     ),
     # Event/news scorer: a typed, dated, point-in-time signal with sign [-1,+1] and magnitude [0,1].
     # The LLM (when keyed) standardizes/scores the headline text — ONLY at ingest, NEVER on the gate path.
@@ -409,6 +414,14 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
             "fresh current snapshot). Low-confidence — must earn OOS evidence before any live strategy."
         ),
         transform_version="gtrends-weekly-v1",
+        # QUARANTINED (revision_safety): Google Trends rescales its ENTIRE historical series every time a new
+        # data point is fetched (the relative index is normalised within the query window). This means a bar's
+        # gtrends value as seen TODAY differs from what was knowable when that bar closed → silent look-ahead.
+        # The data is still INGESTED (for future profile-source audit and paper alerting), but the Gate MUST NOT
+        # use this feature in backtests until profile-source validates revision_safety = PASS. Disabling here
+        # removes it from feature_names() so the lab author/spec compiler cannot reference it in live Gate runs.
+        # Re-enable only after a passing profile-source audit documents revision_safety = PASS.
+        enabled=False,
     ),
     # --- OpenSky daily flight count (free OSINT, thin history; market-wide; available_at = day+1) ---
     FeatureDefinition(
