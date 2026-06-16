@@ -70,6 +70,63 @@ def test_finder_screens_ranks_by_profit_factor_and_counts_trials(tmp_path):
     assert n_trials == report.screened
 
 
+def test_screen_charges_thin_book_venue_depth_not_global_default(tmp_path, monkeypatch):
+    """The screen must price each variant at its VENUE's market depth, not the global DEFAULT_SLIPPAGE_BPS=5 /
+    DEFAULT_IMPACT_BPS=50. A thin-book venue (Polymarket 30/150) is the adversarial case: before the fix the
+    backtest silently fell back to 5/50, screening it ~6x too cheap on impact. This spies on the backtest the
+    screen invokes and asserts the venue's OWN depth is what gets charged (and that it is NOT the global 5/50)."""
+    import cosmu.lab.finder as finder_mod
+
+    finder = _finder(tmp_path)
+    spec = seed_orb_fvg_spec()
+    variant = build_grid(spec, max_variants=4)[0]
+    market = {sym: _FixtureBars().fetch_bars(sym, spec.horizon.bar_size, limit=280) for sym in ("BTCUSDT",)}
+
+    thin = default_catalog().venue("polymarket")
+    assert (thin.slippage_bps, thin.impact_bps) == (Decimal("30"), Decimal("150")), "fixture venue moved"
+
+    captured: dict[str, Decimal] = {}
+    real_backtest = finder_mod.run_strategy_backtest_detailed
+
+    def _spy(*args, **kwargs):
+        captured["slippage_bps"] = kwargs.get("slippage_bps")
+        captured["impact_bps"] = kwargs.get("impact_bps")
+        return real_backtest(*args, **kwargs)
+
+    monkeypatch.setattr(finder_mod, "run_strategy_backtest_detailed", _spy)
+
+    out = finder._screen(spec, variant, market, thin, None, source="finder", label=spec.name)
+    assert out is not None, "fixture variant must screen (valid grid point)"
+
+    # The screen charged the VENUE's depth, not the global fallback.
+    assert captured["slippage_bps"] == thin.slippage_bps == Decimal("30")
+    assert captured["impact_bps"] == thin.impact_bps == Decimal("150")
+    # And explicitly NOT the global default the screen used to fall back to.
+    from cosmu.data.backtest import DEFAULT_IMPACT_BPS, DEFAULT_SLIPPAGE_BPS
+
+    assert captured["slippage_bps"] != DEFAULT_SLIPPAGE_BPS  # was the silent 5bps fallback
+    assert captured["impact_bps"] != DEFAULT_IMPACT_BPS      # was the silent 50bps fallback
+
+
+def test_screen_records_venue_depth_charged_on_backtest_row(tmp_path):
+    """The persisted backtest cost row must record the EXACT depth charged (the promotion freeze pins it so live
+    can detect a venue repricing), never the global DEFAULT_*. A Binance crypto spec resolves to Binance depth
+    (5/40) — note impact 40 != the global 50, so this row proves the venue value flows through to persistence."""
+    finder = _finder(tmp_path)
+    finder.find(seed_orb_fvg_spec(), max_variants=8)
+
+    binance = default_catalog().venue("binance")
+    rows = finder.store.rows(
+        "SELECT slippage_bps, impact_bps, venue_id FROM backtests WHERE kind = 'screen'"
+    )
+    assert rows, "the screen must persist at least one backtest cost row"
+    for r in rows:
+        assert r["venue_id"] == "binance"
+        # Recorded the venue's OWN depth, not the global default (impact 40 is the tell: != global 50).
+        assert Decimal(str(r["slippage_bps"])) == binance.slippage_bps == Decimal("5")
+        assert Decimal(str(r["impact_bps"])) == binance.impact_bps == Decimal("40")
+
+
 def test_finder_persists_config_library_and_holdout_before_promotion(tmp_path):
     finder = _finder(tmp_path)
     report = finder.find(seed_orb_fvg_spec(), max_variants=10)
