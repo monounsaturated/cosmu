@@ -37,6 +37,7 @@ from cosmu.master.execution import (
     reconcile_fills,
 )
 from cosmu.master.portfolio import Portfolio, PositionView
+from cosmu.master.sizing import size_fraction
 from cosmu.orchestrator.loop import PricingRouter, _instrument_venue
 from cosmu.spine.venue import VenueCatalog, default_catalog
 from cosmu.strategy.spec import StrategySpec
@@ -406,7 +407,9 @@ def step_tracks(
             setup_ok = _setup_entry_gate(m.spec, m.params, highs, lows, closes)
             if not (setup_ok[i] and _entry_signal(m.spec, m.params, features, i)):
                 continue
-            qty = (per_track_capital / mark).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
+            # SIZING PARITY (audit #7 / T0): deploy the SAME fraction the gate screened on.
+            frac = Decimal(str(size_fraction(m.spec)))
+            qty = (per_track_capital * frac / mark).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
             if qty <= 0:
                 continue
             coid = f"fstep-{m.version_id}-open-{bars[-1].ts.isoformat()}"

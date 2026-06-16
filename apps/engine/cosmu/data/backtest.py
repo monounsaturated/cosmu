@@ -695,8 +695,10 @@ def _fvg_retest_signal(
 
 
 def _entry_notional(cash: float, spec: StrategySpec, size_multiplier: float) -> float:
-    frac = max(0.0, min(float(spec.risk.max_position_pct), 1.0)) * max(0.0, min(float(spec.risk.conviction), 1.0))
-    return max(0.0, min(cash, cash * frac * max(0.0, size_multiplier)))
+    # size_fraction(spec) is the SHARED fraction — identical to what paper_step/live deploy (audit #7 parity).
+    # size_multiplier is a backtest-only capacity/meta tilt (1.0 in the production gate path).
+    from cosmu.master.sizing import size_fraction
+    return max(0.0, min(cash, cash * size_fraction(spec) * max(0.0, size_multiplier)))
 
 
 def _slippage(base_slip: float, impact: float, notional: float, bar: Bar) -> float:
