@@ -2,7 +2,9 @@
 
 **Author:** Opus 4.8 agent (video-inspired strategy task)
 **Branch:** `feat/rho-bar-wiring`
-**Status:** ✅ Implemented, unit-tested, locally green. **Committed as one isolated, scoped commit** (see `git log` for `feat(strategy): bb_width ...`). NOT pushed, NOT merged — left for the master agent to integrate.
+**Status:** ✅ Implemented, unit-tested, locally green. **Committed as TWO isolated, scoped commits** (`git log`): `c6c74df` (bb_width) and `5fbb5fc` (range_position). NOT pushed, NOT merged — left for the master agent to integrate.
+
+> **Update (2nd increment):** A second feature `range_position` (Donchian/stochastic channel position, bounded [0,1]) + one demonstrating spec (`range-floor-accumulation-...`) landed as commit `5fbb5fc`, on top of bb_width. Same pattern (feature in backtest.py `_BAR_TA_FEATURES`/`_feature_matrix`/`_range_position` + registry line + seed-script spec + `tests/test_range_position.py`). 8 unit tests total (bb_width+range_position), seed script validates 10/10, registry↔route guard green at the committed state. NOTE: a concurrent OSINT agent committed `a903964` (perp-basis) BETWEEN my two commits and is editing `feature_registry.py`/`store.py`/`catalog.py` etc.; I staged ONLY my `range_position` hunk (via `git apply --cached`) so my commit does NOT contain their insider_buy_ratio/jet_colocation/sec_edgar work — verified `git show 5fbb5fc` is clean. Their uncommitted work remains in the working tree, preserved.
 
 ---
 
