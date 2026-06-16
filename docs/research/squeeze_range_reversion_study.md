@@ -30,6 +30,23 @@ Over a window where buy-&-hold lost **−48.6%**, both specs sat at **~flat P&L 
 2. Do **not** add more squeeze/range-family specs — that lane is measured and dry on spot.
 3. The high-value next lever is **not** more entry features; it is a **short/perp venue** (so the regime-avoidance becomes a profit) or the locked research direction (xsec momentum + funding-contrarian + meta-labeling).
 
+## Follow-up — would a SHORT leg have monetized the down-trend avoidance? No.
+
+The honest aside above tempts a narrative: "the reversion specs *avoided* the −48.6% crash; if we had a short venue we'd have *profited* from it." Tested directly (trend-following short, `direction=-1`, ADX-high + negative-momentum → short; 48-variant grid; same 8 symbols/bars/fees), with a **passive-short beta benchmark** (near-always-in short, same engine) as the control:
+
+| | Passive short (beta) | Trend-following short (timed) |
+|---|---|---|
+| net OOS return | **+3.88%** | +2.97% (best of 48) |
+| Sharpe | **0.489** | 0.418 |
+| max drawdown | 13.5% | 10.9% |
+| profit_factor | **1.57** | 1.20 |
+| holdout DSR | 0.271 | 0.415 |
+| variants net-positive | 1/1 | **8/48** |
+
+**The timed short LOSES to passively holding short** (lower return + Sharpe; only 8/48 variants net-positive). There is **no short-timing alpha** — the whole positive number is **down-window beta**, and a permanent crypto short is a long-run loser, so that beta is a window-selection artifact, not an edge. Both holdouts sit far below the 0.95 gate bar.
+
+**Conclusion:** adding a short venue would NOT have turned this family profitable — the down-trend return is beta you can't time, not alpha. This sharpens the direction toward **market-neutral cross-sectional alpha** (xsec momentum + funding-contrarian + meta-labeling — relative skill, not directional beta), not toward a directional short leg for range strategies.
+
 ## Repro
 
 `/tmp/squeeze_range_study.py` (one-off; public klines, unverified SSL for the sandbox proxy). Not committed — re-derivable from this note. A `cost_ratio` reporting quirk (the metric field reads 0.000 even though fees demonstrably flow through `oos_return`/PF) is worth a separate look but does not affect this verdict.
