@@ -212,6 +212,28 @@ SPECS: list[dict] = [
             "time_stop": {"kind": "int", "lo": 1, "hi": 6, "step": 1},
         },
     },
+    {
+        "name": "Range-floor accumulation in a compressed range (regime-break protected)",
+        "rationale": "The grid-bot mental model made honest: in a COMPRESSED range (low Bollinger bandwidth), buy when price sits near the FLOOR of its recent channel (low range_position) and fade the bounce near the CEILING. range_position is extreme-relative and bounded [0,1] — distinct from the squeeze-release spec's mean-relative bb_z washout, so the two fire at different times (a fast drop is deeply bb_z-negative mid-channel but only range_position-low at the actual floor). The disconfirmer is the exit grid bots lack: if ADX spikes the range has BROKEN into a trend, so exit rather than accumulating through the floor.",
+        "catalyst": "price at the floor of a compressed (squeezed) trading range",
+        "universe": _u(), "horizon": {"bar_size": "4h", "min_hold_days": 1, "max_hold_days": 6},
+        "entry": [
+            {"feature": {"name": "bb_width"}, "op": "lt", "threshold": {"param": "squeeze_ceiling"}},
+            {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "floor_pos"}},
+        ],
+        "exit": {"stop_loss": {"param": "stop"}, "take_profit": {"param": "tp"}, "time_stop_days": {"param": "time_stop"},
+                 "signal_exits": [
+                     {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "ceil_pos"}},
+                     {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_break"}},
+                 ]},
+        "risk": _risk(),
+        "param_space": {
+            "squeeze_ceiling": {"kind": "float", "lo": 0.04, "hi": 0.20}, "floor_pos": {"kind": "float", "lo": 0.05, "hi": 0.30},
+            "ceil_pos": {"kind": "float", "lo": 0.60, "hi": 0.90}, "adx_break": {"kind": "float", "lo": 25, "hi": 40},
+            "stop": {"kind": "float", "lo": 0.04, "hi": 0.14}, "tp": {"kind": "float", "lo": 0.05, "hi": 0.20},
+            "time_stop": {"kind": "int", "lo": 1, "hi": 6, "step": 1},
+        },
+    },
 ]
 
 

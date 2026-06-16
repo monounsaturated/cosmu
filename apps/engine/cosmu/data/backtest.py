@@ -810,7 +810,7 @@ def sum_funding_per_bar(points: list[AltDataPoint], bars: list[Bar]) -> dict[str
 
 
 # TA features computed directly, per-symbol, from the bar series in `_feature_matrix` below.
-_BAR_TA_FEATURES = frozenset({"ret_Nd", "rsi", "bb_z", "vol_realized", "atr", "adx", "bb_width"})
+_BAR_TA_FEATURES = frozenset({"ret_Nd", "rsi", "bb_z", "vol_realized", "atr", "adx", "bb_width", "range_position"})
 
 # COHORT-COMPUTED features: real, point-in-time features that are NOT ingested into the alt store and NOT
 # bar-TA either — they are COMPUTED by a research cohort and handed to the backtest via the caller's `alt`
@@ -865,6 +865,8 @@ def _feature_matrix(
             out[name] = _atr(highs, lows, closes, lookback)
         elif name == "adx":
             out[name] = _adx(highs, lows, closes, lookback)
+        elif name == "range_position":
+            out[name] = _range_position(highs, lows, closes, lookback)
         else:
             # Alt-data feature (funding_rate, etc.): read the point-in-time series joined by the caller,
             # looked up per bar timestamp. Absent series → None (the condition then can't fire — honest).
@@ -1146,6 +1148,22 @@ def _bb_width(values: list[float], lookback: int) -> list[float | None]:
         mean = statistics.fmean(window)
         std = statistics.pstdev(window)
         out[idx] = (4.0 * std / mean) if mean else 0.0
+    return out
+
+
+def _range_position(highs: list[float], lows: list[float], closes: list[float], lookback: int) -> list[float | None]:
+    """Donchian / stochastic channel position: (close − rolling_low) / (rolling_high − rolling_low) over the
+    trailing `lookback` bars, bounded in [0, 1]. 0 = sitting on the FLOOR of the recent range (the grid-bot's
+    accumulation zone — buy the dip toward the low), 1 = at the CEILING (fade the bounce). Distinct from `_bb_z`,
+    which is mean-relative and σ-normalized: this is EXTREME-relative and bounded, the literal 'where in the
+    range is price' read, so its thresholds are interpretable deciles of the channel. Uses intrabar high/low
+    (same as `_atr`/`_adx`). None until `lookback` bars exist; 0.5 on a flat channel (zero width)."""
+    out: list[float | None] = [None] * len(closes)
+    for idx in range(lookback, len(closes)):
+        window_high = max(highs[idx - lookback + 1 : idx + 1])
+        window_low = min(lows[idx - lookback + 1 : idx + 1])
+        width = window_high - window_low
+        out[idx] = (closes[idx] - window_low) / width if width else 0.5
     return out
 
 
