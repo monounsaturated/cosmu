@@ -19,20 +19,20 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import Settings, get_settings
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
+from cosmu.master.tracks import open_paper_track
 from cosmu.research import equity_risk_parity as rp
 from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
-import os
-from cosmu.config.settings import get_settings
 
 STRATEGY_NAME = "Risk Parity (Inverse-Vol SPY/AGG/GLD, Monthly)"
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strategy track, labeled honestly
@@ -197,17 +197,9 @@ def arm(store: Store | None = None) -> dict:
     if not store.row("SELECT id FROM backtests WHERE strategy_version_id = ? AND kind = 'screen'", (version_id,)):
         store.insert("backtests", _backtest_row(version_id, v))
     if not store.row("SELECT id FROM tracks WHERE strategy_version_id = ?", (version_id,)):
-        equity0 = TRACK_CAPITAL * (Decimal("1") + Decimal(str(round(v["oos"].total_return, 6))))
-        store.insert(
-            "tracks",
-            {
-                "strategy_version_id": version_id,
-                "starting_capital": str(TRACK_CAPITAL),
-                "equity": str(equity0.quantize(Decimal("0.01"))),
-                "return_pct": str((Decimal(str(round(v["oos"].total_return, 6))) * Decimal("100")).quantize(Decimal("0.01"))),
-                "updated_at": now,
-            },
-        )
+        # Born HONEST: equity = starting_capital, return_pct = 0 (master/tracks.open_paper_track). The OOS/
+        # holdout stays in backtests.oos_return; the paper clock advances the forward columns from real marks.
+        open_paper_track(store, version_id=version_id, starting_capital=TRACK_CAPITAL)
     if not store.row("SELECT id FROM events WHERE kind = 'track_opened' AND ref_id = ?", (version_id,)):
         store.append_event(
             actor="research",

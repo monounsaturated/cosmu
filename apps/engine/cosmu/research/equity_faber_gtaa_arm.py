@@ -22,15 +22,15 @@ import sys
 from decimal import ROUND_DOWN, Decimal
 from types import SimpleNamespace
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import Settings, get_settings
 from cosmu.data.market import YahooDailyBarsProvider
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
+from cosmu.master.tracks import open_paper_track
 from cosmu.research import equity_faber_gtaa as gtaa
 from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
-from cosmu.config.settings import get_settings
 
 STRATEGY_NAME = "Faber GTAA (5-asset 10mo SMA timing)"  # UNIQUE — does not collide with GEM or siblings
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strategy track, labeled honestly
@@ -204,17 +204,7 @@ def arm(store: Store | None = None) -> dict:
 
     # track — backfill if missing
     if store.row("SELECT 1 FROM tracks WHERE strategy_version_id = ? LIMIT 1", (version_id,)) is None:
-        equity0 = TRACK_CAPITAL * (Decimal("1") + Decimal(str(round(v["oos"].total_return, 6))))
-        store.insert(
-            "tracks",
-            {
-                "strategy_version_id": version_id,
-                "starting_capital": str(TRACK_CAPITAL),
-                "equity": str(equity0.quantize(Decimal("0.01"))),
-                "return_pct": str((Decimal(str(round(v["oos"].total_return, 6))) * Decimal("100")).quantize(Decimal("0.01"))),
-                "updated_at": now,
-            },
-        )
+        open_paper_track(store, version_id=version_id, starting_capital=TRACK_CAPITAL)
         print("  + backfilled track row")
 
     # track_opened event (the paper clock origin + proven-regime passport, read by master/live_eligibility).

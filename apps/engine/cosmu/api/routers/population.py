@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from cosmu.api._shared import ORIGIN_TO_LANE, store
 from cosmu.api.models import GraveyardRow, PopulationResponse
+from cosmu.knowledge.lifecycle_status import FUNDED_STATUSES
 
 router = APIRouter()
 
@@ -14,7 +15,7 @@ router = APIRouter()
 def population() -> PopulationResponse:
     counts = store.rows("SELECT status, origin, COUNT(*) AS n FROM strategy_versions GROUP BY status, origin")
     total = sum(int(r["n"]) for r in counts)
-    paper = sum(int(r["n"]) for r in counts if r["status"] in ("paper", "forward_test", "live"))
+    paper = sum(int(r["n"]) for r in counts if r["status"] in FUNDED_STATUSES)
     live = sum(int(r["n"]) for r in counts if r["status"] == "live")
     killed = sum(int(r["n"]) for r in counts if r["status"] == "killed")
     by_origin: dict[str, int] = {}

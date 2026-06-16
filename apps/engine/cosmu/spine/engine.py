@@ -13,6 +13,7 @@ from cosmu.config.settings import Settings
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.risk import OrderIntent, validate_order
 from cosmu.master.scorer import BacktestMetrics, score
+from cosmu.master.tracks import open_paper_track
 from cosmu.spine.venue import VenueCatalog, default_catalog
 
 
@@ -192,20 +193,18 @@ class EngineFacade:
             },
         )
         if verdict.passed:
-            # The track is seeded at the STANDARDIZED standalone size (sim_track_capital — what the funder will
-            # actually deploy), NOT this run's internal $100k sim bankroll. The forward clock recomputes
-            # return_pct as marked_value / starting_capital, so a $100k denominator under a $1k funded position
-            # would read every spine track as ~-99% forever. Same convention as finder/arms.
+            # Born HONEST at the STANDARDIZED standalone size (sim_track_capital — what the funder deploys),
+            # NOT this run's internal $100k sim bankroll. equity = starting_capital, return_pct = 0: the OOS
+            # stays in backtests.oos_return and the paper clock advances the forward columns from real marks.
             track_capital = self.store.settings.sim_track_capital
-            self.store.insert(
-                "tracks",
-                {
-                    "strategy_version_id": version_id,
-                    "starting_capital": str(track_capital),
-                    "equity": str((track_capital * (Decimal("1") + net_return)).quantize(Decimal("0.01"))),
-                    "return_pct": str((net_return * Decimal("100")).quantize(Decimal("0.01"))),
-                    "updated_at": utcnow(),
-                },
+            open_paper_track(self.store, version_id=version_id, starting_capital=track_capital)
+        else:
+            # Terminal on gate failure — mirror the canonical lanes (finder.py / evolution/loop.py) so the spine
+            # demo can never strand a version in a non-terminal state. (This is what left "Funding-aware BTC
+            # swing" stuck at status='validating' with passed_gates=0 and no transition-out path.)
+            self.store.rows(
+                "UPDATE strategy_versions SET status = ?, kill_reason = ?, killed_at = ? WHERE id = ?",
+                ("killed", "gate_fail", utcnow(), version_id),
             )
         self.store.rows("UPDATE runs SET status = ?, ended_at = ? WHERE id = ?", ("completed", utcnow(), run_id))
         self.store.append_event(
@@ -270,7 +269,9 @@ class EngineFacade:
                 "code_hash": hashlib.sha256(code.encode()).hexdigest(),
                 "params": {"entry_ret": 0.03, "stop": 0.06, "take": 0.12},
                 "origin": "agent",
-                "status": "validating",
+                # Canonical born-state (matches finder/evolution); _run kills it on gate failure.
+                # 'validating' was a non-canonical orphan value with no transition-out path.
+                "status": "screened",
                 "created_at": utcnow(),
             },
         )

@@ -20,7 +20,11 @@ from decimal import Decimal
 
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
-from cosmu.data.backtest import DEFAULT_IMPACT_BPS, DEFAULT_SLIPPAGE_BPS, run_strategy_backtest_detailed
+from cosmu.data.backtest import (
+    DEFAULT_IMPACT_BPS,
+    DEFAULT_SLIPPAGE_BPS,
+    run_strategy_backtest_detailed,
+)
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.data.universe import CORE_PERP_UNIVERSE
 from cosmu.evolution.loop import fit_params
@@ -32,6 +36,7 @@ from cosmu.master.cohort import promote_cohort
 from cosmu.master.holdout import HoldoutLedger
 from cosmu.master.promotion import freeze_promotion
 from cosmu.master.scorer import BacktestMetrics, TrialStats, cscv_pbo, score
+from cosmu.master.tracks import open_paper_track
 from cosmu.master.trials import register_trial
 from cosmu.ml.regime import proven_regimes
 from cosmu.spine.universe import enabled_universe
@@ -534,18 +539,11 @@ class StrategyFinder:
                 r.version_id = version_id
                 b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, holdout_ok, venue))
                 if promote:
+                    # Born HONEST: equity = starting_capital, return_pct = 0 (master/tracks.open_paper_track).
+                    # The OOS stays in backtests.oos_return; the paper clock advances the forward columns from
+                    # real marks, so a promoted-but-unmarked survivor never shows its backtest as forward P&L.
                     _capital = self.settings.sim_track_capital
-                    equity = _capital * (Decimal("1") + r.metrics.oos_return)
-                    b.insert(
-                        "tracks",
-                        {
-                            "strategy_version_id": version_id,
-                            "starting_capital": str(_capital),
-                            "equity": str(equity.quantize(Decimal("0.01"))),
-                            "return_pct": str((r.metrics.oos_return * Decimal("100")).quantize(Decimal("0.01"))),
-                            "updated_at": utcnow(),
-                        },
-                    )
+                    open_paper_track(b, version_id=version_id, starting_capital=_capital)
                     # The paper clock origin. master/live_eligibility reads the FIRST `track_opened` event for
                     # a version as BOTH its maturity-clock origin (paper_clock_origin) and its proven-regime
                     # passport (proven_regimes_for) — exactly as the evolution loop writes it. Without this a promoted

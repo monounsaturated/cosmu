@@ -6,7 +6,8 @@ from fastapi import APIRouter
 
 from cosmu.adapters.exec.binance import resolve_mode
 from cosmu.api._shared import _portfolio, settings, store
-from cosmu.api.models import CostSlice, OverviewResponse, PortfolioSummaryResponse, Point
+from cosmu.api.models import CostSlice, OverviewResponse, Point, PortfolioSummaryResponse
+from cosmu.knowledge.lifecycle_status import FORWARD_STATUSES, sql_in_list
 
 router = APIRouter()
 
@@ -29,7 +30,7 @@ def overview() -> OverviewResponse:
         alloc_row = store.row(
             "SELECT COALESCE(SUM(CAST(t.starting_capital AS REAL)), 0) AS allocated "
             "FROM tracks t JOIN strategy_versions sv ON sv.id = t.strategy_version_id "
-            "WHERE sv.status IN ('paper', 'forward', 'forward_test')"
+            f"WHERE sv.status IN {sql_in_list(FORWARD_STATUSES)}"
         )
         allocated = float(alloc_row["allocated"]) if alloc_row and alloc_row["allocated"] is not None else 0.0
         curve = [Point(ts=row["ts"], value=allocated + float(row["pnl"])) for row in snapshots]
@@ -63,7 +64,7 @@ def portfolio_summary() -> PortfolioSummaryResponse:
         alloc_row = store.row(
             "SELECT COALESCE(SUM(CAST(t.starting_capital AS REAL)), 0) AS allocated "
             "FROM tracks t JOIN strategy_versions sv ON sv.id = t.strategy_version_id "
-            "WHERE sv.status IN ('paper', 'forward', 'forward_test')"
+            f"WHERE sv.status IN {sql_in_list(FORWARD_STATUSES)}"
         )
         sim_equity = (float(alloc_row["allocated"]) if alloc_row and alloc_row["allocated"] is not None else 0.0) + sim_pnl_net
         live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")

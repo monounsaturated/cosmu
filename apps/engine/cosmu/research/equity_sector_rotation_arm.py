@@ -27,6 +27,7 @@ from cosmu.data.market import YahooDailyBarsProvider
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
+from cosmu.master.tracks import open_paper_track
 from cosmu.research import equity_sector_rotation_taa as taa
 from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
@@ -193,19 +194,9 @@ def arm(store: Store | None = None) -> dict:
         print("  + backtest(screen) row written")
     # track — insert if absent
     if store.row("SELECT id FROM tracks WHERE strategy_version_id=?", (version_id,)) is None:
-        _track_capital = get_settings().sim_track_capital
-        equity0 = _track_capital * (Decimal("1") + Decimal(str(round(v["holdout"].total_return, 6))))
-        store.insert(
-            "tracks",
-            {
-                "strategy_version_id": version_id,
-                "starting_capital": str(_track_capital),
-                "equity": str(equity0.quantize(Decimal("0.01"))),
-                "return_pct": str((Decimal(str(round(v["holdout"].total_return, 6))) * Decimal("100"))
-                                  .quantize(Decimal("0.01"))),
-                "updated_at": now,
-            },
-        )
+        # Born HONEST: equity = starting_capital, return_pct = 0 (master/tracks.open_paper_track). The OOS/
+        # holdout stays in backtests.oos_return; the paper clock advances the forward columns from real marks.
+        open_paper_track(store, version_id=version_id, starting_capital=get_settings().sim_track_capital)
         print("  + tracks row written")
     # track_opened event (the forward-clock origin) — append if absent
     if store.row("SELECT id FROM events WHERE ref_id=? AND kind='track_opened'", (version_id,)) is None:

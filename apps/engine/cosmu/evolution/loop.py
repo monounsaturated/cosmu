@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import random
 from dataclasses import dataclass, field
-from decimal import Decimal
 
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol
@@ -17,6 +16,7 @@ from cosmu.knowledge.block_registry import blocks_available, find_duplicate, rec
 from cosmu.knowledge.store import Store, Writer, utcnow
 from cosmu.master.fdr import benjamini_hochberg, dsr_pvalue
 from cosmu.master.scorer import BacktestMetrics, TrialStats, score
+from cosmu.master.tracks import open_paper_track
 from cosmu.master.trials import register_trial, trial_stats
 from cosmu.ml.regime import proven_regimes
 from cosmu.ml.survival import features_from_metrics, load_survival_model
@@ -514,21 +514,14 @@ class FarmLoop:
             },
         )
         if passed:
-            # Seed at the STANDARDIZED standalone track size (sim_track_capital — what the funder deploys),
-            # never the $100k pool: the forward clock recomputes return_pct as marked_value / starting_capital,
-            # so a $100k denominator under a $1k funded position reads ~-99% forever. Same as finder/arms.
+            # Born HONEST at the STANDARDIZED standalone track size (sim_track_capital — what the funder
+            # deploys), never the $100k pool. equity = starting_capital, return_pct = 0: a forward track has
+            # zero forward P&L at birth. The OOS return stays in backtests.oos_return; the paper clock
+            # (orchestrator._update_track_returns) is the SOLE writer that advances equity/return_pct from
+            # real marks. Seeding the backtest here (as this used to) let a never-marked survivor display its
+            # OOS as forward P&L — and master/live_eligibility could read live_ready off that backtest number.
             track_capital = self.settings.sim_track_capital
-            equity = track_capital * (Decimal("1") + metrics.oos_return)
-            b.insert(
-                "tracks",
-                {
-                    "strategy_version_id": version_id,
-                    "starting_capital": str(track_capital),
-                    "equity": str(equity.quantize(Decimal("0.01"))),
-                    "return_pct": str((metrics.oos_return * Decimal("100")).quantize(Decimal("0.01"))),
-                    "updated_at": utcnow(),
-                },
-            )
+            open_paper_track(b, version_id=version_id, starting_capital=track_capital)
             b.append_event(
                 actor="master",
                 kind="track_opened",

@@ -26,16 +26,16 @@ import sys
 from decimal import ROUND_DOWN, Decimal
 from types import SimpleNamespace
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import Settings, get_settings
 from cosmu.data.market import YahooDailyBarsProvider
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
+from cosmu.master.tracks import open_paper_track
 from cosmu.research import equity_vaa as vaa
 from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.research.equity_holdout import purged_embargoed_split
 from cosmu.spine.venue import default_catalog
-from cosmu.config.settings import get_settings
 
 STRATEGY_NAME = "Vigilant Asset Allocation (Keller VAA-G4 Aggressive)"
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strategy track, labeled honestly
@@ -202,17 +202,9 @@ def arm(store: Store | None = None) -> dict:
         store.insert("backtests", _backtest_row(version_id, v))
         print("  + screen backtest row written")
     if store.row("SELECT strategy_version_id FROM tracks WHERE strategy_version_id=? LIMIT 1", (version_id,)) is None:
-        equity0 = TRACK_CAPITAL * (Decimal("1") + Decimal(str(round(v["oos"].total_return, 6))))
-        store.insert(
-            "tracks",
-            {
-                "strategy_version_id": version_id,
-                "starting_capital": str(TRACK_CAPITAL),
-                "equity": str(equity0.quantize(Decimal("0.01"))),
-                "return_pct": str((Decimal(str(round(v["oos"].total_return, 6))) * Decimal("100")).quantize(Decimal("0.01"))),
-                "updated_at": now,
-            },
-        )
+        # Born HONEST: equity = starting_capital, return_pct = 0 (master/tracks.open_paper_track). The OOS/
+        # holdout stays in backtests.oos_return; the paper clock advances the forward columns from real marks.
+        open_paper_track(store, version_id=version_id, starting_capital=TRACK_CAPITAL)
         print("  + track row written")
     # The paper clock origin + proven-regime passport (read by master/live_eligibility). MIN(ts) of this event
     # is when the paper run started ticking; live-arming is HARD-gated on >= PAPER_MIN_DAYS of net-positive

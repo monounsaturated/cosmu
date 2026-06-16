@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from cosmu.api._shared import ensure_recommendations, settings, store
+from cosmu.knowledge.lifecycle_status import ALIVE_STATUSES, sql_in_list
 from cosmu.spine.engine import EngineFacade
 from cosmu.spine.universe import has_live_data
 
@@ -77,7 +78,7 @@ def _fund_tracks_on_startup() -> None:
         # funding it (opening its sim positions) is what STARTS the forward test — the paper clock then promotes
         # it to "paper" once a real forward day accrues. Omitting 'screened' here would strand every new survivor
         # unfunded → never marked → never promoted (chicken-and-egg).
-        if not store.row("SELECT sv.id FROM strategy_versions sv JOIN tracks tr ON tr.strategy_version_id = sv.id WHERE sv.status IN ('screened','paper','forward_test','live') LIMIT 1"):
+        if not store.row(f"SELECT sv.id FROM strategy_versions sv JOIN tracks tr ON tr.strategy_version_id = sv.id WHERE sv.status IN {sql_in_list(ALIVE_STATUSES)} LIMIT 1"):
             return  # no survivors yet — honest empty state
         fund_tracks_from_survivors(store, bankroll=settings.sim_bankroll)
     except Exception:  # noqa: BLE001 — funding is best-effort; a data/network hiccup must not break boot

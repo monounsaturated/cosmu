@@ -28,6 +28,7 @@ from cosmu.data.market import YahooDailyBarsProvider
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
+from cosmu.master.tracks import open_paper_track
 from cosmu.research import equity_dual_momentum as gem
 from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
@@ -180,18 +181,9 @@ def arm(store: Store | None = None) -> dict:
         store.insert("backtests", _backtest_row(version_id, v))
         print("  + backfilled screen backtest row")
     if store.row("SELECT strategy_version_id FROM tracks WHERE strategy_version_id = ?", (version_id,)) is None:
-        _track_capital = get_settings().sim_track_capital
-        equity0 = _track_capital * (Decimal("1") + Decimal(str(round(v["oos"].total_return, 6))))
-        store.insert(
-            "tracks",
-            {
-                "strategy_version_id": version_id,
-                "starting_capital": str(_track_capital),
-                "equity": str(equity0.quantize(Decimal("0.01"))),
-                "return_pct": str((Decimal(str(round(v["oos"].total_return, 6))) * Decimal("100")).quantize(Decimal("0.01"))),
-                "updated_at": now,
-            },
-        )
+        # Born HONEST: equity = starting_capital, return_pct = 0 (master/tracks.open_paper_track). The OOS/
+        # holdout stays in backtests.oos_return; the paper clock advances the forward columns from real marks.
+        open_paper_track(store, version_id=version_id, starting_capital=get_settings().sim_track_capital)
         # paper clock origin + proven-regime passport (read by master/live_eligibility); MIN(ts) = clock start;
         # live-arming is HARD-gated on >= PAPER_MIN_DAYS of net-positive forward evidence FROM HERE.
         store.append_event(

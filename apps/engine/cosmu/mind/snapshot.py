@@ -12,6 +12,7 @@ from dataclasses import asdict
 from typing import Any
 
 from cosmu.config.feature_registry import FEATURE_REGISTRY
+from cosmu.knowledge.lifecycle_status import FUNDED_STATUSES, sql_in_list
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.mind.analysts import gather_context, run_panel
 from cosmu.mind.debate import RAILGUARD, debate
@@ -202,7 +203,7 @@ def _regime_coverage(store: Store) -> dict[str, Any]:
         rows = store.rows(
             "SELECT b.regime_label FROM strategy_versions sv "
             "JOIN backtests b ON b.strategy_version_id = sv.id "
-            "WHERE sv.status IN ('paper', 'forward_test', 'live') AND b.passed_gates = 1"
+            f"WHERE sv.status IN {sql_in_list(FUNDED_STATUSES)} AND b.passed_gates = 1"
         )
     except Exception:  # noqa: BLE001
         rows = []

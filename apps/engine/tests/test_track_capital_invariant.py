@@ -77,9 +77,14 @@ def test_finder_promotion_stamps_starting_capital_from_settings(tmp_path):
     assert Decimal(str(row["starting_capital"])) == _SENTINEL, (
         "finder seeded a non-canonical starting_capital — it must read settings.sim_track_capital, not a literal"
     )
-    # equity is the seeded capital grown by the OOS return — also denominated in the setting, never a literal base.
-    eq = store.row("SELECT equity FROM tracks WHERE strategy_version_id = ?", (vid,))
-    assert Decimal(str(eq["equity"])) == (_SENTINEL * (Decimal("1") + metrics.oos_return)).quantize(Decimal("0.01"))
+    # A track is BORN HONEST: equity == starting_capital and return_pct == 0 (the OOS lives in
+    # backtests.oos_return — never seeded into the FORWARD columns). The paper clock advances these from real
+    # marks (master/tracks.open_paper_track). This previously asserted equity == capital*(1 + oos), which LOCKED
+    # IN a backtest-into-forward leak: an unmarked survivor displayed its OOS as forward P&L and could even read
+    # live_ready off it (master/live_eligibility.paper_net_return_pct reads tracks.return_pct).
+    eq = store.row("SELECT equity, return_pct FROM tracks WHERE strategy_version_id = ?", (vid,))
+    assert Decimal(str(eq["equity"])) == _SENTINEL.quantize(Decimal("0.01"))
+    assert Decimal(str(eq["return_pct"])) == Decimal("0.00")
 
 
 def test_spine_backtest_stamps_starting_capital_from_settings(tmp_path, monkeypatch):
