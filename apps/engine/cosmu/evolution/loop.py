@@ -58,6 +58,7 @@ class _Screened:
     slippage_bps: float = float(DEFAULT_SLIPPAGE_BPS)
     impact_bps: float = float(DEFAULT_IMPACT_BPS)
     parent: _Screened | None = None
+    pre_kill: str | None = None  # kill reason injected before _persist (e.g. per-symbol floor)
 
 
 @dataclass
@@ -125,6 +126,12 @@ def fdr_culled_vids(evaluated: list[Evaluated], q: float) -> set[str]:
     pvalues = [dsr_pvalue(e.deflated_sharpe) for e in evaluated]
     survives = benjamini_hochberg(pvalues, q=q)
     return {e.version_id for e, ok in zip(evaluated, survives, strict=True) if e.passed and not ok}
+
+
+# Minimum trades per symbol in the pooled backtest — mirrors finder.py:62. A pooled trade_count of 30
+# on 5 symbols averages 6 trades/symbol, not 30; the gate must see at least this per symbol to avoid a
+# strategy that concentrates all activity on one name and presents phantom breadth.
+_MIN_TRADES_PER_SYMBOL = 5
 
 
 @dataclass(frozen=True)
@@ -427,17 +434,25 @@ class FarmLoop:
 
         metrics, venue = self._screen(cand, compiled.code_hash, seed)
         # THE choke point: every farmed candidate is one more hypothesis the Deflated Sharpe / FDR must deflate
-        # against — otherwise authoring more candidates per tick manufactures significance by sheer count.
+        # against — register the trial BEFORE the per-symbol floor check (a backtested hypothesis is counted even
+        # if it lacks per-symbol breadth, so the deflation ledger never under-counts thin-book specs).
         register_trial(self.store, float(metrics.sharpe_per_obs), source="farmloop", label=cand.spec.name)
         # Survival model: edge-persistence score (ordering only) + the regimes this screen proved positive in
         # (the strategy's live-eligibility passport). Computed from the SCREEN metrics — never a veto.
         survival_score = round(survival.score_features(features_from_metrics(metrics)), 6)
         proven = sorted(proven_regimes(metrics.regime_returns))
+        # Per-symbol trade floor: pooled trade_count ≥ n_symbols × _MIN_TRADES_PER_SYMBOL. A strategy that
+        # concentrates all 30 trades on one of five symbols presents phantom breadth — flag as pre_kill so
+        # _persist counts it as generated+killed (not invalid) since the trial was already registered above.
+        enabled_venues, enabled_classes = self._enabled()
+        n_symbols = len(_binance_symbols(cand.spec, enabled_venues, enabled_classes)) or 1
+        pre_kill = "min_trades_per_symbol" if metrics.num_trades < n_symbols * _MIN_TRADES_PER_SYMBOL else None
         return _Screened(
             cand=cand, params=params, compiled=compiled, metrics=metrics,
             survival_score=survival_score, proven=proven,
             venue_id=venue.id, fee_bps=float(venue.taker_fee_bps),
             slippage_bps=float(venue.slippage_bps), impact_bps=float(venue.impact_bps),
+            pre_kill=pre_kill,
         )
 
     def _persist(self, sc: _Screened, trials: TrialStats, survival, parent_vid: str | None, b: Writer) -> tuple[Evaluated, str]:  # noqa: ANN001
@@ -449,11 +464,12 @@ class FarmLoop:
         params = sc.params
         # Deflate against the FULL global trial count (this cohort + all history), not ~len(param_space).
         verdict = score(metrics, self.settings.gates, trials=trials)
-        passed = verdict.passed
+        passed = verdict.passed and not sc.pre_kill  # pre_kill (e.g. min_trades_per_symbol) always kills
         # Born "screened" (badge: Backtest) — backtest evidence only at birth. The paper clock promotes to
         # "paper" once >= 1 real forward day accrues. status is badge-only; the live gate reads track_opened.
         status = "screened" if passed else "killed"
-        kill_reason = None if passed else ",".join(verdict.reasons) or "screened_out"
+        all_reasons = ([sc.pre_kill] if sc.pre_kill else []) + list(verdict.reasons)
+        kill_reason = None if passed else ",".join(all_reasons) or "screened_out"
         survival_score = sc.survival_score
         proven = sc.proven
 

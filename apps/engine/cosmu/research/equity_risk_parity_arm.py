@@ -112,7 +112,7 @@ def _backtest_row(version_id: str, v: dict) -> dict:
         "regime_label": "mixed",
         "folds_positive": 6,  # positive across the regimes tested (2008/2020/2022 crises + bulls)
         "passed_gates": 1,    # cleared the DEPLOYMENT bar (positive OOS + beats both benchmarks risk-adjusted)
-        "holdout_passed": 1,  # OOS leg positive net of fees
+        "holdout_passed": 1 if oos.total_return > 0 else 0,  # REAL OOS leg positive net of fees
         "created_at": utcnow(),
     }
 

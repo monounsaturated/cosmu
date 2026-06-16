@@ -41,7 +41,7 @@ class CohortPersist:
     run_id: str
     hypothesis: str
     source: str
-    data_source: str = "live"
+    data_source: str = "unknown"  # fail-safe sentinel — explicit callers pass "live" or a real source name
     audit_trustworthy: str | None = None
     holdout: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
@@ -52,7 +52,7 @@ class CohortPersist:
 
 
 def durable_persist(
-    *, run_id: str, hypothesis: str, source: str, data_source: str = "live", watch_rejects: bool = True, **extra: Any
+    *, run_id: str, hypothesis: str, source: str, data_source: str = "unknown", watch_rejects: bool = True, **extra: Any
 ) -> CohortPersist:
     """One-liner factory for a research runner: build a CohortPersist pointed at the REAL configured store
     (prod Postgres on Modal/Railway via DATABASE_URL, local SQLite otherwise). Lets any cohort runner opt into

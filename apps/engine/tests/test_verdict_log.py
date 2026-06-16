@@ -56,7 +56,7 @@ def test_persist_writes_one_queryable_cohort_row_and_event(tmp_path):
     assert len(rows) == 1
     row = rows[0]
     assert row["decision"] == "PASS"          # the strong candidate promoted → cohort PASS
-    assert row["data_source"] == "live"
+    assert row["data_source"] == "unknown"    # default is now "unknown" (fail-safe sentinel)
     p = json.loads(row["payload"])
     assert p["kind"] == "cohort" and p["run_id"] == "run-1" and p["source"] == "test-cohort"
     assert p["passed"] is True and p["n_candidates"] == 2 and p["n_promoted"] == 1
