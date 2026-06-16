@@ -328,6 +328,11 @@ class StrategyFinder:
             if hl_syms:
                 hl_fee = catalog.venue("hyperliquid").taker_fee_bps
                 fee_schedule.update({s: hl_fee for s in hl_syms})
+        # Per-symbol annualization calendar: equity symbols trade ≈252 sessions/yr, so their Sharpe must NOT be
+        # annualized at crypto's 365 (a pooled cross-asset spec would otherwise over-state the equity leg ≈1.2×).
+        # Crypto + HL perps are 24/7 → the 365-session default (None) is already correct, so we only mark equity.
+        # None when there are no equity symbols (the common crypto-only path stays byte-identical).
+        asset_class_by_symbol = {s: "equity" for s in equity_syms} or None
         # Point-in-time alt-data join (funding_rate, fear_greed, …), built ONCE per spec since it depends only on
         # the spec's features + the market, not the swept params. Without this the sweep would screen every
         # funding/meta-label spec price-only (funding reads None) — the same join the cohort screen uses.
@@ -339,7 +344,7 @@ class StrategyFinder:
         trades_by_tag: dict[str, int] = {}
 
         def _screen_into(variant: Variant, source: str, label: str) -> None:
-            screened = self._screen(spec, variant, market, venue, alt, source=source, label=label, fee_schedule=fee_schedule)
+            screened = self._screen(spec, variant, market, venue, alt, source=source, label=label, fee_schedule=fee_schedule, asset_class_by_symbol=asset_class_by_symbol)
             if screened is None:
                 return  # an invalid grid point (e.g. degenerate range) is skipped, never persisted
             r, cand, val_returns, min_symbol_trades = screened
@@ -434,6 +439,7 @@ class StrategyFinder:
                 spec, dict(r.fitted_params), market, fee_bps=venue.taker_fee_bps,
                 fee_schedule=fee_schedule,
                 slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps, alt_by_symbol=alt,
+                asset_class_by_symbol=asset_class_by_symbol,
             )  # include_holdout defaults True — this is the single exam look for this champion; charge the
             #    venue's OWN depth (half-spread + impact), not the global 5/50 — same cost model as the screen
             r.metrics = r.metrics.model_copy(
@@ -498,6 +504,7 @@ class StrategyFinder:
         source: str,
         label: str,
         fee_schedule: dict[str, Decimal] | None = None,
+        asset_class_by_symbol: dict[str, str] | None = None,
     ) -> tuple[VariantResult, CohortCandidate, list[float], int] | None:
         """Compile + backtest one variant on REAL bars (with the point-in-time alt-data join so funding/meta-label
         specs are evaluated honestly). Returns (result, cohort-candidate, validation return stream, min per-symbol
@@ -516,6 +523,7 @@ class StrategyFinder:
             slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps,
             alt_by_symbol=alt_by_symbol,
             include_holdout=False,
+            asset_class_by_symbol=asset_class_by_symbol,
         )  # price at the SPEC's venue depth — a thin-book venue (Polymarket 30/150, Coinbase 8/60) pays the
         #   wide spread + heavy impact it really would, instead of falling back to the global 5/50
         metrics = detailed.metrics
