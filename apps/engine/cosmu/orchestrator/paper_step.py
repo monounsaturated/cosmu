@@ -123,6 +123,20 @@ def _load_spec_params(store: Store, version_id: str) -> tuple[StrategySpec, dict
     return spec, params, status
 
 
+def _frozen_config_ok(store: Store, version_id: str, params: dict[str, float]) -> bool:
+    """True when a NEW live ENTRY may open for this version: it has a frozen promotion record whose params_hash
+    matches the numeric params the executor is about to trade. Refuses (False) on a MISSING record OR a hash
+    MISMATCH — so a real position only ever opens on the EXACT config the Gate proved, never a silently re-fitted
+    one (master/promotion freezes it at promotion; this is the read side). Exits of an existing live leg are
+    NEVER gated by this — a close must never be trapped behind a config check."""
+    from cosmu.master.promotion import params_hash, promotion_record
+
+    record = promotion_record(store, version_id)
+    if not record or not record.get("params_hash"):
+        return False
+    return params_hash(params) == record["params_hash"]
+
+
 def _bracket_fractions(spec: StrategySpec, params: dict[str, float]) -> tuple[float | None, float | None]:
     """The track's OWN fitted stop/take distances (fractions), or None per leg when the param is missing —
     that leg is then honestly unenforced rather than guessed."""
@@ -254,10 +268,21 @@ def _managed_tracks(
         if live_pos is not None:
             # A real (live/testnet) position is ALWAYS managed on its own book and routed live — exitable on
             # its own rules regardless of the current status, so a live→paper demotion can never orphan an
-            # open real position. (We only reach here armed: the unarmed-live case skipped above.)
+            # open real position. (We only reach here armed: the unarmed-live case skipped above.) NEVER gated
+            # by the freeze check — a close must never be trapped.
             routing, book_pos = "live", live_pos
+        elif status == "live" and venue_id in armed_venues and _frozen_config_ok(store, vid, params):
+            # Flat live track → its entry signal opens on the live book, but ONLY on the EXACT frozen proven
+            # config (params_hash matches the promotion record) — live replicates what the Gate proved.
+            routing, book_pos = "live", None
         elif status == "live" and venue_id in armed_venues:
-            routing, book_pos = "live", None  # flat live track → its entry signal opens on the live book
+            # status='live' + armed, but the config drifted from / lacks the frozen promotion record → do NOT
+            # open a REAL position on an unproven config. Route SIM this tick + audit (re-promote to refreeze).
+            store.append_event(
+                actor="master", kind="live_entry_blocked_unfrozen", ref_type="strategy_version", ref_id=vid,
+                payload={"symbol": symbol, "venue_id": venue_id, "reason": "params_hash_mismatch_or_missing"},
+            )
+            routing, book_pos = "sim", held_sim.get(vid)
         else:
             routing, book_pos = "sim", held_sim.get(vid)  # paper / not-yet-armed → sim book (unchanged)
         out.append(_Managed(vid, spec, params, symbol, venue_id, book_pos, status=status, routing=routing))

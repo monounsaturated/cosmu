@@ -71,6 +71,10 @@ def _persist_survivor(store: Store) -> str:
                                "sortino": "1.5", "deflated_sharpe": "1.5", "max_dd": "0.1", "win_rate": "0.6",
                                "num_trades": 30, "pbo": "0.0", "trials_counted": 1, "regime_label": "mixed",
                                "folds_positive": 5, "passed_gates": 1, "holdout_passed": 1, "created_at": now})
+    # A promoted survivor is FROZEN — live entries only open on this exact config (paper_step._frozen_config_ok).
+    from cosmu.master.promotion import freeze_promotion
+
+    freeze_promotion(store, vid)
     return vid
 
 
