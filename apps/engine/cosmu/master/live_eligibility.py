@@ -92,6 +92,31 @@ def paper_net_return_pct(store: Store, version_id: str) -> float:
         return 0.0
 
 
+# A track must have actually TRADED forward — not merely aged on the calendar, and not merely carry a
+# re-validation-seeded return with no real positions (the perp arm) — before it can read live-ready. >= 1 REAL
+# forward fill (executions is_paper=1, after the clock origin) is the minimum bar. A human override still waives
+# this (it waives the whole forward-proof precondition); the regime gate is never waived.
+MIN_FORWARD_FILLS = 1
+
+
+def forward_fill_count(store: Store, version_id: str, *, since: str | None = None) -> int:
+    """Count of REAL forward paper fills (executions is_paper=1) for a version, restricted to those AFTER the
+    paper clock origin when `since` is given. Zero ⇒ the track never actually traded forward (a re-validation
+    seed or a funded-but-unfilled registration is NOT forward evidence)."""
+    if since is not None:
+        row = store.row(
+            "SELECT COUNT(*) AS n FROM executions WHERE strategy_version_id = ? "
+            "AND CAST(is_paper AS INTEGER) = 1 AND ts >= ?",
+            (version_id, since),
+        )
+    else:
+        row = store.row(
+            "SELECT COUNT(*) AS n FROM executions WHERE strategy_version_id = ? AND CAST(is_paper AS INTEGER) = 1",
+            (version_id,),
+        )
+    return int(row["n"]) if row and row.get("n") is not None else 0
+
+
 def forward_evidence(store: Store, version_id: str, *, now: datetime | None = None) -> PaperMaturity:
     """The paper maturity for a version, read from the store: paper_age_days from its track's clock
     origin + net_return_pct from its track. `live_ready` = matured (>= PAPER_MIN_DAYS) AND net-positive —
@@ -140,7 +165,10 @@ def live_eligibility_verdict(
     fails safe to not-eligible."""
     regime = live_regime_verdict(store, version_id, reference_bars)
     evidence = forward_evidence(store, version_id, now=now)
-    forward_ready = evidence.live_ready
+    # Forward-ready requires REAL forward trading, not just calendar maturity + a (possibly re-validation-seeded)
+    # return: matured AND net-positive AND >= MIN_FORWARD_FILLS real forward fills since the clock origin.
+    traded_forward = forward_fill_count(store, version_id, since=paper_clock_origin(store, version_id)) >= MIN_FORWARD_FILLS
+    forward_ready = evidence.live_ready and traded_forward
     eligible = (forward_ready or override) and regime.eligible
     overridden = bool(override) and not forward_ready and eligible
     if not regime.eligible:
@@ -151,6 +179,11 @@ def live_eligibility_verdict(
             f"OVERRIDE: arming UNPROVEN strategy "
             f"({evidence.paper_age_days:.1f}d / {evidence.net_return_pct:+.2f}%, "
             f"needs >= {evidence.min_days}d net-positive) — regime '{regime.current_regime.label}' ok"
+        )
+    elif not traded_forward:
+        reason = (
+            f"paper not proven: no real forward fills yet — has not started trading "
+            f"(needs >= {MIN_FORWARD_FILLS} forward fill, then >= {evidence.min_days}d net-positive)"
         )
     elif not forward_ready:
         reason = (

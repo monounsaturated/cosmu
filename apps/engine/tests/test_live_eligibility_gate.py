@@ -61,9 +61,11 @@ def _seed_version(store: Store, vid: str) -> None:
     )
 
 
-def _open_track(store: Store, vid: str, *, age_days: float, net_pct: float, proven: list[str], now: datetime) -> None:
+def _open_track(store: Store, vid: str, *, age_days: float, net_pct: float, proven: list[str], now: datetime, fills: int = 1) -> None:
     """Open a paper track: a tracks row carrying the net-of-fee return + a track_opened event whose ts is
-    the clock origin (backdated `age_days` before `now`) carrying the proven-regime passport."""
+    the clock origin (backdated `age_days` before `now`) carrying the proven-regime passport, and `fills` REAL
+    forward paper fills (is_paper=1, after the origin) — the proof the track actually TRADED forward (default 1).
+    Pass fills=0 to simulate a track that aged / carries a return seed but never traded (never live-ready)."""
     _seed_version(store, vid)
     store.insert(
         "tracks",
@@ -72,12 +74,24 @@ def _open_track(store: Store, vid: str, *, age_days: float, net_pct: float, prov
             "equity": str(100000 * (1 + net_pct / 100)), "return_pct": str(net_pct), "updated_at": utcnow(),
         },
     )
-    ts = (now - timedelta(days=age_days)).isoformat()
+    origin = now - timedelta(days=age_days)
+    ts = origin.isoformat()
     with store.batch() as w:
         w.execute(
             "INSERT INTO events(ts, actor, kind, ref_type, ref_id, payload) VALUES (?, 'master', 'track_opened', 'strategy_version', ?, ?)",
             (ts, vid, json.dumps({"proven_regimes": proven})),
         )
+        if fills > 0:
+            w.execute(
+                "INSERT INTO runs(id, strategy_version_id, mode, venue_id, seed, started_at, status) VALUES (?, ?, 'sandbox', 'binance', 1, ?, 'completed')",
+                (f"run-{vid}", vid, ts),
+            )
+            for i in range(fills):
+                w.execute(
+                    "INSERT INTO executions(id, run_id, strategy_version_id, instrument_id, venue_id, side, qty, price, fee, slippage, order_type, is_paper, ts, fill_log) "
+                    "VALUES (?, ?, ?, 'binance:BTCUSDT', 'binance', 'buy', '1', '100', '0.1', '0', 'market', 1, ?, '{}')",
+                    (f"ex-{vid}-{i}", f"run-{vid}", vid, (origin + timedelta(hours=i + 1)).isoformat()),
+                )
 
 
 def test_too_young_strategy_is_not_eligible(tmp_path):
@@ -115,6 +129,22 @@ def test_threshold_boundary_is_inclusive(tmp_path):
     _open_track(store, "v-edge", age_days=PAPER_MIN_DAYS, net_pct=0.5, proven=["bull"], now=now)
 
     assert live_eligibility_verdict(store, "v-edge", _UP, now=now).eligible is True
+
+
+def test_matured_net_positive_but_no_forward_fills_is_not_eligible(tmp_path):
+    # Matured + net-positive + in regime, but the track NEVER actually traded forward (0 real fills — e.g. a
+    # re-validation-seeded return like the perp arm, or a registered-but-unfilled track). NOT armable: calendar
+    # age + a seed are not forward evidence. The human override still bypasses (it waives forward proof).
+    now = datetime(2026, 6, 4, tzinfo=UTC)
+    store = _store(tmp_path)
+    _open_track(store, "v-nofill", age_days=PAPER_MIN_DAYS + 10, net_pct=4.0, proven=["bull"], now=now, fills=0)
+
+    v = live_eligibility_verdict(store, "v-nofill", _UP, now=now)
+    assert v.forward_ready is False
+    assert v.eligible is False
+    assert "no real forward fills" in v.reason
+    # ...but an explicit human override of the unproven strategy still arms it (regime ok).
+    assert live_eligibility_verdict(store, "v-nofill", _UP, override=True, now=now).eligible is True
 
 
 def test_matured_but_underwater_is_not_eligible(tmp_path):

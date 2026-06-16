@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,15 @@ logger = logging.getLogger("cosmu.data.pg_backup")
 _PREFIX = "backups/pg"
 _KEEP = 14  # daily backups retained on R2 (~1 MB each; older ones pruned)
 _EXCLUDE_DATA = "public.alt_data"  # the 256 MB hoard lives in the lake; keep its SCHEMA, skip the rows
+
+# pg_dump can echo the whole connection string (incl. user:password) in a connection-failure error. Scrub any
+# postgres(ql)?://… token before it ever reaches the logs (which may go to a third-party log sink).
+_DSN_RE = re.compile(r"postgres(?:ql)?://\S+", re.IGNORECASE)
+
+
+def _redact_dsn(text: str) -> str:
+    """Replace any postgres(ql)://… DSN (which carries userinfo/credentials) with a placeholder."""
+    return _DSN_RE.sub("postgres://<redacted>", text)
 
 
 def _find_pg_dump() -> str | None:
@@ -89,7 +99,9 @@ def run_backup(settings: Settings | None = None, *, now: datetime | None = None)
         out = os.path.join(td, f"cosmu_pg_{stamp}.dump")
         proc = subprocess.run(pg_dump_argv(pg_dump, dsn, out), capture_output=True, text=True)
         if proc.returncode != 0:
-            logger.error("pg_backup: pg_dump failed (rc=%s): %s", proc.returncode, (proc.stderr or "").strip()[:600])
+            # Redact any DSN (with credentials) pg_dump may have echoed before logging the stderr tail.
+            stderr_safe = _redact_dsn((proc.stderr or "").strip())[:600]
+            logger.error("pg_backup: pg_dump failed (rc=%s): %s", proc.returncode, stderr_safe)
             return 1
         size_mb = os.path.getsize(out) / 1e6
         s3 = _r2_client(settings)

@@ -124,20 +124,24 @@ def test_run_once_lands_dormant_sources(tmp_path):
     assert counts["reddit_sentiment"] == 1
     assert counts["open_interest"] == 1
     assert counts["perp_spot_basis"] == 1
-    assert counts["exchange_netflow"] == 1
     assert counts["liquidation_cascade"] == 1
+    # exchange_netflow is a DISABLED/dormant honesty fix (the provider fetched the Binance perp long/short
+    # ratio, not on-chain netflow) — run_once NO LONGER ingests it, so it is absent from counts and no new
+    # row lands. The provider itself still parses correctly (test_exchange_netflow_produces_rows above).
+    assert "exchange_netflow" not in counts
     # the rows are actually in the point-in-time store under their canonical provider keys
     far = datetime(2099, 1, 1, tzinfo=UTC)
     assert store.read_asof("reddit", "MARKET", "reddit_sentiment", far)
     assert store.read_asof("binance", "BTCUSDT", "open_interest", far)
     assert store.read_asof("binance", "BTCUSDT", "perp_spot_basis", far)
-    assert store.read_asof("binance", "BTCUSDT", "exchange_netflow", far)
+    assert not store.read_asof("binance", "BTCUSDT", "exchange_netflow", far)  # dormant: never re-ingested
     assert store.read_asof("coinglass", "BTCUSDT", "liquidation_cascade", far)
 
 
 def test_run_once_memoizes_shared_fred_series(tmp_path):
-    # The single FRED provider feeds vix_level + vix_term_slope (both VIXCLS) and macro_regime +
-    # yield_curve_2s10s (both T10Y2Y). Memoization must fetch each shared series exactly ONCE per run.
+    # The single FRED provider feeds macro_regime + yield_curve_2s10s (both T10Y2Y) off one shared series.
+    # (VIXCLS now feeds only vix_level — the duplicate vix_term_slope was disabled.) Memoization must still
+    # fetch each shared series exactly ONCE per run.
     class CountingFred:
         def __init__(self):
             self.calls: list[str] = []

@@ -63,7 +63,7 @@ def _seed_version(store: Store, vid: str) -> str:
     return sid
 
 
-def _open_track(store: Store, vid: str, *, age_days: float, net_pct: float, proven: list[str], now: datetime) -> None:
+def _open_track(store: Store, vid: str, *, age_days: float, net_pct: float, proven: list[str], now: datetime, fills: int = 1) -> None:
     _seed_version(store, vid)
     store.insert(
         "tracks",
@@ -72,12 +72,26 @@ def _open_track(store: Store, vid: str, *, age_days: float, net_pct: float, prov
             "equity": str(100000 * (1 + net_pct / 100)), "return_pct": str(net_pct), "updated_at": utcnow(),
         },
     )
-    ts = (now - timedelta(days=age_days)).isoformat()
+    origin = now - timedelta(days=age_days)
+    ts = origin.isoformat()
     with store.batch() as w:
         w.execute(
             "INSERT INTO events(ts, actor, kind, ref_type, ref_id, payload) VALUES (?, 'master', 'track_opened', 'strategy_version', ?, ?)",
             (ts, vid, json.dumps({"proven_regimes": proven})),
         )
+        # Real forward fills (is_paper=1, after the origin) — live-eligibility requires the track actually traded
+        # forward, not just aged + net-positive. Default 1; pass 0 for a never-traded track.
+        if fills > 0:
+            w.execute(
+                "INSERT INTO runs(id, strategy_version_id, mode, venue_id, seed, started_at, status) VALUES (?, ?, 'sandbox', 'binance', 1, ?, 'completed')",
+                (f"run-{vid}", vid, ts),
+            )
+            for i in range(fills):
+                w.execute(
+                    "INSERT INTO executions(id, run_id, strategy_version_id, instrument_id, venue_id, side, qty, price, fee, slippage, order_type, is_paper, ts, fill_log) "
+                    "VALUES (?, ?, ?, 'binance:BTCUSDT', 'binance', 'buy', '1', '100', '0.1', '0', 'market', 1, ?, '{}')",
+                    (f"ex-{vid}-{i}", f"run-{vid}", vid, (origin + timedelta(hours=i + 1)).isoformat()),
+                )
 
 
 # --- emit_lifecycle_event ------------------------------------------------------------------------------------

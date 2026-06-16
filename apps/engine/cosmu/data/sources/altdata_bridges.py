@@ -24,7 +24,10 @@ from cosmu.data.providers._types import AltDataPoint
 def _snapshot(source, scope: str) -> list[AltDataPoint]:
     """Query a DataSource once at now() and wrap a non-None reading as one point-in-time AltDataPoint.
 
-    Uses the source's OWN available_at (no look-ahead). A None value (gap) or any error → [] (honest no-data).
+    Uses the source's OWN available_at (no look-ahead). The stored `ts` is the reading's TRUE observation
+    time (feat.observed_ts) when the source carries it — distinct from `available_at`, which lags it by the
+    availability delay. A source that cannot distinguish the two leaves observed_ts None and we fall back to
+    available_at (the legacy behaviour). A None value (gap) or any error → [] (honest no-data).
     """
     try:
         now = datetime.now(tz=UTC)
@@ -34,7 +37,8 @@ def _snapshot(source, scope: str) -> list[AltDataPoint]:
     if feat is None or feat.value is None:
         return []
     available_at = feat.available_at or now
-    return [AltDataPoint(ts=available_at, available_at=available_at, value=float(feat.value))]
+    observed_ts = getattr(feat, "observed_ts", None) or available_at
+    return [AltDataPoint(ts=observed_ts, available_at=available_at, value=float(feat.value))]
 
 
 class WeatherOpenMeteoIngestProvider:

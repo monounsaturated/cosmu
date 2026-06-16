@@ -261,6 +261,7 @@ class GdeltCountsSource:
             transform_version=self.transform_version,
             prior=self.prior,
             low_confidence=self.low_confidence,
+            observed_ts=latest.ts if latest else None,  # true obs day (distinct from the +1d availability)
         )
 
 
