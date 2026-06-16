@@ -20,12 +20,14 @@ from cosmu.master.scorer import (
     BacktestMetrics,
     ScoreVerdict,
     cscv_pbo,
+    deflated_sharpe_prob as _dsp,
     probabilistic_sharpe,
     rank_consistency,
     sample_moments,
     score,
 )
-from cosmu.master.trials import record_trial, trial_stats
+from cosmu.master.strategy_correlation import pairwise_correlation as _pairwise_corr
+from cosmu.master.trials import record_trial, trial_stats, trial_stats_for_cohort
 
 # Pre-registered pass bar — fixed BEFORE looking. Changing it after a run is itself a new trial.
 PREREGISTERED_BAR = {
@@ -150,8 +152,18 @@ def evaluate_gate(
     if best is None:
         return GateVerdict("STOP", False, "none", 0.0, pbo, buy_hold, 0.0, 0, 0, 1.0, 0, reasons=["no_variants"])
 
+    # Correlation haircut: a grid of near-duplicate variants is NOT len(variants) independent tests.
+    # Replace raw grid count with effective count K_eff=K/(1+(K-1)*rho_bar) — fairer on correlated grids.
+    grid_streams = {r.params.name: r.val_returns for r in results if r.val_returns}
+    if len(grid_streams) >= 2:
+        _rho = _pairwise_corr(grid_streams).average_pairwise_correlation
+        _grid_rho: float | None = None if math.isnan(_rho) else _rho
+    else:
+        _grid_rho = None
+    corr_stats = trial_stats_for_cohort(store, len(results), _grid_rho)
+
     regimes_positive = sum(1 for v in best.metrics.regime_returns.values() if v > 0)
-    dsr = float(best.verdict.deflated_sharpe_prob)
+    dsr = float(_dsp(best.metrics, corr_stats))
     reasons: list[str] = []
     if best.metrics.num_trades < PREREGISTERED_BAR["min_trades"]:
         reasons.append("min_trades")

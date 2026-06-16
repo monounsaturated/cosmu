@@ -51,7 +51,8 @@ from cosmu.config.settings import Settings
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.scorer import BacktestMetrics, cscv_pbo
-from cosmu.master.trials import register_trial, trial_stats
+from cosmu.master.strategy_correlation import pairwise_correlation as _pairwise_corr
+from cosmu.master.trials import register_trial, trial_stats_for_cohort
 from cosmu.master.verdict_log import durable_persist
 from cosmu.research import equity_accel_dual_momentum as adm
 from cosmu.research import equity_daa as daa
@@ -350,7 +351,12 @@ def run(*, persist: bool = False) -> TaaVerdict:
         m = m.model_copy(update={"pbo": Decimal(str(round(cohort_pbo, 6)))})
         metrics_by_name[s.name] = m
         register_trial(store, float(m.sharpe_per_obs), source="equity_taa", label=s.name)
-    trials = trial_stats(store)
+    # Correlation haircut: these K TAA strategies are NOT K independent tests (monthly equity rotators share
+    # regime sensitivity). Replace raw K with effective K = K/(1+(K-1)*rho_bar) to reduce Type-II over-rejection.
+    _streams_dict = {s.name: s.net for s in streams if s.net}
+    _corr = _pairwise_corr(_streams_dict) if len(_streams_dict) >= 2 else None
+    _rho_bar = _corr.average_pairwise_correlation if _corr is not None else None
+    trials = trial_stats_for_cohort(store, trials_counted, _rho_bar)
 
     candidates = [
         Candidate(id=s.name, metrics=metrics_by_name[s.name], net_profit=float(metrics_by_name[s.name].oos_return),
