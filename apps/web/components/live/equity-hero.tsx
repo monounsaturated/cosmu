@@ -13,7 +13,7 @@
 import { useMemo, useState } from "react";
 import type { Point } from "@cosmu/contracts-ts";
 import { EquityChart } from "@/components/charts/equity-chart";
-import { cn, formatUsd } from "@/lib/utils";
+import { cn, fmtTz, formatUsd } from "@/lib/utils";
 
 type Range = "7D" | "30D" | "All";
 
@@ -24,9 +24,7 @@ const RANGES: { key: Range; label: string; days: number | null }[] = [
 ];
 
 function fmtDate(ts: string): string {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return fmtTz(ts, { month: "short", day: "numeric" });
 }
 
 export function EquityHero({

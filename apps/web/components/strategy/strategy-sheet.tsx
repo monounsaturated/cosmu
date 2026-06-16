@@ -26,7 +26,7 @@ import { RegistryBlocks } from "./registry-blocks";
 import { StageControl, type Stage } from "./stage-control";
 import { LifecycleTrace } from "./lifecycle-trace";
 import { laneOf, provenanceOf, strategyKindOf } from "@/lib/provenance";
-import { cn, formatUsd } from "@/lib/utils";
+import { cn, fmtTz, formatUsd } from "@/lib/utils";
 
 // ── Honest derivations off the real detail response ──
 
@@ -226,13 +226,13 @@ function PhaseComparison({
   );
 }
 
-// "Jun 09 14:22" parts, split so the time reads quiet.
+// "Jun 09 14:22" parts, split so the time reads quiet. Rendered in the operator's timezone (fmtTz) so a
+// server-rendered blotter shows wall-clock Paris time, not the Vercel server's UTC.
 function dateTimeParts(ts: string): { date: string; time: string } | null {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return null;
+  if (Number.isNaN(new Date(ts).getTime())) return null;
   return {
-    date: d.toLocaleDateString("en-US", { month: "short", day: "2-digit" }),
-    time: d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })
+    date: fmtTz(ts, { month: "short", day: "2-digit" }),
+    time: fmtTz(ts, { hour: "2-digit", minute: "2-digit", hour12: false })
   };
 }
 
