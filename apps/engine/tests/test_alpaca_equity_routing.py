@@ -23,7 +23,9 @@ from cosmu.spine.venue import default_catalog
 
 
 def _store(tmp_path, **settings_kwargs) -> Store:
-    store = Store(Settings(database_url=f"sqlite:///{tmp_path}/alpaca_route.sqlite3", **settings_kwargs))
+    # _env_file=None → hermetic: the no-keys test must not inherit the dev box's real Alpaca keys from .env.local
+    # (keyed tests still pass their own keys via **settings_kwargs, which override regardless).
+    store = Store(Settings(database_url=f"sqlite:///{tmp_path}/alpaca_route.sqlite3", _env_file=None, **settings_kwargs))
     store.migrate()
     return store
 

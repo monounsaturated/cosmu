@@ -76,7 +76,7 @@ def test_read_miss_returns_empty_never_raises(tmp_path):
 
 
 def test_from_settings_picks_catalog_and_data_path(tmp_path):
-    local = DuckLakeAltDataStore.from_settings(Settings(database_url="sqlite:///:memory:", alt_data_parquet_root=str(tmp_path)))
+    local = DuckLakeAltDataStore.from_settings(Settings(database_url="sqlite:///:memory:", alt_data_parquet_root=str(tmp_path), _env_file=None))  # hermetic: no .env.local R2 keys → the local branch
     assert local.catalog.startswith("sqlite:") and not local.data_path.startswith(("r2://", "s3://"))
     r2 = DuckLakeAltDataStore.from_settings(Settings(
         database_url="postgresql://u:p@h:6543/postgres?pgbouncer=true",

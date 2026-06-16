@@ -21,7 +21,9 @@ _BASE = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
 
 
 def _store(tmp_path) -> Store:
-    return Store(Settings(database_url=f"sqlite:///{tmp_path}/ignite.sqlite3", openrouter_api_key=None))
+    # _env_file=None → hermetic: the "without keys" adapter test must not inherit the dev box's real venue
+    # keys from .env.local (else _resolve_live_adapters resolves a live adapter and the empty-dict assert fails).
+    return Store(Settings(database_url=f"sqlite:///{tmp_path}/ignite.sqlite3", openrouter_api_key=None, _env_file=None))
 
 
 class _PathBars:

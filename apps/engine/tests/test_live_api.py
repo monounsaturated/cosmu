@@ -23,6 +23,7 @@ def _client(tmp_path, monkeypatch):
         binance_testnet_api_key=None,
         binance_testnet_api_secret=None,
         live=LiveSettings(),
+        _env_file=None,  # hermetic: ignore the dev box's .env.local so the x-api-key gate stays a test no-op
     )
     store = Store(settings)
     monkeypatch.setattr(app_mod, "settings", settings)
@@ -70,6 +71,7 @@ def test_live_positions_reports_aggregate_testnet_mode_for_polymarket(tmp_path, 
         database_url=f"sqlite:///{tmp_path}/live_pm.sqlite3",
         polymarket_testnet_private_key="0xtestnetkey",  # only Polymarket is keyed
         live=LiveSettings(),
+        _env_file=None,  # hermetic: ignore .env.local (real keys/secret) so this asserts the Polymarket-only path
     )
     store = Store(settings)
     monkeypatch.setattr(app_mod, "settings", settings)
@@ -140,7 +142,7 @@ def test_live_rules_set_does_not_arm_live(tmp_path, monkeypatch):
 def test_live_venues_excludes_jurisdiction_restricted(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
-    settings = Settings(database_url=f"sqlite:///{tmp_path}/live_us.sqlite3", live_jurisdiction="US", live=LiveSettings())
+    settings = Settings(database_url=f"sqlite:///{tmp_path}/live_us.sqlite3", live_jurisdiction="US", live=LiveSettings(), _env_file=None)  # hermetic: no .env.local secret → gate off
     monkeypatch.setattr(app_mod, "settings", settings)
     monkeypatch.setattr(app_mod, "store", Store(settings))
     ids = {v["id"] for v in TestClient(app_mod.app).get("/live/venues").json()["venues"]}
@@ -214,6 +216,7 @@ def _client_with_keys(tmp_path, monkeypatch):
         binance_api_key="k", binance_api_secret="s",
         binance_testnet_api_key=None, binance_testnet_api_secret=None,
         live=LiveSettings(),
+        _env_file=None,  # hermetic: ignore .env.local so the x-api-key gate stays off (only the injected binance keys matter)
     )
     store = Store(settings)
     monkeypatch.setattr(app_mod, "settings", settings)
