@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from decimal import ROUND_DOWN, Decimal
+from decimal import ROUND_DOWN, ROUND_UP, Decimal
 
 from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
 from cosmu.data.backtest import (
@@ -26,6 +26,7 @@ from cosmu.data.backtest import (
     _setup_entry_gate,
     _warmup_bars,
 )
+from cosmu.data.market import _cache_is_fresh, _equity_cache_is_fresh
 from cosmu.knowledge.lifecycle_status import ALIVE_STATUSES
 from cosmu.knowledge.store import Store
 from cosmu.master.drift import monitor_drift
@@ -432,6 +433,24 @@ def step_tracks(
             setup_ok = _setup_entry_gate(m.spec, m.params, highs, lows, closes)
             if not (setup_ok[i] and _entry_signal(m.spec, m.params, features, i)):
                 continue
+            # Resolve the instrument once: feeds both the data-recency guard (asset-aware) and tick-size
+            # bracket quantization below. Degrade-safe — a missing instrument never blocks (defaults preserve
+            # prior behaviour: fresh + cent ticks).
+            try:
+                _instr = cat.instrument(m.symbol, m.venue_id)
+            except KeyError:
+                _instr = None
+            # DATA RECENCY: activates the risk.py `stale_data` gauntlet check, previously DEAD on this path
+            # (IntendedOrder.data_fresh defaulted True and was never set). A dark/offline cron serves a covering
+            # but STALE bar cache rather than raising, so without this an entry could fill at a multi-day-old
+            # price. Asset-aware: equity daily bars live on the US-session clock (weekend/holiday gaps are normal,
+            # not stale), crypto on the closed-candle 2*period clock — same logic the providers cache on. The
+            # reduce_only CLOSE is never freshness-gated (default True), so a stale tick can never TRAP an exit.
+            _is_equity_daily = _instr is not None and _instr.asset_class == "equity" and m.spec.horizon.bar_size == "1d"
+            data_fresh = (
+                _equity_cache_is_fresh(bars, now) if _is_equity_daily
+                else _cache_is_fresh(bars, m.spec.horizon.bar_size, now)
+            )
             # SIZING PARITY (audit #7): T1 when target_vol is frozen on this track, T0 otherwise.
             # T1 vol-target: scale with current realized vol vs the strategy's frozen baseline.
             _tv_row = store.row("SELECT target_vol FROM tracks WHERE strategy_version_id = ?", (m.version_id,))
@@ -446,6 +465,11 @@ def step_tracks(
             stop_f, take_f = _bracket_fractions(m.spec, m.params)
             stop = mark * (Decimal("1") - Decimal(str(stop_f))) if stop_f is not None else mark * _FALLBACK_STOP
             take = mark * (Decimal("1") + Decimal(str(take_f))) if take_f is not None else mark * _FALLBACK_TAKE
+            # Quantize brackets to the instrument's REAL tick_size, not a hardcoded $0.01 (which is coarser
+            # than a cheap asset's true tick — e.g. XRP ticks at 0.0001 — distorting/invalidating the level).
+            # Stop rounds DOWN, take rounds UP — always AWAY from entry, so tick rounding can never invert a
+            # bracket through the entry price (which would trip validate_order's invalid_stop_loss/take).
+            _tick = _instr.tick_size if _instr is not None else Decimal("0.01")
             pending.append(
                 (
                     IntendedOrder(
@@ -455,11 +479,12 @@ def step_tracks(
                         side=1,
                         qty=qty,
                         price=mark,
-                        stop_loss=stop.quantize(Decimal("0.01")),
-                        take_profit=take.quantize(Decimal("0.01")),
+                        stop_loss=stop.quantize(_tick, rounding=ROUND_DOWN),
+                        take_profit=take.quantize(_tick, rounding=ROUND_UP),
                         conviction=Decimal(str(m.spec.risk.conviction)),
                         gate_passed=True,
                         client_order_id=coid,
+                        data_fresh=data_fresh,
                     ),
                     "entry",
                     {"version_id": m.version_id, "symbol": m.symbol, "price": str(mark), "qty": str(qty)},

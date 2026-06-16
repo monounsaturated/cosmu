@@ -17,7 +17,11 @@ from cosmu.orchestrator.paper_step import step_tracks
 from cosmu.orchestrator.loop import PricingRouter, fund_tracks_from_survivors
 from cosmu.spine.venue import default_catalog
 
-_BASE = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+# Anchor synthetic bars to ~now (captured once) so the executor's data-recency guard (paper_step's stale_data
+# gate) treats them as FRESH. Forward-dating from a fixed base is preserved, so a longer close path still yields
+# a later last-bar ts (the "a new bar arrived" property the re-entry/idempotency tests rely on). Tests that need
+# a STALE entry control it explicitly via step_tracks(now=...) instead.
+_BASE = dt.datetime.now(tz=dt.UTC)
 
 
 def _store(tmp_path) -> Store:
@@ -179,6 +183,44 @@ def test_time_stop_closes_after_max_hold_days(tmp_path):
 
     assert report.closed == 1 and report.exits[0]["reason"] == "time_stop"
     assert _held_qty(store, vid) == 0
+
+
+def test_stale_bar_entry_is_rejected_then_fresh_fills(tmp_path):
+    """DATA RECENCY: an entry priced off a STALE bar (dark/offline cron serving a covering-but-old cache) must
+    be rejected by the risk.py `stale_data` gate — previously DEAD because paper_step never set data_fresh. The
+    same signal on a FRESH `now` fills. Freshness is controlled purely via step_tracks(now=...) against a
+    fixed-anchor provider, so the test is deterministic."""
+    from cosmu.orchestrator.loop import fund_tracks_from_survivors
+
+    store = _store(tmp_path)
+    vid = _persist_survivor(store, params={"mom": -1.0, "sl": 0.50, "tp": 0.50})  # entry signal always true
+    anchor = dt.datetime(2025, 1, 1, tzinfo=dt.UTC)
+
+    class _Dated:
+        def __init__(self, closes: list[float]) -> None:
+            self._c = closes
+
+        def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+            bars = [
+                Bar(ts=anchor + dt.timedelta(days=i), open=Decimal(str(c)), high=Decimal(str(c)),
+                    low=Decimal(str(c)), close=Decimal(str(c)), volume=Decimal("1000000"))
+                for i, c in enumerate(self._c)
+            ]
+            return bars[-limit:]
+
+    prov = _Dated([30000.0] * 26)  # last closed bar at anchor + 25d
+    router = PricingRouter(default_catalog(), crypto=prov, equity=prov)
+    assert fund_tracks_from_survivors(store, router=router).funded == 1  # registers FLAT (no entry yet)
+
+    # `now` 10 days after the last closed bar → the 1d freshness window (2*period) is blown → entry rejected.
+    stale_now = anchor + dt.timedelta(days=35)
+    assert step_tracks(store, router=router, now=stale_now).opened == 0
+    assert _held_qty(store, vid) == 0  # no position opened at a multi-day-old price
+
+    # `now` right after the last closed bar → fresh → the SAME entry signal now fills through the order path.
+    fresh_now = anchor + dt.timedelta(days=26)
+    assert step_tracks(store, router=router, now=fresh_now).opened == 1
+    assert _held_qty(store, vid) > 0
 
 
 def test_holds_when_no_exit_rule_fires(tmp_path):

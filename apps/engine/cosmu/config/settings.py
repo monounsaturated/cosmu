@@ -104,8 +104,12 @@ class BudgetConfig(BaseModel):
       BUDGET__GLOBAL_MONTHLY_CAP=300
       BUDGET__OPENROUTER__MONTHLY_CAP=50
       BUDGET__RAILWAY__MONTHLY_CAP=30
-    Alert tiers: 50% info / 80% warn / 100% throttle-suggest → Slack + recommendation row."""
-    global_monthly_cap: Decimal = Decimal("0")
+    Alert tiers: 50% info / 80% warn / 100% throttle-suggest → Slack + recommendation row.
+    The default global cap is a NON-HALTING tripwire (alerts only, never blocks spend or trading) so the
+    cost pipeline is live out of the box — paid LLM use is meant to be near-zero, so a $30/mo total is an
+    'something unexpected ran up' heads-up, not a budget. Override with BUDGET__GLOBAL_MONTHLY_CAP; set 0 to
+    silence all alerts. Per-vendor caps stay 0 (uncapped) unless the operator sets them."""
+    global_monthly_cap: Decimal = Decimal("30")
     openrouter: VendorBudget = Field(default_factory=VendorBudget)
     xai: VendorBudget = Field(default_factory=VendorBudget)
     railway: VendorBudget = Field(default_factory=VendorBudget)

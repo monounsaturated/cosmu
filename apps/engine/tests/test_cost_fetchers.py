@@ -367,6 +367,22 @@ def test_check_budget_only_highest_threshold():
     assert alerts[0].threshold_pct == pytest.approx(1.0)
 
 
+def test_shipped_default_global_cap_makes_pipeline_live():
+    """REGRESSION (audit): the cost-alert pipeline was DEAD because every cap defaulted to 0. The SHIPPED
+    BudgetConfig default now carries a non-zero global tripwire, so total spend crossing it emits a global
+    alert out of the box (non-halting — Slack + recommendation row only). Override via BUDGET__GLOBAL_MONTHLY_CAP."""
+    from cosmu.config.settings import BudgetConfig
+    from decimal import Decimal
+
+    cap = float(BudgetConfig().global_monthly_cap)
+    assert cap > 0  # the pipeline is live by default, not silently disabled
+    settings = types.SimpleNamespace(slack_webhook_url=None, budget=BudgetConfig())
+    # Total spend just over the shipped cap → exactly one GLOBAL alert at the 100% tier.
+    alerts = check_budget(_spends(("OpenRouter", cap + 1)), settings)
+    assert [a.vendor for a in alerts] == ["global"]
+    assert alerts[0].threshold_pct == pytest.approx(1.0)
+
+
 def test_check_budget_global_cap():
     settings = _make_settings(global_monthly_cap=200)
     spends = _spends(("Claude", 100), ("OpenRouter", 60), ("Railway", 50))
