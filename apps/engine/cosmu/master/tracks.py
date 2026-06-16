@@ -31,20 +31,29 @@ class _Inserter(Protocol):
     def insert(self, table: str, row: dict[str, Any]) -> str: ...
 
 
-def open_paper_track(writer: _Inserter, *, version_id: str, starting_capital: Decimal | str | float) -> str:
+def open_paper_track(
+    writer: _Inserter,
+    *,
+    version_id: str,
+    starting_capital: Decimal | str | float,
+    target_vol: float | None = None,
+) -> str:
     """Insert a forward paper track seeded HONESTLY: ``equity = starting_capital``, ``return_pct = 0``.
 
     This is the only sanctioned way to create a track. Never seed forward columns from a backtest/OOS
     number — the paper clock fills them in from real marks. Returns the new track id.
+
+    ``target_vol`` (T1 sizing): median EWMA realized vol from the strategy's backtest validation price
+    returns, frozen at funding. None → T0 static sizing (max_position_pct × conviction).
     """
     cap = Decimal(str(starting_capital))
-    return writer.insert(
-        "tracks",
-        {
-            "strategy_version_id": version_id,
-            "starting_capital": str(cap),
-            "equity": str(cap.quantize(_CENTS)),
-            "return_pct": "0.00",
-            "updated_at": utcnow(),
-        },
-    )
+    row: dict = {
+        "strategy_version_id": version_id,
+        "starting_capital": str(cap),
+        "equity": str(cap.quantize(_CENTS)),
+        "return_pct": "0.00",
+        "updated_at": utcnow(),
+    }
+    if target_vol is not None:
+        row["target_vol"] = float(target_vol)
+    return writer.insert("tracks", row)

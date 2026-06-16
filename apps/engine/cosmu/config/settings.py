@@ -124,8 +124,8 @@ _ROOT = _parents[4] if len(_parents) > 4 else _parents[-1]
 # existing .env.local so nothing breaks; the typed `environment` Literal below maps dev→local for back-compat.
 _ENV_FILE_BY_PROFILE = {
     "dev": ".env.local",
-    "test": ".env.test.local",
-    "qa": ".env.qa.local",
+    "test": ".env.local",   # local QA/test runs share the same real credentials as dev
+    "qa": ".env.local",
     "production": None,  # process env only — no file is read
 }
 _PROFILE_TO_ENVIRONMENT = {"dev": "local", "test": "test", "qa": "production", "production": "production"}

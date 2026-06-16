@@ -86,6 +86,7 @@ class VariantResult:
     version_id: str | None = None
     promoted: bool = False
     holdout_passed: bool = False
+    target_vol: float | None = None  # T1 sizing anchor: set from champion.target_vol at champion holdout
 
 
 @dataclass
@@ -378,6 +379,7 @@ class StrategyFinder:
                 update={"holdout_deflated_sharpe": champion.metrics.holdout_deflated_sharpe}
             )
             r.holdout_passed = float(r.metrics.holdout_deflated_sharpe) > floor
+            r.target_vol = champion.target_vol  # T1: freeze vol anchor from the full backtest (incl. holdout bars)
             try:
                 self.store.append_event(
                     actor="master", kind="holdout_look", ref_type="strategy",
@@ -570,7 +572,7 @@ class StrategyFinder:
                     # The OOS stays in backtests.oos_return; the paper clock advances the forward columns from
                     # real marks, so a promoted-but-unmarked survivor never shows its backtest as forward P&L.
                     _capital = self.settings.sim_track_capital
-                    open_paper_track(b, version_id=version_id, starting_capital=_capital)
+                    open_paper_track(b, version_id=version_id, starting_capital=_capital, target_vol=r.target_vol)
                     # The paper clock origin. master/live_eligibility reads the FIRST `track_opened` event for
                     # a version as BOTH its maturity-clock origin (paper_clock_origin) and its proven-regime
                     # passport (proven_regimes_for) — exactly as the evolution loop writes it. Without this a promoted

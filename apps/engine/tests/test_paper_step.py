@@ -133,9 +133,9 @@ def test_stop_loss_exit_closes_through_the_order_path(tmp_path):
     # The close paid sim slippage: filled BELOW the 27900 mark (adverse side), with a real fee.
     assert Decimal(str(sell["price"])) < Decimal("27900")
     assert Decimal(str(sell["fee"])) > 0
-    # Realized P&L is booked NET of costs — a ~7% drop on ~$1000 must show a real loss.
+    # Realized P&L is booked NET of costs — a ~7% drop on ~$500 (size_fraction=0.5) must show a real loss.
     pos = store.row("SELECT realized_pnl FROM positions WHERE strategy_version_id = ?", (vid,))
-    assert Decimal(str(pos["realized_pnl"])) < Decimal("-50")
+    assert Decimal(str(pos["realized_pnl"])) < Decimal("-30")
     assert store.row("SELECT id FROM events WHERE kind = 'forward_exit'") is not None
 
 
@@ -150,7 +150,7 @@ def test_take_profit_exit_fires(tmp_path):
     assert report.closed == 1 and report.exits[0]["reason"] == "take_profit"
     assert _held_qty(store, vid) == 0
     pos = store.row("SELECT realized_pnl FROM positions WHERE strategy_version_id = ?", (vid,))
-    assert Decimal(str(pos["realized_pnl"])) > Decimal("50")  # a real net-of-cost win
+    assert Decimal(str(pos["realized_pnl"])) > Decimal("30")  # a real net-of-cost win (size_fraction=0.5 → ~$500 exposure)
 
 
 def test_signal_exit_fires_when_condition_true(tmp_path):
@@ -299,7 +299,7 @@ def test_closed_track_keeps_realized_pnl_in_equity_and_trajectory(tmp_path):
 
     realized = Decimal(str(store.row(
         "SELECT realized_pnl FROM positions WHERE strategy_version_id = ?", (vid,))["realized_pnl"]))
-    assert realized < Decimal("-50")
+    assert realized < Decimal("-30")  # size_fraction=0.5 → ~$500 deployed, ~7% stop → ~-$35 net
     assert abs(float(snap["equity"]) - (float(store.settings.sim_bankroll) + float(realized))) < 0.05
     tsnap = store.row(
         "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1", (vid,))

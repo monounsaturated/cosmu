@@ -37,6 +37,7 @@ from cosmu.master.execution import (
     reconcile_fills,
 )
 from cosmu.master.portfolio import Portfolio, PositionView
+from cosmu.master.sizing import size_fraction
 from cosmu.orchestrator.loop import PricingRouter, _instrument_venue
 from cosmu.spine.venue import VenueCatalog, default_catalog
 from cosmu.strategy.spec import StrategySpec
@@ -406,7 +407,12 @@ def step_tracks(
             setup_ok = _setup_entry_gate(m.spec, m.params, highs, lows, closes)
             if not (setup_ok[i] and _entry_signal(m.spec, m.params, features, i)):
                 continue
-            qty = (per_track_capital / mark).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
+            # SIZING PARITY (audit #7): T1 when target_vol is frozen on this track, T0 otherwise.
+            # T1 vol-target: scale with current realized vol vs the strategy's frozen baseline.
+            _tv_row = store.row("SELECT target_vol FROM tracks WHERE strategy_version_id = ?", (m.version_id,))
+            _target_vol = float(_tv_row["target_vol"]) if _tv_row and _tv_row.get("target_vol") is not None else None
+            frac = Decimal(str(size_fraction(m.spec, closes=closes, target_vol=_target_vol)))
+            qty = (per_track_capital * frac / mark).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
             if qty <= 0:
                 continue
             coid = f"fstep-{m.version_id}-open-{bars[-1].ts.isoformat()}"
