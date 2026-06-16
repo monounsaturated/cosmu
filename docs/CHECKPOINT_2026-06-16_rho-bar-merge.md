@@ -8,7 +8,15 @@
 
 ## TL;DR for the next (master) agent
 
-1. The branch **`feat/rho-bar-wiring`** is **0 behind / 3 ahead of `origin/main`** → a **clean fast-forward merge to main is mechanically possible** right now.
+> **UPDATE (later same session):** origin/main has since advanced — the branch is now **~1 behind / 6+ ahead**
+> (the fleet keeps committing on both sides), so it is **no longer a clean fast-forward**. You must
+> `git merge origin/main` again (expect another `backtest.py`-style conflict → resolve as a UNION, same as
+> `2368ea8`). Always re-run `git status` + `git rev-list --left-right --count origin/main...HEAD` first.
+> New clean commits since checkpoint: `4436333` (this doc), `c6c74df` (sibling bb_width + squeeze spec),
+> `a903964` (my **perp-basis discount contrarian long-spot** strategy — novel, validated, 7/7 spec tests;
+> see "Build work added this session" at bottom).
+
+1. The branch **`feat/rho-bar-wiring`** was **0 behind / 3 ahead of `origin/main`** at first checkpoint → clean merge was possible then (see UPDATE above for current divergence).
 2. The hard part — merging `origin/main` *into* this branch and resolving the `backtest.py` conflict — is **already committed** as `2368ea8` with a **verified-correct union resolution**.
 3. **DO NOT race the fleet.** 6+ Claude sessions are writing this same working tree. The merge decision is a single global action — only ONE agent should do it, and only after the working tree is committed + green.
 4. Your job: **quiesce the fleet → commit/verify the in-flight work → run QA in isolation → merge to main via PR.**
@@ -122,3 +130,28 @@ function — coherent). But **verify each is complete + green before committing*
 - **Don't `git reset --hard` / force-push** while the fleet is live — you'll clobber sibling commits.
 - **Don't commit a sibling's half-written file** — verify it's complete + green first.
 - The merge resolution in `2368ea8` is correct — **don't re-resolve it.**
+
+---
+
+## Build work added this session (commit `a903964`)
+
+While waiting on fleet coordination I authored one genuinely-novel strategy (the user said "keep building"):
+
+**`apps/engine/strategies/inbox/perp-basis-discount-contrarian-long-spot.json`** — the absent **LONG mirror**
+of the existing `perp-basis-premium-contrarian-short`. Goes **long spot** when `perp_spot_basis` crosses
+**down** into a discount (crowded-short capitulation → mean-revert up). Key properties:
+- **Genuinely novel** (not a near-dup): the only other basis spec is the SHORT leg (`cross_up`, `direction=-1`);
+  this is `cross_down`, `direction=1`. Opposite mechanism, opposite side.
+- **Spot-executable on Binance** (`direction=1`, `funding_feature=null`) → fits the spot-only live constraint,
+  unlike the short leg which needs perp shorting.
+- **Validated:** `validate_spec` → `[]` (clean), `compile_spec` → CompiledStrategy, all thresholds are ParamRefs
+  (no magic numbers), `test_composable_specs` + `test_strategy` 7/7 green. Same `perp_spot_basis` data path as
+  the already-accepted short spec, so it's immediately screenable by the cohort/finder.
+
+**Why this and not another momentum spec:** I surveyed all 53 inbox specs by entry-feature. The price/momentum/
+vol/funding cluster is **saturated** (`ret_Nd` 37×, `vol_realized` 13×, `funding_rate` 8×, `xsec_momentum_rank`
+already paired with funding in `xsec-neutral-momentum-long-leg`). The **flow/positioning axis is under-mined**
+(`perp_spot_basis` 1×, `open_interest` 1×, `liquidation_cascade` 1×; `stablecoin_net_flow_usd` 0×). Note:
+`exchange_netflow` is **DISABLED** in the registry (mislabeled/fabricated prior — do not author on it). The next
+under-mined hypotheses for whoever continues: a **stablecoin dry-powder inflow** regime gate
+(`stablecoin_net_flow_usd`, 0 specs, clean documented mechanism) and an **OI-divergence** reversal.
