@@ -162,7 +162,19 @@ def test_finder_promotion_opens_forward_clock_and_is_live_eligible(tmp_path):
     assert fresh.forward_ready is False
     assert fresh.eligible is False
 
-    # After a simulated >= PAPER_MIN_DAYS window, net-positive AND in a proven regime → forward_ready + armable.
+    # HONEST GATE: maturity ALONE is not enough. The track is born with ZERO forward P&L (the new honest seed —
+    # the backtest OOS is NOT copied into tracks.return_pct), so a matured-but-flat track must NOT be eligible.
+    # It WOULD have been, before, when promotion seeded return_pct from the OOS — that was the live-arming leak.
+    matured_flat = live_eligibility_verdict(
+        finder.store, vid, _bull_bars(), now=now + timedelta(days=PAPER_MIN_DAYS + 5)
+    )
+    assert matured_flat.paper_age_days >= PAPER_MIN_DAYS
+    assert matured_flat.forward_ready is False  # +0.00% forward → "paper not proven"
+    assert matured_flat.eligible is False
+
+    # Only once REAL net-positive forward P&L accrues (the paper clock writes tracks.return_pct from marks) does a
+    # matured, proven-regime track become forward-ready + armable.
+    finder.store.rows("UPDATE tracks SET return_pct = ? WHERE strategy_version_id = ?", ("3.5", vid))
     matured = live_eligibility_verdict(
         finder.store, vid, _bull_bars(), now=now + timedelta(days=PAPER_MIN_DAYS + 5)
     )

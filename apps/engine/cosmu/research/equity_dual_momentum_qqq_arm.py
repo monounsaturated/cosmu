@@ -21,15 +21,15 @@ import sys
 from decimal import ROUND_DOWN, Decimal
 from types import SimpleNamespace
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import Settings, get_settings
 from cosmu.data.market import YahooDailyBarsProvider
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
+from cosmu.master.tracks import open_paper_track
 from cosmu.research import equity_dual_momentum_qqq as var
 from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import Instrument, default_catalog
-from cosmu.config.settings import get_settings
 
 STRATEGY_NAME = "Dual Momentum (QQQ/EFA tech-tilt)"  # UNIQUE — distinct from GEM (SPY/EFA) and VAA siblings
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — deploy-a-documented-strategy track, labeled honestly
@@ -190,17 +190,9 @@ def arm(store: Store | None = None) -> dict:
             },
         )
         store.insert("backtests", _backtest_row(version_id, v))
-        equity0 = TRACK_CAPITAL * (Decimal("1") + Decimal(str(round(v["oos"].total_return, 6))))
-        store.insert(
-            "tracks",
-            {
-                "strategy_version_id": version_id,
-                "starting_capital": str(TRACK_CAPITAL),
-                "equity": str(equity0.quantize(Decimal("0.01"))),
-                "return_pct": str((Decimal(str(round(v["oos"].total_return, 6))) * Decimal("100")).quantize(Decimal("0.01"))),
-                "updated_at": now,
-            },
-        )
+        # Born HONEST: equity = starting_capital, return_pct = 0 (master/tracks.open_paper_track). The OOS/
+        # holdout stays in backtests.oos_return; the paper clock advances the forward columns from real marks.
+        open_paper_track(store, version_id=version_id, starting_capital=TRACK_CAPITAL)
         store.append_event(
             actor="research",
             kind="track_opened",

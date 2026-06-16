@@ -26,6 +26,7 @@ from cosmu.data.backtest import (
     _setup_entry_gate,
     _warmup_bars,
 )
+from cosmu.knowledge.lifecycle_status import ALIVE_STATUSES
 from cosmu.knowledge.store import Store
 from cosmu.master.drift import monitor_drift
 from cosmu.master.execution import (
@@ -49,7 +50,7 @@ _FALLBACK_TAKE = Decimal("1.10")
 # which it stops stepping and liquidates). "screened" is included: a paper entrant is born "screened"
 # (badge: Backtest) and IS actively paper-trading — the paper clock promotes it to "paper" once it accrues a
 # real forward day. Omitting it would freeze every new survivor's clock (never stepped → never promoted).
-_ALIVE_STATUSES = ("screened", "paper", "forward_test", "live")
+_ALIVE_STATUSES = tuple(sorted(ALIVE_STATUSES))
 
 
 @dataclass

@@ -22,6 +22,7 @@ from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider, Yaho
 
 if TYPE_CHECKING:
     from cosmu.config.settings import Settings
+from cosmu.knowledge.lifecycle_status import ALIVE_STATUSES, PAPER_ALIASES, sql_in_list
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.drift import monitor_drift
 from cosmu.master.neutral import accrue_funding, neutral_tracks
@@ -61,7 +62,9 @@ def _screened_symbols(raw_spec: object, asset_class: str, venue_symbols: list[st
     caller falls back to the whole venue list (historical rows; better an imperfect track than none)."""
     if asset_class != "crypto":
         return []
-    from cosmu.evolution.loop import CRYPTO_SCREEN_UNIVERSE  # deferred: evolution imports master at module level
+    from cosmu.evolution.loop import (
+        CRYPTO_SCREEN_UNIVERSE,  # deferred: evolution imports master at module level
+    )
 
     tradable = set(venue_symbols)
     return [s for s in CRYPTO_SCREEN_UNIVERSE if s in tradable]
@@ -101,13 +104,13 @@ def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Tra
     SKIPPED rather than forced onto a crypto symbol (never mislabel/misprice a position). Returns
     (version_id, Track, symbol, venue_id). `rolling_dsr` = the deflated Sharpe (decays as edge dies)."""
     rows = store.rows(
-        """
+        f"""
         SELECT sv.id AS version_id, sv.spec AS spec, tr.return_pct AS return_pct,
                b.deflated_sharpe AS deflated_sharpe, b.max_dd AS max_dd, b.oos_return AS oos_return
         FROM strategy_versions sv
         JOIN tracks tr ON tr.strategy_version_id = sv.id
         JOIN backtests b ON b.strategy_version_id = sv.id AND b.kind = 'screen'
-        WHERE sv.status IN ('screened', 'paper', 'forward_test', 'live') AND b.passed_gates = 1 AND b.holdout_passed = 1
+        WHERE sv.status IN {sql_in_list(ALIVE_STATUSES)} AND b.passed_gates = 1 AND b.holdout_passed = 1
         ORDER BY CAST(b.deflated_sharpe AS REAL) DESC
         LIMIT 12
         """
@@ -457,11 +460,11 @@ def reclassify_unforwarded_paper(store: Store) -> int:
     moment its first real fill lands. Badge-only — the live gate reads track_opened, not status. Wired into boot
     via api._lifespan; lives here so the stage-transition logic stays in ONE module with its forward twin."""
     demoted = 0
-    # Match EVERY paper-ish status the web renders as the "Paper" badge — including the LEGACY 'forward_test'
-    # / 'forward' values (the 2026-06-11 rename is applied by hand in Supabase and may not have run). Matching
-    # only 'paper' left the documented arms stranded as 'forward_test' → badged "Paper" with ZERO fills. The
-    # has-fills guard is unchanged, so a track that has genuinely traded on paper is never demoted.
-    for r in store.rows("SELECT id, status FROM strategy_versions WHERE status IN ('paper', 'forward_test', 'forward')"):
+    # Match every paper-ish status via PAPER_ALIASES (canonical 'paper' + the LEGACY 'forward_test' the
+    # 2026-06-11 rename, applied by hand in Supabase, may not yet have collapsed). Matching only 'paper' once
+    # left the documented arms stranded as 'forward_test' → badged "Paper" with ZERO fills. The has-fills guard
+    # is unchanged, so a track that has genuinely traded on paper is never demoted.
+    for r in store.rows(f"SELECT id, status FROM strategy_versions WHERE status IN {sql_in_list(PAPER_ALIASES)}"):
         vid = r["id"]
         if not _has_paper_fills(store, vid):
             store.rows("UPDATE strategy_versions SET status = 'screened' WHERE id = ?", (vid,))

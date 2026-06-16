@@ -10,6 +10,7 @@ import threading
 import time
 from typing import Any
 
+from cosmu.knowledge.lifecycle_status import FORWARD_STATUSES, FUNDED_STATUSES, sql_in_list
 from cosmu.knowledge.store import Store
 
 # The snapshot is a slow cross-source aggregation: ~15 queries, two of them full-table scans of the
@@ -68,7 +69,7 @@ def _compute(store: Store) -> dict[str, Any]:
 def _funnel(store: Store) -> dict[str, int]:
     """Strategy funnel: how many at each stage."""
     total = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions")
-    paper = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions WHERE status IN ('paper', 'forward_test')")
+    paper = _count(store, f"SELECT COUNT(*) AS n FROM strategy_versions WHERE status IN {sql_in_list(FORWARD_STATUSES)}")
     live = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions WHERE status = 'live'")
     killed = _count(store, "SELECT COUNT(*) AS n FROM strategy_versions WHERE status = 'killed'")
     gate_passed = _count(store, "SELECT COUNT(*) AS n FROM backtests WHERE passed_gates = 1")
@@ -114,7 +115,7 @@ def _regime_coverage(store: Store) -> dict[str, Any]:
     rows = _safe_rows(store,
         "SELECT sv.id, b.regime_label FROM strategy_versions sv "
         "JOIN backtests b ON b.strategy_version_id = sv.id "
-        "WHERE sv.status IN ('paper', 'forward_test', 'live') AND b.passed_gates = 1"
+        f"WHERE sv.status IN {sql_in_list(FUNDED_STATUSES)} AND b.passed_gates = 1"
     )
     coverage: dict[str, int] = {}
     for r in rows:
