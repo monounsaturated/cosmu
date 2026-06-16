@@ -76,19 +76,40 @@ def _portfolio() -> Portfolio:
     return Portfolio(store, bankroll=settings.sim_bankroll, daily_loss_cap=settings.live.daily_loss_cap)
 
 
-def _brain_reference_bars():
-    """A reference close series for the CURRENT-regime read — REAL Binance BTCUSDT only. If the cache/network is
-    unavailable we return no bars (current_regime then reports a neutral 'chop' default) rather than reading a
-    synthetic fixture: the displayed regime must never be derived from fabricated data."""
-    from cosmu.data.market import BinanceSpotOHLCVProvider
-
+def _market_reference_bars(asset_class: str):
+    """The CURRENT-regime reference for an ASSET CLASS — the market 'brain' for THAT class: crypto → REAL Binance
+    BTCUSDT; equity/ETF → SPY total-return (Alpaca-when-keyed else keyless Yahoo). Offline-safe: no bars → []
+    (current_regime then reports a neutral 'chop' default) — NEVER a synthetic series. So an equity strategy's
+    regime is judged by the EQUITY market, not BTC."""
     try:
-        bars = BinanceSpotOHLCVProvider().fetch_bars("BTCUSDT", "1d", limit=240)
+        if asset_class == "equity":
+            from cosmu.orchestrator.loop import _default_equity_provider
+
+            bars = _default_equity_provider(settings).fetch_bars("SPY", "1d", limit=240)
+        else:
+            from cosmu.data.market import BinanceSpotOHLCVProvider
+
+            bars = BinanceSpotOHLCVProvider().fetch_bars("BTCUSDT", "1d", limit=240)
         if len(bars) >= 60:
             return bars
     except Exception:  # noqa: BLE001 — offline/no-network: report neutral, never fabricate a regime
         pass
     return []
+
+
+def _brain_reference_bars():
+    """Back-compat crypto-market brain (BTCUSDT). Prefer _version_reference_bars for per-strategy regime checks
+    so a non-crypto strategy is never judged by BTC."""
+    return _market_reference_bars("crypto")
+
+
+def _version_reference_bars(version_id: str):
+    """The regime reference for a SPECIFIC version, resolved from its OWN universe/asset class (NOT BTC for all):
+    crypto → BTC, equity → SPY. Falls back to the crypto brain when the spec is missing/unparsable."""
+    from cosmu.orchestrator.loop import _survivor_asset_class
+
+    row = store.row("SELECT spec FROM strategy_versions WHERE id = ?", (version_id,))
+    return _market_reference_bars(_survivor_asset_class(row["spec"]) if row else "crypto")
 
 
 def ensure_recommendations() -> None:

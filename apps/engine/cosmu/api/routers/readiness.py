@@ -14,7 +14,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from cosmu.api._shared import _brain_reference_bars, _json, store
+from cosmu.api._shared import _json, _version_reference_bars, store
 from cosmu.master.lifecycle import LIFECYCLE_KINDS, LIFECYCLE_ORDER
 from cosmu.master.live_eligibility import live_eligibility_verdict
 
@@ -86,7 +86,7 @@ def readiness_detail(version_id: str) -> ReadinessResponse:
     and attach its audit trace from the events ledger. Read-only: reuses live_eligibility_verdict (which itself
     composes paper_maturity + current_regime), so this surface can never disagree with the live-arming gate. All
     reads share one connection."""
-    reference = _brain_reference_bars()
+    reference = _version_reference_bars(version_id)  # this version's own asset-class regime brain (not BTC for all)
     with store.reading():
         verdict = live_eligibility_verdict(store, version_id, reference)
         rows = store.rows(

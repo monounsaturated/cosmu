@@ -153,7 +153,7 @@ def test_readiness_composes_the_three_verdicts(tmp_path, monkeypatch):
     emit_lifecycle_event(store, "v-ready", "live_armed", {"venue_id": "binance"})
 
     monkeypatch.setattr(r, "store", store)
-    monkeypatch.setattr(r, "_brain_reference_bars", lambda: _UP)
+    monkeypatch.setattr(r, "_version_reference_bars", lambda _vid: _UP)
 
     out = r.readiness_detail("v-ready")
     assert out.version_id == "v-ready"
@@ -177,7 +177,7 @@ def test_readiness_fails_safe_for_unknown_version(tmp_path, monkeypatch):
 
     store = _store(tmp_path)
     monkeypatch.setattr(r, "store", store)
-    monkeypatch.setattr(r, "_brain_reference_bars", lambda: _UP)
+    monkeypatch.setattr(r, "_version_reference_bars", lambda _vid: _UP)
 
     out = r.readiness_detail("ghost")
     assert out.eligible is False
