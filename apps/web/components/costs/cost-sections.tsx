@@ -69,8 +69,9 @@ export function StatStrip({ cells }: { cells: StatCell[] }) {
 
 // ─── Spend chart card ───────────────────────────────────────────────────────────
 // The mockup's `costChartCard()` fronts a cumulative-spend curve. `spendSeries` comes from the
-// CostsResponse.spend_series field (monthly booked actuals). Falls back to an honest empty state when
-// no points exist — never fabricates a curve.
+// CostsResponse.spend_series field (monthly booked actuals). The chart section is only rendered when
+// monthly actuals exist — hiding a blank panel that reads as broken is more honest than an empty
+// EquityChart body. The hero stat (total spend) is always shown.
 export function SpendChartCard({
   totalToDate,
   spendSeries,
@@ -88,6 +89,7 @@ export function SpendChartCard({
       chartValues.push(running);
     }
   }
+  const hasChart = chartValues.length >= 2;
 
   return (
     <div className="card dh" style={{ padding: "14px 16px", marginBottom: "var(--gap)" }}>
@@ -101,17 +103,19 @@ export function SpendChartCard({
             </span>
           </div>
         </div>
-        {spendSeries && spendSeries.length > 0 ? (
+        {hasChart ? (
           <span className="quiet" style={{ fontSize: 10.5, alignSelf: "flex-start", marginTop: 4 }}>
-            {spendSeries.length} months of actuals
+            {spendSeries!.length} months of actuals
           </span>
         ) : null}
       </div>
-      <EquityChart
-        values={chartValues}
-        height={150}
-        emptyHint="No dated spend recorded yet — the engine books actuals as LLM calls and trading fees are logged. Every figure below is a real total; nothing here is fabricated."
-      />
+      {hasChart ? (
+        <EquityChart values={chartValues} height={150} />
+      ) : (
+        <p className="quiet" style={{ fontSize: 11, marginTop: 8 }}>
+          Spend history appears here once monthly actuals are booked — the figures above are real totals.
+        </p>
+      )}
     </div>
   );
 }

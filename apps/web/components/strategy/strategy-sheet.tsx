@@ -21,6 +21,7 @@ import { MoneyBand, type MoneyBandData } from "./money-band";
 import { AiSummary } from "./ai-summary";
 import { CostBasisSelector } from "./cost-basis-selector";
 import { PhasedEquity } from "./phased-equity";
+import { BacktestEquity } from "./backtest-equity";
 import { SpecBlocks } from "./spec-view";
 import { RegistryBlocks } from "./registry-blocks";
 import { StageControl, type Stage } from "./stage-control";
@@ -397,7 +398,16 @@ export function StrategySheet({ strategy, stageOverride, origin }: { strategy: S
 
       <MoneyBand data={money} />
 
-      <PhasedEquity paperCurve={strategy.forward_equity ?? []} />
+      {/* Backtest equity curve — gross vs net two-line overlay + drawdown band. Always available
+          when the engine has run a backtest (fetched from GET /explorer/{id}). Shown first so
+          the operator sees the real edge evidence even before any paper marks exist. */}
+      {strategy.version_id ? <BacktestEquity versionId={strategy.version_id} /> : null}
+
+      {/* Forward (paper) equity — the engine's MARKED scope='track' trajectory. Only rendered
+          when ≥ 2 real snapshots exist; otherwise the backtest curve above is the honest view. */}
+      {(strategy.forward_equity ?? []).length >= 2 ? (
+        <PhasedEquity paperCurve={strategy.forward_equity ?? []} />
+      ) : null}
 
       <AiSummary
         summaryMd={strategy.summary_md}

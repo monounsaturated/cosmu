@@ -17,9 +17,9 @@
 //   • row click → opens the right `SidePanel` with the full per-Version sheet (fetched client-side).
 //
 // HONESTY: every cell renders ONLY a real field; a null money field (value_usd / pnl_usd / pnl_pct) reads
-// an explicit "—" in a `.quiet` span, NEVER 0. The leaderboard contract carries no max-drawdown or fee
-// field, so "Max DD" and "Fees" honestly read "—" until the engine surfaces them — never a fabricated arc
-// or cost.
+// an explicit "—" in a `.quiet` span, NEVER 0. "Max DD" comes from the leaderboard's strongest backtest
+// max_dd field (added to LeaderboardRow — honest "—" when absent). "Fees" carries no per-Version fee total
+// on the leaderboard contract and reads "—" — never a fabricated cost.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
@@ -117,13 +117,15 @@ const COLS: ColDef[] = [
   { key: "pnlpct", label: "P&L %", width: 64, pickable: true, sort: { dir: "desc", value: (r) => latestStagePnl(r)?.pct ?? null } },
   { key: "dsr", label: "DSR", width: 94, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.deflated_sharpe) ? r.deflated_sharpe : null) } },
   { key: "pbo", label: "PBO", width: 64, pickable: true, sort: { dir: "asc", value: (r) => (Number.isFinite(r.pbo) ? r.pbo : null) } },
-  { key: "dd", label: "Max DD", width: 80, defaultOn: false, pickable: true },
+  { key: "dd", label: "Max DD", width: 80, defaultOn: false, pickable: true, sort: { dir: "asc", value: (r) => (typeof r.max_dd === "number" ? r.max_dd : null) } },
   { key: "oos", label: "OOS", width: 70, pickable: true, sort: { dir: "desc", value: (r) => (Number.isFinite(r.track_return_pct) ? r.track_return_pct : null) } },
   // Provenance bucket (Quant / Vibe / Astro) derived from the row's origin + referenced features — an opt-in
   // facet so the operator can read WHO authored each edge without it crowding the default view.
   { key: "provenance", label: "Source", pickerLabel: "Provenance", width: 76, defaultOn: false, pickable: true, sort: { dir: "asc", value: (r) => provenanceOf(r.origin, r.features).label } },
   { key: "venue", label: "Venue", width: 72, defaultOn: false, pickable: true, sort: { dir: "asc", value: (r) => r.venue } },
-  { key: "fees", label: "Fees", pickerLabel: "Fees paid", width: 74, defaultOn: false, pickable: true },
+  // "fees" column: no per-Version fee total on the leaderboard contract yet → hidden entirely (not pickable)
+  // until the engine surfaces it. The CostBasisSelector on the strategy sheet shows per-strategy costs.
+  { key: "fees", label: "Fees", pickerLabel: "Fees paid", width: 74, defaultOn: false, pickable: false },
   { key: "origin", label: "Origin", width: 82, defaultOn: false, pickable: true, sort: { dir: "asc", value: (r) => r.origin } }
 ];
 
@@ -495,9 +497,21 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
       if (pbo === null) return <Dash />;
       return <span className={cn("tab", pbo > PBO_CEILING - 0.05 ? "gold" : "")}>{pbo.toFixed(2)}</span>;
     }
-    case "dd":
-      // LeaderboardRow carries NO max-drawdown — render an honest "—", never a fabricated arc.
-      return <Dash />;
+    case "dd": {
+      // max_dd is the strongest backtest's peak-to-trough drawdown fraction (0..1) — surfaced from the
+      // leaderboard so the operator can see risk alongside OOS return. Honest "—" when absent.
+      const dd = typeof row.max_dd === "number" && row.max_dd !== null ? row.max_dd : null;
+      if (dd === null) return <Dash />;
+      const ddPct = (dd * 100).toFixed(1);
+      return (
+        <span
+          className={cn("tab", dd > 0.25 ? "dn" : "")}
+          data-tip="Max drawdown from the strongest backtest — peak-to-trough equity drop. Larger = more painful to hold."
+        >
+          {ddPct}%
+        </span>
+      );
+    }
     case "oos": {
       const oos = Number.isFinite(row.track_return_pct) ? row.track_return_pct : null;
       if (oos === null) return <Dash />;

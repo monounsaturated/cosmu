@@ -262,7 +262,8 @@ export function LiveSurface({
                 : "net of costs"
             }
           />
-          {/* Guardrails — editable caps. Max DD has no live metric source yet → handed null → honest "—". */}
+          {/* Guardrails — editable caps. Max DD has no live metric source yet so its tile is hidden
+              (showing "—" reads as broken; the field is surfaced in the strategy sheet's backtest equity panel). */}
           <GuardTile
             label="Daily loss"
             used={dailyLossUsed}
@@ -270,7 +271,6 @@ export function LiveSurface({
             unit="usd"
             onCapChange={(n) => saveCap({ max_daily_loss: n })}
           />
-          <GuardTile label="Max DD" used={null} cap={0} unit="pct" editable={false} />
           <GuardTile
             label="Exposure"
             used={exposureUsed}
@@ -278,6 +278,8 @@ export function LiveSurface({
             unit="usd"
             onCapChange={(n) => saveCap({ global_max_notional: n })}
           />
+          {/* Spacer to keep the 3-column kpi-guard grid balanced after removing Max DD tile. */}
+          <div />
           </div>
 
           {/* Capital allocation by venue — honest "No live capital deployed" until something is live. */}
@@ -360,23 +362,25 @@ export function LiveSurface({
             </div>
           </div>
 
-          {/* Recent trades — the engine exposes no live recent-trades endpoint yet, so this is an HONEST
-              empty state rather than fabricating fills or reusing SIM trades. */}
-          <div className="card dh">
-            <div className="card-hdr">
-              <span className="card-lbl">Recent trades</span>
+          {/* Recent trades — hidden when nothing is armed live (no fills can exist, so an empty card
+              just reads as broken). Shows the honest empty state only once armed, when fills are possible. */}
+          {isLive ? (
+            <div className="card dh">
+              <div className="card-hdr">
+                <span className="card-lbl">Recent trades</span>
+              </div>
+              <div className="card-body">
+                <EmptyState
+                  title="No live trades yet"
+                  hint={
+                    connected
+                      ? "Live fills appear here once the engine executes a real order. Nothing here is fabricated — paper trades are not shown as live."
+                      : "Engine not connected — recent live fills appear here once it is reachable."
+                  }
+                />
+              </div>
             </div>
-            <div className="card-body">
-              <EmptyState
-                title="No live trades yet"
-                hint={
-                  connected
-                    ? "Live fills appear here once the engine executes a real order. Nothing here is fabricated — paper trades are not shown as live."
-                    : "Engine not connected — recent live fills appear here once it is reachable."
-                }
-              />
-            </div>
-          </div>
+          ) : null}
         </div>
 
       </div>
