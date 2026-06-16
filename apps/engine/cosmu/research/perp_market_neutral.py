@@ -44,7 +44,7 @@ from cosmu.data.providers._types import AltDataPoint
 from cosmu.data.providers.store import AltDataStore
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
-from cosmu.master.scorer import BacktestMetrics, cscv_pbo, score
+from cosmu.master.scorer import BacktestMetrics, cscv_pbo, expected_max_sharpe, probabilistic_sharpe, sample_moments, score
 from cosmu.master.trials import register_trial, trial_stats
 from cosmu.master.verdict_log import durable_persist
 from cosmu.research.equity_holdout import metrics_with_holdout, purged_embargoed_split
@@ -414,6 +414,37 @@ DEPLOY_SIGN = +1
 DEPLOY_FRAC = 1 / 3
 DEPLOY_LOOKBACK = max(_LOOKBACKS)  # the deepest formation window (matches the cohort's deepest arm)
 DEPLOY_MIN_PERIODS = 40       # an honest deploy read needs at least this many invested rebalances
+# MIN-EFFECT-SIZE FLOOR on the held-out tail. `holdout_dsr` is PSR(holdout Sharpe vs 0) − 0.5 ∈ [−0.5, +0.5] — a real
+# significance number, NOT a raw sign. The old bar checked only `holdout_dsr >= 0` (a coin-flip), so the deploy lane —
+# which pays NO multiple-testing deflation (it never routes through score()/promote_cohort) — accepted a PURE zero-edge
+# random walk ~12.5% of the time (Monte-Carlo, 400 RW draws, reb=2). Requiring the held-out Sharpe to be SIGNIFICANTLY
+# positive (P(SR>0) > 0.80) drops that no-edge false-positive rate to ~4.5% while KEEPING the genuine reb=2 perp lead
+# (real holdout_dsr=0.3749) and correctly REJECTING the noise-permitting reb=3 cadence (holdout_dsr=0.2555, the
+# fixture-aliasing trap). This HARDENS the deploy bar; it does NOT touch the locked 0.95 cohort Gate. See
+# docs/research/RESEARCH_LESSONS.md §2b.
+DEPLOY_MIN_HOLDOUT_DSR = 0.30
+
+# A SECOND, complementary floor: a DEFLATED FULL-stream Sharpe that CHARGES the cadence search. The holdout floor
+# above is necessary but INSUFFICIENT — the held-out slice is small/noisy, so a pure random walk still floats its
+# holdout_dsr above 0.30 ~6.5% of the time (Monte-Carlo). The full realized stream has far more periods (a tighter
+# Sharpe estimate); deflating it for the number of rebalance cadences we SEARCH (2..5 = 4 trials — the same
+# multiple-testing logic the cohort gate uses) and requiring P(SR>0) >= 0.95 drops the no-edge deployable rate from
+# ~20% to ~0.12% WITHOUT touching the locked 0.95 cohort Gate. Keeps a genuine trending edge (deflated full DSR
+# ~0.97) and correctly rejects the prior-less searched perp lead at every cadence. See RESEARCH_LESSONS §2b.
+DEPLOY_CADENCE_TRIALS = 4      # cadences 2..5 are searchable → charge the trial count, like the gate's deflated Sharpe
+DEPLOY_MIN_FULL_DSR = 0.95     # aligns the deploy effect-size floor with GateSettings.min_deflated_sharpe_prob
+
+
+def _deflated_full_dsr(net: list[float]) -> float:
+    """Deflated full-stream Sharpe probability = P(true Sharpe > the trial-inflated benchmark), charging the
+    DEPLOY_CADENCE_TRIALS cadences searched. The full realized stream (many periods) gives a tighter estimate than
+    the small holdout slice — the second, complementary floor that closes the un-deflated deploy-lane hole. Returns
+    0.0 for a degenerate stream (so it fails the floor honestly, never fabricates a pass)."""
+    spo, skew, kurt, n = sample_moments(net)
+    if n < 2:
+        return 0.0
+    sr_var = (1.0 + 0.5 * spo * spo) / (n - 1)
+    return probabilistic_sharpe(spo, n, skew, kurt, expected_max_sharpe(sr_var, float(DEPLOY_CADENCE_TRIALS)))
 
 
 @dataclass
@@ -494,10 +525,17 @@ def validate(
     window = (t0.date().isoformat(), t1.date().isoformat())
 
     # The DEPLOYMENT bar (honest, NOT pass-tuned). All three must hold.
-    holdout_positive = out_stats.total_return > 0 and split.holdout_dsr >= 0   # (1) edge persists OOS
+    # (1) edge persists OOS — held-out net positive AND the held-out Sharpe is SIGNIFICANTLY positive (a min-effect-size
+    #     floor, not a coin-flip sign): the deploy lane pays no multiple-testing deflation, so this floor is what stops a
+    #     searched, prior-less hypothesis from fluking a positive holdout. See DEPLOY_MIN_HOLDOUT_DSR.
+    holdout_positive = out_stats.total_return > 0 and split.holdout_dsr > DEPLOY_MIN_HOLDOUT_DSR
     beats_cash = full.total_return > 0 and full.ann_sharpe > 0                  # (2) strictly beats holding cash
     robust = in_stats.total_return > 0                                          # (3) not just the held-out tail
-    deployable = holdout_positive and beats_cash and robust
+    # (4) DEFLATED FULL-stream effect size — charges the cadence search so a searched, prior-less book can't fluke
+    #     the bar (the holdout floor alone leaves ~6.5% noise; this drops the joint to ~0.12%). See DEPLOY_MIN_FULL_DSR.
+    full_dsr = _deflated_full_dsr(res.net)
+    effect_size_ok = full_dsr >= DEPLOY_MIN_FULL_DSR
+    deployable = holdout_positive and beats_cash and robust and effect_size_ok
 
     # The CURRENT signalled book (decided at the last grid time, to hold next period): the top-frac LONG names and
     # the bottom-frac SHORT names by the momentum signal. PIT — the rank uses only data through the last close.
@@ -509,6 +547,8 @@ def validate(
         "holdout_positive": holdout_positive,
         "beats_cash": beats_cash,
         "robust": robust,
+        "full_dsr": full_dsr,
+        "effect_size_ok": effect_size_ok,
         "current_signal": {"long": current_long, "short": current_short},
         "full": full,
         "in_sample": in_stats,

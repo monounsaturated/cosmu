@@ -288,8 +288,19 @@ def _pit_fee_for_order(store: Store, venue, symbol: str, qty: Decimal, price: De
 
 
 def _live_venue(adapter) -> str:
+    """The position-book label for an adapter's resolved mode. A real venue's SANDBOX (Binance ``testnet``,
+    Alpaca ``paper``) normalizes to ``"testnet"`` — a live book DISTINCT from the deterministic ``"sim"``
+    offline-paper lane — so a fill that genuinely routed to the venue (``is_paper=0``) is managed on its live
+    book by ``step_tracks``' ``held_live`` and never collides with the offline sim book. This mirrors
+    ``registry.live_mode``'s paper→testnet normalization (without it an Alpaca-paper order booked under
+    ``"sim"`` while writing ``is_paper=0`` — an inconsistent record the live executor could not manage). Only a
+    wired real-money adapter books ``"live"``; a disabled/absent adapter falls to ``"sim"``."""
     mode = getattr(adapter, "mode", "disabled")
-    return mode if mode in ("testnet", "live") else "sim"
+    if mode == "live":
+        return "live"
+    if mode in ("testnet", "paper"):  # a venue sandbox is a live book, not the offline sim lane
+        return "testnet"
+    return "sim"
 
 
 def _open_notional(portfolio: Portfolio, *, strategy_version_id: str | None = None, venue: str | None = None) -> Decimal:

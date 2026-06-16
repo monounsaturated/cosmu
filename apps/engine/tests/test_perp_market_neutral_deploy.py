@@ -145,6 +145,16 @@ def test_no_edge_cross_section_does_not_clear_deploy_bar():
     assert v["deployable"] is False
 
 
+def test_holdout_floor_is_a_significance_bar_not_a_sign_check():
+    """The deploy lane pays NO multiple-testing deflation, so (1) must be a min-effect-size floor: a barely-positive
+    held-out Sharpe (DSR just above 0 — a near-coin-flip) is NOT enough. This pins the calibration that hardened the
+    deploy bar (no-edge random walks cleared the old `>= 0` sign-check ~12.5% of the time). See RESEARCH_LESSONS §2b."""
+    assert pmn.DEPLOY_MIN_HOLDOUT_DSR == 0.30  # the locked floor — recalibrating means changing this + the evidence
+    # a held-out Sharpe that is positive-but-insignificant (dsr in (0, floor]) must fail check (1)
+    insignificant = 0.5 * pmn.DEPLOY_MIN_HOLDOUT_DSR
+    assert insignificant > 0 and not (insignificant > pmn.DEPLOY_MIN_HOLDOUT_DSR)
+
+
 # --------------------------------------------------------------------------- (4) current signal is PIT + balanced
 
 
@@ -174,8 +184,9 @@ def _arm_with(monkeypatch, store, *, deployable: bool, n: int = 80):
     v = {
         "deployable": deployable, "holdout_positive": deployable, "beats_cash": deployable, "robust": deployable,
         "current_signal": {"long": ["SYM9USDT", "SYM8USDT"], "short": ["SYM0USDT", "SYM1USDT"]},
-        "full": full, "in_sample": ins, "holdout": out, "holdout_dsr": 0.28 if deployable else -0.1,
+        "full": full, "in_sample": ins, "holdout": out, "holdout_dsr": 0.38 if deployable else -0.1,
         "window": ("2023-01-01", "2023-09-01"), "n_periods": n, "n_symbols": 10,
+        # holdout_dsr above DEPLOY_MIN_HOLDOUT_DSR on the deployable path (a significantly-positive held-out Sharpe)
         "fee_per_side": pmn.PERP_FEE_PER_SIDE,
         "venue_note": "market-neutral SIM track; LIVE needs a short-capable perp venue (Kraken Futures / IBKR / Hyperliquid)",
         "result": res, "reason": "" if deployable else "not deployable",
@@ -268,3 +279,25 @@ def test_arm_mark_advances_trajectory(monkeypatch):
     assert out["marked"] is True
     snaps = store.rows("SELECT 1 FROM portfolio_snapshots WHERE scope='track' AND ref_id=?", (out["version_id"],))
     assert len(snaps) == 95  # rewritten to the freshly-validated stream length, not duplicated
+
+
+def test_full_stream_deflated_floor_rejects_random_walk_noise():
+    """The holdout floor ALONE leaves ~6.5% of pure random walks deployable (the held-out slice is small + noisy).
+    The DEFLATED FULL-stream floor (charges the DEPLOY_CADENCE_TRIALS cadence search) closes that hole: a zero-edge
+    random-walk cross-section is NOT deployable, and the constants are pinned (recalibrating = changing them + the
+    evidence). Measured: random-walk deployable rate ~20% -> ~0.1% with this floor. See RESEARCH_LESSONS §2b."""
+    import random
+
+    assert pmn.DEPLOY_MIN_FULL_DSR == 0.95   # the locked full-stream floor (aligns with the gate's deflated-Sharpe bar)
+    assert pmn.DEPLOY_CADENCE_TRIALS == 4    # cadences 2..5 are searchable -> charge the trial count
+    rng = random.Random(0)
+    market: dict = {}
+    for j in range(12):
+        px, closes = 100.0, []
+        for _ in range(1200):
+            px *= (1.0 + rng.gauss(0, 0.02))  # zero-drift geometric random walk = NO edge
+            closes.append(px)
+        market[f"SYM{j}USDT"] = _bars(closes)
+    v = pmn.validate(market, _SyntheticFunding(market))
+    assert v["deployable"] is False, f"a zero-edge random walk cleared the hardened deploy bar — LEAK: full_dsr={v.get('full_dsr')}"
+    assert v["effect_size_ok"] is False  # the full-stream deflated floor is what rejects it
