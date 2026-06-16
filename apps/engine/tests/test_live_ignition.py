@@ -13,7 +13,7 @@ from cosmu.config.settings import Settings
 from cosmu.core.interfaces import AssetClass, OrderId
 from cosmu.data.market import Bar
 from cosmu.knowledge.store import Store
-from cosmu.orchestrator.loop import PricingRouter, fund_tracks_from_survivors
+from cosmu.orchestrator.loop import PricingRouter, fund_tracks_from_survivors, mark_tracks
 from cosmu.orchestrator.paper_step import step_tracks
 from cosmu.spine.venue import default_catalog
 
@@ -193,6 +193,89 @@ def test_demoted_live_track_still_exits_its_open_live_position(tmp_path, monkeyp
     assert report.closed == 1  # the open live position is still exited (not orphaned)
     assert fake.submitted[-1].side == -1
     assert _live_position(store, vid) is None
+
+
+def test_step_tracks_slow_strategy_holds_no_churn_and_marks_equity(tmp_path):
+    """PHASE-1a property: a SLOW (monthly-cadence) track must OPEN once, then HOLD across many daily executor
+    ticks WITHOUT churning (no re-entry / no double-fill each tick), while the paper clock keeps marking equity.
+    bar_size maxes at '1d' (no monthly bar), so a monthly-rebalanced equity sleeve runs the DAILY clock — its
+    'no churn' guarantee is that a held position is only re-touched on an actual exit signal, and the
+    decision-bar-stamped client_order_id makes a same-bar re-tick a no-op. (Multi-asset monthly REBALANCE of a
+    basket is the deploy-lane arms' job, which step_tracks skips — this proves the single-symbol hold path.)"""
+    store = _store(tmp_path)
+    vid = _persist_survivor(store)  # entry true while flat; stop 5% / take 50% / no signal-exit → holds when flat-priced
+    flat = _router([30000.0] * 30)  # a quiet, range-bound tape: no stop/take/signal exit ever fires
+    _fund_flat(store, flat)
+
+    open_report = step_tracks(store, router=flat)
+    assert open_report.opened == 1 and open_report.closed == 0  # opened exactly once
+    held = _live_position(store, vid)
+    assert held is not None and held["venue"] == "sim" and Decimal(str(held["qty"])) > 0
+
+    def _n_fills() -> int:
+        return store.row("SELECT COUNT(*) AS n FROM executions WHERE strategy_version_id = ?", (vid,))["n"]
+
+    fills_after_open = _n_fills()
+    assert fills_after_open == 1
+
+    # Re-tick on the SAME bar 5×, and on fresh quiet bars 5× — must be a true no-op each time (no churn).
+    for k in range(5):
+        r = step_tracks(store, router=flat)
+        assert r.opened == 0 and r.closed == 0, f"churned on same-bar re-tick {k}"
+    for k in range(5):
+        r = step_tracks(store, router=_router([30000.0] * (31 + k)))  # one more quiet bar each time
+        assert r.opened == 0 and r.closed == 0, f"churned on fresh quiet bar {k}"
+    assert _n_fills() == 1, "extra fills => churn"  # still a single open, position untouched
+    assert Decimal(str(_live_position(store, vid)["qty"])) == Decimal(str(held["qty"]))  # qty stable
+
+    # The paper clock marks equity for the held track across the held window (no order, marks only).
+    snap = mark_tracks(store, router=flat)
+    assert snap["equity"] > 0
+    trow = store.row("SELECT equity FROM tracks WHERE strategy_version_id = ?", (vid,))
+    assert trow is not None and Decimal(str(trow["equity"])) > 0
+
+
+def test_live_venue_normalizes_paper_to_testnet():
+    """The booking-label helper: a real-venue SANDBOX ('paper' on Alpaca, 'testnet' on Binance) is a LIVE book
+    ('testnet'), distinct from the offline 'sim' lane — so an is_paper=0 fill never collides with the sim book.
+    Regression for the Alpaca-paper bug where 'paper' fell through to 'sim' (booked is_paper=0 under 'sim')."""
+    from cosmu.master.execution import _live_venue
+
+    assert _live_venue(_FakeLiveAdapter(venue="alpaca", mode="paper")) == "testnet"
+    assert _live_venue(_FakeLiveAdapter(venue="binance", mode="testnet")) == "testnet"
+    assert _live_venue(_FakeLiveAdapter(venue="binance", mode="live")) == "live"
+    assert _live_venue(_FakeLiveAdapter(venue="alpaca", mode="disabled")) == "sim"
+    assert _live_venue(object()) == "sim"  # no .mode attr → safe default
+
+
+def test_alpaca_paper_order_books_on_live_testnet_book_not_sim(tmp_path):
+    """End-to-end through the ONE order path (execute_orders) with an ACTIVE Alpaca-'paper'-mode adapter:
+    the live-routed entry must book is_paper=0 on the 'testnet' LIVE book (which step_tracks' held_live manages)
+    — never on 'sim'. Offline (fake adapter, no network); mirrors the observed Alpaca-paper exercise."""
+    from cosmu.master.execution import IntendedOrder, execute_orders
+    from cosmu.master.portfolio import Portfolio
+
+    store = Store(Settings(database_url=f"sqlite:///{tmp_path}/alp.sqlite3", openrouter_api_key=None,
+                           sim_bankroll=Decimal("100000")))
+    portfolio = Portfolio(store, bankroll=Decimal("100000"))
+    cat = default_catalog()
+    fake = _FakeLiveAdapter(venue="alpaca", mode="paper")
+    fake.asset_class = AssetClass.EQUITY
+    order = IntendedOrder(
+        strategy_version_id="ignite-alpaca-paper", symbol="IEF", venue_id="alpaca", side=1,
+        qty=Decimal("1"), price=Decimal("93.62"), stop_loss=Decimal("88.94"), take_profit=Decimal("102.98"),
+        conviction=Decimal("0.5"), gate_passed=True, order_type="market", client_order_id="coid-alp-1",
+    )
+    outcomes = execute_orders([order], live_enabled=True, kill_switch=False, adapter=fake,
+                              store=store, portfolio=portfolio, risk=store.settings.risk, catalog=cat)
+
+    assert outcomes[0].accepted and outcomes[0].routed_live and outcomes[0].venue == "testnet"
+    assert len(fake.submitted) == 1  # it reached the REAL adapter, not a sim fill
+    pos = store.row("SELECT venue, qty FROM positions WHERE strategy_version_id = ? AND CAST(qty AS REAL) != 0",
+                    ("ignite-alpaca-paper",))
+    assert pos is not None and pos["venue"] == "testnet"  # the LIVE book (held_live), not 'sim'
+    ex = store.row("SELECT is_paper, venue_id FROM executions WHERE strategy_version_id = ?", ("ignite-alpaca-paper",))
+    assert int(ex["is_paper"]) == 0 and ex["venue_id"] == "alpaca"
 
 
 def test_resolve_live_adapters_empty_when_toggle_off(tmp_path):
