@@ -17,6 +17,36 @@ from __future__ import annotations
 import socket
 import pytest
 
+
+def seed_track_snapshots(
+    store, version_id: str, *, obs: int, forward_sharpe: float = 0.25,
+    now=None, start_capital: float = 100000.0,
+) -> None:
+    """Write a scope='track' portfolio_snapshots series of `obs`+1 daily marks on DISTINCT calendar days ending at
+    `now`, whose daily returns have per-obs Sharpe ~= `forward_sharpe`. This is the FORWARD trajectory the
+    live-arming significance gate (master/live_eligibility.forward_significance) reads — a track that should be
+    live-eligible needs real marks, not just a net-positive tracks.return_pct scalar. A high `forward_sharpe` is a
+    significant edge, a low one a coin-flip; obs<=0 writes nothing (a never-marked track). Shared across the
+    eligibility/lifecycle/finder/live-api tests so the forward evidence is seeded one way."""
+    from datetime import UTC, datetime, timedelta
+
+    if obs <= 0:
+        return
+    now = now or datetime.now(tz=UTC)
+    eps = 0.004
+    mean = forward_sharpe * eps
+    eq = start_capital
+    for i in range(obs + 1):
+        if i > 0:
+            eq *= 1.0 + (mean + (eps if i % 2 == 0 else -eps))
+        store.insert(
+            "portfolio_snapshots",
+            {"scope": "track", "ref_id": version_id, "ts": (now - timedelta(days=obs - i)).isoformat(),
+             "equity": str(round(eq, 2)), "cash": str(round(eq, 2)), "positions_value": "0",
+             "pnl": "0", "drawdown": "0"},
+        )
+
+
 _ORIGINAL_SOCKET_INIT = socket.socket.__init__
 
 

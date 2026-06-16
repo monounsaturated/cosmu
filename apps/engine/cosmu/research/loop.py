@@ -48,6 +48,7 @@ def _persist_verdict(store: Store, verdict: CrossAssetVerdict, data_source: str)
         "xasset_dsr": verdict.xasset_dsr,
         "single_alt_dsr": verdict.single_alt_dsr,
         "cscv_pbo": verdict.cscv_pbo,
+        "rank_consistency": verdict.rank_consistency,  # advisory IS↔OOS rank transfer (RESEARCH_LESSONS §3)
         "regimes_positive": verdict.regimes_positive,
         "num_trades": verdict.num_trades,
         "max_drawdown": verdict.max_drawdown,
@@ -144,7 +145,9 @@ def _print_verdict(idx: int, verdict: CrossAssetVerdict) -> None:
     print(f"  single-asset+alt arm:   return {verdict.single_alt_return:+.3f} · deflated Sharpe {verdict.single_alt_dsr}")
     print(f"  single-asset price arm: return {verdict.price_only_return:+.3f}")
     print(f"  buy & hold (all):       return {verdict.buy_and_hold_return:+.3f}")
-    print(f"  CSCV PBO {verdict.cscv_pbo} · regimes {verdict.regimes_positive} · trades {verdict.num_trades} · maxDD {verdict.max_drawdown} · attempts {verdict.attempts}")
+    _rc = verdict.rank_consistency
+    _rc_note = "n/a" if _rc is None else (f"{_rc:+.2f}" + (" ⚠ curve-fit smell" if _rc < -0.5 else ""))
+    print(f"  CSCV PBO {verdict.cscv_pbo} · IS→OOS rank-consistency {_rc_note} · regimes {verdict.regimes_positive} · trades {verdict.num_trades} · maxDD {verdict.max_drawdown} · attempts {verdict.attempts}")
     if verdict.reasons:
         print(f"  failed checks: {', '.join(verdict.reasons)}")
 

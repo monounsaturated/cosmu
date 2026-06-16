@@ -229,8 +229,9 @@ def test_finder_promotion_opens_forward_clock_and_is_live_eligible(tmp_path):
     assert matured_flat.forward_ready is False  # +0.00% forward → "paper not proven"
     assert matured_flat.eligible is False
 
-    # Only once REAL net-positive forward P&L accrues (return_pct from marks) AND the track has actually traded
-    # forward (>= 1 real paper fill) does a matured, proven-regime track become forward-ready + armable.
+    # Only once REAL net-positive forward P&L accrues (the paper clock writes tracks.return_pct + the marked
+    # scope='track' snapshot trajectory) AND the track has actually TRADED forward (>= 1 real paper fill) does a
+    # matured, proven-regime track become forward-ready + armable — it needs fills, marks AND significance.
     finder.store.rows("UPDATE tracks SET return_pct = ? WHERE strategy_version_id = ?", ("3.5", vid))
     finder.store.rows(
         "INSERT INTO runs(id, strategy_version_id, mode, venue_id, seed, started_at, status) "
@@ -240,6 +241,8 @@ def test_finder_promotion_opens_forward_clock_and_is_live_eligible(tmp_path):
         "slippage, order_type, is_paper, ts, fill_log) "
         "VALUES ('e-fp', 'r-fp', ?, 'binance:BTCUSDT', 'binance', 'buy', '1', '100', '0.1', '0', 'market', 1, ?, '{}')",
         (vid, now.isoformat()))
+    from conftest import seed_track_snapshots
+    seed_track_snapshots(finder.store, vid, obs=25, now=now)
     matured = live_eligibility_verdict(
         finder.store, vid, _bull_bars(), now=now + timedelta(days=PAPER_MIN_DAYS + 5)
     )

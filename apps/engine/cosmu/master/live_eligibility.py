@@ -13,8 +13,10 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
+from cosmu.config.settings import PAPER_MIN_FORWARD_DSR, PAPER_MIN_FORWARD_OBS
 from cosmu.knowledge.store import Store
 from cosmu.master.paper_maturity import PaperMaturity, maturity
+from cosmu.master.scorer import probabilistic_sharpe, sample_moments
 from cosmu.ml.regime import Regime, current_regime, regime_eligible
 
 
@@ -128,14 +130,73 @@ def forward_evidence(store: Store, version_id: str, *, now: datetime | None = No
     )
 
 
+def forward_daily_returns(store: Store, version_id: str, *, limit: int = 4000) -> list[float]:
+    """The track's FORWARD marked-return series, resampled to ONE return per UTC calendar day. Reads the
+    scope='track' portfolio_snapshots (the paper clock's marked-equity trajectory) and keeps the LAST equity of
+    each day, so the marking FREQUENCY (a held basket may be re-marked several times a day by the tick) can NOT
+    inflate the observation count or manufacture significance — the forward Sharpe is computed on NON-overlapping
+    daily returns, the same non-overlap discipline the deploy lane uses. Empty when the track has no snapshot
+    history yet (a never-marked track has no forward evidence, the honest fail-safe)."""
+    rows = store.rows(
+        "SELECT ts, equity FROM portfolio_snapshots WHERE scope = 'track' AND ref_id = ? ORDER BY ts ASC LIMIT ?",
+        (version_id, limit),
+    )
+    if not rows:
+        return []
+    by_day: dict[str, float] = {}
+    for r in rows:
+        ts, eq = r.get("ts"), r.get("equity")
+        if ts is None or eq is None:
+            continue
+        try:
+            by_day[str(ts)[:10]] = float(eq)  # ORDER BY ts ASC ⇒ the last write of each day wins
+        except (TypeError, ValueError):
+            continue
+    equities = [by_day[d] for d in sorted(by_day)]
+    out: list[float] = []
+    for prev, cur in zip(equities, equities[1:], strict=False):  # intentionally offset by one (pairwise)
+        if prev > 0:
+            out.append((cur - prev) / prev)
+    return out
+
+
+@dataclass(frozen=True)
+class ForwardSignificance:
+    """Whether the track's forward (paper) trajectory is SIGNIFICANTLY positive — not just net-positive by luck.
+    `forward_dsr` = PSR(daily marked Sharpe vs 0) − 0.5 ∈ [−0.5, +0.5] (recentred so 0 = a coin-flip Sharpe)."""
+
+    n_obs: int
+    forward_dsr: float
+    significant: bool
+
+
+def forward_significance(store: Store, version_id: str) -> ForwardSignificance:
+    """Is the track's FORWARD trajectory significantly positive, or just net-positive by a coin-flip? Computes the
+    Probabilistic-Sharpe floor on the DAILY-resampled marked returns and checks it clears PAPER_MIN_FORWARD_DSR
+    with at least PAPER_MIN_FORWARD_OBS observations. Fails safe to NOT significant on too-few obs (the PSR
+    estimate is then too noisy to trust — the track is blocked from AUTO-arming, but the human override still
+    applies). Deterministic + LLM-free; reuses the SAME scorer PSR the cohort gate uses, so the forward bar speaks
+    the gate's language. A zero-edge random walk clears 'net-positive' ~48% of the time but this floor only ~35%
+    (Monte-Carlo, repo PSR machinery) — it carves the coin-flip down without blocking a genuine forward edge."""
+    rets = forward_daily_returns(store, version_id)
+    n = len(rets)
+    if n < PAPER_MIN_FORWARD_OBS:
+        return ForwardSignificance(n_obs=n, forward_dsr=0.0, significant=False)
+    sr, skew, kurt, _ = sample_moments(rets)
+    dsr = probabilistic_sharpe(sr, n, skew, kurt, 0.0) - 0.5
+    return ForwardSignificance(n_obs=n, forward_dsr=dsr, significant=dsr > PAPER_MIN_FORWARD_DSR)
+
+
 @dataclass(frozen=True)
 class LiveEligibilityVerdict:
     """The HARD live-eligibility verdict — what CAN be armed. `eligible` is True only when the strategy has BOTH
-    >= PAPER_MIN_DAYS of net-positive forward evidence (`forward_ready`) AND is in a proven regime
-    (`regime_eligible`). A human still makes the final launch click; this only gates the armable set. `overridden`
-    is True when a human waived the paper precondition via `override` to arm an UNPROVEN strategy (the
-    caller logs the warning) — the regime gate is never waived. Never promotes — only blocks; missing evidence
-    fails safe (not eligible)."""
+    forward evidence that is `forward_ready` AND is in a proven regime (`regime_eligible`). `forward_ready` now
+    means THREE things jointly: >= PAPER_MIN_DAYS of clock, a net-positive return, AND a SIGNIFICANTLY positive
+    forward Sharpe (`forward_dsr` > PAPER_MIN_FORWARD_DSR over >= PAPER_MIN_FORWARD_OBS daily marks) — so a track
+    that is merely net-positive by a coin-flip can no longer arm. A human still makes the final launch click; this
+    only gates the armable set. `overridden` is True when a human waived the paper preconditions via `override` to
+    arm an UNPROVEN strategy (the caller logs the warning) — the regime gate is never waived. Never promotes — only
+    blocks; missing evidence fails safe (not eligible)."""
 
     version_id: str
     eligible: bool
@@ -143,6 +204,8 @@ class LiveEligibilityVerdict:
     paper_age_days: float
     net_return_pct: float
     min_days: int
+    forward_obs: int
+    forward_dsr: float
     regime_eligible: bool
     current_regime: Regime
     proven_regimes: list[str]
@@ -158,17 +221,22 @@ def live_eligibility_verdict(
     override: bool = False,
     now: datetime | None = None,
 ) -> LiveEligibilityVerdict:
-    """Compose the two HARD live-eligibility preconditions: paper maturity (>= PAPER_MIN_DAYS,
-    net-positive) AND regime. `eligible` is True only when BOTH pass — UNLESS `override` is set, which waives
-    ONLY the paper precondition (a human's explicit override-launch of an unproven strategy, logged by the
-    caller) and NEVER the regime gate. Deterministic, LLM-free; an unproven/underwater/out-of-regime strategy
-    fails safe to not-eligible."""
+    """Compose the HARD live-eligibility preconditions: forward evidence AND regime. Forward evidence is now THREE
+    jointly-required facts — paper maturity (>= PAPER_MIN_DAYS), a net-positive return, AND a SIGNIFICANTLY positive
+    forward Sharpe (`forward_significance`, so a net-positive coin-flip can no longer arm). `eligible` is True only
+    when forward evidence AND regime both pass — UNLESS `override` is set, which waives ONLY the paper preconditions
+    (a human's explicit override-launch of an unproven strategy, logged by the caller) and NEVER the regime gate.
+    Deterministic, LLM-free; an unproven/underwater/insignificant/out-of-regime strategy fails safe to not-eligible."""
     regime = live_regime_verdict(store, version_id, reference_bars)
     evidence = forward_evidence(store, version_id, now=now)
-    # Forward-ready requires REAL forward trading, not just calendar maturity + a (possibly re-validation-seeded)
-    # return: matured AND net-positive AND >= MIN_FORWARD_FILLS real forward fills since the clock origin.
+    sig = forward_significance(store, version_id)
+    # Forward-ready UNIONS two complementary hardenings of the same gate: the track must have actually TRADED
+    # forward (>= MIN_FORWARD_FILLS real paper fills since the clock origin — not a re-validation seed) AND its
+    # forward trajectory must be SIGNIFICANTLY positive (forward_dsr floor — not a net-positive coin-flip), on top of
+    # calendar maturity + net-positive. The human `override` waives ALL forward preconditions (the data-backed-risk
+    # valve); the regime gate is never waived.
     traded_forward = forward_fill_count(store, version_id, since=paper_clock_origin(store, version_id)) >= MIN_FORWARD_FILLS
-    forward_ready = evidence.live_ready and traded_forward
+    forward_ready = evidence.live_ready and traded_forward and sig.significant
     eligible = (forward_ready or override) and regime.eligible
     overridden = bool(override) and not forward_ready and eligible
     if not regime.eligible:
@@ -177,23 +245,29 @@ def live_eligibility_verdict(
     elif overridden:
         reason = (
             f"OVERRIDE: arming UNPROVEN strategy "
-            f"({evidence.paper_age_days:.1f}d / {evidence.net_return_pct:+.2f}%, "
-            f"needs >= {evidence.min_days}d net-positive) — regime '{regime.current_regime.label}' ok"
+            f"({evidence.paper_age_days:.1f}d / {evidence.net_return_pct:+.2f}%, forward dsr "
+            f"{sig.forward_dsr:+.3f} on {sig.n_obs} marks) — regime '{regime.current_regime.label}' ok"
         )
     elif not traded_forward:
         reason = (
             f"paper not proven: no real forward fills yet — has not started trading "
-            f"(needs >= {MIN_FORWARD_FILLS} forward fill, then >= {evidence.min_days}d net-positive)"
+            f"(needs >= {MIN_FORWARD_FILLS} forward fill, then >= {evidence.min_days}d net-positive + significant)"
         )
-    elif not forward_ready:
+    elif not evidence.live_ready:
         reason = (
             f"paper not proven: {evidence.paper_age_days:.1f}d / {evidence.net_return_pct:+.2f}% "
             f"(needs >= {evidence.min_days}d net-positive)"
         )
+    elif not sig.significant:
+        reason = (
+            f"forward not significant: dsr {sig.forward_dsr:+.3f} on {sig.n_obs} daily marks "
+            f"(needs > {PAPER_MIN_FORWARD_DSR:.2f} over >= {PAPER_MIN_FORWARD_OBS} marks) — net-positive but a "
+            f"coin-flip-positive forward run is not proof of edge"
+        )
     else:
         reason = (
-            f"paper proven ({evidence.paper_age_days:.1f}d net-positive) and "
-            f"regime '{regime.current_regime.label}' in proven set"
+            f"paper proven ({evidence.paper_age_days:.1f}d net-positive, forward dsr {sig.forward_dsr:+.3f} on "
+            f"{sig.n_obs} marks) and regime '{regime.current_regime.label}' in proven set"
         )
     return LiveEligibilityVerdict(
         version_id=version_id,
@@ -202,6 +276,8 @@ def live_eligibility_verdict(
         paper_age_days=evidence.paper_age_days,
         net_return_pct=evidence.net_return_pct,
         min_days=evidence.min_days,
+        forward_obs=sig.n_obs,
+        forward_dsr=sig.forward_dsr,
         regime_eligible=regime.eligible,
         current_regime=regime.current_regime,
         proven_regimes=regime.proven_regimes,

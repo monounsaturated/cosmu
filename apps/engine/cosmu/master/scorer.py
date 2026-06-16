@@ -183,6 +183,65 @@ def cscv_pbo(config_block_returns: list[list[float]], s_blocks: int = 8) -> floa
     return overfit / total if total else 1.0
 
 
+def _rank(xs: list[float]) -> list[float]:
+    """Average (fractional) ranks, 1-based, ties sharing the mean rank — so Spearman handles tied configs."""
+    order = sorted(range(len(xs)), key=lambda i: xs[i])
+    ranks = [0.0] * len(xs)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and xs[order[j + 1]] == xs[order[i]]:
+            j += 1
+        avg = (i + j) / 2.0 + 1.0
+        for k in range(i, j + 1):
+            ranks[order[k]] = avg
+        i = j + 1
+    return ranks
+
+
+def _spearman(a: list[float], b: list[float]) -> float | None:
+    """Spearman rank correlation = Pearson on the rank-transformed values. None when undefined (constant input)."""
+    if len(a) < 2 or len(a) != len(b):
+        return None
+    ra, rb = _rank(a), _rank(b)
+    mean_a, mean_b = fmean(ra), fmean(rb)
+    cov = sum((x - mean_a) * (y - mean_b) for x, y in zip(ra, rb, strict=True))
+    va = sum((x - mean_a) ** 2 for x in ra)
+    vb = sum((y - mean_b) ** 2 for y in rb)
+    if va <= 0 or vb <= 0:
+        return None
+    return cov / math.sqrt(va * vb)
+
+
+def rank_consistency(config_block_returns: list[list[float]], *, split_frac: float = 0.5) -> float | None:
+    """Spearman rank correlation between configs' IN-SAMPLE and OUT-OF-SAMPLE mean return, over ONE chronological
+    split (first `split_frac` of each series = in-sample, the rest = out-of-sample).
+
+    +1 = the in-sample ranking perfectly predicts the out-of-sample ranking (a real, stable edge structure);
+    ~0 = the in-sample ranking carries no OOS information; NEGATIVE = the config that looked BEST in-sample is among
+    the WORST out-of-sample — the hallmark of an overfit/curve-fit grid (RESEARCH_LESSONS §3, "THE single most
+    diagnostic check"). The cheap complement to CSCV-PBO: PBO measures how often the IS-best lands below the OOS
+    median; this measures whether the WHOLE ranking transfers chronologically.
+
+    The split is CHRONOLOGICAL (not the combinatorially-symmetric CSCV partition): averaging IS/OOS performance over
+    every symmetric split would collapse both to each config's grand mean (rho≈1 always), so a single train→OOS cut
+    is what actually tests transfer. ADVISORY ONLY — surfaced on the verdict, NEVER a pass/fail bar (the gate's
+    calibration is locked; this adds information, not strictness). None when it cannot be computed (<2 configs, too
+    short a series, or a constant performance column where ranks are undefined)."""
+    n_configs = len(config_block_returns)
+    if n_configs < 2:
+        return None
+    length = min(len(series) for series in config_block_returns)
+    if length < 4:
+        return None
+    cut = int(length * split_frac)
+    if cut < 2 or length - cut < 2:
+        return None
+    is_perf = [fmean(series[:cut]) for series in config_block_returns]
+    oos_perf = [fmean(series[cut:length]) for series in config_block_returns]
+    return _spearman(is_perf, oos_perf)
+
+
 def sample_moments(returns: list[float]) -> tuple[float, float, float, int]:
     """Per-observation Sharpe, skew, full kurtosis (normal=3), and n — for PSR/DSR."""
     n = len(returns)

@@ -72,6 +72,10 @@ def _open_track(store: Store, vid: str, *, age_days: float, net_pct: float, prov
             "equity": str(100000 * (1 + net_pct / 100)), "return_pct": str(net_pct), "updated_at": utcnow(),
         },
     )
+    # Forward marked-equity trajectory so the live-arming SIGNIFICANCE gate sees real evidence (the readiness view
+    # composes live_eligibility, which now requires a significantly-positive forward Sharpe + real fills).
+    from conftest import seed_track_snapshots
+    seed_track_snapshots(store, vid, obs=min(int(age_days), 30), now=now)
     origin = now - timedelta(days=age_days)
     ts = origin.isoformat()
     with store.batch() as w:

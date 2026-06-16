@@ -11,13 +11,15 @@ import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from cosmu.config.settings import PAPER_MIN_DAYS, Settings
+from cosmu.config.settings import PAPER_MIN_DAYS, PAPER_MIN_FORWARD_OBS, Settings
 from cosmu.data.market import Bar
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.live_eligibility import (
     forward_evidence,
     live_eligibility_verdict,
 )
+
+from conftest import seed_track_snapshots
 
 
 def _store(tmp_path) -> Store:
@@ -61,11 +63,15 @@ def _seed_version(store: Store, vid: str) -> None:
     )
 
 
-def _open_track(store: Store, vid: str, *, age_days: float, net_pct: float, proven: list[str], now: datetime, fills: int = 1) -> None:
-    """Open a paper track: a tracks row carrying the net-of-fee return + a track_opened event whose ts is
-    the clock origin (backdated `age_days` before `now`) carrying the proven-regime passport, and `fills` REAL
-    forward paper fills (is_paper=1, after the origin) — the proof the track actually TRADED forward (default 1).
-    Pass fills=0 to simulate a track that aged / carries a return seed but never traded (never live-ready)."""
+def _open_track(
+    store: Store, vid: str, *, age_days: float, net_pct: float, proven: list[str], now: datetime,
+    fills: int = 1, forward_sharpe: float = 0.25, obs: int | None = None,
+) -> None:
+    """Open a paper track: a tracks row (net-of-fee return), a forward scope='track' snapshot series (for the
+    SIGNIFICANCE gate), `fills` REAL forward paper fills (is_paper=1 after the clock origin — proof it actually
+    TRADED forward), and a track_opened event whose ts is the clock origin (backdated `age_days`) carrying the
+    proven-regime passport. Live-eligibility now needs BOTH real fills AND a significant forward trajectory;
+    `fills`/`forward_sharpe`/`obs` shape each. Pass fills=0 for an aged-but-never-traded track."""
     _seed_version(store, vid)
     store.insert(
         "tracks",
@@ -74,6 +80,8 @@ def _open_track(store: Store, vid: str, *, age_days: float, net_pct: float, prov
             "equity": str(100000 * (1 + net_pct / 100)), "return_pct": str(net_pct), "updated_at": utcnow(),
         },
     )
+    n_obs = obs if obs is not None else min(int(age_days), 30)
+    seed_track_snapshots(store, vid, obs=n_obs, forward_sharpe=forward_sharpe, now=now)
     origin = now - timedelta(days=age_days)
     ts = origin.isoformat()
     with store.batch() as w:
@@ -213,3 +221,57 @@ def test_forward_evidence_reads_track_and_clock(tmp_path):
     assert round(ev.paper_age_days) == 12
     assert ev.net_return_pct == 2.5
     assert ev.min_days == PAPER_MIN_DAYS
+
+
+def test_matured_netpositive_but_forward_insignificant_is_not_eligible(tmp_path):
+    # The coin-flip hole this gate closes: matured AND net-positive AND in-regime, but the forward trajectory is a
+    # near-flat coin-flip (low forward Sharpe) -> NOT auto-armable (a net-positive forward run is not proof of edge).
+    now = datetime(2026, 6, 4, tzinfo=UTC)
+    store = _store(tmp_path)
+    _open_track(store, "v-flat", age_days=PAPER_MIN_DAYS + 10, net_pct=0.3, proven=["bull"], now=now,
+                forward_sharpe=0.02)
+
+    v = live_eligibility_verdict(store, "v-flat", _UP, now=now)
+    assert v.regime_eligible is True            # regime fine
+    assert v.paper_age_days >= PAPER_MIN_DAYS    # matured
+    assert v.forward_obs >= PAPER_MIN_FORWARD_OBS  # enough marks — it is the SIGNIFICANCE that fails, not the count
+    assert v.forward_ready is False              # but the forward Sharpe is not significant
+    assert v.eligible is False
+    assert "forward not significant" in v.reason
+
+    # The human override is the data-backed-risk escape hatch — it still arms (and is flagged overridden).
+    ov = live_eligibility_verdict(store, "v-flat", _UP, override=True, now=now)
+    assert ov.eligible is True
+    assert ov.overridden is True
+
+
+def test_matured_with_significant_forward_is_eligible(tmp_path):
+    # A genuinely strong forward trajectory (high forward Sharpe) clears the significance floor and arms by default.
+    now = datetime(2026, 6, 4, tzinfo=UTC)
+    store = _store(tmp_path)
+    _open_track(store, "v-strong", age_days=PAPER_MIN_DAYS + 10, net_pct=3.0, proven=["bull"], now=now,
+                forward_sharpe=0.30)
+
+    v = live_eligibility_verdict(store, "v-strong", _UP, now=now)
+    assert v.forward_ready is True
+    assert v.eligible is True
+    assert v.overridden is False
+    assert v.forward_dsr > 0.15                  # cleared the PAPER_MIN_FORWARD_DSR floor
+    assert v.forward_obs >= PAPER_MIN_FORWARD_OBS
+
+
+def test_too_few_forward_marks_fails_safe(tmp_path):
+    # Matured + net-positive but only a handful of marks -> the PSR estimate is too noisy -> fail safe to
+    # not-significant (blocked from AUTO-arming). The override still waives it.
+    now = datetime(2026, 6, 4, tzinfo=UTC)
+    store = _store(tmp_path)
+    _open_track(store, "v-sparse", age_days=PAPER_MIN_DAYS + 10, net_pct=2.0, proven=["bull"], now=now,
+                forward_sharpe=0.40, obs=5)
+
+    v = live_eligibility_verdict(store, "v-sparse", _UP, now=now)
+    assert v.forward_obs == 5
+    assert v.forward_obs < PAPER_MIN_FORWARD_OBS
+    assert v.forward_ready is False
+    assert v.eligible is False
+    assert "forward not significant" in v.reason
+    assert live_eligibility_verdict(store, "v-sparse", _UP, override=True, now=now).eligible is True
