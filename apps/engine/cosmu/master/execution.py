@@ -100,6 +100,10 @@ def execute_orders(
     # the default) is NEVER constrained by a live $-cap (which would silently distort the paper). Read
     # once per batch; enforced deterministically in the gauntlet via venue_max_notional.
     venue_caps = _venue_caps(store) if live_enabled else {}
+    # The operator's global pool "$ hard blocker", daily-loss cap, and per-strategy live cap (Rules modal),
+    # read once per batch and enforced in the gauntlet ONLY when live is armed — so the SIM/paper lane is never
+    # constrained by a live cap (all None when live off → today's behavior exactly).
+    op_global, op_daily, op_per_strategy = _operator_live_caps(store) if live_enabled else (None, None, None)
 
     for intent in intents:
         venue = catalog.venue(intent.venue_id)
@@ -137,14 +141,21 @@ def execute_orders(
             strategy_open_notional=_open_notional(portfolio, strategy_version_id=intent.strategy_version_id),
             drawdown_pct=portfolio.drawdown(),
             daily_loss=daily.daily_loss,
-            daily_loss_cap=daily.cap,
+            # When live is armed, the operator's max_daily_loss governs the auto-disarm (was the hardcoded
+            # Portfolio default of $250); else the Portfolio's own cap (SIM lane unchanged).
+            daily_loss_cap=op_daily if (live_enabled and op_daily is not None) else daily.cap,
             last_trade_was_loss=state_held.last_was_loss if state_held else False,
             avg_entry_price=state_held.avg_price if state_held and state_held.qty != 0 else None,
             existing_qty=state_held.qty if state_held else Decimal("0"),
-            # Per-venue cap context — only populated when live is armed (else None → check skipped, SIM lane
-            # unconstrained). venue_open_notional is what's already deployed on this order's venue.
+            # Per-venue + global + per-strategy live caps — only populated when live is armed (else None/0 →
+            # checks skipped, SIM lane unconstrained). The *_open_notional are what's already deployed: venue
+            # (this order's venue) and live (testnet/live books only — never the sim/paper cohort).
             venue_open_notional=_open_notional(portfolio, venue=intent.venue_id) if live_enabled else Decimal("0"),
             venue_max_notional=venue_caps.get(intent.venue_id) if live_enabled else None,
+            live_open_notional=_live_open_notional(portfolio) if live_enabled else Decimal("0"),
+            global_live_max_notional=op_global if live_enabled else None,
+            strategy_live_open_notional=_live_open_notional(portfolio, strategy_version_id=intent.strategy_version_id) if live_enabled else Decimal("0"),
+            per_strategy_live_max_notional=op_per_strategy if live_enabled else None,
         )
         decision = validate_order_full(order_intent, venue, instrument, risk, state)
         if not decision.accepted:
@@ -314,6 +325,26 @@ def _open_notional(portfolio: Portfolio, *, strategy_version_id: str | None = No
     return total
 
 
+# The "books" a real venue submit lands on (see _live_venue): a sandbox normalizes to "testnet", real money to
+# "live". The deterministic offline-paper lane is "sim", and the documented arms book under their intended venue
+# id (e.g. "ibkr") while still PAPER — so LIVE exposure is the testnet/live books ONLY. This is what the
+# operator's live caps are measured against (never the sim/paper notional).
+_LIVE_BOOKS = frozenset({"testnet", "live"})
+
+
+def _live_open_notional(portfolio: Portfolio, *, strategy_version_id: str | None = None) -> Decimal:
+    """Gross notional on LIVE books (testnet/live) — the exposure the operator's live caps bound. Excludes
+    sim/paper books entirely, so a funded paper cohort never counts against a live limit."""
+    total = Decimal("0")
+    for p in portfolio.positions():
+        if p.venue not in _LIVE_BOOKS:
+            continue
+        if strategy_version_id is not None and p.strategy_version_id != strategy_version_id:
+            continue
+        total += abs(p.qty) * p.avg_price
+    return total
+
+
 def _venue_caps(store: Store) -> dict[str, Decimal]:
     """The per-venue hard caps the Rules modal persists (live_caps rows scope='venue', ref_id=venue). Read once
     per execution batch. Malformed rows are skipped (never crash the money path)."""
@@ -324,6 +355,29 @@ def _venue_caps(store: Store) -> dict[str, Decimal]:
         except Exception:  # noqa: BLE001 — a malformed cap row must never break execution.
             continue
     return caps
+
+
+def _operator_live_caps(store: Store) -> tuple[Decimal | None, Decimal | None, Decimal | None]:
+    """The operator's LIVE caps, read once per batch: (global pool max_notional, max_daily_loss, per_strategy).
+    GATED on the operator having armed via the Rules modal — i.e. the live_caps id='global' row (scope='pool')
+    EXISTS (the same row /live/activate + /live/rules write). No row → (None, None, None): every live cap is
+    skipped (today's behavior; matches _venue_caps reading rows only). With the row → global pool + daily-loss
+    come from it, per-strategy from settings.live.per_strategy_live_cap. Malformed values → that cap stays None
+    (never crash the money path)."""
+    row = store.row("SELECT max_notional, max_daily_loss FROM live_caps WHERE id = 'global'")
+    if row is None:
+        return None, None, None
+    global_cap: Decimal | None = None
+    daily: Decimal | None = None
+    try:
+        global_cap = Decimal(str(row["max_notional"]))
+    except Exception:  # noqa: BLE001 — a malformed cap row must never break execution.
+        pass
+    try:
+        daily = Decimal(str(row["max_daily_loss"]))
+    except Exception:  # noqa: BLE001
+        pass
+    return global_cap, daily, getattr(store.settings.live, "per_strategy_live_cap", None)
 
 
 def _already_filled(store: Store, coid: str) -> bool:

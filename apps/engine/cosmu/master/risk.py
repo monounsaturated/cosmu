@@ -60,6 +60,15 @@ class PortfolioRiskState(BaseModel):
     # the SIM/paper lane.
     venue_open_notional: Decimal = Decimal("0")
     venue_max_notional: Decimal | None = None
+    # Operator LIVE caps (the Rules modal's global "$ hard blocker" + per-strategy live cap). Gated exactly like
+    # venue_max_notional: None → the check is skipped (the SIM/paper lane is never fed a live cap, so absent
+    # config == today's behavior). Measured against LIVE-BOOK exposure only (testnet/live positions) — NEVER the
+    # sim/paper notional — so a funded paper cohort can never false-trip the operator's live limits. The caller
+    # sets these ONLY for live-armed orders.
+    live_open_notional: Decimal = Decimal("0")             # gross notional already on live books (all strategies)
+    global_live_max_notional: Decimal | None = None        # operator's global pool cap (the headline "$ blocker")
+    strategy_live_open_notional: Decimal = Decimal("0")    # this strategy's gross notional on live books
+    per_strategy_live_max_notional: Decimal | None = None  # operator's per-strategy live cap
 
 
 def validate_order(order: OrderIntent, venue: Venue, instrument: Instrument, risk: RiskSettings) -> RiskDecision:
@@ -122,6 +131,13 @@ def validate_order_full(
     # reject — the order can never push this venue's deployed notional past the operator's per-venue limit.
     if state.venue_max_notional is not None and state.venue_open_notional + order.notional > state.venue_max_notional:
         issues.append("venue_cap")
+    # Operator LIVE caps (Rules modal): the global pool "$ hard blocker" + the per-strategy live cap, each
+    # measured against LIVE-book exposure only. Additive + gated (None → skipped); inside the non-reduce_only
+    # block so a close is never trapped. A reject can never push live exposure past the operator's limit.
+    if state.global_live_max_notional is not None and state.live_open_notional + order.notional > state.global_live_max_notional:
+        issues.append("global_live_cap")
+    if state.per_strategy_live_max_notional is not None and state.strategy_live_open_notional + order.notional > state.per_strategy_live_max_notional:
+        issues.append("per_strategy_live_cap")
     if order.side == "buy" and (state.cash - order.notional) < risk.min_cash_reserve:
         issues.append("min_cash_reserve")
     if state.drawdown_pct >= risk.drawdown_killswitch_pct:
