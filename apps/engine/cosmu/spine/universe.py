@@ -17,12 +17,13 @@ from cosmu.spine.venue import default_catalog
 # never add a venue on key-presence alone (a key-gated-ONLY venue would make has_data a lie when keys are
 # absent). The crypto Finder/cohort gate is `has_live_data` below (a separate, crypto-specific check), NOT
 # this display set.
-VENUES_WITH_DATA: frozenset[str] = frozenset({"binance", "alpaca", "polymarket"})
+VENUES_WITH_DATA: frozenset[str] = frozenset({"binance", "alpaca", "polymarket", "hyperliquid"})
 CLASSES_WITH_DATA: frozenset[str] = frozenset({"crypto", "equity", "prediction"})
 # Venues with a real CRYPTO data path. has_live_data() gates the crypto-specific ORB/FVG Finder + cohort seed,
 # so it asks SPECIFICALLY whether a crypto data venue is live — widening VENUES_WITH_DATA for equity UI honesty
 # must not let the crypto Finder fire on an empty crypto universe (audit 2026-06-13).
-_CRYPTO_VENUES_WITH_DATA: frozenset[str] = frozenset({"binance"})
+# Hyperliquid is included: its perp OHLCV cache is populated by ingest_hyperliquid_bars.py (keyless public API).
+_CRYPTO_VENUES_WITH_DATA: frozenset[str] = frozenset({"binance", "hyperliquid"})
 
 CLASS_LABELS: dict[str, str] = {
     "crypto": "Crypto",

@@ -61,7 +61,7 @@ class ExitRules(BaseModel):
 
 class UniverseSelector(BaseModel):
     venues: list[str]
-    asset_classes: list[Literal["crypto", "equity", "fx", "prediction"]]
+    asset_classes: list[Literal["crypto", "equity", "fx", "futures", "commodity", "prediction"]]
     min_liquidity_usd: float = 1_000_000
     min_instruments: int = 5
 

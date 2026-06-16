@@ -21,8 +21,8 @@ from decimal import Decimal
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
 from cosmu.data.backtest import run_strategy_backtest_detailed
-from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, MarketDataProvider
-from cosmu.data.universe import CORE_PERP_UNIVERSE
+from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, EquityOHLCVProvider, HyperliquidOHLCVProvider, MarketDataProvider
+from cosmu.data.universe import PERP_UNIVERSE
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.experiments import KIND_FINDER, ExperimentRecord, data_version, log_experiments
@@ -51,10 +51,16 @@ _MAX_VARIANTS = 256
 _REFINE_POINTS = 5
 _REFINE_TOP_N = 5
 _REFINE_RADIUS = 0.15
-# The finder's live screen = the canonical core perp slice (one source of truth in cosmu.data.universe — no
-# duplicated literal). The DATA layer + carry harness now span the full ~30-symbol PERP_UNIVERSE; the finder's
-# online screen stays on the core slice until the wide universe's bars are cached for every horizon.
-_REAL_SYMBOLS = CORE_PERP_UNIVERSE
+# The finder's crypto live screen — the full PERP_UNIVERSE (30 Binance USDⓈ-M perps). All 30 have 1d bars
+# cached under .cosmu/market_data/binanceperp/. The five-symbol CORE slice was the prior value; widened
+# 2026-06-16 once the cache confirmed full coverage.
+_REAL_SYMBOLS = PERP_UNIVERSE
+# Cap equity symbols per finder run. More symbols → more trials → stricter gate (correct), but also slower
+# local runs. 50 gives breadth without dominating the trial budget on a correlated sector basket.
+_EQUITY_SCREEN_LIMIT = 50
+# Cap Hyperliquid perp symbols per run. HL perps are highly correlated with Binance perps (same underlying),
+# so 30 liquid perps is already generous — matching the Binance PERP_UNIVERSE width.
+_HL_SCREEN_LIMIT = 30
 # Two validation return streams with Pearson correlation >= this are treated as the SAME hypothesis: one is the
 # cluster representative, the rest are near-duplicates. Dedupe to representatives BEFORE BH-FDR so a dense
 # correlated grid can't game the false-discovery cutoff (cohort.py's "distinct candidates" contract).
@@ -227,6 +233,7 @@ class StrategyFinder:
     market_data: MarketDataProvider | None = None
 
     def _symbols(self, spec: StrategySpec) -> list[str]:
+        """Crypto symbols for this spec — the full PERP_UNIVERSE when binance+crypto are enabled."""
         venues, classes = enabled_universe(self.store)
         if "crypto" not in spec.universe.asset_classes or "binance" not in spec.universe.venues:
             return []
@@ -234,15 +241,53 @@ class StrategyFinder:
             return []
         return list(_REAL_SYMBOLS)
 
+    def _equity_symbols(self, spec: StrategySpec) -> list[str]:
+        """Equity symbols when the spec's universe includes 'equity'. Reads the local cache to avoid a network
+        dependency at discovery time; the cache is maintained by equity backfill scripts."""
+        if "equity" not in spec.universe.asset_classes:
+            return []
+        _, classes = enabled_universe(self.store)
+        if "equity" not in classes:
+            return []
+        return EquityOHLCVProvider().available_symbols()[:_EQUITY_SCREEN_LIMIT]
+
+    def _hyperliquid_symbols(self, spec: StrategySpec) -> list[str]:
+        """Hyperliquid perp symbols when the spec's universe includes 'hyperliquid'. Cache-only: returns
+        whatever `ingest_hyperliquid_bars.py` has already downloaded; empty if the cache hasn't been run."""
+        if "hyperliquid" not in spec.universe.venues:
+            return []
+        return HyperliquidOHLCVProvider().available_symbols()[:_HL_SCREEN_LIMIT]
+
     def _market(self, spec: StrategySpec) -> dict[str, list[Bar]]:
-        provider = self.market_data or BinanceSpotOHLCVProvider()
         limit = 1500 if spec.horizon.bar_size == "1h" else 1000
         out: dict[str, list[Bar]] = {}
+        # Crypto panel — Binance perp bars (live fetch with cache fallback)
+        provider = self.market_data or BinanceSpotOHLCVProvider()
         for symbol in self._symbols(spec):
             try:
                 out[symbol] = provider.fetch_bars(symbol, spec.horizon.bar_size, limit=limit)
             except Exception:  # noqa: BLE001 — offline/no-network: skip the symbol, degrade to whatever cached
                 continue
+        # Equity panel — read from local cache only (no live fetch in the finder)
+        if self._equity_symbols(spec):
+            equity_provider = EquityOHLCVProvider()
+            for symbol in self._equity_symbols(spec):
+                try:
+                    bars = equity_provider.fetch_bars(symbol, spec.horizon.bar_size, limit=limit)
+                    if bars:
+                        out[symbol] = bars
+                except Exception:  # noqa: BLE001
+                    continue
+        # Hyperliquid perp panel — read from local cache (populated by ingest_hyperliquid_bars.py)
+        if self._hyperliquid_symbols(spec):
+            hl_provider = HyperliquidOHLCVProvider()
+            for symbol in self._hyperliquid_symbols(spec):
+                try:
+                    bars = hl_provider.fetch_bars(symbol, spec.horizon.bar_size, limit=limit)
+                    if bars:
+                        out[symbol] = bars
+                except Exception:  # noqa: BLE001
+                    continue
         return out
 
     def find(
@@ -266,7 +311,22 @@ class StrategyFinder:
         spec = spec or seed_orb_fvg_spec()
         market = self._market(spec)
         grid = build_grid(spec, max_variants=max_variants)
-        venue = default_catalog().venue_for(spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
+        catalog = default_catalog()
+        venue = catalog.venue_for(spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
+        # Per-symbol fee schedule: equity symbols pay IBKR (0.5 bps); HL perp symbols pay HL (1.5 bps); crypto
+        # symbols pay the spec's primary venue fee. None when all symbols share the same venue fee (common
+        # crypto-only path) — avoids a dict-lookup on every bar for the typical case.
+        equity_syms = set(self._equity_symbols(spec)) & market.keys()
+        hl_syms = set(self._hyperliquid_symbols(spec)) & market.keys()
+        fee_schedule = None
+        if equity_syms or hl_syms:
+            fee_schedule = {s: venue.taker_fee_bps for s in market}
+            if equity_syms:
+                ibkr_fee = catalog.venue("ibkr").taker_fee_bps
+                fee_schedule.update({s: ibkr_fee for s in equity_syms})
+            if hl_syms:
+                hl_fee = catalog.venue("hyperliquid").taker_fee_bps
+                fee_schedule.update({s: hl_fee for s in hl_syms})
         # Point-in-time alt-data join (funding_rate, fear_greed, …), built ONCE per spec since it depends only on
         # the spec's features + the market, not the swept params. Without this the sweep would screen every
         # funding/meta-label spec price-only (funding reads None) — the same join the cohort screen uses.
@@ -278,7 +338,7 @@ class StrategyFinder:
         trades_by_tag: dict[str, int] = {}
 
         def _screen_into(variant: Variant, source: str, label: str) -> None:
-            screened = self._screen(spec, variant, market, venue, alt, source=source, label=label)
+            screened = self._screen(spec, variant, market, venue, alt, source=source, label=label, fee_schedule=fee_schedule)
             if screened is None:
                 return  # an invalid grid point (e.g. degenerate range) is skipped, never persisted
             r, cand, val_returns, min_symbol_trades = screened
@@ -371,6 +431,7 @@ class StrategyFinder:
         for r in (r for r in results if r.promoted):
             champion = run_strategy_backtest_detailed(
                 spec, dict(r.fitted_params), market, fee_bps=venue.taker_fee_bps,
+                fee_schedule=fee_schedule,
                 slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps, alt_by_symbol=alt,
             )  # include_holdout defaults True — this is the single exam look for this champion; charge the
             #    venue's OWN depth (half-spread + impact), not the global 5/50 — same cost model as the screen
@@ -434,6 +495,7 @@ class StrategyFinder:
         *,
         source: str,
         label: str,
+        fee_schedule: dict[str, Decimal] | None = None,
     ) -> tuple[VariantResult, CohortCandidate, list[float], int] | None:
         """Compile + backtest one variant on REAL bars (with the point-in-time alt-data join so funding/meta-label
         specs are evaluated honestly). Returns (result, cohort-candidate, validation return stream, min per-symbol
@@ -448,6 +510,7 @@ class StrategyFinder:
         # simulating the exam per variant was the structural holdout-reuse channel the deep review flagged.
         detailed = run_strategy_backtest_detailed(
             spec, variant.params, market, fee_bps=venue.taker_fee_bps,
+            fee_schedule=fee_schedule,
             slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps,
             alt_by_symbol=alt_by_symbol,
             include_holdout=False,

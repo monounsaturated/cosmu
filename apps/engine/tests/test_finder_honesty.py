@@ -73,7 +73,7 @@ class _Bars:
         self._m = market
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
-        return self._m.get(symbol, next(iter(self._m.values())))[-limit:]
+        return self._m.get(symbol, [])[-limit:]
 
 
 def _finder(tmp_path, market, name="honesty") -> StrategyFinder:

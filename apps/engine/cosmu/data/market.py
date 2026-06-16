@@ -422,6 +422,56 @@ class YahooDailyBarsProvider:
         _atomic_write_text(self._cache_path(symbol), json.dumps(_bars_to_rows(bars), separators=(",", ":")))
 
 
+class EquityOHLCVProvider:
+    """Read-only provider that serves the pre-populated `.cosmu/market_data/equities/` cache.
+    Does NOT fetch live — the equity cache is maintained by research/equity_* backfill scripts.
+    Implements the MarketDataProvider protocol so the finder can blend equity bars alongside crypto."""
+
+    survivorship_complete = False  # Alpaca/Yahoo data has no delisted names — see StooqDailyBarsProvider
+
+    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/equities") -> None:
+        self.cache_dir = Path(cache_dir)
+
+    def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        path = self.cache_dir / f"{symbol}_{timeframe}.json"
+        if not path.exists():
+            return []
+        bars = [_bar_from_json(r) for r in json.loads(path.read_text())]
+        return bars[-limit:] if len(bars) > limit else bars
+
+    def available_symbols(self, timeframe: str = "1d") -> list[str]:
+        """Sorted list of all symbols that have a cached file for the given timeframe."""
+        suffix = f"_{timeframe}.json"
+        if not self.cache_dir.exists():
+            return []
+        return sorted(p.name[: -len(suffix)] for p in self.cache_dir.glob(f"*{suffix}") if p.is_file())
+
+
+class HyperliquidOHLCVProvider:
+    """Read-only provider serving the Hyperliquid perpetual cache at `.cosmu/market_data/hyperliquid/`.
+    Cache is populated by `scripts/ingest_hyperliquid_bars.py` (public REST, no key). Does NOT
+    fetch live — cache is the source of truth. Symbols are {COIN}USDC (e.g. BTCUSDC)."""
+
+    survivorship_complete = False  # HL lists only currently-traded perpetuals
+
+    def __init__(self, cache_dir: Path | str = ".cosmu/market_data/hyperliquid") -> None:
+        self.cache_dir = Path(cache_dir)
+
+    def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        path = self.cache_dir / f"{symbol}_{timeframe}.json"
+        if not path.exists():
+            return []
+        bars = [_bar_from_json(r) for r in json.loads(path.read_text())]
+        return bars[-limit:] if len(bars) > limit else bars
+
+    def available_symbols(self, timeframe: str = "1d") -> list[str]:
+        """Sorted list of symbols with a cached file for the given timeframe (e.g. 'BTCUSDC')."""
+        suffix = f"_{timeframe}.json"
+        if not self.cache_dir.exists():
+            return []
+        return sorted(p.name[: -len(suffix)] for p in self.cache_dir.glob(f"*{suffix}") if p.is_file())
+
+
 def _is_daily_spaced(bars: list[Bar]) -> bool:
     """True DAILY bars have consecutive-trading-day gaps (1-4 calendar days incl. weekends/holidays);
     MONTHLY bars (from the old Yahoo `range=max` downgrade) have ~28-31 day gaps. Median-gap test —

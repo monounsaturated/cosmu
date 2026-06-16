@@ -99,6 +99,7 @@ def run_strategy_backtest(
     market: dict[str, list[Bar]],
     *,
     fee_bps: Decimal,
+    fee_schedule: dict[str, Decimal] | None = None,
     slippage_bps: Decimal = DEFAULT_SLIPPAGE_BPS,
     impact_bps: Decimal = DEFAULT_IMPACT_BPS,
     size_multiplier: float = 1.0,
@@ -113,6 +114,7 @@ def run_strategy_backtest(
         params,
         market,
         fee_bps=fee_bps,
+        fee_schedule=fee_schedule,
         slippage_bps=slippage_bps,
         impact_bps=impact_bps,
         size_multiplier=size_multiplier,
@@ -128,6 +130,7 @@ def run_strategy_backtest_detailed(
     market: dict[str, list[Bar]],
     *,
     fee_bps: Decimal,
+    fee_schedule: dict[str, Decimal] | None = None,
     slippage_bps: Decimal = DEFAULT_SLIPPAGE_BPS,
     impact_bps: Decimal = DEFAULT_IMPACT_BPS,
     size_multiplier: float = 1.0,
@@ -173,9 +176,12 @@ def run_strategy_backtest_detailed(
     for symbol, bars in market.items():
         if len(bars) < 80:
             continue
+        # Per-venue fee: cross-asset backtests supply a fee_schedule (symbol → bps) so equity symbols are
+        # charged IBKR's 0.5 bps and crypto symbols Binance's 10 bps — never a single blended rate.
+        sym_fee = fee_schedule.get(symbol, fee_bps) if fee_schedule else fee_bps
         alt = (alt_by_symbol or {}).get(symbol)
         val_bars, holdout_bars = _purged_embargoed_split(spec, params, bars)
-        v_run = _run_symbol(spec, params, val_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt, size_series)
+        v_run = _run_symbol(spec, params, val_bars, sym_fee, slippage_bps, impact_bps, size_multiplier, alt, size_series)
         validation_runs.append(v_run)
         symbol_trades[symbol] = len(v_run.trades)
         # the SAME strategy's standalone validation result on THIS symbol (pre-pool) — un-collapses the metric.
@@ -186,7 +192,7 @@ def run_strategy_backtest_detailed(
             "trades": float(len(v_run.trades)),
         }
         if holdout_bars and include_holdout:
-            holdout_runs.append(_run_symbol(spec, params, holdout_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt, size_series))
+            holdout_runs.append(_run_symbol(spec, params, holdout_bars, sym_fee, slippage_bps, impact_bps, size_multiplier, alt, size_series))
 
     if not validation_runs:
         return BacktestResult(_empty_metrics(spec), [], [], {})
@@ -213,7 +219,7 @@ def run_strategy_backtest_detailed(
     # Validation-slice buy-and-hold benchmark: what just HOLDING the same basket over bars[:split] returns, net of
     # the round-trip fee. Computed on the SAME validation window as `val.total_return` (never the holdout, which
     # the gate keeps untouched) so the promotion gate's "beat buy-and-hold" check compares like with like.
-    buy_and_hold = _buy_and_hold_return(market, fee_bps)
+    buy_and_hold = _buy_and_hold_return(market, fee_bps, fee_schedule)
 
     metrics = BacktestMetrics(
         oos_return=Decimal(str(round(val.total_return, 8))),
@@ -292,22 +298,24 @@ def _avg_cross_correlation(series: list[list[float]]) -> float:
     return statistics.fmean(corrs) if corrs else 0.0
 
 
-def _buy_and_hold_return(market: dict[str, list[Bar]], fee_bps: Decimal) -> float:
+def _buy_and_hold_return(
+    market: dict[str, list[Bar]], fee_bps: Decimal, fee_schedule: dict[str, Decimal] | None = None
+) -> float:
     """Net-of-fee buy-and-hold return over the VALIDATION slice (bars[:split], the same window the strategy is
     scored on — never the holdout). For each symbol with enough bars, buy at the slice's first close and sell at
     its last, charged one round-trip fee, then average across the basket. Mirrors research/gate.py's `_buy_and_hold`
     but uses the single venue fee passed to the backtest. Empty market / no usable symbol → 0.0 (no benchmark to
     beat). The split matches `_purged_embargoed_split`, so the benchmark window equals the strategy's exactly."""
-    fee = float(fee_bps) / 10000.0
     rets: list[float] = []
-    for bars in market.values():
+    for symbol, bars in market.items():
         if len(bars) < 80:
             continue
+        sym_fee = float(fee_schedule.get(symbol, fee_bps)) / 10000.0 if fee_schedule else float(fee_bps) / 10000.0
         split = max(40, int(len(bars) * 0.8))
         window = bars[:split]
         first, last = float(window[0].close), float(window[-1].close)
         if first:
-            rets.append(last / first - 1.0 - 2.0 * fee)  # entry + exit fee = one round trip
+            rets.append(last / first - 1.0 - 2.0 * sym_fee)  # entry + exit fee = one round trip
     return statistics.fmean(rets) if rets else 0.0
 
 
