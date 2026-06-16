@@ -7,7 +7,7 @@ import json
 from fastapi import APIRouter, HTTPException
 
 from cosmu.adapters.exec.registry import live_mode
-from cosmu.api._shared import _brain_reference_bars, _metric, _portfolio, settings, store
+from cosmu.api._shared import _metric, _portfolio, _version_reference_bars, settings, store
 from cosmu.api.models import (
     ActivateRequest,
     ActivateResponse,
@@ -80,14 +80,15 @@ def _eligible_strategies() -> list[EligibleStrategy]:
         ORDER BY sv.created_at DESC LIMIT 20
         """
     )
-    reference = _brain_reference_bars()
     seen: set[str] = set()
     out: list[EligibleStrategy] = []
     for r in rows:
         if r["id"] in seen:
             continue
         seen.add(r["id"])
-        if not live_eligibility_verdict(store, r["id"], reference).eligible:
+        # Regime reference resolved PER VERSION from its own asset class (equity→SPY, crypto→BTC) — never BTC
+        # for an equity strategy.
+        if not live_eligibility_verdict(store, r["id"], _version_reference_bars(r["id"])).eligible:
             continue  # blocked: not forward-proven (>= PAPER_MIN_DAYS net-positive) or out-of-regime
         out.append(EligibleStrategy(version_id=r["id"], name=r["name"]))
     return out
@@ -384,7 +385,7 @@ def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
     # `override_paper` waives ONLY the paper precondition (logged below), never the regime gate.
     from cosmu.master.live_eligibility import live_eligibility_verdict, paper_clock_origin
 
-    reference = _brain_reference_bars()
+    reference = _version_reference_bars(request.version_id)  # this version's own asset-class regime brain
     verdict = live_eligibility_verdict(store, request.version_id, reference, override=request.override_paper)
     ft_days = verdict.paper_age_days if paper_clock_origin(store, request.version_id) else None
     readiness = "proven" if verdict.forward_ready else "not yet proven"
@@ -407,6 +408,12 @@ def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
         (str(request.global_cap), str(request.max_daily_loss)),
     )
     store.rows("UPDATE strategy_versions SET status = 'live' WHERE id = ?", (request.version_id,))
+    # FREEZE the EXACT config being armed → the live step (paper_step._frozen_config_ok) only opens REAL
+    # positions on this frozen params_hash, never a silently re-fitted one. Idempotent (re-freezes in place);
+    # the promotion sites froze it too, this guarantees the record exists at the moment of arming.
+    from cosmu.master.promotion import freeze_promotion
+
+    freeze_promotion(store, request.version_id)
     if verdict.overridden:
         # The explicit, logged warning for arming an unproven strategy (owner-pending escape hatch, default OFF).
         store.append_event(
