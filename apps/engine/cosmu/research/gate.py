@@ -27,7 +27,7 @@ from cosmu.master.scorer import (
     score,
 )
 from cosmu.master.strategy_correlation import pairwise_correlation as _pairwise_corr
-from cosmu.master.trials import record_trial, trial_stats, trial_stats_for_cohort
+from cosmu.master.trials import TrialStats, record_trial, trial_stats, trial_stats_for_cohort
 
 # Pre-registered pass bar — fixed BEFORE looking. Changing it after a run is itself a new trial.
 PREREGISTERED_BAR = {
@@ -154,13 +154,7 @@ def evaluate_gate(
 
     # Correlation haircut: a grid of near-duplicate variants is NOT len(variants) independent tests.
     # Replace raw grid count with effective count K_eff=K/(1+(K-1)*rho_bar) — fairer on correlated grids.
-    grid_streams = {r.params.name: r.val_returns for r in results if r.val_returns}
-    if len(grid_streams) >= 2:
-        _rho = _pairwise_corr(grid_streams).average_pairwise_correlation
-        _grid_rho: float | None = None if math.isnan(_rho) else _rho
-    else:
-        _grid_rho = None
-    corr_stats = trial_stats_for_cohort(store, len(results), _grid_rho)
+    corr_stats = _cohort_corr_stats(store, results)
 
     regimes_positive = sum(1 for v in best.metrics.regime_returns.values() if v > 0)
     dsr = float(_dsp(best.metrics, corr_stats))
@@ -204,6 +198,22 @@ def evaluate_gate(
         reasons=reasons,
         rank_consistency=round(rc, 4) if rc is not None else None,
     )
+
+
+def _cohort_corr_stats(store: Store, results: list[VariantResult]) -> TrialStats:
+    """Effective trial stats for the variant grid, haircut by the grid's average pairwise correlation.
+
+    K MUST be the count of variants that actually contributed a return stream to the correlation (those with
+    non-empty val_returns) — NOT len(results). A degenerate variant with no trades has no stream to correlate;
+    folding it into the correlated cohort would over-credit the haircut and slightly LOOSEN the gate. It instead
+    stays in n_hist, counted as a full independent trial (conservative — never loosens a multiple-testing count)."""
+    grid_streams = {r.params.name: r.val_returns for r in results if r.val_returns}
+    if len(grid_streams) >= 2:
+        rho = _pairwise_corr(grid_streams).average_pairwise_correlation
+        grid_rho: float | None = None if math.isnan(rho) else rho
+    else:
+        grid_rho = None
+    return trial_stats_for_cohort(store, len(grid_streams), grid_rho)
 
 
 def _gate_gates(store: Store):  # noqa: ANN202 - returns GateSettings
