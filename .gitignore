@@ -24,6 +24,10 @@ TradingAgents-main/
 .DS_Store
 **/.DS_Store
 
+# IDE / editor
+.idea/
+.vscode/
+
 # Claude local files (settings etc.) — but TRACK the skills, which are the repo's source of truth for procedures
 .claude/*
 !.claude/skills/
