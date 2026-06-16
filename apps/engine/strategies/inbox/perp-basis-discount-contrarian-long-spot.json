@@ -1,0 +1,56 @@
+{
+  "name": "Perp-spot basis discount contrarian — long the over-cheap spot (SPOT-executable)",
+  "rationale": "SPOT / LONG LEG (direction=1) — the absent mirror of perp-basis-premium-contrarian-short, and unlike that short leg it IS executable on Binance SPOT (buy spot outright; no perp-short capability needed), so it fits the spot-only live constraint. Mechanism, stated before the data: the perp-spot basis (perp minus spot, as a fraction) is the market's revealed price of leverage. A large NEGATIVE basis means perpetual SHORTS are paying a premium to stay short while spot trades rich to the discounted perp — a crowded, over-leveraged-SHORT regime that historically reverts UP as the marginal short is exhausted and negative-carry/short-funding bleed forces shorts to cover (a short squeeze into spot). The basis is a spot-perp price SPREAD (a cleaner, higher-frequency crowding read than the realized funding print) so it can fire EARLIER than a funding-contrarian filter. Hypothesis: go LONG spot when perp_spot_basis crosses DOWN through a fitted discount floor (short-crowding extreme) AND price is not in a violent downtrend (ret_Nd above a fitted trend_floor — the knife guard, mirroring the short leg's melt-up guard) so we buy capitulation, not freefall. Exit when the basis normalizes back UP through an exit threshold (crowding relieved, thesis played out) or the stop/TP/time barrier fires. Disconfirmer 1: the edge must be the basis EXTREME mean-reverting, not a generic long bias — if a plain unconditional spot long over the same sample and costs matches the deflated Sharpe, the basis floor adds nothing. Disconfirmer 2: basis and funding are tightly coupled; if dropping perp_spot_basis and entering on a funding_rate floor alone does as well, this is the existing funding-contrarian spec re-skinned and adds no orthogonal basis information. Disconfirmer 3 (PIT/cost): net of Binance spot fees the reversion must clear ~20bps round-trip; statistically-significant-but-fee-dead is dead. tier0 feature, unproven combination — low-confidence until validated OOS.",
+  "catalyst": "perp_spot_basis crosses down into a discount regime (perp shorts over-paying / spot rich to perp) — a crowded short-squeeze setup, bought on spot.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": { "name": "perp_spot_basis" },
+      "op": "cross_down",
+      "threshold": { "param": "basis_floor" }
+    },
+    {
+      "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } },
+      "op": "gt",
+      "threshold": { "param": "trend_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "perp_spot_basis" },
+        "op": "cross_up",
+        "threshold": { "param": "basis_exit" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "basis_floor":  { "kind": "float", "lo": -0.02,  "hi": -0.001 },
+    "basis_exit":   { "kind": "float", "lo": -0.005, "hi": 0.005 },
+    "trend_lb":     { "kind": "int",   "lo": 10,     "hi": 30,    "step": 1 },
+    "trend_floor":  { "kind": "float", "lo": -0.25,  "hi": -0.02 },
+    "stop":         { "kind": "float", "lo": 0.04,   "hi": 0.15 },
+    "tp":           { "kind": "float", "lo": 0.04,   "hi": 0.25 },
+    "time_stop":    { "kind": "int",   "lo": 3,      "hi": 14,    "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
