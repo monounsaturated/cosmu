@@ -6,8 +6,10 @@
 #
 # FIVE PHASES (PHASE0 runs locally; PHASE1–4 fan out on Modal, scale-to-zero):
 #   PHASE0  local: validate inputs, ANNOUNCE scope + cost estimate + R2 layout. `--mode prepare` STOPS here ($0).
-#   PHASE1  Modal fan-out: download_binance_vision_batch(pairs, market, timeframes, start, end) → Parquet on R2
-#           under the 'astro_deepdive' prefix (checksummed bulk ZIPs from data.binance.vision, free, no rate limit).
+#   PHASE1  Modal fan-out: download_binance_vision_slab(pair, timeframe, market, start, end) → Parquet on R2
+#           under the 'astro_deepdive' prefix (checksummed bulk ZIPs from data.binance.vision, free, no rate
+#           limit). One container per (pair × timeframe) SLAB with retries + resume-from-R2 so a lost gRPC stream
+#           is re-run on a fresh container and an already-written slab is skipped — not the whole map killed.
 #   PHASE2  Modal: compute the DAILY astro feature tensor ONCE (reuse AF.deep_astro_features) → R2 (astro barely
 #           moves intraday — daily is correct and ~25 MB).
 #   PHASE3  Modal fan-out: the backtest + permutation-null sweep — REUSE run_lab.enumerate_configs /
@@ -131,9 +133,27 @@ except Exception:  # noqa: BLE001
     _MODAL_OK = False
 
 
+def _ensure_research_path() -> None:
+    """Put the research helper dirs on sys.path INSIDE the Modal container. `cosmu` is pip-installed, but the
+    reused research modules (lab_store / astro_deep_study / astro_features_deep / run_lab / modal_sweep) live in
+    the copied tree, NOT in site-packages — without this the in-container workers raise ModuleNotFoundError. The
+    image copies the tree to /root/engine (remote/app.py's layout); the local driver resolves ENGINE_ROOT to the
+    real apps/engine. Try both roots so the SAME core functions import identically on the M2 and on Modal."""
+    roots = [Path("/root/engine"), ENGINE_ROOT]
+    subdirs = ("", "scripts/research", "scripts/research/astro_deep", "scripts/research/astro_strategy_lab")
+    for root in roots:
+        if not root.exists():
+            continue
+        for sub in subdirs:
+            p = str(root / sub) if sub else str(root)
+            if p not in sys.path:
+                sys.path.insert(0, p)
+
+
 def _engine_image():
-    """The same engine image remote/app.py builds (copy the tree, `pip install .`), so `cosmu`, the ephemeris
-    stack, and the research helpers are all importable inside the container — no PYTHONPATH drift."""
+    """The same engine image remote/app.py builds (copy the tree, `pip install .[lake]`), so `cosmu`, the
+    ephemeris stack, the research helpers, AND duckdb (the LabStore R2 writer) are all importable inside the
+    container — no PYTHONPATH drift and no missing-duckdb surprise when a worker writes Parquet to R2."""
     return (
         modal.Image.debian_slim(python_version="3.12")
         .add_local_dir(
@@ -142,7 +162,7 @@ def _engine_image():
             copy=True,
             ignore=["**/__pycache__", "**/*.pyc", "tests/**", "remote/**"],
         )
-        .run_commands("pip install /root/engine")
+        .run_commands("pip install '/root/engine[lake]'")  # [lake]=duckdb → LabStore R2 COPY works in-container
     )
 
 
@@ -150,17 +170,22 @@ if _MODAL_OK:
     app = modal.App("cosmu-astro-deepdive")
     _engine_secret = modal.Secret.from_name("cosmu-engine")  # DATABASE_URL, R2_*, SLACK_WEBHOOK_URL, …
     # PHASE1/2 need the full engine + ephemeris + R2 creds; PHASE3 perm-null is light numpy/sklearn.
-    _ENGINE = dict(image=_engine_image(), secrets=[_engine_secret], timeout=60 * 60, cpu=8.0, memory=16384)
+    # retries=2 + max_containers cap make the bulk-download fan-out resilient to the grpclib StreamTerminated /
+    # Deadline-exceeded the first smoke hit: a slab that loses its stream is RE-RUN on a fresh container instead
+    # of killing the map, and the container count is bounded so we never melt the gRPC control plane.
+    _ENGINE = dict(
+        image=_engine_image(), secrets=[_engine_secret],
+        timeout=60 * 30, cpu=4.0, memory=8192, retries=2, max_containers=24,
+    )
 
     @app.function(**_ENGINE)
-    def download_binance_vision_batch(
-        pairs: list[str], market: str, timeframes: list[str], start: str, end: str
-    ) -> list[dict]:
-        """PHASE1 worker: pull REAL OHLCV for each (pair × timeframe) and write Parquet to R2 under the
-        'astro_deepdive' prefix. One container handles its assigned (pair, timeframe) slice; the fan-out is
-        over the cartesian product. Read-only on Binance, write-only to the isolated R2 prefix — no DB, no order.
-        Returns one manifest dict per slice {pair, timeframe, rows, r2}."""
-        return _download_binance_vision_core(pairs, market, timeframes, start, end)
+    def download_binance_vision_slab(pair: str, timeframe: str, market: str, start: str, end: str) -> dict:
+        """PHASE1 worker (SLAB granularity): pull REAL OHLCV for ONE (pair × timeframe) and write Parquet to R2
+        under the 'astro_deepdive' prefix. The fan-out is over the (pair × timeframe) cartesian product so each
+        container does a SMALL, bounded download (a single timeframe's monthly ZIPs) — the fix for the 1m bulk
+        download timing the container's gRPC stream out. Read-only on Binance, write-only to the isolated R2
+        prefix — no DB, no order. Returns one manifest dict {pair, timeframe, rows, r2, skipped}."""
+        return _download_one_slab(pair, timeframe, market, start, end)
 
     @app.function(**_ENGINE)
     def compute_astro_tensor(start: str, end: str) -> dict:
@@ -173,58 +198,102 @@ if _MODAL_OK:
 # ── PHASE1 core: data.binance.vision → Parquet on R2 (pure; runs in-container) ──────────────────────
 
 
-def _download_binance_vision_core(
-    pairs: list[str], market: str, timeframes: list[str], start: str, end: str
-) -> list[dict]:
-    """Download monthly bulk ZIPs from data.binance.vision for each (pair × timeframe), concat to a tidy
-    OHLCV frame, and persist one Parquet per slice to the isolated R2 prefix via LabStore. Pure + read-only
-    on the network; the only writes are immutable Parquet under 'astro_deepdive/bars/'.
+def _slab_batch_id(pair: str, tf: str) -> str:
+    """The deterministic LabStore batch-id (and hence R2 key) for one (pair × timeframe) slab."""
+    return f"{pair}/{tf}/{pair}-{tf}"
 
-    Network/ZIP parsing imports are LOCAL so the module imports with just stdlib present (and `--mode prepare`
-    never reaches here). A slice that fails to fetch yields an honest {rows: 0} manifest, never fabricated bars.
-    """
+
+def _slab_done(store, pair: str, tf: str) -> bool:
+    """RESUME guard: True when this slab's Parquet already exists (R2 when ready, else the local mirror), so a
+    re-run SKIPS pairs already written instead of re-downloading. Best-effort — any read hiccup means 'not done'
+    and we simply re-fetch (never a false 'done', so we never silently drop a slab)."""
+    batch_id = _slab_batch_id(pair, tf)
+    local_path = store.local / f"{batch_id}.parquet"
+    if local_path.exists() and local_path.stat().st_size > 0:
+        return True
+    if not store.r2_ready:
+        return False
+    try:  # cheap existence probe against the exact R2 key
+        con = store._conn()
+        try:
+            n = con.execute(
+                f"SELECT count(*) FROM read_parquet('{store.r2_uri(batch_id)}')"
+            ).fetchone()[0]
+            return int(n) > 0
+        finally:
+            con.close()
+    except Exception:  # noqa: BLE001 — key absent / transient list error → treat as not-done, re-fetch
+        return False
+
+
+def _fetch_month_zip(url: str, cols, *, attempts: int = 4, timeout: int = 45):
+    """Fetch ONE monthly bulk ZIP with bounded retries + exponential backoff. Returns the parsed DataFrame, or
+    None when the month genuinely isn't listed (HTTP 404 — pair not live yet) or every attempt fails. Retrying
+    here (not at the container level) keeps a single flaky month from forcing a whole-slab container retry."""
     import io
+    import time
+    import urllib.error
     import urllib.request
     import zipfile
 
     import pandas as pd
 
+    for i in range(attempts):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310
+                raw = resp.read()
+            with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                name = zf.namelist()[0]
+                return pd.read_csv(zf.open(name), header=None, names=cols)
+        except urllib.error.HTTPError as e:  # 404 = month not published (honest absence) → stop retrying
+            if e.code == 404:
+                return None
+            time.sleep(0.5 * (2**i))
+        except Exception:  # noqa: BLE001 — transient network/stream error → backoff + retry
+            time.sleep(0.5 * (2**i))
+    return None
+
+
+def _download_one_slab(pair: str, timeframe: str, market: str, start: str, end: str) -> dict:
+    """Download the monthly bulk ZIPs from data.binance.vision for ONE (pair × timeframe), concat to a tidy
+    OHLCV frame, and persist a single immutable Parquet to the isolated R2 prefix via LabStore. SMALL + bounded
+    (one timeframe's months) so the container's gRPC stream never times out the way the all-timeframes-in-one
+    worker did. Pure + read-only on the network; the only write is immutable Parquet under 'astro_deepdive/bars/'.
+
+    RESUME: if the slab's Parquet already exists, returns {skipped: True} WITHOUT re-downloading. A slab whose
+    months are all unlisted yields an honest {rows: 0} manifest, never fabricated bars.
+    """
+    _ensure_research_path()  # container: put the research helper dirs on sys.path before importing them
+    import pandas as pd
+
     from lab_store import LabStore  # reused durable store, pointed at the deepdive prefix
 
     store = LabStore(prefix=f"{R2_PREFIX}/bars", local_dir=f".cosmu/{R2_PREFIX}/bars")
+    if _slab_done(store, pair, timeframe):
+        return dict(pair=pair, timeframe=timeframe, rows=0, r2=store.r2_uri(_slab_batch_id(pair, timeframe)),
+                    skipped=True)
+
     seg = {"spot": "spot", "um": "futures/um", "cm": "futures/cm"}.get(market, "spot")
     cols = ["open_time", "open", "high", "low", "close", "volume",
             "close_time", "qav", "trades", "tbav", "tbqv", "ignore"]
 
-    def _months(s: str, e: str) -> list[str]:
-        a, b = pd.Timestamp(s), pd.Timestamp(e)
-        return [d.strftime("%Y-%m") for d in pd.date_range(a, b, freq="MS")]
+    a, b = pd.Timestamp(start), pd.Timestamp(end)
+    months = [d.strftime("%Y-%m") for d in pd.date_range(a, b, freq="MS")]
 
-    out: list[dict] = []
-    for pair in pairs:
-        for tf in timeframes:
-            frames: list[pd.DataFrame] = []
-            for ym in _months(start, end):
-                url = f"{BINANCE_VISION_BASE}/{seg}/monthly/klines/{pair}/{tf}/{pair}-{tf}-{ym}.zip"
-                try:
-                    with urllib.request.urlopen(url, timeout=60) as resp:  # noqa: S310
-                        raw = resp.read()
-                    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-                        name = zf.namelist()[0]
-                        df = pd.read_csv(zf.open(name), header=None, names=cols)
-                    frames.append(df)
-                except Exception:  # noqa: BLE001 — month not listed yet / pair not live: skip honestly
-                    continue
-            if not frames:
-                out.append(dict(pair=pair, timeframe=tf, rows=0, r2=None))
-                continue
-            bars = pd.concat(frames, ignore_index=True)
-            bars["ts"] = pd.to_datetime(bars["open_time"], unit="ms", utc=True).dt.tz_localize(None)
-            bars = bars[["ts", "open", "high", "low", "close", "volume"]].drop_duplicates("ts").sort_values("ts")
-            batch_id = f"{pair}/{tf}/{pair}-{tf}"
-            paths = store.save_batch(bars, batch_id)
-            out.append(dict(pair=pair, timeframe=tf, rows=int(len(bars)), r2=paths.get("r2")))
-    return out
+    frames: list[pd.DataFrame] = []
+    for ym in months:
+        url = f"{BINANCE_VISION_BASE}/{seg}/monthly/klines/{pair}/{timeframe}/{pair}-{timeframe}-{ym}.zip"
+        df = _fetch_month_zip(url, cols)
+        if df is not None:
+            frames.append(df)
+    if not frames:
+        return dict(pair=pair, timeframe=timeframe, rows=0, r2=None, skipped=False)
+
+    bars = pd.concat(frames, ignore_index=True)
+    bars["ts"] = pd.to_datetime(bars["open_time"], unit="ms", utc=True).dt.tz_localize(None)
+    bars = bars[["ts", "open", "high", "low", "close", "volume"]].drop_duplicates("ts").sort_values("ts")
+    paths = store.save_batch(bars, _slab_batch_id(pair, timeframe))
+    return dict(pair=pair, timeframe=timeframe, rows=int(len(bars)), r2=paths.get("r2"), skipped=False)
 
 
 # ── PHASE2 core: the DAILY astro feature tensor (reuse AF.deep_astro_features) ───────────────────────
@@ -234,6 +303,7 @@ def _compute_astro_tensor_core(start: str, end: str) -> dict:
     """Compute the deterministic DAILY astro panel over [start, end] ONCE and write it to R2. Reuses exactly
     what run_lab builds: AF.deep_astro_features ⋈ calendar ⋈ extra ⋈ space-weather. ~25 MB, knowable at each
     day's start (no look-ahead). Returns {rows, cols, r2}."""
+    _ensure_research_path()  # container: put the research helper dirs on sys.path before importing them
     import pandas as pd
 
     import astro_deep_study as S
@@ -343,7 +413,7 @@ def _aggregate_and_deflate(config: DeepDiveConfig, trial_rows: list[dict], perm_
         survivors=int(len(survivors)),
         raw_best_sharpe=float(df["sharpe"].max()),
         perm_tested=int(len(perm_rows)),
-        note=("INVESTIGATE — forward-test required" if len(survivors)
+        note=("INVESTIGATE — paper proof required" if len(survivors)
               else "NULL — 0 survive deflation at the true trial count (astro closed)"),
     )
     return verdict
@@ -389,11 +459,27 @@ def run_astro_deepdive_modal(config: DeepDiveConfig, *, prepare_only: bool = Fal
     results: dict = {"scope": scope}
 
     with app.run():
-        # ── PHASE1: data.binance.vision → R2 (fan-out one container per pair-slice) ────────────────
-        print(f"\n[PHASE1] download {len(ds.pairs)} pairs × {ds.timeframes} → r2://…/{R2_PREFIX}/bars/")
-        dl_jobs = [([p], ds.market, ds.timeframes, ds.start, ds.end) for p in ds.pairs]
-        manifests = list(download_binance_vision_batch.starmap(dl_jobs))
-        results["download"] = [m for sub in manifests for m in (sub if isinstance(sub, list) else [sub])]
+        # ── PHASE1: data.binance.vision → R2 (fan-out one container per pair×timeframe SLAB) ───────
+        # Smaller slabs + retries=2 + return_exceptions=True: a slab that loses its gRPC stream is retried on a
+        # fresh container and, if it still fails, surfaces as an honest error row WITHOUT killing the whole map.
+        # resume-from-R2 lives in the worker (_slab_done), so a re-run skips slabs already written.
+        print(f"\n[PHASE1] download {len(ds.pairs)} pairs × {ds.timeframes} → r2://…/{R2_PREFIX}/bars/ "
+              f"({config.n_download_containers()} slabs)")
+        dl_jobs = [(p, tf, ds.market, ds.start, ds.end) for p in ds.pairs for tf in ds.timeframes]
+        manifests: list[dict] = []
+        errs: list[str] = []
+        for m in download_binance_vision_slab.starmap(dl_jobs, order_outputs=False, return_exceptions=True):
+            if isinstance(m, Exception):
+                errs.append(str(m)[:300])
+                manifests.append(dict(pair="?", timeframe="?", rows=0, r2=None, error=str(m)[:300]))
+            else:
+                manifests.append(m)
+        n_ok = sum(1 for m in manifests if m.get("rows", 0) > 0 or m.get("skipped"))
+        n_skip = sum(1 for m in manifests if m.get("skipped"))
+        print(f"   PHASE1 slabs: {n_ok} ok ({n_skip} resumed) · {len(errs)} errored (of {len(dl_jobs)})")
+        if errs:  # surface the FIRST exception so a systematic failure (bad import/creds) is diagnosable
+            print(f"   PHASE1 first error: {errs[0]}")
+        results["download"] = manifests
         ct.add_container_hours(
             ct.estimate_phase_hours(config.n_download_containers(), config.download_wall_hours),
             label="phase1_download",
@@ -419,7 +505,7 @@ def run_astro_deepdive_modal(config: DeepDiveConfig, *, prepare_only: bool = Fal
         panel, ret_panel = _load_panel_for_sweep(config)
         trial_rows, perm_jobs = _build_sweep_jobs(config, panel, ret_panel)
         print(f"   {len(trial_rows)} trial rows · {len(perm_jobs)} candidate perm-null jobs")
-        perm_rows = MS.run_sweep_modal(perm_jobs) if perm_jobs else []
+        perm_rows = MS.run_sweep_modal(perm_jobs, return_exceptions=True) if perm_jobs else []
         ct.add_container_hours(
             ct.estimate_phase_hours(config.n_sweep_containers(), config.sweep_wall_hours)
             * max(1.0, config.n_perm / 1000.0),

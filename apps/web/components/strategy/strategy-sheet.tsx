@@ -24,6 +24,8 @@ import { PhasedEquity } from "./phased-equity";
 import { SpecBlocks } from "./spec-view";
 import { RegistryBlocks } from "./registry-blocks";
 import { StageControl, type Stage } from "./stage-control";
+import { LifecycleTrace } from "./lifecycle-trace";
+import { laneOf, provenanceOf, strategyKindOf } from "@/lib/provenance";
 import { cn, fmtTz, formatUsd } from "@/lib/utils";
 
 // ── Honest derivations off the real detail response ──
@@ -80,6 +82,48 @@ function formatOosWindow(days: number | null | undefined): string | null {
 
 // Gate reference (mirrors gate-chips): PBO must be under 0.50 to pass.
 const PBO_CEILING = 0.5;
+
+// Every named feature a spec references (entry conditions + signal-exits + the funding leg) — the SAME evidence
+// the engine's taxonomy derives provenance from. Used so the sheet can flag an Astro (non-causal) strategy off
+// the spec alone, without the leaderboard's `origin`. Tolerant of a partial/double-encoded spec.
+export function referencedFeatures(spec: Record<string, unknown> | null | undefined): string[] {
+  const names: string[] = [];
+  const push = (n: unknown) => {
+    if (typeof n === "string" && n && !names.includes(n)) names.push(n);
+  };
+  const featName = (cond: unknown) => {
+    if (cond && typeof cond === "object") {
+      const feature = (cond as Record<string, unknown>).feature;
+      if (feature && typeof feature === "object") push((feature as Record<string, unknown>).name);
+    }
+  };
+  if (!spec || typeof spec !== "object") return names;
+  const entry = (spec as Record<string, unknown>).entry;
+  if (Array.isArray(entry)) entry.forEach(featName);
+  const exit = (spec as Record<string, unknown>).exit;
+  if (exit && typeof exit === "object") {
+    const sigExits = (exit as Record<string, unknown>).signal_exits;
+    if (Array.isArray(sigExits)) sigExits.forEach(featName);
+  }
+  push((spec as Record<string, unknown>).funding_feature);
+  return names;
+}
+
+// ── Type & lane — the authoritative spec discriminators (strategy_kind / lane) + the provenance bucket, as a
+// compact badge row. kind + lane come straight off the real spec; provenance prefers the `origin` the row
+// carries (passed from the screener) and otherwise self-derives Astro from the spec's referenced features. ──
+function TypeLaneBadges({ spec, origin }: { spec: Record<string, unknown>; origin?: string | null }) {
+  const kind = strategyKindOf(spec);
+  const lane = laneOf(spec);
+  const prov = provenanceOf(origin, referencedFeatures(spec));
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "2px 0 2px" }}>
+      <span className={prov.badgeClass} data-tip={prov.tip}>{prov.label}</span>
+      <span className={kind.badgeClass} data-tip={kind.tip}>{kind.label}</span>
+      <span className={lane.badgeClass} data-tip={lane.tip}>{lane.label} lane</span>
+    </div>
+  );
+}
 
 // ── Phase comparison: Backtest OOS / Paper / Live side by side. Live is not on this contract → all "—".
 // This table is now the SINGLE home for the gate metrics too (DSR / PBO / Max DD / OOS) — the separate
@@ -293,7 +337,7 @@ function Activity({ trades, stage }: { trades: Execution[]; stage: Stage }) {
 }
 
 // ── The full sheet body — used by the SidePanel and the standalone page. ──
-export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyDetailResponse; stageOverride?: Stage }) {
+export function StrategySheet({ strategy, stageOverride, origin }: { strategy: StrategyDetailResponse; stageOverride?: Stage; origin?: string | null }) {
   // The contract declares trades/backtests as non-null, but the engine can omit them (null) — normalize to
   // empty arrays HERE so every downstream `.length`/spread/`.some` is safe and a partial response can't
   // white-screen the sheet (the error boundary is the net, this is the guard).
@@ -349,6 +393,8 @@ export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyD
         goLiveEligible={stage === "paper" || Boolean(headlineBt?.passed_gates)}
       />
 
+      <TypeLaneBadges spec={(strategy.spec ?? {}) as Record<string, unknown>} origin={origin} />
+
       <MoneyBand data={money} />
 
       <PhasedEquity paperCurve={strategy.forward_equity ?? []} />
@@ -374,6 +420,10 @@ export function StrategySheet({ strategy, stageOverride }: { strategy: StrategyD
       />
 
       <PhaseComparison headlineBt={headlineBt} paperPnl={paperPnl} trades={trades} ageDays={ageDays} bestOos={bestOos} />
+
+      {/* Composed lifecycle verdict (backtest → paper → forward-ready → live-ready) + the audit trace, off the
+          engine's GET /readiness/{version_id}. Advisory — it never arms money. */}
+      {strategy.version_id ? <LifecycleTrace versionId={strategy.version_id} /> : null}
 
       <CostBasisSelector versionId={strategy.version_id} />
 

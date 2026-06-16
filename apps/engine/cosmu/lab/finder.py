@@ -34,6 +34,7 @@ from cosmu.knowledge.store import Store, Writer, utcnow
 from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_cohort
 from cosmu.master.holdout import HoldoutLedger
+from cosmu.master.verdict_log import CohortPersist
 from cosmu.master.promotion import freeze_promotion
 from cosmu.master.scorer import BacktestMetrics, TrialStats, cscv_pbo, score
 from cosmu.master.tracks import open_paper_track
@@ -336,11 +337,26 @@ class StrategyFinder:
             for c in cohort
             if c.id in rep_set and trades_by_tag.get(c.id, 0) >= _MIN_TRADES_PER_SYMBOL
         ]
+        # OBSERVE-ONLY rejects watch-list: opt the REAL autonomous cohort path into measuring the gate's Type-II
+        # rate. `watch_rejects=True` makes persist_cohort_verdict additionally band the gate-rejected-but-CLOSE
+        # representatives (promoted=False AND DSR in [0.90,0.95) AND survived FDR AND no risk-floor reason) into
+        # rejects_watch. This NEVER touches the gate's pass/fail — it reads the same promotions the gate produced.
+        # The verdict store is a SEPARATE durable handle from this run's trial ledger, so persisting the watch-list
+        # never perturbs the deflation math (best-effort: a watch-list write failure can't abort the run).
+        rejects_run_id = f"finder:{spec.name}:{utcnow()}"
+        rejects_persist = CohortPersist(
+            store=self.store,
+            run_id=rejects_run_id,
+            hypothesis=spec.rationale[:200] if spec.rationale else spec.name,
+            source=f"finder:{spec.name}",
+            watch_rejects=True,
+        )
         promotions = {
             p.candidate_id: p
             for p in promote_cohort(
                 self.store, rep_cohort, self.settings.gates, fdr_q=fdr_q, register=False, trials=finder_stats,
                 check_holdout=False,  # selection is validation-only; the holdout confirms champions below
+                persist=rejects_persist,
             )
         }
         for r in results:
@@ -377,6 +393,16 @@ class StrategyFinder:
                 pass
         if persist:
             self._persist(spec, results, market, venue)
+            # ACTIVATE the rejects watch-list: every screened variant now has a persisted strategy_version
+            # (r.version_id), so link each watched reject to its version and open a ZERO-CAPITAL paper track —
+            # the SAME SIM machinery survivors use — stamping strategy_version_id back so the Type-II report can
+            # join the reject's realized paper P&L to the verdict that rejected it. Observe-only + best-effort:
+            # a failure here can never undo a valid promotion (the gate already disposed). Zero capital = no money.
+            version_by_tag = {r.config_tag: r.version_id for r in results if r.version_id}
+            if version_by_tag:
+                from cosmu.master.rejects_lane import link_and_open_rejects_tracks
+
+                link_and_open_rejects_tracks(self.store, rejects_run_id, version_by_tag)
 
         # Experiment-tracking hook (thin, best-effort): log EVERY screened variant to the registry with its
         # exact fitted config + run seed + data_version + metrics — so the run is comparable to past runs and

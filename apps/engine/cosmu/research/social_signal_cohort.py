@@ -297,14 +297,19 @@ def run_cohort(
 
 
 def _main() -> int:
-    import tempfile
+    from cosmu.config.settings import get_settings
+    from cosmu.data.alt_join import resolve_alt_store
 
-    from cosmu.config.settings import Settings
-
-    tmp = tempfile.mkdtemp(prefix="cosmu-social-")
-    store = Store(Settings(database_url=f"sqlite:///{tmp}/social.sqlite3", openrouter_api_key=None))
+    # Read the REAL social history from the alt-data store the ingest writes to (alt_data: social_sentiment /
+    # galaxy_score / social_volume / social_dominance / alt_rank), not the empty on-disk JSONL cache that left
+    # this cohort INSUFFICIENT-DATA. resolve_alt_store respects ALT_DATA_BACKEND: default 'pg' = the hot window
+    # (~90d), 'tiered' = PG ∪ the DuckLake R2 cold lake (the FULL multi-year social history the gate needs for a
+    # real DSR/PBO). get_settings() loads .env.local locally / process env in prod, so one entrypoint works both
+    # places. The trial ledger shares this store (experiment memory persists where it belongs).
+    settings = get_settings()
+    store = Store(settings)
     specs = load_specs()
-    provider = StoreBackedAltProvider(AltDataStore(".cosmu/altdata"))
+    provider = StoreBackedAltProvider(resolve_alt_store(settings, store))
     market = _clip_to_social_window(_real_market(BinanceSpotOHLCVProvider()), provider)
     report = run_cohort(specs, market, provider, store, persist=True)
 

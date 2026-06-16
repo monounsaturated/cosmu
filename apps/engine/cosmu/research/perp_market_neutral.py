@@ -404,7 +404,11 @@ def _annualization(timeframe: str, rebalance: int) -> int:
 # Hyperliquid) — that is a post-edge execution concern, recorded by the arm, not a reason to withhold the forward
 # test (the book is market-neutral so spot-only does not kill the SIM track).
 
-DEPLOY_REBALANCE = 2          # finer than the 7-day cohort grid: more non-overlapping periods from the same history
+DEPLOY_REBALANCE = 2          # finer than the 7-day cohort grid: more non-overlapping periods from the same history.
+#  NB (2026-06-15): a cadence sweep on REAL data found reb=3 looks great (+37% total, annSR 1.30, holdout +12%, n=77)
+#  but reb=3 also lets a NO-EDGE flat market clear the deploy bar (test_no_edge_cross_section_does_not_clear_deploy_bar)
+#  — the bar accepts ANY positive, so finer cadences let noise fluke. Kept at 2 (honest). To deploy the real edge,
+#  HARDEN the bar with a principled min-effect-size guard (annSR/holdout_dsr floors), calibrated vs the disconfirmer.
 DEPLOY_SIGNAL = "momentum"    # the lead arm — the cross-sectional momentum L/S-neutral book (sign=+1)
 DEPLOY_SIGN = +1
 DEPLOY_FRAC = 1 / 3

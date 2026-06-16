@@ -1,6 +1,6 @@
 # 🔭 ASTRO VERDICT v1 — the canonical, retrievable record
 
-> **Name:** `ASTRO_VERDICT_v1` · **Date:** 2026-06-15 · **Status:** CLOSED · **Verdict:** **NO EXPLOITABLE EDGE**
+> **Name:** `ASTRO_VERDICT_v2` · **Date:** 2026-06-15 · **Status:** CLOSED (every channel, incl. belief) · **Verdict:** **NO EXPLOITABLE EDGE**
 > **One line:** Across 18 experiments and 10 scientific dimensions on 32+ real assets over 2009–2026, astrology
 > (and every live-honest alt-signal) carries **0 tradeable edges** after an honest gate. This is not a strictness
 > artifact — it is a definitive, multiply-confirmed null. The machine works; there is nothing to find.
@@ -68,3 +68,6 @@ record(ResearchExperiment(id=..., date=..., family=..., title=..., hypothesis=..
 
 ## 7. The honest expectation for the NEXT (deepest) astro dive
 ~95% a documented null. The only place a non-zero probability sits is the **belief/attention channel** (astrology as a self-fulfilling retail signal — the Mercury-retrograde belief paper template). The deep dive (PREPARED, awaiting approval — see `docs/research/astro_final_deepdive_PLAN.md` + the heavy web-research plan) must put its probability mass there: **quantify the belief** (Google-Trends astro terms, social astro sentiment, named practitioners' calls vs outcomes, decans/"faces") crossed with the deterministic event calendar — NOT in the planets. Everything deterministic is already, definitively, zero.
+
+## 8. v2 update — the BELIEF channel is now closed too
+The one residual channel (astrology-as-belief/attention) was tested end-to-end (`scripts/research/astro_belief/belief_study.py`, ported from Qi-Wang-Zhang 'Long Live Hermes'): Mercury-retrograde dummy × **Wikipedia-pageview belief intensity** (real instrument — the retrograde page spikes **2.4×** during retro, Welch t=25.6; PIT-clean, non-revised). **Verdict: NO_EDGE, the 'least dead' astro candidate but still null.** The retrograde return drop is real in-window (−22bps, t=−2.68) BUT: the **retail-interaction test (most diagnostic) FAILS** (drop not retail-concentrated, t=−0.32), there is **no Ma-Kou reversal** (post-window −1.2bps → not belief mispricing), the **Monte-Carlo placebo** gives p=0.094 (not <0.05), and the tradeable rule's **Deflated Sharpe is 0.69 << 0.95**. So astrology is now definitively closed across deterministic AND behavioral channels. Reusable residue: the PIT-clean Wikipedia-pageview belief loader (`astro_belief/wiki_pageviews.py`) — valuable for NON-astro retail-sentiment strategies. Registry: `astro_belief_hermes` (R2 cosmu-lake/research_registry/).
