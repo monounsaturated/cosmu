@@ -15,6 +15,7 @@ The Gate is the **deterministic** stop-or-go judge — out of any LLM path. It d
 2. **Cross-asset ablation:** `POST /research/cross-asset-gate` → `CrossAssetVerdict` — the four-arm test (price-only vs single-alt vs cross-asset) + drop-one source/class attribution. This is what proves an aggregation edge, not a single-feature fluke.
 3. **Read the bar:** the verdict carries the preregistered bar it was judged against (`research/gate.py:PREREGISTERED_BAR`): min trades, max drawdown, untouched holdout, multiple-testing correction.
 4. **Honest data source:** the verdict reports `data_source` ("live" vs "synthetic"). Synthetic fixtures are CI-only — never present them as a real result.
+5. **Rank-consistency (advisory):** the verdict now carries `rank_consistency` — Spearman IS↔OOS rank transfer over the config grid (`docs/research/RESEARCH_LESSONS.md` §3, "the single most diagnostic check"). It **never** changes PASS/STOP (the bar is locked), but a **negative** value = the best in-sample config is the worst OOS = a curve-fit smell; treat a PASS that ships with negative rank-consistency as suspect and disconfirm (proper null, §3) before funding.
 
 ## Invariants
 - The Gate makes ZERO LLM calls. The scorer/money path are deterministic.

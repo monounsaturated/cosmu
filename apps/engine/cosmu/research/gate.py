@@ -21,6 +21,7 @@ from cosmu.master.scorer import (
     ScoreVerdict,
     cscv_pbo,
     probabilistic_sharpe,
+    rank_consistency,
     sample_moments,
     score,
 )
@@ -114,6 +115,10 @@ class GateVerdict:
     attempts: int
     bar: dict = field(default_factory=lambda: dict(PREREGISTERED_BAR))
     reasons: list[str] = field(default_factory=list)
+    # ADVISORY (never pass/fail — the bar above is locked): Spearman IS↔OOS rank-consistency over the variant grid.
+    # ~+1 = the in-sample ranking transfers OOS (a stable structure); NEGATIVE = the best in-sample variant is among
+    # the worst OOS = a curve-fit smell (RESEARCH_LESSONS §3). None when <2 usable variants.
+    rank_consistency: float | None = None
 
 
 def evaluate_gate(
@@ -136,7 +141,9 @@ def evaluate_gate(
         verdict = score(metrics, _gate_gates(store), trials=trial_stats(store))
         results.append(VariantResult(params, metrics, verdict, val_return, val_returns))
 
-    pbo = cscv_pbo([r.val_returns for r in results if r.val_returns]) if results else 1.0
+    grid_returns = [r.val_returns for r in results if r.val_returns]
+    pbo = cscv_pbo(grid_returns) if results else 1.0
+    rc = rank_consistency(grid_returns)  # advisory IS↔OOS rank transfer over the variant grid
     buy_hold = _buy_and_hold(market, store=store)
     best = max(results, key=lambda r: r.verdict.deflated_sharpe_prob) if results else None
 
@@ -183,6 +190,7 @@ def evaluate_gate(
         max_drawdown=round(float(best.metrics.max_drawdown), 6),
         attempts=len(results),
         reasons=reasons,
+        rank_consistency=round(rc, 4) if rc is not None else None,
     )
 
 
@@ -719,6 +727,10 @@ class CrossAssetVerdict:
     reasons: list[str] = field(default_factory=list)
     bar: dict = field(default_factory=lambda: dict(CROSS_ASSET_BAR))
     data_source: str = "synthetic"
+    # ADVISORY (never pass/fail — CROSS_ASSET_BAR is locked): Spearman IS↔OOS rank-consistency over the cross-asset
+    # config grid. NEGATIVE = the best in-sample config is among the worst OOS = a curve-fit smell (RESEARCH_LESSONS
+    # §3, the complement to CSCV-PBO). None when <2 usable configs.
+    rank_consistency: float | None = None
 
 
 def _xp_price(f, i, thr=0.5):  # noqa: ANN001
@@ -908,6 +920,7 @@ def evaluate_cross_asset_ablation(
             variant_returns.append(_arm_metrics(_build_signal(feats_lb, _xa_full(thr)), store, f"xa_lb{lb}_z{thr}").val_returns)
     usable = [r for r in variant_returns if r]
     pbo = cscv_pbo(usable) if len(usable) >= 2 else 1.0
+    rc = rank_consistency(usable)  # advisory IS↔OOS rank transfer over the cross-asset config grid
 
     xasset_sharpe = float(xasset.metrics.sharpe)
     # --- per-source drop-one (diagnostic — NOT a counted trial; attribution on the arm-(3) hypothesis) ---
@@ -976,6 +989,7 @@ def evaluate_cross_asset_ablation(
         drop_one_source=drop_one_source,
         drop_one_class=drop_one_class,
         reasons=reasons,
+        rank_consistency=round(rc, 4) if rc is not None else None,
     )
 
 

@@ -33,6 +33,14 @@ Every spec MUST clear `validate_spec` (`cosmu/strategy/static_check.py`) — it 
 
 **Fees are always real** — the Gate scores **net of per-venue maker/taker fees + slippage** (PIT `venue_fees`, else the catalog tier); a ranking is not a promotion. Set the `universe.venues` honestly so the right fee is charged.
 
+## Noise-vs-pattern — read before you author (`docs/research/RESEARCH_LESSONS.md` §3/§4)
+The Creation Contract stops *malformed* specs; these stop *fooled* ones — the distilled "real edge vs noise" registry, i.e. the caveats that get silently dropped:
+1. **Mechanism / prior first** — the `rationale` is a real disconfirmable *why it should work, before the data* (its non-emptiness is machine-checked by `validate_spec`; make it a mechanism, not a restatement).
+2. **Train→OOS rank consistency** — *the* single most diagnostic check. The Gate now surfaces `rank_consistency` on the verdict: **negative ⇒ the best in-sample variant is the worst OOS ⇒ curve-fit, treat as dead.**
+3. **Proper null** — for a cyclic/seasonal feature disconfirm with a phase/label shuffle, never fake-random dates (a weak null manufactures false positives).
+4. **Economic, not just statistical** — net-of-fees ≤ 0 kills it (statistically-significant-but-fee-dead is dead).
+5. **§4 PIT law** — a backfilled/revising source (social/TVL) is usable only if the value would have been knowable AND identical live at that bar; ingest live-forward (`available_at` = fetch time) or discount it. Vet a new feed with `/profile-source` first.
+
 ## Steps
 1. **Pick the authoring path:**
    - *Plain-language brief* → `POST /lab/author` (deterministic template match; LLM proposes structure only if a key is set). See `cosmu/lab/author.py`.

@@ -16,6 +16,13 @@ Catch the things that break this machine before they land. Read the diff with Co
    - **Dead imports / unused code**; **missing tests** for new behavior.
    - **Security** — staged secrets, injection, unsafe shell/SQL.
    - **LLM in the money path** — the gate/scoring/funding path must stay deterministic.
+   - **Noise-vs-pattern (strategy/gate/research diffs)** — run the `docs/research/RESEARCH_LESSONS.md` §3 checklist as explicit PASS/FAIL when the diff touches a strategy/gate/research path:
+     - *Mechanism stated?* the `rationale` is a real disconfirmable WHY, not just non-empty (non-emptiness is machine-checked by `validate_spec` — confirm it FIRED and is substantive).
+     - *Net-of-fees > 0?* the edge survives real per-venue fees + slippage (machine-priced — confirm cost columns are populated, not zeroed).
+     - *Proper null?* cyclic/seasonal features disconfirmed with a phase/label shuffle, not fake-random dates.
+     - *Deflated at the TRUE trial count?* neither an inflated grid count (over-deflation) nor a raw-count leak.
+     - *Train→OOS rank consistent?* a **negative** `rank_consistency` on the verdict is a curve-fit smell — block a survivor that ships with it.
+     - *§4 PIT law* — a revising/backfilled source is ingested live-forward (`available_at` = fetch time), never trusted from backfill.
 3. **Verify** `pnpm verify` passes (naming + contracts + tests + typecheck + build).
 4. **Contracts:** any `@cosmu/contracts-ts` diff is intentional (real OpenAPI change, not just `ValidationError` shape noise).
 5. **Check** `next-env.d.ts` is **not** modified.

@@ -22,6 +22,27 @@ PAPER_MIN_DAYS: int = 30
 # "Paper" badge on its FIRST real paper fill (orchestrator.loop._has_paper_fills), so there is no promotion-days
 # threshold constant anymore. PAPER_MIN_DAYS above stays — it is the separate LIVE-readiness maturity gate.
 
+# FORWARD-EVIDENCE SIGNIFICANCE floor for the live-arming gate (master/live_eligibility). PAPER_MIN_DAYS above
+# gates CALENDAR time + the SIGN of the net return — but a zero-edge random walk is net-positive after the clock
+# ~48% of the time (Monte-Carlo, 40k draws, the repo's OWN scorer PSR machinery), so "matured + green" is a
+# coin-flip on real money. These add a SIGNIFICANCE floor on the forward trajectory: the daily-resampled marked-
+# return Sharpe must clear a Probabilistic-Sharpe floor before a track AUTO-arms. `forward_dsr = PSR(daily marked
+# Sharpe vs 0) − 0.5 ∈ [−0.5, +0.5]` — recentred so 0 = a coin-flip Sharpe, the SAME number the deploy lane's
+# holdout floor uses. Calibrated on that MC: floor 0.15 drops the no-edge false-arm rate ~48% → ~35% (roughly
+# n-invariant, a clean pivot) while a genuine modest edge (true daily Sharpe ~0.10, ann ~1.6) still auto-arms
+# ~57% at 30 marks and MORE as forward evidence deepens. Deliberately MODERATE, not draconian: the human OVERRIDE
+# still waives it (the data-backed-risk escape hatch) and the regime gate is never waived, so over-strictness here
+# would only delay going live (the bigger sin for a profit machine; the §1 'missing < losing' asymmetry is already
+# carried by days+regime+net-positive). Raise to 0.20 for a stricter ~30% false-arm cut at the cost of ~6pts of
+# auto-arm power on a real edge. Kept named + OUTSIDE GateSettings so they can never leak into the deterministic
+# scorer/FDR/money path (same isolation as PAPER_MIN_DAYS).
+PAPER_MIN_FORWARD_DSR: float = 0.15
+# Minimum daily-resampled forward return observations before the significance floor is computed — below this the
+# PSR estimate is too noisy to trust, so the track fails safe to NOT-significant (blocked from AUTO-arming; the
+# human override still applies). ~12 daily marks sits well under PAPER_MIN_DAYS for a normally-marked track, so a
+# matured track always has enough; only a sparsely-marked (e.g. cron-gapped) track trips it.
+PAPER_MIN_FORWARD_OBS: int = 12
+
 
 class SpendSettings(BaseModel):
     daily_cap_usd: Decimal = Decimal("50")
