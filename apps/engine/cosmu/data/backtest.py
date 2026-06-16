@@ -224,6 +224,15 @@ def run_strategy_backtest_detailed(
     # Concatenating correlated symbols pools their bars into one long series — but 5 correlated crypto symbols
     # are NOT 5x the INDEPENDENT observations. Deflate the PSR/DSR sample size by the cross-symbol correlation
     # so significance can't be manufactured by adding more of the same beta.
+    # KNOWN LIMITATION (cross-asset pools): _avg_cross_correlation aligns return streams POSITIONALLY (by index,
+    # tail-trimmed), which is only valid when every symbol shares a calendar. A pooled equity (≈252 td/yr) +
+    # crypto/HL-perp (365 td/yr) spec mixes calendars, so a positionally-aligned correlation is meaningless and
+    # tends to read ≈0 → UNDER-deflates n_obs_eff → an optimistic (too-lenient) DSR for that spec. This is latent:
+    # the current finder only authors single-asset-class specs (the seed is crypto-only), so no live gate decision
+    # is affected today. The fix (carry per-bar timestamps out of _run_symbol and inner-join streams on common
+    # dates before Pearson) lands WITH the deferred cross-asset/ML phase, where it can be tested against real
+    # mixed-calendar specs. Tracked in the cross-asset stats follow-up. Same caveat applies to the 365-day
+    # annualization in _symbol_metrics (equity daily bars should annualize at ≈252).
     rho_sym = _avg_cross_correlation([r.bar_returns for r in validation_runs])
     n_obs_eff = _effective_obs(n_obs, len(validation_runs), rho_sym)
     h_sr, h_skew, h_kurt, h_n = sample_moments(holdout.bar_returns)
@@ -536,6 +545,10 @@ def _run_symbol(
         position = 0.0
         equity_points.append(cash)
 
+    # NOTE: 365-day annualization is exact for 24/7 crypto/HL perps. Equity daily bars trade ≈252 days/yr, so a
+    # pooled cross-asset spec slightly OVER-annualizes the equity leg's Sharpe (~1.2×). Latent — no mixed-calendar
+    # spec exists yet (see the cross-asset stats limitation note at the n_obs_eff site); made asset-class-aware
+    # with the deferred cross-asset phase.
     periods_per_year = 365.0 * _bars_per_day(spec.horizon.bar_size)
     return _symbol_metrics(equity_points, trades, periods_per_year=periods_per_year)
 

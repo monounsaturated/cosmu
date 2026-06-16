@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import ssl
 import sys
 import tempfile
 import time
@@ -30,10 +31,20 @@ _PAGE_DAYS = 365
 _RATE_SLEEP = 0.25  # seconds between requests (be a good citizen)
 
 
+def _ssl_context() -> ssl.SSLContext:
+    """Mirror cosmu.data.market._ssl_context: use certifi's CA bundle so macOS Python (whose default
+    context has no system CAs) can verify TLS. Falls back to the default context when certifi is absent."""
+    try:
+        import certifi
+    except ImportError:
+        return ssl.create_default_context()
+    return ssl.create_default_context(cafile=certifi.where())
+
+
 def _post(payload: dict) -> dict | list:
     body = json.dumps(payload).encode()
     req = urllib.request.Request(HL_API, data=body, headers={"Content-Type": "application/json", "User-Agent": "cosmu-engine/0.1"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
         return json.loads(resp.read().decode())
 
 
@@ -116,8 +127,15 @@ def ingest_coin(coin: str, days: int) -> int:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     existing = _read_cache(coin)
     now_ms = int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)
-    lookback_ms = now_ms - days * 86400 * 1000
-    start_ms = max(lookback_ms, existing[-1]["ts"] + 86400 * 1000) if existing else lookback_ms
+    one_day = 86400 * 1000
+    lookback_ms = now_ms - days * one_day
+    # Idempotent re-runs EXTEND forward, but must also BACKFILL when the cache doesn't yet reach `lookback_ms`
+    # (e.g. a prior shallow run). If the cache's EARLIEST bar already covers the requested lookback, only fetch
+    # bars after the latest cached one; otherwise refetch the full window and let _write_cache's ts-merge dedupe.
+    if existing and existing[0]["ts"] <= lookback_ms + one_day:
+        start_ms = existing[-1]["ts"] + one_day
+    else:
+        start_ms = lookback_ms
 
     new_rows: list[dict] = []
     cursor = start_ms
