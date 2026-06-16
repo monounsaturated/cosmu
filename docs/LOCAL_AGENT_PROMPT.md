@@ -35,7 +35,70 @@ get their own `git worktree`.
 
 ---
 
-## 2. PARALLEL TASKS (dispatch one agent per block, each on its own branch)
+## 2. TASKS (dispatch one agent per block, each on its own branch)
+
+> **TASK I is SOLO and FIRST** — the money path. Run it alone (opus) BEFORE fanning out A–H.
+
+### TASK I — [TOP · money-path · opus · SOLO/FIRST] Ignite `defensive5` SIM→live (the first real dollar)
+**Branch:** `feat/ignite-defensive5-live`
+```
+CONTEXT — the SIM→live order wire is ALREADY BUILT (verified 2026-06-16). DO NOT rebuild it:
+- One order path handles SIM+LIVE: apps/engine/cosmu/master/execution.py:82-269 (execute_orders). The
+  per-order SIM-vs-LIVE decision is the 5-interlock at execution.py:192
+  (live_enabled AND !kill_switch AND gate_passed AND adapter.active AND !regime_blocked).
+- Live arm switch: apps/engine/cosmu/orchestrator/paper_step.py:265-281 (_resolve_live_adapters) reads the
+  `live_toggle` table; SAFE DEFAULT returns {} (SIM-only) when the toggle is off — never weaken this.
+- REAL execution adapters exist for exactly 3 venues (apps/engine/cosmu/adapters/exec/registry.py:15):
+  binance (ccxt), alpaca (REST, US equities, HAS A PAPER ENDPOINT), polymarket (CLOB).
+- Launch path: web go-live-modal.tsx → POST /live/launch → api/routers/live.py:359-436 (the ONLY writer of
+  status='live', line 409), gated by master/live_eligibility.py:128-177 (paper ≥30d net-positive + regime;
+  regime is NOT waivable, paper-maturity IS waivable via override_paper).
+- Guards exist: per-venue caps (live_caps table, execution.py:306-315), daily-loss cap (execution.py:98),
+  operator pause/kill (paper_step.py:458 is_paused).
+- Routing is already tested with MOCK adapters: tests/test_live_ignition.py, tests/test_live_api.py.
+
+THE GAP IS OPERATIONAL, NOT CODE: the real-venue submit() path has only ever run against mocks, and
+`defensive5` may not yet be a live paper track. Ignite it SAFELY against Alpaca.
+
+WHY ALPACA, NOT IBKR: `defensive5` is an equity-ETF TAA ensemble (research/equity_taa_ensemble.py:36 —
+DAA+PAA+GTAA+TSMOM+HAA). The only wired equities adapter is Alpaca (registry.py:15); there is NO IBKR
+adapter. Alpaca also has a PAPER endpoint, so the whole live path runs with ZERO real money first.
+(Fix any doc that says "ignite to IBKR" — it's Alpaca: MASTER_PLAN.md, REVIEW_2026-06-15.md.)
+
+DO THIS IN ORDER, stopping at each gate:
+
+1) SEED `defensive5` as a gate-passed PAPER track (if not already):
+   - Query strategy_versions/tracks: does a defensive5 version exist with a track? If not, route it through
+     the gate via research/equity_taa_cohort.py (_s_daa/_s_paa/_s_gtaa/_s_tsmom/_s_haa) → equity_taa_ensemble.
+     Confirm it lands status='paper' with a track row.
+   - VERIFY paper_step.step_tracks() steps a MONTHLY-rebalanced TAA ensemble correctly (it was built for
+     per-bar crypto logic). Confirm it opens/holds/rebalances monthly and marks equity — doesn't no-op or
+     churn every tick. THIS IS THE REAL TECHNICAL RISK; add a focused test if behavior is unclear.
+
+2) EXERCISE the real adapter against ALPACA PAPER (zero money, full integration):
+   - Put Alpaca PAPER keys in .env.local (paper base URL + paper key). Confirm
+     registry.adapter_for("alpaca", settings).active is True and keys_present(...) is True (registry.py:55-71).
+   - Map defensive5's ETF universe to the alpaca venue in the catalog (catalog.py) if not already.
+   - Arm live_toggle in paper/'testnet' mode (confirm=true); set TINY live_caps (~$100 max notional).
+   - Drive ONE tick that yields an entry intent and confirm it ROUTES LIVE to Alpaca paper: an order hits
+     Alpaca's paper API, a fill returns, the execution row writes is_paper=0, the position books to the
+     'live' venue. This proves the real submit() path end-to-end (the tests only use mocks).
+
+3) ONLY THEN, the first REAL dollar (tiny):
+   - Swap to Alpaca LIVE keys; keep live_caps tiny ($50-100); keep the operator pause reachable.
+   - Launch via /live/launch. If paper maturity <30d the eligibility gate refuses — you MAY override_paper
+     for a tiny smoke launch, but the REGIME gate is HARD: confirm the current regime is in defensive5's
+     proven set, or let the launch refuse (never bypass regime).
+   - Confirm one real tiny order fills, the execution/fees rows are real, and kill-switch + caps work.
+
+GUARDRAILS: never touch execution.py:192's interlocks or _resolve_live_adapters' safe default. Keys live
+ONLY in .env.local / Railway / Modal secret — NEVER commit them. Alpaca PAPER first is mandatory; live keys
+only after step 2 is green. Keep pnpm verify green. Commit + push the seeding/catalog/test/doc changes (NOT
+keys); open a PR; do NOT merge to main yourself. Report: did it route LIVE to Alpaca paper? did a real
+$-order fill?
+```
+
+---
 
 ### TASK A — [HIGH · money-path · opus] Charge real per-venue depth in the screen
 **Branch:** `fix/screen-venue-depth`
@@ -207,8 +270,9 @@ Docs only — no verify needed, but run naming:check. Commit, push, PR.
 
 ## 3. Suggested dispatch order
 
-1. **Solo first (money):** the SIM→live ignition wire (not in this list — it needs the live order path;
-   see `docs/REVIEW_2026-06-15.md` §7 and `BACKLOG.md:163-169`). This is the only path to a first dollar.
+1. **Solo first (money) — TASK I above:** ignite `defensive5` SIM→live. NOTE: the order wire is already
+   BUILT (verified 2026-06-16) — TASK I is an OPERATIONAL ignition against **Alpaca** (paper → tiny live),
+   NOT a code build, and NOT IBKR (no IBKR adapter exists). This is the only path to a first dollar.
 2. **Then fan out in parallel:** B+C (iteration) ∥ D (budget) ∥ E (data) ∥ F (web) ∥ H (docs) — independent,
    one branch each, background worktree agents.
 3. **Careful/serial (opus):** A (venue depth) and G (gate hardening) — they move gate verdicts; run with
