@@ -150,17 +150,50 @@ def _parse_batch(text: str, *, n: int | None, theme: str | None) -> tuple[int, s
 
 
 # Deterministic angle set: turn ONE theme into N distinct, falsifiable briefs (different economic priors /
-# directions / horizons). This is the OFFLINE fallback for "Claude Code authors"; when a model key is set,
-# draft_from_brief's cheap-LLM seam formats each brief's structure — Claude Code authors, the cheap LLM formats.
+# directions / horizons / feature combinations). Expanded from 8 to 32 so that a batch of 50 cycles across
+# enough structural variation to clear novelty_gate min_distance=0.25 — each angle picks a different
+# bar size, operator direction (mean-reversion vs trend vs carry), and entry feature family, so two adjacent
+# briefs that share a theme produce specs with clearly different feature sets.
 _THEME_ANGLES: tuple[str, ...] = (
-    "Fade crowded {theme} — go contrarian when the {theme} signal is one-sided and extended.",
+    # --- contrarian / mean-reversion family (fade, reversal) ---
+    "Fade crowded {theme} — go contrarian when the {theme} signal is one-sided and extended, daily bar.",
+    "{theme} washout reversion — enter after an extreme {theme} print and fade it back, using RSI to confirm oversold, 4h bar.",
+    "{theme} dislocation bounce — buy after a statistical outlier {theme} event using Bollinger z-score, 1d bar.",
+    "{theme} overshoot fade — short when {theme} spikes above two standard deviations, intraday 4h horizon.",
+    "Contrarian {theme} with vol filter — fade the signal when realized volatility is in its calm regime, 1d bar.",
+    # --- carry / persistence / regime-follow family ---
     "{theme} carry/persistence — ride the {theme} signal while it stays in the same regime, daily horizon.",
-    "Cross-asset {theme} — use {theme} as a leading signal into crypto rather than same-asset price.",
-    "{theme} mean-reversion — enter after an extreme {theme} print and fade it back, intraday.",
-    "{theme} as a regime filter on a trend-following entry — stand aside when {theme} says risk-off.",
-    "{theme} divergence vs price — enter when {theme} and price disagree, swing horizon.",
-    "{theme} momentum confirmation on a breakout — only take the breakout the {theme} signal agrees with.",
-    "{theme} stress gate — size down / skip when the {theme} signal is in its stressed tail.",
+    "{theme} regime persistence — enter momentum only when {theme} confirms the macro regime is supportive, 1d bar.",
+    "{theme} positive carry gate — take the trend only when {theme} carry is positive and funding is low, 4h bar.",
+    "Low-{theme} carry accumulation — enter a long when {theme} drops below zero (shorts are paying longs), 1d bar.",
+    "{theme} carry reversal — when {theme} carry turns negative after a positive streak, exit and reverse, swing.",
+    # --- cross-asset / macro family ---
+    "Cross-asset {theme} — use {theme} as a leading signal into crypto rather than same-asset price, daily.",
+    "{theme} macro divergence — enter when crypto price diverges from {theme} macro signal, 1d bar.",
+    "DXY-gated {theme} — only take the {theme} signal when the dollar is in a weakening trend, 1d bar.",
+    "{theme} cross-venue arbitrage — measure {theme} dispersion across assets and enter the laggard, 4h bar.",
+    "Risk-on {theme} — enter only when VIX confirms a low-fear environment alongside {theme} signal, 1d bar.",
+    # --- trend / momentum family ---
+    "ADX-confirmed {theme} trend — take the {theme} trend when ADX confirms the move is real, 1d bar.",
+    "{theme} momentum confirmation on a breakout — only take the breakout the {theme} signal agrees with, 4h.",
+    "Dual-horizon {theme} momentum — require both fast and slow {theme} lookbacks to align before entering, daily.",
+    "{theme} breakout with volume — enter on a {theme} extreme only when volume confirms the move, 4h bar.",
+    "{theme} trend with ATR sizing — ride the {theme} trend but scale entry size by realized ATR, 1d bar.",
+    # --- regime filter family (the signal gates an independent entry) ---
+    "{theme} as a regime filter on a trend-following entry — stand aside when {theme} says risk-off, 1d bar.",
+    "{theme} stress gate — size down / skip when the {theme} signal is in its stressed tail, daily bar.",
+    "{theme} calm-market gate — enter a mean-reversion trade only when {theme} is in the low-stress bucket.",
+    "Volatility-regime {theme} — enter trend trades only when {theme} and vol regime both say expansion, 4h.",
+    "{theme} liquidity gate — enter only when {theme} confirms on-chain/market liquidity is supportive, 1d.",
+    # --- divergence / relative-value family ---
+    "{theme} divergence vs price — enter when {theme} and price disagree, swing horizon, 4h bar.",
+    "{theme} intra-asset divergence — enter the asset where {theme} rank is cheapest vs its own history, daily.",
+    "Social vs {theme} divergence — enter when social sentiment diverges from {theme} fundamentals, 1d.",
+    "{theme} open-interest divergence — trade when price and {theme} open interest disagree in direction, 4h.",
+    # --- multi-leg / composite family (combines the theme with a second independent signal) ---
+    "{theme} with RSI confirmation — take the {theme} entry only when RSI agrees (avoid false signals), 1d.",
+    "{theme} plus funding gate — use funding rate as a secondary filter on the {theme} signal, 4h bar.",
+    "{theme} composite — require {theme} AND a momentum signal before entering; exit when either flips, 1d.",
 )
 
 
