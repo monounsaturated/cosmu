@@ -114,7 +114,7 @@ def test_batch_authors_n_distinct_specs(tmp_path):
 def test_batch_clamps_runaway_count(tmp_path):
     store = _store(tmp_path)
     route = strategize("spin up specs", store=store, n=999, theme="vol", inbox_dir=tmp_path / "inbox")
-    assert route.count == 16  # _MAX_BATCH
+    assert route.count == 64  # _MAX_BATCH (raised 16→64 so "generate 50 from a theme" fits)
     assert any("clamp" in n.lower() for n in route.notes)
 
 
