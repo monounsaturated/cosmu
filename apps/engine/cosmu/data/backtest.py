@@ -53,6 +53,10 @@ class SymbolRun:
     max_drawdown: float
     trades: list[Trade]
     bar_returns: list[float]
+    # ISO bar timestamps PARALLEL to bar_returns (bar_ts[i] labels bar_returns[i]). Carried so the pooled
+    # cross-symbol correlation can inner-join streams on common DATES instead of aligning by position — the
+    # only honest alignment once a spec mixes calendars (equity ≈252 sessions/yr vs crypto/HL 365, 24/7).
+    bar_ts: list[str]
     fold_returns: list[float]
     regime_pnl: dict[str, float]
     periods_per_year: float
@@ -112,6 +116,7 @@ def run_strategy_backtest(
     alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
     size_series: dict[str, float] | None = None,
     include_holdout: bool = True,
+    asset_class_by_symbol: dict[str, str] | None = None,
 ) -> BacktestMetrics:
     """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout. Thin
     wrapper over `run_strategy_backtest_detailed` for callers that only need the scoreable metrics."""
@@ -127,6 +132,7 @@ def run_strategy_backtest(
         alt_by_symbol=alt_by_symbol,
         size_series=size_series,
         include_holdout=include_holdout,
+        asset_class_by_symbol=asset_class_by_symbol,
     ).metrics
 
 
@@ -143,6 +149,7 @@ def run_strategy_backtest_detailed(
     alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
     size_series: dict[str, float] | None = None,
     include_holdout: bool = True,
+    asset_class_by_symbol: dict[str, str] | None = None,
 ) -> BacktestResult:
     """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout.
 
@@ -166,6 +173,12 @@ def run_strategy_backtest_detailed(
     removing any trade (the entry/exit logic is untouched; only the entry notional is scaled). None → the
     per-run scalar `size_multiplier` is used on every bar, so every existing spec is byte-identical.
 
+    `asset_class_by_symbol` maps symbol → asset class ("crypto" | "equity" | "fx" | "prediction"). It drives the
+    per-symbol annualization calendar (equity/fx ≈252 sessions/yr, crypto/HL-perp/prediction 365, 24/7) so a
+    pooled cross-asset spec annualizes each leg on its OWN calendar instead of over-stating the equity leg's
+    Sharpe ≈√(365/252) ≈ 1.2×. None (or a symbol absent from the map) → the 365-session crypto default, so every
+    single-asset-class crypto backtest is byte-identical.
+
     Holdout integrity: the holdout is the bars AT/AFTER `split`; its indicator warm-up is drawn from its OWN
     leading band (>= split), never from the training window. The previous `bars[split - warmup:]` slice fed
     `warmup` TRAINING bars into the holdout — a look-ahead/contamination leak. The leading warm-up band is now
@@ -187,6 +200,9 @@ def run_strategy_backtest_detailed(
         # charged IBKR's 0.5 bps and crypto symbols Binance's 10 bps — never a single blended rate.
         sym_fee = fee_schedule.get(symbol, fee_bps) if fee_schedule else fee_bps
         alt = (alt_by_symbol or {}).get(symbol)
+        # Annualize THIS symbol on its OWN calendar: equity/fx ≈252 sessions/yr, crypto/HL/prediction 365.
+        # Default (no map / unknown class) is the 365-session crypto base, so single-asset crypto is unchanged.
+        ppy = _periods_per_year(spec.horizon.bar_size, (asset_class_by_symbol or {}).get(symbol))
         val_bars, holdout_bars = _purged_embargoed_split(spec, params, bars)
         # T1: collect price returns PIT to the validation window (NOT holdout — the gate never touches holdout).
         val_price_returns.extend(
@@ -194,7 +210,7 @@ def run_strategy_backtest_detailed(
             for i in range(1, len(val_bars))
             if float(val_bars[i - 1].close) > 0
         )
-        v_run = _run_symbol(spec, params, val_bars, sym_fee, slippage_bps, impact_bps, size_multiplier, alt, size_series)
+        v_run = _run_symbol(spec, params, val_bars, sym_fee, slippage_bps, impact_bps, size_multiplier, alt, size_series, periods_per_year=ppy)
         validation_runs.append(v_run)
         symbol_trades[symbol] = len(v_run.trades)
         # the SAME strategy's standalone validation result on THIS symbol (pre-pool) — un-collapses the metric.
@@ -205,7 +221,7 @@ def run_strategy_backtest_detailed(
             "trades": float(len(v_run.trades)),
         }
         if holdout_bars and include_holdout:
-            holdout_runs.append(_run_symbol(spec, params, holdout_bars, sym_fee, slippage_bps, impact_bps, size_multiplier, alt, size_series))
+            holdout_runs.append(_run_symbol(spec, params, holdout_bars, sym_fee, slippage_bps, impact_bps, size_multiplier, alt, size_series, periods_per_year=ppy))
 
     if not validation_runs:
         return BacktestResult(_empty_metrics(spec), [], [], {})
@@ -223,17 +239,14 @@ def run_strategy_backtest_detailed(
     sr_obs, skew, kurt, n_obs = sample_moments(val.bar_returns)
     # Concatenating correlated symbols pools their bars into one long series — but 5 correlated crypto symbols
     # are NOT 5x the INDEPENDENT observations. Deflate the PSR/DSR sample size by the cross-symbol correlation
-    # so significance can't be manufactured by adding more of the same beta.
-    # KNOWN LIMITATION (cross-asset pools): _avg_cross_correlation aligns return streams POSITIONALLY (by index,
-    # tail-trimmed), which is only valid when every symbol shares a calendar. A pooled equity (≈252 td/yr) +
-    # crypto/HL-perp (365 td/yr) spec mixes calendars, so a positionally-aligned correlation is meaningless and
-    # tends to read ≈0 → UNDER-deflates n_obs_eff → an optimistic (too-lenient) DSR for that spec. This is latent:
-    # the current finder only authors single-asset-class specs (the seed is crypto-only), so no live gate decision
-    # is affected today. The fix (carry per-bar timestamps out of _run_symbol and inner-join streams on common
-    # dates before Pearson) lands WITH the deferred cross-asset/ML phase, where it can be tested against real
-    # mixed-calendar specs. Tracked in the cross-asset stats follow-up. Same caveat applies to the 365-day
-    # annualization in _symbol_metrics (equity daily bars should annualize at ≈252).
-    rho_sym = _avg_cross_correlation([r.bar_returns for r in validation_runs])
+    # so significance can't be manufactured by adding more of the same beta. The correlation is measured by
+    # inner-joining each symbol pair on their COMMON bar timestamps (NOT by index) so a pooled mixed-calendar
+    # spec — equity (≈252 sessions/yr) + crypto/HL-perp (365, 24/7) — is haircut on the dates the legs actually
+    # share, instead of a positional alignment that reads a spurious ≈0 and UNDER-deflates n_obs_eff into a
+    # too-lenient DSR. Single-calendar crypto cohorts join on identical timestamps, so they are unchanged.
+    rho_sym = _avg_cross_correlation(
+        [r.bar_returns for r in validation_runs], [r.bar_ts for r in validation_runs]
+    )
     n_obs_eff = _effective_obs(n_obs, len(validation_runs), rho_sym)
     h_sr, h_skew, h_kurt, h_n = sample_moments(holdout.bar_returns)
     holdout_dsr = probabilistic_sharpe(h_sr, h_n, h_skew, h_kurt, 0.0) - 0.5  # > 0 ⇔ holdout Sharpe significantly positive
@@ -306,16 +319,51 @@ def _pearson(a: list[float], b: list[float]) -> float | None:
     return cov / math.sqrt(va * vb)
 
 
-def _avg_cross_correlation(series: list[list[float]]) -> float:
-    """Average pairwise Pearson correlation across symbol return streams (aligned on their common tail). 0 when
-    fewer than two usable streams. The diversification haircut on the pooled observation count uses this."""
-    usable = [s for s in series if len(s) >= 2]
+# Minimum overlapping bars before a symbol pair's cross-correlation is trusted. Below this, two streams from
+# different calendars share too few dates to estimate Pearson honestly, so the pair is DROPPED from the average
+# rather than fabricating a haircut from a handful of coincidental timestamps.
+_MIN_CORR_OVERLAP = 30
+
+
+def _pearson_on_common(
+    a: list[float], a_ts: list[str], b: list[float], b_ts: list[str]
+) -> float | None:
+    """Pearson correlation of two return streams aligned on their COMMON bar timestamps (an INNER JOIN on dates,
+    not a positional one). Returns None when fewer than `_MIN_CORR_OVERLAP` timestamps overlap — the join is too
+    thin to trust, so the caller drops the pair. This is what keeps a mixed-calendar pool honest: equity sessions
+    are a subset of crypto's 24/7 grid, so the legs are correlated on the days they SHARE, never by raw index."""
+    by_ts_a = dict(zip(a_ts, a, strict=False))
+    by_ts_b = dict(zip(b_ts, b, strict=False))
+    common = sorted(by_ts_a.keys() & by_ts_b.keys())
+    if len(common) < _MIN_CORR_OVERLAP:
+        return None
+    return _pearson([by_ts_a[t] for t in common], [by_ts_b[t] for t in common])
+
+
+def _avg_cross_correlation(
+    series: list[list[float]], timestamps: list[list[str]] | None = None
+) -> float:
+    """Average pairwise Pearson correlation across symbol return streams. 0 when fewer than two usable streams.
+    The diversification haircut on the pooled observation count uses this.
+
+    With `timestamps` (per-stream ISO bar labels, parallel to each return stream) each pair is inner-joined on
+    its COMMON timestamps before correlating, and a pair with fewer than `_MIN_CORR_OVERLAP` shared bars is
+    dropped. This is mandatory once calendars are mixed: a pooled equity (≈252 sessions/yr) + crypto/HL (365)
+    spec has streams that DON'T line up by index, so a positional alignment reads a spurious ≈0 and under-deflates
+    n_obs. Without `timestamps` it falls back to the legacy common-tail positional alignment, so single-calendar
+    crypto cohorts (and any direct caller passing bare streams) stay byte-identical."""
+    usable = [(i, s) for i, s in enumerate(series) if len(s) >= 2]
     if len(usable) < 2:
         return 0.0
     corrs: list[float] = []
-    for i in range(len(usable)):
-        for j in range(i + 1, len(usable)):
-            c = _pearson(usable[i], usable[j])
+    for a in range(len(usable)):
+        for b in range(a + 1, len(usable)):
+            ia, sa = usable[a]
+            ib, sb = usable[b]
+            if timestamps is not None:
+                c = _pearson_on_common(sa, timestamps[ia], sb, timestamps[ib])
+            else:
+                c = _pearson(sa, sb)
             if c is not None:
                 corrs.append(c)
     return statistics.fmean(corrs) if corrs else 0.0
@@ -361,7 +409,14 @@ def _run_symbol(
     size_multiplier: float,
     alt: dict[str, dict[str, float]] | None = None,
     size_series: dict[str, float] | None = None,
+    *,
+    periods_per_year: float | None = None,
 ) -> SymbolRun:
+    # `periods_per_year` annualizes this symbol's Sharpe/Sortino on its OWN calendar (set by the caller from the
+    # symbol's asset class). None → the 365-session crypto default for `bar_size`, so a direct caller (or any
+    # single-asset crypto path) is byte-identical to before the cross-asset calendar fix.
+    if periods_per_year is None:
+        periods_per_year = _periods_per_year(spec.horizon.bar_size, None)
     # direction: +1 long (the spot/upside-only default), -1 short (perp/short leg). 0 is reserved (no per-bar
     # direction signal yet) and is treated as long so existing condition-only specs are unchanged. `d` is the
     # signed multiplier used to mirror every long inequality into its short counterpart.
@@ -388,6 +443,7 @@ def _run_symbol(
     funding_accrued = 0.0      # cumulative funding cash flow on the open leg (long pays +rate, short receives)
     high_water = cash
     equity_points: list[float] = []
+    equity_ts: list[str] = []  # bar timestamp parallel to each equity point — carried out for calendar-aware pooling
     trades: list[Trade] = []
     stop_pct = max(0.0, float(params[spec.exit.stop_loss.param]))
     take_pct = max(0.0, float(params[spec.exit.take_profit.param]))
@@ -538,19 +594,16 @@ def _run_symbol(
         equity = cash + d * position * closes[idx]
         high_water = max(high_water, equity)
         equity_points.append(equity)
+        equity_ts.append(bar.ts.isoformat())
 
     if position > 0:
         slip = _slippage(base_slip, impact, position * closes[-1], bars[-1])
         _book(position, closes[-1] * (1 - d * slip), len(bars) - 1)
         position = 0.0
         equity_points.append(cash)
+        equity_ts.append(bars[-1].ts.isoformat())  # final liquidation marks at the last bar
 
-    # NOTE: 365-day annualization is exact for 24/7 crypto/HL perps. Equity daily bars trade ≈252 days/yr, so a
-    # pooled cross-asset spec slightly OVER-annualizes the equity leg's Sharpe (~1.2×). Latent — no mixed-calendar
-    # spec exists yet (see the cross-asset stats limitation note at the n_obs_eff site); made asset-class-aware
-    # with the deferred cross-asset phase.
-    periods_per_year = 365.0 * _bars_per_day(spec.horizon.bar_size)
-    return _symbol_metrics(equity_points, trades, periods_per_year=periods_per_year)
+    return _symbol_metrics(equity_points, trades, periods_per_year=periods_per_year, equity_ts=equity_ts)
 
 
 def _funding_series(
@@ -957,15 +1010,36 @@ def _bars_per_day(bar_size: str) -> float:
     return {"1h": 24.0, "4h": 6.0, "1d": 1.0}[bar_size]
 
 
+# Trading SESSIONS per year by asset class — the annualization base for Sharpe/Sortino. Crypto/HL perps and
+# prediction markets trade 24/7 (365 sessions); equities and FX follow a ~252-session exchange-weekday year
+# (mirrors the calendars in cosmu.core.calendars). A pooled cross-asset spec MUST annualize each leg on its OWN
+# calendar, or the equity leg's Sharpe is over-stated by √(365/252) ≈ 1.2× (Sharpe scales with √periods).
+_SESSIONS_PER_YEAR: dict[str, float] = {"crypto": 365.0, "prediction": 365.0, "equity": 252.0, "fx": 252.0}
+_DEFAULT_SESSIONS_PER_YEAR = 365.0  # crypto-native default → single-asset crypto specs stay byte-identical
+
+
+def _periods_per_year(bar_size: str, asset_class: str | None) -> float:
+    """Annualization factor: trading sessions/yr for the symbol's asset class × bars/session for the bar size.
+    `asset_class` None or unknown → the 365-session crypto default, so an unlabelled (crypto) backtest is
+    byte-identical to before the cross-asset calendar fix."""
+    sessions = _SESSIONS_PER_YEAR.get(asset_class, _DEFAULT_SESSIONS_PER_YEAR) if asset_class else _DEFAULT_SESSIONS_PER_YEAR
+    return sessions * _bars_per_day(bar_size)
+
+
 def _symbol_metrics(
     equity: list[float],
     trades: list[Trade],
     *,
     periods_per_year: float,
+    equity_ts: list[str] | None = None,
 ) -> SymbolRun:
     if len(equity) < 2:
         return _empty_symbol_run(trades)
     returns = [(equity[i] / equity[i - 1] - 1.0) if equity[i - 1] else 0.0 for i in range(1, len(equity))]
+    # bar_ts[i] labels returns[i] — the transition INTO equity[i+1] — with that bar's timestamp, so the pooled
+    # cross-symbol correlation can inner-join calendars. equity_ts is parallel to `equity`, so drop its first
+    # entry (there is no return before the first equity point). Empty when no timestamps were carried.
+    bar_ts = list(equity_ts[1:len(returns) + 1]) if equity_ts else []
     total_return = equity[-1] / 100000.0 - 1.0
     high = equity[0]
     max_dd = 0.0
@@ -983,6 +1057,7 @@ def _symbol_metrics(
         max_drawdown=max_dd,
         trades=trades,
         bar_returns=returns,
+        bar_ts=bar_ts,
         fold_returns=_fold_returns(equity),
         regime_pnl=regime_pnl,
         periods_per_year=periods_per_year,
@@ -994,8 +1069,18 @@ def _combine(runs: list[SymbolRun]) -> SymbolRun:
         return _empty_symbol_run()
     trades = [trade for run in runs for trade in run.trades]
     bar_returns = [ret for run in runs for ret in run.bar_returns]
+    bar_ts = [ts for run in runs for ts in run.bar_ts]
     fold_returns = [ret for run in runs for ret in run.fold_returns]
-    periods_per_year = statistics.fmean(run.periods_per_year for run in runs)
+    # Bar-count-weighted annualization: the pooled stream is a concatenation, so each symbol contributes its OWN
+    # calendar's periods/yr weighted by how many bars it supplies. A pooled equity(252)+crypto(365) book lands
+    # between the two by bar share — never a flat 365 that over-states the equity leg. Single-asset or same-class
+    # pools are unchanged: one run → its own value; all-equal periods/yr → the weighted mean equals that value.
+    total_bars = sum(len(run.bar_returns) for run in runs)
+    periods_per_year = (
+        sum(len(run.bar_returns) * run.periods_per_year for run in runs) / total_bars
+        if total_bars
+        else statistics.fmean(run.periods_per_year for run in runs)
+    )
     regime_pnl: dict[str, float] = {}
     for run in runs:
         for regime, value in run.regime_pnl.items():
@@ -1007,6 +1092,7 @@ def _combine(runs: list[SymbolRun]) -> SymbolRun:
         max_drawdown=max(run.max_drawdown for run in runs),
         trades=trades,
         bar_returns=bar_returns,
+        bar_ts=bar_ts,
         fold_returns=fold_returns,
         regime_pnl=regime_pnl,
         periods_per_year=periods_per_year,
@@ -1036,7 +1122,9 @@ def _empty_metrics(spec: StrategySpec) -> BacktestMetrics:
 
 
 def _empty_symbol_run(trades: list[Trade] | None = None) -> SymbolRun:
-    return SymbolRun(0.0, 0.0, 0.0, 1.0, trades or [], [], [], {}, 365.0)
+    # Field order: total_return, sharpe, sortino, max_drawdown, trades, bar_returns, bar_ts, fold_returns,
+    # regime_pnl, periods_per_year.
+    return SymbolRun(0.0, 0.0, 0.0, 1.0, trades or [], [], [], [], {}, 365.0)
 
 
 def _pbo_proxy(run: SymbolRun, trials: int) -> Decimal:
