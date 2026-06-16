@@ -353,7 +353,14 @@ def run(*, persist: bool = False) -> TaaVerdict:
         register_trial(store, float(m.sharpe_per_obs), source="equity_taa", label=s.name)
     # Correlation haircut: these K TAA strategies are NOT K independent tests (monthly equity rotators share
     # regime sensitivity). Replace raw K with effective K = K/(1+(K-1)*rho_bar) to reduce Type-II over-rejection.
-    _streams_dict = {s.name: s.net for s in streams if s.net}
+    # Correlate on the SAME calendar-aligned common-months window _cohort_pbo uses (set-intersection of months),
+    # NOT the trailing min(len) index-alignment pairwise_correlation falls back to — otherwise the haircut and the
+    # PBO overfit guard would be measured on different windows when streams have unequal coverage/start dates.
+    _common = sorted(set.intersection(*[set(s.months) for s in streams])) if streams else []
+    _streams_dict = {
+        s.name: [dict(zip(s.months, s.net, strict=True))[m] for m in _common]
+        for s in streams if s.net
+    } if len(_common) >= 2 else {}
     _corr = _pairwise_corr(_streams_dict) if len(_streams_dict) >= 2 else None
     _rho_bar = _corr.average_pairwise_correlation if _corr is not None else None
     trials = trial_stats_for_cohort(store, trials_counted, _rho_bar)

@@ -17,11 +17,15 @@ from cosmu.orchestrator.loop import PricingRouter, fund_tracks_from_survivors, m
 from cosmu.orchestrator.paper_step import step_tracks
 from cosmu.spine.venue import default_catalog
 
-_BASE = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+# Anchor synthetic bars to ~now (captured once) so the executor's data-recency guard (paper_step's stale_data
+# gate) treats them as FRESH — otherwise every entry would be rejected as stale. Forward-dating is preserved.
+_BASE = dt.datetime.now(tz=dt.UTC)
 
 
 def _store(tmp_path) -> Store:
-    return Store(Settings(database_url=f"sqlite:///{tmp_path}/ignite.sqlite3", openrouter_api_key=None))
+    # _env_file=None → hermetic: the "without keys" adapter test must not inherit the dev box's real venue
+    # keys from .env.local (else _resolve_live_adapters resolves a live adapter and the empty-dict assert fails).
+    return Store(Settings(database_url=f"sqlite:///{tmp_path}/ignite.sqlite3", openrouter_api_key=None, _env_file=None))
 
 
 class _PathBars:

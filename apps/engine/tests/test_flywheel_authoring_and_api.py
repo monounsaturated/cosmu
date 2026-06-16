@@ -95,7 +95,7 @@ def test_authoring_leans_toward_a_winner_pattern(tmp_path):
 def _client(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
-    settings = Settings(database_url=f"sqlite:///{tmp_path}/api.sqlite3", openrouter_api_key=None)
+    settings = Settings(database_url=f"sqlite:///{tmp_path}/api.sqlite3", openrouter_api_key=None, _env_file=None)  # hermetic: no .env.local → x-api-key gate stays off in tests
     store = Store(settings)
     monkeypatch.setattr(app_mod, "settings", settings)
     monkeypatch.setattr(app_mod, "store", store)

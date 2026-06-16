@@ -14,6 +14,7 @@ from cosmu.costs.alerts import BudgetAlert, check_budget, emit_alerts
 from cosmu.costs.fetchers import (
     VendorSpend,
     fetch_claude_max,
+    fetch_cursor,
     fetch_modal,
     fetch_openrouter,
     fetch_railway,
@@ -270,11 +271,20 @@ def test_fetch_supabase_is_zero():
     assert result.amount == 0.0
 
 
-def test_fetch_claude_max_is_100():
+def test_fetch_claude_max_is_200():
+    """Claude is the Max 20x flat sub ($200/mo) — sourced from operating_costs (single source)."""
     result = fetch_claude_max()
     assert result.vendor == "Claude"
-    assert result.amount == pytest.approx(100.0)
-    assert "Max plan" in result.meta["note"]
+    assert result.amount == pytest.approx(200.0)
+    assert "Max 20x" in result.meta["note"]
+
+
+def test_fetch_cursor_is_20():
+    """Cursor Pro flat sub ($20/mo) — sourced from operating_costs (single source)."""
+    result = fetch_cursor()
+    assert result.vendor == "Cursor"
+    assert result.amount == pytest.approx(20.0)
+    assert result.category == "llm"
 
 
 # ---------------------------------------------------------------------------
@@ -293,12 +303,13 @@ def test_refresh_writes_rows_to_store():
         _http_post=lambda url, headers, body: b'{"data":{}}',
         _run_cli=lambda: types.SimpleNamespace(stdout=""),
     )
-    # At minimum: xAI ledger + Vercel + Supabase + Claude are always returned
+    # At minimum: xAI ledger + Vercel + Supabase + Claude + Cursor are always returned
     vendors = {s.vendor for s in spends}
     assert "xAI" in vendors
     assert "Vercel" in vendors
     assert "Supabase" in vendors
     assert "Claude" in vendors
+    assert "Cursor" in vendors
     # Rows written to costs table
     assert len(store.costs) == len(spends)
 
@@ -364,6 +375,22 @@ def test_check_budget_only_highest_threshold():
     settings = _make_settings(budget_overrides={"openrouter": 100})
     alerts = check_budget(_spends(("OpenRouter", 120)), settings)
     assert len(alerts) == 1
+    assert alerts[0].threshold_pct == pytest.approx(1.0)
+
+
+def test_shipped_default_global_cap_makes_pipeline_live():
+    """REGRESSION (audit): the cost-alert pipeline was DEAD because every cap defaulted to 0. The SHIPPED
+    BudgetConfig default now carries a non-zero global tripwire, so total spend crossing it emits a global
+    alert out of the box (non-halting — Slack + recommendation row only). Override via BUDGET__GLOBAL_MONTHLY_CAP."""
+    from cosmu.config.settings import BudgetConfig
+    from decimal import Decimal
+
+    cap = float(BudgetConfig().global_monthly_cap)
+    assert cap > 0  # the pipeline is live by default, not silently disabled
+    settings = types.SimpleNamespace(slack_webhook_url=None, budget=BudgetConfig())
+    # Total spend just over the shipped cap → exactly one GLOBAL alert at the 100% tier.
+    alerts = check_budget(_spends(("OpenRouter", cap + 1)), settings)
+    assert [a.vendor for a in alerts] == ["global"]
     assert alerts[0].threshold_pct == pytest.approx(1.0)
 
 

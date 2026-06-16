@@ -202,7 +202,7 @@ def client(tmp_path, monkeypatch):
     import cosmu.api.app as app_mod
     from fastapi.testclient import TestClient
 
-    settings = Settings(database_url=f"sqlite:///{tmp_path}/idxapi.sqlite3")
+    settings = Settings(database_url=f"sqlite:///{tmp_path}/idxapi.sqlite3", _env_file=None)  # hermetic: no .env.local → x-api-key gate stays off in tests
     monkeypatch.setattr(app_mod, "settings", settings)
     monkeypatch.setattr(app_mod, "store", Store(settings))
     return TestClient(app_mod.app)
