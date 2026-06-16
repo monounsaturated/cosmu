@@ -95,20 +95,38 @@ def test_portfolio_summary_empty_state_never_labels_sim_as_live(tmp_path, monkey
     assert body["positions_count_live"] == 0
 
 
+def _sv(store: Store, vid: str, status: str) -> None:
+    """Minimal strategy_versions row so the live discriminator can read its lifecycle status."""
+    sid = store.insert("strategies", {"name": f"s-{vid}", "thesis": "t", "origin": "seed", "created_at": utcnow()})
+    store.insert("strategy_versions", {
+        "id": vid, "strategy_id": sid, "parent_id": None, "spec": "{}", "generated_code": "x", "code_hash": "h",
+        "params": "{}", "mutation_operator": None, "mutation_rationale": None, "origin": "seed",
+        "status": status, "created_at": utcnow(), "killed_at": None, "kill_reason": None,
+    })
+
+
 def test_portfolio_summary_live_split_excludes_sim(tmp_path, monkeypatch):
-    # A position routed live (venue != 'sim') drives the live figures; a SIM position never leaks in.
+    # LIVE money = a real-venue position whose owning Version is in the 'live' lifecycle stage. A SIM position
+    # never leaks in, AND a PAPER position booked under its intended live venue ('ibkr', the equity TAA shape)
+    # must NOT count as live until the Version is actually promoted — venue alone is not the discriminator.
     c = _client(tmp_path, monkeypatch)
     store = app_mod.store
+    _sv(store, "v-live", "live")
+    _sv(store, "v-paper", "paper")
     store.insert("positions", {"strategy_version_id": "v-live", "instrument_id": "i1", "symbol": "BTCUSDT",
                                 "venue": "binance", "qty": "0.1", "avg_price": "20000", "realized_pnl": "100",
                                 "last_was_loss": 0, "updated_at": utcnow()})
     store.insert("positions", {"strategy_version_id": "v-sim", "instrument_id": "i2", "symbol": "ETHUSDT",
                                 "venue": "sim", "qty": "5", "avg_price": "3000", "realized_pnl": "999",
                                 "last_was_loss": 0, "updated_at": utcnow()})
+    # The bug shape: a PAPER strategy's leg booked under its intended live venue. Must stay out of the live count.
+    store.insert("positions", {"strategy_version_id": "v-paper", "instrument_id": "i3", "symbol": "SPY",
+                                "venue": "ibkr", "qty": "10", "avg_price": "500", "realized_pnl": "42",
+                                "last_was_loss": 0, "updated_at": utcnow()})
     body = c.get("/portfolio/summary").json()
     assert body["has_live"] is True and body["positions_count_live"] == 1
-    assert body["live_invested"] == 2000.0  # 0.1 * 20000 — the SIM 5*3000 is excluded
-    assert body["live_realized"] == 100.0    # the SIM realized 999 is excluded
+    assert body["live_invested"] == 2000.0  # 0.1 * 20000 — the SIM 5*3000 and PAPER 10*500 are excluded
+    assert body["live_realized"] == 100.0    # the SIM realized 999 and PAPER realized 42 are excluded
     assert body["live_free"] == body["live_global_cap"] - 2000.0  # budget headroom, not exchange cash
 
 
