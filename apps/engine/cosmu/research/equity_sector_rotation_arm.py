@@ -29,6 +29,7 @@ from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.master.tracks import open_paper_track
 from cosmu.research import equity_sector_rotation_taa as taa
+from cosmu.research._arm_regimes import proven_regimes_from_validation
 from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
 
@@ -36,10 +37,9 @@ STRATEGY_NAME = "Sector-Momentum Rotation (TAA / Top-3 SPDR + SPY-200SMA)"  # UN
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strategy track, labeled honestly
 VENUE = "ibkr"
 ETF_BPS_PER_SIDE = taa.ETF_BPS_PER_SIDE
-# The rule de-risks into bonds in bear markets (trend filter) and tilts to the strongest sectors in bulls. It is
-# net-positive across regimes on our data (it gives ground in uninterrupted bulls, wins decisively in the crashes it
-# is built for — see the 2008/2022 subperiods). Proven-regime passport is the full set.
-PROVEN_REGIMES = ["bull", "bear", "chop"]
+# The proven-regime passport is DERIVED from the arm's OWN per-regime net PnL (research._arm_regimes), NOT a
+# hardcoded full set: each invested period is tagged bull/bear/chop off the benchmark trend (the same classifier
+# the live gate re-derives) and a regime is proven only where the arm's net PnL is positive. Earn each regime.
 
 
 def _minimal_spec(current_basket: list[str]) -> dict:
@@ -209,7 +209,8 @@ def arm(store: Store | None = None) -> dict:
                 "origin": STRATEGY_ORIGIN,
                 "strategy": "sector-momentum rotation (TAA)",
                 "deflated_sharpe": round(v["full"].ann_sharpe, 6),
-                "proven_regimes": PROVEN_REGIMES,
+                # DERIVED from this arm's own per-regime net PnL — earn each regime, never assume the full set.
+                "proven_regimes": proven_regimes_from_validation(v),
                 "deployment_bar": "positive OOS net of ETF fees on the REAL purged+embargoed holdout + ~half SPY "
                                   "drawdown (NOT the 0.95 in-sample Gate)",
             },

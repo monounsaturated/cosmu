@@ -28,6 +28,7 @@ from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.master.tracks import open_paper_track
 from cosmu.research import equity_dual_momentum_qqq as var
+from cosmu.research._arm_regimes import proven_regimes_from_validation
 from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import Instrument, default_catalog
 
@@ -36,10 +37,9 @@ STRATEGY_ORIGIN = "documented"  # NOT 'finder' — deploy-a-documented-strategy 
 VENUE = "ibkr"
 TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size (settings.sim_track_capital)
 IBKR_ETF_BPS_PER_SIDE = 1.0
-# This variant is positive net-of-fee across regimes (holds the stronger of QQQ/EFA in bull/chop, rotates to AGG in
-# bear — the 2008 subperiod shows +3.5% while SPY lost 41%). Full proven-regime passport so master/live_eligibility
-# can clear the regime gate once the 30-day paper run matures (a human still clicks).
-PROVEN_REGIMES = ["bull", "bear", "chop"]
+# The proven-regime passport is DERIVED from the arm's OWN per-regime net PnL (research._arm_regimes), NOT a
+# hardcoded full set: each invested period is tagged bull/bear/chop off the benchmark trend (the same classifier
+# the live gate re-derives) and a regime is proven only where the arm's net PnL is positive. Earn each regime.
 
 # ETFs this variant may rotate into. The shared catalog only ships SPY/QQQ (+ a few single names); EFA/AGG/SHY are
 # registered into the in-memory catalog on demand so a future rotation never breaks the mark. equity/ibkr, $1 lot.
@@ -202,7 +202,8 @@ def arm(store: Store | None = None) -> dict:
                 "origin": STRATEGY_ORIGIN,
                 "strategy": "QQQ/EFA tech-tilt dual-momentum",
                 "deflated_sharpe": round(v["holdout_dsr"], 6),  # REAL holdout DSR
-                "proven_regimes": PROVEN_REGIMES,
+                # DERIVED from this arm's own per-regime net PnL — earn each regime, never assume the full set.
+                "proven_regimes": proven_regimes_from_validation(v),
                 "deployment_bar": "positive OOS net of IBKR fees + Sharpe>SPY + ~half SPY drawdown + real holdout DSR>0 (NOT the 0.95 in-sample Gate)",
             },
         )
