@@ -70,8 +70,15 @@ def portfolio_summary() -> PortfolioSummaryResponse:
         live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
         caps_row = store.row("SELECT max_notional FROM live_caps WHERE id = 'global'")
         live_global_cap = float(caps_row["max_notional"]) if caps_row else float(settings.live.global_live_cap)
-        # The honest live discriminator: a position routed live carries a real venue id, never 'sim'.
-        live_positions = [p for p in _portfolio().positions() if p.venue != "sim"]
+        # The honest live discriminator: a position is LIVE MONEY only when its owning Version is in the
+        # 'live' lifecycle stage. Venue alone is NOT sufficient — paper/sim tracks book under their INTENDED
+        # venue (the equity TAA cohort books under 'ibkr' so the spec carries where it WILL trade once
+        # promoted), yet those legs are simulated until status flips to 'live'. Filtering on `venue != 'sim'`
+        # alone counted the 33 paper ETF legs as live; AND-ing the lifecycle status (currently 0 live) is truth.
+        live_sv_ids = {r["id"] for r in store.rows("SELECT id FROM strategy_versions WHERE status = 'live'")}
+        live_positions = [
+            p for p in _portfolio().positions() if p.venue != "sim" and p.strategy_version_id in live_sv_ids
+        ]
 
     mode = resolve_mode(settings)
     live_mode = mode if mode in ("testnet", "live") else "sim"
