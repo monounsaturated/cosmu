@@ -10,7 +10,7 @@ import { engineConfigured, getIndex } from "../../data";
 import { Page, Toolbar } from "@/components/ui/toolbar";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
 import { EquityChart } from "@/components/charts/equity-chart";
-import { cn } from "@/lib/utils";
+import { cn, fmtTz } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -91,7 +91,7 @@ async function IndexDetailBody({ id }: { id: string }) {
             <div className="kpi-box">
               <div className="kpi-label">Freshness</div>
               <div className="kpi-val" style={{ fontSize: 18 }}><span className={cn("badge", FRESHNESS_BADGE[h.freshness] ?? "badge-muted")} style={{ textTransform: "capitalize" }}>{h.freshness}</span></div>
-              <div className="kpi-sub">{h.latest_at ? new Date(h.latest_at).toLocaleString() : "never computed"}</div>
+              <div className="kpi-sub">{h.latest_at ? fmtTz(h.latest_at, { dateStyle: "medium", timeStyle: "short" }) : "never computed"}</div>
             </div>
             <div className="kpi-box">
               <div className="kpi-label">Reliability</div>
@@ -119,7 +119,7 @@ async function IndexDetailBody({ id }: { id: string }) {
           ) : (
             detail.series.map((s) => {
               const values = s.points.map((p) => p.value);
-              const labels = s.points.map((p) => new Date(p.ts).toLocaleDateString());
+              const labels = s.points.map((p) => fmtTz(p.ts, { month: "short", day: "numeric" }));
               return (
                 <div key={s.symbol} style={{ marginBottom: 10 }}>
                   <div className="psec-title" style={{ marginBottom: 4 }}>{s.symbol} · {s.points.length} points</div>

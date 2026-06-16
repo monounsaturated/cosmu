@@ -414,6 +414,15 @@ DEPLOY_SIGN = +1
 DEPLOY_FRAC = 1 / 3
 DEPLOY_LOOKBACK = max(_LOOKBACKS)  # the deepest formation window (matches the cohort's deepest arm)
 DEPLOY_MIN_PERIODS = 40       # an honest deploy read needs at least this many invested rebalances
+# MIN-EFFECT-SIZE FLOOR on the held-out tail. `holdout_dsr` is PSR(holdout Sharpe vs 0) − 0.5 ∈ [−0.5, +0.5] — a real
+# significance number, NOT a raw sign. The old bar checked only `holdout_dsr >= 0` (a coin-flip), so the deploy lane —
+# which pays NO multiple-testing deflation (it never routes through score()/promote_cohort) — accepted a PURE zero-edge
+# random walk ~12.5% of the time (Monte-Carlo, 400 RW draws, reb=2). Requiring the held-out Sharpe to be SIGNIFICANTLY
+# positive (P(SR>0) > 0.80) drops that no-edge false-positive rate to ~4.5% while KEEPING the genuine reb=2 perp lead
+# (real holdout_dsr=0.3749) and correctly REJECTING the noise-permitting reb=3 cadence (holdout_dsr=0.2555, the
+# fixture-aliasing trap). This HARDENS the deploy bar; it does NOT touch the locked 0.95 cohort Gate. See
+# docs/research/RESEARCH_LESSONS.md §2b.
+DEPLOY_MIN_HOLDOUT_DSR = 0.30
 
 
 @dataclass
@@ -494,7 +503,10 @@ def validate(
     window = (t0.date().isoformat(), t1.date().isoformat())
 
     # The DEPLOYMENT bar (honest, NOT pass-tuned). All three must hold.
-    holdout_positive = out_stats.total_return > 0 and split.holdout_dsr >= 0   # (1) edge persists OOS
+    # (1) edge persists OOS — held-out net positive AND the held-out Sharpe is SIGNIFICANTLY positive (a min-effect-size
+    #     floor, not a coin-flip sign): the deploy lane pays no multiple-testing deflation, so this floor is what stops a
+    #     searched, prior-less hypothesis from fluking a positive holdout. See DEPLOY_MIN_HOLDOUT_DSR.
+    holdout_positive = out_stats.total_return > 0 and split.holdout_dsr > DEPLOY_MIN_HOLDOUT_DSR
     beats_cash = full.total_return > 0 and full.ann_sharpe > 0                  # (2) strictly beats holding cash
     robust = in_stats.total_return > 0                                          # (3) not just the held-out tail
     deployable = holdout_positive and beats_cash and robust

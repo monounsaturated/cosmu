@@ -59,6 +59,15 @@ ETF_BPS_PER_SIDE = 1.0  # central IBKR all-in estimate on liquid ETFs; sweep bel
 FEE_SWEEP_BPS = [1.0, 2.0, 3.0, 5.0]
 MONTHS_PER_YEAR = 12
 
+# Holdout significance FLOOR (not a raw sign-check). `split.holdout_dsr` = PSR(holdout Sharpe vs 0) − 0.5 ∈
+# [−0.5, +0.5]. The deploy lane pays NO multiple-testing deflation (it never routes through score()/promote_cohort),
+# so the old `holdout_dsr >= 0` is a coin-flip — a ZERO-edge monthly stream clears it ~50% of the time (Monte-Carlo,
+# 3000 zero-mean draws at this arm's embargo). Require a SIGNIFICANTLY positive held-out Sharpe. 0.20 (vs perp's
+# 0.30): this arm has TWO extra hurdles (beats_spy + crash-regime robust) that further filter noise, AND 0.20 keeps
+# a SAFE margin under the REAL documented edge (measured sector-rotation holdout_dsr=+0.39) so a genuine documented
+# edge is NEVER discarded. See docs/research/RESEARCH_LESSONS.md §2b.
+DEPLOY_MIN_HOLDOUT_DSR = 0.20
+
 
 # --------------------------------------------------------------------------- data
 
@@ -384,7 +393,7 @@ def validate(top_k: int = TOP_K, lookback: int = LOOKBACK_MONTHS, sma_days: int 
     #   (2) FULL-cycle BEATS B&H SPY risk-adjusted: higher Sharpe OR materially lower maxDD (<= 75% of SPY's);
     #   (3) robust: the strategy WINS the crash regimes it is built for and never catastrophically lags.
     MATERIAL_DD = 0.75
-    holdout_positive = out_stats.total_return > 0 and split.holdout_dsr >= 0
+    holdout_positive = out_stats.total_return > 0 and split.holdout_dsr > DEPLOY_MIN_HOLDOUT_DSR
     higher_sharpe = strat.ann_sharpe >= spy.ann_sharpe
     lower_dd = strat.max_dd <= spy.max_dd * MATERIAL_DD
     beats_spy = higher_sharpe or lower_dd

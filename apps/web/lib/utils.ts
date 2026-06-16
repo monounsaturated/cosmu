@@ -107,3 +107,20 @@ export function timeAgo(ts: string | null | undefined): string | null {
   const days = Math.round(hours / 24);
   return `${days}d ago`;
 }
+
+// The operator's display timezone. Engine timestamps are stored UTC (tz-aware ISO); every user-facing
+// wall-clock render goes through fmtTz so it reads in THIS zone — deterministically on the Vercel server
+// (which runs UTC) AND in the browser. Without it, a server-rendered timestamp shows the server's UTC
+// (a trade logged 02:16Z would read "02:16" instead of the operator's 04:16). Single-operator app, so this
+// is a constant — change it here if the operator relocates.
+export const APP_TZ = "Europe/Paris";
+
+// Format a UTC ISO timestamp as wall-clock in APP_TZ. Pass the same Intl options you'd give
+// toLocaleDateString/toLocaleTimeString; `timeZone` is injected. Returns "" for a null/unparseable input so
+// callers render an honest blank rather than "Invalid Date".
+export function fmtTz(ts: string | null | undefined, options: Intl.DateTimeFormatOptions): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", { timeZone: APP_TZ, ...options }).format(d);
+}

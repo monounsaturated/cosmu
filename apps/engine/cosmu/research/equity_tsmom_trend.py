@@ -59,6 +59,13 @@ MONTHS_PER_YEAR = 12
 HOLDOUT_FRAC = 0.25
 HOLDOUT_EMBARGO = LOOKBACK_MONTHS
 
+# Holdout significance FLOOR (not a raw sign-check) — same hardening as equity_sector_rotation_taa + perp.
+# The old `holdout_dsr > 0` is a coin-flip (a ZERO-edge monthly stream clears it ~50%, Monte-Carlo 3000 draws).
+# Require a SIGNIFICANTLY positive held-out Sharpe. 0.20 keeps a SAFE margin under the REAL documented edge
+# (measured TSMOM holdout_dsr=+0.49) while the extra beats_risk_adj hurdle further filters noise — so a genuine
+# documented edge is never discarded. See docs/research/RESEARCH_LESSONS.md §2b.
+DEPLOY_MIN_HOLDOUT_DSR = 0.20
+
 
 # --------------------------------------------------------------------------- backtest
 
@@ -334,7 +341,7 @@ def validate(lookback: int = LOOKBACK_MONTHS) -> dict:
     #   (3) beats B&H SPY risk-adjusted over the FULL cycle: higher Sharpe OR materially (<=75%) lower maxDD.
     MATERIAL_DD = 0.75
     holdout_positive = hold_stats.total_return > 0
-    holdout_dsr_ok = split.holdout_dsr > 0
+    holdout_dsr_ok = split.holdout_dsr > DEPLOY_MIN_HOLDOUT_DSR
     beats_sharpe = tsm_stats.ann_sharpe > bench_stats.ann_sharpe
     lower_dd = tsm_stats.max_dd <= bench_stats.max_dd * MATERIAL_DD
     beats_risk_adj = beats_sharpe or lower_dd

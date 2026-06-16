@@ -10,7 +10,7 @@
 import { useMemo, useState } from "react";
 import type { Point } from "@cosmu/contracts-ts";
 import { EquityChart } from "@/components/charts/equity-chart";
-import { formatUsd } from "@/lib/utils";
+import { fmtTz, formatUsd } from "@/lib/utils";
 
 export function PhasedEquity({
   paperCurve,
@@ -26,8 +26,7 @@ export function PhasedEquity({
   const labels = useMemo(
     () =>
       paperCurve.map((p) => {
-        const d = new Date(p.ts);
-        return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+        return fmtTz(p.ts, { month: "short", day: "2-digit" });
       }),
     [paperCurve]
   );
