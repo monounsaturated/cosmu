@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 from cosmu.data.altdata import AltDataPoint
 from cosmu.data.market import Bar
 from cosmu.master.scorer import BacktestMetrics, probabilistic_sharpe, sample_moments
+from cosmu.master.sizing import compute_target_vol
 from cosmu.strategy.spec import Condition, FeatureRef, MetaLabel, ParamRef, StrategySpec
 
 # cosmu.ml.metalabel (MetaGate / MetaEvent / triple_barrier_outcome) is imported LAZILY inside `_build_meta_gate`:
@@ -75,6 +76,11 @@ class BacktestResult:
     # arbitrary round-robin), and the frontend per-symbol display. Additive + default-empty (existing callers,
     # incl. the two empty-result paths below, are untouched).
     per_symbol: dict[str, dict[str, float]] = field(default_factory=dict)
+    # T1 SIZING: median EWMA realized vol (bar-frequency) of the underlying price returns over the validation
+    # window, pooled across all symbols. Frozen at funding → tracks.target_vol. None when the series is too
+    # short (< 21 bars after warmup). The paper/live executor uses this to scale position size dynamically;
+    # NULL in the DB → T0 static sizing (max_position_pct × conviction).
+    target_vol: float | None = None
 
     @property
     def min_symbol_trades(self) -> int:
@@ -170,11 +176,18 @@ def run_strategy_backtest_detailed(
     holdout_runs: list[SymbolRun] = []
     symbol_trades: dict[str, int] = {}
     per_symbol: dict[str, dict[str, float]] = {}
+    val_price_returns: list[float] = []  # T1: pooled price returns from ALL validation windows
     for symbol, bars in market.items():
         if len(bars) < 80:
             continue
         alt = (alt_by_symbol or {}).get(symbol)
         val_bars, holdout_bars = _purged_embargoed_split(spec, params, bars)
+        # T1: collect price returns PIT to the validation window (NOT holdout — the gate never touches holdout).
+        val_price_returns.extend(
+            float(val_bars[i].close) / float(val_bars[i - 1].close) - 1.0
+            for i in range(1, len(val_bars))
+            if float(val_bars[i - 1].close) > 0
+        )
         v_run = _run_symbol(spec, params, val_bars, fee_bps, slippage_bps, impact_bps, size_multiplier, alt, size_series)
         validation_runs.append(v_run)
         symbol_trades[symbol] = len(v_run.trades)
@@ -240,6 +253,7 @@ def run_strategy_backtest_detailed(
         holdout_returns=list(holdout.bar_returns),
         symbol_trades=symbol_trades,
         per_symbol=per_symbol,
+        target_vol=compute_target_vol(val_price_returns),
     )
 
 

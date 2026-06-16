@@ -171,6 +171,7 @@ create table if not exists tracks (
   starting_capital numeric not null default 100000,
   equity numeric not null,
   return_pct numeric not null,
+  target_vol real,
   updated_at text not null
 );
 
