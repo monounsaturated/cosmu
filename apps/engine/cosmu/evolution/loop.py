@@ -8,7 +8,11 @@ from dataclasses import dataclass, field
 
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol
-from cosmu.data.backtest import DEFAULT_IMPACT_BPS, DEFAULT_SLIPPAGE_BPS, run_strategy_backtest_detailed
+from cosmu.data.backtest import (
+    DEFAULT_IMPACT_BPS,
+    DEFAULT_SLIPPAGE_BPS,
+    run_strategy_backtest_detailed,
+)
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
@@ -286,6 +290,7 @@ class FarmLoop:
         combined = trial_stats(self.store)
         evaluated: list[Evaluated] = []
         vid_by_screened: dict[int, str] = {}   # id(_Screened) → persisted version_id, to resolve child parent_id
+        screened_by_vid: dict[str, _Screened] = {}   # version_id → its _Screened, for the champion-holdout re-run
 
         # PHASE 2 — score every screened candidate against the snapshot and persist. One connection + one
         # transaction for the whole cohort. Parents are persisted before their children (wave-0 first), so an
@@ -305,6 +310,7 @@ class FarmLoop:
                 evaluated.append(result)
                 specs_by_vid[vid] = sc.cand.spec
                 vid_by_screened[id(sc)] = vid
+                screened_by_vid[vid] = sc
 
             # FDR GATE — the multiple-testing correction the funding path depends on. score() judged each
             # candidate in isolation; this judges the COHORT together. A gate-passer that doesn't survive
@@ -321,6 +327,36 @@ class FarmLoop:
                 e.passed = False
                 if "fdr" not in e.reasons:
                     e.reasons.append("fdr")
+
+            # CHAMPION-ONLY one-shot holdout. The screen ran include_holdout=False (validation-only) and scored
+            # with check_holdout=False, so the untouched, purged+embargoed holdout is evaluated EXACTLY ONCE here
+            # — for each candidate that cleared the stats gate AND FDR — as a pure CONFIRMATION. A champion that
+            # FAILS the exam is an honest dead end: passed_gates→0, status→killed (reason 'holdout'), track
+            # removed. The loop never retries the exam with the next-best variant (search-until-pass would turn
+            # the holdout back into a selection set). One look per version (a fresh version per cohort →
+            # structurally one-shot), audited as a holdout_look event. Same transaction as the cohort.
+            holdout_floor = float(self.settings.gates.holdout_min_deflated_sharpe)
+            for e in evaluated:
+                if not e.passed:
+                    continue
+                sc = screened_by_vid[e.version_id]
+                holdout_dsr = self._champion_holdout(sc.cand.spec, sc.params)
+                holdout_ok = holdout_dsr > holdout_floor
+                b.execute(
+                    "UPDATE backtests SET holdout_passed = ? WHERE strategy_version_id = ? AND kind = 'screen'",
+                    (int(holdout_ok), e.version_id),
+                )
+                b.append_event(
+                    actor="master", kind="holdout_look", ref_type="strategy_version", ref_id=e.version_id,
+                    payload={"passed": holdout_ok, "holdout_deflated_sharpe": holdout_dsr},
+                )
+                if not holdout_ok:
+                    b.execute("UPDATE backtests SET passed_gates = 0 WHERE strategy_version_id = ? AND kind = 'screen'", (e.version_id,))
+                    b.execute("UPDATE strategy_versions SET status = 'killed', kill_reason = 'holdout', killed_at = ? WHERE id = ?", (utcnow(), e.version_id))
+                    b.execute("DELETE FROM tracks WHERE strategy_version_id = ?", (e.version_id,))
+                    e.passed = False
+                    if "holdout" not in e.reasons:
+                        e.reasons.append("holdout")
 
             # ORDER the gate-survivors by the survival model's edge-persistence score (descending) — this is the
             # validation queue: which gate-passers get scarce full-validation compute FIRST. It is a re-sort of
@@ -464,7 +500,9 @@ class FarmLoop:
         compiled = sc.compiled
         params = sc.params
         # Deflate against the FULL global trial count (this cohort + all history), not ~len(param_space).
-        verdict = score(metrics, self.settings.gates, trials=trials)
+        # check_holdout=False: SELECTION is validation-only — the one-shot holdout is applied to the gate+FDR
+        # survivors afterwards (run_cohort's champion-holdout step), never as a per-candidate selection filter.
+        verdict = score(metrics, self.settings.gates, trials=trials, check_holdout=False)
         passed = verdict.passed and not sc.pre_kill  # pre_kill (e.g. min_trades_per_symbol) always kills
         # Born "screened" (badge: Backtest) — backtest evidence only at birth. The paper clock promotes to
         # "paper" once >= 1 real forward day accrues. status is badge-only; the live gate reads track_opened.
@@ -611,8 +649,31 @@ class FarmLoop:
             slippage_bps=venue.slippage_bps,
             impact_bps=venue.impact_bps,
             alt_by_symbol=self._alt_by_symbol(cand.spec, market),
+            # SELECTION sees VALIDATION evidence only — the untouched, purged+embargoed holdout is evaluated
+            # exactly once per gate+FDR survivor in run_cohort's champion-only holdout step (mirrors lab/finder).
+            # Screening every candidate WITH the holdout (the old default) made the always-on loop SELECT on the
+            # exam — the structural holdout-reuse channel the gate-integrity review flagged.
+            include_holdout=False,
         )
         return result.metrics, venue, result.min_symbol_trades
+
+    def _champion_holdout(self, spec: StrategySpec, params: dict[str, float]) -> float:
+        """The one-shot UNTOUCHED holdout for a SELECTED champion: re-run the full backtest WITH the embargoed
+        holdout (the screen ran include_holdout=False) and return its holdout deflated Sharpe — same market /
+        venue / cost model the screen priced against, so the exam is charged identically. Pure compute, no DB
+        write. Called exactly once per gate+FDR survivor (a fresh version per cohort → structurally one-shot)."""
+        provider = self.market_data or BinanceSpotOHLCVProvider()
+        enabled_venues, enabled_classes = self._enabled()
+        symbols = _binance_symbols(spec, enabled_venues, enabled_classes)
+        market = {s: provider.fetch_bars(s, spec.horizon.bar_size, limit=_bar_limit(spec)) for s in symbols}
+        venue = default_catalog().venue_for(spec.universe.venues)
+        result = run_strategy_backtest_detailed(
+            spec, params, market, fee_bps=venue.taker_fee_bps,
+            slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps,
+            alt_by_symbol=self._alt_by_symbol(spec, market),
+            include_holdout=True,
+        )
+        return float(result.metrics.holdout_deflated_sharpe)
 
     def _alt_store(self):  # noqa: ANN202 — AltDataStore | PgAltDataStore
         """The point-in-time alt-data store, chosen the SAME way ingest/api do: postgres URL → PgAltDataStore
