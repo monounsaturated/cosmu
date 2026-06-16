@@ -14,6 +14,7 @@ from cosmu.costs.alerts import BudgetAlert, check_budget, emit_alerts
 from cosmu.costs.fetchers import (
     VendorSpend,
     fetch_claude_max,
+    fetch_cursor,
     fetch_modal,
     fetch_openrouter,
     fetch_railway,
@@ -270,11 +271,20 @@ def test_fetch_supabase_is_zero():
     assert result.amount == 0.0
 
 
-def test_fetch_claude_max_is_100():
+def test_fetch_claude_max_is_200():
+    """Claude is the Max 20x flat sub ($200/mo) — sourced from operating_costs (single source)."""
     result = fetch_claude_max()
     assert result.vendor == "Claude"
-    assert result.amount == pytest.approx(100.0)
-    assert "Max plan" in result.meta["note"]
+    assert result.amount == pytest.approx(200.0)
+    assert "Max 20x" in result.meta["note"]
+
+
+def test_fetch_cursor_is_20():
+    """Cursor Pro flat sub ($20/mo) — sourced from operating_costs (single source)."""
+    result = fetch_cursor()
+    assert result.vendor == "Cursor"
+    assert result.amount == pytest.approx(20.0)
+    assert result.category == "llm"
 
 
 # ---------------------------------------------------------------------------
@@ -293,12 +303,13 @@ def test_refresh_writes_rows_to_store():
         _http_post=lambda url, headers, body: b'{"data":{}}',
         _run_cli=lambda: types.SimpleNamespace(stdout=""),
     )
-    # At minimum: xAI ledger + Vercel + Supabase + Claude are always returned
+    # At minimum: xAI ledger + Vercel + Supabase + Claude + Cursor are always returned
     vendors = {s.vendor for s in spends}
     assert "xAI" in vendors
     assert "Vercel" in vendors
     assert "Supabase" in vendors
     assert "Claude" in vendors
+    assert "Cursor" in vendors
     # Rows written to costs table
     assert len(store.costs) == len(spends)
 

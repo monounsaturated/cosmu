@@ -46,6 +46,9 @@ let cache: CacheEntry | null = null;
 // Numbers are honest mid-range estimates based on the current plan tiers;
 // they are never presented as precise actuals.
 
+// Source of truth for the flat-sub amounts: apps/engine/cosmu/costs/operating_costs.py.
+// Keep these in sync when the operator updates costs (the "go" refresh). EUR notes are the real
+// card charge at ~0.86 EUR/USD; the canonical unit is USD (equity/P&L are USD).
 const STATIC_ESTIMATES: Omit<SupplierRow, "fetched_at">[] = [
   {
     name: "Vercel",
@@ -58,14 +61,14 @@ const STATIC_ESTIMATES: Omit<SupplierRow, "fetched_at">[] = [
     name: "Supabase",
     amount_usd: 0,
     source: "est",
-    role: "Postgres + realtime — Free tier (500 MB, 2 projects)",
+    role: "Postgres — Pro canceled 2026-06, back on Free tier ($0; 282 MB < 500 MB cap)",
     category: "infra",
   },
   {
     name: "Modal",
-    amount_usd: 5,
+    amount_usd: 0,
     source: "est",
-    role: "Scale-to-zero heavy-compute lane (gate sweeps, ML train)",
+    role: "Scale-to-zero heavy-compute lane — rotating free credits (~$0 net)",
     category: "infra",
   },
   {
@@ -77,9 +80,9 @@ const STATIC_ESTIMATES: Omit<SupplierRow, "fetched_at">[] = [
   },
   {
     name: "LunarCrush",
-    amount_usd: 5,
+    amount_usd: 0,
     source: "est",
-    role: "Social intelligence — $5/day plan (alt-data feed)",
+    role: "Social intelligence — one-shot/usage only; no active sub (2026-06)",
     category: "data",
   },
   {
@@ -91,9 +94,16 @@ const STATIC_ESTIMATES: Omit<SupplierRow, "fetched_at">[] = [
   },
   {
     name: "Anthropic / Claude",
+    amount_usd: 200,
+    source: "est",
+    role: "Claude Max 20x flat subscription (~€172/mo) — coding agent, no per-token billing",
+    category: "llm",
+  },
+  {
+    name: "Cursor",
     amount_usd: 20,
     source: "est",
-    role: "Claude Max flat subscription (coding agent, no per-token billing)",
+    role: "Cursor Pro — AI coding IDE (~€17/mo)",
     category: "llm",
   },
 ];
@@ -103,7 +113,7 @@ const STATIC_ESTIMATES: Omit<SupplierRow, "fetched_at">[] = [
 
 async function fetchRailway(): Promise<{ amount_usd: number; ok: boolean }> {
   const token = process.env.RAILWAY_TOKEN;
-  if (!token) return { amount_usd: 20, ok: false }; // fallback estimate
+  if (!token) return { amount_usd: 7, ok: false }; // fallback estimate
 
   // Railway GraphQL: query the viewer's teams and their estimated monthly spend.
   // We use `estimatedUsage` on the project if available, else `currentPeriodUsage`.
@@ -142,7 +152,7 @@ async function fetchRailway(): Promise<{ amount_usd: number; ok: boolean }> {
       signal: AbortSignal.timeout(3000),
     });
 
-    if (!res.ok) return { amount_usd: 20, ok: false };
+    if (!res.ok) return { amount_usd: 7, ok: false };
     // We only get project list here — Railway doesn't expose billed amounts in the public API
     // without going through the billing service. Use a second query for usage.
     const _data = await res.json();
@@ -175,10 +185,10 @@ async function fetchRailway(): Promise<{ amount_usd: number; ok: boolean }> {
       signal: AbortSignal.timeout(3000),
     });
 
-    if (!usageRes.ok) return { amount_usd: 20, ok: false };
+    if (!usageRes.ok) return { amount_usd: 7, ok: false };
     const usageData = await usageRes.json();
     const teams = usageData?.data?.me?.teams?.edges ?? [];
-    if (teams.length === 0) return { amount_usd: 20, ok: false };
+    if (teams.length === 0) return { amount_usd: 7, ok: false };
 
     // Sum across all teams (usually 1)
     const total = teams.reduce(
@@ -189,10 +199,10 @@ async function fetchRailway(): Promise<{ amount_usd: number; ok: boolean }> {
       0,
     );
 
-    if (total === 0) return { amount_usd: 20, ok: false }; // API returned but no cost field
+    if (total === 0) return { amount_usd: 7, ok: false }; // API returned but no cost field
     return { amount_usd: total, ok: true };
   } catch {
-    return { amount_usd: 20, ok: false };
+    return { amount_usd: 7, ok: false };
   }
 }
 

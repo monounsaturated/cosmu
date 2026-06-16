@@ -173,12 +173,32 @@ def fetch_supabase() -> VendorSpend:
 
 
 def fetch_claude_max() -> VendorSpend:
+    """Claude flat subscription — amount + note from operating_costs (single source of truth).
+    No billing API exists for the consumer Max/Pro sub; this is a known fixed number."""
+    from cosmu.costs.operating_costs import flat_subscription
+
+    sub = flat_subscription("Claude") or {"category": "llm", "amount": 200.0, "note": "Claude Max 20x"}
     return VendorSpend(
         vendor="Claude",
-        category="llm",
-        amount=100.0,
+        category=str(sub["category"]),
+        amount=float(sub["amount"]),
         period=_month(),
-        meta={"source": "constant", "note": "Max plan flat $100/mo"},
+        meta={"source": "constant", "note": str(sub["note"])},
+    )
+
+
+def fetch_cursor() -> VendorSpend:
+    """Cursor flat subscription — amount + note from operating_costs (single source of truth).
+    Personal Pro plan is a flat fee with no clean self-spend billing API."""
+    from cosmu.costs.operating_costs import flat_subscription
+
+    sub = flat_subscription("Cursor") or {"category": "llm", "amount": 20.0, "note": "Cursor Pro"}
+    return VendorSpend(
+        vendor="Cursor",
+        category=str(sub["category"]),
+        amount=float(sub["amount"]),
+        period=_month(),
+        meta={"source": "constant", "note": str(sub["note"])},
     )
 
 
@@ -208,6 +228,7 @@ def refresh_vendor_costs(
         fetch_vercel,
         fetch_supabase,
         fetch_claude_max,
+        fetch_cursor,
     ]
     spends: list[VendorSpend] = []
     for fn in fetchers:
