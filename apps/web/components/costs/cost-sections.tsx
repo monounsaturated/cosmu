@@ -25,6 +25,7 @@ const CAT_LABEL: Record<string, string> = {
   ai: "AI / LLM",
   llm: "AI / LLM",
   ci: "Infra",
+  marketing: "Marketing",
 };
 const CAT_CLASS: Record<string, string> = {
   infra: "cat-infra",
@@ -33,6 +34,7 @@ const CAT_CLASS: Record<string, string> = {
   ai: "cat-ai",
   llm: "cat-ai",
   ci: "cat-infra",
+  marketing: "cat-data",
 };
 
 export function CatBadge({ category }: { category: string }) {

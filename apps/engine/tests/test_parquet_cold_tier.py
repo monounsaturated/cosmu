@@ -121,7 +121,7 @@ def test_resolve_alt_store_routes_to_parquet_when_configured(tmp_path):
 
 
 def test_from_settings_prefers_r2_when_keyed_else_local(tmp_path):
-    local = ParquetAltDataStore.from_settings(Settings(alt_data_parquet_root=str(tmp_path / "lake")))
+    local = ParquetAltDataStore.from_settings(Settings(alt_data_parquet_root=str(tmp_path / "lake"), _env_file=None))  # hermetic: no .env.local R2 keys → the local branch
     assert local.root.endswith("lake") and not local.root.startswith(("r2://", "s3://"))
     keyed = ParquetAltDataStore.from_settings(Settings(
         r2_account_id="acct", r2_access_key_id="k", r2_secret_access_key="s", r2_bucket="cosmu-lake"))

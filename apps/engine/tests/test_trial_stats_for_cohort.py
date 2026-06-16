@@ -85,3 +85,28 @@ def test_count_floored_at_one(tmp_path):
     register_trial(store, 0.05, source="test", label="t0")
     result = trial_stats_for_cohort(store, 1, None)
     assert result.count == 1
+
+
+def test_gate_cohort_corr_stats_counts_only_returning_variants(tmp_path):
+    # Regression for gate._cohort_corr_stats: K MUST be the number of variants that produced a return stream
+    # (non-empty val_returns), NOT len(results). A degenerate variant with no trades has nothing to correlate;
+    # folding it into the correlated-cohort haircut would over-credit the haircut and LOOSEN the gate.
+    from types import SimpleNamespace
+
+    from cosmu.research.gate import _cohort_corr_stats
+
+    store = _store(tmp_path)
+    _register_n(store, 15)  # n_global = 15
+
+    # identical streams → pairwise Spearman rho = 1.0; length must clear MIN_OVERLAP or rho falls back to NaN.
+    stream = [((-1) ** i) * (0.01 + 0.001 * (i % 5)) for i in range(30)]
+
+    def _v(name: str, rets: list[float]) -> SimpleNamespace:
+        return SimpleNamespace(params=SimpleNamespace(name=name), val_returns=rets)
+
+    results = [_v(f"c{i}", list(stream)) for i in range(5)] + [_v(f"empty{i}", []) for i in range(3)]
+
+    stats = _cohort_corr_stats(store, results)
+    # 5 perfectly-correlated returning variants → K=5, rho=1 → K_eff = 5/(1+4) = 1 → n_adj = (15-5) + 1 = 11.
+    # The bug (K=len(results)=8) would give (15-8) + 8/(1+7) = 7 + 1 = 8. Lock in 11.
+    assert stats.count == 11
