@@ -20,8 +20,7 @@ import type { Backtest, Execution, StrategyDetailResponse } from "@cosmu/contrac
 import { MoneyBand, type MoneyBandData } from "./money-band";
 import { AiSummary } from "./ai-summary";
 import { CostBasisSelector } from "./cost-basis-selector";
-import { PhasedEquity } from "./phased-equity";
-import { BacktestEquity } from "./backtest-equity";
+import { EquityPanel } from "./equity-panel";
 import { SpecBlocks } from "./spec-view";
 import { RegistryBlocks } from "./registry-blocks";
 import { StageControl, type Stage } from "./stage-control";
@@ -398,16 +397,11 @@ export function StrategySheet({ strategy, stageOverride, origin }: { strategy: S
 
       <MoneyBand data={money} />
 
-      {/* Backtest equity curve — gross vs net two-line overlay + drawdown band. Always available
-          when the engine has run a backtest (fetched from GET /explorer/{id}). Shown first so
-          the operator sees the real edge evidence even before any paper marks exist. */}
-      {strategy.version_id ? <BacktestEquity versionId={strategy.version_id} /> : null}
-
-      {/* Forward (paper) equity — the engine's MARKED scope='track' trajectory. Only rendered
-          when ≥ 2 real snapshots exist; otherwise the backtest curve above is the honest view. */}
-      {(strategy.forward_equity ?? []).length >= 2 ? (
-        <PhasedEquity paperCurve={strategy.forward_equity ?? []} />
-      ) : null}
+      {/* ONE equity box with a phase toggle (v18 "Equity — Live" design): Backtest = the gross/net
+          curve from GET /explorer/{id}; Paper/Live = the engine's MARKED scope='track' trajectory
+          (forward_equity), shown only when ≥ 2 real snapshots exist. Defaults to the most-advanced
+          phase with data, so the operator sees the live read first and can toggle back to the edge. */}
+      <EquityPanel versionId={strategy.version_id ?? null} forwardCurve={strategy.forward_equity ?? []} stage={stage} />
 
       <AiSummary
         summaryMd={strategy.summary_md}

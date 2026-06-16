@@ -229,10 +229,12 @@ function Legend({ netColor }: { netColor: string }) {
   );
 }
 
-// ── BacktestEquity — the outer panel (psec) rendered in the strategy sheet ──
+// ── BacktestEquity — the backtest equity body rendered in the strategy sheet ──
 // Fetches GET /explorer/{versionId} lazily on mount; shows a skeleton while loading.
 // Renders the two-line equity chart + drawdown band + stats row.
-export function BacktestEquity({ versionId, height = 140 }: { versionId: string; height?: number }) {
+// `embedded`: render only the inner body (chart + legend + stats), with NO outer `.psec` box or
+// `.eq-head` title — used inside the shared EquityPanel, which owns the single box + phase toggle.
+export function BacktestEquity({ versionId, height = 140, embedded = false }: { versionId: string; height?: number; embedded?: boolean }) {
   const [data, setData] = useState<ExplorerDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -256,23 +258,27 @@ export function BacktestEquity({ versionId, height = 140 }: { versionId: string;
   }, [versionId]);
 
   if (loading) {
+    const skel = <div className="skel" style={{ height, borderRadius: "var(--r-sm)" }} />;
+    if (embedded) return skel;
     return (
       <div className="psec">
         <div className="eq-head">
           <span className="eq-title-txt">Backtest equity</span>
         </div>
-        <div className="skel" style={{ height, borderRadius: "var(--r-sm)" }} />
+        {skel}
       </div>
     );
   }
 
   if (error || !data) {
+    const note = <div className="eq-empty">Engine not reachable — backtest curve unavailable.</div>;
+    if (embedded) return note;
     return (
       <div className="psec">
         <div className="eq-head">
           <span className="eq-title-txt">Backtest equity</span>
         </div>
-        <div className="eq-empty">Engine not reachable — backtest curve unavailable.</div>
+        {note}
       </div>
     );
   }
@@ -324,14 +330,8 @@ export function BacktestEquity({ versionId, height = 140 }: { versionId: string;
       : undefined;
   const ddTone: "dn" | undefined = maxDdFrac !== null && maxDdFrac > 0.2 ? "dn" : undefined;
 
-  return (
-    <div className="psec">
-      <div className="eq-head">
-        <span className="eq-title-txt">
-          {headlineText ? `Backtest equity · ${headlineText}` : "Backtest equity"}
-        </span>
-      </div>
-
+  const body = (
+    <>
       <TwoLineChart
         gross={gross}
         net={net}
@@ -364,6 +364,21 @@ export function BacktestEquity({ versionId, height = 140 }: { versionId: string;
         <StatRow label="Trades" value={trades} />
         <StatRow label="DSR" value={dsr} tone={typeof stats.deflated_sharpe === "number" && stats.deflated_sharpe >= 0.95 ? "up" : undefined} />
       </div>
+    </>
+  );
+
+  // Embedded: the EquityPanel owns the box + header (title + phase toggle); we render only the body.
+  // The hovered Net/Gross value still surfaces via the in-chart crosshair tooltip.
+  if (embedded) return body;
+
+  return (
+    <div className="psec">
+      <div className="eq-head">
+        <span className="eq-title-txt">
+          {headlineText ? `Backtest equity · ${headlineText}` : "Backtest equity"}
+        </span>
+      </div>
+      {body}
     </div>
   );
 }
