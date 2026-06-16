@@ -226,3 +226,24 @@ def test_recommendation_action_404(tmp_path, monkeypatch):
     client = _client(tmp_path, monkeypatch)
     assert client.post("/recommendations/does-not-exist/approve").status_code == 404
     assert client.post("/recommendations/does-not-exist/dismiss").status_code == 404
+
+
+def test_tick_job_error_does_not_leak_exception_detail_to_client(monkeypatch):
+    """A failing tick must surface only the exception TYPE name to the client (str(exc) can carry a DSN /
+    file path / internal detail). The leaky string never reaches the client-facing job record."""
+    import cosmu.api.routers.autonomy as autonomy
+    import cosmu.master.scheduler as sched_module
+
+    leaky = "connection to postgresql://admin:s3cr3t@db.host:5432/postgres failed"
+
+    def _boom(_s, **_kw):
+        raise RuntimeError(leaky)
+
+    monkeypatch.setattr(sched_module, "run_tick", _boom)
+    autonomy._run_tick_job("job-x")
+
+    job = autonomy._tick_jobs["job-x"]
+    assert job["status"] == "error"
+    assert job["result"] is None
+    assert job["error"] == "RuntimeError"  # type name only
+    assert "s3cr3t" not in job["error"] and "postgresql://" not in job["error"]

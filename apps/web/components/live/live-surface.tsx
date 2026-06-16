@@ -18,7 +18,7 @@
 // engine endpoint, so it is an honest empty.
 
 import { useState, type ReactNode } from "react";
-import type { Point, PortfolioSummaryResponse, RulesResponse } from "@cosmu/contracts-ts";
+import type { PortfolioSummaryResponse, RulesResponse } from "@cosmu/contracts-ts";
 import type { PositionsResponse } from "./contracts";
 import { RulesModal } from "./rules-modal";
 import { GuardTile } from "./guard-tile";
@@ -45,13 +45,11 @@ export function LiveSurface({
   initial,
   initialSummary,
   initialRules,
-  equityCurve,
   venues
 }: {
   initial: PositionsResponse & { connected: boolean };
   initialSummary: PortfolioSummaryResponse & { connected: boolean };
   initialRules: RulesResponse & { connected: boolean };
-  equityCurve: Point[];
   venues: { name: string; amount: number }[];
 }) {
   const [state, setState] = useState<PositionsResponse>(initial);
@@ -226,12 +224,12 @@ export function LiveSurface({
 
       {/* id="dash-live" scopes the compact dashboard KPI sizing (globals.css #dash-live .kpi-val/.kpi-box). */}
       <div id="dash-live">
-        {/* Equity hero ALWAYS on top. Gate the curve on the SAME honest discriminator the money KPIs use
-            (summary.live_equity, which the engine pins to null until a real LIVE portfolio snapshot exists —
-            overview.py) so it shows an honest empty state, never the SIM/paper aggregate `equityCurve`. When
-            live data is wired, repoint `equityCurve` itself to a live-scoped series — feeding the aggregate
-            here would still be wrong even when live_equity is non-null. */}
-        <EquityHero label="Total equity" curve={isLive && summary.live_equity != null ? equityCurve : []} />
+        {/* Equity hero ALWAYS on top — but with NO curve. `equityCurve` is overview.equity_curve, which is
+            scope='aggregate' (Σ-allocated SIM/paper), NOT a live-scoped series — feeding it here is a latent
+            SIM-as-live leak the moment summary.live_equity goes non-null (the old `isLive && live_equity != null`
+            guard would then plot the aggregate sim curve under a "live" hero). Lowest-risk fix: pass [] (honest
+            empty hero) until a real live-scoped equity series exists. Do NOT repoint this to equityCurve. */}
+        <EquityHero label="Total equity" curve={[]} />
 
         {/* Money + guard boxes (left, 3×2) + Open positions (right). */}
         <div className="kgrid dash-split" style={{ gridTemplateColumns: "minmax(0,3fr) minmax(0,2fr)" }}>

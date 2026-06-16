@@ -15,7 +15,7 @@ export type MoneyBandData = {
   investedUsd: number | null;
   // Realized P&L off the fills (sells add, buys + fees subtract). null when there are no fills.
   pnlUsd: number | null;
-  // P&L as a percent of invested, when both are known; else null.
+  // P&L as a percent of starting capital (matches the leaderboard denominator), when known; else null.
   pnlPct: number | null;
   // Total fees paid across the fills. null when there are no fills.
   feesUsd: number | null;

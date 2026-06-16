@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -15,6 +16,7 @@ from cosmu.api.models import (
     AutonomyTickResponse,
 )
 
+logger = logging.getLogger("cosmu.api.autonomy")
 router = APIRouter()
 
 
@@ -96,7 +98,10 @@ def _run_tick_job(job_id: str) -> None:
             "error": None,
         }
     except Exception as exc:  # noqa: BLE001
-        _tick_jobs[job_id] = {"status": "error", "result": None, "error": str(exc)}
+        # Surface only the exception TYPE to the client (str(exc) can leak DSNs / file paths / internals);
+        # the full detail stays server-side in the logs for debugging.
+        logger.exception("autonomy tick job %s failed", job_id)
+        _tick_jobs[job_id] = {"status": "error", "result": None, "error": type(exc).__name__}
 
 
 @router.post("/autonomy/tick", response_model=AutonomyTickAcceptedResponse, status_code=202)

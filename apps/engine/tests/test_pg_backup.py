@@ -36,6 +36,21 @@ class _NonPgSettings:
     r2_bucket = "cosmu-lake"
 
 
+def test_redact_dsn_strips_credentials_from_text():
+    # pg_dump can echo the full connection string (with user:password) on a connection-failure stderr.
+    raw = 'pg_dump: error: connection to "postgresql://admin:s3cr3t@db.host:5432/postgres" failed: timeout'
+    safe = pg_backup._redact_dsn(raw)
+    assert "s3cr3t" not in safe
+    assert "admin" not in safe
+    assert "db.host" not in safe
+    assert "postgres://<redacted>" in safe
+    # The non-secret framing survives so the log is still useful.
+    assert "connection" in safe and "failed: timeout" in safe
+    # Also covers the postgres:// (no -ql) scheme and is idempotent.
+    assert "p@ss" not in pg_backup._redact_dsn("postgres://u:p@ss@h/db boom")
+    assert pg_backup._redact_dsn("no dsn here") == "no dsn here"
+
+
 def test_run_backup_skips_without_r2_creds(monkeypatch):
     # keyless degradation: missing R2 creds → no-op success, never shells out to pg_dump
     monkeypatch.setattr(pg_backup, "_find_pg_dump", lambda: (_ for _ in ()).throw(AssertionError("must not run pg_dump")))

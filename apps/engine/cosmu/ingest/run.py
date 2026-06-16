@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from cosmu.config.settings import get_settings
-from cosmu.data.universe import perp_universe
 from cosmu.data.altdata import (
     AltDataProvider,
     BinanceBasisProvider,
@@ -53,6 +52,7 @@ from cosmu.data.sources.astro_ephemeris import AstroEphemerisProvider
 from cosmu.data.sources.multiasset import MULTIASSET_METRICS, YahooDailyProvider
 from cosmu.data.sources.reddit_volume import RedditVolumeProvider
 from cosmu.data.sources.xai_twitter import XaiTwitterProvider
+from cosmu.data.universe import perp_universe
 from cosmu.ingest.llm_formatter import build_event_formatter_from_settings
 from cosmu.ingest.pipeline import (
     MemoizingProvider,
@@ -255,8 +255,9 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     p = providers if providers is not None else Providers.from_settings(get_settings())
 
     # Run-level cache: the single FRED provider feeds several semantic features off the SAME series
-    # (VIXCLS → vix_level + vix_term_slope, T10Y2Y → macro_regime + yield_curve_2s10s). Memoize it so each
-    # (symbol, series, limit) is fetched ONCE per pass — no redundant external calls within the run.
+    # (T10Y2Y → macro_regime + yield_curve_2s10s). Memoize it so each (symbol, series, limit) is fetched
+    # ONCE per pass — no redundant external calls within the run. (VIXCLS now feeds only vix_level; the
+    # duplicate vix_term_slope was disabled.)
     fred = MemoizingProvider(p.fred)
 
     counts: dict[str, int] = {}
@@ -331,12 +332,9 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
             store, fred, source_metric="BAMLH0A0HYM2", stored_metric="credit_spread", provider_name="fred"
         ),
     )
-    counts["vix_term_slope"] = _safe(
-        "vix_term_slope",
-        lambda: ingest_market_wide_numeric(
-            store, fred, source_metric="VIXCLS", stored_metric="vix_term_slope", provider_name="fred"
-        ),
-    )
+    # vix_term_slope is DISABLED (honesty fix): it ingested VIXCLS — byte-identical to vix_level, NOT a term
+    # slope — so it was a phantom duplicate inflating the gate's multiple-testing N. No longer ingested; banked
+    # rows stay readable (store route + catalog dormant-metric preserved). Re-enable only with a real VXVCLS source.
     # Exchange-derived crypto features (free Binance fapi, no key)
     counts["open_interest"] = _safe(
         "open_interest", lambda: ingest_numeric(store, p.open_interest, symbols, "open_interest", provider_name="binance")
@@ -344,9 +342,10 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
     counts["perp_spot_basis"] = _safe(
         "perp_spot_basis", lambda: ingest_numeric(store, p.basis, symbols, "perp_spot_basis", provider_name="binance")
     )
-    counts["exchange_netflow"] = _safe(
-        "exchange_netflow", lambda: ingest_numeric(store, p.netflow, symbols, "exchange_netflow", provider_name="binance")
-    )
+    # exchange_netflow is DISABLED (honesty fix): the "netflow" provider actually fetches Binance's perp
+    # long/short ratio (crowd positioning), NOT on-chain netflow — a mislabeled, fabricated-prior tier-0
+    # feature. No longer ingested; banked rows stay readable (store route + catalog dormant-metric preserved).
+    # Re-enable only after an honest relabel to a tier1 perp_long_short_ratio with a real prior.
     # OSINT (free OpenSky, low-confidence)
     counts["osint_air_activity"] = _safe(
         "osint_air_activity",

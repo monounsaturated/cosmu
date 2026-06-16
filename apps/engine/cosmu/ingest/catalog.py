@@ -39,7 +39,8 @@ _FRED_FIXED: dict[str, str] = {
     "dxy": "DTWEXBGS",
     "yield_curve_2s10s": "T10Y2Y",
     "credit_spread": "BAMLH0A0HYM2",
-    "vix_term_slope": "VIXCLS",
+    # vix_term_slope intentionally absent: it was VIXCLS again (a phantom duplicate of vix_level), so it is no
+    # longer FETCHED. It stays a DORMANT routed metric (see _DORMANT_METRICS) so banked rows remain readable.
 }
 
 
@@ -86,10 +87,26 @@ def _fetch_market_wide(source_metric: str, stored_metric: str, provider_field: s
     return fetch
 
 
+# Metrics that are DISABLED in the feature_registry (mislabeled / phantom-duplicate honesty fixes) but kept
+# ROUTED in _STORE_PROVIDER_OF so already-banked rows stay readable (the mind/analysts readers + the store
+# as-of join still find them). They are NO LONGER fetched (no new mislabeled rows are written), but stay in
+# the catalog's metric set so the catalog↔store-routing lock-step guard holds (catalog_metric_set == routes).
+#   - vix_term_slope:  ingested VIXCLS — byte-identical to vix_level, NOT a term slope (phantom duplicate).
+#   - exchange_netflow: the "netflow" provider fetched the Binance perp long/short ratio, NOT on-chain netflow.
+_DORMANT_METRICS: tuple[str, ...] = ("vix_term_slope", "exchange_netflow")
+
+
+def _fetch_dormant(store: Any, symbols: list[str], providers: Any) -> int:
+    """No-op fetch for dormant (disabled-but-banked) metrics: writes nothing, returns 0. Their banked rows
+    remain readable via the store route; re-enable by wiring an honest source, not by un-no-op-ing this."""
+    del store, symbols, providers
+    return 0
+
+
 def _fetch_fred(store: Any, symbols: list[str], providers: Any) -> int:
-    """All FRED-derived macro metrics in one pass, memoized so a shared native series (VIXCLS feeds both
-    vix_level + vix_term_slope; T10Y2Y feeds macro_regime + yield_curve_2s10s) is fetched ONCE — exactly the
-    run_once invariant, reused here."""
+    """All FRED-derived macro metrics in one pass, memoized so a shared native series (T10Y2Y feeds both
+    macro_regime + yield_curve_2s10s) is fetched ONCE — exactly the run_once invariant, reused here. (VIXCLS
+    now feeds only vix_level; the duplicate vix_term_slope was disabled — see _DORMANT_METRICS.)"""
     fred = MemoizingProvider(providers.fred)
     total = 0
     total += ingest_market_wide_numeric(store, fred, source_metric=providers.fred_series, stored_metric="macro_regime", provider_name="fred")
@@ -411,6 +428,56 @@ def _backfill_wikipedia(store: Any, symbols: list[str], providers: Any, *, days:
     return out
 
 
+def _backfill_coingecko(store: Any, symbols: list[str], providers: Any, *, days: int, as_of: Any = None) -> dict[str, Any]:
+    """CoinGecko daily history: per-coin market cap + 24h volume via market_chart's date-range (one request
+    per coin), plus the market-wide BTC dominance snapshot. Mirrors _backfill_wikipedia (per-symbol raw
+    series, source's own as_of clock, idempotent append-dedup on (provider,symbol,metric,ts))."""
+    from datetime import UTC, datetime
+
+    from cosmu.data.sources.coingecko import CoinGeckoSource
+    from cosmu.ingest.pipeline import append_dedup
+
+    # Honour a `_fetcher` injected on the bridge provider so a manage test can drive this offline.
+    fetcher = getattr(getattr(providers, "coingecko", None), "_fetcher", None)
+    now = as_of or datetime.now(tz=UTC)
+    out: dict[str, Any] = {}
+    # Per-coin daily series: lookback_days = the requested depth so market_chart returns the full window.
+    for metric in ("cg_market_cap", "cg_total_volume"):
+        src = CoinGeckoSource(metric=metric, lookback_days=days, _fetcher=fetcher) if fetcher else CoinGeckoSource(metric=metric, lookback_days=days)
+        written = total = 0
+        for symbol in symbols:
+            pts = src.fetch_raw_series(symbol, now)
+            written += append_dedup(store, "coingecko", symbol, metric, pts)
+            total += len(pts)
+        out[metric] = {"written": written, "total": total}
+    # Market-wide BTC dominance: a current snapshot from /global (no deep history) — one MARKET point.
+    src = CoinGeckoSource(metric="cg_btc_dominance", _fetcher=fetcher) if fetcher else CoinGeckoSource(metric="cg_btc_dominance")
+    pts = src.fetch_raw_series("MARKET", now)
+    written = append_dedup(store, "coingecko", "MARKET", "cg_btc_dominance", pts)
+    out["cg_btc_dominance"] = {"written": written, "total": len(pts)}
+    return out
+
+
+def _backfill_gdelt_counts(store: Any, symbols: list[str], providers: Any, *, days: int, as_of: Any = None) -> dict[str, Any]:
+    """GDELT daily news-volume history: per-symbol counts via the DOC 2.0 timeline date-range (one request
+    per symbol). Mirrors _backfill_wikipedia (per-symbol raw series, source's own as_of clock, idempotent
+    append-dedup on (provider,symbol,metric,ts))."""
+    from datetime import UTC, datetime
+
+    from cosmu.data.sources.gdelt_counts import GdeltCountsSource
+    from cosmu.ingest.pipeline import append_dedup
+
+    fetcher = getattr(getattr(providers, "gdelt_counts", None), "_fetcher", None)
+    now = as_of or datetime.now(tz=UTC)
+    src = GdeltCountsSource(lookback_days=days, _fetcher=fetcher) if fetcher else GdeltCountsSource(lookback_days=days)
+    written = total = 0
+    for symbol in symbols:
+        pts = src.fetch_raw_series(symbol, now)
+        written += append_dedup(store, "gdelt_counts", symbol, "gdelt_news_volume", pts)
+        total += len(pts)
+    return {"gdelt_news_volume": {"written": written, "total": total}}
+
+
 def _backfill_exotic_controls(store: Any, symbols: list[str], providers: Any, *, days: int, as_of: Any = None) -> dict[str, Any]:
     """USGS earthquakes (count + max-mag via FDSN query) + NOAA Kp (3-hourly→daily-max) market-wide history."""
     from cosmu.data.sources.exotic_controls import (
@@ -449,14 +516,13 @@ def managed_sources() -> dict[str, SourceSpec]:
         SourceSpec("funding", "alt", ("funding_rate",), _fetch_numeric("funding_rate", "funding", "binance"), note="Binance USDⓈ-M funding (paginated history)."),
         SourceSpec("fear_greed", "alt", ("fear_greed",), _fetch_market_wide("fear_greed", "fear_greed", "feargreed", "alternative.me"), market_wide=True, per_symbol=False),
         SourceSpec("news", "alt", ("news_sentiment", "news_event_score"), _fetch_news, note="GDELT headlines → standardized sentiment + typed event score (LLM only at ingest)."),
-        SourceSpec("macro", "alt", ("macro_regime", "vix_level", "fed_funds_rate", "dxy", "yield_curve_2s10s", "credit_spread", "vix_term_slope"), _fetch_fred, market_wide=True, per_symbol=False, note="FRED macro bundle (memoized shared series)."),
+        SourceSpec("macro", "alt", ("macro_regime", "vix_level", "fed_funds_rate", "dxy", "yield_curve_2s10s", "credit_spread"), _fetch_fred, market_wide=True, per_symbol=False, note="FRED macro bundle (memoized shared series)."),
         SourceSpec("defi", "alt", ("defi_tvl",), _fetch_market_wide("defi_tvl", "defi_tvl", "defillama", "defillama"), market_wide=True, per_symbol=False),
         SourceSpec("pm_risk_on", "alt", ("pm_risk_on",), _fetch_risk_on, market_wide=True, per_symbol=False),
         SourceSpec("liquidation_cascade", "alt", ("liquidation_cascade",), lambda store, symbols, providers: ingest_liquidations(store, providers.liquidations, symbols)),
         SourceSpec("putcall", "alt", ("putcall_ratio",), _fetch_market_wide("putcall_ratio", "putcall_ratio", "putcall", "cboe"), market_wide=True, per_symbol=False),
         SourceSpec("open_interest", "alt", ("open_interest",), _fetch_numeric("open_interest", "open_interest", "binance")),
         SourceSpec("basis", "alt", ("perp_spot_basis",), _fetch_numeric("perp_spot_basis", "basis", "binance")),
-        SourceSpec("netflow", "alt", ("exchange_netflow",), _fetch_numeric("exchange_netflow", "netflow", "binance")),
         SourceSpec("osint", "alt", ("osint_air_activity",), _fetch_market_wide("osint_air_activity", "osint_air_activity", "osint", "opensky"), market_wide=True, per_symbol=False),
         SourceSpec("polymarket_clob", "alt", ("pm_implied_prob", "pm_prob_velocity", "pm_book_depth"), _fetch_polymarket_clob, market_wide=True, per_symbol=False),
         SourceSpec("reddit", "alt", ("reddit_sentiment",), _fetch_market_wide("reddit_sentiment", "reddit_sentiment", "reddit", "reddit"), market_wide=True, per_symbol=False),
@@ -485,12 +551,16 @@ def managed_sources() -> dict[str, SourceSpec]:
         SourceSpec("exotic_controls", "alt", ("usgs_earthquake_count", "usgs_max_magnitude", "noaa_kp_index"), _fetch_exotic_controls, backfill=_backfill_exotic_controls, market_wide=True, per_symbol=False, non_causal=True, note="USGS earthquakes + NOAA Kp ORTHOGONALITY CONTROLS (non-causal; Gate must kill them). Paginated date-range backfill (FDSN query + NOAA 3-hourly history)."),
         # --- TOOL-WAVE-A: 4 more free, no-key sources (PIT-honest; daily aggregates knowable T+1; degrade to [] offline) ---
         SourceSpec("defillama_stablecoin", "alt", ("stablecoin_mcap",), _fetch_defillama_stablecoin, market_wide=True, per_symbol=False, note="DefiLlama total circulating stablecoin market cap (free, no key, market-wide). Orthogonal to the legacy defi_tvl."),
-        SourceSpec("coingecko", "alt", ("cg_market_cap", "cg_total_volume", "cg_btc_dominance"), _fetch_coingecko, note="CoinGecko free public tier: per-coin market cap + 24h volume, plus market-wide BTC dominance (no key)."),
+        SourceSpec("coingecko", "alt", ("cg_market_cap", "cg_total_volume", "cg_btc_dominance"), _fetch_coingecko, backfill=_backfill_coingecko, note="CoinGecko free public tier: per-coin market cap + 24h volume, plus market-wide BTC dominance (no key). Paginated market_chart date-range backfill for the per-coin series."),
         SourceSpec("onchain_blockchain", "alt", _ONCHAIN_METRICS, _fetch_onchain_blockchain, market_wide=True, per_symbol=False, note="blockchain.com BTC on-chain fundamentals: hashrate, tx count, mempool size, active addresses (free, no key, market-wide)."),
-        SourceSpec("gdelt_counts", "alt", ("gdelt_news_volume",), _fetch_gdelt_counts, note="GDELT 2.0 daily per-topic news-VOLUME COUNT (free, no key, LLM-free; per-symbol). Distinct from gdelt_tone."),
+        SourceSpec("gdelt_counts", "alt", ("gdelt_news_volume",), _fetch_gdelt_counts, backfill=_backfill_gdelt_counts, note="GDELT 2.0 daily per-topic news-VOLUME COUNT (free, no key, LLM-free; per-symbol). Distinct from gdelt_tone. Paginated DOC 2.0 timeline date-range backfill."),
         # --- TOOL-WAVE-C: 2 more free, no-key market-wide FLOW sources (PIT-honest; degrade to [] offline) ---
         SourceSpec("etf_flows", "alt", _ETF_FLOW_METRICS, _fetch_etf_flows, market_wide=True, per_symbol=False, note="FRED keyless macro-liquidity: Fed balance sheet (WALCL) + net liquidity (WALCL - TGA); free, no key, market-wide, knowable ~T+8."),
         SourceSpec("stablecoin_flows", "alt", _STABLECOIN_FLOW_METRICS, _fetch_stablecoin_flows, market_wide=True, per_symbol=False, note="DefiLlama stablecoin FLOW: day-over-day net mint/redeem + Ethereum chain-share; free, no key, market-wide, knowable T+1. Orthogonal to the level series stablecoin_mcap."),
+        # DORMANT (no-op fetch): disabled-but-banked metrics kept ROUTED so old rows stay readable and the
+        # catalog↔store-routing lock-step holds, but NEVER re-ingested (mislabeled / phantom-duplicate honesty
+        # fixes — see _DORMANT_METRICS). per_symbol=False so coverage uses the canonical store route, not a fan-out.
+        SourceSpec("dormant", "alt", _DORMANT_METRICS, _fetch_dormant, per_symbol=False, note="Disabled-but-banked metrics (vix_term_slope, exchange_netflow): routed for readability, never re-ingested."),
     ]
     return {s.name: s for s in specs}
 

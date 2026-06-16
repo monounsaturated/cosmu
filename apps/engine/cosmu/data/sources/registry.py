@@ -25,6 +25,11 @@ class SourceFeature:
     `value` is the latest reading whose `available_at <= as_of` (None if nothing was knowable yet).
     `confidence` in [0,1] is the source's DECLARED self-assessment — low-confidence OSINT must earn
     its place via out-of-sample, so the gate can flag/weight it. Never look-ahead.
+
+    `observed_ts` is the source's TRUE observation timestamp (when the reading describes), distinct from
+    `available_at` (when we could first know it). They differ by the availability lag — e.g. a daily count
+    observed on day T is only available_at = T+1. Optional + backward-compatible: when a source cannot
+    distinguish the two it leaves this None and the consumer falls back to `available_at`.
     """
 
     name: str
@@ -36,6 +41,7 @@ class SourceFeature:
     transform_version: str | None
     prior: str
     low_confidence: bool = False
+    observed_ts: datetime | None = None
 
 
 @runtime_checkable
