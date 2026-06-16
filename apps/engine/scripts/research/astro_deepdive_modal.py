@@ -413,7 +413,7 @@ def _aggregate_and_deflate(config: DeepDiveConfig, trial_rows: list[dict], perm_
         survivors=int(len(survivors)),
         raw_best_sharpe=float(df["sharpe"].max()),
         perm_tested=int(len(perm_rows)),
-        note=("INVESTIGATE — forward-test required" if len(survivors)
+        note=("INVESTIGATE — paper proof required" if len(survivors)
               else "NULL — 0 survive deflation at the true trial count (astro closed)"),
     )
     return verdict
