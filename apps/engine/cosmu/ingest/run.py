@@ -41,9 +41,11 @@ from cosmu.data.sources.altdata_bridges import (
     ExoticControlsIngestProvider,
     GdeltCountsIngestProvider,
     GoogleTrendsIngestProvider,
+    JetColocationIngestProvider,
     OnchainBlockchainIngestProvider,
     OpenSkyDailyIngestProvider,
     RssNewsIngestProvider,
+    SecEdgarIngestProvider,
     StablecoinFlowsIngestProvider,
     WeatherOpenMeteoIngestProvider,
     WikipediaPageviewsIngestProvider,
@@ -170,6 +172,11 @@ class Providers:
     # DefiLlama stablecoin flow is knowable T+1 (no look-ahead). See feature_registry.py for per-feature priors. ---
     etf_flows: AltDataProvider = field(default_factory=EtfFlowsIngestProvider)
     stablecoin_flows: AltDataProvider = field(default_factory=StablecoinFlowsIngestProvider)
+    # --- OSINT corporate-intelligence (free, no key; PER-SYMBOL/equity). Both default to live; each degrades to
+    # [] offline (one dead source never aborts the pass). jet_colocation knowable T+1; insider_buy_ratio is PIT via
+    # each filing's acceptanceDateTime. See feature_registry.py for the per-feature priors. ---
+    jet_colocation: AltDataProvider = field(default_factory=JetColocationIngestProvider)
+    sec_edgar: AltDataProvider = field(default_factory=SecEdgarIngestProvider)
     llm: Callable[[str], StandardizedNews] | None = None
     # Typed event/news scorer LLM (the cheap-OpenRouter formatter). Key-gated → None without a key, so the
     # event scorer uses the deterministic lexicon. The LLM only standardizes text at ingest, never the money path.

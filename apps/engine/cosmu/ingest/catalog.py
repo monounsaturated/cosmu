@@ -384,6 +384,17 @@ def _fetch_stablecoin_flows(store: Any, symbols: list[str], providers: Any) -> i
     return total
 
 
+# OSINT corporate-intelligence (free, no key; PER-SYMBOL/equity). Each pulls one numeric metric per symbol via
+# ingest_numeric (scope = the ticker). jet_colocation is a daily count (knowable T+1); insider_buy_ratio is a
+# trailing-window ratio whose availability is each Form 4's acceptanceDateTime. Degrade to 0 appended offline.
+def _fetch_jet_colocation(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_numeric(store, providers.jet_colocation, symbols, "jet_colocation", provider_name="jet_colocation")
+
+
+def _fetch_sec_edgar(store: Any, symbols: list[str], providers: Any) -> int:
+    return ingest_numeric(store, providers.sec_edgar, symbols, "insider_buy_ratio", provider_name="sec_edgar")
+
+
 # --------------------------------------------------------------------------- historical backfill closures
 # These give the CURRENT-ONLY adapters real date-range depth: each source's `backfill(days=N)` pulls a
 # paginated history window (one request per series — the archive APIs serve a [start,end] range natively),
@@ -565,6 +576,9 @@ def managed_sources() -> dict[str, SourceSpec]:
         # --- TOOL-WAVE-C: 2 more free, no-key market-wide FLOW sources (PIT-honest; degrade to [] offline) ---
         SourceSpec("etf_flows", "alt", _ETF_FLOW_METRICS, _fetch_etf_flows, market_wide=True, per_symbol=False, note="FRED keyless macro-liquidity: Fed balance sheet (WALCL) + net liquidity (WALCL - TGA); free, no key, market-wide, knowable ~T+8."),
         SourceSpec("stablecoin_flows", "alt", _STABLECOIN_FLOW_METRICS, _fetch_stablecoin_flows, market_wide=True, per_symbol=False, note="DefiLlama stablecoin FLOW: day-over-day net mint/redeem + Ethereum chain-share; free, no key, market-wide, knowable T+1. Orthogonal to the level series stablecoin_mcap."),
+        # --- OSINT corporate-intelligence (free, no key; PER-SYMBOL/equity; PIT-honest; degrade to [] offline) ---
+        SourceSpec("jet_colocation", "alt", ("jet_colocation",), _fetch_jet_colocation, note="OSINT corporate-jet co-location intensity per equity ticker (free OpenSky; per-symbol; PIT T+1; low-confidence). Co-location with another tracked public company's jet = deal-proximity proxy."),
+        SourceSpec("sec_edgar", "alt", ("insider_buy_ratio",), _fetch_sec_edgar, note="SEC EDGAR Form 4 net insider buy/sell pressure per equity ticker (free, no key; per-symbol; PIT via filing acceptanceDateTime; low-confidence)."),
         # DORMANT (no-op fetch): disabled-but-banked metrics kept ROUTED so old rows stay readable and the
         # catalog↔store-routing lock-step holds, but NEVER re-ingested (mislabeled / phantom-duplicate honesty
         # fixes — see _DORMANT_METRICS). per_symbol=False so coverage uses the canonical store route, not a fan-out.

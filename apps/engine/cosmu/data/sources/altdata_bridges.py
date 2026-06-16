@@ -258,6 +258,36 @@ class ExoticControlsIngestProvider:
         return _snapshot(src, "MARKET")
 
 
+class JetColocationIngestProvider:
+    """fetch_series bridge for JetColocationSource (metric=jet_colocation). PER-SYMBOL/equity: scope = ticker.
+    Free OpenSky OSINT; offline-safe + degrades to [] (one dead source never aborts an ingest pass)."""
+
+    def __init__(self, *, offline: bool = False) -> None:
+        self.offline = offline
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "jet_colocation":
+            return []
+        from cosmu.data.sources.jet_colocation import JetColocationSource
+
+        return _snapshot(JetColocationSource(offline=self.offline), symbol)
+
+
+class SecEdgarIngestProvider:
+    """fetch_series bridge for SecEdgarInsiderSource (metric=insider_buy_ratio). PER-SYMBOL/equity: scope = ticker.
+    Free, no-key SEC EDGAR Form 4; offline-safe + degrades to [] (one dead source never aborts an ingest pass)."""
+
+    def __init__(self, *, offline: bool = False) -> None:
+        self.offline = offline
+
+    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
+        if metric != "insider_buy_ratio":
+            return []
+        from cosmu.data.sources.sec_edgar import SecEdgarInsiderSource
+
+        return _snapshot(SecEdgarInsiderSource(offline=self.offline), symbol)
+
+
 __all__ = [
     "CoinGeckoIngestProvider",
     "CryptoPanicIngestProvider",
@@ -266,9 +296,11 @@ __all__ = [
     "ExoticControlsIngestProvider",
     "GdeltCountsIngestProvider",
     "GoogleTrendsIngestProvider",
+    "JetColocationIngestProvider",
     "OnchainBlockchainIngestProvider",
     "OpenSkyDailyIngestProvider",
     "RssNewsIngestProvider",
+    "SecEdgarIngestProvider",
     "StablecoinFlowsIngestProvider",
     "WeatherOpenMeteoIngestProvider",
     "WikipediaPageviewsIngestProvider",

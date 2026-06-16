@@ -289,6 +289,11 @@ _STORE_PROVIDER_OF = {
     # provider bucket as defi_tvl / stablecoin_mcap — the orthogonal DERIVATIVE of the level, knowable T+1.
     "stablecoin_net_flow_usd": "defillama",
     "stablecoin_eth_share": "defillama",
+    # --- OSINT corporate-intelligence (free, no key, PIT-honest; PER-SYMBOL/equity; NOT market-wide) ---
+    # jet_colocation: corporate-jet co-location intensity (free OpenSky). insider_buy_ratio: SEC EDGAR Form 4
+    # net buy/sell pressure (free, no key). Both per equity ticker — deliberately ABSENT from _STORE_MARKET_WIDE.
+    "jet_colocation": "jet_colocation",
+    "insider_buy_ratio": "sec_edgar",
 }
 _STORE_MARKET_WIDE = frozenset({
     "fear_greed", "pm_risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",

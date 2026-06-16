@@ -343,6 +343,15 @@ def default_source_registry(
             market_wide=True,
         ))
 
+    # OSINT corporate-intelligence (free, no key, PIT-honest, PER-EQUITY-TICKER; low-confidence — the Gate
+    # falsifies OOS). jet_colocation: corporate-jet co-location intensity (OpenSky). insider_buy_ratio: SEC
+    # EDGAR Form 4 net buy/sell pressure. Both self-contained + offline-safe; additive — existing registrations untouched.
+    from cosmu.data.sources.jet_colocation import JetColocationSource
+    from cosmu.data.sources.sec_edgar import SecEdgarInsiderSource
+
+    reg.register(JetColocationSource())
+    reg.register(SecEdgarInsiderSource())
+
     return reg
 
 
