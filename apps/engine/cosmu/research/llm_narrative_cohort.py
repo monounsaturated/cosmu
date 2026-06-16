@@ -42,7 +42,7 @@ from cosmu.knowledge.store import Store
 from cosmu.lab.finder import build_grid
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.verdict_log import CohortPersist
-from cosmu.master.scorer import cscv_pbo, score
+from cosmu.master.scorer import cscv_pbo, deflated_sharpe_prob, score
 from cosmu.master.trials import record_trial, trial_stats
 from cosmu.research.carry_ablation import _resolve_params
 from cosmu.research.llm_narrative_pipeline import (
@@ -258,6 +258,24 @@ def run_cohort(
     candidates.append(c1)
     reports.append(r1)
 
+    # 2b) ADDITIONAL DISCONFIRMER: 20-seed placebo 95th-percentile floor.
+    # Running _make_member 20 times would add 20 more FDR candidates — instead, run backtest DIRECTLY without
+    # registering trials or creating Candidates, and extract DSR from the validation metrics only. We use
+    # `include_holdout=False` for speed (this is a diagnostic loop, not a new hypothesis family).
+    _PLACEBO_SEEDS = list(range(20))
+    placebo_dsrs: list[float] = []
+    _placebo_trials = trial_stats(store)  # snapshot once — same deflation context for every seed
+    for _seed in _PLACEBO_SEEDS:
+        _alt_p = _join(_time_shuffle(narrative_points, seed=_seed), clipped[symbol], symbol, NARRATIVE_FEATURE)
+        _res_p = run_strategy_backtest_detailed(
+            cand_spec, _resolve_params(cand_spec), clipped, fee_bps=fee_bps, alt_by_symbol=_alt_p,
+            include_holdout=False,
+        )
+        _dsr_p = deflated_sharpe_prob(_res_p.metrics, _placebo_trials)
+        placebo_dsrs.append(_dsr_p)
+    placebo_95th = sorted(placebo_dsrs)[int(0.95 * len(placebo_dsrs))]
+    placebo_95pct_fails = r0.deflated_sharpe_prob <= placebo_95th
+
     # 3) DISCONFIRMER — momentum-only control (no narrative leg; alt empty so its ret_Nd legs are native).
     c2, r2 = _make_member("disc-momentum-only-control", mom_spec, clipped, fee_bps=fee_bps, alt={}, store=store, gates=gates)
     candidates.append(c2)
@@ -293,10 +311,12 @@ def run_cohort(
     disc = {
         "time_shuffle_placebo": f"{'PASS' if not placebo_reproduces else 'FAIL-reproduces'} "
                                 f"(cand dsr {cand_dsr:.3f} vs placebo {r1.deflated_sharpe_prob:.3f})",
+        "time_shuffle_95pct": f"{'PASS' if not placebo_95pct_fails else 'FAIL-below-95pct'} "
+                              f"(cand dsr {cand_dsr:.3f} vs placebo 95th {placebo_95th:.3f}, n={len(placebo_dsrs)} seeds)",
         "beat_momentum_only": f"{'PASS' if beats_mom else 'FAIL'} "
                               f"(cand dsr {cand_dsr:.3f} vs momentum {r2.deflated_sharpe_prob:.3f})",
     }
-    falsified = placebo_reproduces or (not beats_mom)
+    falsified = placebo_reproduces or placebo_95pct_fails or (not beats_mom)
 
     promoted = [r for r in reports if r.promoted and not r.name.startswith("disc-")]
     if promoted and not falsified:

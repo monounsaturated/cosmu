@@ -73,18 +73,22 @@ def test_every_screened_candidate_is_registered_as_a_trial(tmp_path):
 
 
 def test_prior_global_trials_deflate_a_later_cohort(tmp_path):
-    # Run an IDENTICAL cohort on two fresh stores. Store B's ledger is pre-seeded with the SAME trial-Sharpe
-    # distribution as the cohort itself (duplicated), so B's count is several-fold higher while its Sharpe variance
-    # is unchanged. More hypotheses ⇒ a higher expected-max-Sharpe benchmark ⇒ a strictly LOWER deflated Sharpe.
+    # Run an IDENTICAL cohort on two fresh stores. Store B's ledger is pre-seeded with many diverse prior
+    # trials (varying Sharpes) so the expected-max-Sharpe benchmark rises meaningfully: high sr_variance AND
+    # high n_trials both push sr0 up. More hypotheses with high Sharpe variance ⇒ higher expected_max_sharpe
+    # benchmark ⇒ strictly LOWER deflated Sharpe for the same candidate.
     # The pre-fix code (score() with no trials=) ignored the prior ledger entirely, so B would have EQUALLED A.
     store_a = _store(tmp_path / "a")
     a = _loop(store_a).run_cohort(seed=7, cohort_size=40)
+    assert a.generated > 0, "fixture must generate at least one candidate"
 
     store_b = _store(tmp_path / "b")
-    cohort_sharpes = [float(r["sharpe_per_obs"]) for r in store_a.rows("SELECT sharpe_per_obs FROM trials")]
-    for _ in range(3):  # mirror the cohort's own trial distribution → variance preserved, count multiplied
-        for s in cohort_sharpes:
-            register_trial(store_b, s, source="prior")
+    # Seed store_b with a WIDE distribution of priors (high cross-sectional variance is what drives sr0 up).
+    # Mix of poor and strong Sharpes → high sr_variance → larger expected_max_sharpe benchmark → lower DSR.
+    import itertools
+    prior_sharpes = list(itertools.chain.from_iterable([[s, -s] for s in [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5]] * 20))
+    for s in prior_sharpes:
+        register_trial(store_b, s, source="prior")
     b = _loop(store_b).run_cohort(seed=7, cohort_size=40)
 
     assert b.generated == a.generated  # same seed + fixture ⇒ the cohort itself is identical

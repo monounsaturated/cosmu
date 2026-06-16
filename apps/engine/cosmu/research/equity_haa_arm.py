@@ -90,7 +90,7 @@ def _backtest_row(version_id: str, v: dict) -> dict:
         "regime_label": "mixed",
         "folds_positive": 6,
         "passed_gates": 1,    # cleared the DEPLOYMENT bar (positive OOS net of fees + risk-adjusted beat), not the 0.95 Gate
-        "holdout_passed": 1,
+        "holdout_passed": 1 if (oos.total_return > 0 and oos.ann_sharpe > 0) else 0,  # REAL OOS leg positive net of fees + positive Sharpe
         "created_at": utcnow(),
     }
 

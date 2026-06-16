@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS tracks (
   starting_capital NUMERIC NOT NULL DEFAULT 100000,
   equity NUMERIC NOT NULL,
   return_pct NUMERIC NOT NULL,
+  target_vol REAL,
   updated_at TEXT NOT NULL
 );
 

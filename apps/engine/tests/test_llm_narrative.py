@@ -156,8 +156,8 @@ def test_cohort_runs_with_real_holdout_per_member():
     assert rep.verdict in {"PASS", "FAIL", "FAIL-DISCONFIRMED"}
     names = {m.name for m in rep.members}
     assert names == {"llm-narrative-pressure-long", "disc-narrative-time-shuffle", "disc-momentum-only-control"}
-    # both disconfirmers are reported
-    assert set(rep.disconfirmers) == {"time_shuffle_placebo", "beat_momentum_only"}
+    # all three disconfirmers are reported (single-seed placebo + 20-seed 95th-pct + momentum control)
+    assert set(rep.disconfirmers) == {"time_shuffle_placebo", "time_shuffle_95pct", "beat_momentum_only"}
     # holdout DSR is a real number per member (the field exists and is populated, not a hardcoded sentinel)
     assert all(isinstance(m.holdout_deflated_sharpe, float) for m in rep.members)
 
