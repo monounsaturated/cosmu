@@ -180,6 +180,62 @@ def perp_gate_sweep() -> int:
     return _run(["cosmu.research.perp_gate_sweep"])
 
 
+# ---------------------------------------------------------------------------
+# Matrix sweep — parallel fan-out of the strategy × asset × timeframe hunt.
+# CAVEAT: only daily (1d) bars are baked into the Modal image (COSMU_BARS_SRC bundles the bar
+# cache; intraday frames are excluded from the image to keep the layer small). A pure 1d sweep
+# works out-of-the-box. For intraday frames (4h, 1h) the bars must be available via the R2 cold
+# store (COSMU_BARS_SRC pointing to an R2 path) — set COSMU_BARS_SRC to an r2:// prefix and the
+# loader will pull from R2. Until then, intraday cells honestly return no-data rather than crashing.
+# ---------------------------------------------------------------------------
+
+@app.function(**_HEAVY)
+def matrix_cell(asset: str, timeframe: str) -> dict:
+    """Single (asset, timeframe) cell of the strategy × universe sweep — the self-contained unit
+    Modal.map fans out in parallel. Runs every inbox StrategySpec through the full honest Gate
+    (deflated Sharpe + CSCV-PBO + holdout + BH-FDR, net of real fees) on the given slice and
+    returns the MatrixResult as a plain dict (dataclasses.asdict) so the caller can aggregate.
+    Each cell writes its gate_verdicts row when persist=True (the default in run_matrix_cell).
+    NEVER fires a live order — deterministic research only."""
+    import dataclasses
+
+    from cosmu.research.matrix_search import run_matrix_cell
+    return dataclasses.asdict(run_matrix_cell(asset, timeframe))
+
+
+@app.local_entrypoint()
+def sweep(assets: str = "", timeframes: str = "1d") -> None:
+    """Fan out the matrix sweep across (asset × timeframe) cells in parallel using Modal.starmap.
+    Default asset universe: the full 30-asset PERP_UNIVERSE (the unsearched broad set) + equity
+    ETFs (SPY, QQQ, IWM, GLD, TLT) which carry the alt-joined feature space (~75 features not yet
+    exhausted by the prior bar-TA grid). Override via --assets BTC,ETH,SOL --timeframes 1d,4h.
+    Example: modal run apps/engine/remote/app.py::sweep --assets BTCUSDT,ETHUSDT --timeframes 1d
+    Note: the pnpm modal:sweep shortcut runs the full broad universe with 1d bars."""
+    # Broad default: full perp universe + equity ETFs (the unsearched territory).
+    # These are NOT the exhausted bar-TA grid (BTC/ETH/SOL/BNB/XRP/ADA/AVAX/LINK + SPY/QQQ).
+    _BROAD_ASSETS = [
+        # --- crypto perps (30 assets — volume-ordered; bar cache bundled for 1d via COSMU_BARS_SRC) ---
+        "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
+        "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT", "DOTUSDT",
+        "TRXUSDT", "LTCUSDT", "BCHUSDT", "NEARUSDT", "UNIUSDT",
+        "ATOMUSDT", "APTUSDT", "ARBUSDT", "OPUSDT", "FILUSDT",
+        "INJUSDT", "SUIUSDT", "SEIUSDT", "TIAUSDT", "AAVEUSDT",
+        "ETCUSDT", "XLMUSDT", "ICPUSDT", "RUNEUSDT", "GALAUSDT",
+        # --- equity ETFs (alt-joined: macro + sector features; bar cache via load_tr_bars) ---
+        "SPY", "QQQ", "IWM", "GLD", "TLT", "EEM", "XLF", "XLK",
+    ]
+    asset_list = [a.strip() for a in assets.split(",") if a.strip()] if assets else _BROAD_ASSETS
+    tf_list = [t.strip() for t in timeframes.split(",") if t.strip()]
+    cells = [(a, tf) for a in asset_list for tf in tf_list]
+    print(f"[sweep] fanning out {len(cells)} cells ({len(asset_list)} assets × {len(tf_list)} timeframes) via Modal.starmap")
+    for r in matrix_cell.starmap(cells):
+        survivors = r.get("survivors") or []
+        verdict = "SURVIVOR" if survivors else ("no-survivor" if r.get("n_traded") else "no-data")
+        print(f"  {r.get('asset', '?')}@{r.get('timeframe', '?'):4s}  {verdict:12s}  "
+              f"traded={r.get('n_traded', 0):3d}  promoted={r.get('n_promoted', 0):2d}  "
+              f"best_dsr={r.get('best_dsr', 0.0):.4f}  survivors={survivors}")
+
+
 @app.function(**_LAKE)
 def export_lake() -> int:
     """Refresh the COLD R2 Parquet lake from Postgres, OFF the operator's Mac. DuckDB's postgres-scanner streams
