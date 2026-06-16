@@ -47,13 +47,16 @@ def identify_rejects(
     promotions: list[Any],
     candidates: list[Any] | None = None,
     *,
-    band_min: float = 0.90,
-    band_max: float = 0.95,
+    band_min: float = 0.80,   # WIDENED from 0.90 (2026-06-16): this is a ZERO-CAPITAL observe net whose only job is
+    band_max: float = 0.95,   # to MEASURE the gate's Type-II rate. The quality gates below (survived-FDR + no
+    #                           economic-floor fail) already guarantee every watched row is a CLEAN statistical
+    #                           near-miss, never a real negative — so band_min only sets how far down the DSR ladder
+    #                           we look. Observation is free and the directive is "don't over-discard," so err WIDE.
 ) -> list[RejectsCandidate]:
     """The watch-list selector. A Promotion is a CLOSE reject (a Type-II candidate) iff ALL hold:
       - it was NOT promoted (the gate rejected it),
-      - its deflated-Sharpe probability is in the watch band [band_min, band_max) — it cleared most of the way to
-        the 0.95 promotion floor but fell short,
+      - its deflated-Sharpe probability is in the watch band [band_min, band_max) — it cleared a SOLID majority of
+        the way to the 0.95 promotion floor (default ≥0.80) but fell short,
       - it SURVIVED Benjamini-Hochberg FDR (so it is not a multiple-testing artifact — a reject that flunked FDR
         is correctly dead, never a false negative),
       - NONE of its rejection reasons is a CRITICAL filter (max_drawdown / buy_and_hold / min_trades / holdout):

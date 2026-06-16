@@ -279,3 +279,25 @@ def test_arm_mark_advances_trajectory(monkeypatch):
     assert out["marked"] is True
     snaps = store.rows("SELECT 1 FROM portfolio_snapshots WHERE scope='track' AND ref_id=?", (out["version_id"],))
     assert len(snaps) == 95  # rewritten to the freshly-validated stream length, not duplicated
+
+
+def test_full_stream_deflated_floor_rejects_random_walk_noise():
+    """The holdout floor ALONE leaves ~6.5% of pure random walks deployable (the held-out slice is small + noisy).
+    The DEFLATED FULL-stream floor (charges the DEPLOY_CADENCE_TRIALS cadence search) closes that hole: a zero-edge
+    random-walk cross-section is NOT deployable, and the constants are pinned (recalibrating = changing them + the
+    evidence). Measured: random-walk deployable rate ~20% -> ~0.1% with this floor. See RESEARCH_LESSONS §2b."""
+    import random
+
+    assert pmn.DEPLOY_MIN_FULL_DSR == 0.95   # the locked full-stream floor (aligns with the gate's deflated-Sharpe bar)
+    assert pmn.DEPLOY_CADENCE_TRIALS == 4    # cadences 2..5 are searchable -> charge the trial count
+    rng = random.Random(0)
+    market: dict = {}
+    for j in range(12):
+        px, closes = 100.0, []
+        for _ in range(1200):
+            px *= (1.0 + rng.gauss(0, 0.02))  # zero-drift geometric random walk = NO edge
+            closes.append(px)
+        market[f"SYM{j}USDT"] = _bars(closes)
+    v = pmn.validate(market, _SyntheticFunding(market))
+    assert v["deployable"] is False, f"a zero-edge random walk cleared the hardened deploy bar — LEAK: full_dsr={v.get('full_dsr')}"
+    assert v["effect_size_ok"] is False  # the full-stream deflated floor is what rejects it

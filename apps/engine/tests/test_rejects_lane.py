@@ -70,6 +70,21 @@ def test_identify_rejects_bands_a_synthetic_cohort():
         assert not CRITICAL_REJECT_REASONS.intersection(r.reasons)
 
 
+def test_default_band_is_widened_to_080_for_the_type_ii_observe_net():
+    """The production caller (verdict_log) uses the DEFAULT band, WIDENED 0.90→0.80 (2026-06-16). The lane is
+    zero-capital observation, so we err WIDE to MEASURE Type-II — but only among CLEAN near-misses: the quality
+    gates still exclude FDR-failers and economic-floor rejects, so no real negative is ever watched."""
+    promos = [
+        _Promo("near_082", promoted=False, deflated_sharpe_prob=0.82, survived_fdr=True, reasons=["deflated_sharpe"]),
+        _Promo("below_078", promoted=False, deflated_sharpe_prob=0.78, survived_fdr=True, reasons=["deflated_sharpe"]),
+        _Promo("near_082_no_fdr", promoted=False, deflated_sharpe_prob=0.82, survived_fdr=False, reasons=["fdr"]),
+        _Promo("near_082_econ", promoted=False, deflated_sharpe_prob=0.82, survived_fdr=True, reasons=["buy_and_hold"]),
+    ]
+    # DEFAULT band (no band_min/band_max passed) — the wider net catches 0.82 but never a real negative.
+    watched = {r.candidate_id for r in identify_rejects(promos)}
+    assert watched == {"near_082"}  # 0.78 still below; FDR-fail + economic-floor still excluded
+
+
 def test_identify_rejects_respects_custom_band_and_degenerate_band():
     promos = [
         _Promo("a", promoted=False, deflated_sharpe_prob=0.85, survived_fdr=True, reasons=["pbo"]),
