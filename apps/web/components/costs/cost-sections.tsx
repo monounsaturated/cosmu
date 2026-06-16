@@ -9,7 +9,7 @@
 // a fabricated curve or number. Empty / zero states say so plainly.
 
 import type { ReactNode } from "react";
-import type { CostByCategory, InfraLine, VendorActual } from "@cosmu/contracts-ts";
+import type { CostByCategory, InfraLine, SpendPoint, VendorActual } from "@cosmu/contracts-ts";
 import type { SupplierRow } from "@/app/data/supplier-costs";
 import { EquityChart } from "@/components/charts/equity-chart";
 import { cn, formatUsd, formatSigned, timeAgo } from "@/lib/utils";
@@ -68,11 +68,27 @@ export function StatStrip({ cells }: { cells: StatCell[] }) {
 }
 
 // ─── Spend chart card ───────────────────────────────────────────────────────────
-// The mockup's `costChartCard()` fronts a cumulative-spend curve. The CostsResponse contract carries NO
-// dated spend ledger, so we render the EquityChart's honest empty state (values=[]) — never a fabricated
-// curve. `totalToDate` is the one real figure (booked spend), surfaced in the hero without inventing a
-// trend.
-export function SpendChartCard({ totalToDate }: { totalToDate: number | null }) {
+// The mockup's `costChartCard()` fronts a cumulative-spend curve. `spendSeries` comes from the
+// CostsResponse.spend_series field (monthly booked actuals). Falls back to an honest empty state when
+// no points exist — never fabricates a curve.
+export function SpendChartCard({
+  totalToDate,
+  spendSeries,
+}: {
+  totalToDate: number | null;
+  spendSeries?: SpendPoint[] | null;
+}) {
+  // Build the EquityChart input: monotonically increasing cumulative values so the chart reads as a
+  // running total (equity-curve style). Each data point is the sum of all months up to that month.
+  const chartValues: number[] = [];
+  if (spendSeries && spendSeries.length > 0) {
+    let running = 0;
+    for (const pt of spendSeries) {
+      running += pt.amount_usd;
+      chartValues.push(running);
+    }
+  }
+
   return (
     <div className="card dh" style={{ padding: "14px 16px", marginBottom: "var(--gap)" }}>
       <div className="hero-top">
@@ -85,11 +101,16 @@ export function SpendChartCard({ totalToDate }: { totalToDate: number | null }) 
             </span>
           </div>
         </div>
+        {spendSeries && spendSeries.length > 0 ? (
+          <span className="quiet" style={{ fontSize: 10.5, alignSelf: "flex-start", marginTop: 4 }}>
+            {spendSeries.length} months of actuals
+          </span>
+        ) : null}
       </div>
       <EquityChart
-        values={[]}
+        values={chartValues}
         height={150}
-        emptyHint="No dated spend curve yet — the engine reports point-in-time totals, not a daily ledger. Every figure below is a real total; nothing here is a fabricated trend."
+        emptyHint="No dated spend recorded yet — the engine books actuals as LLM calls and trading fees are logged. Every figure below is a real total; nothing here is fabricated."
       />
     </div>
   );

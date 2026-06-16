@@ -302,6 +302,7 @@ export interface CostsResponse {
   llm_calls: LlmCallSummary;
   opex_vs_alpha: number;
   per_strategy: CostPerStrategy[];
+  spend_series: SpendPoint[];
   total_usd: number;
   vendor_actuals: VendorActual[];
 }
@@ -1230,6 +1231,11 @@ export interface SourceTrustRow {
   summary: string;
   tier: string;
   trust_score: number;
+}
+
+export interface SpendPoint {
+  amount_usd: number;
+  month: string;
 }
 
 export interface StrategyDetailResponse {

@@ -127,10 +127,11 @@ def paper_mark() -> int:
     return _run(["cosmu.orchestrator.loop"])
 
 
-@app.function(**_HEAVY)
+@app.function(schedule=modal.Cron("0 */6 * * *"), **_HEAVY)
 def cost_refresh() -> int:
     """Fetch live vendor spend (OpenRouter, Railway, Modal, xAI ledger), check budget thresholds,
-    emit Slack alerts + recommendation rows. Mirrors the 6h Railway cron."""
+    emit Slack alerts + recommendation rows. Runs every 6 h via Modal Cron (same cadence as the
+    Railway cron) so vendor_actuals stay fresh in the /costs dashboard."""
     return _run(["cosmu.costs.refresh"])
 
 

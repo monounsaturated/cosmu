@@ -90,6 +90,7 @@ from cosmu.api.models.costs import (  # noqa: F401
     CostsResponse,
     InfraLine,
     LlmCallSummary,
+    SpendPoint,
     VendorActual,
 )
 from cosmu.api.models.credibility import (  # noqa: F401
@@ -327,6 +328,7 @@ __all__ = [
     "CostsResponse",
     "InfraLine",
     "LlmCallSummary",
+    "SpendPoint",
     "VendorActual",
     # credibility
     "CredibilityResponse",

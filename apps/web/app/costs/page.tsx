@@ -79,13 +79,13 @@ async function CostsData() {
       tone: vsEquity !== null && vsEquity <= 2 ? "up" : vsEquity !== null && vsEquity > 10 ? "dn" : undefined,
     },
     {
-      label: "LLM spend",
+      label: "AI spend",
       value: !connected ? "—" : costs.llm_calls.total_cost === 0 ? "$0" : formatUsd(costs.llm_calls.total_cost, 2),
       sub: !connected
         ? "engine not connected"
         : costs.llm_calls.call_count === 0
           ? "no calls yet"
-          : `${costs.llm_calls.call_count.toLocaleString()} calls · free tier`,
+          : `${costs.llm_calls.call_count.toLocaleString()} calls`,
     },
   ];
 
@@ -96,7 +96,7 @@ async function CostsData() {
       {!connected ? <NotConnectedBanner configured={engineConfigured} /> : null}
 
       {/* 0 · spend chart ON TOP (v18 layout: chart, then the rows of boxes). */}
-      <SpendChartCard totalToDate={totalSpend} />
+      <SpendChartCard totalToDate={totalSpend} spendSeries={connected ? costs.spend_series : null} />
 
       {/* 1 · stat strip — real totals, honest "—" where a source is missing. */}
       <StatStrip cells={cells} />
