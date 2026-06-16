@@ -3821,6 +3821,17 @@
             "title": "Live Ready",
             "type": "boolean"
           },
+          "max_dd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Dd"
+          },
           "name": {
             "title": "Name",
             "type": "string"

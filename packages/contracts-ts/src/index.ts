@@ -749,6 +749,7 @@ export interface LeaderboardRow {
   has_paper_fills?: boolean;
   lineage: string;
   live_ready: boolean;
+  max_dd?: number | null;
   name: string;
   net_pct: number;
   oos_window_days?: number | null;

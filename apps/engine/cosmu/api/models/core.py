@@ -99,6 +99,9 @@ class LeaderboardRow(BaseModel):
     pnl_usd: float | None = None
     pnl_pct: float | None = None
     oos_window_days: float | None = None
+    # Max drawdown from the STRONGEST backtest (peak-to-trough fraction, 0..1). Surfaced so the Strategies
+    # table can show the real worst-case drop alongside the OOS return and DSR — honest "—" when no backtest.
+    max_dd: float | None = None
     # Faceted taxonomy (cosmu/strategy/taxonomy.py), all DERIVED from the spec — never hand-tagged. The
     # Strategies surface filters on these real fields. `signal_family` is the primary filter (from the
     # named features the spec references); the rest are orthogonal facets.

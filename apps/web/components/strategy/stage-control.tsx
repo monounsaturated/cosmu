@@ -106,9 +106,9 @@ export function StageControl({
       >
         {live ? (
           <p className="ai-body">
-            To stop <strong style={{ color: "var(--fg)" }}>{strategyName}</strong> live, use the{" "}
-            <strong style={{ color: "var(--fg)" }}>Live</strong> page&apos;s Stop (or{" "}
-            <span className="mono">cosmu live stop</span> from Commands) — that is the one path that moves{" "}
+            To stop <strong style={{ color: "var(--fg)" }}>{strategyName}</strong> live, go to the{" "}
+            <strong style={{ color: "var(--fg)" }}>Live</strong> page and press the{" "}
+            <strong className="dn">Stop</strong> button in the top-right — that is the one path that moves{" "}
             <strong className="dn">real money</strong>, with the hard caps applied. This sheet shows the stage; it
             never fires orders itself, so there&apos;s no one-click sell here by design.
           </p>

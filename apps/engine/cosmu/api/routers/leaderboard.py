@@ -62,7 +62,7 @@ def leaderboard() -> LeaderboardResponse:
     rows = store.rows(
         """
         SELECT sv.id, s.name, sv.status, sv.spec, sv.origin, b.deflated_sharpe, b.oos_return, b.pbo,
-               b.oos_start, b.oos_end, b.num_trades AS bt_trades, ev.funded_at,
+               b.oos_start, b.oos_end, b.num_trades AS bt_trades, b.max_dd AS bt_max_dd, ev.funded_at,
                tr.starting_capital, ps.equity AS tr_equity,
                EXISTS(SELECT 1 FROM executions e WHERE e.strategy_version_id = sv.id
                       AND CAST(e.is_paper AS INTEGER) = 1) AS has_paper_fills,
@@ -178,6 +178,9 @@ def leaderboard() -> LeaderboardResponse:
                 pnl_usd=pnl_usd,
                 pnl_pct=paper_return_pct,
                 oos_window_days=oos_window_days,
+                # Max drawdown from the strongest backtest (already selected via bt_max_dd). Surfaced so the
+                # Strategies table can show the worst-case drop alongside the OOS return. None when no backtest.
+                max_dd=_money_or_none(row["bt_max_dd"]),
                 signal_family=facets.signal_family,
                 signal_family_label=facets.signal_family_label,
                 features=facets.features,
