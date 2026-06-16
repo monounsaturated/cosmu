@@ -1,4 +1,5 @@
 import type { Stage } from "./stage-control";
+import { fmtTz } from "@/lib/utils";
 
 // module: AiSummary — the v18 strat-sheet summary block (Iris Bento `.psec.ai-sec`). ALWAYS the SAME two-part
 // structure, two paragraphs:
@@ -104,7 +105,7 @@ export function AiSummary({
           <p className="ai-body" style={{ whiteSpace: "pre-wrap" }}>{summaryMd}</p>
           {updatedAt ? (
             <div className="quiet" style={{ fontSize: 9.5, marginTop: 5 }}>
-              written <time dateTime={updatedAt}>{new Date(updatedAt).toLocaleString("en-US")}</time>
+              written <time dateTime={updatedAt}>{fmtTz(updatedAt, { dateStyle: "medium", timeStyle: "short" })}</time>
             </div>
           ) : null}
         </>

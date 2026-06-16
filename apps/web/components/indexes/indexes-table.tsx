@@ -8,7 +8,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { IndexCard } from "@cosmu/contracts-ts";
-import { cn } from "@/lib/utils";
+import { cn, fmtTz } from "@/lib/utils";
 import { DefineIndexForm } from "./define-index";
 
 const KIND_LABEL: Record<string, string> = {
@@ -90,7 +90,7 @@ export function IndexesTable({ indexes }: { indexes: IndexCard[] }) {
                         {idx.health.latest_value === null ? <span className="quiet">—</span> : idx.health.latest_value.toFixed(3)}
                       </td>
                       <td><Badge map={FRESHNESS_BADGE} value={idx.health.freshness}
-                        tip={idx.health.latest_at ? `last point ${new Date(idx.health.latest_at).toLocaleString()}` : "never computed yet"} /></td>
+                        tip={idx.health.latest_at ? `last point ${fmtTz(idx.health.latest_at, { dateStyle: "medium", timeStyle: "short" })}` : "never computed yet"} /></td>
                       <td>
                         <Badge map={RELIABILITY_BADGE} value={idx.health.reliability}
                           tip={idx.health.stability !== null ? `recent-value stdev ${idx.health.stability.toFixed(3)} over ${idx.health.n_points} points` : "needs ≥3 points to assess"} />
