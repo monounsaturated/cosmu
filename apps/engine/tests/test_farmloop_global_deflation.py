@@ -107,3 +107,39 @@ def test_sequential_cohorts_accumulate_the_ledger(tmp_path):
     after_second = store.row("SELECT COUNT(*) AS n FROM trials")["n"]
     assert after_first == a.generated
     assert after_second == a.generated + b.generated
+
+
+class _FlatProvider:
+    """A constant-price market: every bar OHLC == 100, so no indicator ever crosses a threshold → ZERO trades
+    on every symbol → BacktestResult.min_symbol_trades == 0 for every candidate (the per-symbol floor's worst
+    case)."""
+
+    def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        ts = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+        flat = Decimal("100")
+        return [
+            Bar(ts=ts + dt.timedelta(days=i), open=flat, high=flat, low=flat, close=flat, volume=Decimal("1000"))
+            for i in range(limit)
+        ]
+
+
+def test_per_symbol_floor_kills_zero_trade_candidates_and_opens_no_track(tmp_path):
+    # The per-symbol trade floor (loop.py: min_symbol_trades < _MIN_TRADES_PER_SYMBOL) must KILL a candidate
+    # that doesn't trade enough on its thinnest symbol — here a flat market gives every spec zero trades, so
+    # min_symbol_trades == 0 for all. Each is still registered as a trial (the deflation ledger never
+    # under-counts) but is killed with reason 'min_trades_per_symbol' and NEVER opens a paper track.
+    store = _store(tmp_path / "flat")
+    loop = FarmLoop(settings=store.settings, store=store, market_data=_FlatProvider())
+    summary = loop.run_cohort(seed=7, cohort_size=20)
+
+    assert summary.generated > 0, "specs must be screened (compile is independent of trade count)"
+    assert not summary.survivors, "a flat market has no edge — nothing may pass"
+    # every screened candidate was registered as a trial even though it was floored
+    assert store.row("SELECT COUNT(*) AS n FROM trials")["n"] == summary.generated
+    # at least one version killed specifically on the per-symbol floor (zero trades → min_symbol_trades 0)
+    floored = store.rows(
+        "SELECT kill_reason FROM strategy_versions WHERE status='killed' AND kill_reason LIKE '%min_trades_per_symbol%'"
+    )
+    assert floored, "the per-symbol floor must record 'min_trades_per_symbol' as a kill reason"
+    # a floor-killed cohort opens NO paper track (the floor gates before any track is created)
+    assert store.row("SELECT COUNT(*) AS n FROM tracks")["n"] == 0

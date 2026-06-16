@@ -274,7 +274,18 @@ def run_cohort(
         _dsr_p = deflated_sharpe_prob(_res_p.metrics, _placebo_trials)
         placebo_dsrs.append(_dsr_p)
     placebo_95th = sorted(placebo_dsrs)[int(0.95 * len(placebo_dsrs))]
-    placebo_95pct_fails = r0.deflated_sharpe_prob <= placebo_95th
+    # Score the candidate the SAME way as the placebos so the max-statistic test is SYMMETRIC: one single
+    # mid-range param point (NOT r0's grid-MAX over up-to-64 variants — that would be an unfair max-over-grid
+    # vs single-shot comparison), deflated against the SAME `_placebo_trials` snapshot the placebos used (r0's
+    # DSR was captured under a smaller trial count, and promote_cohort below mutates r0.deflated_sharpe_prob in
+    # place). Same spec, same params, same trial context — the ONLY difference vs a placebo is the real (vs
+    # time-shuffled) narrative join, which is exactly the effect under test.
+    _res_cand = run_strategy_backtest_detailed(
+        cand_spec, _resolve_params(cand_spec), clipped, fee_bps=fee_bps, alt_by_symbol=alt_candidate,
+        include_holdout=False,
+    )
+    _cand_point_dsr = deflated_sharpe_prob(_res_cand.metrics, _placebo_trials)
+    placebo_95pct_fails = _cand_point_dsr <= placebo_95th
 
     # 3) DISCONFIRMER — momentum-only control (no narrative leg; alt empty so its ret_Nd legs are native).
     c2, r2 = _make_member("disc-momentum-only-control", mom_spec, clipped, fee_bps=fee_bps, alt={}, store=store, gates=gates)
@@ -312,7 +323,7 @@ def run_cohort(
         "time_shuffle_placebo": f"{'PASS' if not placebo_reproduces else 'FAIL-reproduces'} "
                                 f"(cand dsr {cand_dsr:.3f} vs placebo {r1.deflated_sharpe_prob:.3f})",
         "time_shuffle_95pct": f"{'PASS' if not placebo_95pct_fails else 'FAIL-below-95pct'} "
-                              f"(cand dsr {cand_dsr:.3f} vs placebo 95th {placebo_95th:.3f}, n={len(placebo_dsrs)} seeds)",
+                              f"(cand point-dsr {_cand_point_dsr:.3f} vs placebo 95th {placebo_95th:.3f}, n={len(placebo_dsrs)} seeds)",
         "beat_momentum_only": f"{'PASS' if beats_mom else 'FAIL'} "
                               f"(cand dsr {cand_dsr:.3f} vs momentum {r2.deflated_sharpe_prob:.3f})",
     }
