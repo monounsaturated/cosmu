@@ -12,21 +12,14 @@ from typing import Any
 
 
 # ---------------------------------------------------------------------------
-# Monthly infra lines from MASTER_PLAN §9 (source of truth).
-# These are STATIC estimates — no live billing API. We seed them once on first
-# call and update/re-seed at most once per calendar month (idempotent).
+# Monthly infra lines — sourced from cosmu.costs.operating_costs (SINGLE SOURCE
+# OF TRUTH). These are STATIC estimates — no live billing API. We seed them once
+# on first call and update/re-seed at most once per calendar month (idempotent).
+# Flat LLM subs (Claude, Cursor) live in operating_costs.FLAT_SUBSCRIPTIONS and
+# are owned by the vendor fetchers, NOT here, so each is counted exactly once.
 # ---------------------------------------------------------------------------
 
-_INFRA_LINES: list[dict[str, Any]] = [
-    {"vendor": "Railway",   "category": "infra", "amount_min": 5.0,  "amount_max": 20.0, "note": "always-on engine API + crons"},
-    {"vendor": "Supabase",  "category": "infra", "amount_min": 0.0,  "amount_max": 25.0, "note": "Postgres + pgvector; free tier → Pro"},
-    {"vendor": "Vercel",    "category": "infra", "amount_min": 0.0,  "amount_max": 0.0,  "note": "web; hobby tier — $0"},
-    {"vendor": "Modal",     "category": "infra", "amount_min": 0.0,  "amount_max": 30.0, "note": "bursty heavy compute (gate sweeps, ML, backtest); ~$0 idle, scale-to-zero"},
-    {"vendor": "FRED",      "category": "data",  "amount_min": 0.0,  "amount_max": 0.0,  "note": "macro — free"},
-    {"vendor": "GDELT",     "category": "data",  "amount_min": 0.0,  "amount_max": 0.0,  "note": "news — free"},
-    {"vendor": "Polymarket", "category": "data", "amount_min": 0.0,  "amount_max": 0.0,  "note": "prediction markets — free"},
-    {"vendor": "LunarCrush", "category": "data", "amount_min": 0.0,  "amount_max": 24.0, "note": "social signals — optional paid tier"},
-]
+from cosmu.costs.operating_costs import INFRA_DATA_LINES as _INFRA_LINES
 
 # ---------------------------------------------------------------------------
 # LLM cost table: ($/1k_input_tokens, $/1k_output_tokens) by model id prefix.
