@@ -18,24 +18,76 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _INFRA_LINES: list[dict[str, Any]] = [
-    {"vendor": "Railway",  "category": "infra",  "amount_min": 5.0,  "amount_max": 20.0,  "note": "always-on engine API + crons"},
-    {"vendor": "Supabase", "category": "infra",  "amount_min": 0.0,  "amount_max": 25.0,  "note": "Postgres + pgvector; free tier → Pro"},
-    {"vendor": "Vercel",   "category": "infra",  "amount_min": 0.0,  "amount_max": 0.0,   "note": "web; hobby tier — $0"},
-    {"vendor": "Fly.io",   "category": "infra",  "amount_min": 25.0, "amount_max": 35.0,  "note": "24/7 4 GB sims/ML/scrape worker (planned)"},
-    {"vendor": "FRED",     "category": "data",   "amount_min": 0.0,  "amount_max": 0.0,   "note": "macro — free"},
-    {"vendor": "GDELT",    "category": "data",   "amount_min": 0.0,  "amount_max": 0.0,   "note": "news — free"},
-    {"vendor": "Polymarket","category": "data",  "amount_min": 0.0,  "amount_max": 0.0,   "note": "prediction markets — free"},
-    {"vendor": "LunarCrush","category": "data",  "amount_min": 0.0,  "amount_max": 24.0,  "note": "social signals — optional paid tier"},
+    {"vendor": "Railway",   "category": "infra", "amount_min": 5.0,  "amount_max": 20.0, "note": "always-on engine API + crons"},
+    {"vendor": "Supabase",  "category": "infra", "amount_min": 0.0,  "amount_max": 25.0, "note": "Postgres + pgvector; free tier → Pro"},
+    {"vendor": "Vercel",    "category": "infra", "amount_min": 0.0,  "amount_max": 0.0,  "note": "web; hobby tier — $0"},
+    {"vendor": "Modal",     "category": "infra", "amount_min": 0.0,  "amount_max": 30.0, "note": "bursty heavy compute (gate sweeps, ML, backtest); ~$0 idle, scale-to-zero"},
+    {"vendor": "FRED",      "category": "data",  "amount_min": 0.0,  "amount_max": 0.0,  "note": "macro — free"},
+    {"vendor": "GDELT",     "category": "data",  "amount_min": 0.0,  "amount_max": 0.0,  "note": "news — free"},
+    {"vendor": "Polymarket", "category": "data", "amount_min": 0.0,  "amount_max": 0.0,  "note": "prediction markets — free"},
+    {"vendor": "LunarCrush", "category": "data", "amount_min": 0.0,  "amount_max": 24.0, "note": "social signals — optional paid tier"},
 ]
 
 # ---------------------------------------------------------------------------
-# OpenRouter approximate cost-per-token for the :free tier models.
-# All :free models are $0/token. Recorded as $0 so the ledger is honest
-# (no spend tracked) rather than estimating paid usage that hasn't happened.
-# If a paid model id is wired, we fall back to 0 (unknown) — still honest.
+# LLM cost table: ($/1k_input_tokens, $/1k_output_tokens) by model id prefix.
+#
+# Rules:
+#   1. Model ids ending ":free" → $0 (OpenRouter free tier — no spend).
+#   2. Grok / xAI models (prefix "grok-"): use published xAI pricing.
+#   3. Paid OpenRouter passthrough (prefix "openai/", "anthropic/", etc.): use
+#      OpenRouter published rates as of 2026-06.  Rates are per-1k tokens.
+#   4. Unknown paid models → fall back to 0 (honest unknown, not fabricated).
+#
+# Source: https://openrouter.ai/models  /  https://x.ai/api
+# Update when we wire new paid models.
 # ---------------------------------------------------------------------------
 
-_FREE_COST: float = 0.0
+# Keyed by model_id prefix (longest match wins).
+# Tuple: ($/1k_in, $/1k_out)
+_MODEL_COST_PER_1K: list[tuple[str, float, float]] = [
+    # xAI Grok models (billed via xAI directly or OpenRouter passthrough)
+    ("grok-3-mini",          0.30, 0.50),   # grok-3-mini-beta
+    ("grok-3",               2.00, 10.00),  # grok-3 (flagship)
+    ("grok-2",               2.00, 10.00),  # grok-2-1212 / grok-2-vision
+    ("grok-1",               0.00, 0.00),   # open-weights, $0
+    ("grok-",                2.00, 10.00),  # catch-all for any future grok variant
+    # OpenRouter passthrough: anthropic
+    ("anthropic/claude-3-5-sonnet",  3.00, 15.00),
+    ("anthropic/claude-3-5-haiku",   0.80,  4.00),
+    ("anthropic/claude-3-opus",     15.00, 75.00),
+    ("anthropic/claude-3-sonnet",    3.00, 15.00),
+    ("anthropic/claude-3-haiku",     0.25,  1.25),
+    # OpenRouter passthrough: openai (longer/more-specific prefixes must come first)
+    ("openai/gpt-4o-mini",   0.15,  0.60),
+    ("openai/gpt-4o",        2.50, 10.00),
+    ("openai/o3-mini",       1.10,  4.40),
+    ("openai/o1",           15.00, 60.00),
+    # OpenRouter passthrough: google
+    ("google/gemini-2.0-flash",  0.10, 0.40),
+    ("google/gemini-2.5-pro",    1.25, 10.00),
+    # OpenRouter passthrough: meta / mistral
+    ("meta-llama/",          0.07, 0.07),   # rough average for 70B tiers
+    ("mistralai/mistral-large", 2.00, 6.00),
+]
+
+
+def _llm_cost_usd(model_id: str, tokens_in: int, tokens_out: int) -> float:
+    """Return the estimated USD cost for one LLM call given a model id and token counts.
+
+    Falls back to $0.0 for:
+      - model ids ending ":free" (OpenRouter free tier)
+      - unknown model ids (honest unknown — never fabricated)
+
+    Cost table is a static snapshot; update _MODEL_COST_PER_1K when wiring new paid models.
+    """
+    if not model_id or model_id.endswith(":free"):
+        return 0.0
+    # Longest-prefix match (table is ordered longest-first for each prefix group).
+    for prefix, cost_in, cost_out in _MODEL_COST_PER_1K:
+        if model_id.startswith(prefix):
+            return (tokens_in / 1000.0) * cost_in + (tokens_out / 1000.0) * cost_out
+    # Unknown paid model — record $0 (honest unknown).
+    return 0.0
 
 
 def _utcnow() -> str:
@@ -84,9 +136,9 @@ class LlmCallRecorder:
         if self.store is None:
             return
         latency_ms = int((time.monotonic() - self._start) * 1000)
-        # :free tier → $0; if a paid model is used the cost is unknown here (no billing API).
-        # We record 0 rather than fabricate an estimate — the ledger stays honest.
-        cost = _FREE_COST
+        # Compute real cost from the model pricing table.  Falls back to $0 for :free tier
+        # models and unknown model ids (never fabricates a number).
+        cost = _llm_cost_usd(self.model_id, self.tokens_in, self.tokens_out)
         try:
             self.store.insert(
                 "llm_calls",
@@ -164,4 +216,87 @@ def seed_infra_costs(store: Any) -> int:
             written += 1
         return written
     except Exception:  # noqa: BLE001 — seed is best-effort; never crash the caller
+        return 0
+
+
+# ---------------------------------------------------------------------------
+# Trading-fee aggregator
+# ---------------------------------------------------------------------------
+
+
+def record_trading_fees(store: Any) -> int:
+    """Aggregate real fees paid from the executions table into the costs table.
+
+    Writes one ``category="trading"`` row per (strategy_version_id, month) for
+    any month that has fees not yet recorded.  Idempotent: skips months already
+    present, identified by matching the seed and month substrings in the meta
+    JSON field for the same (strategy_version_id, month) combination.
+
+    Returns the number of new cost rows written (0 on error or when all months
+    are already recorded).  Best-effort — never crashes the caller.
+    """
+    if store is None:
+        return 0
+    import json
+
+    try:
+        # Sum fees per (strategy_version_id, month).  The ts column is ISO-8601 text;
+        # strftime works on both SQLite and Postgres (via the substring fallback).
+        # We use SUBSTR(ts, 1, 7) which is portable: "2026-06" from "2026-06-15T12:00:00+00:00".
+        fee_rows = store.rows(
+            """
+            SELECT strategy_version_id,
+                   SUBSTR(ts, 1, 7) AS month,
+                   SUM(CAST(fee AS REAL)) AS total_fee
+            FROM executions
+            WHERE fee IS NOT NULL AND CAST(fee AS REAL) > 0
+            GROUP BY strategy_version_id, SUBSTR(ts, 1, 7)
+            """
+        )
+        if not fee_rows:
+            return 0
+
+        written = 0
+        for r in fee_rows:
+            svid = r.get("strategy_version_id")
+            month = r.get("month") or ""
+            total_fee = float(r.get("total_fee") or 0)
+            if total_fee <= 0 or not month:
+                continue
+
+            # Idempotency: skip this (strategy, month) if already recorded.
+            # The meta is serialized with json.dumps(sort_keys=True) which adds a space after ':',
+            # so we match `"seed": "trading_fees"` (with the space).
+            seed_marker = '"seed": "trading_fees"'
+            params: tuple
+            if svid:
+                existing = store.row(
+                    "SELECT id FROM costs WHERE strategy_version_id = ? AND meta LIKE ? AND meta LIKE ? LIMIT 1",
+                    (svid, f'%{seed_marker}%', f'%"month": "{month}"%'),
+                )
+            else:
+                existing = store.row(
+                    "SELECT id FROM costs WHERE strategy_version_id IS NULL AND meta LIKE ? AND meta LIKE ? LIMIT 1",
+                    (f'%{seed_marker}%', f'%"month": "{month}"%'),
+                )
+            if existing:
+                continue
+
+            meta = json.dumps({"seed": "trading_fees", "month": month}, sort_keys=True)
+            store.insert(
+                "costs",
+                {
+                    "ts": _utcnow(),
+                    "vendor": "Exchange",
+                    "category": "trading",
+                    "amount": total_fee,
+                    "currency": "USD",
+                    "strategy_version_id": svid,
+                    "meta": meta,
+                },
+            )
+            written += 1
+
+        return written
+    except Exception:  # noqa: BLE001 — fee recording is best-effort; never crash the caller
         return 0

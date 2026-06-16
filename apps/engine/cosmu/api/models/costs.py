@@ -46,6 +46,13 @@ class VendorActual(BaseModel):
     period: str     # YYYY-MM
 
 
+class SpendPoint(BaseModel):
+    """One data point in the monthly spend series. month is YYYY-MM; amount_usd is the total
+    booked spend (all categories summed) for that calendar month."""
+    month: str        # YYYY-MM
+    amount_usd: float
+
+
 class CostsResponse(BaseModel):
     total_usd: float
     by_category: list[CostByCategory]
@@ -54,3 +61,4 @@ class CostsResponse(BaseModel):
     infra_lines: list[InfraLine]
     llm_calls: LlmCallSummary
     vendor_actuals: list[VendorActual]
+    spend_series: list[SpendPoint]  # dated monthly spend curve (fills the spend chart)

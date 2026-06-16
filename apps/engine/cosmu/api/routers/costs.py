@@ -11,6 +11,7 @@ from cosmu.api.models import (
     CostsResponse,
     InfraLine,
     LlmCallSummary,
+    SpendPoint,
     VendorActual,
 )
 
@@ -25,8 +26,9 @@ def costs() -> CostsResponse:
     Reads only persisted rows — no external billing API calls."""
     # Seed static infra lines (idempotent: once per calendar month). Best-effort.
     try:
-        from cosmu.costs.writer import seed_infra_costs
+        from cosmu.costs.writer import seed_infra_costs, record_trading_fees
         seed_infra_costs(store)
+        record_trading_fees(store)
     except Exception:  # noqa: BLE001 — seed is best-effort; never crash the endpoint
         pass
 
@@ -152,6 +154,26 @@ def costs() -> CostsResponse:
                 period=str(meta.get("month", "")),
             ))
 
+        # Dated spend series: sum costs per calendar month for the spend chart.
+        # SUBSTR(ts, 1, 7) extracts YYYY-MM from ISO-8601 strings — works on both SQLite and Postgres.
+        # Exclude infra-seed rows (they are monthly estimates, not real spend events) so the chart
+        # shows only booked actuals (LLM costs, trading fees, vendor actuals written by cost_refresh).
+        spend_rows = store.rows(
+            """
+            SELECT SUBSTR(ts, 1, 7) AS month, SUM(CAST(amount AS REAL)) AS amount
+            FROM costs
+            WHERE meta NOT LIKE ?
+            GROUP BY SUBSTR(ts, 1, 7)
+            ORDER BY month ASC
+            """,
+            ('%"seed": "infra"%',),
+        )
+        spend_series = [
+            SpendPoint(month=str(r["month"]), amount_usd=round(float(r["amount"] or 0), 6))
+            for r in spend_rows
+            if r.get("month")
+        ]
+
     return CostsResponse(
         total_usd=total,
         by_category=by_category,
@@ -160,4 +182,5 @@ def costs() -> CostsResponse:
         infra_lines=infra_lines,
         llm_calls=LlmCallSummary(call_count=llm_count, total_cost=llm_total, by_task=by_task),
         vendor_actuals=vendor_actuals,
+        spend_series=spend_series,
     )

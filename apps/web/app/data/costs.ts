@@ -9,6 +9,7 @@ const emptyCosts: CostsResponse = {
   infra_lines: [],
   llm_calls: { call_count: 0, total_cost: 0, by_task: {} },
   vendor_actuals: [],
+  spend_series: [],
 };
 
 // GET /costs — the dedicated ROI view (opex vs alpha, spend by category, per-strategy attribution).
@@ -23,6 +24,7 @@ export async function getCosts(): Promise<{ costs: CostsResponse; connected: boo
     per_strategy: data.per_strategy ?? [],
     infra_lines: data.infra_lines ?? [],
     vendor_actuals: data.vendor_actuals ?? [],
+    spend_series: data.spend_series ?? [],
     llm_calls: data.llm_calls ?? emptyCosts.llm_calls,
   };
   return { costs, connected };

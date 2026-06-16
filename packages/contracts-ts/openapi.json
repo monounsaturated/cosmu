@@ -1479,6 +1479,13 @@
             "title": "Per Strategy",
             "type": "array"
           },
+          "spend_series": {
+            "items": {
+              "$ref": "#/components/schemas/SpendPoint"
+            },
+            "title": "Spend Series",
+            "type": "array"
+          },
           "total_usd": {
             "title": "Total Usd",
             "type": "number"
@@ -1498,7 +1505,8 @@
           "per_strategy",
           "infra_lines",
           "llm_calls",
-          "vendor_actuals"
+          "vendor_actuals",
+          "spend_series"
         ],
         "title": "CostsResponse",
         "type": "object"
@@ -6314,6 +6322,25 @@
           "tier"
         ],
         "title": "SourceTrustRow",
+        "type": "object"
+      },
+      "SpendPoint": {
+        "description": "One data point in the monthly spend series. month is YYYY-MM; amount_usd is the total\nbooked spend (all categories summed) for that calendar month.",
+        "properties": {
+          "amount_usd": {
+            "title": "Amount Usd",
+            "type": "number"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          }
+        },
+        "required": [
+          "month",
+          "amount_usd"
+        ],
+        "title": "SpendPoint",
         "type": "object"
       },
       "StrategyDetailResponse": {

@@ -191,6 +191,22 @@ export function GoLiveModal({
             </select>
           </label>
 
+          {selected ? (
+            <div className="golive-fee-info" style={{ fontSize: 11, color: "var(--quiet)", marginBottom: 8, paddingLeft: 2 }}>
+              <span data-tip="Taker fee charged by the exchange per fill (basis points = 0.01%).">
+                Taker fee: <strong style={{ color: "var(--fg)" }}>{selected.taker_fee_bps} bps</strong>
+              </span>
+              <span style={{ margin: "0 8px", opacity: 0.4 }}>·</span>
+              <span data-tip="Fixed half-spread the backtest charged for this venue (market depth estimate).">
+                Slippage: <strong style={{ color: "var(--fg)" }}>{selected.slippage_bps} bps</strong>
+              </span>
+              <span style={{ margin: "0 8px", opacity: 0.4 }}>·</span>
+              <span className="quiet" style={{ fontSize: 10.5 }}>
+                1 bps = 0.01% of trade notional
+              </span>
+            </div>
+          ) : null}
+
           <label className="golive-row">
             <span>{isPrediction ? "Market (label or CLOB token id)" : "Symbol"}</span>
             <input
