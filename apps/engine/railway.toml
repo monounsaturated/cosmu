@@ -25,89 +25,22 @@ restartPolicyMaxRetries = 3
 [deploy.multiRegionConfig.europe-west4-drams3a]
 numReplicas = 1
 
-# Bounded, scheduled research pass (NOT a daemon): free-data INGEST ONLY, then exits.
-# The leaky cross-asset gate (no-FDR / trials=5) is DEFAULT OFF on this cron; pass --cross-asset-gate to opt in.
-# Honest BH-FDR gate path (promote_cohort) is untouched and runs via the autonomy cron below.
-# TIER-1 (realtime-data-lane epic): every 15 min, was 6h — append-only + content-hash caching make re-runs
-# cheap; a per-symbol key-gated source (LunarCrush) that rate-limits a pass degrades honestly ([] + next pass).
-[[cron]]
-schedule = "*/15 * * * *"
-command = "python3 -m cosmu.research.loop --ingest"
-
-# Full autonomous cycle on REAL Binance data: ingest -> author -> gate/screen -> fund SIM survivors ->
-# recommendations. Writes to the production DB (no --offline) and never runs the synthetic fixture.
-# TOGGLE: ON by default (the autonomous loop IS the product; the tick is SIM-only and bounded). Set
-# AUTONOMY_CRON_ENABLED=0 on the Railway service to skip instantly without a redeploy. LIVE STAYS OFF
-# regardless (sim fills only); the ledger pause flag also stops it.
-[[cron]]
-schedule = "0 */4 * * *"
-command = "python3 -m cosmu.master.scheduler"
-
-# PAPER CLOCK: STEP then MARK. Step = the executor (orchestrator/paper_step.py) re-evaluates each
-# gate-lane track's OWN spec/params on the latest real bars and closes/re-opens through the one order path
-# (SIM fills only — live stays off); mark = re-mark every held SIM position against the latest REAL close,
-# routed by asset class (crypto -> Binance spot, equity/ETF -> Yahoo total-return). Daily at 22:10 UTC (after
-# the US equity cash close) suits daily-bar strategies. Re-running on the same closed bar is a no-op
-# (decision-bar client_order_ids), so the three clock crons below can overlap safely.
-# This is the hands-off floor: it makes the forward test a genuine strategy test, not buy-and-hold.
-[[cron]]
-schedule = "10 22 * * *"
-command = "python3 -m cosmu.orchestrator.loop"
-
-# TIER-1: second full clock minutes after the 00:00 UTC crypto daily close — a crypto daily-bar track acts on
-# its just-closed candle ~10 min late instead of ~22h late (the 22:10 run only sees yesterday's candle now that
-# the closed-candle guard landed in data/market.py). Equity bars are final here too (US cash closed 20/21 UTC).
-[[cron]]
-schedule = "10 0 * * *"
-command = "python3 -m cosmu.orchestrator.loop"
-
-# TIER-1: HOURLY lane — step sub-daily (1h/4h) tracks on their own cadence, then mark EVERY held position, so
-# the web's "24h perf" reads from marks at most ~1h stale instead of up to 24h. Minute 5: just after the hour
-# close, giving the closed-candle fetch a fresh 1h bar.
-[[cron]]
-schedule = "5 * * * *"
-command = "python3 -m cosmu.orchestrator.loop --intraday"
-
-# CREDIBILITY PASS (realtime-data-lane P2): hourly tick over the PRE-REGISTERED voice panel — pull timelines
-# (key-gated), store new posts durably, extract typed claims from NEW posts only (hard per-pass caps bound the
-# LLM bill), then deterministically rescore the scoreboard + the two social_authority PIT features. An empty
-# panel (config/voices.py) means the pass honestly does nothing.
-[[cron]]
-schedule = "25 * * * *"
-command = "python3 -m cosmu.ingest.voices_pass"
-
-# ROTATION RE-ARM: re-run the deploy-lane arm fleet daily after the clock. Each arm() is idempotent (a held
-# target leg is reused, the clock origin never resets) and now closes stale legs first (arm_rotation), so this
-# is what makes the documented rotation strategies (GEM, GTAA, VAA, PAA, DAA, ...) actually ROTATE unattended
-# when their monthly signals flip — before this cron, rotation only happened when the operator re-armed by hand.
-[[cron]]
-schedule = "40 22 * * *"
-command = "python3 -m cosmu.research.arm_fleet"
-
-# VENUE-FEE ROUTING: daily snapshot of each crypto venue's per-pair fee into the PIT venue_fees store, then
-# recompute the cheapest-LEGAL-venue-per-asset routing map (Binance/Kraken/Hyperliquid/OKX, jurisdiction-aware)
-# and emit it as a venue_fee_routing event. PLANNING ONLY — the live lane reads it to "know where to send";
-# it never places an order. Idempotent + offline-safe (catalog volume-tier fees as the baseline).
-[[cron]]
-schedule = "50 23 * * *"
-command = "python3 -m cosmu.ingest.venue_fees_refresh"
-
-# VENUE METADATA: daily snapshot of each crypto venue's last price + 24h notional volume per (venue, symbol),
-# priced by that venue's OWN data adapter (OKX/Kraken-Futures/Hyperliquid/Binance — not one asset-class source),
-# into the PIT venue_metadata store. The "what trades where, how deep, at what price" data the app lists +
-# later code reads (read_pit_venue_metadata). READ-ONLY market data, offline-safe, never moves money.
-[[cron]]
-schedule = "55 23 * * *"
-command = "python3 -m cosmu.ingest.venue_metadata_refresh"
-# DAILY BAR BACKFILL: keep OHLCV history fresh for the full ~30-symbol perp universe.
-# Binance Vision bulk + ccxt tail; 7-day window fills any overnight gap without re-pulling full history.
-# Runs at 03:00 UTC (after the daily close settles) — appends new bars, writes 0 on a re-run (idempotent).
-[[cron]]
-schedule = "0 3 * * *"
-command = "python3 -m cosmu.ingest.manage backfill bars --days 7"
-
-# DAILY FUNDING BACKFILL: keep the Binance USDⓈ-M fundingRate history fresh for the full perp universe.
-# 7-day window plugs overnight gaps; the paginated provider deduplicates on ts so re-runs write 0.
-[[cron]]
-schedule = "30 3 * * *"
-command = "python3 -m cosmu.ingest.manage backfill funding --days 7"
+# ── SCHEDULING IS OWNED BY MODAL, NOT RAILWAY ──────────────────────────────────────────────────────────
+# The cron fleet was migrated to Modal (apps/engine/remote/app.py) — durable, free, and with a dead-man's-switch
+# heartbeat. Railway runs ONLY the always-on API process above (it does not parse a top-level `[[cron]]` array,
+# so the blocks that used to live here were dead config that merely LOOKED scheduled). They are removed to stop
+# the file implying a scheduler Railway never ran.
+#
+# Modal fleet (Modal Free caps SCHEDULES at 5 — remote/app.py):
+#   • ingest               hourly        — free-source point-in-time ingest
+#   • tick                 every 4h      — discovery (author→gate/FDR→fund SIM) + paper clock (mark) + cohort
+#                                           re-arm + vendor-cost budget refresh once/day. SIM only, never an order.
+#   • heartbeat            hourly        — staleness dead-man's-switch (ingest/tick/mark) → Slack
+#   • cold_tier_maintenance weekly       — alt_data → R2 DuckLake age-out
+#   • daily_backup         daily         — Postgres → R2 (Free plan has no managed backups)
+#
+# NOT yet on the Modal fleet (the 5-schedule cap is full) — run on-demand via `modal run`, or add a SECOND
+# free Modal app if these need to be unattended (operator call): daily OHLCV bar backfill, daily funding-rate
+# backfill, venue_metadata/venue_fee_routing refresh, the hourly intraday (1h/4h) executor lane, and the
+# hourly voices credibility pass. The paper-mark clock reads the bar cache, so let the bar/funding backfill
+# lapse only knowingly — a dark backfill ages the marks (the heartbeat's mark-staleness alert is the backstop).

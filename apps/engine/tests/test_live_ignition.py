@@ -17,7 +17,9 @@ from cosmu.orchestrator.loop import PricingRouter, fund_tracks_from_survivors, m
 from cosmu.orchestrator.paper_step import step_tracks
 from cosmu.spine.venue import default_catalog
 
-_BASE = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+# Anchor synthetic bars to ~now (captured once) so the executor's data-recency guard (paper_step's stale_data
+# gate) treats them as FRESH — otherwise every entry would be rejected as stale. Forward-dating is preserved.
+_BASE = dt.datetime.now(tz=dt.UTC)
 
 
 def _store(tmp_path) -> Store:
