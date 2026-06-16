@@ -145,6 +145,16 @@ def test_no_edge_cross_section_does_not_clear_deploy_bar():
     assert v["deployable"] is False
 
 
+def test_holdout_floor_is_a_significance_bar_not_a_sign_check():
+    """The deploy lane pays NO multiple-testing deflation, so (1) must be a min-effect-size floor: a barely-positive
+    held-out Sharpe (DSR just above 0 — a near-coin-flip) is NOT enough. This pins the calibration that hardened the
+    deploy bar (no-edge random walks cleared the old `>= 0` sign-check ~12.5% of the time). See RESEARCH_LESSONS §2b."""
+    assert pmn.DEPLOY_MIN_HOLDOUT_DSR == 0.30  # the locked floor — recalibrating means changing this + the evidence
+    # a held-out Sharpe that is positive-but-insignificant (dsr in (0, floor]) must fail check (1)
+    insignificant = 0.5 * pmn.DEPLOY_MIN_HOLDOUT_DSR
+    assert insignificant > 0 and not (insignificant > pmn.DEPLOY_MIN_HOLDOUT_DSR)
+
+
 # --------------------------------------------------------------------------- (4) current signal is PIT + balanced
 
 
@@ -174,8 +184,9 @@ def _arm_with(monkeypatch, store, *, deployable: bool, n: int = 80):
     v = {
         "deployable": deployable, "holdout_positive": deployable, "beats_cash": deployable, "robust": deployable,
         "current_signal": {"long": ["SYM9USDT", "SYM8USDT"], "short": ["SYM0USDT", "SYM1USDT"]},
-        "full": full, "in_sample": ins, "holdout": out, "holdout_dsr": 0.28 if deployable else -0.1,
+        "full": full, "in_sample": ins, "holdout": out, "holdout_dsr": 0.38 if deployable else -0.1,
         "window": ("2023-01-01", "2023-09-01"), "n_periods": n, "n_symbols": 10,
+        # holdout_dsr above DEPLOY_MIN_HOLDOUT_DSR on the deployable path (a significantly-positive held-out Sharpe)
         "fee_per_side": pmn.PERP_FEE_PER_SIDE,
         "venue_note": "market-neutral SIM track; LIVE needs a short-capable perp venue (Kraken Futures / IBKR / Hyperliquid)",
         "result": res, "reason": "" if deployable else "not deployable",
