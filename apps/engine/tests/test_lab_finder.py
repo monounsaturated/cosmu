@@ -259,3 +259,21 @@ def test_finder_is_idempotent(tmp_path):
     finder.find(seed_orb_fvg_spec(), max_variants=8)  # same grid → same code_hashes → no new versions
     after = finder.store.rows("SELECT COUNT(*) AS n FROM strategy_versions WHERE origin = 'finder'")[0]["n"]
     assert after == before
+
+
+def test_screen_persists_per_symbol_rows(tmp_path):
+    """The screen persists a backtest_symbols ROW per (backtest × symbol) — the queryable per-symbol truth (1 strat
+    × 1 symbol × 1 result, venue_id = the fee axis), never a pooled mean. The honest per-symbol gate fills `verdict`
+    later; here it must persist + be queryable / outlier-sortable per version."""
+    finder = _finder(tmp_path)
+    finder.find(seed_orb_fvg_spec(), max_variants=8)
+    rows = finder.store.rows("SELECT symbol, venue_id, return_pct, strategy_version_id FROM backtest_symbols")
+    assert rows, "the screen must persist per-symbol rows"
+    for r in rows:
+        assert r["venue_id"] == "binance"
+        assert r["symbol"]  # a real symbol, never a pooled blob
+    vid = rows[0]["strategy_version_id"]
+    ranked = finder.store.rows(
+        "SELECT symbol FROM backtest_symbols WHERE strategy_version_id = ? ORDER BY return_pct DESC", (vid,)
+    )
+    assert len(ranked) >= 1  # queryable + outlier-sortable per version

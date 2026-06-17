@@ -103,6 +103,27 @@ CREATE TABLE IF NOT EXISTS backtests (
   created_at TEXT NOT NULL
 );
 
+-- PER-SYMBOL backtest breakdown — the QUERYABLE unit of truth: one row per (backtest × symbol), carrying the
+-- venue_id (the fee axis → strategy × symbol × venue). Replaces the pooled-mean dead-end: a real single-symbol
+-- edge is now visible + joinable + sortable, never averaged away. `verdict` is filled by the HONEST per-symbol
+-- gate (effective-N, robust-not-max — a later step); NULL here = persisted-but-not-yet-judged. The deterministic
+-- pooled Gate (DSR/PBO/BH-FDR) stays the locked funding authority; this is granular VISIBILITY + recompute fuel.
+CREATE TABLE IF NOT EXISTS backtest_symbols (
+  id TEXT PRIMARY KEY,
+  backtest_id TEXT NOT NULL REFERENCES backtests(id),
+  strategy_version_id TEXT NOT NULL REFERENCES strategy_versions(id),
+  symbol TEXT NOT NULL,
+  venue_id TEXT,
+  return_pct NUMERIC,
+  sharpe NUMERIC,
+  max_drawdown NUMERIC,
+  trades INTEGER,
+  verdict TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_backtest_symbols_version ON backtest_symbols(strategy_version_id);
+CREATE INDEX IF NOT EXISTS idx_backtest_symbols_symbol ON backtest_symbols(symbol);
+
 -- The PROMOTION RECORD — the single, frozen source of truth for replicating a gate-survivor in live. One row per
 -- promoted version (idempotent on strategy_version_id). It snapshots EVERYTHING live needs to reproduce the exact
 -- thing the Gate judged: the fitted params + their hash (drift detection vs a re-fit), the venue fee model the
