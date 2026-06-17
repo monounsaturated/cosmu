@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from cosmu.api._shared import _summary_to_response, settings, store
+from cosmu.api._shared import _metric, _summary_to_response, settings, store
 from cosmu.api.models import (
     AuthorRequest,
     AuthorResponse,
@@ -17,6 +17,8 @@ from cosmu.api.models import (
     InboxIdeaResponse,
     InboxQueueItem,
     InboxQueueResponse,
+    LabSymbolRow,
+    LabSymbolsResponse,
     MlFeatureWeight,
     MlRankedItem,
     MlRequest,
@@ -57,6 +59,73 @@ def lab_author(request: AuthorRequest) -> AuthorResponse:
     )
     store.append_event(actor="human", kind="strategy_drafted", ref_type="strategy_spec", payload={"template": draft.base_template, "features": draft.features, "valid": draft.valid})
     return _draft_to_response(draft)
+
+
+@router.get("/lab/symbols", response_model=LabSymbolsResponse)
+def lab_symbols(symbol: str | None = None, venue: str | None = None,
+                verdict: str | None = None, limit: int = 500) -> LabSymbolsResponse:
+    """Per-symbol backtest cells — one row per (strategy × symbol × venue), the granular truth the pooled
+    leaderboard averages away. Outlier-sorted (highest standalone return first) so the operator can SNIPE, with
+    the honest verdict (robust/fragile/thin/negative) carried so a lone best-of-N winner is flagged, not
+    celebrated. Optional filters narrow by symbol / venue / verdict. Pure read; never a funding signal."""
+    conds: list[str] = []
+    params: list[object] = []
+    if symbol:
+        conds.append("bs.symbol = ?")
+        params.append(symbol)
+    if venue:
+        conds.append("bs.venue_id = ?")
+        params.append(venue)
+    if verdict:
+        conds.append("bs.verdict = ?")
+        params.append(verdict)
+    where = (" WHERE " + " AND ".join(conds)) if conds else ""
+    with store.reading():
+        # Fetch latest-first so the per-(version,symbol) dedup below keeps the most recent backtest, then we
+        # re-sort by return for the outlier ranking. A generous cap pre-dedup; the response is trimmed to `limit`.
+        rows = store.rows(
+            "SELECT bs.strategy_version_id, s.name AS strategy_name, sv.kind, sv.status, "
+            "bs.symbol, bs.venue_id, bs.return_pct, bs.sharpe, bs.max_drawdown, bs.trades, bs.verdict, bs.created_at "
+            "FROM backtest_symbols bs "
+            "JOIN strategy_versions sv ON sv.id = bs.strategy_version_id "
+            "JOIN strategies s ON s.id = sv.strategy_id"
+            f"{where} ORDER BY bs.created_at DESC LIMIT 5000",
+            tuple(params),
+        )
+        symbols = [r["symbol"] for r in store.rows("SELECT DISTINCT symbol FROM backtest_symbols ORDER BY symbol")]
+        venues = [
+            r["venue_id"]
+            for r in store.rows("SELECT DISTINCT venue_id FROM backtest_symbols WHERE venue_id IS NOT NULL ORDER BY venue_id")
+        ]
+    # One cell per (version, symbol): a re-run fans out multiple backtests — keep the latest (rows are created_at
+    # DESC), then rank by standalone return so the strongest outlier leads.
+    seen: set[tuple[str, str]] = set()
+    deduped: list[dict] = []
+    for r in rows:
+        key = (r["strategy_version_id"], r["symbol"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(r)
+    deduped.sort(key=lambda r: _metric(r["return_pct"]), reverse=True)
+    out = [
+        LabSymbolRow(
+            strategy_version_id=r["strategy_version_id"],
+            strategy_name=r["strategy_name"],
+            kind=r.get("kind") or "quant",
+            status=r.get("status") or "",
+            symbol=r["symbol"],
+            venue_id=r.get("venue_id"),
+            return_pct=_metric(r["return_pct"]),
+            sharpe=_metric(r["sharpe"]),
+            max_drawdown=_metric(r["max_drawdown"]),
+            trades=int(_metric(r["trades"])),
+            verdict=r.get("verdict"),
+            created_at=r["created_at"],
+        )
+        for r in deduped[: max(1, limit)]
+    ]
+    return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues)
 
 
 @router.post("/lab/author/run", response_model=CohortSummaryResponse)
