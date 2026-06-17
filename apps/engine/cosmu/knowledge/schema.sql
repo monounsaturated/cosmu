@@ -24,6 +24,34 @@ CREATE TABLE IF NOT EXISTS instruments (
   active INTEGER NOT NULL DEFAULT 1
 );
 
+-- The venue-tagged, liquidity-ranked UNIVERSE — every tradable pair across all our venues, the ONE source the
+-- lab tests wide over per (strategy × symbol × VENUE). Distinct from `instruments` (the small curated catalog the
+-- engine seeds + executes against): universe_pairs is the BROAD, machine-fetched discovery set (thousands of
+-- pairs) with real 24h USD liquidity + a global tier. id = "venue:symbol". listed_at/delisted_at carry the
+-- point-in-time survivorship window (also fed into the UniverseCalendar) so a historical backtest sees that
+-- date's tradable set. Idempotent upsert keyed on id; fetched_at stamps the snapshot freshness.
+CREATE TABLE IF NOT EXISTS universe_pairs (
+  id TEXT PRIMARY KEY,                 -- "venue:symbol"
+  venue TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  base TEXT,
+  quote TEXT,
+  asset_class TEXT NOT NULL,           -- crypto | equity | prediction
+  instrument_type TEXT NOT NULL,       -- spot | perp | equity | prediction
+  liquidity_usd_24h NUMERIC NOT NULL DEFAULT 0,
+  tier INTEGER,                        -- 0 deepest / 1 / 2 — NULL until ranked
+  rank INTEGER,                        -- global liquidity rank (0 = deepest)
+  listed_at TEXT,
+  delisted_at TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  source TEXT NOT NULL,                -- live | curated | vision
+  fetched_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_universe_pairs_venue ON universe_pairs(venue);
+CREATE INDEX IF NOT EXISTS idx_universe_pairs_class ON universe_pairs(asset_class);
+CREATE INDEX IF NOT EXISTS idx_universe_pairs_tier ON universe_pairs(tier);
+CREATE INDEX IF NOT EXISTS idx_universe_pairs_liquidity ON universe_pairs(liquidity_usd_24h);
+
 CREATE TABLE IF NOT EXISTS strategies (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
