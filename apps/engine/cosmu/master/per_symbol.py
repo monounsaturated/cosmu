@@ -92,6 +92,24 @@ def classify_per_symbol(per_symbol: dict[str, dict[str, float]] | None, *,
     return out
 
 
+def funding_eligible(per_symbol: dict[str, dict[str, float]] | None, *,
+                     min_trades: int = MIN_TRADES_PER_SYMBOL,
+                     generalize_fraction: float = GENERALIZE_FRACTION) -> bool:
+    """The per-symbol BREADTH floor for promotion: True iff the edge GENERALIZES across the symbols tested (≥1
+    ROBUST cell). A gate-passer whose edge is a single-symbol fluke — judgeable cells exist but none generalize —
+    is a best-of-N artefact the pooled Gate can't catch, and must NOT be forward-tested/funded.
+
+    FAIL-OPEN when there is no judgeable per-symbol evidence (empty / all-thin): we can't judge breadth, so we
+    don't block (mirrors the funder's legacy round-robin fallback) — the pooled deflated Gate already passed.
+    Blocks ONLY when there IS evidence the edge doesn't generalize. ADD-strictness: can never promote anything
+    the Gate rejected, so the locked calibration is preserved."""
+    cells = _cells_from_per_symbol(per_symbol)
+    judgeable = [c for c in cells if c.trades >= min_trades]
+    if not judgeable:
+        return True  # no per-symbol evidence to judge breadth on → don't block
+    return edge_generalizes(cells, min_trades=min_trades, generalize_fraction=generalize_fraction)
+
+
 # Deployment rank: only ROBUST/FRAGILE cells are fundable (never THIN/NEGATIVE), ROBUST strictly before FRAGILE.
 _DEPLOY_RANK = {ROBUST: 2, FRAGILE: 1}
 
@@ -130,5 +148,6 @@ __all__ = [
     "PerSymbolCell",
     "classify_per_symbol",
     "edge_generalizes",
+    "funding_eligible",
     "rank_deploy_symbols",
 ]
