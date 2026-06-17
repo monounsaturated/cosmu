@@ -26,6 +26,7 @@ from cosmu.knowledge.lifecycle_status import ALIVE_STATUSES, PAPER_ALIASES, sql_
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.drift import monitor_drift
 from cosmu.master.neutral import accrue_funding, neutral_tracks
+from cosmu.master.per_symbol import rank_deploy_symbols
 from cosmu.master.portfolio import Portfolio
 from cosmu.portfolio.rotation import Track, select_tracks
 from cosmu.spine.venue import VenueCatalog, default_catalog
@@ -68,6 +69,26 @@ def _screened_symbols(raw_spec: object, asset_class: str, venue_symbols: list[st
 
     tradable = set(venue_symbols)
     return [s for s in CRYPTO_SCREEN_UNIVERSE if s in tradable]
+
+
+def _verdict_deploy_symbol(store: Store, version_id: str, pool: list[str]) -> str | None:
+    """The screened symbol with the STRONGEST per-symbol verdict for this version (robust>fragile, then Sharpe),
+    restricted to the gate-evidence `pool`. So capital lands on the PROVEN cell, not an arbitrary round-robin
+    index — the cardinal-sin the per-symbol table exists to prevent: a SOL-only edge must NOT be forward-tested
+    on XRP by array position. Reads backtest_symbols (verdict written at screen time); NEVER the funding
+    authority (the pooled deflated Gate already passed). None when the version has no per-symbol rows (legacy) →
+    the caller keeps its round-robin fallback (better an imperfect track than none)."""
+    cells = store.rows(
+        "SELECT symbol, verdict, sharpe FROM backtest_symbols WHERE strategy_version_id = ?",
+        (version_id,),
+    )
+    if not cells:
+        return None
+    pool_set = set(pool)
+    for sym in rank_deploy_symbols(cells):
+        if sym in pool_set:
+            return sym
+    return None
 
 
 def _survivor_asset_class(raw_spec: object) -> str:
@@ -128,13 +149,18 @@ def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Tra
         symbols = symbols_by_class.setdefault(asset_class, _venue_symbols(catalog, venue_id, asset_class))
         if not symbols:
             continue  # the funding venue has no tradable instrument for this class → SKIP (no fabricated symbol)
-        # Fund on the SCREENED universe: round-robin spreads multiple survivors, but only across symbols this
-        # survivor's gate evidence covered. Whole-venue fallback only when the screened set is empty (historical).
+        # Fund on the SCREENED universe (only symbols this survivor's gate evidence covered). VERDICT-DRIVEN pick:
+        # fund the symbol with the strongest per-symbol verdict (robust>fragile, then Sharpe) so capital lands on
+        # the PROVEN cell — NOT an arbitrary round-robin index that could forward-test a SOL-only edge on XRP. The
+        # round-robin only survives as the legacy fallback for versions with no backtest_symbols rows yet.
         pool = _screened_symbols(r.get("spec"), asset_class, symbols) or symbols
-        i = next_idx.get(asset_class, 0)
-        next_idx[asset_class] = i + 1
+        deploy_symbol = _verdict_deploy_symbol(store, r["version_id"], pool)
+        if deploy_symbol is None:
+            i = next_idx.get(asset_class, 0)
+            next_idx[asset_class] = i + 1
+            deploy_symbol = pool[i % len(pool)]
         track = Track(id=r["version_id"], rolling_dsr=float(r["deflated_sharpe"] or 0.0))
-        out.append((r["version_id"], track, pool[i % len(pool)], venue_id))
+        out.append((r["version_id"], track, deploy_symbol, venue_id))
     return out
 
 

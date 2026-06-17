@@ -648,6 +648,10 @@ class FarmLoop:
         # the strategy's whole per-symbol set) so a lone best-of-N winner is flagged, not celebrated. This is pure
         # persistence of data the screen already computed — never the funding authority (the pooled deflated Gate
         # scored above is). The #306 per_symbol JSON blob is intentionally NOT written here: the table supersedes it.
+        # NOTE: a single sc.venue_id is CORRECT here only because the autonomous loop is crypto-only today (the
+        # screen fetches Binance spot for every symbol — see _binance_symbols / _screen). The finder, which screens
+        # equity+HL legs, stamps a PER-SYMBOL venue map instead (lab/finder.py). The day this loop's universe widens
+        # to other asset classes, this MUST adopt the same per-symbol venue map or it will mislabel the fee axis.
         _verdicts = classify_per_symbol(sc.per_symbol)
         for _sym, _pm in (sc.per_symbol or {}).items():
             b.insert("backtest_symbols", {
