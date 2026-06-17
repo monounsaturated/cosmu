@@ -94,6 +94,42 @@ def latest_value_per_metric(store: Any) -> dict[str, tuple[float, str | None]]:
     return best
 
 
+def latest_value_per_metric_for_symbol(
+    store: Any, symbol: str, metrics: list[str]
+) -> dict[str, tuple[float, str | None]]:
+    """Latest VALUE per metric for ONE symbol, read straight from the point-in-time alt_data table. The
+    per-(provider, metric) summary rollup is SYMBOL-BLIND, so a per-symbol read cannot use it — it would carry
+    whichever symbol's row happened to be newest (BTC's funding leaking onto a DOGE read). This is the per-symbol
+    half of the observe loop's split: market-wide metrics come from the symbol-blind summary, the per-symbol
+    metrics (funding/sentiment/positioning) come from HERE. Scoped to the observe loop (a handful of symbols on a
+    1h/4h/1d cadence): one indexed LIMIT-1 read per metric on idx_alt_data_metric_avail(metric, available_at desc),
+    NOT a GROUP BY over the ~17M-row table. Returns {metric: (value, latest_available_at)} for the requested
+    metrics that have a row for this symbol. Honest-empty / offline-safe: a missing table or a metric with no rows
+    for this symbol is simply absent (never fabricated, never another symbol's value)."""
+    if not symbol or not metrics:
+        return {}
+    # binary order = chronological for ISO-8601; Postgres's default en_US collation reorders punctuation (a
+    # sub-second look-ahead risk) and SQLite is already binary — exactly the COLLATE the alt_data read uses.
+    c = ' COLLATE "C"' if getattr(store, "_is_pg", False) else ""
+    out: dict[str, tuple[float, str | None]] = {}
+    for metric in metrics:
+        try:
+            r = store.row(
+                f"SELECT value, available_at FROM alt_data WHERE metric = ? AND symbol = ? "
+                f"ORDER BY available_at{c} DESC LIMIT 1",
+                (metric, symbol),
+            )
+        except Exception:  # noqa: BLE001 — table may not exist on a fresh/legacy store: degrade to empty (honest)
+            return {}
+        if r is None or r.get("value") is None:
+            continue
+        try:
+            out[metric] = (float(r["value"]), r.get("available_at"))
+        except (TypeError, ValueError):  # a non-numeric stored value is skipped, never coerced to a fake number
+            continue
+    return out
+
+
 def latest_per_provider(store: Any) -> list[dict[str, Any]]:
     """Per-PROVIDER freshness rollup for the /intelligence data-freshness panel, read from the summary table
     (instant) instead of a GROUP BY over alt_data. Returns one row per provider: {source, last_at, points},
