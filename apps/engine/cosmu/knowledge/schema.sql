@@ -283,7 +283,42 @@ CREATE TABLE IF NOT EXISTS llm_calls (
   latency_ms INTEGER NOT NULL,
   confidence NUMERIC,
   strategy_version_id TEXT,
-  trace_id TEXT
+  trace_id TEXT,
+  -- which model account paid for this call (NULL = pre-failover / flat-sub authoring). Joins to model_accounts.
+  account_id TEXT
+);
+
+-- Modular compute-spend registry: each row is one metered model account (e.g. an OpenRouter key with ~$30 free
+-- credit). The failover router rotates through active accounts when one busts (402/403/insufficient-credit) so a
+-- bankroll bust never loses progress. key_ref is the ENV VAR NAME holding the secret — the secret itself NEVER
+-- lands in the DB. spend_used is reconciled from the llm_calls ledger; notified_floor is the last $15 stride the
+-- operator was pinged at.
+CREATE TABLE IF NOT EXISTS model_accounts (
+  account_id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,                       -- 'openrouter' | 'xai' | ...
+  key_ref TEXT NOT NULL,                        -- ENV VAR NAME (not the secret)
+  free_credit_usd NUMERIC NOT NULL DEFAULT 30,
+  spend_used NUMERIC NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',        -- active | cooling | exhausted
+  notified_floor INTEGER NOT NULL DEFAULT 0,    -- last $15 stride notified (floor(spend_used/15))
+  priority INTEGER NOT NULL DEFAULT 0,          -- lower = preferred (rotation order)
+  created_ts TEXT NOT NULL,
+  updated_ts TEXT NOT NULL
+);
+
+-- Work-unit boundary: persisted BEFORE a metered call is issued so a mid-call bust/crash never loses progress —
+-- a 'pending' row is resumable, a failover retries the same unit on the next account. unit_key is the caller's
+-- stable id for the unit (per-asset / per-headline in the research cohorts that already iterate that way).
+CREATE TABLE IF NOT EXISTS llm_work_units (
+  id TEXT PRIMARY KEY,
+  ts TEXT NOT NULL,
+  trace_id TEXT,
+  task TEXT NOT NULL,
+  unit_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',        -- pending | done | failed
+  account_id TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  updated_ts TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS events (

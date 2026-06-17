@@ -252,7 +252,36 @@ create table if not exists costs (
 create table if not exists llm_calls (
   id text primary key, ts text not null, tier text not null, model_id text not null, task text not null,
   tokens_in integer not null, tokens_out integer not null, cost numeric not null, latency_ms integer not null,
-  confidence numeric, strategy_version_id text, trace_id text
+  confidence numeric, strategy_version_id text, trace_id text,
+  account_id text  -- which model account paid (NULL = pre-failover / flat-sub authoring); joins to model_accounts
+);
+
+-- Modular compute-spend registry — see schema.sql for the full rationale. key_ref is the ENV VAR NAME (never the
+-- secret). The failover router rotates active accounts on a bust; spend_used reconciles from the llm_calls ledger.
+create table if not exists model_accounts (
+  account_id text primary key,
+  provider text not null,
+  key_ref text not null,
+  free_credit_usd numeric not null default 30,
+  spend_used numeric not null default 0,
+  status text not null default 'active',         -- active | cooling | exhausted
+  notified_floor integer not null default 0,     -- last $15 stride notified (floor(spend_used/15))
+  priority integer not null default 0,           -- lower = preferred (rotation order)
+  created_ts text not null,
+  updated_ts text not null
+);
+
+-- Work-unit boundary persisted before each metered call so a bust/crash never loses progress (resumable).
+create table if not exists llm_work_units (
+  id text primary key,
+  ts text not null,
+  trace_id text,
+  task text not null,
+  unit_key text not null,
+  status text not null default 'pending',         -- pending | done | failed
+  account_id text,
+  attempts integer not null default 0,
+  updated_ts text not null
 );
 
 create table if not exists events (

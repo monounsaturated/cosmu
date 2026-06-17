@@ -117,6 +117,7 @@ class LlmCallRecorder:
     model_id: str
     strategy_version_id: str | None = None
     trace_id: str | None = None
+    account_id: str | None = None  # which model account paid (set by the failover router); NULL for flat-sub paths
     tokens_in: int = 0
     tokens_out: int = 0
     _start: float = field(default_factory=time.monotonic, init=False)
@@ -147,6 +148,7 @@ class LlmCallRecorder:
                     "confidence": None,
                     "strategy_version_id": self.strategy_version_id,
                     "trace_id": self.trace_id,
+                    "account_id": self.account_id,
                 },
             )
         except Exception:  # noqa: BLE001 — cost recording must never crash the caller
