@@ -51,6 +51,9 @@ create table if not exists strategy_versions (
   mutation_rationale text,
   origin text not null,
   status text not null,
+  -- Strategy MODEL discriminator: 'quant' (StrategySpec -> Gate A) | 'llm' (AgentSpec -> Gate B). Default 'quant'
+  -- keeps every existing row + writer byte-identical. No CHECK by repo convention (spec Literal + guard test).
+  kind text not null default 'quant',
   -- Provenance: "human" | "agent" | "import". Nullable so pre-migration rows stay valid (read as unknown).
   authored_by text,
   created_at text not null,

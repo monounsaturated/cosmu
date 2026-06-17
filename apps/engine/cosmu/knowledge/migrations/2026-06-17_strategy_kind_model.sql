@@ -1,0 +1,18 @@
+-- Migration: add the strategy MODEL discriminator `kind` to strategy_versions (2026-06-17).
+--
+-- kind = 'quant' (typed StrategySpec -> deterministic Gate A, the ONLY model today) | 'llm' (agentic/NL AgentSpec
+-- -> the scientific-flexible Gate B; see docs/epics/agentic-lane.md). It is the top-level MODEL axis, ORTHOGONAL
+-- to status (shared lifecycle), lane (gate/deploy/explore evaluator), strategy_kind (indicator/event/regime entry
+-- path) and authored_by (provenance).
+--
+-- DEFAULT 'quant' makes this byte-identical for every existing row AND every current writer: Writer.insert
+-- (knowledge/store.py) only emits the columns it is handed, so the ~15 quant write sites (finder, evolution loop,
+-- the equity/perp arms, zero_capital, ...) need NO code change — the DB fills 'quant'. The future single 'llm'
+-- write site (P0.4) will set kind explicitly from spec.kind.
+--
+-- No CHECK by repo convention: the vocabulary is enforced by the Literal in strategy/spec.py + a guard test,
+-- exactly as status is (see knowledge/lifecycle_status.py, which deliberately omits a DB CHECK). Local
+-- SQLite/dev gets this from schema.sql at boot; this file brings an existing prod Postgres (Supabase) up to date.
+--
+-- Additive, non-breaking, idempotent — safe to run before or after deploy; no data loss, no cascade.
+ALTER TABLE strategy_versions ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'quant';
