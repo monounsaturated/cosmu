@@ -19,9 +19,11 @@ export const dynamic = "force-dynamic";
 // to all child routes; the engine proxy route pins the same region. Single region → no plan/cost change.
 export const preferredRegion = "cdg1";
 
-// Apply the saved theme before paint to avoid a flash of the wrong palette. The Iris Bento system is
-// dark by default; `.light` on <html> flips the palette (globals.css `html.light`).
-const themeScript = `try{if(localStorage.getItem('cosmu.theme')==='light')document.documentElement.classList.add('light')}catch(e){}`;
+// Apply the theme before paint to avoid a flash of the wrong palette. Precedence: an explicit operator
+// choice (localStorage, set by the toggle) wins; otherwise we follow the machine's OS light/dark setting
+// (prefers-color-scheme). The Iris Bento system is dark by default; `.light` on <html> flips the palette
+// (globals.css `html.light`). The toggle still lets the user override at any time.
+const themeScript = `try{var t=localStorage.getItem('cosmu.theme');if(!t&&window.matchMedia)t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';if(t==='light')document.documentElement.classList.add('light')}catch(e){}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

@@ -2,30 +2,17 @@
 //
 // READ-ONLY mirror of the code-maintained cost register (apps/web/app/data/cost-register.ts). Costs are
 // edited in code (by Claude Code), never in the browser — so there is no inline editing, no override
-// layer and no "Refresh" column (every line is operator-maintained). Columns: Source · Cat · Cadence ·
-// Last paid · Next renewal · / mo · Lifetime · Proj / yr. Proj / yr = /mo × 12.
+// layer and no "Refresh" column. Columns: Source · Category · Cadence · Last paid · Next renewal · / mo ·
+// / yr · Lifetime. / yr = /mo × 12.
 
 import { CatBadge } from "./cost-sections";
 import { CADENCE_LABEL, type CostLine } from "@/app/data/cost-register";
 import { formatUsd } from "@/lib/utils";
 
-// ── date helpers (real dates, "in Nd") ──
-function dParse(iso: string) {
-  return new Date(iso + "T00:00:00");
-}
+// Plain calendar dates — no relative "in Nd" / "Nd ago" suffix.
 function fmtD(iso: string | null): string {
   if (!iso) return "—";
-  return dParse(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-function daysAway(iso: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.round((dParse(iso).getTime() - today.getTime()) / 86400000);
-}
-function inDays(iso: string | null): string {
-  if (!iso) return "";
-  const n = daysAway(iso);
-  return n < 0 ? `${-n}d ago` : n === 0 ? "today" : `in ${n}d`;
+  return new Date(iso + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 // Whole-dollar display throughout. Project from the ROUNDED monthly so each row reads /mo × 12, and
@@ -35,18 +22,7 @@ const proj = (perMo: number) => Math.round(perMo) * 12;
 
 function DateCell({ value }: { value: string | null }) {
   if (!value) return <span className="quiet">—</span>;
-  const away = inDays(value);
-  return (
-    <>
-      <span className="tab">{fmtD(value)}</span>
-      {away ? (
-        <span className="muted" style={{ fontSize: 9.5 }}>
-          {" "}
-          {away}
-        </span>
-      ) : null}
-    </>
-  );
+  return <span className="tab">{fmtD(value)}</span>;
 }
 
 export function SubscriptionsTable({ rows }: { rows: CostLine[] }) {
@@ -59,13 +35,13 @@ export function SubscriptionsTable({ rows }: { rows: CostLine[] }) {
         <thead>
           <tr>
             <th>Source</th>
-            <th>Cat</th>
+            <th>Category</th>
             <th>Cadence</th>
             <th className="r">Last paid</th>
             <th className="r">Next renewal</th>
             <th className="r">/ mo</th>
+            <th className="r">/ yr</th>
             <th className="r">Lifetime</th>
-            <th className="r">Proj / yr</th>
           </tr>
         </thead>
         <tbody>
@@ -73,9 +49,6 @@ export function SubscriptionsTable({ rows }: { rows: CostLine[] }) {
             <tr key={r.source}>
               <td>
                 <span style={{ fontWeight: 500, color: "var(--fg)" }}>{r.source}</span>
-                <span className="quiet" style={{ display: "block", fontSize: 9.5, marginTop: 1 }}>
-                  {r.note}
-                </span>
               </td>
               <td>
                 {r.category === "other" ? (
@@ -92,8 +65,8 @@ export function SubscriptionsTable({ rows }: { rows: CostLine[] }) {
                 <DateCell value={r.renews} />
               </td>
               <td className="r tab">{money(r.perMo)}</td>
-              <td className="r tab run-tot">{money(r.lifetime)}</td>
               <td className="r tab muted">{money(proj(r.perMo))}</td>
+              <td className="r tab run-tot">{money(r.lifetime)}</td>
             </tr>
           ))}
           <tr className="sub-row">
@@ -105,10 +78,10 @@ export function SubscriptionsTable({ rows }: { rows: CostLine[] }) {
               {money(totMo)}
             </td>
             <td className="r tab" style={{ fontWeight: 600 }}>
-              {money(totLife)}
+              {money(proj(totMo))}
             </td>
             <td className="r tab" style={{ fontWeight: 600 }}>
-              {money(proj(totMo))}
+              {money(totLife)}
             </td>
           </tr>
         </tbody>
