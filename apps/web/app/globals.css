@@ -757,6 +757,9 @@ body.sb-collapsed .sb-tog .ic-expand{display:inline}
 .stat-l{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--quiet)}
 .stat-v{font-size:18px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-top:2px}
 .stat-s{font-size:9.5px;color:var(--quiet);margin-top:1px}
+.stat-cell.clk{cursor:pointer;transition:border-color var(--tr)}
+.stat-cell.clk:hover{border-color:var(--border-s)}
+.stat-cell.active{border-color:var(--iris);box-shadow:inset 0 0 0 1px var(--iris-mid),var(--cell-shadow)}
 .cat-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:3px}
 .cat-trading{background:oklch(0.74 0.12 235 / 0.14);color:oklch(0.74 0.12 235)}
 .cat-infra{background:var(--iris-dim);color:var(--iris-s)}
