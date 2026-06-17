@@ -17,6 +17,8 @@ dependencies = [
   "pydantic>=2.9",
   "pydantic-settings>=2.5",
   "pyyaml>=6.0",  # parse typed YAML front-matter in `.md` inbox specs (cosmu.lab.inbox)
+  "scipy>=1.11",  # Spearman rank-IC (master/scorer rank_consistency) — lazily imported, advisory metric only
+  "statsmodels>=0.14",  # canonical Benjamini-Hochberg FDR (master/fdr) — lazily imported off the gate's hot path
   "uvicorn>=0.30",
   "websockets>=12",  # realtime worker's Binance kline stream (import-guarded; worker is OFF by default)
 ]

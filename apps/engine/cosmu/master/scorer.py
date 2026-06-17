@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import warnings
 from decimal import Decimal
 from itertools import combinations
 from statistics import NormalDist, fmean, pstdev
@@ -183,34 +184,21 @@ def cscv_pbo(config_block_returns: list[list[float]], s_blocks: int = 8) -> floa
     return overfit / total if total else 1.0
 
 
-def _rank(xs: list[float]) -> list[float]:
-    """Average (fractional) ranks, 1-based, ties sharing the mean rank — so Spearman handles tied configs."""
-    order = sorted(range(len(xs)), key=lambda i: xs[i])
-    ranks = [0.0] * len(xs)
-    i = 0
-    while i < len(order):
-        j = i
-        while j + 1 < len(order) and xs[order[j + 1]] == xs[order[i]]:
-            j += 1
-        avg = (i + j) / 2.0 + 1.0
-        for k in range(i, j + 1):
-            ranks[order[k]] = avg
-        i = j + 1
-    return ranks
-
-
 def _spearman(a: list[float], b: list[float]) -> float | None:
-    """Spearman rank correlation = Pearson on the rank-transformed values. None when undefined (constant input)."""
+    """Spearman rank correlation via scipy.stats.spearmanr (Pearson on average ranks — ties share the mean
+    rank, exactly as before). None when undefined: fewer than 2 paired points, mismatched lengths, or a
+    constant input (scipy returns NaN, which we surface as "no information" rather than a fake correlation).
+    ADVISORY metric only (feeds rank_consistency, never a gate threshold), so this is a drop-in for the prior
+    bespoke implementation — parity pinned in tests/test_spearman_parity.py. The scipy import is local so the
+    lean engine never pays for it unless this diagnostic is actually computed."""
     if len(a) < 2 or len(a) != len(b):
         return None
-    ra, rb = _rank(a), _rank(b)
-    mean_a, mean_b = fmean(ra), fmean(rb)
-    cov = sum((x - mean_a) * (y - mean_b) for x, y in zip(ra, rb, strict=True))
-    va = sum((x - mean_a) ** 2 for x in ra)
-    vb = sum((y - mean_b) ** 2 for y in rb)
-    if va <= 0 or vb <= 0:
-        return None
-    return cov / math.sqrt(va * vb)
+    from scipy.stats import spearmanr
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # scipy warns + returns NaN on constant input; we map NaN -> None
+        rho = float(spearmanr(a, b)[0])
+    return None if math.isnan(rho) else rho
 
 
 def rank_consistency(config_block_returns: list[list[float]], *, split_frac: float = 0.5) -> float | None:
