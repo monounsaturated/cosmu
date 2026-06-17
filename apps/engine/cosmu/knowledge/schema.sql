@@ -93,6 +93,13 @@ CREATE TABLE IF NOT EXISTS backtests (
   fee_bps NUMERIC,
   slippage_bps NUMERIC,
   impact_bps NUMERIC,
+  -- Per-symbol VISIBILITY (the pooled metric above averages symbols together; these surface the granular truth).
+  -- best_symbol / best_pnl_pct = the single highest-OOS-return symbol tested (DISPLAY-only — the deflated pooled
+  -- gate still decides pass/fail; funding the best-of-N would be a multiple-testing hole). per_symbol = the full
+  -- {symbol:{return,sharpe,max_drawdown,trades}} JSON. All nullable: pre-migration + non-screen rows leave unset.
+  best_symbol TEXT,
+  best_pnl_pct NUMERIC,
+  per_symbol TEXT,
   created_at TEXT NOT NULL
 );
 
