@@ -278,3 +278,23 @@
       Firecrawl/GDELT/Quiver, Cohere Rerank, Renovate + CodeRabbit. See docs/reports/generalization-plan-2026-06-06.md.
 - [x] **Decided 2026-06-06:** keep GitHub-hosted CI (PR-only, lean) — NOT self-hosted/Codespaces; NO VPS; Polymarket =
       backtest-only (live parked, US blocked); Supabase Pro (8 GB) is the data home until tiering.
+
+## 🔬 MACHINE AUDIT 2026-06-17 (adversarial workflow, 50 agents, 38 confirmed findings) — the S×A×V spine
+
+> Headline: **the S×A×V triple (algorithm × asset × venue) is honest where it's CHEAP (backtest_symbols + /lab) and
+> COLLAPSED at every point where it costs money or proves an edge.** The fix is wiring (the verdict primitive already
+> existed, just unread at the decision points) — NOT a rewrite. The pooled deflated Gate stays the funding authority
+> and is LOCKED throughout; every fix ADDS strictness or re-routes capital, never loosens.
+
+**SHIPPED this session (NOW items):**
+- [x] **#315** verdict-driven funding (capital lands on the robust>fragile cell, not round-robin `pool[i%len]`) + real per-symbol venue label in finder persist (was fabricated `binance` for every cross-asset cell). `master/per_symbol.rank_deploy_symbols`.
+- [x] **#316** equity funds on `alpaca` (real exec adapter) not `ibkr` (data-only, no adapter → equity could never go live) + `/live/launch` arm-attribution guard (refuse arming a (symbol,venue) the forward proof wasn't earned on).
+- [x] **#317** per-symbol breadth floor (`funding_eligible`): never promote a gate-passer with no generalizing (robust) symbol — fail-open on no per-symbol data. Closes the best-of-N promotion hole.
+
+**QUEUED (tasks):**
+- [ ] **track = the triple** (audit#7, L, ⚠️NEEDS operator sign-off): tracks UNIQUE(version) → add symbol+venue, fan out one track per judgeable cell; re-key live_eligibility/divergence/already_funded. Per-cell arming policy = each cell individually matures+nets-positive, NEVER max-over-cells (re-introduces best-of-N). The NOW fixes are down-payments on this.
+- [ ] **de-pool the leaderboard VIEW** (audit#8, M, view-only): nest backtest_symbols cells under LeaderboardRow (relabel pooled `net_pct` as 'advisory'), add `?version_id=` to /lab/symbols for the strategy sheet, fix /lab dedup key to include venue. Delivers the operator's 'each line = S×A×V, navigate to sibling triples, comparison table'.
+- [ ] **wake the LLM lane** (audit#10, M, observe-only): `open_agent_strategy` is called ONLY in tests — the LLM model is end-to-end DEAD in prod. Add an AgentSpec authoring entrypoint + branch NL intake; fan the observe loop over (symbol×venue), record venue (AgentSpec.venues is dead). Prereq for the LLM-research lane.
+- [ ] **standardize per-venue cost** (audit#2/3/6/9, M): shared `build_cost_context` for finder+loop (loop is crypto-only today — latent landmine, guard comment added); per-venue depth_schedule in backtest.py (slippage/impact still a scalar); matrix_search per-venue fees (durably persists Binance-cost equity rows to gate_verdicts).
+- [ ] **OSS** (audit): ADOPT parity-guarded statsmodels multipletests (fdr.py) + scipy spearmanr (scorer.py); SPIKE skfolio (test oracle only), DuckDB (per-triple grid + dedup), ccxt (crypto venue catalog seed), NautilusTrader (exec plumbing, gated on 1st live survivor). SKIP: the locked CSCV/DSR/effective-N/sizing core, MLflow.
+- DO-NOT-TOUCH (working, load-bearing): the Gate math (DSR/PBO/BH-FDR/CSCV/cluster_representatives), the pooled `_combine()` gate input, `_run_symbol` per-symbol compute, `master/sizing.py`, the live order path/gauntlet/caps, the equity TAA cohorts (intrinsically multi-asset, NOT a pooling sin), `per_symbol.classify` (correct, was just unread).
