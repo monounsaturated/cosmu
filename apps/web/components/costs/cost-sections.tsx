@@ -9,10 +9,9 @@
 // a fabricated curve or number. Empty / zero states say so plainly.
 
 import type { ReactNode } from "react";
-import type { CostByCategory, InfraLine, SpendPoint, VendorActual } from "@cosmu/contracts-ts";
-import type { SupplierRow } from "@/app/data/supplier-costs";
+import type { CostByCategory, SpendPoint } from "@cosmu/contracts-ts";
 import { EquityChart } from "@/components/charts/equity-chart";
-import { cn, formatUsd, formatSigned, timeAgo } from "@/lib/utils";
+import { cn, formatUsd, formatSigned } from "@/lib/utils";
 
 // ─── Category → bento badge mapping ─────────────────────────────────────────────
 // The mockup's four `.cat-badge` tones (infra / trading / data / ai). Supplier and infra categories use
@@ -53,13 +52,23 @@ export type StatCell = {
   sub: string;
   /** Optional tone class for the value (e.g. "up"); omit for default foreground. */
   tone?: string;
+  /** When set, the cell becomes a clickable category filter (like the tiles). */
+  onClick?: () => void;
+  /** Highlight the cell as the active filter. */
+  active?: boolean;
 };
 
 export function StatStrip({ cells }: { cells: StatCell[] }) {
   return (
     <div className="stat-strip">
       {cells.map((c) => (
-        <div className="stat-cell" key={c.label}>
+        <div
+          className={cn("stat-cell", c.onClick && "clk", c.active && "active")}
+          key={c.label}
+          onClick={c.onClick}
+          role={c.onClick ? "button" : undefined}
+          aria-pressed={c.onClick ? !!c.active : undefined}
+        >
           <div className="stat-l">{c.label}</div>
           <div className={cn("stat-v", c.tone)}>{c.value}</div>
           <div className="stat-s">{c.sub}</div>
@@ -133,6 +142,10 @@ type TileBucket = (typeof TILE_ORDER)[number];
 const TILE_FOLD: Record<string, TileBucket> = { infra: "infra", ci: "infra", data: "data", trading: "trading", llm: "ai", ai: "ai" };
 export const foldTile = (c: string): TileBucket => TILE_FOLD[c.toLowerCase()] ?? "infra";
 
+// Filter key — like foldTile but keeps "other" distinct (it has no tile; it lives in the "Other" box).
+// Used to match the active filter against a row's category.
+export const catKey = (c: string): string => (c.toLowerCase() === "other" ? "other" : foldTile(c));
+
 export function CategoryTiles({
   categories,
   active,
@@ -149,23 +162,18 @@ export function CategoryTiles({
   return (
     <div className="cat-tiles">
       {TILE_ORDER.map((cat) => {
-        const isActive = active != null && foldTile(active) === cat;
+        const isActive = active != null && catKey(active) === cat;
         return (
           <div
-            className={cn("cat-tile", onPick && "cat-tile-btn", isActive && "active")}
+            className={cn("cat-tile", isActive && "active")}
             key={cat}
             onClick={onPick ? () => onPick(cat) : undefined}
             role={onPick ? "button" : undefined}
             aria-pressed={onPick ? isActive : undefined}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <CatBadge category={cat} />
-            </div>
+            <CatBadge category={cat} />
             <div className="stat-v" style={{ marginTop: 8 }}>
               {formatUsd(totals[cat])}
-            </div>
-            <div className="stat-s" style={{ textTransform: "capitalize" }}>
-              total · {cat}
             </div>
           </div>
         );
@@ -173,111 +181,6 @@ export function CategoryTiles({
     </div>
   );
 }
-
-// ─── Register row model ─────────────────────────────────────────────────────────
-// One unified "cost source" row, assembled from the three REAL inputs the contract gives us:
-//   - supplier rows  (live/estimated monthly spend, fetched directly from billing APIs)
-//   - infra lines    (engine-reported plan-tier estimates, with a range + note)
-//   - vendor actuals (engine-reported real spend vs budget this period)
-// Vendor actuals, when present, override the supplier/infra amount for the same vendor (they are the
-// realest figure we have). Headroom is "—" unless a real budget cap exists.
-export type RegisterRow = {
-  vendor: string;
-  category: string;
-  /** Current spend figure ($/period) or null when only a range is known. */
-  amount: number | null;
-  /** Honest range string when no point estimate (e.g. "$5–$20"), else null. */
-  range: string | null;
-  /** Budget cap for this vendor, or null when uncapped. */
-  budget: number | null;
-  /** Period label (e.g. "monthly", "May 2026"), or null. */
-  period: string | null;
-  /** "live" billing fetch, "est" estimate, or "actual" engine-reported actual. */
-  source: "live" | "est" | "actual";
-  /** Optional one-line note (infra lines carry these). */
-  note?: string | null;
-};
-
-export function buildRegister(
-  suppliers: SupplierRow[],
-  infraLines: InfraLine[],
-  vendorActuals: VendorActual[],
-): RegisterRow[] {
-  const byVendor = new Map<string, RegisterRow>();
-  const keyOf = (v: string) => v.trim().toLowerCase();
-
-  // 1) supplier billing rows — the live/estimated base layer.
-  for (const s of suppliers) {
-    byVendor.set(keyOf(s.name), {
-      vendor: s.name,
-      category: s.category,
-      amount: s.amount_usd,
-      range: null,
-      budget: null,
-      period: "monthly",
-      source: s.source,
-      note: s.role,
-    });
-  }
-
-  // 2) engine infra lines — fill vendors the supplier layer doesn't know, and attach honest ranges.
-  for (const l of infraLines) {
-    const k = keyOf(l.vendor);
-    const hasRange = l.amount_min !== l.amount_max && (l.amount_min > 0 || l.amount_max > 0);
-    const range = hasRange ? `${formatUsd(l.amount_min)}–${formatUsd(l.amount_max)}` : null;
-    const existing = byVendor.get(k);
-    if (existing) {
-      // Keep the supplier figure but enrich with the range/note when the supplier had none.
-      if (!existing.note && l.note) existing.note = l.note;
-      if (existing.range === null && range) existing.range = range;
-    } else {
-      byVendor.set(k, {
-        vendor: l.vendor,
-        category: l.category,
-        amount: range ? null : l.amount,
-        range,
-        budget: null,
-        period: "est. / mo",
-        source: "est",
-        note: l.note || null,
-      });
-    }
-  }
-
-  // 3) vendor actuals — the realest figure; override the amount + attach the real budget/period.
-  for (const v of vendorActuals) {
-    const k = keyOf(v.vendor);
-    const existing = byVendor.get(k);
-    if (existing) {
-      existing.amount = v.amount;
-      existing.range = null;
-      existing.budget = v.budget > 0 ? v.budget : null;
-      existing.period = v.period || existing.period;
-      existing.source = "actual";
-    } else {
-      byVendor.set(k, {
-        vendor: v.vendor,
-        category: v.category,
-        amount: v.amount,
-        range: null,
-        budget: v.budget > 0 ? v.budget : null,
-        period: v.period || null,
-        source: "actual",
-      });
-    }
-  }
-
-  const ORDER: Record<string, number> = { infra: 0, ci: 0, data: 1, trading: 1, llm: 2, ai: 2 };
-  return [...byVendor.values()].sort((a, b) => {
-    const oa = ORDER[a.category.toLowerCase()] ?? 9;
-    const ob = ORDER[b.category.toLowerCase()] ?? 9;
-    if (oa !== ob) return oa - ob;
-    return (b.amount ?? 0) - (a.amount ?? 0);
-  });
-}
-
-// The register table itself lives in editable-register.tsx (EditableRegisterTable) — it's the
-// operator-editable ledger, so it needs the client override layer.
 
 // ─── Per-strategy ROI table ─────────────────────────────────────────────────────
 // The literal "opex vs alpha" question at the strategy grain, rendered as a `.mini-tbl`. ROI is "—" when
@@ -337,11 +240,4 @@ export function CardHead({ label, aside }: { label: string; aside?: ReactNode })
       {aside ? <span className="sub" style={{ marginLeft: "auto" }}>{aside}</span> : null}
     </div>
   );
-}
-
-// ─── Refreshed-at note ──────────────────────────────────────────────────────────
-export function RefreshedAt({ at }: { at: string }) {
-  const ago = timeAgo(at);
-  if (!ago) return null;
-  return <span className="quiet" style={{ fontSize: 11 }}>refreshed {ago} · 30 min cache</span>;
 }
