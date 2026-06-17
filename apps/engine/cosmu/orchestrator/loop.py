@@ -31,11 +31,15 @@ from cosmu.master.portfolio import Portfolio
 from cosmu.portfolio.rotation import Track, select_tracks
 from cosmu.spine.venue import VenueCatalog, default_catalog
 
-# ASSET-CLASS → its funding venue (one tradable venue per class, mirroring PricingRouter's mark routing): crypto
-# funds on Binance spot; equity/ETF funds on the IBKR instruments (the same equity universe the GEM arm uses, marked
-# via Yahoo total-return). A class absent here has NO funding venue wired → its survivors are SKIPPED, never forced
-# onto a crypto symbol (no mislabeled/mispriced position). Add a class here only once a real tradable venue exists.
-_FUNDING_VENUE_BY_ASSET_CLASS: dict[str, str] = {"crypto": "binance", "equity": "ibkr"}
+# ASSET-CLASS → its funding venue (one tradable venue per class, mirroring PricingRouter's mark routing). It MUST
+# be a venue with a real ExecutionAdapter (adapters/exec/registry.EXEC_ADAPTER_VENUES = binance/alpaca/polymarket),
+# else a funded survivor can never route live — it sim-fills forever while the UI shows 'armed'. crypto → Binance
+# spot; equity/ETF → ALPACA (was 'ibkr', which has data but NO exec adapter, so every equity survivor — the only
+# class with Gate survivors today — was structurally unable to go live). Alpaca mirrors the same 31 equities in the
+# catalog and the mark leg already prices equities off Alpaca-when-keyed-else-Yahoo total-return. A class absent
+# here has NO funding venue → its survivors are SKIPPED (never forced onto a crypto symbol). NOTE: pre-existing
+# ibkr-funded sim tracks are not migrated (they keep marking via the router); NEW equity survivors fund on alpaca.
+_FUNDING_VENUE_BY_ASSET_CLASS: dict[str, str] = {"crypto": "binance", "equity": "alpaca"}
 
 
 def _instrument_venue(catalog: VenueCatalog, instrument_id: str) -> str | None:

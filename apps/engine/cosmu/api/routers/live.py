@@ -381,6 +381,29 @@ def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
             reason=f"venue '{request.venue_id}' has no API keys configured — add them to the server env first",
         )
 
+    # S×A×V ATTRIBUTION GUARD: the forward proof read just below (paper maturity, forward DSR, proven regimes)
+    # was earned on the ONE (symbol, venue) the funder deployed this version on. Arming a DIFFERENT (symbol,
+    # venue) would launch real money on evidence that belongs to another cell — the cardinal-sin on the money
+    # path. Resolve the funded cell from the sim fill ledger (latest position for this version) and refuse a
+    # mismatch. Fail-safe: no funded position yet → skip (the eligibility gate below still blocks an unproven arm).
+    # (Until tracks are re-keyed per-triple, a version has exactly ONE funded cell; this keeps the arm honest now.)
+    funded = store.row(
+        "SELECT symbol, instrument_id FROM positions WHERE strategy_version_id = ? ORDER BY updated_at DESC LIMIT 1",
+        (request.version_id,),
+    )
+    if funded and funded.get("symbol"):
+        from cosmu.orchestrator.loop import _instrument_venue
+        from cosmu.spine.venue import default_catalog
+
+        funded_venue = _instrument_venue(default_catalog(), funded["instrument_id"]) or request.venue_id
+        if funded["symbol"] != request.symbol or funded_venue != request.venue_id:
+            return LaunchActivateResponse(
+                armed=False, version_id=request.version_id, venue_id=request.venue_id, symbol=request.symbol,
+                budget=request.budget, caps=caps, eligible=[],
+                reason=(f"forward proof was earned on {funded['symbol']}@{funded_venue}, not "
+                        f"{request.symbol}@{request.venue_id} — arm the cell that was actually proven"),
+            )
+
     # HARD live-eligibility gate: paper maturity (>= PAPER_MIN_DAYS net-positive) AND regime.
     # `override_paper` waives ONLY the paper precondition (logged below), never the regime gate.
     from cosmu.master.live_eligibility import live_eligibility_verdict, paper_clock_origin

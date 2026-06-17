@@ -204,12 +204,14 @@ def test_equity_survivor_never_gets_a_binance_crypto_position(tmp_path):
     )
     assert len(rows) == 1
     pos = rows[0]
-    # registered (flat) on the EQUITY venue/instrument, NOT a Binance crypto symbol
+    # registered (flat) on the EQUITY venue/instrument, NOT a Binance crypto symbol. Equity now funds on ALPACA
+    # (the venue with a real exec adapter — see orchestrator/loop._FUNDING_VENUE_BY_ASSET_CLASS), so the instrument
+    # is the Alpaca-mirrored equity, never IBKR (data-only, no live leg) and never a crypto symbol.
     crypto_symbols = {i.symbol for i in cat.instruments if i.venue_id == "binance" and i.asset_class == "crypto"}
-    equity_symbols = {i.symbol for i in cat.instruments if i.venue_id == "ibkr" and i.asset_class == "equity"}
+    equity_symbols = {i.symbol for i in cat.instruments if i.venue_id == "alpaca" and i.asset_class == "equity"}
     assert pos["symbol"] not in crypto_symbols, f"equity survivor mislabeled onto a Binance crypto symbol: {pos['symbol']}"
     assert pos["symbol"] in equity_symbols
-    assert pos["instrument_id"].endswith("-ibkr")
+    assert pos["instrument_id"].endswith("-alpaca")
 
 
 def test_survivor_with_no_funding_venue_is_skipped_not_forced_onto_crypto(tmp_path):
