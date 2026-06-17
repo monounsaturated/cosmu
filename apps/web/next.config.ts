@@ -4,12 +4,12 @@ import type { NextConfig } from "next";
 // Keys · Commands (landing = Strategies). Most of the previous app's knowledge/ops pages were folded; their
 // backend data keeps accruing, but the pages are gone from the UI. These redirects keep any old URL
 // (bookmarks, deep links) working by sending it to the nearest surviving surface — no 404s, no clutter.
-// EXCEPTION: /research is UN-folded — it now hosts the Experiments surface (the machine's tested-theory
-// memory from gate_verdicts), so it must NOT be in the folded list or its catch-all would shadow the page.
+// EXCEPTIONS — UN-folded surfaces that host real pages, so they must NOT be in the folded list or the
+// catch-all would shadow them: /research (the Experiments memory from gate_verdicts) and /lab (the per-symbol
+// backtest screener — every strategy × symbol × venue, verdict-labelled).
 const FOLDED_TO_STRATEGIES = [
   "/overview",
   "/console",
-  "/lab",
   "/verdicts",
   "/correlations",
   "/explorer",

@@ -709,6 +709,27 @@ export interface KeyPresence {
   local?: boolean | null;
 }
 
+export interface LabSymbolRow {
+  created_at: string;
+  kind: string;
+  max_drawdown: number;
+  return_pct: number;
+  sharpe: number;
+  status: string;
+  strategy_name: string;
+  strategy_version_id: string;
+  symbol: string;
+  trades: number;
+  venue_id: string | null;
+  verdict: string | null;
+}
+
+export interface LabSymbolsResponse {
+  rows: LabSymbolRow[];
+  symbols: string[];
+  venues: string[];
+}
+
 export interface LaunchActivateRequest {
   budget?: number;
   confirm: boolean;

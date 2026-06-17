@@ -124,6 +124,10 @@ from cosmu.api.models.finder import (  # noqa: F401
     FinderRunRequest,
     FinderVariant,
 )
+from cosmu.api.models.lab_symbols import (  # noqa: F401
+    LabSymbolRow,
+    LabSymbolsResponse,
+)
 from cosmu.api.models.flywheel import (  # noqa: F401
     MemoryInsight,
     MemoryInsightsResponse,

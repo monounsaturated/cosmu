@@ -3614,6 +3614,120 @@
         "title": "KeyPresence",
         "type": "object"
       },
+      "LabSymbolRow": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_drawdown": {
+            "title": "Max Drawdown",
+            "type": "number"
+          },
+          "return_pct": {
+            "title": "Return Pct",
+            "type": "number"
+          },
+          "sharpe": {
+            "title": "Sharpe",
+            "type": "number"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "strategy_name": {
+            "title": "Strategy Name",
+            "type": "string"
+          },
+          "strategy_version_id": {
+            "title": "Strategy Version Id",
+            "type": "string"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "trades": {
+            "title": "Trades",
+            "type": "integer"
+          },
+          "venue_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue Id"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "strategy_version_id",
+          "strategy_name",
+          "kind",
+          "status",
+          "symbol",
+          "venue_id",
+          "return_pct",
+          "sharpe",
+          "max_drawdown",
+          "trades",
+          "verdict",
+          "created_at"
+        ],
+        "title": "LabSymbolRow",
+        "type": "object"
+      },
+      "LabSymbolsResponse": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/LabSymbolRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Symbols",
+            "type": "array"
+          },
+          "venues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Venues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows",
+          "symbols",
+          "venues"
+        ],
+        "title": "LabSymbolsResponse",
+        "type": "object"
+      },
       "LaunchActivateRequest": {
         "description": "Request body for the strategy launch-live flow: arm one strategy on a specific venue + asset\nwith a given budget. Confirm must be true (two-click safety); caps are set here and carried\nthrough to the live_caps upsert so the operator sees exactly what they agreed to.\n`override_paper` (default OFF) is the explicit human escape hatch: arm a strategy that has NOT\nyet cleared the >= PAPER_MIN_DAYS net-positive paper precondition, recorded with a loud\n`live_override_launch` warning event. It never waives the regime gate or the 5 execution interlocks.",
         "properties": {
@@ -8078,6 +8192,95 @@
           }
         },
         "summary": "Lab Ml"
+      }
+    },
+    "/lab/symbols": {
+      "get": {
+        "description": "Per-symbol backtest cells \u2014 one row per (strategy \u00d7 symbol \u00d7 venue), the granular truth the pooled\nleaderboard averages away. Outlier-sorted (highest standalone return first) so the operator can SNIPE, with\nthe honest verdict (robust/fragile/thin/negative) carried so a lone best-of-N winner is flagged, not\ncelebrated. Optional filters narrow by symbol / venue / verdict. Pure read; never a funding signal.",
+        "operationId": "lab_symbols_lab_symbols_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "venue",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Venue"
+            }
+          },
+          {
+            "in": "query",
+            "name": "verdict",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verdict"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSymbolsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lab Symbols"
       }
     },
     "/leaderboard": {

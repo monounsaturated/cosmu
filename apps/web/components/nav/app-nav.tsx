@@ -72,6 +72,7 @@ const ICONS: Record<string, ReactNode> = {
 // The primary surfaces — the entire app, in canonical sidebar order.
 export const navItems: NavItem[] = [
   { href: "/strategies", key: "strategies", label: "Strategies", icon: ICONS.strategies },
+  { href: "/lab", key: "lab", label: "Lab", icon: ICONS.research },
   { href: "/paper", key: "paper", label: "Paper", icon: ICONS.paper },
   { href: "/live", key: "live", label: "Live", icon: ICONS.live },
   { href: "/indexes", key: "indexes", label: "Indexes", icon: ICONS.indexes },
