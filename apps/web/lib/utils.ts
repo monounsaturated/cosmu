@@ -39,11 +39,13 @@ export function numOrNull(v: number | null | undefined): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-// The canonical paper-stage STATUS predicate (paper / forward_test / forward). ONE taxonomy, imported
-// everywhere (screener, dashboards, sidebar counts) so the cohort never drifts between surfaces.
+// The canonical paper-stage STATUS predicate (paper / forward_test). ONE taxonomy, imported everywhere
+// (screener, dashboards, sidebar counts) so the cohort never drifts between surfaces. Mirrors the engine's
+// PAPER_ALIASES (knowledge/lifecycle_status.py): "forward_test" is the tolerated legacy spelling of PAPER;
+// the never-written phantom "forward" is intentionally NOT matched.
 export function isPaper(status: string | null | undefined): boolean {
   const s = (status ?? "").toLowerCase();
-  return s === "paper" || s === "forward_test" || s === "forward";
+  return s === "paper" || s === "forward_test";
 }
 
 // The HONEST paper predicate: a strategy is in Paper only if it has a paper-ish status AND has genuinely

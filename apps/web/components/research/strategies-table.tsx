@@ -26,15 +26,15 @@ import { useSearchParams } from "next/navigation";
 import type { LeaderboardRow, StrategyDetailResponse } from "@cosmu/contracts-ts";
 import { SidePanel } from "@/components/ui/side-panel";
 import { StrategySheet } from "@/components/strategy/strategy-sheet";
-import type { Stage } from "@/components/strategy/stage-control";
+import { type LifeStatus, type Stage, LIFE_TO_STAGE, LIFE_LABEL, LIFE_BADGE_CLASS } from "@/lib/lifecycle";
 import { engineFetch, engineGetJson, enginePeek, enginePrefetch } from "@/lib/engine";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { provenanceOf } from "@/lib/provenance";
 import { cn, formatUsd, formatVenue, numOrNull, signedUsd } from "@/lib/utils";
 
 // ── Lifecycle mapping — the screener's local lifecycle normalizer (the canonical paper predicate is the
-// shared isPaper in lib/utils; this maps the full engine status onto the 5-stage lifecycle/filter lanes). ──
-type LifeStatus = "lab" | "screened" | "paper" | "live" | "killed";
+// shared isPaper in lib/utils; this maps the full engine status onto the 5-stage lifecycle/filter lanes). The
+// LifeStatus/Stage unions + label/badge maps live in the shared lib/lifecycle module. ──
 // The screener's filter buckets map onto the chips; "lab" reads as Queued, "screened" as Backtest.
 type FilterKey = "all" | "live" | "paper" | "backtest" | "killed" | "queued";
 
@@ -47,7 +47,7 @@ function lifeStatusOf(row: RowStage | null | undefined): LifeStatus {
   const s = (row?.status ?? "").toLowerCase();
   if (s === "killed" || s === "dead" || s === "graveyard") return "killed";
   if (s === "live") return "live";
-  if (s === "paper" || s === "forward_test" || s === "forward") return row?.has_paper_fills === true ? "paper" : "screened";
+  if (s === "paper" || s === "forward_test") return row?.has_paper_fills === true ? "paper" : "screened";
   if (s === "screening" || s === "screened" || s === "validating" || s === "optimizing") return "screened";
   return "lab";
 }
@@ -60,18 +60,8 @@ function filterBucketOf(row: RowStage | null | undefined): FilterKey {
   return "queued"; // lab
 }
 
-const STAGE_LABEL: Record<LifeStatus, string> = { lab: "Queued", screened: "Backtest", paper: "Paper", live: "Live", killed: "Killed" };
-const STAGE_BADGE_CLASS: Record<LifeStatus, string> = {
-  lab: "stage-badge sb-queued",
-  screened: "stage-badge sb-backtest-stage",
-  paper: "stage-badge sb-paper",
-  live: "stage-badge sb-live",
-  killed: "stage-badge sb-killed"
-};
 // Pipeline order for the default "Stage" sort (top-to-bottom by lifecycle maturity).
 const STAGE_RANK: Record<LifeStatus, number> = { live: 5, paper: 4, screened: 3, lab: 2, killed: 1 };
-// Map the screener's lifecycle onto the sheet's Stage union so the sheet badge matches the table badge.
-const LIFE_TO_STAGE: Record<LifeStatus, Stage> = { lab: "queued", screened: "backtest", paper: "paper", live: "live", killed: "killed" };
 
 // The PnL of the strategy's LATEST stage — so the P&L column is meaningful at every stage, not blank for a
 // backtested strategy. A real paper/live MARK wins when present (paper, live, or a track killed after it
@@ -442,7 +432,7 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
         </div>
       );
     case "stage":
-      return <span className={STAGE_BADGE_CLASS[life]}>{STAGE_LABEL[life]}</span>;
+      return <span className={LIFE_BADGE_CLASS[life]}>{LIFE_LABEL[life]}</span>;
     case "life":
       return <LifecycleGlyph life={life} />;
     case "days": {
