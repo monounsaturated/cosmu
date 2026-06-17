@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import random
 from decimal import Decimal
 
@@ -65,7 +66,7 @@ def test_screen_is_validation_only_no_holdout_simulated(tmp_path):
     # exactly why _persist must score with check_holdout=False (else every candidate would die on the sentinel).
     loop = _loop(tmp_path)
     cand = Candidate(spec=seed_orb_fvg_spec(), origin="seed", lane="gate")
-    metrics, _venue, _mst, _vr = loop._screen(cand, "code-hash", 7)
+    metrics, _venue, _mst, _vr, _ps = loop._screen(cand, "code-hash", 7)
     assert metrics.holdout_deflated_sharpe == Decimal("-0.5")
 
 
@@ -76,7 +77,10 @@ def _distinct_val_stream(cand: Candidate) -> list[float]:
     collapses to ONE representative → cohort_pbo=1.0 → every candidate fails the pbo gate) and (b) stay strongly
     positive so CSCV-PBO is low (the IS-best config is also OOS-good). A deterministic per-candidate seed gives
     each its own idiosyncratic noise on a shared strong uptrend."""
-    rng = random.Random(hash(cand.spec.name) & 0xFFFFFFFF)
+    # hashlib, NOT builtin hash(): hash() is salted per-process (PYTHONHASHSEED) so the streams — and thus the
+    # cohort CSCV-PBO — differed across runs, making this exam flaky (~3/5 hash seeds killed every champion on
+    # pbo before the holdout could be exercised). hashlib is stable, so the forced survivor is reproducible.
+    rng = random.Random(int.from_bytes(hashlib.sha256(cand.spec.name.encode()).digest()[:4], "big"))
     # 60 bars: a strong, consistent positive drift (0.01/bar) plus small idiosyncratic noise. Different noise per
     # candidate breaks the 0.95 correlation; the dominant drift keeps every stream a clear winner (low PBO).
     return [0.01 + rng.uniform(-0.006, 0.006) for _ in range(60)]
@@ -86,8 +90,13 @@ def _force_survivor(monkeypatch, loop: FarmLoop) -> None:
     venue = default_catalog().venue_for(["binance"])
     monkeypatch.setattr(
         FarmLoop, "_screen",
-        lambda self, cand, code_hash, seed: (_strong(), venue, 20, _distinct_val_stream(cand)),
+        lambda self, cand, code_hash, seed: (_strong(), venue, 20, _distinct_val_stream(cand), {}),
     )
+    # Isolate the HOLDOUT exam (what THESE tests assert) from the orthogonal, stochastic cohort CSCV-PBO: pin the
+    # cohort PBO low so the forced-strong champion deterministically reaches the one-shot holdout step. The cohort
+    # PBO behaviour itself is fully covered by test_farmloop_cscv_pbo.py — here it must not gate the exam under
+    # test (otherwise the stream fixture's incidental correlation, not the holdout, decides survivorship).
+    monkeypatch.setattr("cosmu.evolution.loop.cohort_cscv_pbo", lambda *a, **k: 0.05)
 
 
 def test_champion_holdout_demotes_a_survivor_that_fails_the_exam(tmp_path, monkeypatch):
