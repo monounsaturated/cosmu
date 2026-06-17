@@ -27,6 +27,7 @@ from cosmu.master.cohort import (
 from cosmu.master.fdr import benjamini_hochberg, dsr_pvalue
 from cosmu.master.per_symbol import MIN_TRADES_PER_SYMBOL, classify_per_symbol, funding_eligible
 from cosmu.master.scorer import BacktestMetrics, TrialStats, score
+from cosmu.master.screen_universe import build_cost_context
 from cosmu.master.tracks import open_paper_track
 from cosmu.master.trials import register_trial, trial_stats
 from cosmu.ml.regime import proven_regimes
@@ -653,9 +654,11 @@ class FarmLoop:
         # persistence of data the screen already computed — never the funding authority (the pooled deflated Gate
         # scored above is). The #306 per_symbol JSON blob is intentionally NOT written here: the table supersedes it.
         # NOTE: a single sc.venue_id is CORRECT here only because the autonomous loop is crypto-only today (the
-        # screen fetches Binance spot for every symbol — see _binance_symbols / _screen). The finder, which screens
-        # equity+HL legs, stamps a PER-SYMBOL venue map instead (lab/finder.py). The day this loop's universe widens
-        # to other asset classes, this MUST adopt the same per-symbol venue map or it will mislabel the fee axis.
+        # screen fetches Binance spot for every symbol — see _binance_symbols / _screen), so build_cost_context
+        # returns venue_id_by_symbol=None and every cell shares sc.venue_id. The finder, which screens equity+HL
+        # legs, stamps the PER-SYMBOL venue map build_cost_context already produces (lab/finder.py). The day this
+        # loop's universe widens, carry that same venue_id_by_symbol (discarded as `_venue_id_by_symbol` in _screen
+        # today) onto _Screened and use it here, or this will mislabel the fee axis.
         _verdicts = classify_per_symbol(sc.per_symbol)
         for _sym, _pm in (sc.per_symbol or {}).items():
             b.insert("backtest_symbols", {
@@ -728,7 +731,15 @@ class FarmLoop:
             symbol: provider.fetch_bars(symbol, cand.spec.horizon.bar_size, limit=_bar_limit(cand.spec))
             for symbol in symbols
         }
-        venue = default_catalog().venue_for(cand.spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
+        catalog = default_catalog()
+        venue = catalog.venue_for(cand.spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
+        # Per-symbol cost + calendar context from the SHARED source the finder also uses (master/screen_universe),
+        # so the FarmLoop and the Strategy Finder can never diverge on cost. This loop is CRYPTO-ONLY today —
+        # _binance_symbols feeds only Binance crypto symbols, so build_cost_context finds no equity/HL leg and
+        # returns (None, None, None, None); the backtest then uses the scalar venue fee/depth below and this call
+        # is byte-identical to the prior crypto path. The day the loop's universe widens, the per-venue fee +
+        # depth + calendar flow automatically — no second implementation to keep in sync (audit landmine closed).
+        fee_schedule, depth_schedule, asset_class_by_symbol, _venue_id_by_symbol = build_cost_context(cand.spec, market, catalog)
         # Detailed backtest: `.metrics` is BYTE-IDENTICAL to run_strategy_backtest (which is a thin .metrics
         # wrapper over this), so no verdict drifts — but it also exposes per-symbol trade counts so the
         # per-symbol floor can test the true MINIMUM-per-symbol (finder.py semantic), not a pooled total.
@@ -737,17 +748,21 @@ class FarmLoop:
             fit_params(cand.spec),
             market,
             fee_bps=venue.taker_fee_bps,
+            fee_schedule=fee_schedule,
             # Charge the SPEC's own venue depth (half-spread + size-aware impact), not the global 5/50 — a
             # thin-book venue (Polymarket 30/150, Coinbase 8/60, Hyperliquid 6/60) pays the real cost it would
-            # live, so a strategy can't pass the screen on costs it'd never survive on its actual venue.
+            # live, so a strategy can't pass the screen on costs it'd never survive on its actual venue. The
+            # depth_schedule (per-symbol) overrides this scalar only when a cross-asset leg is present (None here).
             slippage_bps=venue.slippage_bps,
             impact_bps=venue.impact_bps,
+            depth_schedule=depth_schedule,
             alt_by_symbol=self._alt_by_symbol(cand.spec, market),
             # SELECTION sees VALIDATION evidence only — the untouched, purged+embargoed holdout is evaluated
             # exactly once per gate+FDR survivor in run_cohort's champion-only holdout step (mirrors lab/finder).
             # Screening every candidate WITH the holdout (the old default) made the always-on loop SELECT on the
             # exam — the structural holdout-reuse channel the gate-integrity review flagged.
             include_holdout=False,
+            asset_class_by_symbol=asset_class_by_symbol,
         )
         return result.metrics, venue, result.min_symbol_trades, list(result.val_returns), result.per_symbol
 
@@ -760,12 +775,19 @@ class FarmLoop:
         enabled_venues, enabled_classes = self._enabled()
         symbols = _binance_symbols(spec, enabled_venues, enabled_classes)
         market = {s: provider.fetch_bars(s, spec.horizon.bar_size, limit=_bar_limit(spec)) for s in symbols}
-        venue = default_catalog().venue_for(spec.universe.venues)
+        catalog = default_catalog()
+        venue = catalog.venue_for(spec.universe.venues)
+        # Same SHARED per-symbol cost context as the screen (crypto-only today → all-None → byte-identical), so
+        # the exam is charged on the identical fee/depth/calendar model the candidate was selected under.
+        fee_schedule, depth_schedule, asset_class_by_symbol, _venue_id_by_symbol = build_cost_context(spec, market, catalog)
         result = run_strategy_backtest_detailed(
             spec, params, market, fee_bps=venue.taker_fee_bps,
+            fee_schedule=fee_schedule,
             slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps,
+            depth_schedule=depth_schedule,
             alt_by_symbol=self._alt_by_symbol(spec, market),
             include_holdout=True,
+            asset_class_by_symbol=asset_class_by_symbol,
         )
         return float(result.metrics.holdout_deflated_sharpe)
 
