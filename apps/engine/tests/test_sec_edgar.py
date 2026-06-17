@@ -19,14 +19,15 @@ from datetime import UTC, datetime
 
 import pytest
 
+import cosmu.data.sources.sec_edgar as sec_mod
 from cosmu.data.sources.sec_edgar import (
-    TRANSFORM_VERSION,
     _CIK_BY_TICKER,
     _FIXTURE_TRANSACTIONS,
+    TRANSFORM_VERSION,
     SecEdgarInsiderSource,
+    _fetch_form4_transactions,
     net_buy_ratio,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -311,3 +312,155 @@ class TestNoHttp:
         # exercise every public path
         for ticker in ("AAPL", "XOM", "TSLA", "WMT", "ZZZZ"):
             src.query(ticker, _AS_OF)
+
+
+# ---------------------------------------------------------------------------
+# DATA-HONESTY: a fetch FAILURE must NOT fabricate a 0 datapoint. The ERROR path (network/parse failure
+# on the LIVE fetch) yields NO observation (None), distinct from a genuine EMPTY filing (a real successful
+# 0 reading that net_buy_ratio renders as None). These tests exercise the LIVE path with the network
+# helpers monkeypatched in-process — they make NO real HTTP call.
+# ---------------------------------------------------------------------------
+
+class TestErrorPathVsEmptyData:
+    _CIK = _CIK_BY_TICKER["AAPL"]
+
+    def test_index_unreachable_returns_none_not_empty_list(self, monkeypatch):
+        """The submissions index GET fails (None) → FETCH FAILURE sentinel None, NOT [] (no observation)."""
+        monkeypatch.setattr(sec_mod, "_get_json", lambda url, *, timeout: None)
+        result = _fetch_form4_transactions(self._CIK, timeout=1.0)
+        assert result is None, "a failed index fetch must be None (no observation), never []"
+
+    def test_index_malformed_returns_none(self, monkeypatch):
+        """A non-dict submissions payload (garbage) is a parse FAILURE → None, never a fabricated empty."""
+        monkeypatch.setattr(sec_mod, "_get_json", lambda url, *, timeout: ["unexpected", "shape"])
+        assert _fetch_form4_transactions(self._CIK, timeout=1.0) is None
+
+    def test_network_exception_returns_none_not_partial_list(self, monkeypatch):
+        """A mid-stream exception AFTER some transactions were collected must discard the partial list and
+        return None — a truncated list would fabricate a WRONG ratio (the core data-honesty hole)."""
+
+        # A valid submissions index advertising two Form 4 filings...
+        def _fake_get_json(url, *, timeout):
+            return {
+                "filings": {
+                    "recent": {
+                        "form": ["4", "4"],
+                        "accessionNumber": ["0000000000-24-000001", "0000000000-24-000002"],
+                        "acceptanceDateTime": [
+                            "2024-03-01T12:00:00.000Z",
+                            "2024-03-10T12:00:00.000Z",
+                        ],
+                        "primaryDocument": ["a.xml", "b.xml"],
+                    }
+                }
+            }
+
+        calls = {"n": 0}
+
+        # ...but the SECOND ownership-doc fetch blows up mid-stream after the first (a SELL) was collected.
+        def _flaky_parse(doc_url, *, timeout):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return [("S", 9_999.0)]  # a partial (bearish-only) collection
+            raise OSError("connection reset mid-stream")
+
+        monkeypatch.setattr(sec_mod, "_get_json", _fake_get_json)
+        monkeypatch.setattr(sec_mod, "_parse_ownership_doc", _flaky_parse)
+        result = _fetch_form4_transactions(self._CIK, timeout=1.0)
+        assert result is None, "a mid-stream failure must discard the partial list → None, not a ratio"
+
+    def test_successful_empty_fetch_returns_empty_list_not_none(self, monkeypatch):
+        """A SUCCESSFUL fetch of a tracked issuer that genuinely has NO Form 4 filings → real [] (an empty
+        reading), distinct from the None failure sentinel. net_buy_ratio([]) then renders it as None."""
+        monkeypatch.setattr(
+            sec_mod,
+            "_get_json",
+            lambda url, *, timeout: {"filings": {"recent": {"form": ["10-K", "8-K"]}}},
+        )
+        result = _fetch_form4_transactions(self._CIK, timeout=1.0)
+        assert result == [], "a successful no-Form-4 fetch is a real empty reading ([]), not None"
+        assert net_buy_ratio(result, as_of=_AS_OF, window_days=90) is None  # real empty → None, not 0
+
+    def test_query_on_fetch_failure_yields_none_value_never_zero(self, monkeypatch):
+        """End-to-end: a LIVE query whose fetch fails yields value=None / available_at=None — NEVER a 0."""
+        monkeypatch.setattr(sec_mod, "_get_json", lambda url, *, timeout: None)
+        src = SecEdgarInsiderSource(offline=False, timeout=1.0)
+        f = src.query("AAPL", _AS_OF)
+        assert f.value is None, "a failed fetch must NOT fabricate a 0 — it is no observation (None)"
+        assert f.value != 0.0
+        assert f.available_at is None
+
+    def test_query_on_partial_then_fail_yields_none_value_never_fabricated_ratio(self, monkeypatch):
+        """End-to-end: a partial-then-fail LIVE fetch must NOT surface a spurious (bearish) partial ratio."""
+
+        def _fake_get_json(url, *, timeout):
+            return {
+                "filings": {
+                    "recent": {
+                        "form": ["4", "4"],
+                        "accessionNumber": ["0000000000-24-000001", "0000000000-24-000002"],
+                        "acceptanceDateTime": [
+                            "2024-03-01T12:00:00.000Z",
+                            "2024-03-10T12:00:00.000Z",
+                        ],
+                        "primaryDocument": ["a.xml", "b.xml"],
+                    }
+                }
+            }
+
+        calls = {"n": 0}
+
+        def _flaky_parse(doc_url, *, timeout):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return [("S", 9_999.0)]
+            raise OSError("connection reset mid-stream")
+
+        monkeypatch.setattr(sec_mod, "_get_json", _fake_get_json)
+        monkeypatch.setattr(sec_mod, "_parse_ownership_doc", _flaky_parse)
+        src = SecEdgarInsiderSource(offline=False, timeout=1.0)
+        f = src.query("AAPL", _AS_OF)
+        assert f.value is None, "must not surface a -1 ratio fabricated from a truncated fetch"
+        assert f.available_at is None
+
+    def test_successful_empty_fetch_through_query_is_none_not_zero(self, monkeypatch):
+        """End-to-end: a SUCCESSFUL but transaction-free LIVE fetch still yields value=None (a real gap)."""
+        monkeypatch.setattr(
+            sec_mod,
+            "_get_json",
+            lambda url, *, timeout: {"filings": {"recent": {"form": ["10-K"]}}},
+        )
+        src = SecEdgarInsiderSource(offline=False, timeout=1.0)
+        f = src.query("AAPL", _AS_OF)
+        assert f.value is None  # genuine empty → None (never a fabricated 0)
+        assert f.available_at is None
+
+
+class TestAmendmentsExcluded:
+    """Form 4/A AMENDMENTS are deliberately excluded (documented PIT tradeoff). Verify a 4/A filing does
+    not contribute transactions even when its ownership doc would parse to open-market P/S."""
+
+    _CIK = _CIK_BY_TICKER["AAPL"]
+
+    def test_form_4a_amendment_is_excluded(self, monkeypatch):
+        monkeypatch.setattr(
+            sec_mod,
+            "_get_json",
+            lambda url, *, timeout: {
+                "filings": {
+                    "recent": {
+                        "form": ["4/A"],  # an AMENDMENT, not a plain Form 4
+                        "accessionNumber": ["0000000000-24-000009"],
+                        "acceptanceDateTime": ["2024-03-01T12:00:00.000Z"],
+                        "primaryDocument": ["amend.xml"],
+                    }
+                }
+            },
+        )
+        # If the 4/A were honored, this buy would surface — assert it is NOT fetched.
+        monkeypatch.setattr(
+            sec_mod, "_parse_ownership_doc", lambda doc_url, *, timeout: [("P", 5_000.0)]
+        )
+        result = _fetch_form4_transactions(self._CIK, timeout=1.0)
+        # excluded → no transactions; a real empty list, NOT the None fetch-failure sentinel
+        assert result == []
