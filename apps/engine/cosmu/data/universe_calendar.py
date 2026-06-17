@@ -41,6 +41,30 @@ class UniverseCalendar:
         rows = store.rows("SELECT symbol, listed_at, delisted_at FROM instruments")
         return cls([Listing(symbol=r["symbol"], listed_at=_parse(r["listed_at"]), delisted_at=_parse(r["delisted_at"])) for r in rows])
 
+    @classmethod
+    def from_universe_pairs(cls, store, *, venue: str | None = None, asset_class: str | None = None):  # noqa: ANN001
+        """PIT calendar from the BROAD venue-tagged `universe_pairs` table (the survivorship superset — includes
+        delisted rows backfilled from Binance Vision), not the small `instruments` catalog. Optionally scope to a
+        venue/asset_class so a per-venue backtest gets that venue's listed-at-time set. Returns an EMPTY calendar
+        (every queried symbol eligible) when the table is absent/unpopulated, so a fresh store never crashes."""
+        where = ["1=1"]
+        params: list[str] = []
+        if venue is not None:
+            where.append("venue = ?")
+            params.append(venue)
+        if asset_class is not None:
+            where.append("asset_class = ?")
+            params.append(asset_class)
+        sql = f"SELECT symbol, listed_at, delisted_at FROM universe_pairs WHERE {' AND '.join(where)}"
+        try:
+            rows = store.rows(sql, tuple(params))
+        except Exception:  # noqa: BLE001 — table not yet created → empty calendar (nothing excluded)
+            rows = []
+        return cls([
+            Listing(symbol=r["symbol"], listed_at=_parse(r["listed_at"]), delisted_at=_parse(r["delisted_at"]))
+            for r in rows
+        ])
+
 
 def eligible_from_bars(
     market: dict[str, list[Bar]],
