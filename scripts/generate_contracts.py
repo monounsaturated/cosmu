@@ -36,14 +36,30 @@ def ts_type(schema: dict) -> str:
     return "string"
 
 
+# Convention #298: FastAPI/pydantic stamp the auto-generated `ValidationError` schema with `ctx`/`input`
+# properties whose presence VARIES by local pydantic version — committing them produces a noisy env-drift diff
+# (and they're never consumed by the typed web client). Strip them deterministically so the contract is a pure
+# function of OUR models, identical on every machine and in CI/Vercel. Only ever removes these two synthetic keys.
+def _strip_validation_drift(openapi: dict) -> None:
+    ve = openapi.get("components", {}).get("schemas", {}).get("ValidationError")
+    if not isinstance(ve, dict):
+        return
+    props = ve.get("properties")
+    if isinstance(props, dict):
+        for drift_key in ("ctx", "input"):
+            props.pop(drift_key, None)
+
+
 def main() -> None:
     openapi_path = ROOT / "packages" / "contracts-ts" / "openapi.json"
     if app is not None:
         openapi = app.openapi()
+        _strip_validation_drift(openapi)
         openapi_path.parent.mkdir(parents=True, exist_ok=True)
         openapi_path.write_text(json.dumps(openapi, indent=2, sort_keys=True) + "\n")
     elif openapi_path.exists():
         openapi = json.loads(openapi_path.read_text())
+        _strip_validation_drift(openapi)
     else:
         print("warning: Python deps unavailable and no cached openapi.json — skipping contract generation", file=sys.stderr)
         return

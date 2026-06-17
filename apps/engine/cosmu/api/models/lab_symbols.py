@@ -10,15 +10,19 @@ from pydantic import BaseModel
 class LabSymbolRow(BaseModel):
     strategy_version_id: str
     strategy_name: str
+    strategy_id: str              # the ALGO id (parent of every version) — the key the comparison table groups on
     kind: str                     # 'quant' | 'llm' — the strategy MODEL that produced this cell
     status: str                   # the version's lifecycle status (screened/paper/live/killed/…) — advisory context
     symbol: str
     venue_id: str | None          # the fee axis (the same edge costs differently per venue)
-    return_pct: float             # standalone validation return on THIS symbol (not a pooled mean)
+    return_pct: float             # standalone validation return on THIS symbol+venue (NEVER a pooled mean)
     sharpe: float
     max_drawdown: float
     trades: int
     verdict: str | None           # robust | fragile | thin | negative — the honest cross-symbol label (NULL = legacy)
+    pooled_return_pct: float | None  # ADVISORY ONLY: the parent backtest's pooled OOS return (the number the old
+    #                                  leaderboard headlined). Surfaced dim/secondary so the granular cell stays the
+    #                                  truth — never averaged into a verdict, never a funding signal. NULL = legacy.
     created_at: str
 
 
@@ -26,3 +30,15 @@ class LabSymbolsResponse(BaseModel):
     rows: list[LabSymbolRow]
     symbols: list[str]            # the distinct symbols present — drives the filter chips
     venues: list[str]             # the distinct venues present — drives the filter chips
+
+
+class TripletCardResponse(BaseModel):
+    """The 'fiche triplet' — ONE (algo × asset × venue) backtest cell, focused. `cell` is the granular truth for the
+    clicked (version, symbol, venue); None when no cell exists for that exact triplet (honest empty, never fabricated).
+    `strategy_id` is the algo the comparison table groups on so the web can fetch the sibling grid + drive the
+    asset/venue selector. Pure read; the pooled number rides on the cell as advisory only — never a funding signal."""
+
+    strategy_id: str
+    strategy_version_id: str
+    strategy_name: str
+    cell: LabSymbolRow | None

@@ -3628,6 +3628,17 @@
             "title": "Max Drawdown",
             "type": "number"
           },
+          "pooled_return_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pooled Return Pct"
+          },
           "return_pct": {
             "title": "Return Pct",
             "type": "number"
@@ -3638,6 +3649,10 @@
           },
           "status": {
             "title": "Status",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
             "type": "string"
           },
           "strategy_name": {
@@ -3682,6 +3697,7 @@
         "required": [
           "strategy_version_id",
           "strategy_name",
+          "strategy_id",
           "kind",
           "status",
           "symbol",
@@ -3691,6 +3707,7 @@
           "max_drawdown",
           "trades",
           "verdict",
+          "pooled_return_pct",
           "created_at"
         ],
         "title": "LabSymbolRow",
@@ -6884,6 +6901,41 @@
         "title": "ToggleResponse",
         "type": "object"
       },
+      "TripletCardResponse": {
+        "description": "The 'fiche triplet' \u2014 ONE (algo \u00d7 asset \u00d7 venue) backtest cell, focused. `cell` is the granular truth for the\nclicked (version, symbol, venue); None when no cell exists for that exact triplet (honest empty, never fabricated).\n`strategy_id` is the algo the comparison table groups on so the web can fetch the sibling grid + drive the\nasset/venue selector. Pure read; the pooled number rides on the cell as advisory only \u2014 never a funding signal.",
+        "properties": {
+          "cell": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LabSymbolRow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "string"
+          },
+          "strategy_name": {
+            "title": "Strategy Name",
+            "type": "string"
+          },
+          "strategy_version_id": {
+            "title": "Strategy Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "strategy_version_id",
+          "strategy_name",
+          "cell"
+        ],
+        "title": "TripletCardResponse",
+        "type": "object"
+      },
       "UniverseResponse": {
         "properties": {
           "asset_classes": {
@@ -8196,7 +8248,7 @@
     },
     "/lab/symbols": {
       "get": {
-        "description": "Per-symbol backtest cells \u2014 one row per (strategy \u00d7 symbol \u00d7 venue), the granular truth the pooled\nleaderboard averages away. Outlier-sorted (highest standalone return first) so the operator can SNIPE, with\nthe honest verdict (robust/fragile/thin/negative) carried so a lone best-of-N winner is flagged, not\ncelebrated. Optional filters narrow by symbol / venue / verdict. Pure read; never a funding signal.",
+        "description": "Per-symbol backtest cells \u2014 one row per (strategy \u00d7 symbol \u00d7 venue), the granular truth the pooled\nleaderboard averages away. Outlier-sorted (highest standalone return first) so the operator can SNIPE, with\nthe honest verdict (robust/fragile/thin/negative) carried so a lone best-of-N winner is flagged, not\ncelebrated. Optional filters narrow by symbol / venue / verdict / version_id. Pure read; never a funding signal.",
         "operationId": "lab_symbols_lab_symbols_get",
         "parameters": [
           {
@@ -8245,6 +8297,22 @@
                 }
               ],
               "title": "Verdict"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version Id"
             }
           },
           {
@@ -9163,6 +9231,56 @@
         "summary": "Strategy Detail"
       }
     },
+    "/strategies/{version_id}/comparison": {
+      "get": {
+        "description": "The 'table de comparaison' \u2014 EVERY backtest_symbols cell of the SAME algo (strategy_id) across its assets\nand venues, one row per (version \u00d7 symbol \u00d7 venue), outlier-sorted. This is how the fiche shows the clicked\ncell's siblings side by side WITHOUT averaging \u2014 each cell keeps its own P&L/verdict. The distinct symbols +\nvenues drive the asset/venue selector. Resolves the algo from any one of its versions. Pure read.",
+        "operationId": "strategy_comparison_strategies__version_id__comparison_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabSymbolsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategy Comparison"
+      }
+    },
     "/strategies/{version_id}/summary": {
       "put": {
         "description": "Store an EXTERNALLY-WRITTEN plain-language summary as a research_notes row (kind='summary'; the new\nlatest wins \u2014 no schema change). The deployed engine NEVER generates this text \u2014 Claude Code writes it on\nthe flat sub; this route only persists it with its facts_hash pin + writer provenance. Auth is the global\nx-api-key middleware (cosmu/api/app.py), the SAME gate every control-plane route sits behind. The embedding\nis the same deterministic keyless embed GraveyardMemory uses, so summaries are recallable like other notes.",
@@ -9251,6 +9369,78 @@
           }
         },
         "summary": "Strategy Summary Facts"
+      }
+    },
+    "/strategies/{version_id}/triplet": {
+      "get": {
+        "description": "The 'fiche triplet' \u2014 ONE focused (algo \u00d7 asset \u00d7 venue) backtest cell. The web links here from a clicked\ncell with ?symbol=&venue=; `cell` is the granular standalone result for THAT exact triplet (latest backtest),\nor None when no such cell exists (honest empty \u2014 never a fabricated row, never a pooled mean). `strategy_id`\nis the algo the comparison grid groups on, so the asset/venue selector can navigate to a sibling triplet.\nPure read \u2014 the pooled number rides on the cell as advisory only; the deterministic Gate alone funds.",
+        "operationId": "strategy_triplet_strategies__version_id__triplet_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "venue",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Venue"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripletCardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategy Triplet"
       }
     },
     "/strategy/pine": {
