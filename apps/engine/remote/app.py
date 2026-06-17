@@ -172,6 +172,7 @@ def tick() -> int:
     rc = _run(["cosmu.master.scheduler"])   # discovery: author → gate/FDR → fund SIM survivors
     _run(["cosmu.orchestrator.loop"])        # paper clock: mark held positions to the latest real close
     _run(["cosmu.research.arm_fleet"])       # advance the documented equity cohort's forward clock
+    _run(["cosmu.strategy.agent_run"])       # observe-only LLM strategies: reason (Mind panel) + record traces ($0)
     if datetime.now(UTC).hour < 4:           # ~once/day (the 00:00 UTC tick): vendor-cost budget alerts
         _run(["cosmu.costs.refresh"])
     return rc
