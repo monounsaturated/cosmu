@@ -82,9 +82,13 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
         if _hb is not None
         else {}
     )
+    # Strategy MODEL kind off strategy_versions.kind ("quant" | "llm"; SELECT sv.* carries it). Default "quant"
+    # for a pre-migration / malformed value so the sheet never crashes and never invents an "llm" tag.
+    _kind = row["kind"] if "kind" in row.keys() else "quant"
     return StrategyDetailResponse(
         version_id=version_id,
         name=row["name"],
+        kind=_kind if _kind in ("quant", "llm") else "quant",
         spec=_json(row["spec"]),
         generated_code=row["generated_code"],
         params=_json(row["params"]),

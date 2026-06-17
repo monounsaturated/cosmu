@@ -37,6 +37,21 @@ export const STAGE_LABEL: Record<Stage, string> = {
   killed: "Killed"
 };
 
+// ── Strategy MODEL kind (strategy_versions.kind, off the generated LeaderboardRow.kind / StrategyDetailResponse.kind).
+// ORTHOGONAL to the lifecycle Stage above and to provenance/strategy_kind: this is HOW the strategy is modelled —
+// "quant" = a typed StrategySpec routed through deterministic Gate A (every strategy today), "llm" = an agentic/NL
+// AgentSpec. Subtle by design (all rows are 'quant' now); reuses the existing `.badge` color classes. ──
+export type Kind = "quant" | "llm";
+export const KIND_LABEL: Record<Kind, string> = {
+  quant: "Quant",
+  llm: "LLM"
+};
+// Reuse the shared badge palette: muted for the quant default (subtle), iris to flag an LLM/agentic strategy.
+export const KIND_BADGE_CLASS: Record<Kind, string> = {
+  quant: "badge badge-muted",
+  llm: "badge badge-iris"
+};
+
 // The Iris Bento `.stage-badge` class set — same classes from either vocabulary.
 export const LIFE_BADGE_CLASS: Record<LifeStatus, string> = {
   lab: "stage-badge sb-queued",

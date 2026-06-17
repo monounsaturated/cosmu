@@ -26,6 +26,7 @@ import { RegistryBlocks } from "./registry-blocks";
 import { StageControl, type Stage } from "./stage-control";
 import { LifecycleTrace } from "./lifecycle-trace";
 import { laneOf, provenanceOf, strategyKindOf } from "@/lib/provenance";
+import { type Kind, KIND_LABEL, KIND_BADGE_CLASS } from "@/lib/lifecycle";
 import { cn, fmtTz, formatUsd } from "@/lib/utils";
 
 // ── Honest derivations off the real detail response ──
@@ -109,16 +110,26 @@ export function referencedFeatures(spec: Record<string, unknown> | null | undefi
   return names;
 }
 
-// ── Type & lane — the authoritative spec discriminators (strategy_kind / lane) + the provenance bucket, as a
-// compact badge row. kind + lane come straight off the real spec; provenance prefers the `origin` the row
-// carries (passed from the screener) and otherwise self-derives Astro from the spec's referenced features. ──
-function TypeLaneBadges({ spec, origin }: { spec: Record<string, unknown>; origin?: string | null }) {
+// ── Type & lane — the authoritative spec discriminators (strategy_kind / lane) + the provenance bucket + the
+// strategy MODEL kind, as a compact badge row. strategy_kind + lane come straight off the real spec; provenance
+// prefers the `origin` the row carries (passed from the screener) and otherwise self-derives Astro from the spec's
+// referenced features; `modelKind` is the strategy_versions.kind discriminator (quant|llm) off the real contract. ──
+function TypeLaneBadges({ spec, origin, modelKind }: { spec: Record<string, unknown>; origin?: string | null; modelKind?: Kind | null }) {
   const kind = strategyKindOf(spec);
   const lane = laneOf(spec);
   const prov = provenanceOf(origin, referencedFeatures(spec));
+  // The MODEL kind is ORTHOGONAL to the spec's strategy_kind (indicator/event/regime) — it's how the strategy is
+  // modelled (typed-spec quant vs agentic LLM). Subtle by design (every strategy is 'quant' today).
+  const mk: Kind = modelKind === "llm" ? "llm" : "quant";
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "2px 0 2px" }}>
       <span className={prov.badgeClass} data-tip={prov.tip}>{prov.label}</span>
+      <span
+        className={KIND_BADGE_CLASS[mk]}
+        data-tip={mk === "llm" ? "Agentic / natural-language strategy (AgentSpec)." : "Typed StrategySpec routed through the deterministic Gate."}
+      >
+        {KIND_LABEL[mk]}
+      </span>
       <span className={kind.badgeClass} data-tip={kind.tip}>{kind.label}</span>
       <span className={lane.badgeClass} data-tip={lane.tip}>{lane.label} lane</span>
     </div>
@@ -393,7 +404,7 @@ export function StrategySheet({ strategy, stageOverride, origin }: { strategy: S
         goLiveEligible={stage === "paper" || Boolean(headlineBt?.passed_gates)}
       />
 
-      <TypeLaneBadges spec={(strategy.spec ?? {}) as Record<string, unknown>} origin={origin} />
+      <TypeLaneBadges spec={(strategy.spec ?? {}) as Record<string, unknown>} origin={origin} modelKind={strategy.kind} />
 
       <MoneyBand data={money} />
 
