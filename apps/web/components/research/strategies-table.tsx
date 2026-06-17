@@ -26,7 +26,7 @@ import { useSearchParams } from "next/navigation";
 import type { LeaderboardRow, StrategyDetailResponse } from "@cosmu/contracts-ts";
 import { SidePanel } from "@/components/ui/side-panel";
 import { StrategySheet } from "@/components/strategy/strategy-sheet";
-import { type LifeStatus, type Stage, LIFE_TO_STAGE, LIFE_LABEL, LIFE_BADGE_CLASS } from "@/lib/lifecycle";
+import { type LifeStatus, type Stage, type Kind, LIFE_TO_STAGE, LIFE_LABEL, LIFE_BADGE_CLASS, KIND_LABEL, KIND_BADGE_CLASS } from "@/lib/lifecycle";
 import { engineFetch, engineGetJson, enginePeek, enginePrefetch } from "@/lib/engine";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { provenanceOf } from "@/lib/provenance";
@@ -427,8 +427,9 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
   switch (col) {
     case "name":
       return (
-        <div className="cell-name" data-tip={row.name}>
-          {row.name}
+        <div className="cell-name" data-tip={row.name} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</span>
+          <KindBadge kind={row.kind} />
         </div>
       );
     case "stage":
@@ -540,6 +541,20 @@ function Cell({ col, row, life }: { col: ColKey; row: LeaderboardRow; life: Life
 
 function Dash() {
   return <span className="quiet">—</span>;
+}
+
+// The strategy MODEL kind badge (Quant / LLM) off the row's real `kind` field — subtle by design (every
+// strategy is 'quant' today). Reuses the shared KIND_LABEL/KIND_BADGE_CLASS single source in lib/lifecycle.
+function KindBadge({ kind }: { kind?: Kind | null }) {
+  const k: Kind = kind === "llm" ? "llm" : "quant";
+  return (
+    <span
+      className={KIND_BADGE_CLASS[k]}
+      data-tip={k === "llm" ? "Agentic / natural-language strategy (AgentSpec)." : "Typed StrategySpec routed through the deterministic Gate."}
+    >
+      {KIND_LABEL[k]}
+    </span>
+  );
 }
 
 // ── DSR bar (`.dsr-wrap`) — the bar fills toward a strong (~2) score; the threshold tick marks the 0.95

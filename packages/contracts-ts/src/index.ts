@@ -747,6 +747,7 @@ export interface LeaderboardRow {
   edge_type: string;
   features: string[];
   has_paper_fills?: boolean;
+  kind?: "quant" | "llm";
   lineage: string;
   live_ready: boolean;
   max_dd?: number | null;
@@ -1246,6 +1247,7 @@ export interface StrategyDetailResponse {
   has_paper_fills?: boolean;
   holdout: Record<string, unknown>;
   invested_usd?: number | null;
+  kind?: "quant" | "llm";
   name: string;
   notes_md: string;
   params: Record<string, unknown>;

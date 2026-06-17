@@ -54,6 +54,10 @@ class PortfolioSummaryResponse(BaseModel):
 class LeaderboardRow(BaseModel):
     version_id: str
     name: str
+    # The strategy MODEL discriminator (strategy_versions.kind) — "quant" = a typed StrategySpec routed through
+    # deterministic Gate A (the only model today), "llm" = an agentic/NL AgentSpec. NOTE: this is the model kind,
+    # NOT the asset-class `kind: Literal["crypto","equity","prediction"]` other models in this file carry.
+    kind: Literal["quant", "llm"] = "quant"
     track_return_pct: float
     deflated_sharpe: float
     net_pct: float
@@ -147,6 +151,10 @@ class Backtest(BaseModel):
 class StrategyDetailResponse(BaseModel):
     version_id: str
     name: str
+    # The strategy MODEL discriminator (strategy_versions.kind) — "quant" = a typed StrategySpec routed through
+    # deterministic Gate A (the only model today), "llm" = an agentic/NL AgentSpec. NOTE: this is the model kind,
+    # NOT an asset-class kind.
+    kind: Literal["quant", "llm"] = "quant"
     spec: dict[str, Any]
     generated_code: str
     params: dict[str, Any]

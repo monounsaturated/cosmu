@@ -3813,6 +3813,15 @@
             "title": "Has Paper Fills",
             "type": "boolean"
           },
+          "kind": {
+            "default": "quant",
+            "enum": [
+              "quant",
+              "llm"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "lineage": {
             "title": "Lineage",
             "type": "string"
@@ -6395,6 +6404,15 @@
               }
             ],
             "title": "Invested Usd"
+          },
+          "kind": {
+            "default": "quant",
+            "enum": [
+              "quant",
+              "llm"
+            ],
+            "title": "Kind",
+            "type": "string"
           },
           "name": {
             "title": "Name",

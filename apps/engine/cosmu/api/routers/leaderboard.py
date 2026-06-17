@@ -61,7 +61,7 @@ def leaderboard() -> LeaderboardResponse:
     # (day-0 truth), so a fresh track can NEVER surface its rosy backtest as forward performance.
     rows = store.rows(
         """
-        SELECT sv.id, s.name, sv.status, sv.spec, sv.origin, b.deflated_sharpe, b.oos_return, b.pbo,
+        SELECT sv.id, s.name, sv.status, sv.spec, sv.origin, sv.kind, b.deflated_sharpe, b.oos_return, b.pbo,
                b.oos_start, b.oos_end, b.num_trades AS bt_trades, b.max_dd AS bt_max_dd, ev.funded_at,
                tr.starting_capital, ps.equity AS tr_equity,
                EXISTS(SELECT 1 FROM executions e WHERE e.strategy_version_id = sv.id
@@ -157,6 +157,9 @@ def leaderboard() -> LeaderboardResponse:
             LeaderboardRow(
                 version_id=row["id"],
                 name=row["name"],
+                # Strategy MODEL kind off strategy_versions.kind ("quant" | "llm"); default "quant" if absent
+                # (pre-migration rows / a malformed value) — never crashes the row, never invents an "llm" tag.
+                kind=row["kind"] if row["kind"] in ("quant", "llm") else "quant",
                 # Every numeric field is coerced via _metric so the API NEVER emits
                 # null/NaN where the LeaderboardRow contract promises `number`.
                 track_return_pct=_metric(row["oos_return"]) * 100,
