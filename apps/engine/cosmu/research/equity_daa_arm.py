@@ -33,6 +33,7 @@ from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.master.tracks import open_paper_track
 from cosmu.research import equity_daa as daa
+from cosmu.research._arm_regimes import proven_regimes_from_validation
 from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
 
@@ -41,10 +42,10 @@ STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strat
 VENUE = "ibkr"
 TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size (settings.sim_track_capital)
 IBKR_ETF_BPS_PER_SIDE = daa.IBKR_ETF_BPS_PER_SIDE
-# DAA is positive net-of-fee across the trend regimes on our data and its WHOLE POINT is to scale the book into short
-# Treasuries as the canary breadth signal (EEM/AGG) deteriorates in a bear market. So its proven-regime passport is the
-# full set; this lets master/live_eligibility clear the regime gate once the 30-day paper run matures (human clicks).
-PROVEN_REGIMES = ["bull", "bear", "chop"]
+# DAA's proven-regime passport is DERIVED from its OWN per-regime net PnL (research._arm_regimes), NOT hardcoded:
+# each invested month is tagged bull/bear/chop off the SPY trend (the same classifier the live gate re-derives) and a
+# regime is proven only if the arm's net PnL there is positive. DAA scales into short Treasuries as the canary breadth
+# signal deteriorates, so it typically EARNS bear; but it must earn each regime, never assume the full set for free.
 
 
 def _minimal_spec(weights: dict[str, float]) -> dict:
@@ -220,7 +221,8 @@ def arm(store: Store | None = None) -> dict:
                 "origin": STRATEGY_ORIGIN,
                 "strategy": "Keller DAA top-6",
                 "deflated_sharpe": round(v["full"].ann_sharpe, 6),
-                "proven_regimes": PROVEN_REGIMES,
+                # DERIVED from DAA's own per-regime net PnL — earn each regime, never assume the full set.
+                "proven_regimes": proven_regimes_from_validation(v),
                 "deployment_bar": "positive OOS net of IBKR fees + risk-adjusted beat of B&H SPY (crisis avoidance via canary breadth) (NOT the 0.95 in-sample Gate)",
             },
         )

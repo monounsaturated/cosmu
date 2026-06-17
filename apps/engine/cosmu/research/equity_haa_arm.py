@@ -29,6 +29,7 @@ from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.master.tracks import open_paper_track
 from cosmu.research import equity_haa as haa
+from cosmu.research._arm_regimes import proven_regimes_from_validation
 from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
 
@@ -37,9 +38,9 @@ STRATEGY_ORIGIN = "documented"
 VENUE = "ibkr"
 TRACK_CAPITAL = get_settings().sim_track_capital
 IBKR_ETF_BPS_PER_SIDE = haa.IBKR_ETF_BPS_PER_SIDE
-# HAA scales the book into the BIL/IEF cash bucket as the single TIP canary turns down — its proven-regime passport
-# is the full set, so master/live_eligibility can clear the regime gate once the 30-day paper run matures.
-PROVEN_REGIMES = ["bull", "bear", "chop"]
+# The proven-regime passport is DERIVED from the arm's OWN per-regime net PnL (research._arm_regimes), NOT a
+# hardcoded full set: each invested period is tagged bull/bear/chop off the benchmark trend (the same classifier
+# the live gate re-derives) and a regime is proven only where the arm's net PnL is positive. Earn each regime.
 
 
 def _minimal_spec(weights: dict[str, float]) -> dict:
@@ -181,7 +182,8 @@ def arm(store: Store | None = None) -> dict:
                 "origin": STRATEGY_ORIGIN,
                 "strategy": "Keller HAA top-4",
                 "deflated_sharpe": round(v["full"].ann_sharpe, 6),
-                "proven_regimes": PROVEN_REGIMES,
+                # DERIVED from this arm's own per-regime net PnL — earn each regime, never assume the full set.
+                "proven_regimes": proven_regimes_from_validation(v),
                 "deployment_bar": "positive OOS net of IBKR fees + risk-adjusted beat of B&H SPY (crisis avoidance via the TIP canary) (NOT the 0.95 in-sample Gate)",
             },
         )

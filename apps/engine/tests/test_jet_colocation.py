@@ -312,3 +312,91 @@ class TestNoHttpAndLookahead:
         # 2023-12-31, NOT 2024-01-01 (whose available_at 2024-01-02 00:00 UTC is ~14h ahead).
         as_of = datetime(2024, 1, 2, 0, 30, tzinfo=tz14)
         assert src._latest_knowable_day(as_of) == date(2023, 12, 31)
+
+
+# ---------------------------------------------------------------------------
+# Live-path CALL-REDUCTION (rate-limit hardening) — fetch each aircraft ONCE
+# per window + MEMOIZE across queries. Pure efficiency: NO computed value or
+# PIT change. Exercised without real HTTP by counting fetch calls.
+# ---------------------------------------------------------------------------
+
+class TestLivePathCallReduction:
+    def _num_aircraft(self) -> int:
+        return sum(len(v) for v in _AIRCRAFT_BY_TICKER.values())
+
+    def _patch_counting_fetch(self, monkeypatch, *, day_to_arrivals):
+        """Replace _fetch_aircraft_arrivals with a counter that synthesizes per-aircraft flight dicts from a
+        {iso_day: {icao24: airport}} map, filtered to the requested [begin, end) span (server-side filter
+        emulation, by lastSeen). Returns the call-count list (one entry per (icao24, begin, end) request)."""
+        import cosmu.data.sources.jet_colocation as mod
+
+        calls: list[tuple[str, int, int]] = []
+
+        def _fake_fetch(base_url, icao24, begin, end, timeout):  # noqa: ANN001
+            calls.append((icao24.lower(), begin, end))
+            flights = []
+            for iso_day, arr in day_to_arrivals.items():
+                d = date.fromisoformat(iso_day)
+                last_seen = mod._day_to_unix(d) + 3600  # arrives 01:00 UTC that day
+                if icao24.lower() in arr and begin <= last_seen < end:
+                    flights.append({"lastSeen": last_seen, "estArrivalAirport": arr[icao24.lower()]})
+            return flights
+
+        monkeypatch.setattr(mod, "_fetch_aircraft_arrivals", _fake_fetch)
+        return calls
+
+    def test_window_fetches_each_aircraft_once_not_per_day(self, monkeypatch):
+        """The online window path must issue ONE request per aircraft for the whole 30-day window, NOT one
+        per (aircraft x day). With ~12 aircraft x 30 days the naive path would be ~360 calls; we expect 12."""
+        day_to_arrivals = {d: {} for d in _FIXTURE_ARRIVALS_BY_DAY}
+        day_to_arrivals.update({k: {kk.lower(): vv for kk, vv in v.items()}
+                                for k, v in _FIXTURE_ARRIVALS_BY_DAY.items()})
+        calls = self._patch_counting_fetch(monkeypatch, day_to_arrivals=day_to_arrivals)
+        src = JetColocationSource(offline=False, window_days=30)  # ONLINE path, but fetch is patched
+        src.query("AAPL", _JAN06)
+        n = self._num_aircraft()
+        assert len(calls) == n, f"expected one fetch per aircraft ({n}), got {len(calls)}"
+        assert len(calls) < n * 30, "window fetch must be far below the per-(aircraft x day) call count"
+        # Every aircraft was fetched exactly once, and over a SINGLE span (same begin/end for all).
+        assert len({c[0] for c in calls}) == n
+        assert len({(c[1], c[2]) for c in calls}) == 1, "all aircraft fetched over the same window span"
+
+    def test_repeated_queries_same_window_reuse_memo_no_extra_calls(self, monkeypatch):
+        """A second query over the SAME window (e.g. another ticker in the same ingest pass) must hit the
+        per-instance memo and issue ZERO additional fetches."""
+        calls = self._patch_counting_fetch(monkeypatch, day_to_arrivals={})
+        src = JetColocationSource(offline=False, window_days=30)
+        src.query("AAPL", _JAN06)
+        after_first = len(calls)
+        assert after_first == self._num_aircraft()
+        src.query("MSFT", _JAN06)   # same as_of => same window => memo hit
+        src.query("GOOGL", _JAN06)  # same window again
+        assert len(calls) == after_first, "memoized window must not re-fetch for repeated same-window queries"
+
+    def test_window_path_value_matches_per_day_fetch_byte_identical(self, monkeypatch):
+        """The call-reducing window sweep must produce the SAME feature value as the per-day fetch would —
+        proving it is a pure efficiency change, not a behaviour change. We feed both paths the same synthetic
+        arrivals (AAPL+MSFT co-locate at KSJC on 2024-01-01, AAPL+GOOGL at KTEB on 2024-01-04 => 2 events)."""
+        day_to_arrivals = {k: {kk.lower(): vv for kk, vv in v.items()}
+                           for k, v in _FIXTURE_ARRIVALS_BY_DAY.items()}
+        self._patch_counting_fetch(monkeypatch, day_to_arrivals=day_to_arrivals)
+        src = JetColocationSource(offline=False, window_days=30)
+        f = src.query("AAPL", _JAN06)
+        # Same shape as the offline fixture query (TestGapHonesty.test_window_sums_events_across_days => 2.0).
+        assert f.value == 2.0
+        assert f.available_at == src._available_at(date(2024, 1, 5))
+
+    def test_offline_window_path_still_makes_no_http(self, monkeypatch):
+        """Offline must NOT use the live sweep at all: booby-trap both fetch entrypoints; query resolves from
+        the fixture only (offline byte-identical guarantee preserved by the call-reduction refactor)."""
+        import cosmu.data.sources.jet_colocation as mod
+
+        def _boom(*a, **k):  # pragma: no cover - must never be called offline
+            raise AssertionError("offline query reached a live fetch path")
+
+        monkeypatch.setattr(mod, "_fetch_aircraft_arrivals", _boom)
+        monkeypatch.setattr(mod, "_live_arrivals_by_day", _boom)
+        monkeypatch.setattr(mod, "_live_arrivals_for_day", _boom)
+        src = _make_src(window_days=30)
+        f = src.query("AAPL", _JAN06)
+        assert f.value == 2.0

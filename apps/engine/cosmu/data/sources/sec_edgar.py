@@ -13,6 +13,10 @@
 #     acceptanceDateTime among the filings actually used. A filing accepted AFTER as_of is EXCLUDED.
 #   net_buy_ratio = (buy_shares - sell_shares) / (buy_shares + sell_shares)  in [-1, +1].
 #   gaps           = None, NOT 0. A ticker not tracked, or no in-window filings, yields value=None.
+#   ERROR vs EMPTY (data-honesty split): a live network/parse FAILURE is NOT an observation — the live fetch
+#     returns a None sentinel (NOT [] or a partial list), so the query yields value=None. Only a SUCCESSFUL
+#     fetch of a tracked issuer with genuinely no open-market P/S filings is a real empty reading (→ None via
+#     net_buy_ratio). This keeps a dead/timed-out source from fabricating a false "zero insider activity" 0.
 #
 # COVERAGE / CONFIDENCE HONESTY (FLAGGED):
 #   * Curated seed map of ~10 liquid US large-caps → real zero-padded 10-digit SEC CIKs. Extensible; a ticker
@@ -161,10 +165,22 @@ def _latest_used_available_at(
     return latest
 
 
-def _fetch_form4_transactions(cik: str, *, timeout: float) -> list[dict]:
-    """LIVE path: fetch a ticker's recent Form 4 transactions from SEC EDGAR. Returns parsed
-    [{"accepted": datetime, "code": "P"|"S", "shares": float}, ...] or [] on ANY failure (best-effort OSINT;
-    one dead source never crashes a query). Free, NO API KEY — only the required descriptive User-Agent.
+def _fetch_form4_transactions(cik: str, *, timeout: float) -> list[dict] | None:
+    """LIVE path: fetch a ticker's recent Form 4 transactions from SEC EDGAR. Free, NO API KEY — only the
+    required descriptive User-Agent.
+
+    PIT HONESTY — the ERROR path is split from the EMPTY-DATA path (a gap must be None, NEVER a real 0):
+      * Returns a parsed list [{"accepted": datetime, "code": "P"|"S", "shares": float}, ...] on a SUCCESSFUL
+        fetch. The list MAY legitimately be empty ([]) — the issuer simply had no open-market P/S filings —
+        which the caller renders as a genuine no-activity gap (None) via net_buy_ratio.
+      * Returns None (a FETCH-FAILURE sentinel) on ANY network/parse failure: a dead source, a non-dict
+        submissions index, or an exception mid-stream. This is the data-honesty fix: a failed (or PARTIALLY
+        completed) fetch must NOT be treated as data. If we returned a truncated/empty list here, a network
+        error would be INDISTINGUISHABLE from a real "zero insider activity" reading — fabricating a false
+        signal from incomplete data (e.g. a mid-stream failure that already collected only the SELLS would
+        manufacture a spurious bearish ratio). None tells the caller "no observation", not "a real 0".
+
+    One dead source still never crashes a query: the caller maps None → a None-valued SourceFeature.
 
     Strategy: GET the submissions index for the issuer CIK, filter form=="4", then for each recent Form 4
     fetch its ownership primary document and parse transactionCode (P/S) + transactionShares.
@@ -175,7 +191,7 @@ def _fetch_form4_transactions(cik: str, *, timeout: float) -> list[dict]:
             f"https://data.sec.gov/submissions/CIK{cik}.json", timeout=timeout
         )
         if not isinstance(submissions, dict):
-            return []
+            return None  # index unreachable / malformed → FETCH FAILURE (no observation), not an empty 0
         recent = (submissions.get("filings") or {}).get("recent") or {}
         forms = recent.get("form") or []
         accession_numbers = recent.get("accessionNumber") or []
@@ -183,6 +199,15 @@ def _fetch_form4_transactions(cik: str, *, timeout: float) -> list[dict]:
         primary_docs = recent.get("primaryDocument") or []
         cik_int = str(int(cik))  # un-padded CIK for the Archives path
         for i, form in enumerate(forms):
+            # NOTE (PIT tradeoff — amendments deliberately EXCLUDED): we count only form=="4", NOT "4/A"
+            # (Form 4 AMENDMENTS). A 4/A corrects or restates an earlier Form 4 (a fixed share count, code,
+            # or date). Including the amendment WITHOUT removing the superseded original would DOUBLE-COUNT
+            # the corrected transaction; honoring an amendment correctly needs accession-level reconciliation
+            # we do not yet do. Excluding 4/A keeps each transaction counted once and PIT-clean (a 4/A's own
+            # acceptanceDateTime is later than the original, so it cannot leak look-ahead), at the cost of
+            # using the as-originally-filed figures rather than the corrected ones. Amendments are a small
+            # minority of Form 4s and corrections are usually minor, so the net signal impact is low; revisit
+            # with original-supersession logic if coverage widens.
             if form != "4":
                 continue
             try:
@@ -198,8 +223,10 @@ def _fetch_form4_transactions(cik: str, *, timeout: float) -> list[dict]:
             )
             for code, shares in _parse_ownership_doc(doc_url, timeout=timeout):
                 out.append({"accepted": accepted, "code": code, "shares": shares})
-    except Exception:  # noqa: BLE001 — best-effort OSINT; one dead source never crashes a query
-        return out
+    except Exception:  # noqa: BLE001 — best-effort OSINT; a mid-stream failure is NO OBSERVATION, never a 0
+        # Discard any partially-collected `out`: a truncated list would fabricate a wrong ratio. The whole
+        # fetch failed → None (a gap the caller surfaces as a None value), not a fabricated empty/partial 0.
+        return None
     return out
 
 
@@ -296,15 +323,22 @@ class SecEdgarInsiderSource:
     def fetch_transactions(self, ticker: str) -> list[dict] | None:
         """Return the parsed Form 4 transactions for `ticker` (offline → fixture, online → live SEC EDGAR).
 
-        Returns None for a ticker NOT in the curated CIK map (untracked → gap, never 0). Returns a (possibly
-        empty) list for a tracked ticker — an empty list is a tracked-but-no-filings gap that net_buy_ratio
-        then renders as None.
+        Three honest outcomes (None = "no observation", a list = "this is the data"):
+          * None  — the ticker is NOT in the curated CIK map (untracked), OR the live fetch FAILED (network/
+            parse error). Both are gaps the caller renders as value=None — NEVER a fabricated 0. The error
+            path is deliberately fused with the untracked path here because both mean "we have no observation";
+            what matters is that a FAILED fetch never yields a (possibly partial) list that becomes a real 0.
+          * []    — a SUCCESSFUL fetch (or fixture) for a TRACKED ticker that genuinely has no transactions.
+            This is a real empty reading; net_buy_ratio([]) renders it as None (no in-window P/S activity),
+            which is correct — but it came from data we actually saw, not from a failure.
         """
         key = ticker.upper()
         if key not in _CIK_BY_TICKER:
             return None  # not tracked → None (gap, never 0)
         if self.offline:
             return list(self._fixture.get(key, []))
+        # Live path: _fetch_form4_transactions returns None on FETCH FAILURE (no observation) vs [] on a
+        # genuine empty filing. Propagate that distinction unchanged.
         return _fetch_form4_transactions(_CIK_BY_TICKER[key], timeout=self.timeout)
 
     def query(self, scope: str, as_of: datetime, *, limit: int = 4096) -> SourceFeature:
@@ -318,7 +352,10 @@ class SecEdgarInsiderSource:
         ticker = scope.upper()
         transactions = self.fetch_transactions(ticker)
         if transactions is None:
-            # untracked ticker → honest no-data
+            # NO OBSERVATION — untracked ticker OR a failed live fetch (network/parse error). Honest no-data:
+            # value=None, available_at=None. This is the data-honesty split: a fetch FAILURE never falls
+            # through to net_buy_ratio (which could fabricate a 0/non-None ratio from partial data); only a
+            # genuine empty list ([]) reaches the aggregation below and correctly renders as None.
             return SourceFeature(
                 name=self.name,
                 scope=ticker,
