@@ -92,6 +92,11 @@ create table if not exists backtests (
   fee_bps numeric,
   slippage_bps numeric,
   impact_bps numeric,
+  -- Per-symbol VISIBILITY: best_symbol/best_pnl_pct = the single highest-OOS-return symbol tested (DISPLAY-only,
+  -- the deflated pooled gate still decides); per_symbol = full {symbol:{return,sharpe,max_drawdown,trades}} JSON.
+  best_symbol text,
+  best_pnl_pct numeric,
+  per_symbol text,
   created_at text not null
 );
 

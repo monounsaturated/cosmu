@@ -98,6 +98,11 @@ class VariantResult:
     promoted: bool = False
     holdout_passed: bool = False
     target_vol: float | None = None  # T1 sizing anchor: set from champion.target_vol at champion holdout
+    # Per-symbol breakdown {symbol: {return, sharpe, max_drawdown, trades}} from the detailed backtest — the
+    # GRANULAR truth the pooled metric averages away. Persisted for VISIBILITY (the operator sees which symbols
+    # carried the edge); the deflated pooled gate still decides pass/fail (funding best-of-N = a multiple-testing
+    # hole). An honest per-symbol gate is design-first, separate.
+    per_symbol: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -543,6 +548,7 @@ class StrategyFinder:
             gate_passed=False,
             reasons=[],
             fitted_params=variant.params,
+            per_symbol=detailed.per_symbol,
         )
         candidate = CohortCandidate(
             id=variant.config_tag,
@@ -642,7 +648,7 @@ class StrategyFinder:
                     },
                 )
                 r.version_id = version_id
-                b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, holdout_ok, venue))
+                b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, holdout_ok, venue, r.per_symbol))
                 if promote:
                     # Born HONEST: equity = starting_capital, return_pct = 0 (master/tracks.open_paper_track).
                     # The OOS stays in backtests.oos_return; the paper clock advances the forward columns from
@@ -792,7 +798,11 @@ def _round_trip_cost(metrics: BacktestMetrics, venue) -> float:  # noqa: ANN001
     return fee * 2.0 * float(metrics.num_trades)
 
 
-def _backtest_row(version_id: str, m: BacktestMetrics, deflated: float, passed: bool, holdout_ok: bool, venue) -> dict:  # noqa: ANN001 — venue catalog row
+def _backtest_row(version_id: str, m: BacktestMetrics, deflated: float, passed: bool, holdout_ok: bool, venue, per_symbol: dict | None = None) -> dict:  # noqa: ANN001 — venue catalog row
+    # best_symbol / best_pnl_pct = the single highest OOS return across the symbols tested. DISPLAY-ONLY (the
+    # pooled deflated gate still decides pass/fail — funding the best-of-N would be a multiple-testing hole).
+    best_symbol = max(per_symbol, key=lambda s: per_symbol[s].get("return", float("-inf"))) if per_symbol else None
+    best_pnl_pct = str(round(per_symbol[best_symbol].get("return", 0.0), 6)) if best_symbol else None
     return {
         "strategy_version_id": version_id,
         "kind": "screen",
@@ -823,6 +833,9 @@ def _backtest_row(version_id: str, m: BacktestMetrics, deflated: float, passed: 
         "fee_bps": str(venue.taker_fee_bps),
         "slippage_bps": str(venue.slippage_bps),
         "impact_bps": str(venue.impact_bps),
+        "best_symbol": best_symbol,
+        "best_pnl_pct": best_pnl_pct,
+        "per_symbol": per_symbol or None,  # granular {symbol:{return,sharpe,max_drawdown,trades}} → JSON in DB
         "created_at": utcnow(),
     }
 
