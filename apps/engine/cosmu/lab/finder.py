@@ -648,7 +648,18 @@ class StrategyFinder:
                     },
                 )
                 r.version_id = version_id
-                b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, holdout_ok, venue, r.per_symbol))
+                bt_id = b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, holdout_ok, venue, r.per_symbol))
+                # PER-SYMBOL rows = the queryable unit of truth (1 strat × 1 symbol × 1 result), so the /lab front +
+                # recompute + the honest per-symbol gate read SQL, not a JSON blob. venue_id carries the fee axis
+                # (strategy × symbol × venue). verdict stays NULL here — the honest per-symbol gate fills it later;
+                # this is pure persistence and never the funding authority (the pooled deflated Gate is).
+                for _sym, _pm in (r.per_symbol or {}).items():
+                    b.insert("backtest_symbols", {
+                        "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": venue.id,
+                        "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
+                        "max_drawdown": str(_pm.get("max_drawdown", 0.0)), "trades": int(_pm.get("trades", 0)),
+                        "created_at": utcnow(),
+                    })
                 if promote:
                     # Born HONEST: equity = starting_capital, return_pct = 0 (master/tracks.open_paper_track).
                     # The OOS stays in backtests.oos_return; the paper clock advances the forward columns from
