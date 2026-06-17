@@ -351,6 +351,18 @@ class StrategyFinder:
         # Crypto + HL perps are 24/7 → the 365-session default (None) is already correct, so we only mark equity.
         # None when there are no equity symbols (the common crypto-only path stays byte-identical).
         asset_class_by_symbol = {s: "equity" for s in equity_syms} or None
+        # Per-symbol VENUE id — the SAME per-symbol map the fee_schedule uses (equity→ibkr, HL→hyperliquid, else
+        # the spec's primary venue). Each backtest_symbols cell is then STAMPED with the venue it was actually
+        # priced at (the fee axis of the S×A×V triple), never the spec's single primary venue — so an IBKR-priced
+        # equity cell is no longer mislabeled 'binance' in the table built to be the source of truth. None on the
+        # crypto-only path (every row shares venue.id, applied at persist) — keeps that path allocation-free.
+        venue_id_by_symbol = None
+        if equity_syms or hl_syms:
+            venue_id_by_symbol = {s: venue.id for s in market}
+            if equity_syms:
+                venue_id_by_symbol.update({s: catalog.venue("ibkr").id for s in equity_syms})
+            if hl_syms:
+                venue_id_by_symbol.update({s: catalog.venue("hyperliquid").id for s in hl_syms})
         # Point-in-time alt-data join (funding_rate, fear_greed, …), built ONCE per spec since it depends only on
         # the spec's features + the market, not the swept params. Without this the sweep would screen every
         # funding/meta-label spec price-only (funding reads None) — the same join the cohort screen uses.
@@ -477,7 +489,7 @@ class StrategyFinder:
             except Exception:  # noqa: BLE001 — audit trail is best-effort; the verdict itself is already set
                 pass
         if persist:
-            self._persist(spec, results, market, venue)
+            self._persist(spec, results, market, venue, venue_id_by_symbol)
             # ACTIVATE the rejects watch-list: every screened variant now has a persisted strategy_version
             # (r.version_id), so link each watched reject to its version and open a ZERO-CAPITAL paper track —
             # the SAME SIM machinery survivors use — stamping strategy_version_id back so the Type-II report can
@@ -616,7 +628,7 @@ class StrategyFinder:
 
     # ------------------------------------------------------------------ persistence (config library)
 
-    def _persist(self, spec: StrategySpec, results: list[VariantResult], market: dict[str, list[Bar]], venue) -> None:  # noqa: ANN001 — venue catalog row
+    def _persist(self, spec: StrategySpec, results: list[VariantResult], market: dict[str, list[Bar]], venue, venue_id_by_symbol: dict[str, str] | None = None) -> None:  # noqa: ANN001 — venue catalog row
         """Write the config library: one strategies row + one strategy_versions row per variant (origin='finder',
         config_tag carried in params), the screen backtest, and — for promoted+holdout-passing variants — a track,
         a `track_opened` event (the paper clock origin + proven-regime passport that master/live_eligibility
@@ -658,14 +670,17 @@ class StrategyFinder:
                 r.version_id = version_id
                 bt_id = b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, holdout_ok, venue, r.per_symbol))
                 # PER-SYMBOL rows = the queryable unit of truth (1 strat × 1 symbol × 1 result), so the /lab front +
-                # recompute + the honest per-symbol gate read SQL, not a JSON blob. venue_id carries the fee axis
-                # (strategy × symbol × venue). verdict = the HONEST cross-symbol label (robust/fragile/thin/negative,
-                # computed ONCE over this strategy's whole per-symbol set) so a lone best-of-N winner is flagged, not
-                # celebrated — pure visibility metadata, never the funding authority (the pooled deflated Gate is).
+                # recompute + the honest per-symbol gate read SQL, not a JSON blob. venue_id = the venue THIS symbol
+                # was actually priced at (equity→ibkr, HL→hyperliquid, else the spec's primary venue) — the real fee
+                # axis of the S×A×V triple, never the spec's single primary venue. verdict = the HONEST cross-symbol
+                # label (robust/fragile/thin/negative, computed ONCE over the whole per-symbol set) so a lone
+                # best-of-N winner is flagged, not celebrated — pure visibility, never the funding authority (the
+                # pooled deflated Gate is).
                 _verdicts = classify_per_symbol(r.per_symbol)
+                _vmap = venue_id_by_symbol or {}
                 for _sym, _pm in (r.per_symbol or {}).items():
                     b.insert("backtest_symbols", {
-                        "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": venue.id,
+                        "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": _vmap.get(_sym, venue.id),
                         "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
                         "max_drawdown": str(_pm.get("max_drawdown", 0.0)), "trades": int(_pm.get("trades", 0)),
                         "verdict": _verdicts.get(_sym), "created_at": utcnow(),

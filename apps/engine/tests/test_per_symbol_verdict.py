@@ -14,7 +14,38 @@ from cosmu.master.per_symbol import (
     VERDICTS,
     classify_per_symbol,
     edge_generalizes,
+    rank_deploy_symbols,
 )
+
+
+def _cell(symbol, verdict, sharpe=0.0):
+    return {"symbol": symbol, "verdict": verdict, "sharpe": sharpe}
+
+
+def test_rank_deploy_symbols_robust_before_fragile_then_sharpe():
+    """The funder must land capital on the PROVEN cell: ROBUST ranks strictly above FRAGILE (a lone best-of-N
+    winner), and within a verdict the higher Sharpe leads. THIN/NEGATIVE are never deployable (dropped)."""
+    cells = [
+        _cell("XRP", FRAGILE, 9.0),     # high sharpe but only fragile → must rank BELOW any robust
+        _cell("SOL", ROBUST, 1.0),
+        _cell("BTC", ROBUST, 2.5),      # best: robust + highest sharpe
+        _cell("DOGE", NEGATIVE, 5.0),   # dropped
+        _cell("ADA", THIN, 5.0),        # dropped
+    ]
+    assert rank_deploy_symbols(cells) == ["BTC", "SOL", "XRP"]
+
+
+def test_rank_deploy_symbols_excludes_non_edges_and_handles_empty():
+    """A version with no ROBUST/FRAGILE cell yields an empty deploy order (caller falls back to round-robin)."""
+    assert rank_deploy_symbols([_cell("BTC", THIN), _cell("ETH", NEGATIVE)]) == []
+    assert rank_deploy_symbols([]) == []
+
+
+def test_rank_deploy_symbols_dedup_and_bad_sharpe_safe():
+    """Repeated symbols (a re-screened version) keep the best-ranked occurrence; a non-numeric Sharpe is treated
+    as 0.0, never raising."""
+    cells = [_cell("BTC", FRAGILE, 1.0), _cell("BTC", ROBUST, "n/a"), _cell("ETH", ROBUST, 3.0)]
+    assert rank_deploy_symbols(cells) == ["ETH", "BTC"]  # ETH robust+3.0 > BTC robust+0.0; BTC de-duped to robust
 
 
 def _ps(**symbols: tuple[float, int]) -> dict[str, dict[str, float]]:

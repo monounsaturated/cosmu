@@ -92,6 +92,33 @@ def classify_per_symbol(per_symbol: dict[str, dict[str, float]] | None, *,
     return out
 
 
+# Deployment rank: only ROBUST/FRAGILE cells are fundable (never THIN/NEGATIVE), ROBUST strictly before FRAGILE.
+_DEPLOY_RANK = {ROBUST: 2, FRAGILE: 1}
+
+
+def _as_float(v: object) -> float:
+    try:
+        return float(v)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def rank_deploy_symbols(cells: list[dict]) -> list[str]:
+    """Order this strategy version's symbols BEST-FIRST for capital deployment, so the funder lands on the
+    verdict-PROVEN cell instead of an arbitrary round-robin pick (the cardinal-sin the per-symbol table exists to
+    prevent). `cells` are backtest_symbols-shaped dicts ({symbol, verdict, sharpe}); only ROBUST/FRAGILE are
+    deployable (THIN/NEGATIVE are dropped — never fund a non-edge), ROBUST before FRAGILE, then higher Sharpe.
+    Pure + deterministic; the verdict was computed at screen time, this only READS it. Returns symbols in rank
+    order (may be empty → the caller keeps its legacy fallback)."""
+    deployable = [c for c in cells if c.get("verdict") in _DEPLOY_RANK]
+    deployable.sort(key=lambda c: (_DEPLOY_RANK[c["verdict"]], _as_float(c.get("sharpe"))), reverse=True)
+    out: list[str] = []
+    for c in deployable:  # de-dup keeping the best-ranked occurrence (a re-screened version can have repeats)
+        if c["symbol"] not in out:
+            out.append(c["symbol"])
+    return out
+
+
 __all__ = [
     "GENERALIZE_FRACTION",
     "MIN_TRADES_PER_SYMBOL",
@@ -103,4 +130,5 @@ __all__ = [
     "PerSymbolCell",
     "classify_per_symbol",
     "edge_generalizes",
+    "rank_deploy_symbols",
 ]
