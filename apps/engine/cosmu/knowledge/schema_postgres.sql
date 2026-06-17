@@ -100,6 +100,25 @@ create table if not exists backtests (
   created_at text not null
 );
 
+-- PER-SYMBOL backtest breakdown — the QUERYABLE unit of truth (one row per backtest×symbol, with venue_id = the
+-- fee axis). Replaces the pooled-mean dead-end so a single-symbol edge is visible/joinable, never averaged away.
+-- verdict filled by the honest per-symbol gate later (NULL = not-yet-judged). Pooled Gate stays the funding authority.
+create table if not exists backtest_symbols (
+  id text primary key,
+  backtest_id text not null references backtests(id),
+  strategy_version_id text not null references strategy_versions(id),
+  symbol text not null,
+  venue_id text,
+  return_pct numeric,
+  sharpe numeric,
+  max_drawdown numeric,
+  trades integer,
+  verdict text,
+  created_at text not null
+);
+create index if not exists idx_backtest_symbols_version on backtest_symbols(strategy_version_id);
+create index if not exists idx_backtest_symbols_symbol on backtest_symbols(symbol);
+
 -- The PROMOTION RECORD — the single frozen source of truth for replicating a gate-survivor in live (see schema.sql
 -- for the full rationale). One row per promoted version. The LLM never writes it.
 create table if not exists strategy_promotions (
