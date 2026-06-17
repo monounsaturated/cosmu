@@ -209,6 +209,16 @@ class StrategySpec(BaseModel):
     # honest 0.95 gate. The explore lane NEVER loosens or bypasses the gate — it routes a vibe to paper observation
     # and lets the unchanged gate dispose at graduation. Default "gate" preserves ALL current behaviour.
     lane: Literal["gate", "deploy", "explore"] = "gate"
+    # Strategy MODEL — the top-level discriminator for which VALIDATION + EXECUTION path applies. "quant" = a typed
+    # StrategySpec judged by the deterministic Gate A (DSR/PBO/BH-FDR) and run by the compiled backtest/executor —
+    # the only model today, so default "quant" keeps EVERY existing spec byte-identical. "llm" is reserved for the
+    # agentic/NL model (a Mind reasoning loop → typed Decision) validated by the scientific-flexible Gate B
+    # (score+evidence, no backtest) — that artifact is a separate AgentSpec (see docs/epics/agentic-lane.md), so on a
+    # StrategySpec this stays "quant" in practice; it exists here so the kind axis is uniform end-to-end (spec → the
+    # strategy_versions.kind column → UI). ORTHOGONAL to strategy_kind (indicator/event/regime, the entry-generation
+    # path) and to lane (gate/deploy/explore, the evaluator); status + lane are SHARED across both kinds. Enforced by
+    # this Literal + a guard test, matching the repo's no-DB-CHECK convention (knowledge/lifecycle_status.py).
+    kind: Literal["quant", "llm"] = "quant"
     universe: UniverseSelector
     horizon: Horizon
     catalyst: str | None = None

@@ -44,6 +44,10 @@ CREATE TABLE IF NOT EXISTS strategy_versions (
   mutation_rationale TEXT,
   origin TEXT NOT NULL,
   status TEXT NOT NULL,
+  -- Strategy MODEL discriminator: 'quant' (StrategySpec -> Gate A) | 'llm' (AgentSpec -> Gate B). Default 'quant'
+  -- keeps every existing row + writer byte-identical (Writer.insert omits unspecified columns -> DB fills default).
+  -- No CHECK by repo convention (enforced by the spec Literal + a guard test, see lifecycle_status.py).
+  kind TEXT NOT NULL DEFAULT 'quant',
   -- Provenance: "human" (chat/UI), "agent" (the LLM master fanning out briefs), or "import" (pine/url). Nullable
   -- so pre-migration rows stay valid (read as unknown). Lets the flywheel grade winners by who authored them.
   authored_by TEXT,
