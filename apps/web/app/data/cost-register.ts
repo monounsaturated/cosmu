@@ -70,7 +70,8 @@ const RAW_COST_LINES: RawCostLine[] = [
   // ── AI / LLM ──
   // Claude Max plan: $200/mo + 20% French VAT (USD-native). Renews 30 days after the last payment.
   { source: "Anthropic / Claude", category: "ai", cadence: "monthly", perMo: { usd: Math.round(200 * 1.2) }, lifetime: { eur: 127.85 + 88.25 + 21.6 + 21.6 }, lastPaid: "2026-06-06", renews: "2026-07-06" },
-  { source: "Cursor", category: "ai", cadence: "monthly", perMo: { eur: 21.53 }, lifetime: { eur: 21.53 + 10.77 }, lastPaid: "2026-05-01", renews: "2026-07-01" },
+  // Cursor Pro cancelled — no longer renewing, so $0/mo going forward (lifetime spend kept).
+  { source: "Cursor", category: "ai", cadence: "monthly", perMo: Z, lifetime: { eur: 21.53 + 10.77 }, lastPaid: "2026-05-01", renews: null },
   { source: "OpenRouter", category: "ai", cadence: "usage", perMo: Z, lifetime: { eur: 10.88 }, lastPaid: "2026-06-01", renews: null },
   { source: "xAI", category: "ai", cadence: "usage", perMo: Z, lifetime: { eur: 4.29 + 4.27 }, lastPaid: "2026-04-25", renews: null },
 
