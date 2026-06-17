@@ -65,6 +65,11 @@ class _Screened:
     # CSCV-PBO — exactly as the finder sweep does. Empty list when no symbol traded (degrades safely: an
     # untradeable candidate is excluded from clustering and cannot anchor the cohort PBO).
     val_returns: list[float] = field(default_factory=list)
+    # The per-symbol standalone validation breakdown (BacktestResult.per_symbol: symbol -> return/sharpe/dd/trades)
+    # the SAME screen already computes for the per-symbol trade floor. Carried so _persist writes the first-class
+    # backtest_symbols rows (the queryable per-(strat,symbol,venue) unit of truth) — the autonomous loop populates
+    # that table identically to the finder sweep, instead of dropping the breakdown after the floor check.
+    per_symbol: dict[str, dict[str, float]] = field(default_factory=dict)
     # The cost assumptions the screen was scored under (the venue it priced against + its taker fee + the SAME
     # venue's market depth the backtest charged), carried so _persist records the EXACT values on the backtest
     # row and the promotion freeze pins the gate-time cost model — never the global default (depth is per-venue).
@@ -530,7 +535,7 @@ class FarmLoop:
         except ValueError:
             return None  # invalid spec — never persisted, counted as invalid
 
-        metrics, venue, min_symbol_trades, val_returns = self._screen(cand, compiled.code_hash, seed)
+        metrics, venue, min_symbol_trades, val_returns, per_symbol = self._screen(cand, compiled.code_hash, seed)
         # THE choke point: every farmed candidate is one more hypothesis the Deflated Sharpe / FDR must deflate
         # against — register the trial BEFORE the per-symbol floor check (a backtested hypothesis is counted even
         # if it lacks per-symbol breadth, so the deflation ledger never under-counts thin-book specs).
@@ -548,7 +553,7 @@ class FarmLoop:
         return _Screened(
             cand=cand, params=params, compiled=compiled, metrics=metrics,
             survival_score=survival_score, proven=proven,
-            val_returns=val_returns,
+            val_returns=val_returns, per_symbol=per_symbol,
             venue_id=venue.id, fee_bps=float(venue.taker_fee_bps),
             slippage_bps=float(venue.slippage_bps), impact_bps=float(venue.impact_bps),
             pre_kill=pre_kill,
@@ -600,7 +605,7 @@ class FarmLoop:
         # version row (registry probed once per cohort; absent tables → flag off → no statement runs here).
         if self._cache.get("blocks_on"):
             record_version_blocks(b, version_id, cand.spec)
-        b.insert(
+        bt_id = b.insert(
             "backtests",
             {
                 "strategy_version_id": version_id,
@@ -635,6 +640,19 @@ class FarmLoop:
                 "created_at": utcnow(),
             },
         )
+        # First-class per-symbol rows — the autonomous loop populates the queryable per-(strat,symbol,venue) unit
+        # of truth identically to the finder sweep (lab/finder.py), so prod's continuous discovery fills the table,
+        # not just manual runs. venue_id = the fee axis; verdict NULL (the honest per-symbol gate fills it later).
+        # This is pure persistence of data the screen already computed — never the funding authority (the pooled
+        # deflated Gate scored above is). The #306 per_symbol JSON blob is intentionally NOT written here: this
+        # first-class table supersedes it.
+        for _sym, _pm in (sc.per_symbol or {}).items():
+            b.insert("backtest_symbols", {
+                "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": sc.venue_id,
+                "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
+                "max_drawdown": str(_pm.get("max_drawdown", 0.0)), "trades": int(_pm.get("trades", 0)),
+                "created_at": utcnow(),
+            })
         if passed:
             # Born HONEST at the STANDARDIZED standalone track size (sim_track_capital — what the funder
             # deploys), never the $100k pool. equity = starting_capital, return_pct = 0: a forward track has
@@ -679,7 +697,7 @@ class FarmLoop:
             version_id,
         )
 
-    def _screen(self, cand: Candidate, code_hash: str, seed: int):  # noqa: ANN201 — (BacktestMetrics, venue, min_symbol_trades, val_returns)
+    def _screen(self, cand: Candidate, code_hash: str, seed: int):  # noqa: ANN201 — (BacktestMetrics, venue, min_symbol_trades, val_returns, per_symbol)
         """Cheap real-data screen over Binance spot bars. Returns the metrics, the venue it priced against (so
         the persist path records the gate-time cost assumptions), the per-symbol trade MINIMUM (the smallest
         validation trade count across the screened symbols — the true per-symbol breadth, see _screen_and_register),
@@ -720,7 +738,7 @@ class FarmLoop:
             # exam — the structural holdout-reuse channel the gate-integrity review flagged.
             include_holdout=False,
         )
-        return result.metrics, venue, result.min_symbol_trades, list(result.val_returns)
+        return result.metrics, venue, result.min_symbol_trades, list(result.val_returns), result.per_symbol
 
     def _champion_holdout(self, spec: StrategySpec, params: dict[str, float]) -> float:
         """The one-shot UNTOUCHED holdout for a SELECTED champion: re-run the full backtest WITH the embargoed

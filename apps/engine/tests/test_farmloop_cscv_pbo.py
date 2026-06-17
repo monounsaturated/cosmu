@@ -89,7 +89,7 @@ def _force_screen(monkeypatch, stream_fn, *, capture: list | None = None) -> Non
             # recompute the cohort's clustering + CSCV-PBO over the SAME streams (the loop screens, then clusters
             # in that same insertion order; all metrics tie so the sort is stable).
             capture.append(stream)
-        return (_strong(), venue, 20, stream)
+        return (_strong(), venue, 20, stream, {})
 
     monkeypatch.setattr(FarmLoop, "_screen", _screen)
     # Force the one-shot holdout to PASS so it never demotes a survivor — isolating the cluster/FDR/PBO behavior.
@@ -204,3 +204,40 @@ def test_injected_cohort_pbo_matches_independently_computed_cscv_over_distinct_s
     # single-config 1.0 sentinel), and it is NOT the per-candidate proxy.
     assert len(reps) >= 2
     assert cohort_pbo != _strong().pbo
+
+
+# --------------------------------------------------------------------------- per-symbol rows (the queryable unit)
+
+
+def test_loop_persists_backtest_symbols_rows(tmp_path, monkeypatch):
+    """The autonomous loop must populate the first-class backtest_symbols table (the per-(strat,symbol,venue) unit
+    of truth), exactly like the finder sweep — otherwise prod's CONTINUOUS discovery writes pooled backtests with
+    no per-symbol breakdown and the /lab front + the honest per-symbol gate have nothing to read. _screen already
+    computes per_symbol (it's where the per-symbol trade floor comes from); this proves _persist writes one row per
+    screened symbol, venue-tagged (the fee axis), outlier-sortable, verdict NULL (the loop never judges per-symbol —
+    the honest gate fills that later; the pooled deflated Gate stays the funding authority)."""
+    venue = default_catalog().venue_for(["binance"])
+    per_symbol = {
+        "BTCUSDT": {"return": 0.21, "sharpe": 1.9, "max_drawdown": 0.08, "trades": 40.0},
+        "ETHUSDT": {"return": 0.05, "sharpe": 0.4, "max_drawdown": 0.12, "trades": 22.0},
+    }
+    loop = _loop(tmp_path, "psym")
+    monkeypatch.setattr(
+        FarmLoop, "_screen",
+        lambda self, cand, code_hash, seed: (_strong(), venue, 20, _distinct_stream(cand), per_symbol),
+    )
+    monkeypatch.setattr(FarmLoop, "_champion_holdout", lambda self, spec, params: 5.0)
+    summary = loop.run_cohort(seed=7, cohort_size=3)
+    assert summary.generated >= 1
+
+    rows = loop.store.rows("SELECT symbol, venue_id, return_pct, verdict FROM backtest_symbols")
+    assert rows, "the autonomous loop must persist per-symbol rows, not just a pooled backtest"
+    assert {r["symbol"] for r in rows} == {"BTCUSDT", "ETHUSDT"}  # one row per screened symbol, never a pooled blob
+    assert all(r["venue_id"] == venue.id for r in rows)           # the fee axis (strategy × symbol × VENUE) is recorded
+    assert all(r["verdict"] is None for r in rows)                # the loop persists; it never judges per-symbol
+    # Outlier-sortable per version — the SNIPE query the front runs (best symbol first, not a buried pooled mean).
+    vid = loop.store.row("SELECT strategy_version_id AS v FROM backtest_symbols LIMIT 1")["v"]
+    ranked = loop.store.rows(
+        "SELECT symbol, return_pct FROM backtest_symbols WHERE strategy_version_id = ? ORDER BY return_pct DESC", (vid,)
+    )
+    assert ranked[0]["symbol"] == "BTCUSDT"  # 0.21 ranks above ETH's 0.05
