@@ -74,3 +74,33 @@ def test_legacy_version_without_per_symbol_rows_falls_back_to_round_robin(tmp_pa
     vid = _seed_survivor(store, cells=None)
     picked = {v: sym for (v, _t, sym, _vn) in _survivor_tracks(store, default_catalog())}
     assert picked.get(vid) in {"BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT"}  # round-robin pool member
+
+
+def test_equity_survivor_funds_on_alpaca_not_ibkr(tmp_path):
+    """Equity survivors must fund on ALPACA — the venue with a real exec adapter (registry.EXEC_ADAPTER_VENUES) —
+    NOT 'ibkr' (data-only, no adapter → could never route live). Proves the asset-class funding venue points at an
+    executable venue, unblocking the live path for the only class with Gate survivors today."""
+    store = _store(tmp_path)
+    with store.batch() as b:
+        sid = b.insert("strategies", {"name": "GEM", "thesis": "t", "origin": "finder", "created_at": "2026-06-17T00:00:00Z"})
+        vid = b.insert("strategy_versions", {
+            "strategy_id": sid, "spec": {"name": "GEM", "universe": {"asset_classes": ["equity"], "venues": ["ibkr"]}},
+            "generated_code": "", "code_hash": "h", "params": {}, "origin": "finder", "status": "screened",
+            "created_at": "2026-06-17T00:00:00Z",
+        })
+        bt = b.insert("backtests", {
+            "strategy_version_id": vid, "kind": "screen", "oos_return": "0.2", "sharpe": "1.5", "sortino": "1.5",
+            "deflated_sharpe": "1.2", "max_dd": "0.1", "win_rate": "0.6", "num_trades": 80, "pbo": "0.2",
+            "trials_counted": 1, "folds_positive": 5, "passed_gates": 1, "holdout_passed": 1, "created_at": "2026-06-17T00:00:00Z",
+        })
+        b.insert("backtest_symbols", {
+            "backtest_id": bt, "strategy_version_id": vid, "symbol": "SPY", "venue_id": "ibkr",
+            "return_pct": "0.15", "sharpe": "2.0", "max_drawdown": "0.06", "trades": 30, "verdict": "robust",
+            "created_at": "2026-06-17T00:00:00Z",
+        })
+        open_paper_track(b, version_id=vid, starting_capital=Decimal("1000"))
+    triples = {v: (sym, venue) for (v, _t, sym, venue) in _survivor_tracks(store, default_catalog())}
+    assert vid in triples, "equity survivor must be funded (not skipped)"
+    sym, venue = triples[vid]
+    assert venue == "alpaca", f"equity must fund on alpaca (has exec adapter), got {venue}"
+    assert sym == "SPY"  # the robust equity cell
