@@ -82,20 +82,36 @@ def emit_alerts(
         _write_recommendations(alerts, store)
 
 
+def _live_slack_post(url: str, payload: bytes) -> None:
+    import urllib.request
+
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as _:  # noqa: S310
+        pass
+
+
+def post_slack_text(
+    webhook_url: str,
+    text: str,
+    *,
+    _http_post: Callable[[str, bytes], Any] | None = None,
+) -> None:
+    """Post one Slack message (best-effort). Shared by the budget alerter and the $15-stride account notifier."""
+    http_post = _http_post or _live_slack_post
+    payload = json.dumps({"text": text}).encode()
+    try:
+        http_post(webhook_url, payload)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _post_slack(
     alerts: list[BudgetAlert],
     webhook_url: str,
     *,
     _http_post: Callable[[str, bytes], Any] | None = None,
 ) -> None:
-    import urllib.request
-
-    def _live_post(url: str, payload: bytes) -> None:
-        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=10) as _:  # noqa: S310
-            pass
-
-    http_post = _http_post or _live_post
+    http_post = _http_post or _live_slack_post
     icon = {"info": ":information_source:", "warning": ":warning:", "critical": ":rotating_light:"}
     for alert in alerts:
         pct_str = f"{int(alert.threshold_pct * 100)}%"
@@ -140,3 +156,96 @@ def _write_recommendations(alerts: list[BudgetAlert], store: Any) -> None:
             )
     except Exception:  # noqa: BLE001
         pass
+
+
+# ---------------------------------------------------------------------------
+# $15-fixed-stride per-account notifier (modular compute-spend failover)
+# ---------------------------------------------------------------------------
+
+# Notify the operator every $15 of an account's metered spend (NOT every $5 — the point is don't-lose-progress,
+# not penny-watching). free_credit ~$30 → strides land at ~$15 (halfway warn) and ~$30 (exhausted). Reuses the
+# Slack webhook + recommendation rows above; bumps notified_floor on the account so each stride pings exactly once.
+SPEND_STRIDE_USD = 15.0
+
+
+@dataclass
+class AccountStrideAlert:
+    account_id: str
+    provider: str
+    spend: float
+    free_credit: float
+    floor: int          # the $15 stride crossed (floor(spend/15))
+    prev_floor: int     # the last stride already notified
+
+
+def check_account_strides(store: Any, settings: Any, *, _http_post: Callable[[str, bytes], Any] | None = None) -> list[AccountStrideAlert]:
+    """For every model account, fire one Slack ping + recommendation row each time its metered spend crosses a new
+    $15 stride, then bump notified_floor so the stride never re-fires. Run AFTER spend is reconciled from the
+    ledger (see costs.refresh). Best-effort; returns the alerts emitted (empty when nothing crossed / no store)."""
+    if store is None:
+        return []
+    from cosmu.costs.accounts import bump_notified_floor, list_accounts
+
+    webhook_url = getattr(settings, "slack_webhook_url", None)
+    emitted: list[AccountStrideAlert] = []
+    try:
+        open_bodies = {r["body"] for r in store.rows("SELECT body FROM recommendations WHERE state = 'open'")}
+    except Exception:  # noqa: BLE001
+        open_bodies = set()
+
+    for acct in list_accounts(store):
+        floor = int(acct.spend_used // SPEND_STRIDE_USD)
+        if floor <= acct.notified_floor:
+            continue
+        alert = AccountStrideAlert(
+            account_id=acct.account_id,
+            provider=acct.provider,
+            spend=acct.spend_used,
+            free_credit=acct.free_credit_usd,
+            floor=floor,
+            prev_floor=acct.notified_floor,
+        )
+        exhausted = acct.spend_used >= acct.free_credit_usd - 0.25
+        head = ":rotating_light:" if exhausted else ":moneybag:"
+        state = "EXHAUSTED — failing over" if exhausted else "metered spend crossing"
+        text = (
+            f"{head} *Cosmu model-account {state} — {acct.account_id}* ({acct.provider})\n"
+            f"Spend ${acct.spend_used:.2f} of ${acct.free_credit_usd:.2f} free credit "
+            f"(${floor * SPEND_STRIDE_USD:.0f} stride). "
+            + ("Pool advancing to the next account." if exhausted else "On track; will fail over near exhaustion.")
+        )
+        if webhook_url:
+            post_slack_text(webhook_url, text, _http_post=_http_post)
+
+        body = (
+            f"Model account {acct.account_id} ({acct.provider}) spend ${acct.spend_used:.2f} crossed the "
+            f"${floor * SPEND_STRIDE_USD:.0f} stride (free credit ${acct.free_credit_usd:.2f})."
+        )
+        if body not in open_bodies:
+            try:
+                store.insert(
+                    "recommendations",
+                    {
+                        "ts": datetime.now(tz=UTC).isoformat(),
+                        "kind": "account_spend_stride",
+                        "body": body,
+                        "state": "open",
+                        "payload": {
+                            "account_id": acct.account_id,
+                            "provider": acct.provider,
+                            "spend": acct.spend_used,
+                            "free_credit": acct.free_credit_usd,
+                            "stride_usd": SPEND_STRIDE_USD,
+                            "floor": floor,
+                            "exhausted": exhausted,
+                        },
+                    },
+                )
+                open_bodies.add(body)
+            except Exception:  # noqa: BLE001
+                pass
+
+        bump_notified_floor(store, acct.account_id, floor)
+        emitted.append(alert)
+
+    return emitted
