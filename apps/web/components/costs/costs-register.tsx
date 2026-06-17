@@ -54,12 +54,6 @@ export function CostsRegister({
         />
         <div className="card-body">
           <SubscriptionsTable rows={filtered} />
-          <div className="costs-note">
-            Every line is a real, operator-known spend reconciled against the provider invoices. EUR amounts
-            are converted to USD; <code>/ mo</code> is the recurring run-rate, <b style={{ color: "var(--fg)" }}>lifetime</b>{" "}
-            is spent-to-date, and <code>proj / yr</code> = <code>/ mo</code> × 12. The register is maintained in
-            code — nothing is fabricated or fetched live.
-          </div>
         </div>
       </div>
     </>

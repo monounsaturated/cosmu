@@ -120,13 +120,7 @@ export function SpendChartCard({
           </span>
         ) : null}
       </div>
-      {hasChart ? (
-        <EquityChart values={chartValues} height={150} />
-      ) : (
-        <p className="quiet" style={{ fontSize: 11, marginTop: 8 }}>
-          Spend history appears here once monthly actuals are booked — the figures above are real totals.
-        </p>
-      )}
+      {hasChart ? <EquityChart values={chartValues} height={150} /> : null}
     </div>
   );
 }

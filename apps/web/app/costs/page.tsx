@@ -14,7 +14,8 @@
 
 import { Suspense } from "react";
 import { engineConfigured, getCosts } from "../data";
-import { COST_LINES, costTotals } from "../data/cost-register";
+import { buildCostLines, costTotals } from "../data/cost-register";
+import { getEurUsd } from "../data/fx";
 import { Page, Toolbar } from "@/components/ui/toolbar";
 import { NotConnectedBanner } from "@/components/ui/honest-state";
 import { CardHead, RoiTable, SpendChartCard } from "@/components/costs/cost-sections";
@@ -36,8 +37,9 @@ export default function CostsPage() {
 }
 
 async function CostsData() {
-  const { costs, connected } = await getCosts();
-  const { totalSpend } = costTotals(COST_LINES);
+  const [{ costs, connected }, eurUsd] = await Promise.all([getCosts(), getEurUsd()]);
+  const lines = buildCostLines(eurUsd); // EUR spend re-rated with the live daily EUR→USD rate
+  const { totalSpend } = costTotals(lines);
 
   // vs-equity: only real when the engine reports `opex_vs_alpha` (a fraction). Honest "—" otherwise.
   const vsEquity = connected && costs.opex_vs_alpha > 0 ? costs.opex_vs_alpha * 100 : null;
@@ -50,7 +52,7 @@ async function CostsData() {
       <SpendChartCard totalToDate={totalSpend} spendSeries={connected ? costs.spend_series : null} />
 
       {/* 1 · boards — stat strip + clickable tiles + the read-only register they filter. */}
-      <CostsRegister rows={COST_LINES} vsEquity={vsEquity} />
+      <CostsRegister rows={lines} vsEquity={vsEquity} />
 
       {/* 2 · per-strategy ROI — opex-vs-alpha at the strategy grain (engine-only). */}
       {connected && costs.per_strategy.length > 0 ? (
