@@ -43,7 +43,7 @@ async function PaperData() {
   const [{ leaderboard, connected }, { overview }] = await Promise.all([getLeaderboard(), getOverview()]);
   const allRows = leaderboard.rows as LeaderboardRow[];
 
-  // Filter to paper-stage strategies (status = forward / forward_test / paper).
+  // Filter to paper-stage strategies (status = forward_test / paper).
   // Paper cohort = strategies that have genuinely TRADED on paper (a real fill), not merely a paper-ish
   // status. A funded documented arm with zero fills is Backtest, so it never inflates the Paper dashboard
   // with fabricated value/P&L — the aggregate now tells the same story as each strategy's own sheet.
