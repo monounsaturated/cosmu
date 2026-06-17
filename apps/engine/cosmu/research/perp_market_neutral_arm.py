@@ -36,15 +36,16 @@ from cosmu.config.settings import Settings, get_settings
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.research import perp_market_neutral as pmn
+from cosmu.research._arm_regimes import proven_regimes_from_validation
 
 STRATEGY_NAME = "Perp Momentum Market-Neutral (X-sectional L/S, deploy-lane)"  # UNIQUE — no equity-arm collision
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-real-but-underpowered-edge track, labeled honestly
 VENUE = "kraken_futures"  # the cheapest SHORT-CAPABLE perp venue we catalog (2/5 bps, FR-legal); LIVE post-edge only
 TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size (settings.sim_track_capital)
-# A market-neutral momentum book is direction-free: it tilts to relative winners vs losers and harvests the funding
-# the crowded longs pay. It carries no market beta, so its proven-regime passport is the full set (the paper run +
-# a human still gate live-arming via master/live_eligibility).
-PROVEN_REGIMES = ["bull", "bear", "chop"]
+# The proven-regime passport is DERIVED from this arm's OWN per-regime net PnL (research._arm_regimes), NOT a
+# hardcoded full set. A market-neutral cash-benchmark book has no market benchmark to define a trend, so the
+# reference IS the strategy's own cumulative net-return path (the self-relative mode): each rebalance is tagged
+# bull/bear/chop off that path and a regime is proven only where net PnL is positive. Earn each regime.
 
 
 def _minimal_spec(current_signal: dict) -> dict:
@@ -251,7 +252,8 @@ def arm(store: Store | None = None) -> dict:
                 "origin": STRATEGY_ORIGIN,
                 "strategy": "perp momentum market-neutral (cross-sectional L/S)",
                 "deflated_sharpe": round(v["full"].ann_sharpe, 6),
-                "proven_regimes": PROVEN_REGIMES,
+                # DERIVED from this arm's own per-regime net PnL — earn each regime, never assume the full set.
+                "proven_regimes": proven_regimes_from_validation(v),
                 "deployment_bar": "positive OOS net of REAL perp fees + funding on the REAL purged+embargoed holdout "
                                   "+ beats the cash hurdle (NOT the 0.95 in-sample Gate)",
                 "live_requires": "a SHORT-CAPABLE perp venue (Kraken Futures / IBKR / Hyperliquid) — post-edge",

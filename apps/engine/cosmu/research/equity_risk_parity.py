@@ -459,6 +459,9 @@ def validate(lookback_d: int = VOL_LOOKBACK_D) -> dict:
         "oos_spy": spy_oos,
         "window": (start, last_complete),
         "result": rp,
+        # B&H-SPY return stream over the SAME full window as `rp` (period-aligned), so the arm can derive its
+        # proven-regime passport off the equity-market trend (the axis the live gate re-derives from live closes).
+        "spy_returns": spy_r,
         "avg_turnover": rp.turnover_sum / max(rp_s.n_months, 1),
     }
 

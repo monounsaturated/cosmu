@@ -29,6 +29,7 @@ from cosmu.master.lane_router import evaluate_by_lane
 from cosmu.master.portfolio import Portfolio
 from cosmu.master.tracks import open_paper_track
 from cosmu.research import equity_faber_gtaa as gtaa
+from cosmu.research._arm_regimes import proven_regimes_from_validation
 from cosmu.research.arm_rotation import close_stale_legs
 from cosmu.spine.venue import default_catalog
 
@@ -37,10 +38,9 @@ STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strat
 VENUE = "ibkr"
 TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size (settings.sim_track_capital)
 IBKR_ETF_BPS_PER_SIDE = gtaa.IBKR_ETF_BPS_PER_SIDE
-# GTAA is positive net-of-fee across all three trend regimes on our data (it holds the trending sleeves and steps each
-# sleeve to cash when it rolls below its 10m SMA — the 2008 subperiod shows +5% while SPY lost 48%). Full proven set so
-# master/live_eligibility can clear the regime gate once the 30-day paper run matures (a human still clicks live).
-PROVEN_REGIMES = ["bull", "bear", "chop"]
+# The proven-regime passport is DERIVED from the arm's OWN per-regime net PnL (research._arm_regimes), NOT a
+# hardcoded full set: each invested period is tagged bull/bear/chop off the benchmark trend (the same classifier
+# the live gate re-derives) and a regime is proven only where the arm's net PnL is positive. Earn each regime.
 
 
 def _minimal_spec(invested: list[str]) -> dict:
@@ -222,7 +222,8 @@ def arm(store: Store | None = None) -> dict:
                 "origin": STRATEGY_ORIGIN,
                 "strategy": "Faber GTAA 10mo-SMA",
                 "deflated_sharpe": round(v["full"].ann_sharpe, 6),
-                "proven_regimes": PROVEN_REGIMES,
+                # DERIVED from this arm's own per-regime net PnL — earn each regime, never assume the full set.
+                "proven_regimes": proven_regimes_from_validation(v),
                 "deployment_bar": "positive OOS net of IBKR fees + risk-adjusted beat of B&H SPY (~1/5 the drawdown) (NOT the 0.95 in-sample Gate)",
             },
         )
