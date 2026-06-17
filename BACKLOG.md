@@ -5,6 +5,36 @@
 > Done — do NOT re-add: all pre-2026-06-07 items above plus the following.
 > **Merged 2026-06-09/10 (audit fix-wave — do NOT re-add):** paper EXECUTOR (`orchestrator/paper_step.py` — tracks run their OWN exits/re-entries; funder funds once; sim fills pay 5 bps slippage; reduce_only gauntlet lane) · matrix sweep alt-data join (the sweep now actually searches funding/social/news specs) · rotation arms close stale legs (`arm_rotation.py`, all 10 equity arms + daily re-arm cron) · API shared-secret auth enforced (docs/KEYS.md is now true) · spine/evolution track capital unified to `sim_track_capital` · Gate calibration pinned by test · pre-push hook now runs naming+drift+pytest+typecheck · autonomy cron default ON · /correlations + autonomy-tick web contract fixes + ~1,100 dead web lines removed · order-path positions mark via instrument's real venue.
 
+## 🤖 EPIC — LLM strategy model (Gate B) — operator session 2026-06-17 [full design: `docs/epics/agentic-lane.md` v2]
+> THE 2nd strategy model. **Quant** (StrategySpec→Gate A, LOCKED) + **LLM** (AgentSpec→Gate B). Unified DB/UI/caps, two kinds. Live = **manual human launch for ALL**. LLM proposes, deterministic disposes. **Risk machine: go fast, accept errors, maximise TOTAL gain (not fewest errors); NEVER kill a real signal out of caution — true for BOTH gates.** Alignment captured before build. Nothing reaches real money without the human clicking launch.
+
+### Locked decisions (do not relitigate)
+- **P0 = option A** (unified DB/UI, two kinds). Model-type = a NEW `kind` axis (quant|llm), ORTHOGONAL to status/lane/strategy_kind/authored_by; status+lane SHARED; Quant **byte-identical** (default `kind='quant'`).
+- **Gate B = score + EVIDENCE bundle** (not pass/fail); human reads + decides. Human can launch ANY strategy live ANYTIME (3-week "maturity" = aesthetic indicator only).
+- **NO LLM backtest** (structurally leaky — FINSABER/Profit Mirage); run ONE throwaway test to confirm, then drop. Event-quantified mini-backtest = FUTURE feature (anti-mirage, leakage-checked), not built from scratch now.
+- **NO source whitelist/allowlist. SINGLE SOURCE ≠ DISCARD** — could be huge alpha; flag "single/weak source = caution" in the agent's prompt, act anyway (smaller size + hard stop-loss). Don't kill weak LLM signals.
+- Strategy = mostly a **natural-language SUMMARY** (modular, fast); don't over-quantify into tables; don't re-migrate the DB per strategy; quantify/`index` (`cosmu/indexes/`) only where it clearly pays.
+- **Cost:** Claude Code flat sub for non-constant work (research/creation/forensics/summaries); live recurring loop = cheap OpenRouter, **FREE tier first** (~$10/~1000 free reqs — VERIFY); subscriptions > API; can pay xAI/OpenAI/Anthropic if it measurably wins; the model must DO things (memory/verify/sub-agents), not one-shot Q&A; hybrid human-watch (~10h/day) option while the LLM learns.
+
+### Build sequence (prioritised — step by step, keep the overview; fill strats while building)
+- [x] **P0.0** web-taxonomy debt (#291: phantom `forward` killed, stage taxonomy → `apps/web/lib/lifecycle.ts`).
+- [ ] **P0.0b** export engine status/kind/lane vocab → `@cosmu/contracts-ts` (kill the hand-maintained TS taxonomy). (web+engine, sonnet)
+- [ ] **P0.1** `kind: Literal['quant','llm']='quant'` discriminator: spec + DB (CHECK, default quant) + persist/read + executor dispatch-by-kind; relax the 4 quant NOT NULL cols when `kind='llm'`. Quant byte-identical. (engine, opus)
+- [ ] **P0.2** observability (BOTH ASAP): unified leaderboard (one badge language, scannable for THOUSANDS; LLM-only badges confidence/sources/debate where needed) + agent-trace replay + NL summary per strategy. Badges as identical as possible Quant+LLM. (web, sonnet)
+- [ ] **P0.3** Gate B: unbiased critic agents (calibrated NEUTRAL prompts — neither bull/bear/optimist/pessimist) + source/catalyst forensics (track-record %-right, **alpha-vs-beta**, corroboration, follower real/fake — esp. small social markets: who triggered the move) + LLM disconfirmers (ticker-anon/reverse-flip/embargo/alpha-beta) + **TWO passes** (optimistic + pessimistic) → score+evidence. NEVER over-prune. (engine, opus)
+- [ ] **P0.4** AgentSpec (Mind loop → typed `Decision`) + paper twin + **MANDATORY exit / SL / TP / trailing-SL / trailing-TP / sizing for ALL strats** + **prompt-launch** mode. (engine, opus)
+- [ ] **P0.5** cost/rules: per-strategy **LLM-spend cap "rules" button** on the strategy page (monthly $ ceiling for automated LLM calls across ALL strats; distinct from the Costs page) + cheap/free live-loop wiring + real end-to-end model tests (xAI/OpenAI/Anthropic). (engine+web, opus)
+- [ ] **P0.6** live (capped, **manual launch**) + guardrails (external kill-switch, circuit-breaker on loss-streak/intraday-DD, pre-trade slippage sim, rate-limiter, scraped=untrusted-data, replay/audit log) → then **Slack human-in-the-loop** mode (activatable, NOT default: signal→Slack yes/no buttons→trade; for ultra-risky/few-source theses). (engine+web, opus)
+
+### Deferred / backlog (recorded, not lost)
+- [ ] Status/priority disposable HTML sheet — **better version later** (template NOT saved; operator will refine).
+- [ ] Cost reseed (delete June infra-seed rows → reseed corrected $200/$20) — **VERIFY post-#288 costs refactor before any DML**; the Modal cron refreshes anyway.
+- [ ] Cross-cutting: verify exit / trailing-SL / trailing-TP / sizing is wired + **UI-visible for ALL existing strategies** (quant too). (engine+web)
+- [ ] Trading frequency = first-class visible per-strategy property; LLM likely more frequent/ephemeral; bias **fast-in/fast-out**, watch fees, trade as much as profitably possible; review whether Quant trades too rarely. (engine)
+- [ ] Recherche **xsec momentum + funding-contrarian + meta-labeling** (the strategic edge lever — see [[strategy_research_direction]]).
+- [ ] Self-directed research-agent fleet (theorise→test→propose), maximally autonomous; human as guardrail + operator primer (vocabulary/logic to supervise).
+- [ ] Parallelism: run multiple agents/computers/Modal; fill strategies NOW while building.
+
 ## 🧭 ALIGNMENT CHECK — 2026-06-14 (north star: autonomous profit, net of every fee) — for later edit/merge
 > Verdict: **DRIFTING into polish.** The last ~15 commits are a web visual rebuild (v18, "the front IS the design") + Costs/Keys/UI sweeps; the money funnel is untouched. We have a beautiful monitoring surface for a machine that has **not yet made its first dollar**. (Read-only judgment from git+backlog; fresh container has no prod DB to query the live funnel/ML training directly.)
 > **Funnel:** authored (58 inbox specs) → screened → **gate-passed = 0 ← BOTTLENECK** → funded 0 → live 0. Root cause is upstream: 102 features DECLARED, but the gate has not been run on DEEP/BROAD ingested data (robust backfill + new-source ingest still open + operator-gated).
