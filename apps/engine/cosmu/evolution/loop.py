@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import random
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol
@@ -18,6 +19,11 @@ from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
 from cosmu.knowledge.block_registry import blocks_available, find_duplicate, record_version_blocks
 from cosmu.knowledge.store import Store, Writer, utcnow
+from cosmu.master.cohort import (
+    CLUSTER_CORRELATION,
+    cluster_representatives,
+    cohort_cscv_pbo,
+)
 from cosmu.master.fdr import benjamini_hochberg, dsr_pvalue
 from cosmu.master.scorer import BacktestMetrics, TrialStats, score
 from cosmu.master.tracks import open_paper_track
@@ -54,6 +60,11 @@ class _Screened:
     metrics: BacktestMetrics
     survival_score: float
     proven: list[str]
+    # The validation per-bar return stream from the cheap screen (BacktestResult.val_returns). The cohort needs
+    # it for (a) cross-mutant correlation CLUSTERING into DISTINCT representatives and (b) the REAL cohort
+    # CSCV-PBO — exactly as the finder sweep does. Empty list when no symbol traded (degrades safely: an
+    # untradeable candidate is excluded from clustering and cannot anchor the cohort PBO).
+    val_returns: list[float] = field(default_factory=list)
     # The cost assumptions the screen was scored under (the venue it priced against + its taker fee + the SAME
     # venue's market depth the backtest charged), carried so _persist records the EXACT values on the backtest
     # row and the promotion freeze pins the gate-time cost model — never the global default (depth is per-venue).
@@ -120,11 +131,15 @@ def _midpoint(ps: ParamSpace) -> float:
 
 
 def fdr_culled_vids(evaluated: list[Evaluated], q: float) -> set[str]:
-    """Across the WHOLE cohort, apply Benjamini-Hochberg FDR to every candidate's deflated-Sharpe p-value and
-    return the version_ids of candidates that CLEARED score()'s per-candidate gate but FAIL FDR control — i.e.
-    the ones that must be demoted so they never become fundable. The family is ALL evaluated candidates (FDR
-    validity requires every test to count, not just the survivors), but only gate-passers can be culled — a
-    candidate the gate already killed has nothing left to demote. Pure + deterministic; the agent can't touch it."""
+    """Apply Benjamini-Hochberg FDR to every candidate's deflated-Sharpe p-value across the family it is given,
+    and return the version_ids of candidates that CLEARED score()'s per-candidate gate but FAIL FDR control —
+    i.e. the ones that must be demoted so they never become fundable. Only gate-passers can be culled — a
+    candidate the gate already killed has nothing left to demote. Pure + deterministic; the agent can't touch it.
+
+    run_cohort calls this with the DEDUPED cluster REPRESENTATIVES as the family (not the full grid): correlated
+    near-duplicate mutants would otherwise inflate the trial count and ease the BH cutoff. The representatives are
+    the DISTINCT hypotheses tested — the same "distinct candidates, not correlated param-variants" contract the
+    finder honours — and every near-duplicate is independently demoted as a cluster_dup before this runs."""
     if not evaluated:
         return set()
     pvalues = [dsr_pvalue(e.deflated_sharpe) for e in evaluated]
@@ -288,9 +303,37 @@ class FarmLoop:
         # are judged against the identical, full trial count (and every prior cohort's trials — two sequential
         # cohorts deflate the second against the first). This is the contract finder.py honors via trial_stats().
         combined = trial_stats(self.store)
+
+        # ---- CLUSTER the correlated cohort → DISTINCT representatives; certify with a REAL cohort CSCV-PBO ----
+        # Mirror lab/finder.py exactly. The autonomous loop generates EXPLOIT children + EXPLORE wildcards that are
+        # near-duplicates of each other and of their seeds; without this a dense correlated family would (a) inflate
+        # the BH-FDR trial count (each near-dup counted as an independent test, easing the cutoff) and (b) be judged
+        # on a per-candidate PBO PROXY that a correlated family trivially keeps low. We key every screened candidate
+        # by a STABLE id, order best-first (profit_factor, then per-obs Sharpe — finder's order), greedily collapse
+        # streams correlated >= CLUSTER_CORRELATION into one representative, and compute the cohort CSCV-PBO over the
+        # representatives' streams. cohort_pbo is then INJECTED into every candidate's metrics BEFORE scoring (so the
+        # gate's pbo check uses the real overfit estimate), and BH-FDR runs over the DEDUPED representatives only.
+        returns_by_tag: dict[str, list[float]] = {id(sc): sc.val_returns for sc in screened}
+        ordered_tags = [
+            id(sc)
+            for sc in sorted(
+                (s for s in screened if len(s.val_returns) >= 2),
+                key=lambda s: (float(s.metrics.profit_factor), float(s.metrics.sharpe_per_obs)),
+                reverse=True,
+            )
+        ]
+        rep_ids = set(cluster_representatives(ordered_tags, returns_by_tag, threshold=CLUSTER_CORRELATION))
+        cohort_pbo = cohort_cscv_pbo(list(rep_ids), returns_by_tag)
+        for sc in screened:
+            # Inject the cohort's REAL CSCV-PBO onto every candidate so score()'s pbo gate (and the persisted
+            # backtest row) reflect the cohort overfit estimate, not the per-candidate _pbo_proxy. A correlated
+            # family of mutants now shares ONE honest, combinatorially-cross-validated PBO.
+            sc.metrics = sc.metrics.model_copy(update={"pbo": Decimal(str(round(cohort_pbo, 6)))})
+
         evaluated: list[Evaluated] = []
         vid_by_screened: dict[int, str] = {}   # id(_Screened) → persisted version_id, to resolve child parent_id
         screened_by_vid: dict[str, _Screened] = {}   # version_id → its _Screened, for the champion-holdout re-run
+        rep_vids: set[str] = set()   # version_ids of the DISTINCT cluster representatives (BH-FDR family)
 
         # PHASE 2 — score every screened candidate against the snapshot and persist. One connection + one
         # transaction for the whole cohort. Parents are persisted before their children (wave-0 first), so an
@@ -311,22 +354,40 @@ class FarmLoop:
                 specs_by_vid[vid] = sc.cand.spec
                 vid_by_screened[id(sc)] = vid
                 screened_by_vid[vid] = sc
+                if id(sc) in rep_ids:
+                    rep_vids.add(vid)
 
-            # FDR GATE — the multiple-testing correction the funding path depends on. score() judged each
-            # candidate in isolation; this judges the COHORT together. A gate-passer that doesn't survive
-            # Benjamini-Hochberg across the whole family is demoted HERE — passed_gates→0 (so orchestrator's
-            # funding query never funds it), status→killed (reason "fdr"), and its Track removed — so the honest
-            # loop can't be gamed by authoring more candidates per tick. Same transaction as the cohort.
-            culled = fdr_culled_vids(evaluated, float(self.settings.gates.fdr_q))
+            # FDR GATE — the multiple-testing correction the funding path depends on, now run over the DEDUPED
+            # cluster representatives (mirrors lab/finder.py). score() judged each candidate in isolation; this
+            # judges the COHORT together. Two ways a gate-passer is demoted here:
+            #   1. NON-representative near-duplicate (folded into a representative at >= CLUSTER_CORRELATION):
+            #      culled with reason "cluster_dup". Only a DISTINCT representative can be funded — exactly as the
+            #      finder promotes only cluster representatives — so a swarm of correlated mutants can't each become
+            #      fundable. The trial is still registered (the global ledger holds the true count), but the
+            #      false-discovery FAMILY is the representatives, never the near-dups.
+            #   2. REPRESENTATIVE that clears score() but fails Benjamini-Hochberg across the OTHER representatives:
+            #      culled with reason "fdr". The BH family is the representatives only — a correlated grid can no
+            #      longer inflate the family size to ease the cutoff.
+            # A demotion sets passed_gates→0 (so orchestrator's funding query never funds it), status→killed, and
+            # removes the Track. Same transaction as the cohort. This is strictly >= the prior all-candidate FDR:
+            # the family is now smaller AND every near-dup is additionally culled.
+            rep_evaluated = [e for e in evaluated if e.version_id in rep_vids]
+            culled = fdr_culled_vids(rep_evaluated, float(self.settings.gates.fdr_q))
             for e in evaluated:
-                if e.version_id not in culled:
+                if e.version_id in rep_vids:
+                    reason = "fdr" if e.version_id in culled else None
+                elif e.passed:
+                    reason = "cluster_dup"  # a near-duplicate of a representative — never independently fundable
+                else:
+                    reason = None
+                if reason is None:
                     continue
                 b.execute("UPDATE backtests SET passed_gates = 0 WHERE strategy_version_id = ? AND kind = 'screen'", (e.version_id,))
-                b.execute("UPDATE strategy_versions SET status = 'killed', kill_reason = 'fdr', killed_at = ? WHERE id = ?", (utcnow(), e.version_id))
+                b.execute("UPDATE strategy_versions SET status = 'killed', kill_reason = ?, killed_at = ? WHERE id = ?", (reason, utcnow(), e.version_id))
                 b.execute("DELETE FROM tracks WHERE strategy_version_id = ?", (e.version_id,))
                 e.passed = False
-                if "fdr" not in e.reasons:
-                    e.reasons.append("fdr")
+                if reason not in e.reasons:
+                    e.reasons.append(reason)
 
             # CHAMPION-ONLY one-shot holdout. The screen ran include_holdout=False (validation-only) and scored
             # with check_holdout=False, so the untouched, purged+embargoed holdout is evaluated EXACTLY ONCE here
@@ -469,7 +530,7 @@ class FarmLoop:
         except ValueError:
             return None  # invalid spec — never persisted, counted as invalid
 
-        metrics, venue, min_symbol_trades = self._screen(cand, compiled.code_hash, seed)
+        metrics, venue, min_symbol_trades, val_returns = self._screen(cand, compiled.code_hash, seed)
         # THE choke point: every farmed candidate is one more hypothesis the Deflated Sharpe / FDR must deflate
         # against — register the trial BEFORE the per-symbol floor check (a backtested hypothesis is counted even
         # if it lacks per-symbol breadth, so the deflation ledger never under-counts thin-book specs).
@@ -487,6 +548,7 @@ class FarmLoop:
         return _Screened(
             cand=cand, params=params, compiled=compiled, metrics=metrics,
             survival_score=survival_score, proven=proven,
+            val_returns=val_returns,
             venue_id=venue.id, fee_bps=float(venue.taker_fee_bps),
             slippage_bps=float(venue.slippage_bps), impact_bps=float(venue.impact_bps),
             pre_kill=pre_kill,
@@ -617,10 +679,13 @@ class FarmLoop:
             version_id,
         )
 
-    def _screen(self, cand: Candidate, code_hash: str, seed: int):  # noqa: ANN201 — (BacktestMetrics, venue, min_symbol_trades)
+    def _screen(self, cand: Candidate, code_hash: str, seed: int):  # noqa: ANN201 — (BacktestMetrics, venue, min_symbol_trades, val_returns)
         """Cheap real-data screen over Binance spot bars. Returns the metrics, the venue it priced against (so
-        the persist path records the gate-time cost assumptions), AND the per-symbol trade MINIMUM (the smallest
-        validation trade count across the screened symbols — the true per-symbol breadth, see _screen_and_register).
+        the persist path records the gate-time cost assumptions), the per-symbol trade MINIMUM (the smallest
+        validation trade count across the screened symbols — the true per-symbol breadth, see _screen_and_register),
+        AND the validation per-bar return STREAM (BacktestResult.val_returns). The cohort uses that stream to
+        cluster correlated mutants into DISTINCT representatives and to compute the REAL cohort CSCV-PBO — the
+        same evidence the finder sweep dedupes + certifies on (lab/finder.py).
 
         The screen is deterministic for a fixed bar cache and fitted params. It is still the
         cheap tier, but its return/drawdown/trade-count fields now come from actual venue OHLCV
@@ -655,7 +720,7 @@ class FarmLoop:
             # exam — the structural holdout-reuse channel the gate-integrity review flagged.
             include_holdout=False,
         )
-        return result.metrics, venue, result.min_symbol_trades
+        return result.metrics, venue, result.min_symbol_trades, list(result.val_returns)
 
     def _champion_holdout(self, spec: StrategySpec, params: dict[str, float]) -> float:
         """The one-shot UNTOUCHED holdout for a SELECTED champion: re-run the full backtest WITH the embargoed

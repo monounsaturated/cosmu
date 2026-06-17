@@ -6,14 +6,75 @@
 
 from __future__ import annotations
 
+import math
+import statistics
 from dataclasses import dataclass, field
 
 from cosmu.config.settings import GateSettings
 from cosmu.knowledge.store import Store
 from cosmu.master.fdr import benjamini_hochberg, dsr_pvalue
-from cosmu.master.scorer import BacktestMetrics, TrialStats, score
+from cosmu.master.scorer import BacktestMetrics, TrialStats, cscv_pbo, score
 from cosmu.master.trials import register_trial, trial_stats
 from cosmu.master.verdict_log import CohortPersist, persist_cohort_verdict
+
+# Two validation return streams with Pearson correlation >= this are treated as the SAME hypothesis: one is the
+# cluster representative, the rest are near-duplicates. Deduping to representatives BEFORE BH-FDR is what stops a
+# dense correlated grid (or a cohort of near-identical mutants) from gaming the false-discovery cutoff — the
+# "distinct candidates, not correlated param-variants" contract this gate depends on. The single source of truth
+# for that threshold across BOTH the finder sweep (lab/finder.py) and the autonomous loop (evolution/loop.py).
+CLUSTER_CORRELATION = 0.95
+
+
+# --------------------------------------------------------------------------- correlation / clustering / CSCV
+# The shared multiple-testing-honesty primitives. Both the Strategy Finder (a grid of param-variants over one
+# spec) and the autonomous FarmLoop (a cohort of correlated mutants) feed correlated return streams into the
+# Gate; both MUST collapse those near-duplicates to DISTINCT representatives before BH-FDR and certify the cohort
+# with a REAL CSCV-PBO (not a per-candidate proxy). Factoring them here (instead of finder importing the loop or
+# vice-versa) avoids a lab.finder <-> evolution.loop import cycle while keeping the math byte-identical.
+
+
+def corr(a: list[float], b: list[float]) -> float | None:
+    """Pearson correlation of two return streams aligned on their common tail. None when undefined (fewer than
+    2 common points, or either side has zero variance)."""
+    n = min(len(a), len(b))
+    if n < 2:
+        return None
+    aa, bb = a[-n:], b[-n:]
+    ma, mb = statistics.fmean(aa), statistics.fmean(bb)
+    va = sum((x - ma) ** 2 for x in aa)
+    vb = sum((y - mb) ** 2 for y in bb)
+    if va <= 0 or vb <= 0:
+        return None
+    cov = sum((aa[k] - ma) * (bb[k] - mb) for k in range(n))
+    return cov / math.sqrt(va * vb)
+
+
+def cluster_representatives(
+    ordered_tags: list[str], returns_by_tag: dict[str, list[float]], *, threshold: float
+) -> list[str]:
+    """Greedy correlation clustering over a list of tags the CALLER has already ordered best-first. Walk the
+    ordered tags and fold each into the first existing representative it correlates with at >= `threshold`;
+    otherwise it starts a new cluster as its own representative. Returns the representative tags — one DISTINCT
+    hypothesis per cluster — so BH-FDR is never fed a family of near-duplicates. Tags without a usable (>= 2
+    point) return stream are skipped (they cannot clear the trade gate anyway)."""
+    reps: list[str] = []
+    for tag in ordered_tags:
+        stream = returns_by_tag.get(tag)
+        if stream is None or len(stream) < 2:
+            continue
+        if any((corr(stream, returns_by_tag[rep]) or 0.0) >= threshold for rep in reps):
+            continue
+        reps.append(tag)
+    return reps
+
+
+def cohort_cscv_pbo(reps: list[str], returns_by_tag: dict[str, list[float]]) -> float:
+    """Real CSCV-PBO across the DISTINCT representatives' return streams (a legitimate, diverse config
+    population). < 2 representatives → 1.0 (maximally overfit: CSCV cannot certify a single config), matching
+    the gate's convention. This is the REAL combinatorial-cross-validation overfit estimate the cohort must be
+    judged on — never a per-candidate proxy (which a correlated family could trivially keep low)."""
+    streams = [returns_by_tag[t] for t in reps if len(returns_by_tag.get(t, [])) >= 2]
+    return cscv_pbo(streams) if len(streams) >= 2 else 1.0
 
 
 @dataclass(frozen=True)
