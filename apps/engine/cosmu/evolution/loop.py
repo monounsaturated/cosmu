@@ -25,6 +25,7 @@ from cosmu.master.cohort import (
     cohort_cscv_pbo,
 )
 from cosmu.master.fdr import benjamini_hochberg, dsr_pvalue
+from cosmu.master.per_symbol import MIN_TRADES_PER_SYMBOL, classify_per_symbol
 from cosmu.master.scorer import BacktestMetrics, TrialStats, score
 from cosmu.master.tracks import open_paper_track
 from cosmu.master.trials import register_trial, trial_stats
@@ -156,7 +157,8 @@ def fdr_culled_vids(evaluated: list[Evaluated], q: float) -> set[str]:
 # (which checks trades_by_tag per config). The screen reads BacktestResult.min_symbol_trades. A strategy that
 # books 30 trades all on ONE of six symbols (five with zero) has min_symbol_trades=0 and is killed; a pooled
 # `num_trades >= n*5` total would have waved it through. This is what catches phantom cross-sectional breadth.
-_MIN_TRADES_PER_SYMBOL = 5
+# Single source of truth in master/per_symbol.py (shared with the finder sweep + the honest per-symbol verdict).
+_MIN_TRADES_PER_SYMBOL = MIN_TRADES_PER_SYMBOL
 
 
 @dataclass(frozen=True)
@@ -642,16 +644,17 @@ class FarmLoop:
         )
         # First-class per-symbol rows — the autonomous loop populates the queryable per-(strat,symbol,venue) unit
         # of truth identically to the finder sweep (lab/finder.py), so prod's continuous discovery fills the table,
-        # not just manual runs. venue_id = the fee axis; verdict NULL (the honest per-symbol gate fills it later).
-        # This is pure persistence of data the screen already computed — never the funding authority (the pooled
-        # deflated Gate scored above is). The #306 per_symbol JSON blob is intentionally NOT written here: this
-        # first-class table supersedes it.
+        # not just manual runs. venue_id = the fee axis; verdict = the HONEST cross-symbol label (computed once over
+        # the strategy's whole per-symbol set) so a lone best-of-N winner is flagged, not celebrated. This is pure
+        # persistence of data the screen already computed — never the funding authority (the pooled deflated Gate
+        # scored above is). The #306 per_symbol JSON blob is intentionally NOT written here: the table supersedes it.
+        _verdicts = classify_per_symbol(sc.per_symbol)
         for _sym, _pm in (sc.per_symbol or {}).items():
             b.insert("backtest_symbols", {
                 "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": sc.venue_id,
                 "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
                 "max_drawdown": str(_pm.get("max_drawdown", 0.0)), "trades": int(_pm.get("trades", 0)),
-                "created_at": utcnow(),
+                "verdict": _verdicts.get(_sym), "created_at": utcnow(),
             })
         if passed:
             # Born HONEST at the STANDARDIZED standalone track size (sim_track_capital — what the funder

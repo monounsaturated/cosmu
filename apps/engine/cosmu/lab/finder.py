@@ -20,7 +20,13 @@ from decimal import Decimal
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
 from cosmu.data.backtest import run_strategy_backtest_detailed
-from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, EquityOHLCVProvider, HyperliquidOHLCVProvider, MarketDataProvider
+from cosmu.data.market import (
+    Bar,
+    BinanceSpotOHLCVProvider,
+    EquityOHLCVProvider,
+    HyperliquidOHLCVProvider,
+    MarketDataProvider,
+)
 from cosmu.data.universe import PERP_UNIVERSE
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
@@ -33,11 +39,12 @@ from cosmu.master.cohort import cohort_cscv_pbo as _shared_cohort_cscv_pbo
 from cosmu.master.cohort import corr as _shared_corr
 from cosmu.master.cohort import promote_cohort
 from cosmu.master.holdout import HoldoutLedger
-from cosmu.master.verdict_log import CohortPersist
+from cosmu.master.per_symbol import MIN_TRADES_PER_SYMBOL, classify_per_symbol
 from cosmu.master.promotion import freeze_promotion
 from cosmu.master.scorer import BacktestMetrics, TrialStats, score
 from cosmu.master.tracks import open_paper_track
 from cosmu.master.trials import register_trial
+from cosmu.master.verdict_log import CohortPersist
 from cosmu.ml.regime import proven_regimes
 from cosmu.spine.universe import enabled_universe
 from cosmu.spine.venue import default_catalog
@@ -72,7 +79,8 @@ _HL_SCREEN_LIMIT = 30
 _CLUSTER_CORRELATION = _SHARED_CLUSTER_CORRELATION
 # Per-symbol validation trade floor. The pooled gate (min_trades=30) can be met with ~6 trades on each of 5
 # correlated symbols; require independent evidence on EACH traded symbol instead of accepting a pooled count.
-_MIN_TRADES_PER_SYMBOL = 5
+# Single source of truth in master/per_symbol.py (shared with the autonomous loop + the honest per-symbol verdict).
+_MIN_TRADES_PER_SYMBOL = MIN_TRADES_PER_SYMBOL
 
 
 @dataclass(frozen=True)
@@ -651,14 +659,16 @@ class StrategyFinder:
                 bt_id = b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, holdout_ok, venue, r.per_symbol))
                 # PER-SYMBOL rows = the queryable unit of truth (1 strat × 1 symbol × 1 result), so the /lab front +
                 # recompute + the honest per-symbol gate read SQL, not a JSON blob. venue_id carries the fee axis
-                # (strategy × symbol × venue). verdict stays NULL here — the honest per-symbol gate fills it later;
-                # this is pure persistence and never the funding authority (the pooled deflated Gate is).
+                # (strategy × symbol × venue). verdict = the HONEST cross-symbol label (robust/fragile/thin/negative,
+                # computed ONCE over this strategy's whole per-symbol set) so a lone best-of-N winner is flagged, not
+                # celebrated — pure visibility metadata, never the funding authority (the pooled deflated Gate is).
+                _verdicts = classify_per_symbol(r.per_symbol)
                 for _sym, _pm in (r.per_symbol or {}).items():
                     b.insert("backtest_symbols", {
                         "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": venue.id,
                         "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
                         "max_drawdown": str(_pm.get("max_drawdown", 0.0)), "trades": int(_pm.get("trades", 0)),
-                        "created_at": utcnow(),
+                        "verdict": _verdicts.get(_sym), "created_at": utcnow(),
                     })
                 if promote:
                     # Born HONEST: equity = starting_capital, return_pct = 0 (master/tracks.open_paper_track).

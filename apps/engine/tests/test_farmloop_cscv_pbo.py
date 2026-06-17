@@ -234,7 +234,9 @@ def test_loop_persists_backtest_symbols_rows(tmp_path, monkeypatch):
     assert rows, "the autonomous loop must persist per-symbol rows, not just a pooled backtest"
     assert {r["symbol"] for r in rows} == {"BTCUSDT", "ETHUSDT"}  # one row per screened symbol, never a pooled blob
     assert all(r["venue_id"] == venue.id for r in rows)           # the fee axis (strategy × symbol × VENUE) is recorded
-    assert all(r["verdict"] is None for r in rows)                # the loop persists; it never judges per-symbol
+    # Both symbols are net-positive winners (2/2 judgeable → the edge generalizes) → the honest label is 'robust'
+    # for each. The loop persists the verdict; it never lets it gate funding (the pooled deflated Gate does that).
+    assert all(r["verdict"] == "robust" for r in rows)
     # Outlier-sortable per version — the SNIPE query the front runs (best symbol first, not a buried pooled mean).
     vid = loop.store.row("SELECT strategy_version_id AS v FROM backtest_symbols LIMIT 1")["v"]
     ranked = loop.store.rows(
