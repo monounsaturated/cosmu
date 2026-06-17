@@ -22,7 +22,16 @@
 - [ ] **P0.1** `kind: Literal['quant','llm']='quant'` discriminator: spec + DB (CHECK, default quant) + persist/read + executor dispatch-by-kind; relax the 4 quant NOT NULL cols when `kind='llm'`. Quant byte-identical. (engine, opus)
 - [ ] **P0.2** observability (BOTH ASAP): unified leaderboard (one badge language, scannable for THOUSANDS; LLM-only badges confidence/sources/debate where needed) + agent-trace replay + NL summary per strategy. Badges as identical as possible Quant+LLM. (web, sonnet)
 - [ ] **P0.3** Gate B: unbiased critic agents (calibrated NEUTRAL prompts — neither bull/bear/optimist/pessimist) + source/catalyst forensics (track-record %-right, **alpha-vs-beta**, corroboration, follower real/fake — esp. small social markets: who triggered the move) + LLM disconfirmers (ticker-anon/reverse-flip/embargo/alpha-beta) + **TWO passes** (optimistic + pessimistic) → score+evidence. NEVER over-prune. (engine, opus)
-- [ ] **P0.4** AgentSpec (Mind loop → typed `Decision`) + paper twin + **MANDATORY exit / SL / TP / trailing-SL / trailing-TP / sizing for ALL strats** + **prompt-launch** mode. (engine, opus)
+- [x] **P0.4 core SHIPPED 2026-06-17** — the observe-only LLM lane, end-to-end + autonomous + LIVE in prod ($0):
+  `strategy/agent_spec.py` (AgentSpec+Decision, mandatory exit/trailing, #299) · `agent_author.open_agent_strategy`
+  (persist kind='llm', the only llm write-site, #300) · `agent_decision.finalize_decision` (deterministic disposal:
+  exit guaranteed, size capped, single-source→smaller-not-killed, #301) · `agent_loop.agent_reason` (Mind panel →
+  Decision, abstains on no data, LLM-optional, #302) · `agent_executor.run_agent_strategies` (reason→finalize→record
+  trace, ZERO capital, #303) · `agent_run` wired into the Modal 4h tick (#304, Modal redeployed). **2 observe-only
+  agents authored in prod** (tweet-momentum-sniper, macro-risk-flip — kind='llm', 0 tracks). Full hermetic suite
+  2288 green. **Remaining sub-steps:** paper-twin (SIM marks of decisions) · prompt-launch authoring UX · per-symbol
+  reference bars (v1 reasons off the global Mind context) · the web TRACE VIEW (render agent_decision events — the
+  "voir le processus" requirement, part of P0.2). (engine+web, opus)
 - [ ] **P0.5** cost/rules: per-strategy **LLM-spend cap "rules" button** on the strategy page (monthly $ ceiling for automated LLM calls across ALL strats; distinct from the Costs page) + cheap/free live-loop wiring + real end-to-end model tests (xAI/OpenAI/Anthropic). (engine+web, opus)
 - [ ] **P0.6** live (capped, **manual launch**) + guardrails (external kill-switch, circuit-breaker on loss-streak/intraday-DD, pre-trade slippage sim, rate-limiter, scraped=untrusted-data, replay/audit log) → then **Slack human-in-the-loop** mode (activatable, NOT default: signal→Slack yes/no buttons→trade; for ultra-risky/few-source theses). (engine+web, opus)
 
