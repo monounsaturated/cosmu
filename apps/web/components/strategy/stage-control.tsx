@@ -18,23 +18,11 @@
 import { useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { GoLiveModal } from "./go-live-modal";
+import { type Stage, STAGE_LABEL, STAGE_BADGE_CLASS } from "@/lib/lifecycle";
 
-export type Stage = "queued" | "backtest" | "paper" | "live" | "killed";
-
-const STAGE_BADGE_CLASS: Record<Stage, string> = {
-  queued: "stage-badge sb-queued",
-  backtest: "stage-badge sb-backtest-stage",
-  paper: "stage-badge sb-paper",
-  live: "stage-badge sb-live",
-  killed: "stage-badge sb-killed"
-};
-const STAGE_LABEL: Record<Stage, string> = {
-  queued: "Queued",
-  backtest: "Backtest",
-  paper: "Paper",
-  live: "Live",
-  killed: "Killed"
-};
+// Re-export so existing `import type { Stage } from "./stage-control"` consumers (strategy-sheet, ai-summary,
+// equity-panel) keep working — the canonical definition + maps live in the shared lib/lifecycle module.
+export type { Stage };
 
 export function StageControl({
   stage,
