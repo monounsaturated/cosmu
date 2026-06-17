@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import itertools
-import math
 import statistics
 import tempfile
 from dataclasses import dataclass, field, replace
@@ -27,12 +26,16 @@ from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.experiments import KIND_FINDER, ExperimentRecord, data_version, log_experiments
 from cosmu.knowledge.store import Store, Writer, utcnow
+from cosmu.master.cohort import CLUSTER_CORRELATION as _SHARED_CLUSTER_CORRELATION
 from cosmu.master.cohort import Candidate as CohortCandidate
+from cosmu.master.cohort import cluster_representatives as _shared_cluster_representatives
+from cosmu.master.cohort import cohort_cscv_pbo as _shared_cohort_cscv_pbo
+from cosmu.master.cohort import corr as _shared_corr
 from cosmu.master.cohort import promote_cohort
 from cosmu.master.holdout import HoldoutLedger
 from cosmu.master.verdict_log import CohortPersist
 from cosmu.master.promotion import freeze_promotion
-from cosmu.master.scorer import BacktestMetrics, TrialStats, cscv_pbo, score
+from cosmu.master.scorer import BacktestMetrics, TrialStats, score
 from cosmu.master.tracks import open_paper_track
 from cosmu.master.trials import register_trial
 from cosmu.ml.regime import proven_regimes
@@ -63,8 +66,10 @@ _EQUITY_SCREEN_LIMIT = 50
 _HL_SCREEN_LIMIT = 30
 # Two validation return streams with Pearson correlation >= this are treated as the SAME hypothesis: one is the
 # cluster representative, the rest are near-duplicates. Dedupe to representatives BEFORE BH-FDR so a dense
-# correlated grid can't game the false-discovery cutoff (cohort.py's "distinct candidates" contract).
-_CLUSTER_CORRELATION = 0.95
+# correlated grid can't game the false-discovery cutoff (cohort.py's "distinct candidates" contract). Aliases
+# the single shared constant in master/cohort.py so the finder sweep and the autonomous loop dedupe at the SAME
+# threshold (no per-module drift).
+_CLUSTER_CORRELATION = _SHARED_CLUSTER_CORRELATION
 # Per-symbol validation trade floor. The pooled gate (min_trades=30) can be met with ~6 trades on each of 5
 # correlated symbols; require independent evidence on EACH traded symbol instead of accepting a pooled count.
 _MIN_TRADES_PER_SYMBOL = 5
@@ -741,18 +746,9 @@ class StrategyFinder:
 
 
 def _corr(a: list[float], b: list[float]) -> float | None:
-    """Pearson correlation of two return streams aligned on their common tail. None when undefined."""
-    n = min(len(a), len(b))
-    if n < 2:
-        return None
-    aa, bb = a[-n:], b[-n:]
-    ma, mb = statistics.fmean(aa), statistics.fmean(bb)
-    va = sum((x - ma) ** 2 for x in aa)
-    vb = sum((y - mb) ** 2 for y in bb)
-    if va <= 0 or vb <= 0:
-        return None
-    cov = sum((aa[k] - ma) * (bb[k] - mb) for k in range(n))
-    return cov / math.sqrt(va * vb)
+    """Pearson correlation of two return streams aligned on their common tail. None when undefined. Thin alias
+    over the shared `master.cohort.corr` (the single implementation the loop reuses)."""
+    return _shared_corr(a, b)
 
 
 def _cluster_representatives(
@@ -762,27 +758,25 @@ def _cluster_representatives(
     into the first existing representative it correlates with at >= `threshold`; otherwise it starts a new
     cluster as its own representative. Returns the representative config_tags — one DISTINCT hypothesis per
     cluster — so BH-FDR is never fed a grid of near-duplicates. Variants with no usable return stream are
-    excluded (they cannot clear the trade gate anyway)."""
+    excluded (they cannot clear the trade gate anyway).
+
+    The finder-specific best-first ORDERING (profit_factor, then per-obs Sharpe) lives here; the greedy
+    correlation walk itself is the shared `master.cohort.cluster_representatives` the autonomous loop reuses."""
     ordered = sorted(
         (r for r in results if len(returns_by_tag.get(r.config_tag, [])) >= 2),
         key=lambda r: (r.profit_factor, float(r.metrics.sharpe_per_obs)),
         reverse=True,
     )
-    reps: list[str] = []
-    for r in ordered:
-        stream = returns_by_tag[r.config_tag]
-        if any((_corr(stream, returns_by_tag[rep]) or 0.0) >= threshold for rep in reps):
-            continue
-        reps.append(r.config_tag)
-    return reps
+    return _shared_cluster_representatives(
+        [r.config_tag for r in ordered], returns_by_tag, threshold=threshold
+    )
 
 
 def _cohort_pbo(reps: list[str], returns_by_tag: dict[str, list[float]]) -> float:
     """Real CSCV-PBO across the DISTINCT representatives' return streams (a legitimate, diverse config
     population). < 2 representatives → 1.0 (maximally overfit: CSCV cannot certify a single config), matching
-    the gate's convention."""
-    streams = [returns_by_tag[t] for t in reps if len(returns_by_tag.get(t, [])) >= 2]
-    return cscv_pbo(streams) if len(streams) >= 2 else 1.0
+    the gate's convention. Thin alias over the shared `master.cohort.cohort_cscv_pbo`."""
+    return _shared_cohort_cscv_pbo(reps, returns_by_tag)
 
 
 def _with_pbo(candidate: CohortCandidate, pbo: float) -> CohortCandidate:

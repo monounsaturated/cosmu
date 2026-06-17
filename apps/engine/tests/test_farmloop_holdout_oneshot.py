@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import random
 from decimal import Decimal
 
 from cosmu.config.settings import Settings
@@ -64,13 +65,29 @@ def test_screen_is_validation_only_no_holdout_simulated(tmp_path):
     # exactly why _persist must score with check_holdout=False (else every candidate would die on the sentinel).
     loop = _loop(tmp_path)
     cand = Candidate(spec=seed_orb_fvg_spec(), origin="seed", lane="gate")
-    metrics, _venue, _mst = loop._screen(cand, "code-hash", 7)
+    metrics, _venue, _mst, _vr = loop._screen(cand, "code-hash", 7)
     assert metrics.holdout_deflated_sharpe == Decimal("-0.5")
+
+
+def _distinct_val_stream(cand: Candidate) -> list[float]:
+    """A strongly-positive, per-candidate-DISTINCT validation return stream for the forced-survivor mock. The
+    cohort now clusters correlated streams into distinct representatives and certifies them with a REAL cohort
+    CSCV-PBO — so the mock must hand back streams that (a) are NOT all >= 0.95 correlated (else the cohort
+    collapses to ONE representative → cohort_pbo=1.0 → every candidate fails the pbo gate) and (b) stay strongly
+    positive so CSCV-PBO is low (the IS-best config is also OOS-good). A deterministic per-candidate seed gives
+    each its own idiosyncratic noise on a shared strong uptrend."""
+    rng = random.Random(hash(cand.spec.name) & 0xFFFFFFFF)
+    # 60 bars: a strong, consistent positive drift (0.01/bar) plus small idiosyncratic noise. Different noise per
+    # candidate breaks the 0.95 correlation; the dominant drift keeps every stream a clear winner (low PBO).
+    return [0.01 + rng.uniform(-0.006, 0.006) for _ in range(60)]
 
 
 def _force_survivor(monkeypatch, loop: FarmLoop) -> None:
     venue = default_catalog().venue_for(["binance"])
-    monkeypatch.setattr(FarmLoop, "_screen", lambda self, cand, code_hash, seed: (_strong(), venue, 20))
+    monkeypatch.setattr(
+        FarmLoop, "_screen",
+        lambda self, cand, code_hash, seed: (_strong(), venue, 20, _distinct_val_stream(cand)),
+    )
 
 
 def test_champion_holdout_demotes_a_survivor_that_fails_the_exam(tmp_path, monkeypatch):
