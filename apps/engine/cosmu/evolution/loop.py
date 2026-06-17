@@ -25,7 +25,7 @@ from cosmu.master.cohort import (
     cohort_cscv_pbo,
 )
 from cosmu.master.fdr import benjamini_hochberg, dsr_pvalue
-from cosmu.master.per_symbol import MIN_TRADES_PER_SYMBOL, classify_per_symbol
+from cosmu.master.per_symbol import MIN_TRADES_PER_SYMBOL, classify_per_symbol, funding_eligible
 from cosmu.master.scorer import BacktestMetrics, TrialStats, score
 from cosmu.master.tracks import open_paper_track
 from cosmu.master.trials import register_trial, trial_stats
@@ -572,11 +572,15 @@ class FarmLoop:
         # check_holdout=False: SELECTION is validation-only — the one-shot holdout is applied to the gate+FDR
         # survivors afterwards (run_cohort's champion-holdout step), never as a per-candidate selection filter.
         verdict = score(metrics, self.settings.gates, trials=trials, check_holdout=False)
-        passed = verdict.passed and not sc.pre_kill  # pre_kill (e.g. min_trades_per_symbol) always kills
+        # PER-SYMBOL BREADTH floor: a gate-passer whose edge generalizes on NO symbol (judgeable cells exist but
+        # none robust) is a best-of-N artefact the pooled Gate can't catch — never forward-test it. Fail-open when
+        # there's no per-symbol evidence (mirrors the funder fallback). ADD-strictness only; the Gate stays locked.
+        breadth_ok = funding_eligible(sc.per_symbol)
+        passed = verdict.passed and not sc.pre_kill and breadth_ok  # pre_kill / no-breadth always kill
         # Born "screened" (badge: Backtest) — backtest evidence only at birth. The paper clock promotes to
         # "paper" once >= 1 real forward day accrues. status is badge-only; the live gate reads track_opened.
         status = "screened" if passed else "killed"
-        all_reasons = ([sc.pre_kill] if sc.pre_kill else []) + list(verdict.reasons)
+        all_reasons = ([sc.pre_kill] if sc.pre_kill else []) + ([] if breadth_ok else ["no_generalizing_symbol"]) + list(verdict.reasons)
         kill_reason = None if passed else ",".join(all_reasons) or "screened_out"
         survival_score = sc.survival_score
         proven = sc.proven

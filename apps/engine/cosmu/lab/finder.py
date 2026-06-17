@@ -39,7 +39,7 @@ from cosmu.master.cohort import cohort_cscv_pbo as _shared_cohort_cscv_pbo
 from cosmu.master.cohort import corr as _shared_corr
 from cosmu.master.cohort import promote_cohort
 from cosmu.master.holdout import HoldoutLedger
-from cosmu.master.per_symbol import MIN_TRADES_PER_SYMBOL, classify_per_symbol
+from cosmu.master.per_symbol import MIN_TRADES_PER_SYMBOL, classify_per_symbol, funding_eligible
 from cosmu.master.promotion import freeze_promotion
 from cosmu.master.scorer import BacktestMetrics, TrialStats, score
 from cosmu.master.tracks import open_paper_track
@@ -640,12 +640,23 @@ class StrategyFinder:
                 if self._version_exists(r.code_hash):
                     continue
                 holdout_ok = r.holdout_passed
-                promote = r.promoted and holdout_ok
+                # PER-SYMBOL BREADTH floor: a gate-passer whose edge generalizes on NO symbol (judgeable cells but
+                # none robust) is a best-of-N artefact the pooled Gate can't catch — don't promote/fund it. Fail-open
+                # when there's no per-symbol evidence. ADD-strictness only; the locked Gate is untouched. The
+                # per-symbol rows are still PERSISTED below (visibility) — the spec stays on /lab, just unfunded.
+                breadth_ok = funding_eligible(r.per_symbol)
+                gate_and_breadth = r.gate_passed and breadth_ok
+                promote = r.promoted and holdout_ok and breadth_ok
                 # Forward-test entrants are born "screened" (badge: Backtest) — they carry only backtest
                 # evidence at birth. The paper clock (mark_tracks) promotes them to "paper" once they accrue
                 # >= 1 real forward day. status is badge-only; the live gate reads track_opened, not status.
-                status = "screened" if r.gate_passed else "killed"
-                kill_reason = None if r.gate_passed else (",".join(r.reasons) or "screened_out")
+                status = "screened" if gate_and_breadth else "killed"
+                if gate_and_breadth:
+                    kill_reason = None
+                elif not r.gate_passed:
+                    kill_reason = ",".join(r.reasons) or "screened_out"
+                else:  # passed the Gate but no symbol generalizes → a best-of-N artefact
+                    kill_reason = "no_generalizing_symbol"
                 fitted = r.fitted_params or fit_params(spec)
                 params = {**fitted, "config_tag": r.config_tag}
                 compiled = compile_spec(spec, fitted)

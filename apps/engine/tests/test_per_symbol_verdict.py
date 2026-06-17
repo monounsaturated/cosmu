@@ -14,8 +14,25 @@ from cosmu.master.per_symbol import (
     VERDICTS,
     classify_per_symbol,
     edge_generalizes,
+    funding_eligible,
     rank_deploy_symbols,
 )
+
+
+def test_funding_eligible_blocks_non_generalizing_but_fails_open_on_no_data():
+    """The breadth floor for promotion: a generalizing edge (≥1 robust cell) is eligible; a lone best-of-N spec
+    (judgeable cells, NONE generalize) is BLOCKED; and with no judgeable per-symbol evidence it FAILS OPEN (can't
+    judge breadth → don't block, mirroring the funder's legacy fallback)."""
+    g = lambda **kw: {s: {"return": r, "sharpe": 0.0, "max_drawdown": 0.0, "trades": float(t)} for s, (r, t) in kw.items()}
+    # generalizes (BTC+ETH win of BTC/ETH/SOL judgeable → ≥50%) → eligible
+    assert funding_eligible(g(BTC=(0.2, 40), ETH=(0.1, 40), SOL=(-0.1, 40))) is True
+    # lone winner among judgeable losers (1/4) → does NOT generalize → BLOCKED
+    assert funding_eligible(g(BTC=(0.4, 40), ETH=(-0.1, 40), SOL=(-0.1, 40), XRP=(-0.1, 40))) is False
+    # all-thin (no judgeable cell) → fail-open
+    assert funding_eligible(g(BTC=(0.9, 1), ETH=(0.9, 2))) is True
+    # empty / None → fail-open (legacy / stubbed paths must still promote)
+    assert funding_eligible({}) is True
+    assert funding_eligible(None) is True
 
 
 def _cell(symbol, verdict, sharpe=0.0):
