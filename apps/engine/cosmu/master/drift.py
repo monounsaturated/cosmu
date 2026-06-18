@@ -77,7 +77,7 @@ def fit_edge_decay(edge_series: list[float]) -> EdgeDecay:
     mean_x = sum(xs) / n
     mean_y = sum(s) / n
     sxx = sum((x - mean_x) ** 2 for x in xs)
-    sxy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, s))
+    sxy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, s, strict=True))
     slope = sxy / sxx if sxx > 0 else 0.0
     current = (mean_y - slope * mean_x) + slope * (n - 1)
     if slope >= 0 or current <= 0:
@@ -172,7 +172,7 @@ def assess_drift(
 
 def _returns_from_equity(equities: list[float]) -> list[float]:
     out: list[float] = []
-    for prev, cur in zip(equities, equities[1:]):
+    for prev, cur in zip(equities, equities[1:], strict=False):
         if prev > 0 and math.isfinite(prev) and math.isfinite(cur):
             out.append((cur - prev) / prev)
     return out

@@ -149,10 +149,21 @@ class Portfolio:
     # --- marks / snapshots -------------------------------------------------------------------------
 
     def mark_to_market(
-        self, marks: dict[str, Decimal], *, funding_by_track: dict[str, Decimal] | None = None
+        self,
+        marks: dict[str, Decimal],
+        *,
+        funding_by_track: dict[str, Decimal] | None = None,
+        cell_resolver=None,  # noqa: ANN001 — Callable[[PositionView], tuple[str,str,str] | None]
     ) -> dict[str, Decimal]:
         """Recompute equity from cash + Σ(qty·mark), write a portfolio_snapshot, and return the derived metrics.
         Cash is bankroll minus net deployed cost basis + realized P&L — no fabricated numbers.
+
+        `cell_resolver(position) -> (version_id, symbol, venue_id) | None` re-keys the per-track marked-value
+        trajectory to the BRUT cell: each (version, symbol, venue) cell gets its OWN scope='track' snapshot series
+        (ref_id = version:symbol:venue) and its OWN tracks row (matched on version+symbol+venue), so a cell's
+        forward-proof + drift read ITS OWN trajectory, never a sibling cell's. None (the default / a position the
+        resolver can't place) falls back to the legacy VERSION-only key (ref_id = version_id, tracks matched on
+        version only) — back-compatible for every pre-brut caller and pre-migration row.
 
         `funding_by_track` is the cumulative funding P&L per strategy_version_id for two-leg neutral tracks (the
         carry the short-perp leg has booked — see master/neutral.py). It is ADDED to equity and to that track's
@@ -194,45 +205,64 @@ class Portfolio:
         # leg's P&L must stay in the trajectory, and a fully-flat track is worth its capital ± realized, not
         # zero). A version with no tracks row (bare positions in tests/tools) falls back to the old
         # marked-positions + realized sum.
+        # Resolve each position to its CELL KEY (version:symbol:venue when cell_resolver places it, else the legacy
+        # version-only key) and remember the cell tuple so the tracks lookup below can match on version+symbol+venue.
+        cell_meta: dict[str, tuple[str, str, str] | None] = {}
+
+        def _cell_key(p: PositionView) -> str | None:
+            if p.strategy_version_id is None:
+                return None
+            triple = cell_resolver(p) if cell_resolver is not None else None
+            if triple is not None:
+                vid, symbol, venue_id = triple
+                key = f"{vid}:{symbol}:{venue_id}"
+                cell_meta[key] = triple
+                return key
+            cell_meta.setdefault(p.strategy_version_id, None)
+            return p.strategy_version_id
+
         unrealized_by_track: dict[str, Decimal] = {}
         open_value_by_track: dict[str, Decimal] = {}
         for p in positions:
-            if p.strategy_version_id is None:
+            key = _cell_key(p)
+            if key is None:
                 continue
             mark = marks.get(p.instrument_id, p.avg_price)
-            unrealized_by_track[p.strategy_version_id] = (
-                unrealized_by_track.get(p.strategy_version_id, Decimal("0")) + (mark - p.avg_price) * p.qty
-            )
-            open_value_by_track[p.strategy_version_id] = (
-                open_value_by_track.get(p.strategy_version_id, Decimal("0")) + mark * p.qty
-            )
+            unrealized_by_track[key] = unrealized_by_track.get(key, Decimal("0")) + (mark - p.avg_price) * p.qty
+            open_value_by_track[key] = open_value_by_track.get(key, Decimal("0")) + mark * p.qty
         realized_by_track: dict[str, Decimal] = {}
         for p in all_rows:
-            if p.strategy_version_id is None:
+            key = _cell_key(p)
+            if key is None:
                 continue
-            realized_by_track[p.strategy_version_id] = (
-                realized_by_track.get(p.strategy_version_id, Decimal("0")) + p.realized_pnl
-            )
+            realized_by_track[key] = realized_by_track.get(key, Decimal("0")) + p.realized_pnl
         by_track: dict[str, Decimal] = {}
-        for vid in {*unrealized_by_track, *realized_by_track}:
-            row = self.store.row("SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (vid,))
-            pnl_track = unrealized_by_track.get(vid, Decimal("0")) + realized_by_track.get(vid, Decimal("0"))
-            if row is not None and row.get("starting_capital") is not None:
-                by_track[vid] = Decimal(str(row["starting_capital"])) + pnl_track
+        for key in {*unrealized_by_track, *realized_by_track}:
+            meta = cell_meta.get(key)
+            if meta is not None:
+                vid, symbol, venue_id = meta
+                row = self.store.row(
+                    "SELECT starting_capital FROM tracks WHERE strategy_version_id = ? AND symbol = ? AND venue_id = ?",
+                    (vid, symbol, venue_id),
+                )
             else:
-                by_track[vid] = open_value_by_track.get(vid, Decimal("0")) + realized_by_track.get(vid, Decimal("0"))
-        # Add each neutral track's accrued funding carry to its marked-value series. For a two-leg neutral track
-        # the Σ(qty·mark) above already nets the long-spot + short-perp price moves (the direction cancels); the
-        # funding carry is the edge the price marks can't show, so it must ride the per-track trajectory too.
+                row = self.store.row("SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (key,))
+            pnl_track = unrealized_by_track.get(key, Decimal("0")) + realized_by_track.get(key, Decimal("0"))
+            if row is not None and row.get("starting_capital") is not None:
+                by_track[key] = Decimal(str(row["starting_capital"])) + pnl_track
+            else:
+                by_track[key] = open_value_by_track.get(key, Decimal("0")) + realized_by_track.get(key, Decimal("0"))
+        # Add each neutral track's accrued funding carry to its marked-value series (keyed by version_id; on a
+        # single-cell-per-version book the cell key equals the version key — funding lands on the right series).
         for vid, fund in funding_by_track.items():
             if vid in by_track:
                 by_track[vid] += fund
-        for vid, value in by_track.items():
+        for key, value in by_track.items():
             self.store.insert(
                 "portfolio_snapshots",
                 {
                     "scope": "track",
-                    "ref_id": vid,
+                    "ref_id": key,
                     "ts": now,
                     "equity": str(value.quantize(Decimal("0.01"))),
                     "cash": "0.00",

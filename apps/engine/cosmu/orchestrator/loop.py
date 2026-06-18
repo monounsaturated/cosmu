@@ -24,9 +24,9 @@ if TYPE_CHECKING:
     from cosmu.config.settings import Settings
 from cosmu.knowledge.lifecycle_status import ALIVE_STATUSES, PAPER_ALIASES, sql_in_list
 from cosmu.knowledge.store import Store, utcnow
-from cosmu.master.drift import monitor_drift
+from cosmu.master.drift import DriftVerdict, assess_drift, track_return_series
+from cosmu.master.live_eligibility import cell_id
 from cosmu.master.neutral import accrue_funding, neutral_tracks
-from cosmu.master.per_symbol import rank_deploy_symbols
 from cosmu.master.portfolio import Portfolio
 from cosmu.portfolio.rotation import Track, select_tracks
 from cosmu.spine.venue import VenueCatalog, default_catalog
@@ -59,40 +59,28 @@ def _venue_symbols(catalog: VenueCatalog, venue_id: str, asset_class: str) -> li
     return [i.symbol for i in catalog.instruments if i.venue_id == venue_id and i.asset_class == asset_class]
 
 
-def _screened_symbols(raw_spec: object, asset_class: str, venue_symbols: list[str]) -> list[str]:
-    """The venue-tradable subset of the universe this survivor was SCREENED on — so a forward test runs on an
-    instrument its gate evidence actually covered, never a rotation-assigned stranger. Crypto gate-lane
-    candidates are screened against the fixed CRYPTO_SCREEN_UNIVERSE (evolution/loop.py); equity gate evidence
-    comes from the campaign cohorts on the catalog ETFs, which already match `venue_symbols`. Empty ⇒ the
-    caller falls back to the whole venue list (historical rows; better an imperfect track than none)."""
-    if asset_class != "crypto":
-        return []
-    from cosmu.evolution.loop import (
-        CRYPTO_SCREEN_UNIVERSE,  # deferred: evolution imports master at module level
+def assess_cell_drift(store: Store, version_id: str, symbol: str, venue_id: str) -> DriftVerdict:
+    """Anticipatory alpha-decay verdict for ONE cell, read off ITS OWN cell-keyed realized trajectory
+    (scope='track' portfolio_snapshots ref_id = version:symbol:venue, with a version-only legacy fallback). So the
+    auto-defund pulls the right cell — never a sibling cell's drift. Emits a `drift_assessed` (+ `track_defunded`)
+    audit event per cell. On first funding there is no history → insufficient-history (no defund)."""
+    cid = cell_id(version_id, symbol, venue_id)
+    series = track_return_series(store, version_id, symbol=symbol, venue_id=venue_id)
+    verdict = assess_drift(cid, series)
+    store.append_event(
+        actor="master", kind="drift_assessed", ref_type="strategy_version", ref_id=cid,
+        payload={
+            "defund": verdict.defund, "reason": verdict.reason, "symbol": symbol, "venue_id": venue_id,
+            "half_life": verdict.decay.half_life, "realized_edge": verdict.drift.realized_edge,
+            "z": verdict.drift.z, "cusum": verdict.drift.cusum, "n": verdict.drift.n,
+        },
     )
-
-    tradable = set(venue_symbols)
-    return [s for s in CRYPTO_SCREEN_UNIVERSE if s in tradable]
-
-
-def _verdict_deploy_symbol(store: Store, version_id: str, pool: list[str]) -> str | None:
-    """The screened symbol with the STRONGEST per-symbol verdict for this version (robust>fragile, then Sharpe),
-    restricted to the gate-evidence `pool`. So capital lands on the PROVEN cell, not an arbitrary round-robin
-    index — the cardinal-sin the per-symbol table exists to prevent: a SOL-only edge must NOT be forward-tested
-    on XRP by array position. Reads backtest_symbols (verdict written at screen time); NEVER the funding
-    authority (the pooled deflated Gate already passed). None when the version has no per-symbol rows (legacy) →
-    the caller keeps its round-robin fallback (better an imperfect track than none)."""
-    cells = store.rows(
-        "SELECT symbol, verdict, sharpe FROM backtest_symbols WHERE strategy_version_id = ?",
-        (version_id,),
-    )
-    if not cells:
-        return None
-    pool_set = set(pool)
-    for sym in rank_deploy_symbols(cells):
-        if sym in pool_set:
-            return sym
-    return None
+    if verdict.defund:
+        store.append_event(
+            actor="master", kind="track_defunded", ref_type="strategy_version", ref_id=cid,
+            payload={"reason": verdict.reason, "anticipatory": True, "symbol": symbol, "venue_id": venue_id},
+        )
+    return verdict
 
 
 def _survivor_asset_class(raw_spec: object) -> str:
@@ -122,49 +110,47 @@ class TrackFundingReport:
 
 
 def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Track, str, str]]:
-    """Read the real config-library / research survivors: paper/live versions that passed the gate and have
-    a track. ASSET-AWARE: each survivor is routed to its OWN asset class's funding venue + symbol (read from the
-    persisted spec's `universe.asset_classes`), mirroring PricingRouter's mark routing — crypto → Binance,
-    equity → IBKR. A survivor whose asset class has NO funding venue wired (or no tradable symbol there) is
-    SKIPPED rather than forced onto a crypto symbol (never mislabel/misprice a position). Returns
-    (version_id, Track, symbol, venue_id). `rolling_dsr` = the deflated Sharpe (decays as edge dies)."""
+    """BRUT fan-out: read the real config-library / research survivors and emit one funding entry PER PASSING CELL.
+
+    A cell is a tradeable triple (strategy_version × symbol × venue) the gate passed ON ITS OWN data — joined off
+    backtest_symbols WHERE verdict='pass' (written per cell by the finder/loop). Each passing cell funds on the
+    EXACT symbol it was proven on (never a round-robin index, never a sibling-compared pick — the brut model has no
+    siblings to compare). UNCAPPED, no human, no cross-cell logic: the gate already disposed each cell and the
+    forward/paper test is the fluke safeguard (live stays human-only). Returns (version_id, Track, symbol,
+    funding_venue_id) — one tuple per passing cell. `rolling_dsr` = the cell's deflated Sharpe (decays as edge dies).
+
+    The funding venue is the cell's asset-class EXECUTION venue (crypto → Binance, equity → Alpaca — the venue with
+    a real exec adapter), independent of the SCREEN venue stored on the cell row. A cell whose asset class has no
+    funding venue wired, or whose symbol isn't tradable there, is SKIPPED (never mislabel/misprice a position)."""
     rows = store.rows(
         f"""
-        SELECT sv.id AS version_id, sv.spec AS spec, tr.return_pct AS return_pct,
-               b.deflated_sharpe AS deflated_sharpe, b.max_dd AS max_dd, b.oos_return AS oos_return
+        SELECT sv.id AS version_id, sv.spec AS spec,
+               bs.symbol AS symbol, b.deflated_sharpe AS deflated_sharpe
         FROM strategy_versions sv
-        JOIN tracks tr ON tr.strategy_version_id = sv.id
         JOIN backtests b ON b.strategy_version_id = sv.id AND b.kind = 'screen'
+        JOIN backtest_symbols bs ON bs.strategy_version_id = sv.id AND bs.verdict = 'pass'
         WHERE sv.status IN {sql_in_list(ALIVE_STATUSES)} AND b.passed_gates = 1 AND b.holdout_passed = 1
         ORDER BY CAST(b.deflated_sharpe AS REAL) DESC
-        LIMIT 12
         """
     )
-    # Round-robin within each asset class so multiple crypto (or multiple equity) survivors spread across that
-    # class's tradable symbols instead of all colliding on one.
-    symbols_by_class: dict[str, list[str]] = {}
-    next_idx: dict[str, int] = {}
+    symbols_by_class: dict[str, set[str]] = {}
     out: list[tuple[str, Track, str, str]] = []
+    seen: set[tuple[str, str, str]] = set()  # de-dup (version, symbol, funding_venue) across rescreens
     for r in rows:
         asset_class = _survivor_asset_class(r.get("spec"))
         venue_id = _FUNDING_VENUE_BY_ASSET_CLASS.get(asset_class)
         if venue_id is None:
             continue  # no funding venue wired for this asset class → SKIP (never force onto a crypto symbol)
-        symbols = symbols_by_class.setdefault(asset_class, _venue_symbols(catalog, venue_id, asset_class))
-        if not symbols:
-            continue  # the funding venue has no tradable instrument for this class → SKIP (no fabricated symbol)
-        # Fund on the SCREENED universe (only symbols this survivor's gate evidence covered). VERDICT-DRIVEN pick:
-        # fund the symbol with the strongest per-symbol verdict (robust>fragile, then Sharpe) so capital lands on
-        # the PROVEN cell — NOT an arbitrary round-robin index that could forward-test a SOL-only edge on XRP. The
-        # round-robin only survives as the legacy fallback for versions with no backtest_symbols rows yet.
-        pool = _screened_symbols(r.get("spec"), asset_class, symbols) or symbols
-        deploy_symbol = _verdict_deploy_symbol(store, r["version_id"], pool)
-        if deploy_symbol is None:
-            i = next_idx.get(asset_class, 0)
-            next_idx[asset_class] = i + 1
-            deploy_symbol = pool[i % len(pool)]
+        tradable = symbols_by_class.setdefault(asset_class, set(_venue_symbols(catalog, venue_id, asset_class)))
+        symbol = r["symbol"]
+        if symbol not in tradable:
+            continue  # the proven cell's symbol isn't tradable at the funding venue → SKIP (no fabricated symbol)
+        key = (r["version_id"], symbol, venue_id)
+        if key in seen:
+            continue
+        seen.add(key)
         track = Track(id=r["version_id"], rolling_dsr=float(r["deflated_sharpe"] or 0.0))
-        out.append((r["version_id"], track, deploy_symbol, venue_id))
+        out.append((r["version_id"], track, symbol, venue_id))
     return out
 
 
@@ -176,93 +162,88 @@ def fund_tracks_from_survivors(
     bankroll: Decimal = Decimal("100000"),
     router: PricingRouter | None = None,
 ) -> TrackFundingReport:
-    """Close the loop in the standalone-track model: open a STANDALONE paper track for each gate-passed
-    survivor (its own fixed per-strategy capital — never a pooled share), open sim positions through the one order
-    path, and mark-to-market. There is no cross-track competition or capital weighting. Live stays OFF (sim fills).
+    """Close the loop, BRUT per-cell: open a STANDALONE paper track for EACH PASSING CELL (its own fixed
+    per-strategy capital — never a pooled share), open sim positions through the one order path, and
+    mark-to-market. UNCAPPED, no human, no cross-cell logic: every cell the gate passed on its OWN data fans out
+    to its own forward test (the fluke safeguard). Live stays OFF (sim fills).
 
-    ASSET-AWARE: each survivor is FUNDED on the venue/symbol for its OWN asset class (read from the spec —
-    crypto → Binance, equity → IBKR), and marked via the SAME router the paper clock uses, so an equity
-    survivor opens a REAL equity position priced off Yahoo total-return instead of a mislabeled/mispriced Binance
-    crypto symbol. A survivor whose asset class has no funding venue wired is SKIPPED (never forced onto crypto).
-    `market_data` (kept for back-compat) overrides ONLY the crypto mark leg; pass `router` to control both legs."""
+    ASSET-AWARE: each cell is funded on the venue/symbol it was PROVEN on (crypto → Binance, equity → Alpaca — the
+    venue with a real exec adapter), marked via the SAME router the paper clock uses. A cell whose asset class has
+    no funding venue, or an unpriceable symbol, is SKIPPED. `market_data` overrides only the crypto mark leg."""
     cat = catalog or default_catalog()
-    # ASSET-AWARE marks: the funder marks each new fill via the SAME router the paper clock uses, so a crypto
-    # fill prices off Binance and an equity fill off Alpaca-when-keyed-else-Yahoo total-return — never marking an
-    # equity to 0 against a Binance symbol. `market_data` (kept for back-compat) overrides only the crypto leg.
     pricer = router or PricingRouter(cat, crypto=market_data, settings=store.settings)
     portfolio = Portfolio(store, bankroll=bankroll)
 
-    triples = _survivor_tracks(store, cat)
-    report = TrackFundingReport(survivors=len(triples))
-    if not triples:
+    cells = _survivor_tracks(store, cat)
+    report = TrackFundingReport(survivors=len(cells))
+    if not cells:
         marks = portfolio.mark_to_market({})
         report.equity = float(marks["equity"])
         report.pnl = float(marks["pnl"])
         return report
 
-    # ANTICIPATORY defund (master/drift): assess each funded track's realized trajectory (edge half-life + live
-    # drift vs what it was funded on) and pull capital BEFORE P&L turns. Reads prior marks; on first funding there
-    # is no history yet → no defund (insufficient history). select_tracks applies the verdict below.
-    verdicts = {v.ref_id: v for v in monitor_drift(store, [vid for vid, _, _, _ in triples])}
-    triples = [
-        (
+    # ANTICIPATORY defund (master/drift), PER CELL: assess each funded cell's OWN realized trajectory (its
+    # cell-keyed scope='track' snapshots) and pull capital BEFORE P&L turns. Reads prior marks; on first funding
+    # there is no history → no defund. The Track id is the CELL id so select_tracks gates each cell independently.
+    cell_keyed = []
+    for vid, track, symbol, venue_id in cells:
+        cid = cell_id(vid, symbol, venue_id)
+        verdict = assess_cell_drift(store, vid, symbol, venue_id)
+        cell_keyed.append((
             vid,
-            replace(
-                track,
-                drift_defund=verdicts[vid].defund if vid in verdicts else False,
-                edge_half_life=verdicts[vid].decay.half_life if vid in verdicts else None,
-            ),
-            symbol,
-            venue_id,
-        )
-        for vid, track, symbol, venue_id in triples
-    ]
-    report.drift_defunded = sum(1 for v in verdicts.values() if v.defund)
+            replace(track, id=cid,
+                    drift_defund=verdict.defund if verdict else False,
+                    edge_half_life=verdict.decay.half_life if verdict else None),
+            symbol, venue_id,
+        ))
+    report.drift_defunded = sum(1 for (_v, t, _s, _vn) in cell_keyed if t.drift_defund)
 
-    track_by_id = {vid: (track, symbol, venue_id) for vid, track, symbol, venue_id in triples}
-    fundable = {v.version_id for v in select_tracks([t for _, t, _, _ in triples]) if v.funded}
+    track_by_cid = {cell_id(vid, symbol, venue_id): (vid, symbol, venue_id) for vid, _t, symbol, venue_id in cell_keyed}
+    fundable_cids = {v.version_id for v in select_tracks([t for _v, t, _s, _vn in cell_keyed]) if v.funded}
 
-    # A track that has EVER held a sim position is NOT re-opened here: re-funding a held track every tick would
-    # average a fresh same-bar entry into the basis and reset its paper clock, and re-funding a track the
-    # paper EXECUTOR closed would overwrite its strategy's own verdict with a static long. The funder
-    # funds each survivor ONCE; from then on the executor (orchestrator/paper_step.py) owns every entry/exit
-    # by the track's own signals, and mark_tracks() accrues the honest P&L.
+    # A CELL that already holds a sim position (its own instrument) is NOT re-opened: re-funding a held cell every
+    # tick would average a fresh same-bar entry into the basis and reset its paper clock. The funder funds each
+    # cell ONCE; from then on the executor (orchestrator/paper_step.py) owns every entry/exit. already_funded is
+    # keyed by (version, instrument_id) so a SECOND cell of the same version (different symbol) still funds.
     already_funded = {
-        r["strategy_version_id"]
+        (r["strategy_version_id"], r["instrument_id"])
         for r in store.rows(
-            "SELECT DISTINCT strategy_version_id FROM positions WHERE strategy_version_id IS NOT NULL"
+            "SELECT DISTINCT strategy_version_id, instrument_id FROM positions WHERE strategy_version_id IS NOT NULL"
         )
     }
 
-    # Register each NEW funded track FLAT. The funder used to open a static long at the current mark (side=1,
-    # 0.95/1.10 brackets) regardless of the spec's entry signal — so the FIRST (often longest) leg of the
-    # ≥30-day forward proof measured buy-and-hold-from-funding-day, not the strategy. Now funding writes a
-    # zero-qty registration row; the paper executor (forward_step.py) opens the first position when —
-    # and only when — the track's OWN entry signal fires, through the one order path. Each track is standalone:
-    # sized to the fixed per-strategy capital by the executor at entry, never a competed pooled share.
     marks: dict[str, Decimal] = {}
     registered: list[str] = []
-    for vid in fundable:
-        if vid in already_funded:
+    for cid in fundable_cids:
+        vid, symbol, venue_id = track_by_cid[cid]
+        instrument = cat.instrument(symbol, venue_id)
+        if (vid, instrument.id) in already_funded:
             continue
-        _track, symbol, venue_id = track_by_id[vid]
-        # Mark via the asset-aware router (crypto → Binance, equity → Yahoo) at the survivor's OWN venue — a
-        # symbol we cannot price honestly is not funded this cycle (the executor could neither enter nor mark it).
         price = pricer.last_price(symbol, venue_id)
         if price <= 0:
             continue
-        instrument = cat.instrument(symbol, venue_id)
         marks[instrument.id] = price
-        # venue='sim' matches the fill-ledger label the order path persists — the executor's flat-row query
-        # (and the funder's own already_funded guard) see exactly what a closed sim position would look like.
+        # venue='sim' matches the fill-ledger label the order path persists. The position's instrument_id encodes
+        # the cell's symbol+venue, so one version can hold one flat position per passing cell.
         portfolio.register_track(
             instrument_id=instrument.id, symbol=symbol, venue="sim", strategy_version_id=vid
         )
-        registered.append(vid)
+        registered.append(cid)
 
     report.funded = len(registered)
     report.funded_tracks = registered
-    snapshot = portfolio.mark_to_market(marks)
+
+    # Cell-keyed marked snapshot: each fresh cell's per-track trajectory begins on its OWN (version,symbol,venue)
+    # ref_id, so its forward-proof reads its own series (the real venue is recovered from the instrument).
+    def _cell_resolver(p) -> tuple[str, str, str] | None:  # noqa: ANN001 — PositionView
+        if p.strategy_version_id is None:
+            return None
+        venue = _instrument_venue(cat, p.instrument_id) or p.venue
+        if venue == "sim" or not venue:
+            return None
+        return (p.strategy_version_id, p.symbol, venue)
+
+    snapshot = portfolio.mark_to_market(marks, cell_resolver=_cell_resolver)
     report.equity = float(snapshot["equity"])
     report.pnl = float(snapshot["pnl"])
     store.append_event(
@@ -377,20 +358,34 @@ def mark_tracks(
     # single-leg spot track has no short leg → it is not a neutral pair → it falls straight through to the
     # unchanged spot mark path below. Offline-safe: no funding data for a perp leg accrues nothing this tick.
     funding_by_track = _accrue_neutral_funding(store, positions, marks)
-    snapshot = portfolio.mark_to_market(marks, funding_by_track=funding_by_track)
-    # Drive each track's tracks.return_pct from the LIVE marked trajectory (the per-track snapshot
+    # BRUT cell resolver: place each position on its (version, symbol, venue) cell so the per-track snapshot
+    # trajectory is cell-keyed — the cell's forward-proof + drift read ITS OWN series, never a sibling cell's.
+    # The real venue is recovered from the instrument (order-path fills persist venue='sim'); None when unknown →
+    # the portfolio falls back to the legacy version-only key.
+    def _cell_resolver(p) -> tuple[str, str, str] | None:  # noqa: ANN001 — PositionView
+        if p.strategy_version_id is None:
+            return None
+        venue = _instrument_venue(cat, p.instrument_id) or p.venue
+        if venue == "sim" or not venue:
+            return None  # can't place the cell honestly → legacy version-only key
+        return (p.strategy_version_id, p.symbol, venue)
+
+    snapshot = portfolio.mark_to_market(marks, funding_by_track=funding_by_track, cell_resolver=_cell_resolver)
+    # Drive each CELL's tracks.return_pct from the LIVE marked trajectory (the cell-keyed per-track snapshot
     # mark_to_market just wrote), so the paper net P&L — not a stale seed — is what the leaderboard +
-    # master/live_eligibility read for live_ready. EVERY version with a position row updates, including
-    # FLAT tracks the executor closed (their realized P&L must land in return_pct, not freeze pre-close).
-    # A flat/negative paper run can therefore never reach live_ready on a stale seed.
-    tracked = {
-        r["strategy_version_id"]
-        for r in store.rows("SELECT DISTINCT strategy_version_id FROM positions WHERE strategy_version_id IS NOT NULL")
-    }
-    updated = _update_track_returns(store, tracked)
+    # master/live_eligibility read for live_ready. EVERY held cell updates, including FLAT cells the executor
+    # closed (their realized P&L must land in return_pct, not freeze pre-close).
+    cells = [
+        (r["strategy_version_id"], r["symbol"], _instrument_venue(cat, r["instrument_id"]) or r["venue"])
+        for r in store.rows(
+            "SELECT DISTINCT strategy_version_id, symbol, instrument_id, venue FROM positions WHERE strategy_version_id IS NOT NULL"
+        )
+    ]
+    updated = _update_track_returns(store, cells)
     # STAGE PROMOTION: a paper entrant is born "screened" (badge: Backtest, backtest evidence only).
     # The paper clock — THIS function — promotes it to "paper" (badge: Paper) the moment it has accrued a real
     # forward day, so "Paper" honestly means "has forward evidence", never backtest-only. Badge-only relabel.
+    tracked = {vid for vid, _s, _v in cells}
     promoted = _promote_screened_on_first_fill(store, tracked)
     store.append_event(
         actor="master",
@@ -410,20 +405,32 @@ def mark_tracks(
     return snapshot
 
 
-def _update_track_returns(store: Store, version_ids: set[str]) -> int:
-    """Refresh tracks.return_pct + tracks.equity for each held track from its latest per-track marked value
-    (portfolio_snapshots scope='track'), vs the track's own starting_capital. Mirrors what the per-arm equity
-    mark did for GEM, generalized to every track the clock just marked. Returns the count updated. A track with
-    no marked snapshot or no starting_capital is left untouched (offline-safe — never zero/synthetic-fill)."""
+def _update_track_returns(store: Store, cells: list[tuple[str, str, str]]) -> int:
+    """Refresh tracks.return_pct + tracks.equity for each held CELL from its latest cell-keyed per-track marked
+    value (portfolio_snapshots scope='track' ref_id = version:symbol:venue), vs the cell track's own
+    starting_capital. Each cell is matched on (version, symbol, venue) with a VERSION-only legacy fallback (a
+    pre-migration version-wide track + version-keyed snapshot). Returns the count updated. A cell with no marked
+    snapshot or no starting_capital is left untouched (offline-safe — never zero/synthetic-fill)."""
     updated = 0
-    for vid in version_ids:
+    for vid, symbol, venue_id in cells:
+        cid = cell_id(vid, symbol, venue_id)
+        # Cell-keyed first, then the legacy version-only key (pre-migration rows).
         track = store.row(
-            "SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (vid,)
+            "SELECT starting_capital FROM tracks WHERE strategy_version_id = ? AND symbol = ? AND venue_id = ?",
+            (vid, symbol, venue_id),
         )
+        ref = cid
         snap = store.row(
             "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1",
-            (vid,),
+            (cid,),
         )
+        if track is None:  # legacy version-wide track / version-keyed snapshot
+            track = store.row("SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (vid,))
+            ref = vid
+            snap = store.row(
+                "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1",
+                (vid,),
+            )
         if track is None or track.get("starting_capital") is None or snap is None or snap.get("equity") is None:
             continue
         starting = Decimal(str(track["starting_capital"]))
@@ -431,11 +438,19 @@ def _update_track_returns(store: Store, version_ids: set[str]) -> int:
             continue
         marked_value = Decimal(str(snap["equity"]))
         return_pct = (marked_value / starting - Decimal("1")) * Decimal("100")
-        store.rows(
-            "UPDATE tracks SET return_pct = ?, equity = ?, updated_at = ? WHERE strategy_version_id = ?",
-            (str(return_pct.quantize(Decimal("0.01"))), str(marked_value.quantize(Decimal("0.01"))),
-             utcnow(), vid),
-        )
+        if ref == cid:
+            store.rows(
+                "UPDATE tracks SET return_pct = ?, equity = ?, updated_at = ? "
+                "WHERE strategy_version_id = ? AND symbol = ? AND venue_id = ?",
+                (str(return_pct.quantize(Decimal("0.01"))), str(marked_value.quantize(Decimal("0.01"))),
+                 utcnow(), vid, symbol, venue_id),
+            )
+        else:
+            store.rows(
+                "UPDATE tracks SET return_pct = ?, equity = ?, updated_at = ? WHERE strategy_version_id = ?",
+                (str(return_pct.quantize(Decimal("0.01"))), str(marked_value.quantize(Decimal("0.01"))),
+                 utcnow(), vid),
+            )
         updated += 1
     return updated
 

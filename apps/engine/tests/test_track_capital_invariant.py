@@ -55,6 +55,8 @@ def test_finder_promotion_stamps_starting_capital_from_settings(tmp_path):
     store = _sentinel_store(tmp_path)
     finder = StrategyFinder(settings=store.settings, store=store, market_data=None)
 
+    from cosmu.lab.finder import CellResult
+
     spec = seed_orb_fvg_spec()
     fitted = fit_params(spec)
     compiled = compile_spec(spec, fitted)
@@ -63,17 +65,21 @@ def test_finder_promotion_stamps_starting_capital_from_settings(tmp_path):
         max_drawdown=Decimal("0.10"), win_rate=Decimal("0.6"), num_trades=40,
         regime_returns={"bull": 0.05, "bear": -0.02},
     )
+    cell = CellResult(symbol="BTCUSDT", venue_id="binance", metrics=metrics, deflated_sharpe=0.96,
+                      trades=40, passed=True, holdout_passed=True)
     survivor = VariantResult(
         config_tag="cfg-sentinel", code_hash=compiled.code_hash, metrics=metrics,
-        deflated_sharpe=0.9, profit_factor=2.0, net_profit=0.04, gate_passed=True, reasons=[],
+        deflated_sharpe=0.96, profit_factor=2.0, net_profit=0.04, gate_passed=True, reasons=[],
         fitted_params=fitted, promoted=True, holdout_passed=True,
+        per_symbol={"BTCUSDT": {"return": 0.05, "sharpe": 1.5, "max_drawdown": 0.10, "trades": 40.0}},
+        cells={"BTCUSDT": cell},
     )
     finder._persist(spec, [survivor], {}, default_catalog().venue_for(spec.universe.venues))
     vid = survivor.version_id
     assert vid is not None
 
     row = store.row("SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (vid,))
-    assert row is not None, "finder promotion must open a paper track"
+    assert row is not None, "finder promotion must open a per-cell paper track"
     assert Decimal(str(row["starting_capital"])) == _SENTINEL, (
         "finder seeded a non-canonical starting_capital — it must read settings.sim_track_capital, not a literal"
     )

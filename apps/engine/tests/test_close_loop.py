@@ -18,16 +18,16 @@ from cosmu.lab.finder import StrategyFinder
 from cosmu.orchestrator.loop import fund_tracks_from_survivors
 
 
-def _significant_edge_market(n: int = 300, seed: int = 5) -> dict[str, list[Bar]]:
-    """A deterministic market bearing a GENUINELY SIGNIFICANT edge — a strong, tight-noise trend whose
-    per-observation Sharpe survives the finder's HONEST multiple-testing deflation, so the close-the-loop path
-    has a real survivor to fund. (The modest `edge_bearing_screen_market` fixture deliberately does NOT clear
-    honest deflation — see test_finder_honesty — so it can no longer stand in for a fundable winner here.)
+def _significant_edge_market(n: int = 600, cycle: int = 30, seed: int = 5) -> dict[str, list[Bar]]:
+    """A deterministic, trade-DENSE cyclic-bull market: a single symbol books >= the brut per-cell trade floor (30
+    of its OWN trades) and its OWN deflated Sharpe clears the gate, so the close-the-loop path has a real BRUT cell
+    to fund. Under brut each cell is judged ALONE on its own data — pooling 5 thin per-symbol books over min_trades
+    no longer works — so the fixture is honestly trade-dense per cell (longer history + a tighter up/down cycle).
 
     NOTE: it is a relentless bull, so this long-only momentum edge does NOT beat buy-and-hold — the caller opts
     the beat-BnH gate out, as the funding-plumbing test it backs is orthogonal to that gate (covered separately)."""
     rng = random.Random(seed)
-    base = dt.datetime(2022, 1, 1, tzinfo=dt.UTC)
+    base = dt.datetime(2021, 1, 1, tzinfo=dt.UTC)
     factor = [rng.gauss(0, 0.004) for _ in range(n)]  # one shared path → correlated, realistic symbols
     out: dict[str, list[Bar]] = {}
     for k, (sym, p0) in enumerate(
@@ -36,8 +36,8 @@ def _significant_edge_market(n: int = 300, seed: int = 5) -> dict[str, list[Bar]
         bars = []
         p = p0
         for i in range(n):
-            drift = 0.008 if i % 100 < 78 else -0.001  # strong bull with regular pullbacks (regime breadth)
-            r = drift + 0.95 * factor[i] + rng.gauss(0, 0.0006 * (1 + k * 0.1))
+            drift = 0.012 if i % cycle < int(cycle * 0.7) else -0.004  # frequent up/down legs → many entries
+            r = drift + 0.9 * factor[i] + rng.gauss(0, 0.0006 * (1 + k * 0.1))
             o = p
             p = max(1e-6, p * (1 + r))
             hi = max(o, p) * (1 + abs(rng.gauss(0, 0.001)))
@@ -140,11 +140,14 @@ class _FlatBars:
         return [Bar(ts=dt.datetime(2024, 1, 1, tzinfo=dt.UTC), open=p, high=p, low=p, close=p, volume=Decimal("1"))]
 
 
-def _persist_survivor(store: Store, *, name: str, asset_classes: list[str], venues: list[str]) -> str:
-    """Persist a gate-passed paper survivor (strategies + strategy_versions + screen backtest + track) whose
-    spec declares the given asset class/venues — the exact rows fund_tracks_from_survivors reads. Returns the
-    version_id."""
+def _persist_survivor(store: Store, *, name: str, asset_classes: list[str], venues: list[str],
+                      pass_symbols: list[str] | None = None) -> str:
+    """Persist a gate-passed survivor with one PASSING brut cell per symbol in `pass_symbols` — the exact rows
+    the brut funder reads (it fans out a track per backtest_symbols.verdict='pass' cell + a per-cell tracks row).
+    Returns the version_id."""
     now = "2024-01-01T00:00:00Z"
+    pass_symbols = pass_symbols or (["SPY"] if "equity" in asset_classes else ["BTCUSDT"])
+    screen_venue = venues[0]
     strategy_id = store.insert("strategies", {"name": name, "thesis": "t", "origin": "finder", "created_at": now})
     version_id = store.insert(
         "strategy_versions",
@@ -164,18 +167,24 @@ def _persist_survivor(store: Store, *, name: str, asset_classes: list[str], venu
             "status": "paper", "created_at": now, "killed_at": None, "kill_reason": None,
         },
     )
-    store.insert(
-        "tracks",
-        {"strategy_version_id": version_id, "starting_capital": "10000", "equity": "10000",
-         "return_pct": "0", "updated_at": now},
-    )
-    store.insert(
+    bt_id = store.insert(
         "backtests",
         {"strategy_version_id": version_id, "kind": "screen", "oos_return": "0.2", "sharpe": "1.5",
          "sortino": "1.5", "deflated_sharpe": "1.5", "max_dd": "0.1", "win_rate": "0.6", "num_trades": 30,
          "pbo": "0.0", "trials_counted": 1, "regime_label": "mixed", "folds_positive": 5,
          "passed_gates": 1, "holdout_passed": 1, "created_at": now},
     )
+    for sym in pass_symbols:
+        store.insert("backtest_symbols", {
+            "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": sym, "venue_id": screen_venue,
+            "return_pct": "0.1", "sharpe": "1.0", "max_drawdown": "0.05", "trades": 30,
+            "verdict": "pass", "created_at": now,
+        })
+        store.insert(
+            "tracks",
+            {"strategy_version_id": version_id, "symbol": sym, "venue_id": screen_venue,
+             "starting_capital": "10000", "equity": "10000", "return_pct": "0", "updated_at": now},
+        )
     return version_id
 
 
@@ -228,25 +237,22 @@ def test_survivor_with_no_funding_venue_is_skipped_not_forced_onto_crypto(tmp_pa
     )[0]["n"] == 0
 
 
-def test_crypto_survivors_fund_on_their_screened_universe(tmp_path):
-    """H3 (deep review): a crypto survivor paper-trades on a symbol its gate evidence actually covered — the
-    screened universe (CRYPTO_SCREEN_UNIVERSE), round-robined ACROSS that pool for multiple survivors — never
-    an arbitrary catalog rotation onto an instrument it was never screened on."""
-    from cosmu.evolution.loop import CRYPTO_SCREEN_UNIVERSE
-
+def test_crypto_cells_fund_on_the_exact_proven_symbol(tmp_path):
+    """BRUT: each crypto cell funds on the EXACT symbol it was proven on (its backtest_symbols 'pass' row) — never
+    a round-robin index, never a sibling-compared pick. A version with TWO passing cells fans out TWO tracks."""
     store = _store(tmp_path)
-    vid_a = _persist_survivor(store, name="CryptoA", asset_classes=["crypto"], venues=["binance"])
-    vid_b = _persist_survivor(store, name="CryptoB", asset_classes=["crypto"], venues=["binance"])
+    vid_a = _persist_survivor(store, name="CryptoA", asset_classes=["crypto"], venues=["binance"], pass_symbols=["BTCUSDT"])
+    vid_b = _persist_survivor(store, name="CryptoB", asset_classes=["crypto"], venues=["binance"], pass_symbols=["ETHUSDT", "SOLUSDT"])
 
     funding = fund_tracks_from_survivors(store, market_data=_FixtureBars())
-    assert funding.funded == 2
+    assert funding.funded == 3  # one cell for A, two cells for B — one track per passing cell
 
-    rows = store.rows(
-        "SELECT symbol FROM positions WHERE strategy_version_id IN (?, ?)", (vid_a, vid_b)
-    )
-    symbols = {r["symbol"] for r in rows}
-    assert symbols <= set(CRYPTO_SCREEN_UNIVERSE), f"funded outside the screened universe: {symbols}"
-    assert len(symbols) == 2  # round-robin spreads survivors across the screened pool, not onto one symbol
+    rows = store.rows("SELECT strategy_version_id, symbol FROM positions WHERE strategy_version_id IN (?, ?)", (vid_a, vid_b))
+    by_vid: dict[str, set[str]] = {}
+    for r in rows:
+        by_vid.setdefault(r["strategy_version_id"], set()).add(r["symbol"])
+    assert by_vid[vid_a] == {"BTCUSDT"}        # A funded on its one proven symbol
+    assert by_vid[vid_b] == {"ETHUSDT", "SOLUSDT"}  # B fanned out to BOTH its proven cells
 
 
 def test_crypto_survivor_still_routes_to_binance(tmp_path):
