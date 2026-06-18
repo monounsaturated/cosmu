@@ -16,7 +16,7 @@
 //   • trades → the real Execution blotter (no fabricated per-fill P&L — an opening buy has $0 realized);
 //     activity → real fills only, with the venue marked "(sim)" while paper.
 
-import type { Backtest, Execution, StrategyDetailResponse } from "@cosmu/contracts-ts";
+import type { Backtest, Execution, LabSymbolRow, StrategyDetailResponse } from "@cosmu/contracts-ts";
 import { MoneyBand, type MoneyBandData } from "./money-band";
 import { AiSummary } from "./ai-summary";
 import { CostBasisSelector } from "./cost-basis-selector";
@@ -138,28 +138,53 @@ function TypeLaneBadges({ spec, origin, modelKind }: { spec: Record<string, unkn
 
 // ── Phase comparison: Backtest OOS / Paper / Live side by side. Live is not on this contract → all "—".
 // This table is now the SINGLE home for the gate metrics too (DSR / PBO / Max DD / OOS) — the separate
-// "Gate metrics" chip row was removed, so every measured number lives in one place with its phase columns. ──
+// "Gate metrics" chip row was removed, so every measured number lives in one place with its phase columns.
+//
+// PER-CELL TRUTH: when the sheet is focused on ONE (algo × asset × venue) cell (`cell` present, off the clicked
+// triplet), the per-cell, STANDALONE numbers are preferred for Return / Max DD / Trades — these come from
+// backtest_symbols (max_drawdown caps at a real ~22%), NEVER the pooled `backtests` aggregate (which for a
+// brut-converted combo carries garbage, e.g. max_dd 5.05 → "505%"). DSR / PBO have no per-cell value on the
+// contract, so they stay the algo's pooled gate verdict (a legitimate gate result, clearly the algo-level
+// number — not a per-cell metric we could fake). ──
 function PhaseComparison({
   headlineBt,
   paperPnl,
   trades,
   ageDays,
-  bestOos
+  bestOos,
+  cell
 }: {
   headlineBt: Backtest | null;
   paperPnl: number | null;
   trades: Execution[];
   ageDays: number | null;
   bestOos: number | null;
+  cell?: LabSymbolRow | null;
 }) {
+  // Prefer the per-cell standalone numbers when a cell is focused. return_pct / max_drawdown are FRACTIONS.
+  const cellReturnPct = cell ? cell.return_pct * 100 : null;
+  const cellMaxDdPct = cell ? cell.max_drawdown * 100 : null;
+  const cellTrades = cell ? cell.trades : null;
   // `tip` defines each metric ONCE, in plain words (hover) — so a non-expert can read the table without a
   // glossary elsewhere. These replace the removed gate-metric chips' tooltips.
   const rows: { metric: string; tip?: string; bt: string; btTone?: string; paper: string; paperTone?: string; live: string }[] = [
     {
       metric: "Return",
-      tip: "Total profit over the out-of-sample test window, after costs. Green = profitable.",
-      bt: bestOos !== null ? `${bestOos >= 0 ? "+" : ""}${bestOos.toFixed(1)}%` : "—",
-      btTone: bestOos !== null ? (bestOos >= 0 ? "up" : "dn") : undefined,
+      tip: cell
+        ? "Standalone net-of-fee return on THIS asset at THIS venue — the granular truth, never a pooled mean."
+        : "Total profit over the out-of-sample test window, after costs. Green = profitable.",
+      bt:
+        cellReturnPct !== null
+          ? `${cellReturnPct >= 0 ? "+" : ""}${cellReturnPct.toFixed(1)}%`
+          : bestOos !== null
+            ? `${bestOos >= 0 ? "+" : ""}${bestOos.toFixed(1)}%`
+            : "—",
+      btTone:
+        cellReturnPct !== null
+          ? cellReturnPct >= 0 ? "up" : "dn"
+          : bestOos !== null
+            ? bestOos >= 0 ? "up" : "dn"
+            : undefined,
       // Paper = the engine's marked $ P&L (realized + unrealized), neutral at exact $0 — never a cash-flow sum.
       paper:
         paperPnl === null
@@ -172,7 +197,7 @@ function PhaseComparison({
     },
     {
       metric: "Sharpe (DSR)",
-      tip: "Deflated Sharpe Ratio — risk-adjusted return, discounted for how many variants were tried (so luck can't fake an edge). The Gate wants ≥ 0.95.",
+      tip: "Deflated Sharpe Ratio — risk-adjusted return, discounted for how many variants were tried (so luck can't fake an edge). The Gate wants ≥ 0.95. This is the ALGO's pooled gate verdict, not a per-cell number.",
       bt: headlineBt ? headlineBt.deflated_sharpe.toFixed(2) : "—",
       btTone: headlineBt ? (headlineBt.deflated_sharpe >= 0.95 ? "up" : undefined) : undefined,
       paper: "—",
@@ -180,7 +205,7 @@ function PhaseComparison({
     },
     {
       metric: "PBO",
-      tip: "Probability of Backtest Overfitting — the chance the result is curve-fit noise, not a real edge. Lower is better; the Gate wants < 0.50.",
+      tip: "Probability of Backtest Overfitting — the chance the result is curve-fit noise, not a real edge. Lower is better; the Gate wants < 0.50. The ALGO's pooled gate verdict, not a per-cell number.",
       bt: headlineBt ? headlineBt.pbo.toFixed(2) : "—",
       btTone: headlineBt ? (headlineBt.pbo < PBO_CEILING ? "up" : "dn") : undefined,
       paper: "—",
@@ -188,15 +213,17 @@ function PhaseComparison({
     },
     {
       metric: "Max DD",
-      tip: "Maximum Drawdown — the worst peak-to-trough drop in equity over the test. Smaller = less painful to hold.",
-      bt: headlineBt ? `${(headlineBt.max_dd * 100).toFixed(1)}%` : "—",
+      tip: cell
+        ? "Maximum Drawdown on THIS cell — the worst peak-to-trough drop in equity, off this combo's own backtest. Smaller = less painful to hold."
+        : "Maximum Drawdown — the worst peak-to-trough drop in equity over the test. Smaller = less painful to hold.",
+      bt: cellMaxDdPct !== null ? `${cellMaxDdPct.toFixed(1)}%` : headlineBt ? `${(headlineBt.max_dd * 100).toFixed(1)}%` : "—",
       paper: "—",
       live: "—"
     },
     {
       metric: "Trades",
       tip: "How many round-trip trades the test took — too few and the result isn't statistically meaningful.",
-      bt: headlineBt ? String(headlineBt.num_trades) : "—",
+      bt: cellTrades !== null ? String(cellTrades) : headlineBt ? String(headlineBt.num_trades) : "—",
       paper: trades.length ? String(trades.length) : "—",
       live: "—"
     },
@@ -348,7 +375,11 @@ function Activity({ trades, stage }: { trades: Execution[]; stage: Stage }) {
 }
 
 // ── The full sheet body — used by the SidePanel and the standalone page. ──
-export function StrategySheet({ strategy, stageOverride, origin }: { strategy: StrategyDetailResponse; stageOverride?: Stage; origin?: string | null }) {
+// `cell` (optional): the clicked (algo × asset × venue) backtest_symbols cell. When present, the BACKTEST-phase
+// headline numbers (Return / Max DD / Trades + the equity box) read this cell's STANDALONE truth instead of the
+// pooled `backtests` aggregate — the fix for brut-converted combos whose pooled record carries garbage (505% DD,
+// empty equity_curve). The forward money band stays per-track marked money (already honest, not pooled).
+export function StrategySheet({ strategy, stageOverride, origin, cell }: { strategy: StrategyDetailResponse; stageOverride?: Stage; origin?: string | null; cell?: LabSymbolRow | null }) {
   // The contract declares trades/backtests as non-null, but the engine can omit them (null) — normalize to
   // empty arrays HERE so every downstream `.length`/spread/`.some` is safe and a partial response can't
   // white-screen the sheet (the error boundary is the net, this is the guard).
@@ -412,7 +443,7 @@ export function StrategySheet({ strategy, stageOverride, origin }: { strategy: S
           curve from GET /explorer/{id}; Paper/Live = the engine's MARKED scope='track' trajectory
           (forward_equity), shown only when ≥ 2 real snapshots exist. Defaults to the most-advanced
           phase with data, so the operator sees the live read first and can toggle back to the edge. */}
-      <EquityPanel versionId={strategy.version_id ?? null} forwardCurve={strategy.forward_equity ?? []} stage={stage} />
+      <EquityPanel versionId={strategy.version_id ?? null} forwardCurve={strategy.forward_equity ?? []} stage={stage} perCell={!!cell} />
 
       <AiSummary
         summaryMd={strategy.summary_md}
@@ -434,7 +465,7 @@ export function StrategySheet({ strategy, stageOverride, origin }: { strategy: S
         }
       />
 
-      <PhaseComparison headlineBt={headlineBt} paperPnl={paperPnl} trades={trades} ageDays={ageDays} bestOos={bestOos} />
+      <PhaseComparison headlineBt={headlineBt} paperPnl={paperPnl} trades={trades} ageDays={ageDays} bestOos={bestOos} cell={cell} />
 
       {/* Composed lifecycle verdict (backtest → paper → forward-ready → live-ready) + the audit trace, off the
           engine's GET /readiness/{version_id}. Advisory — it never arms money. */}
