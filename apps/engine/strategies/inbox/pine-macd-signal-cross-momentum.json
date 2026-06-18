@@ -1,0 +1,51 @@
+{
+  "name": "MACD signal-line cross momentum (Pine import)",
+  "rationale": "Faithful import of the classic MACD long strategy (Alorse 'MACD Long Strategy [Bunghole]', MACD 12/26/9 + RSI(14); the canonical MACD-cross community pattern): go long when the MACD line crosses ABOVE its signal line (a bullish momentum cross), preferentially after price has recently been oversold. Economic mechanism: MACD = (fast EMA - slow EMA); its signal line is an EMA of that difference, so a bullish MACD-over-signal crossover marks the moment the short-horizon trend's RATE-OF-CHANGE turns up faster than its own recent average — i.e. fresh momentum igniting from a lull. Buying that turn captures the early, least-crowded phase of a directional move (the autocorrelation premium), before the level filters that gate our other momentum specs would fire. We translate the crossover faithfully with the cross_up OPERATOR (not a level threshold): a short-lookback ret_Nd crossing UP through a near-zero floor is the registry-feature equivalent of MACD-line > signal-line turning true (the EMA-difference flips positive as short momentum overtakes its trailing baseline). The Bunghole 'was recently oversold' RSI confluence (RSI(14) had touched its oversold band within the last ~10 bars) maps to an RSI ceiling at entry, so we only take the cross from a non-overbought, mean-reverted base — buying the turn off a dip, not chasing an extended tape. Translation losses (noted, not fabricated): (1) the exact MACD/signal EMA pair is not a registry feature — the cross_up of a fitted-lookback ret_Nd through a fitted floor is the honest, optimizer-fit stand-in for the signal-line cross; (2) Bunghole's 50%/50% SL/TP are extreme placeholders — we replace them with fitted, sane stop/take fractions plus a momentum-fade signal exit; (3) 'barssince oversold <= 10' becomes a same-bar RSI-ceiling confluence (the Finder fits the ceiling). Honest prior: MACD-cross is the most-taught and most-overfit retail signal; net of ~20bps round-trip on crypto spot it is widely shown to be a coin-flip — expected a powered fail that maps the cross surface; the Gate disposes. Disconfirmer: a momentum-fade signal exit (short ret_Nd dropping back below a floor = the cross failed) plus a time-stop bound a false cross.",
+  "catalyst": "MACD line crosses above its signal line (short-momentum cross_up) from a non-overbought base",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 15
+  },
+  "direction": 1,
+  "entry": [
+    {
+      "feature": {"name": "ret_Nd", "lookback": {"param": "macd_lb"}},
+      "op": "cross_up",
+      "threshold": {"param": "cross_floor"}
+    },
+    {
+      "feature": {"name": "rsi"},
+      "op": "lt",
+      "threshold": {"param": "rsi_ceiling"}
+    }
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "ret_Nd", "lookback": {"param": "macd_lb"}}, "op": "lt", "threshold": {"param": "fade_floor"}}
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.1,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "macd_lb": {"kind": "int", "lo": 6, "hi": 26, "step": 1},
+    "cross_floor": {"kind": "float", "lo": -0.01, "hi": 0.02},
+    "rsi_ceiling": {"kind": "float", "lo": 50, "hi": 70},
+    "fade_floor": {"kind": "float", "lo": -0.05, "hi": 0.0},
+    "stop": {"kind": "float", "lo": 0.03, "hi": 0.12},
+    "tp": {"kind": "float", "lo": 0.06, "hi": 0.3},
+    "time_stop": {"kind": "int", "lo": 4, "hi": 15, "step": 1}
+  }
+}

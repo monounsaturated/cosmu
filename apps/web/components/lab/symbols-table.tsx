@@ -76,10 +76,24 @@ function lifeStatusOf(status: string | null | undefined): LifeStatus {
   return "lab";
 }
 
-// The small per-row lifecycle badge (replaces the old Verdict cell). Backtest / Paper / Live / Killed, reusing the
-// shared stage-badge classes so it matches every other surface.
-function LifeBadge({ status }: { status: string | null | undefined }) {
-  const life = lifeStatusOf(status);
+// A row with NO computed cell — the engine's synthetic "New" row for an authored-but-uncomputed version. It has
+// no symbol (no backtest_symbols cell exists), so an empty symbol IS the signal. Such a version is "New" on THIS
+// screener (nothing computed per-symbol) regardless of the parent version's raw pipeline status — so it lands in
+// the New lane and is reachable via the Status="New" filter, instead of hiding under Killed/Screened/Paper.
+function isUncomputed(r: LabSymbolRow): boolean {
+  return r.symbol === "";
+}
+
+// The row's lifecycle lane: a cell-less (uncomputed) row is ALWAYS "New" (lab); otherwise the parent version's
+// normalized status. Single source for the badge, the Status dropdown, the filter and the status sort.
+function rowLifeStatus(r: LabSymbolRow): LifeStatus {
+  return isUncomputed(r) ? "lab" : lifeStatusOf(r.status);
+}
+
+// The small per-row lifecycle badge (replaces the old Verdict cell). New / Backtest / Paper / Live / Killed,
+// reusing the shared stage-badge classes so it matches every other surface.
+function LifeBadge({ row }: { row: LabSymbolRow }) {
+  const life = rowLifeStatus(row);
   return <span className={LIFE_BADGE_CLASS[life]}>{LIFE_LABEL[life]}</span>;
 }
 
@@ -99,7 +113,7 @@ const SORT_VALUE: Record<SortKey, (r: LabSymbolRow, comboNum?: Map<string, numbe
   sharpe: (r) => r.sharpe,
   dd: (r) => r.max_drawdown,
   trades: (r) => r.trades,
-  status: (r) => LIFE_RANK[lifeStatusOf(r.status)] ?? 0,
+  status: (r) => LIFE_RANK[rowLifeStatus(r)] ?? 0,
 };
 
 // Column order: status · return · venue · symbol · trades · dd · sharpe.
@@ -194,6 +208,10 @@ export function SymbolsTable({
   // per-CELL triplet highlight (only the clicked row lights up). The deep-link opens the sheet by version; the
   // triplet is pinned only when ?symbol= (and optionally ?venue=) is present.
   const [sheetVersionId, setSheetVersionId] = useState<string | null>(deepLink?.version_id ?? null);
+  // The clicked ROW itself (a backtest_symbols cell) — passed to the sheet so its backtest-phase headline reads
+  // this cell's STANDALONE truth (Return / Max DD / Trades + equity) instead of the version's pooled aggregate
+  // (which for a brut-converted combo carries garbage, e.g. 505% DD). null on a deep-link with no row resolved.
+  const [sheetCell, setSheetCell] = useState<LabSymbolRow | null>(null);
   const [selectedTriplet, setSelectedTriplet] = useState<TripletKey | null>(
     deepLink && deepLink.symbol != null
       ? { strategy_version_id: deepLink.version_id, symbol: deepLink.symbol, venue_id: deepLink.venue ?? "" }
@@ -234,11 +252,25 @@ export function SymbolsTable({
     return map;
   }, [rows]);
 
-  // ── Stable algorithm number (SECONDARY, subtle): #1, #2, … per DISTINCT strategy_name (sorted), computed once
-  // over ALL rows so the number is identical regardless of paging, sort or the active filters. Rendered muted —
-  // it helps recognise the same algorithm across its cells, but the combo number above is the identity. ──
+  // ── Stable algorithm number (SECONDARY, subtle): #1, #2, … per DISTINCT strategy_name, computed once over ALL
+  // rows so the number is identical regardless of paging, sort or the active filters. Numbered by AUTHORING ORDER
+  // (each strategy's EARLIEST cell created_at): #1 = first authored, #N = latest. So a HIGHER number = a NEWER
+  // strategy, which is what the Strategies dropdown's number-descending order (latest first) relies on. Ties on
+  // created_at fall back to name for determinism. Rendered muted — the combo number above is the identity. ──
   const strategyNumber = useMemo(() => {
-    const names = Array.from(new Set(rows.map((r) => r.strategy_name))).sort((a, b) => a.localeCompare(b));
+    const firstSeen = new Map<string, number>();
+    for (const r of rows) {
+      const t = Date.parse(r.created_at);
+      const ts = Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+      const prev = firstSeen.get(r.strategy_name);
+      if (prev === undefined || ts < prev) firstSeen.set(r.strategy_name, ts);
+    }
+    const names = Array.from(firstSeen.keys()).sort((a, b) => {
+      const ta = firstSeen.get(a)!;
+      const tb = firstSeen.get(b)!;
+      if (ta !== tb) return ta - tb;
+      return a.localeCompare(b);
+    });
     const map = new Map<string, number>();
     names.forEach((n, i) => map.set(n, i + 1));
     return map;
@@ -250,10 +282,12 @@ export function SymbolsTable({
     [rows],
   );
 
-  // The lifecycle statuses actually PRESENT in the rows (for the Status dropdown), ordered by pipeline stage.
+  // The lifecycle lanes actually PRESENT in the rows (for the Status dropdown), ordered by pipeline stage. Uses
+  // the row-level lane so a cell-less uncomputed row registers the "New" (lab) lane — making it selectable even
+  // though no parent version carries a literal lab status.
   const statusOptions = useMemo(() => {
     const present = new Set<LifeStatus>();
-    for (const r of rows) present.add(lifeStatusOf(r.status));
+    for (const r of rows) present.add(rowLifeStatus(r));
     const order: LifeStatus[] = ["lab", "screened", "paper", "live", "killed"];
     return order.filter((s) => present.has(s));
   }, [rows]);
@@ -264,7 +298,7 @@ export function SymbolsTable({
       if (strategySel.size && !strategySel.has(r.strategy_name)) return false;
       if (symbolSel.size && !symbolSel.has(r.symbol)) return false;
       if (venueSel.size && !venueSel.has(r.venue_id ?? "")) return false;
-      if (statusSel.size && !statusSel.has(lifeStatusOf(r.status))) return false;
+      if (statusSel.size && !statusSel.has(rowLifeStatus(r))) return false;
       if (q && !r.strategy_name.toLowerCase().includes(q) && !r.symbol.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -314,8 +348,13 @@ export function SymbolsTable({
     deepLinkDone.current = true;
     setPage(Math.floor(deepLinkIndex / PAGE_SIZE));
     const r = filtered[deepLinkIndex];
-    if (r) setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id });
-  }, [deepLinkIndex, filtered]);
+    if (r) {
+      setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id });
+      // A deep-linked sheet (opened via ?v= on load) also reads the resolved cell's standalone truth (unless the
+      // resolved row is uncomputed — then no per-cell numbers exist, keep the sheet on its honest fallbacks).
+      if (sheetVersionId === r.strategy_version_id) setSheetCell(isUncomputed(r) ? null : r);
+    }
+  }, [deepLinkIndex, filtered, sheetVersionId]);
 
   const safePage = Math.min(page, pageCount - 1);
   const pageStart = safePage * PAGE_SIZE;
@@ -351,24 +390,32 @@ export function SymbolsTable({
     // are DISTINCT: clicking one cell highlights only THAT row, never every sibling cell of the same algo.
     setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id });
     setSheetVersionId(r.strategy_version_id);
+    // An uncomputed (cell-less) row carries zeroed synthetic metrics — never feed those to the sheet as a "cell"
+    // (it would read +0.0% / 0 trades as if real). The sheet then falls back to its honest pooled/empty states.
+    setSheetCell(isUncomputed(r) ? null : r);
   }
 
   function renderCell(r: LabSymbolRow, key: ColKey) {
+    // An uncomputed (cell-less "New") row has no symbol/venue and its metrics are zeroed placeholders, NOT real
+    // results — render an explicit "—" so a not-yet-backtested version never reads as a flat 0% / 0-trade result.
+    const uncomputed = isUncomputed(r);
     switch (key) {
       case "symbol":
-        return <td key={key}>{r.symbol}</td>;
+        return <td key={key} className={uncomputed ? "quiet" : undefined}>{uncomputed ? "—" : r.symbol}</td>;
       case "venue":
-        return <td key={key} className={r.venue_id ? undefined : "quiet"}>{formatVenue(r.venue_id)}</td>;
+        return <td key={key} className={r.venue_id ? undefined : "quiet"}>{uncomputed ? "—" : formatVenue(r.venue_id)}</td>;
       case "return":
-        return <td key={key} style={{ textAlign: "right", color: r.return_pct >= 0 ? "var(--up)" : "var(--down)" }}>{formatPct(r.return_pct * 100)}</td>;
+        return uncomputed
+          ? <td key={key} style={{ textAlign: "right" }} className="quiet">—</td>
+          : <td key={key} style={{ textAlign: "right", color: r.return_pct >= 0 ? "var(--up)" : "var(--down)" }}>{formatPct(r.return_pct * 100)}</td>;
       case "sharpe":
-        return <td key={key} style={{ textAlign: "right" }}>{Number.isFinite(r.sharpe) ? r.sharpe.toFixed(2) : "—"}</td>;
+        return <td key={key} style={{ textAlign: "right" }} className={uncomputed ? "quiet" : undefined}>{uncomputed ? "—" : Number.isFinite(r.sharpe) ? r.sharpe.toFixed(2) : "—"}</td>;
       case "dd":
-        return <td key={key} style={{ textAlign: "right" }} className="quiet">{`${(r.max_drawdown * 100).toFixed(1)}%`}</td>;
+        return <td key={key} style={{ textAlign: "right" }} className="quiet">{uncomputed ? "—" : `${(r.max_drawdown * 100).toFixed(1)}%`}</td>;
       case "trades":
-        return <td key={key} style={{ textAlign: "right" }}>{r.trades}</td>;
+        return <td key={key} style={{ textAlign: "right" }} className={uncomputed ? "quiet" : undefined}>{uncomputed ? "—" : r.trades}</td>;
       case "status":
-        return <td key={key}><LifeBadge status={r.status} /></td>;
+        return <td key={key}><LifeBadge row={r} /></td>;
     }
   }
 
@@ -384,6 +431,9 @@ export function SymbolsTable({
           selected={strategySel}
           onChange={setStrategySel}
           renderOption={(o) => `#${strategyNumber.get(o) ?? "?"} ${o}`}
+          // Unselected strategies ordered by NUMBER DESCENDING (highest = latest authored first) so new
+          // strategies surface at the top, not buried under the alphabetical run.
+          orderUnselected={(a, b) => (strategyNumber.get(b) ?? 0) - (strategyNumber.get(a) ?? 0)}
         />
         <MultiSelect label="symbols" options={symbols} selected={symbolSel} onChange={setSymbolSel} />
         <MultiSelect label="venues" options={venues} selected={venueSel} onChange={setVenueSel} renderOption={(v) => formatVenue(v)} formatValue={(v) => formatVenue(v)} />
@@ -521,16 +571,17 @@ export function SymbolsTable({
         </div>
       ) : null}
 
-      {/* The side panel stays keyed by VERSION (it shows the whole Version). Closing it drops both the sheet and
+      {/* The side panel stays keyed by VERSION (it shows the whole Version) but carries the clicked CELL so the
+          backtest-phase headline reads that cell's standalone truth. Closing it drops the sheet, the cell, and
           the per-cell row highlight so the table returns to a clean unselected state. */}
-      <SheetPanel id={sheetVersionId} onClose={() => { setSheetVersionId(null); setSelectedTriplet(null); }} />
+      <SheetPanel id={sheetVersionId} cell={sheetCell} onClose={() => { setSheetVersionId(null); setSheetCell(null); setSelectedTriplet(null); }} />
     </>
   );
 }
 
 // ── the right detail sheet — fetches the full Version detail client-side (via the same-origin proxy) and renders
 // the SHARED StrategySheet. Honest loading + error states. Ported from the OG strategies page (the regression fix). ──
-function SheetPanel({ id, onClose }: { id: string | null; onClose: () => void }) {
+function SheetPanel({ id, cell, onClose }: { id: string | null; cell?: LabSymbolRow | null; onClose: () => void }) {
   const [detail, setDetail] = useState<StrategyDetailResponse | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
 
@@ -571,7 +622,7 @@ function SheetPanel({ id, onClose }: { id: string | null; onClose: () => void })
       ) : state === "error" ? (
         <p className="quiet" style={{ fontSize: 12, padding: "20px 4px" }}>Could not load this strategy&apos;s detail — the engine did not respond.</p>
       ) : detail ? (
-        <StrategySheet strategy={detail} />
+        <StrategySheet strategy={detail} cell={cell} />
       ) : null}
     </SidePanel>
   );
@@ -580,7 +631,9 @@ function SheetPanel({ id, onClose }: { id: string | null; onClose: () => void })
 // A multi-select dropdown — click the button, search the options, click rows to toggle several. Selected options
 // FLOAT TO THE TOP (selected-first, then the rest) so the picks are visible at a glance; each option carries a
 // real checkbox. `renderOption`/`formatValue` let a caller show a friendlier label than the raw option value
-// (e.g. "#3 momentum" for a strategy, "Paper" for a status lane).
+// (e.g. "#3 momentum" for a strategy, "Paper" for a status lane). `orderUnselected` overrides how the UNSELECTED
+// items are ordered (selected-first is always honoured first) — the Strategies dropdown passes a number-DESC
+// comparator (latest #N first); Symbols/Venues keep the default A→Z label sort.
 function MultiSelect({
   label,
   options,
@@ -588,6 +641,7 @@ function MultiSelect({
   onChange,
   renderOption,
   formatValue,
+  orderUnselected,
 }: {
   label: string;
   options: string[];
@@ -595,6 +649,7 @@ function MultiSelect({
   onChange: (next: Set<string>) => void;
   renderOption?: (o: string) => string;
   formatValue?: (o: string) => string;
+  orderUnselected?: (a: string, b: string) => number;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -612,20 +667,22 @@ function MultiSelect({
   const optLabel = (o: string) => (renderOption ? renderOption(o) : o || "—");
   const valLabel = (o: string) => (formatValue ? formatValue(o) : o || "—");
 
-  // Filter by the rendered label OR the raw value, then SELECTED-FIRST so picks float to the top.
+  // Filter by the rendered label OR the raw value, then SELECTED-FIRST so picks float to the top. Within each
+  // group the order is `orderUnselected` if provided (Strategies → number-desc), else A→Z by rendered label.
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const matched = options.filter(
       (o) => optLabel(o).toLowerCase().includes(needle) || o.toLowerCase().includes(needle),
     );
+    const within = orderUnselected ?? ((a: string, b: string) => optLabel(a).localeCompare(optLabel(b)));
     return matched.slice().sort((a, b) => {
       const sa = selected.has(a) ? 0 : 1;
       const sb = selected.has(b) ? 0 : 1;
       if (sa !== sb) return sa - sb;
-      return optLabel(a).localeCompare(optLabel(b));
+      return within(a, b);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, q, selected, renderOption]);
+  }, [options, q, selected, renderOption, orderUnselected]);
 
   // Button label: "All X" when empty (clickable opener); the single value when one is picked; else "n X".
   const btnLabel =

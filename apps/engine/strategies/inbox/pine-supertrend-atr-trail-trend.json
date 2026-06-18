@@ -1,0 +1,61 @@
+{
+  "name": "Supertrend ATR-trailing trend (Pine import)",
+  "rationale": "Faithful import of the classic Supertrend trend-follower (KivancOzbilgic's open-source SuperTrend STRATEGY; Alorse 'Supertrend [Alorse]', ATR period 10 / multiplier 3.7). Supertrend is an ATR-scaled trailing line: it flips bullish when price closes above the upper band and rides an ATR-distance trailing stop until price closes through it. Economic mechanism: an ATR-normalized trailing stop only stays on the right side of price while a directional trend persists, so being long while the line is bullish harvests trend-persistence (the same autocorrelation-of-returns premium momentum exploits) while the ATR trail cuts the position the moment the trend structurally breaks — volatility-adaptive risk, wide in chop, tight after a clean run. We translate the Supertrend STATE to an enabled long: positive medium-term return (ret_Nd>0, price above the implied trailing line) confirmed by an ADX floor (Supertrend whipsaws badly in non-trending tape — the directional-strength filter is the honest stand-in for 'a real flip, not noise'), and we ride it with the defining piece of Supertrend — an ATR-scaled trailing exit (exit.plan.runner_trail) armed after the first take-profit, with break-even protection. Translation losses (noted, not fabricated): (1) Supertrend's exact recursive band/flip line is not a registry feature — approximated by ret_Nd>floor + adx>floor on a fitted lookback that the Finder matches to the intended ATR window; (2) the literal ATR-multiplier-3.7 trailing distance becomes a fitted runner_trail fraction (no magic number); (3) the lowest(2)-bar initial stop becomes a fitted stop fraction. Honest prior: Supertrend is the most-cloned crypto trend script but in spot backtests net of ~20bps round-trip it usually reduces to a fee-eaten momentum proxy — expected outcome is a powered fail that maps the ATR-trail surface; the Gate disposes. Disconfirmer: ADX collapsing below a floor (trend died) closes the trade before the trailing stop, and the time-stop bounds a stalled flip.",
+  "catalyst": "Supertrend flips/stays bullish — price holds above its ATR-trailing line in a confirmed (ADX) trend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 2,
+    "max_hold_days": 30
+  },
+  "direction": 1,
+  "entry": [
+    {
+      "feature": {"name": "ret_Nd", "lookback": {"param": "trend_lb"}},
+      "op": "gt",
+      "threshold": {"param": "trend_floor"}
+    },
+    {
+      "feature": {"name": "adx"},
+      "op": "gt",
+      "threshold": {"param": "adx_floor"}
+    }
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ],
+    "plan": {
+      "multi_tp": [
+        {"at": {"param": "tp1"}, "size_pct": {"param": "tp1_size"}}
+      ],
+      "break_even_after_tp1": true,
+      "runner_trail": {"param": "atr_trail"}
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.1,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "trend_lb": {"kind": "int", "lo": 8, "hi": 40, "step": 1},
+    "trend_floor": {"kind": "float", "lo": 0.0, "hi": 0.06},
+    "adx_floor": {"kind": "float", "lo": 18, "hi": 35},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "stop": {"kind": "float", "lo": 0.04, "hi": 0.15},
+    "tp": {"kind": "float", "lo": 0.1, "hi": 0.5},
+    "tp1": {"kind": "float", "lo": 0.03, "hi": 0.15},
+    "tp1_size": {"kind": "float", "lo": 0.3, "hi": 0.6},
+    "atr_trail": {"kind": "float", "lo": 0.02, "hi": 0.1},
+    "time_stop": {"kind": "int", "lo": 8, "hi": 30, "step": 1}
+  }
+}

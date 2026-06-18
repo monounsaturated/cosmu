@@ -7,6 +7,10 @@
 //
 // HONESTY: the tabs are built ONLY from series that actually exist, never fabricated:
 //   • Backtest → the engine's gross/net curve (GET /explorer/{versionId}); shown whenever there's a Version.
+//     EXCEPTION — when the sheet is focused on ONE (algo × asset × venue) CELL (`perCell`), the /explorer
+//     curve is the POOLED panel, NOT this cell's standalone trajectory (and for a brut-converted combo it can
+//     be empty / carry a garbage pooled max_dd). There is no per-cell curve endpoint yet, so rather than draw
+//     the pooled curve (or its 505%-style garbage) we show an HONEST per-cell empty state.
 //   • Paper / Live → the engine's MARKED scope='track' trajectory (forward_equity). There is NO paper-vs-live
 //     split on the contract, so this is ONE real curve, labeled by the track's current stage (Paper or Live).
 //     The tab only appears with ≥ 2 marked points; otherwise the Backtest curve is the honest view.
@@ -23,14 +27,19 @@ type TabKey = "backtest" | "paper" | "live";
 export function EquityPanel({
   versionId,
   forwardCurve,
-  stage
+  stage,
+  perCell = false
 }: {
   versionId: string | null;
   forwardCurve: Point[];
   stage: Stage;
+  // True when the sheet is focused on ONE cell — suppress the POOLED /explorer curve (no per-cell curve exists
+  // yet) and show an honest per-cell empty state on the Backtest tab instead of garbage.
+  perCell?: boolean;
 }) {
-  // Tabs honestly reflect available data: Backtest (whenever a Version exists, the curve is fetched lazily),
-  // plus a single forward tab labeled by the current stage when ≥ 2 marked snapshots exist.
+  // Tabs honestly reflect available data: Backtest (whenever a Version exists, the curve is fetched lazily —
+  // unless focused on one cell, where the pooled curve isn't this cell's truth, so the tab shows an honest
+  // empty), plus a single forward tab labeled by the current stage when ≥ 2 marked snapshots exist.
   const tabs = useMemo(() => {
     const t: { key: TabKey; label: string }[] = [];
     if (versionId) t.push({ key: "backtest", label: "Backtest" });
@@ -72,7 +81,13 @@ export function EquityPanel({
       </div>
 
       {active === "backtest" && versionId ? (
-        <BacktestEquity versionId={versionId} embedded />
+        perCell ? (
+          <div className="eq-empty">
+            Per-cell equity curve accrues as this combo trades — the pooled backtest curve is not this cell&apos;s standalone trajectory.
+          </div>
+        ) : (
+          <BacktestEquity versionId={versionId} embedded />
+        )
       ) : (
         <PhasedEquity paperCurve={forwardCurve} embedded />
       )}

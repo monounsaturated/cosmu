@@ -1,0 +1,58 @@
+{
+  "name": "Chandelier-exit breakout trail (buy strength, ATR-trail) (Pine import)",
+  "rationale": "Faithful import of the Chandelier Exit trend system (Chuck LeBeau's Chandelier Exit, popularized by Alexander Elder; everget's widely-used open-source 'Chandelier Exit' Pine script: a trailing stop set at Highest-High(22) - ATR(22)*3.0): buy strength as price pushes to the top of its recent range, then ride a volatility-scaled ATR trailing stop anchored to the running high — no fixed profit target, the trail decides the exit. Economic mechanism: entering when price sits at the TOP of its recent channel (a fresh local-high thrust) buys demonstrated upside strength at the point trend-followers expect continuation; the Chandelier ATR trail then widens in volatile tape and tightens after a clean run, locking in trend profit while giving the move room to breathe — the canonical 'cut losses by volatility, let winners run' exit. This is structurally DISTINCT from the Supertrend import (which enters on a trend-STATE: positive ret_Nd + an ADX floor, with a fitted-fraction trail) and from the Turtle import (which enters on a long-lookback Donchian breakout and exits at the opposite channel LOW): here the ENTRY is range_position high (price at the channel ceiling = the LeBeau 'highest high' anchor) and the EXIT is a pure ATR runner_trail (exit.plan.runner_trail) armed after a first partial take, with break-even — the defining Chandelier structure. Translation losses (noted, not fabricated): (1) the literal Chandelier line Highest-High(22) - ATR(22)*3.0 is not a single registry feature — entry uses range_position (price near its channel top, the 'highest high' proximity read) and the exit uses a fitted runner_trail fraction in place of the ATR*3.0 distance (the Finder fits the multiple-equivalent; no magic number); (2) the literal lookback 22 and multiplier 3.0 become fitted lookbacks/fractions; (3) Chandelier flips long/short only after a decisive crossover — we take the long leg only (spot), so the flip-to-short half is dropped. Honest prior: ATR-trailing-stop trend systems (Chandelier/Supertrend family) are the most-cloned crypto trend templates; net of ~20bps round-trip on spot they usually reduce to fee-eaten breakout-momentum — expected a powered fail that maps the buy-strength-and-trail surface; the Gate disposes. Disconfirmer: a wide catastrophic stop_loss plus a time-stop bound a breakout that immediately reverts (the ATR trail's failure mode); range_position is the entry, the runner_trail is the real exit, so a trend that never extends past TP1 is closed by the trail at break-even.",
+  "catalyst": "price pushes to the top of its recent channel (fresh local-high thrust) — Chandelier long",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 2,
+    "max_hold_days": 30
+  },
+  "direction": 1,
+  "entry": [
+    {
+      "feature": {"name": "range_position", "lookback": {"param": "channel_lb"}},
+      "op": "gt",
+      "threshold": {"param": "channel_high_floor"}
+    },
+    {
+      "feature": {"name": "ret_Nd", "lookback": {"param": "thrust_lb"}},
+      "op": "gt",
+      "threshold": {"param": "thrust_floor"}
+    }
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "plan": {
+      "multi_tp": [
+        {"at": {"param": "tp1"}, "size_pct": {"param": "tp1_size"}}
+      ],
+      "break_even_after_tp1": true,
+      "runner_trail": {"param": "atr_trail"}
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.1,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "channel_lb": {"kind": "int", "lo": 14, "hi": 40, "step": 1},
+    "channel_high_floor": {"kind": "float", "lo": 0.7, "hi": 0.95},
+    "thrust_lb": {"kind": "int", "lo": 2, "hi": 10, "step": 1},
+    "thrust_floor": {"kind": "float", "lo": 0.0, "hi": 0.04},
+    "stop": {"kind": "float", "lo": 0.05, "hi": 0.18},
+    "tp": {"kind": "float", "lo": 0.15, "hi": 0.6},
+    "tp1": {"kind": "float", "lo": 0.04, "hi": 0.15},
+    "tp1_size": {"kind": "float", "lo": 0.3, "hi": 0.6},
+    "atr_trail": {"kind": "float", "lo": 0.03, "hi": 0.12},
+    "time_stop": {"kind": "int", "lo": 8, "hi": 30, "step": 1}
+  }
+}

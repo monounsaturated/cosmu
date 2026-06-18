@@ -25,7 +25,7 @@ from cosmu.master.cohort import promote_brut
 from cosmu.master.live_eligibility import cell_id
 from cosmu.master.scorer import BacktestMetrics
 from cosmu.master.screen_universe import build_cost_context
-from cosmu.master.tracks import open_paper_track
+from cosmu.master.tracks import WATCH_VERDICT, is_near_miss_cell, open_paper_track
 from cosmu.master.trade_floor import MIN_TRADES_PER_SYMBOL
 from cosmu.ml.regime import proven_regimes
 from cosmu.ml.survival import features_from_metrics, load_survival_model
@@ -539,8 +539,31 @@ class FarmLoop:
         # score(), no breadth/generalize gate, no FDR — each cell judged ALONE on its own data (sc.cells).
         passing = [c for c in sc.cells.values() if c.passed]
         passed = bool(passing)
-        status = "screened" if passed else "killed"
-        kill_reason = None if passed else (sc.pre_kill or "no_passing_cell")
+        # GENEROUS-PAPER near-miss set (computed once for the status, the per-cell verdict, AND the track fan-out):
+        # gate-FAILED cells promising enough to forward-test (sharpe>1 / trades>=30 / return>0, net of fees — off the
+        # same per-cell display metrics persisted on backtest_symbols).
+        _watch_syms: set[str] = {
+            _sym
+            for _sym, _pm in (sc.per_symbol or {}).items()
+            if (_c := sc.cells.get(_sym)) is not None and not _c.passed
+            and is_near_miss_cell(
+                sharpe=float(_pm.get("sharpe", 0.0)),
+                trades=int(_pm.get("trades", 0)),
+                return_pct=float(_pm.get("return", 0.0)),
+            )
+        }
+        # A candidate with NO gate pass but a WATCH near-miss goes to PAPER (it forward-tests on the generous lane,
+        # so it must be ALIVE for the funder + executor to step it). Only neither-pass-nor-watch is truly KILLED. The
+        # brut gate VERDICT is unchanged (passed_gates on the backtest still reflects the gate); a watch version is
+        # never live-armable (live-eligibility reads the per-cell pass passport, which a watch cell lacks).
+        if passed:
+            status = "screened"
+        elif _watch_syms:
+            status = "paper"
+        else:
+            status = "killed"
+        _is_killed = status == "killed"
+        kill_reason = None if not _is_killed else (sc.pre_kill or "no_passing_cell")
         survival_score = sc.survival_score
         proven = sc.proven
         # The best cell's deflated Sharpe is the display ranking number for this version (the brut verdict is per
@@ -565,7 +588,7 @@ class FarmLoop:
                 "origin": cand.origin,
                 "status": status,
                 "created_at": utcnow(),
-                "killed_at": utcnow() if not passed else None,
+                "killed_at": utcnow() if _is_killed else None,
                 "kill_reason": kill_reason,
             },
         )
@@ -616,9 +639,17 @@ class FarmLoop:
         # NOTE: a single sc.venue_id is correct only because this loop is crypto-only today (every symbol is Binance
         # spot). The finder, which screens equity+HL legs, stamps the per-symbol venue map. When this loop's universe
         # widens, carry venue_id_by_symbol onto the cells or it will mislabel the fee axis.
+        # GENEROUS-PAPER routing (mirrors the finder sweep): a gate-FAILED near-miss cell (in _watch_syms, computed
+        # above) is tagged 'watch' (not its kill reason) and ALSO funds a paper track below. The gate verdict
+        # ('pass') and the true-negative kill reasons stand.
         for _sym, _pm in (sc.per_symbol or {}).items():
             cell = sc.cells.get(_sym)
-            cell_verdict = "pass" if (cell and cell.passed) else ((",".join(cell.reasons) or "fail") if cell else None)
+            if cell and cell.passed:
+                cell_verdict = "pass"
+            elif _sym in _watch_syms:
+                cell_verdict = WATCH_VERDICT
+            else:
+                cell_verdict = (",".join(cell.reasons) or "fail") if cell else None
             b.insert("backtest_symbols", {
                 "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": sc.venue_id,
                 "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
@@ -633,10 +664,16 @@ class FarmLoop:
         # Pre-migration tracks still has UNIQUE(strategy_version_id) — a version with >1 passing cell would collide
         # on the 2nd insert. Until the held migration lands, degrade to ONE version-wide track per version; after it,
         # every cell funds its own (UNIQUE(version,symbol,venue)). Schema-adaptive, crash-proof on both schemas.
+        # TWO generous-paper lanes (mirrors the finder sweep): the GATE lane (cell passed + own holdout, lane=cand.lane)
+        # and the WATCH lane (gate-FAILED near-miss, verdict='watch' above, lane='watch') — both routed to the SAME
+        # zero-real-capital, born-honest paper test so the forward record separates real from lucky. A watch track is
+        # NOT a gate pass (live-eligibility never reads it as proof) and it defunds on drift like any paper cell.
         _cell_cols = tracks_has_cell_columns(self.store)
         _opened_version_wide = False
         for _sym, cell in sc.cells.items():
-            if not (cell.passed and cell.holdout_passed):
+            _is_pass = cell.passed and cell.holdout_passed
+            _is_watch = (not cell.passed) and (_sym in _watch_syms)
+            if not (_is_pass or _is_watch):
                 continue
             if not _cell_cols and _opened_version_wide:
                 continue
@@ -644,20 +681,23 @@ class FarmLoop:
                              symbol=cell.symbol, venue_id=cell.venue_id, store=self.store)
             if not _cell_cols:
                 _opened_version_wide = True
+            _lane = "watch" if _is_watch else cand.lane
             cell_proven = sorted(proven_regimes(cell.metrics.regime_returns))
             cid = cell_id(version_id, cell.symbol, cell.venue_id)
             b.append_event(
                 actor="master", kind="track_opened", ref_type="strategy_version", ref_id=cid,
                 payload={
-                    "deflated_sharpe": round(cell.deflated_sharpe, 6), "lane": cand.lane,
+                    "deflated_sharpe": round(cell.deflated_sharpe, 6), "lane": _lane,
                     "symbol": cell.symbol, "venue_id": cell.venue_id,
                     "survival_score": survival_score, "survival_trained": survival.trained,
                     "proven_regimes": cell_proven,
                 },
             )
-            # ADDITIVE lifecycle-trace audit marks: the cell's screen passed and the paper clock now begins.
-            b.append_event(actor="master", kind="screened_passed", ref_type="strategy_version", ref_id=cid, payload={"lane": cand.lane, "symbol": cell.symbol, "proven_regimes": cell_proven})
-            b.append_event(actor="master", kind="paper_started", ref_type="strategy_version", ref_id=cid, payload={"lane": cand.lane, "symbol": cell.symbol, "proven_regimes": cell_proven})
+            # ADDITIVE lifecycle-trace audit marks: the cell's screen passed and the paper clock now begins. A watch
+            # cell did NOT pass the screen, so it emits paper_started (the clock begins) but never screened_passed.
+            if _is_pass:
+                b.append_event(actor="master", kind="screened_passed", ref_type="strategy_version", ref_id=cid, payload={"lane": _lane, "symbol": cell.symbol, "proven_regimes": cell_proven})
+            b.append_event(actor="master", kind="paper_started", ref_type="strategy_version", ref_id=cid, payload={"lane": _lane, "symbol": cell.symbol, "proven_regimes": cell_proven})
 
         return (
             Evaluated(

@@ -1,0 +1,51 @@
+{
+  "name": "EMA-ribbon trend ride (fast/slow cross above tendence) (Pine import)",
+  "rationale": "Faithful import of the EMA-ribbon trend strategy (Alorse 'Trend EMA + RSI [Alorse]' EMA 10/20/100 and the '3 EMA/SMA + Cross' trend pattern): go long when a fast EMA crosses above a slow EMA WHILE both sit above a long 'tendence' EMA, ride the trend, and exit when RSI runs hot or after a fixed number of bars in profit. Economic mechanism: a stacked, rising EMA ribbon (fast > slow > long) is the textbook signature of an intact uptrend whose momentum is accelerating — the fast-over-slow cross times the re-acceleration, and the above-tendence condition ensures the cross happens INSIDE a structural uptrend rather than as a dead-cat bounce in a downtrend. Riding it harvests trend persistence; exiting on an overbought RSI or a bars-in-trade cap takes profit before the ribbon rolls over. The distinct structural piece vs our other trend specs: the long 'tendence' EMA is encoded as the MaTrendFilter regime gate (setup.ma_trend_filter, fitted ma_lookback ~100-200), and the fast/slow cross is encoded as positive medium-term momentum (ret_Nd>floor) on a SHORT fitted lookback — a momentum-continuation entry gated by a slow-MA regime, which no existing spec combines this way. Translation losses (noted, not fabricated): (1) the two-EMA crossover event is approximated by ret_Nd>floor on a short lookback (price advancing = fast pulling above slow) rather than a literal crossover of two EMA series, which the registry does not expose as a pair — the Finder fits the lookback to the intended 10/20 window; (2) the 'close > open' single-bar confirmation is dropped (a 1-bar candle filter is noise at the daily/4h horizon, not the edge); (3) the literal EMA periods 10/20/100 become fitted lookbacks (no magic numbers); (4) Alorse's stop = lowest-low over 2x-crossBack bars becomes a fitted stop fraction. Honest prior: EMA-ribbon/golden-cross trend systems are the most common retail trend template; net of ~20bps on crypto spot they typically reduce to fee-eaten momentum — expected a powered fail that maps the trend surface; the Gate disposes. Disconfirmer: the RSI-overbought signal exit takes profit at exhaustion; the time-stop closes a stalled trend; a sub-floor return means the cross failed and the stop bounds it.",
+  "catalyst": "fast EMA crosses above slow EMA while both hold above the long tendence EMA (ribbon stacked up)",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 24
+  },
+  "direction": 1,
+  "entry": [
+    {
+      "feature": {"name": "ret_Nd", "lookback": {"param": "cross_lb"}},
+      "op": "gt",
+      "threshold": {"param": "cross_floor"}
+    }
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "rsi"}, "op": "gt", "threshold": {"param": "rsi_exit"}}
+    ]
+  },
+  "setup": {
+    "ma_trend_filter": {
+      "ma_lookback": {"param": "tend_lb"}
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.1,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "cross_lb": {"kind": "int", "lo": 5, "hi": 25, "step": 1},
+    "cross_floor": {"kind": "float", "lo": 0.0, "hi": 0.05},
+    "tend_lb": {"kind": "int", "lo": 80, "hi": 200, "step": 5},
+    "rsi_exit": {"kind": "float", "lo": 65, "hi": 85},
+    "stop": {"kind": "float", "lo": 0.05, "hi": 0.16},
+    "tp": {"kind": "float", "lo": 0.1, "hi": 0.4},
+    "time_stop": {"kind": "int", "lo": 8, "hi": 24, "step": 1}
+  }
+}
