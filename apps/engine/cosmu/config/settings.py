@@ -221,6 +221,14 @@ class Settings(BaseSettings):
     binance_api_secret: str | None = Field(default=None, repr=False)
     binance_testnet_api_key: str | None = Field(default=None, repr=False)
     binance_testnet_api_secret: str | None = Field(default=None, repr=False)
+    # Kraken spot (crypto): the US-legal live crypto venue. Real keys are honored ONLY with live.mode=="real"
+    # (the same never-auto-live interlock as Binance/Alpaca). Kraken spot has NO public sandbox/testnet, so
+    # there is no testnet key pair — the only modes are disabled (no keys) and live (keys + mode=="real"). No
+    # keys → the adapter is disabled and crypto tracks routed here stay on the SIM lane (honest degradation).
+    # NOTE: live Kraken from FR/EU retail is ESMA-restricted for derivatives, but SPOT is permitted via Payward
+    # Europe Ltd (MiCA); the keys + live.mode interlock guarantees nothing arms without explicit operator action.
+    kraken_api_key: str | None = Field(default=None, repr=False)
+    kraken_api_secret: str | None = Field(default=None, repr=False)
     # Alpaca (US equities): PAPER keys unlock the free paper-trading lane AND the market-data API (IEX feed) —
     # the equity data+paper venue. Live keys are honored ONLY with live.mode=="real" (the same
     # never-auto-live interlock as Binance). No keys → the adapter is disabled and the equity lane stays on

@@ -155,8 +155,15 @@ def default_catalog() -> VenueCatalog:
                     VenueFeeTier(min_volume_30d_usd=Decimal("20000000"), maker_fee_bps=Decimal("6"), taker_fee_bps=Decimal("7")),
                 ],
             ),
-            # Crypto — Kraken: US-legal crypto live venue. Fees are WORSE than Binance (the real finding):
-            # ~16/26 bps retail, only reaching Binance-like levels at high volume.
+            # Crypto — Kraken SPOT: US-legal crypto live venue (Payward Inc) + FR/EU-legal via Payward Europe Ltd
+            # (MiCA). Fees are WORSE than Binance (the real finding): ~16/26 bps retail, only reaching Binance-like
+            # levels at high volume. live_enabled=True — the exec adapter is wired (cosmu/adapters/exec/kraken.py);
+            # a real order still needs KRAKEN_API_KEY/SECRET + live.mode=="real" + a gate-passed survivor + caps +
+            # the toggle (the same interlocks as Binance), so the catalog flag does NOT arm anything by itself.
+            # JURISDICTION: SPOT is permitted for FR/EU retail via the MiCA entity, so restricted_jurisdictions
+            # stays []. ESMA restricts crypto DERIVATIVES (CFD-like) for EU retail — that wall lives on the
+            # separate kraken_futures venue below (live_enabled=False), NOT on spot. The operator validated adding
+            # Kraken; the keys + live.mode interlock guarantees nothing arms without explicit keys.
             Venue(
                 id="kraken", name="Kraken", kind="crypto", adapter="nautilus.kraken",
                 maker_fee_bps=Decimal("16"), taker_fee_bps=Decimal("26"),

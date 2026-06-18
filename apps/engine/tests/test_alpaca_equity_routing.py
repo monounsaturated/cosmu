@@ -81,11 +81,13 @@ def test_equity_data_capability_is_now_honest():
 
 def test_has_live_data_stays_crypto_specific_when_only_equities_enabled(tmp_path):
     """REGRESSION (audit 2026-06-13): widening VENUES_WITH_DATA to include the equity venue must NOT make the
-    crypto-only Finder/cohort fire on an empty crypto universe. With Binance disabled but Alpaca (equity) still
-    enabled and in VENUES_WITH_DATA, has_live_data() — the crypto gate — must be False."""
+    crypto-only Finder/cohort fire on an empty crypto universe. With BOTH crypto data venues (Binance + Kraken)
+    disabled but Alpaca (equity) still enabled and in VENUES_WITH_DATA, has_live_data() — the crypto gate —
+    must be False (equity venues never satisfy the crypto-specific gate)."""
     store = _store(tmp_path)
     _seed_venues(store)
     set_venue_enabled(store, "binance", False)
+    set_venue_enabled(store, "kraken", False)  # Kraken is also a crypto data venue now; isolate the equity case
 
     venues, classes = enabled_universe(store)
     assert "alpaca" in venues and "alpaca" in VENUES_WITH_DATA  # the equity venue IS enabled + display-data
@@ -96,3 +98,12 @@ def test_has_live_data_true_when_binance_enabled(tmp_path):
     store = _store(tmp_path)
     _seed_venues(store)
     assert has_live_data(store) is True
+
+
+def test_has_live_data_true_on_kraken_alone(tmp_path):
+    """Kraken is a real always-available crypto data venue (keyless public OHLC), so the crypto Finder gate is
+    satisfied by Kraken even with Binance disabled — the converse of the equity-only starvation above."""
+    store = _store(tmp_path)
+    _seed_venues(store)
+    set_venue_enabled(store, "binance", False)
+    assert has_live_data(store) is True  # Kraken keeps the crypto gate alive
