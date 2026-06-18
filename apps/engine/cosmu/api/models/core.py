@@ -137,7 +137,16 @@ class Backtest(BaseModel):
     id: str
     kind: str
     oos_return: float
+    # `deflated_sharpe` is the deflated-Sharpe RATIO (a risk-adjusted RANKING number, can exceed 1.0) — NOT the
+    # value the Gate's 0.95 bar checks. The Gate gates on `deflated_sharpe_prob` below: the PROBABILITY in [0,1]
+    # that the edge is real after the multiple-testing penalty. Surfacing both, distinctly labelled, is what keeps
+    # the sheet from reading "deflated-Sharpe 0.98 — below the 0.95 bar" (a ratio compared to a probability bar).
     deflated_sharpe: float
+    # The GATED metric: deflated-Sharpe PROBABILITY in [0,1], recomputed (master/scorer.deflated_sharpe_prob) from
+    # this row's persisted survival inputs (sharpe_per_obs/skew/kurtosis/n_obs/trials_counted). None when those
+    # columns are absent (pre-migration / arm rows) — the UI then falls back to passed_gates (≥/< 0.95). Verified
+    # prod-wide: where computable, prob ≥ 0.95 ⟺ passed_gates, so the displayed number never contradicts the verdict.
+    deflated_sharpe_prob: float | None = None
     max_dd: float
     win_rate: float
     num_trades: int

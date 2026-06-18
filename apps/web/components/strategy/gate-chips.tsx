@@ -6,29 +6,36 @@
 
 import type { Backtest } from "@cosmu/contracts-ts";
 
-// The REAL Gate thresholds surfaced here so the chips read against the SAME numbers the engine gates on.
-const GATE = { maxPbo: 0.5, maxDrawdownPct: 0.25, minDeflatedSharpe: 0 } as const;
+// The REAL Gate thresholds surfaced here so the chips read against the SAME numbers the engine gates on. The DSR
+// chip gates on the deflated-Sharpe PROBABILITY (≥ 0.95), NOT the deflated-Sharpe ratio — the ratio is a ranking
+// number that can exceed 1.0, so comparing it to the 0.95 PROBABILITY bar reads as a contradiction.
+const GATE = { maxPbo: 0.5, maxDrawdownPct: 0.25, minDsrProb: 0.95 } as const;
 
 type Chip = { name: string; value: string; tip: string; valueClass: string; pass: boolean | null };
 
 function chipsOf(bt: Backtest | null): Chip[] {
   if (!bt) {
     return [
-      { name: "DSR", value: "—", tip: "Deflated Sharpe — edge after correcting for how many variants were tried.", valueClass: "", pass: null },
+      { name: "DSR-p", value: "—", tip: "Deflated-Sharpe probability — the confidence the edge is real after correcting for how many variants were tried.", valueClass: "", pass: null },
       { name: "PBO", value: "—", tip: "Probability the backtest is overfit.", valueClass: "", pass: null },
       { name: "Max DD", value: "—", tip: "Deepest peak-to-trough drawdown, vs the 25% kill limit.", valueClass: "", pass: null },
       { name: "OOS", value: "—", tip: "Out-of-sample return — data never seen during fitting.", valueClass: "", pass: null }
     ];
   }
-  const dsrPass = bt.deflated_sharpe > GATE.minDeflatedSharpe;
+  // The GATED number is the deflated-Sharpe PROBABILITY (deflated_sharpe_prob, the 0–1 value the 0.95 bar checks),
+  // recomputed by the engine from this backtest's survival inputs. When absent (pre-migration / arm rows) fall back
+  // to the binary verdict (≥/< 0.95) off passed_gates rather than fabricating a number — never show the ratio here.
+  const dsrProb = bt.deflated_sharpe_prob ?? null;
+  const dsrPass = dsrProb !== null ? dsrProb >= GATE.minDsrProb : bt.passed_gates;
+  const dsrValue = dsrProb !== null ? dsrProb.toFixed(2) : bt.passed_gates ? "≥0.95" : "<0.95";
   const pboPass = bt.pbo < GATE.maxPbo;
   const ddPass = bt.max_dd < GATE.maxDrawdownPct;
   const oosPass = bt.oos_return >= 0;
   return [
     {
-      name: "DSR",
-      value: bt.deflated_sharpe.toFixed(2),
-      tip: "Deflated Sharpe — edge after correcting for how many variants were tried. Gate: > 0.",
+      name: "DSR-p",
+      value: dsrValue,
+      tip: `Deflated-Sharpe PROBABILITY — the 0-to-1 confidence the edge is real after correcting for how many variants were tried. THIS is the number the Gate's 0.95 bar checks, not the deflated-Sharpe ratio (${bt.deflated_sharpe.toFixed(2)}). Gate: ≥ 0.95.`,
       valueClass: dsrPass ? "gc-pass" : "gc-warn",
       pass: dsrPass
     },

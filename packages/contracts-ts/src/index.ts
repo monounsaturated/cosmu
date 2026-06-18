@@ -86,6 +86,7 @@ export interface AutonomyTickResponse {
 
 export interface Backtest {
   deflated_sharpe: number;
+  deflated_sharpe_prob?: number | null;
   id: string;
   kind: string;
   max_dd: number;
