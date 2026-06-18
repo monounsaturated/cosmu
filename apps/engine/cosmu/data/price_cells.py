@@ -134,12 +134,30 @@ def build_crypto_cells(
             for sym in fallback_symbols
         ]
 
-    # Group rows by canonical pair so the reference is fetched once per pair and shared across its venues.
+    # BOUND THE SCREEN TO THE CALLER'S CURATED PAIR SET. The universal price layer WIDENS THE VENUE AXIS, not the
+    # pair axis: it screens the SAME curated pairs the legacy Binance path did (the finder's PERP_UNIVERSE, the
+    # FarmLoop's CRYPTO_SCREEN_UNIVERSE), now across EVERY enabled venue. Without this cap, load_universe returns the
+    # FULL ~4000-row crypto table and the screen would run thousands of pairs × every spec — a compute blow-up that
+    # silently busts the budget (and was never the intent; the de-collapse is about venues, not the long tail of
+    # illiquid pairs). The curated set is the caller's existing screen universe, mapped to canonical pair ids so a
+    # venue's own spelling (kraken XBTUSD ≙ binance BTCUSDT) still matches.
+    curated = {pair_for(sym, REFERENCE_VENUE).id for sym in fallback_symbols}
+
+    # Group rows by canonical pair so the reference is fetched once per pair and shared across its venues. A venue can
+    # list the SAME canonical pair under several quote spellings (kraken XBTUSD / XBTUSDC / XBTUSDT all bucket to
+    # BTC/USDT) — keep only the FIRST (= most liquid, since load_universe orders by liquidity desc) per (pair, venue)
+    # so each (pair, venue) yields exactly ONE cell, not a redundant fetch + key-collision across quote variants.
     by_pair: dict[str, list[tuple[str, str, CanonicalPair]]] = {}  # pair_id -> [(venue, row_symbol, pair)]
+    seen_pair_venue: set[tuple[str, str]] = set()
     for r in rows:
         if enabled_venues is not None and r.venue not in enabled_venues:
             continue
         pair = pair_for(r.symbol, r.venue, base=r.base, quote=r.quote)
+        if pair.id not in curated:
+            continue  # outside the curated screen set → skip (widen venues, not the pair long-tail)
+        if (pair.id, r.venue) in seen_pair_venue:
+            continue  # already took the most-liquid quote variant for this (pair, venue)
+        seen_pair_venue.add((pair.id, r.venue))
         by_pair.setdefault(pair.id, []).append((r.venue, r.symbol, pair))
 
     cells: list[PriceCell] = []
