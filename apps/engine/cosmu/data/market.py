@@ -149,6 +149,48 @@ class BinanceSpotOHLCVProvider:
         return merged
 
 
+class UniversalOHLCVProvider:
+    """The UNIVERSAL PRICE LAYER reference provider: fetch a canonical PAIR's REFERENCE OHLCV ONCE and serve it to
+    EVERY venue that UNIFIES onto it (data/reference.decision). Composes the keyless `BinanceSpotOHLCVProvider`
+    (the deepest keyless crypto book = the natural reference) and caches ONE series per PAIR (not per venue): so a
+    BTC/USDT reference is fetched a single time and a Kraken-XBTUSD cell that UNIFIES reuses the SAME bars instead
+    of fetching its own near-identical series. Keying the cache by the canonical pair id is what makes the reuse a
+    real de-dup (the underlying Binance cache is per venue-symbol; this is the pair-level contract on top).
+
+    A pair id is 'BASE/QUOTE' (e.g. 'BTC/USDT'); the reference venue-symbol is the concatenation (BTCUSDT) — the
+    Binance spelling. Offline-safe + closed-candle-correct via the composed provider; this class adds no network
+    behaviour of its own, only the pair-keyed in-process memo so one screen pass fetches each reference once."""
+
+    def __init__(self, reference: MarketDataProvider | None = None) -> None:
+        # The reference is injectable for tests / alternate references; defaults to the keyless Binance spot book.
+        self._reference = reference or BinanceSpotOHLCVProvider()
+        self._memo: dict[tuple[str, str, int], list[Bar]] = {}  # (pair_id, timeframe, limit) -> bars
+
+    @staticmethod
+    def _venue_symbol(pair_id: str) -> str:
+        """The reference venue-symbol for a canonical pair id ('BTC/USDT' -> 'BTCUSDT'). The reference book is
+        Binance, whose spelling is the bare concatenation; the '/' is purely the pair-identity separator."""
+        return pair_id.replace("/", "")
+
+    def fetch_reference(self, pair_id: str, timeframe: str, *, limit: int) -> list[Bar]:
+        """The canonical reference bars for a PAIR, fetched ONCE and memoized per (pair, timeframe, limit) for the
+        life of this provider — so N venues that unify onto the same pair share ONE fetch. Degrades exactly like
+        the composed provider (offline -> cached -> empty)."""
+        key = (pair_id, timeframe, int(limit))
+        cached = self._memo.get(key)
+        if cached is not None:
+            return cached
+        bars = self._reference.fetch_bars(self._venue_symbol(pair_id), timeframe, limit=limit)
+        self._memo[key] = bars
+        return bars
+
+    def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        """MarketDataProvider contract: `symbol` is treated as a canonical pair id (BASE/QUOTE) OR a bare venue
+        symbol (BTCUSDT) — both resolve to the same reference series via `_venue_symbol`, so this can stand in for
+        a plain provider while still memoizing per pair."""
+        return self.fetch_reference(symbol, timeframe, limit=limit)
+
+
 _US_EQUITY_CLOSE_UTC = time(21, 5)  # 16:00 ET close; 21:05 UTC is exact+buffer in winter, ~1h conservative in summer
 
 

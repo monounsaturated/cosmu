@@ -107,6 +107,8 @@ def build_cost_context(
     spec: StrategySpec,
     market: dict[str, list[Bar]],
     catalog: VenueCatalog,
+    *,
+    crypto_cell_venues: dict[str, str] | None = None,
 ) -> tuple[
     dict[str, Decimal] | None,
     dict[str, tuple[Decimal, Decimal]] | None,
@@ -127,9 +129,18 @@ def build_cost_context(
                                  backtest_symbols)
 
     A symbol's fee AND depth come from ONE `Venue.cost_inputs()` call, so a cell can never carry one venue's fee
-    paired with another venue's depth. The CRYPTO-ONLY path — no equity / HL leg AND a plain (flat-fee) primary
-    venue — returns `(None, None, None, None)`: the backtest then uses its SCALAR fee_bps / slippage_bps /
-    impact_bps for the spec's primary venue, byte-identical to the pre-cross-asset behaviour.
+    paired with another venue's depth. The CRYPTO-ONLY SINGLE-VENUE path — no equity / HL leg, a plain (flat-fee)
+    primary venue, AND no multi-venue crypto cell map — returns `(None, None, None, None)`: the backtest then uses
+    its SCALAR fee_bps / slippage_bps / impact_bps for the spec's primary venue, byte-identical to the
+    pre-cross-asset behaviour.
+
+    PER-VENUE CRYPTO CELLS (the universal-price extension): `crypto_cell_venues` maps each MARKET KEY (the screen
+    cell key — a bare symbol for the Binance reference, 'PAIR@venue' for another venue; see data/price_cells) to
+    the crypto venue that cell is priced at. When given, the cost context becomes per-CELL: each crypto cell pays
+    ITS OWN venue's taker fee + depth (Binance 10bps/5-40 vs Kraken 40bps/7-55), so the same reference price scored
+    on two venues differs ONLY by the fee/depth overlay — the de-collapse of the venue axis. This is the natural
+    extension of the equity/HL `_apply(symbols, venue_id)` seam, applied to crypto venues. Omit it (or pass None)
+    and the crypto legs price at the spec's primary venue exactly as before.
 
     PER-ASSET FEE: when a symbol trades at an ASSET-AWARE venue (Polymarket / IBKR — see ASSET_AWARE_VENUES) the
     flat catalog taker bps is WRONG (Polymarket's fee is per-category × (1−price); IBKR's is per-share/per-contract
@@ -140,11 +151,16 @@ def build_cost_context(
     equity_syms = set(equity_symbols(spec)) & market.keys()
     hl_syms = set(hyperliquid_symbols(spec)) & market.keys()
     primary = catalog.venue_for(spec.universe.venues)
-    # The per-symbol map is needed when there's a cross-asset leg (equity/HL) OR the primary venue itself has a
-    # per-asset fee model (Polymarket/IBKR) — only then does a flat scalar fee misprice the spec.
-    if not equity_syms and not hl_syms and primary.id not in ASSET_AWARE_VENUES:
-        # Crypto-only flat-fee path (the common case): no per-symbol map → the backtest's scalar fee/depth for the
-        # spec's primary venue is applied to every symbol, exactly as before.
+    # A multi-venue crypto screen exists iff the cell map names any crypto venue OTHER than the primary — only then
+    # does a flat scalar fee misprice the cross-venue cells (a single-venue crypto screen on the primary is the
+    # byte-identical path below).
+    crypto_cell_venues = crypto_cell_venues or {}
+    cross_venue_crypto = {k: v for k, v in crypto_cell_venues.items() if k in market and v != primary.id}
+    # The per-symbol map is needed when there's a cross-asset leg (equity/HL), a multi-venue crypto screen, OR the
+    # primary venue itself has a per-asset fee model (Polymarket/IBKR) — only then does a flat scalar misprice.
+    if not equity_syms and not hl_syms and not cross_venue_crypto and primary.id not in ASSET_AWARE_VENUES:
+        # Crypto-only single-venue flat-fee path (the common case): no per-symbol map → the backtest's scalar
+        # fee/depth for the spec's primary venue is applied to every symbol, exactly as before.
         return None, None, None, None
 
     # Baseline: every symbol priced at the spec's PRIMARY venue (depth from one source); the taker fee is the
@@ -170,6 +186,16 @@ def build_cost_context(
         _apply(equity_syms, "ibkr")        # the equity LIVE venue — its real per-share fee + depth (2/25)
     if hl_syms:
         _apply(hl_syms, "hyperliquid")     # HL perps — their real fee (4.5 bps) + depth (6/60)
+
+    # PER-VENUE CRYPTO CELLS: overlay each cross-venue crypto cell with ITS OWN venue's taker fee + depth (Kraken
+    # 40bps/7-55 vs Binance 10bps/5-40), grouped by venue so each Venue.cost_inputs() is read once. The same
+    # reference price scored on two venues now differs ONLY by this overlay — the venue axis is de-collapsed. The
+    # primary-venue crypto cells already carry the primary's fee/depth from the baseline above (unchanged).
+    venues_seen: dict[str, set[str]] = {}
+    for cell_key, venue_id in cross_venue_crypto.items():
+        venues_seen.setdefault(venue_id, set()).add(cell_key)
+    for venue_id, keys in venues_seen.items():
+        _apply(keys, venue_id)
 
     # Only the equity leg needs a non-default calendar; crypto + HL perps are 24/7 (365), the backtest default.
     asset_class_by_symbol = {s: "equity" for s in equity_syms} or None

@@ -22,11 +22,12 @@ from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
 from cosmu.data.backtest import metrics_for_run, run_strategy_backtest_detailed
 from cosmu.data.market import (
     Bar,
-    BinanceSpotOHLCVProvider,
     EquityOHLCVProvider,
     HyperliquidOHLCVProvider,
     MarketDataProvider,
+    UniversalOHLCVProvider,
 )
+from cosmu.data.price_cells import build_crypto_cells
 from cosmu.data.universe import PERP_UNIVERSE
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
@@ -259,6 +260,37 @@ def refine_around(
 # --------------------------------------------------------------------------- the Finder
 
 
+def _alt_by_cell(
+    alt_store: object,
+    spec: StrategySpec,
+    market: dict[str, list[Bar]],
+    cell_meta: dict[str, tuple[str, str]],
+) -> dict[str, dict[str, dict[str, float]]] | None:
+    """The point-in-time alt-data join keyed by CELL KEY, but fetched by each cell's CANONICAL symbol. Alt data
+    (funding_rate, fear_greed, …) is a property of the PAIR/asset, not the venue cell — a 'BTC/USDT@kraken' cell
+    must read BTC/USDT's funding, never 'BTC/USDT@kraken' (which has no series). So we build the join once per
+    canonical symbol (deduped — N venue cells of one pair share one fetch) and replicate it under each cell key.
+    Returns None exactly when build_alt_by_symbol would (no alt features / no store), so the price-only path is
+    unchanged. The bars passed to build_alt_by_symbol are the cell's OWN bars so align_asof aligns to them — a
+    FALLBACK cell aligns its alt onto its own series, a UNIFY/reference cell onto the reference."""
+    # Map each canonical symbol to ONE representative cell's bars (any cell of the pair works for the asof index —
+    # UNIFY cells share the reference bars; a FALLBACK cell's own bars are a near-identical index for the alignment).
+    canon_market: dict[str, list[Bar]] = {}
+    for key, bars in market.items():
+        symbol = cell_meta.get(key, (key, ""))[0]
+        canon_market.setdefault(symbol, bars)
+    joined = build_alt_by_symbol(alt_store, spec, canon_market)
+    if joined is None:
+        return None
+    out: dict[str, dict[str, dict[str, float]]] = {}
+    for key in market:
+        symbol = cell_meta.get(key, (key, ""))[0]
+        feats = joined.get(symbol)
+        if feats is not None:
+            out[key] = feats
+    return out or None
+
+
 @dataclass(frozen=True)
 class StrategyFinder:
     settings: Settings
@@ -327,16 +359,31 @@ class StrategyFinder:
                 out[cid] = bars[-limit:]
         return out
 
-    def _market(self, spec: StrategySpec) -> dict[str, list[Bar]]:
+    def _market(self, spec: StrategySpec) -> tuple[dict[str, list[Bar]], dict[str, tuple[str, str]]]:
+        """The screen panel keyed by CELL KEY, plus a cell_meta map (cell_key -> (symbol, venue_id)).
+
+        Crypto is built per (pair × venue) from the venue-tagged universe_pairs (UNIVERSAL PRICE LAYER): a UNIFY
+        venue reuses the pair's SHARED reference series (one backtest, fee overlay only), a FALLBACK venue gets its
+        OWN bars (the leakage-safe default). The Binance reference cell keeps the BARE symbol key so the existing
+        crypto path is byte-identical; another venue is keyed 'PAIR@venue'. Equity/HL legs stay symbol-keyed (their
+        venue is the asset-class venue). Prediction markets stay conditionId-keyed (each its own Polymarket cell).
+        cell_meta is what stamps the canonical pair + the real venue on each backtest_symbols row + the per-cell
+        paper track."""
         limit = 1500 if spec.horizon.bar_size == "1h" else 1000
         out: dict[str, list[Bar]] = {}
-        # Crypto panel — Binance perp bars (live fetch with cache fallback)
-        provider = self.market_data or BinanceSpotOHLCVProvider()
-        for symbol in self._symbols(spec):
-            try:
-                out[symbol] = provider.fetch_bars(symbol, spec.horizon.bar_size, limit=limit)
-            except Exception:  # noqa: BLE001 — offline/no-network: skip the symbol, degrade to whatever cached
-                continue
+        cell_meta: dict[str, tuple[str, str]] = {}
+        # Crypto panel — per-venue cells from the venue-tagged universe_pairs (de-collapses the venue axis). When
+        # the spec/store disable crypto, _symbols() is empty → no crypto cells (same gate as before).
+        if self._symbols(spec):
+            venues, _classes = enabled_universe(self.store)
+            reference = UniversalOHLCVProvider(self.market_data) if self.market_data is not None else UniversalOHLCVProvider()
+            for cell in build_crypto_cells(
+                self.store, timeframe=spec.horizon.bar_size, limit=limit,
+                enabled_venues=venues, reference=reference,
+            ):
+                if cell.bars:
+                    out[cell.key] = cell.bars
+                    cell_meta[cell.key] = (cell.symbol, cell.venue_id)
         # Equity panel — read from local cache only (no live fetch in the finder)
         if self._equity_symbols(spec):
             equity_provider = EquityOHLCVProvider()
@@ -345,6 +392,7 @@ class StrategyFinder:
                     bars = equity_provider.fetch_bars(symbol, spec.horizon.bar_size, limit=limit)
                     if bars:
                         out[symbol] = bars
+                        cell_meta[symbol] = (symbol, "ibkr")
                 except Exception:  # noqa: BLE001
                     continue
         # Hyperliquid perp panel — read from local cache (populated by ingest_hyperliquid_bars.py)
@@ -355,15 +403,20 @@ class StrategyFinder:
                     bars = hl_provider.fetch_bars(symbol, spec.horizon.bar_size, limit=limit)
                     if bars:
                         out[symbol] = bars
+                        cell_meta[symbol] = (symbol, "hyperliquid")
                 except Exception:  # noqa: BLE001
                     continue
         # Prediction panel — per-market Polymarket odds (the share price IS the probability), read from the
         # alt-data store through the PredictionDataAdapter (ingest/polymarket_odds.py keys them by conditionId).
-        # Each conditionId is one tradeable cell, judged BRUT on its OWN odds series — same per-symbol contract.
+        # Each conditionId is one tradeable cell, judged BRUT on its OWN odds series — same per-cell contract; its
+        # cell_meta stamps the conditionId as the symbol + 'polymarket' as the venue (the prediction fee axis).
         prediction_ids = self._prediction_symbols(spec)
         if prediction_ids:
-            out.update(self._prediction_bars(spec, prediction_ids, limit))
-        return out
+            pred_bars = self._prediction_bars(spec, prediction_ids, limit)
+            out.update(pred_bars)
+            for cid in pred_bars:
+                cell_meta[cid] = (cid, "polymarket")
+        return out, cell_meta
 
     def find(
         self,
@@ -388,7 +441,7 @@ class StrategyFinder:
         CSCV-PBO inject, the cluster-representative dedupe + rep gating, and BH-FDR. The fluke safeguard is the
         forward/paper test (live stays human-only)."""
         spec = spec or seed_orb_fvg_spec()
-        market = self._market(spec)
+        market, cell_meta = self._market(spec)
         grid = build_grid(spec, max_variants=max_variants)
         # trials = the per-combo param-grid count — the number of param variants of THIS algorithm tried (the
         # legitimate own-overfit deflation). NOT the global ledger, NOT len(param_space) inherited blindly: it is
@@ -396,21 +449,29 @@ class StrategyFinder:
         grid_size = max(1, len(grid))
         catalog = default_catalog()
         venue = catalog.venue_for(spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
+        # The crypto cell → venue map (cell_key -> venue_id) so build_cost_context overlays each cross-venue crypto
+        # cell with ITS OWN venue's fee/depth (the de-collapse of the venue axis). Empty/single-venue → byte-identical.
+        crypto_cell_venues = {k: v for k, (_sym, v) in cell_meta.items()}
         # Per-symbol cost + calendar context — taker fee, MARKET DEPTH (slippage/impact), the asset-class
         # annualization calendar, and the venue each cell was actually priced at — ALL from the single source the
         # autonomous loop also reads (master/screen_universe.build_cost_context). Each is None on the common
-        # crypto-only path → the backtest's SCALAR venue fee/depth is used, byte-identical to before.
-        fee_schedule, depth_schedule, asset_class_by_symbol, venue_id_by_symbol = build_cost_context(spec, market, catalog)
+        # crypto-only single-venue path → the backtest's SCALAR venue fee/depth is used, byte-identical to before.
+        fee_schedule, depth_schedule, asset_class_by_symbol, venue_id_by_symbol = build_cost_context(
+            spec, market, catalog, crypto_cell_venues=crypto_cell_venues
+        )
         # Point-in-time alt-data join (funding_rate, fear_greed, …), built ONCE per spec since it depends only on
-        # the spec's features + the market, not the swept params.
-        alt = build_alt_by_symbol(self._resolve_alt_store(), spec, market)
+        # the spec's features + the market, not the swept params. Built per CELL KEY but fetched by the cell's
+        # CANONICAL symbol (a 'BTC/USDT@kraken' cell reads BTC/USDT's funding — alt data is per pair, not per cell),
+        # so a UNIFY/FALLBACK venue cell still gets the right point-in-time series under its own key.
+        alt = _alt_by_cell(self._resolve_alt_store(), spec, market, cell_meta)
 
         results: list[VariantResult] = []
 
         def _screen_into(variant: Variant) -> None:
             r = self._screen(spec, variant, market, venue, alt, grid_size=grid_size,
                              fee_schedule=fee_schedule, depth_schedule=depth_schedule,
-                             asset_class_by_symbol=asset_class_by_symbol, venue_id_by_symbol=venue_id_by_symbol)
+                             asset_class_by_symbol=asset_class_by_symbol, venue_id_by_symbol=venue_id_by_symbol,
+                             cell_meta=cell_meta)
             if r is None:
                 return  # an invalid grid point (e.g. degenerate range) is skipped, never persisted
             results.append(r)
@@ -523,6 +584,7 @@ class StrategyFinder:
         depth_schedule: dict[str, tuple[Decimal, Decimal]] | None = None,
         asset_class_by_symbol: dict[str, str] | None = None,
         venue_id_by_symbol: dict[str, str] | None = None,
+        cell_meta: dict[str, tuple[str, str]] | None = None,
     ) -> VariantResult | None:
         """Compile + backtest one variant on REAL bars, then BUILD AND SCORE ONE CELL PER (symbol, venue) on its
         OWN streams. Returns a VariantResult carrying per-cell verdicts — or None for an invalid grid point.
@@ -562,7 +624,7 @@ class StrategyFinder:
             fitted_params=variant.params,
             per_symbol=detailed.per_symbol,
         )
-        result.cells = self._score_cells(detailed, venue, grid_size, venue_id_by_symbol)
+        result.cells = self._score_cells(detailed, venue, grid_size, venue_id_by_symbol, cell_meta)
         # The variant's display deflated_sharpe = the BEST cell's deflated Sharpe (a display ranking number; the
         # brut verdict is per cell). gate_passed iff ANY cell passed — a config with one real cell edge qualifies.
         passing = [c for c in result.cells.values() if c.passed]
@@ -577,35 +639,43 @@ class StrategyFinder:
         venue,  # noqa: ANN001 — venue catalog row
         grid_size: int,
         venue_id_by_symbol: dict[str, str] | None,
+        cell_meta: dict[str, tuple[str, str]] | None = None,
     ) -> dict[str, CellResult]:
         """Build ONE CellResult per (symbol, venue) from the variant's per-symbol RUNS, judged on its OWN data.
 
-        NO RE-POOLING: each cell's metrics come from detailed.per_symbol_runs[sym] (own bar_returns AND own
+        The dict is keyed by the MARKET/CELL KEY (so the champion-holdout step matches it against
+        per_symbol_holdout_runs, which is keyed the same way), but each CellResult stamps its CANONICAL symbol +
+        REAL venue from `cell_meta` (a 'BTC/USDT@kraken' cell stamps symbol='BTC/USDT', venue_id='kraken' — the
+        S×A×V triple), falling back to the bare key / venue_id_by_symbol for the legacy single-venue path.
+
+        NO RE-POOLING: each cell's metrics come from detailed.per_symbol_runs[key] (own bar_returns AND own
         fold_returns), the per-symbol B&H, and trials=grid_size (the per-combo param-search count) — never the
         pooled val.bar_returns/val.fold_returns. promote_brut scores each cell alone (TrialStats(count=1), so the
         cell's deflated Sharpe is invariant to how many OTHER cells the sweep produced) with the min-trades floor on
         the cell's OWN trades. A cell passes iff promoted AND it cleared the per-cell trade floor."""
         vmap = venue_id_by_symbol or {}
+        meta = cell_meta or {}
         cell_metrics: dict[str, BacktestMetrics] = {}
-        for sym, run in detailed.per_symbol_runs.items():
-            cell_metrics[sym] = metrics_for_run(
+        for key, run in detailed.per_symbol_runs.items():
+            cell_metrics[key] = metrics_for_run(
                 run,
                 trials=grid_size,
-                buy_and_hold=detailed.per_symbol_buy_and_hold.get(sym, 0.0),
+                buy_and_hold=detailed.per_symbol_buy_and_hold.get(key, 0.0),
             )
-        candidates = [CohortCandidate(id=sym, metrics=m, net_profit=0.0, source="finder") for sym, m in cell_metrics.items()]
+        candidates = [CohortCandidate(id=key, metrics=m, net_profit=0.0, source="finder") for key, m in cell_metrics.items()]
         promotions = {p.candidate_id: p for p in promote_brut(candidates, self.settings.gates, min_trades=_BRUT_MIN_TRADES)}
         out: dict[str, CellResult] = {}
-        for sym, m in cell_metrics.items():
-            p = promotions[sym]
+        for key, m in cell_metrics.items():
+            p = promotions[key]
             trades = m.num_trades
             reasons = list(p.reasons)
             floor_ok = trades >= _MIN_TRADES_PER_SYMBOL
             if not floor_ok:
                 reasons.append("min_trades_per_symbol")
-            out[sym] = CellResult(
-                symbol=sym,
-                venue_id=vmap.get(sym, venue.id),
+            symbol, venue_id = meta.get(key, (key, vmap.get(key, venue.id)))
+            out[key] = CellResult(
+                symbol=symbol,
+                venue_id=venue_id,
                 metrics=m,
                 deflated_sharpe=p.deflated_sharpe_prob,
                 trades=trades,
@@ -684,20 +754,24 @@ class StrategyFinder:
                 # funder fans out a paper track per 'pass' cell), else the cell's own kill reason. NEVER a pooled or
                 # sibling-compared label — each cell is judged alone.
                 _vmap = venue_id_by_symbol or {}
-                # GENEROUS-PAPER routing: a gate-FAILED near-miss cell (in _watch_syms, computed above) is tagged
-                # 'watch' (not its kill reason) and ALSO funds a paper track below. The gate verdict ('pass') and the
-                # true-negative kill reasons are untouched.
-                for _sym, _pm in (r.per_symbol or {}).items():
-                    cell = r.cells.get(_sym)
-                    cell_venue = cell.venue_id if cell else _vmap.get(_sym, venue.id)
+                # `_key` is the market/cell key (bare symbol for the Binance reference, 'PAIR@venue' otherwise). The
+                # PERSISTED `symbol` is the cell's CANONICAL pair (cell.symbol) — never the namespaced cell key — and
+                # `venue_id` is the cell's REAL venue, so backtest_symbols carries the honest S×A×V triple and CAN now
+                # hold non-Binance venues (the venue-axis de-collapse). GENEROUS-PAPER routing: a gate-FAILED near-miss
+                # cell (in _watch_syms, keyed by cell key) is tagged 'watch' (not its kill reason) and ALSO funds a
+                # paper track below; the gate verdict ('pass') and the true-negative kill reasons are untouched.
+                for _key, _pm in (r.per_symbol or {}).items():
+                    cell = r.cells.get(_key)
+                    cell_symbol = cell.symbol if cell else _key
+                    cell_venue = cell.venue_id if cell else _vmap.get(_key, venue.id)
                     if cell and cell.passed:
                         cell_verdict = "pass"
-                    elif _sym in _watch_syms:
+                    elif _key in _watch_syms:
                         cell_verdict = WATCH_VERDICT
                     else:
                         cell_verdict = (",".join(cell.reasons) or "fail") if cell else None
                     b.insert("backtest_symbols", {
-                        "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": cell_venue,
+                        "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": cell_symbol, "venue_id": cell_venue,
                         "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
                         "max_drawdown": str(_pm.get("max_drawdown", 0.0)), "trades": int(_pm.get("trades", 0)),
                         "verdict": cell_verdict, "created_at": utcnow(),
