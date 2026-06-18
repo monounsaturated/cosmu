@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from cosmu.execution.costopt import FeeSchedule, choose_order
 from cosmu.spine.venue import default_catalog
 
 
@@ -64,9 +63,10 @@ def test_kraken_spot_is_a_live_venue_with_real_fees_and_depth() -> None:
     cat = default_catalog()
     kraken = cat.venue("kraken")
     assert kraken.kind == "crypto" and kraken.live_enabled is True
-    assert kraken.maker_fee_bps == Decimal("16") and kraken.taker_fee_bps == Decimal("26")
+    # Kraken's REAL retail spot schedule is 25/40 bps (was a too-low 16/26 placeholder).
+    assert kraken.maker_fee_bps == Decimal("25") and kraken.taker_fee_bps == Decimal("40")
     taker, slippage, impact = kraken.cost_inputs()
-    assert taker == Decimal("26") and slippage > 0 and impact > 0  # full per-venue cost triple resolves
+    assert taker == Decimal("40") and slippage > 0 and impact > 0  # full per-venue cost triple resolves
     # Spot is legal FR/EU + US — no jurisdiction restriction on the spot venue.
     assert kraken.live_legal_in("FR") is True
     assert kraken.live_legal_in("US") is True
@@ -172,14 +172,13 @@ def test_venue_for_resolves_new_venues() -> None:
 
 
 def test_fee_schedule_bridge_reflects_venue_and_volume() -> None:
+    """The venue→cost-model bridge is now Venue.cost_inputs()/effective_fee (the deleted costopt.FeeSchedule
+    maker/taker optimizer was dead). The backtest's per-symbol fee axis reads this taker, tiered by volume."""
     binance = default_catalog().venue("binance")
-    base = FeeSchedule.from_venue(binance, volume_30d_usd=0)
-    high = FeeSchedule.from_venue(binance, volume_30d_usd=50_000_000)
-    assert high.taker_bps < base.taker_bps
-    # And it feeds the existing cost optimizer unchanged.
-    plan = choose_order(gross_edge_bps=30.0, fee=base, spread_bps=4.0)
-    assert plan.order_type in {"maker", "market"}
-    assert plan.expected_net_bps < 30.0  # fees + spread eat into gross edge
+    base_taker, base_slip, base_impact = binance.cost_inputs(volume_30d_usd=0)
+    high_taker, _, _ = binance.cost_inputs(volume_30d_usd=50_000_000)
+    assert high_taker < base_taker                 # volume → cheaper taker (the real profit lever)
+    assert base_slip > 0 and base_impact > 0       # the full cost triple (fee + depth) resolves from one call
 
 
 def test_venue_catalog_api_surfaces_depth_and_region() -> None:

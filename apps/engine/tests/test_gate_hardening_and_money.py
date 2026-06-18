@@ -5,11 +5,9 @@ from __future__ import annotations
 
 from math import comb
 
-from cosmu.execution.costopt import FeeSchedule, FeeTier, choose_order, fee_for_volume
 from cosmu.master.cv import embargo_size, purged_embargo_splits
 from cosmu.master.fdr import benjamini_hochberg, bh_threshold, dsr_pvalue, survives_fdr
 from cosmu.portfolio.rotation import Track, is_decayed, paying_sources, select_tracks
-
 
 # --- CPCV --------------------------------------------------------------------------------------
 
@@ -60,32 +58,9 @@ def test_dsr_pvalue_and_survives():
     assert bh_threshold([0.9, 0.95], q=0.10) == 0.0  # nothing qualifies
 
 
-# --- execution cost optimization ----------------------------------------------------------------
-
-TIERS = [
-    FeeTier(0, FeeSchedule(maker_bps=1.0, taker_bps=5.0)),
-    FeeTier(1_000_000, FeeSchedule(maker_bps=0.0, taker_bps=4.0)),
-    FeeTier(10_000_000, FeeSchedule(maker_bps=-0.5, taker_bps=3.0)),  # maker rebate at top tier
-]
-
-
-def test_fee_tier_routing():
-    assert fee_for_volume(500, TIERS).taker_bps == 5.0
-    assert fee_for_volume(2_000_000, TIERS).taker_bps == 4.0
-    assert fee_for_volume(50_000_000, TIERS).maker_bps == -0.5
-
-
-def test_maker_preferred_when_patient_with_rebate():
-    fee = FeeSchedule(maker_bps=-0.5, taker_bps=5.0)
-    plan = choose_order(20.0, fee, spread_bps=4.0, urgency=0.1, maker_fill_prob=0.9)
-    assert plan.order_type == "maker"
-    assert plan.expected_net_bps > 0
-
-
-def test_taker_preferred_when_urgent_and_unlikely_to_fill():
-    fee = FeeSchedule(maker_bps=0.0, taker_bps=2.0)
-    plan = choose_order(30.0, fee, spread_bps=2.0, urgency=1.0, maker_fill_prob=0.1)
-    assert plan.order_type == "market"
+# NOTE: the maker/taker order-choice optimizer (cosmu/execution/costopt.py) was DELETED — the Bar model is
+# OHLCV-only (no depth to evaluate a maker fill rule), so the cost path is ALWAYS-TAKER and there was no live
+# caller. Fee realism now lives in the per-asset resolver (spine/asset_fees.py) — see test_asset_fees.py.
 
 
 # --- per-track lifecycle (standalone paper, NO pooled wallet) -----------------------------

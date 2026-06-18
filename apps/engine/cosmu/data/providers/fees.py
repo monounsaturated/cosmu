@@ -26,7 +26,7 @@ def read_pit_fee(
     The core Store does not have `read_asof` directly — it is wrapped transparently here so callers
     can pass whichever store they hold.
 
-    This is the single read seam for gate.py / costopt.py / execution.py so every
+    This is the single read seam for gate.py / execution.py so every
     fee read is point-in-time, with NO look-ahead.
     """
     # If the caller holds a core Store (has .rows but not .read_asof), wrap it as PgAltDataStore.
@@ -112,7 +112,7 @@ class VenueFeesProvider:
         "binance": (10.0, 10.0),
         "binanceusdm": (2.0, 4.0),
         "okx": (8.0, 10.0),
-        "kraken": (16.0, 26.0),
+        "kraken": (25.0, 40.0),  # REAL Kraken retail spot: 0.25% maker / 0.40% taker (was 16/26 placeholder)
         "krakenfutures": (2.0, 5.0),
         "coinbasepro": (40.0, 60.0),
         "coinbase": (40.0, 60.0),
