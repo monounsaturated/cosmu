@@ -35,6 +35,17 @@ class ZeroTrackResult:
     reason: str | None = None
 
 
+def _screened_pool(asset_class: str, venue_symbols: list[str]) -> list[str]:
+    """Screen-eligible subset of a venue's symbols for an asset class — replaces the (brut-migration-removed)
+    orchestrator.loop._screened_symbols, whose body only narrowed CRYPTO to the CRYPTO_SCREEN_UNIVERSE core (the
+    symbols the gate evidence covers) and passed other asset classes through. Deferred import avoids a cycle."""
+    if asset_class == "crypto":
+        from cosmu.evolution.loop import CRYPTO_SCREEN_UNIVERSE
+        core = set(CRYPTO_SCREEN_UNIVERSE)
+        return [s for s in venue_symbols if s in core]
+    return list(venue_symbols)
+
+
 def _resolve_symbol_venue(store: Store, version_id: str, cat: VenueCatalog) -> tuple[str, str] | None:
     """The (symbol, venue_id) a version's zero-capital track should observe — resolved from its persisted spec's
     asset class exactly like the funder's survivor routing (crypto → Binance, equity → its funding venue), so the
@@ -44,7 +55,6 @@ def _resolve_symbol_venue(store: Store, version_id: str, cat: VenueCatalog) -> t
     # one-way and avoids an import cycle (this module is imported by the rejects/vibe lanes, not at boot).
     from cosmu.orchestrator.loop import (
         _FUNDING_VENUE_BY_ASSET_CLASS,
-        _screened_symbols,
         _survivor_asset_class,
         _venue_symbols,
     )
@@ -60,7 +70,7 @@ def _resolve_symbol_venue(store: Store, version_id: str, cat: VenueCatalog) -> t
     symbols = _venue_symbols(cat, venue_id, asset_class)
     if not symbols:
         return None
-    pool = _screened_symbols(raw_spec, asset_class, symbols) or symbols
+    pool = _screened_pool(asset_class, symbols) or symbols
     if not pool:
         return None
     # Deterministic, stateless pick within the screened pool: a stable hash of the version id spreads two
