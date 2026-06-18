@@ -82,6 +82,11 @@ def _matrix_knowledge_store() -> Store | None:
         return None
 
 
+# B3 coverage pre-flight: a cell must load at least this many bars, else it tests NOTHING — recording a
+# coverage_miss makes that explicit so a $-spend can never silently report a fake universe ("ran 38 cells").
+_MIN_COVERAGE_BARS = 60
+
+
 @dataclass(frozen=True)
 class MatrixResult:
     asset: str
@@ -93,6 +98,11 @@ class MatrixResult:
     best_spec: str
     best_dsr: float
     best_holdout_dsr: float
+    # B3 coverage pre-flight: how many bars the cell actually loaded + whether that cleared the floor. A cell with
+    # coverage_ok=False tested NOTHING (no real data) — distinct from a cell that ran but found no edge. Defaults
+    # keep the dataclass back-compatible with positional callers that predate these fields.
+    bars_loaded: int = 0
+    coverage_ok: bool = True
 
 
 def load_specs() -> list[StrategySpec]:
@@ -153,9 +163,10 @@ def run_matrix_cell(asset: str, timeframe: str, *, persist: bool = True) -> Matr
     # no-data row). None store (offline) → no pre-filter, specs run as before.
     health_store = _matrix_knowledge_store()
 
+    coverage_ok = len(bars) >= _MIN_COVERAGE_BARS
     candidates: list[Candidate] = []
     n_traded = 0
-    if len(bars) >= 60:
+    if coverage_ok:
         for spec in specs:
             if health_store is not None:
                 ok, _reason = spec_data_eligible(health_store, spec)
@@ -181,7 +192,8 @@ def run_matrix_cell(asset: str, timeframe: str, *, persist: bool = True) -> Matr
                                         source="matrix", label=spec.name))
 
     if not candidates:
-        return MatrixResult(asset, timeframe, len(specs), 0, 0, [], "", 0.0, 0.0)
+        return MatrixResult(asset, timeframe, len(specs), 0, 0, [], "", 0.0, 0.0,
+                            bars_loaded=len(bars), coverage_ok=coverage_ok)
 
     persist_spec = durable_persist(
         run_id=f"matrix-{asset}-{timeframe}",
@@ -196,6 +208,7 @@ def run_matrix_cell(asset: str, timeframe: str, *, persist: bool = True) -> Matr
     return MatrixResult(
         asset, timeframe, len(specs), n_traded, len(survivors), survivors,
         best.candidate_id, round(best.deflated_sharpe_prob, 4), round(float(best_m.holdout_deflated_sharpe), 4),
+        bars_loaded=len(bars), coverage_ok=coverage_ok,
     )
 
 
@@ -221,6 +234,23 @@ def _default_timeframes(settings: Settings | None = None) -> list[str]:
     return ["1d"]
 
 
+def record_coverage_miss(store: object, asset: str, timeframe: str, bars_loaded: int) -> None:
+    """B3 pre-flight: durably record a 'coverage_miss' event for a (asset, timeframe) cell that loaded fewer than
+    _MIN_COVERAGE_BARS — so a sweep can NEVER silently report a fake universe ('ran N cells') when some cells
+    tested nothing. Best-effort + offline-safe: a missing store / write failure never breaks the sweep."""
+    try:
+        store.append_event(  # type: ignore[attr-defined]
+            actor="research/matrix",
+            kind="coverage_miss",
+            ref_type="matrix_cell",
+            ref_id=f"{asset}@{timeframe}",
+            payload={"asset": asset, "timeframe": timeframe, "bars_loaded": int(bars_loaded),
+                     "min_required": _MIN_COVERAGE_BARS},
+        )
+    except Exception:  # noqa: BLE001 — coverage bookkeeping must never break the sweep
+        return
+
+
 def run_sweep(
     assets: list[str] | None = None,
     timeframes: list[str] | None = None,
@@ -231,13 +261,23 @@ def run_sweep(
     """One-shot: gate EVERY inbox spec across a universe × timeframes, persist each verdict to the experiment
     memory, and return the results ranked by best dSR. Asset/timeframe universe defaults come from config
     (MATRIX_SWEEP_ASSETS / MATRIX_SWEEP_TIMEFRAMES) so the operator can widen the grid without code changes.
+
+    B3 coverage pre-flight: every cell that loads < _MIN_COVERAGE_BARS bars (it would test NOTHING) is recorded as
+    a durable 'coverage_miss' event AND printed, so a $-spend can never silently report a fake universe.
     The simple front door — `python -m cosmu.research.matrix_search --sweep`."""
     assets = assets or _default_assets(settings)
     timeframes = timeframes or _default_timeframes(settings)
+    cov_store = _matrix_knowledge_store() if persist else None  # where coverage_miss events land (None → offline)
     out: list[MatrixResult] = []
     for a in assets:
         for tf in timeframes:
-            out.append(run_matrix_cell(a, tf, persist=persist))
+            r = run_matrix_cell(a, tf, persist=persist)
+            if not r.coverage_ok:
+                # The cell tested NOTHING (< floor bars) — make it explicit, never a silent fake-universe row.
+                print(f"[coverage_miss] {a}@{tf} loaded {r.bars_loaded} bars (< {_MIN_COVERAGE_BARS}) — tested nothing")
+                if cov_store is not None:
+                    record_coverage_miss(cov_store, a, tf, r.bars_loaded)
+            out.append(r)
     return sorted(out, key=lambda r: r.best_dsr, reverse=True)
 
 

@@ -309,6 +309,46 @@ def test_crypto_cell_still_prices_at_binance(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# B3 coverage pre-flight (item 5): a < 60-bar cell records a coverage_miss, never a silent fake universe
+# ---------------------------------------------------------------------------
+
+def test_coverage_miss_flagged_on_thin_cell(monkeypatch):
+    """A cell that loads < 60 bars carries coverage_ok=False + bars_loaded — it tested NOTHING (distinct from a
+    cell that ran but found no edge)."""
+    _patch(monkeypatch, {"BTCUSDT": _make_bars(30)}, [_make_spec()])
+    r = run_matrix_cell("BTCUSDT", "1d", persist=False)
+    assert r.bars_loaded == 30
+    assert r.coverage_ok is False
+
+
+def test_coverage_ok_on_sufficient_cell(monkeypatch):
+    """A cell with ≥ 60 bars clears the coverage floor."""
+    _patch(monkeypatch, {"BTCUSDT": _make_bars(300)}, [_make_spec()])
+    r = run_matrix_cell("BTCUSDT", "1d", persist=False)
+    assert r.bars_loaded == 300
+    assert r.coverage_ok is True
+
+
+def test_run_sweep_records_coverage_miss_event(monkeypatch, tmp_path):
+    """run_sweep must record a durable 'coverage_miss' event for each starved cell so a $-spend can't silently
+    report a fake universe. We point the coverage store at a hermetic sqlite and assert the event lands."""
+    import cosmu.research.matrix_search as ms
+
+    # BTCUSDT loads enough bars; ETHUSDT is starved (10 bars) → exactly one coverage_miss.
+    _patch(monkeypatch, {"BTCUSDT": _make_bars(200), "ETHUSDT": _make_bars(10)}, [_make_spec()])
+    cov = _health_store(tmp_path, "coverage")
+    monkeypatch.setattr(ms, "_matrix_knowledge_store", lambda: cov)
+
+    results = ms.run_sweep(assets=["BTCUSDT", "ETHUSDT"], timeframes=["1d"], persist=True)
+    assert len(results) == 2
+
+    events = cov.rows("SELECT ref_id, payload FROM events WHERE kind = 'coverage_miss'")
+    assert len(events) == 1
+    assert events[0]["ref_id"] == "ETHUSDT@1d"
+    assert '"bars_loaded": 10' in events[0]["payload"]
+
+
+# ---------------------------------------------------------------------------
 # B5 data pre-filter (item 4): skip a spec whose required alt metric is empty / stale / thin
 # ---------------------------------------------------------------------------
 
