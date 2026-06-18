@@ -76,10 +76,24 @@ function lifeStatusOf(status: string | null | undefined): LifeStatus {
   return "lab";
 }
 
-// The small per-row lifecycle badge (replaces the old Verdict cell). Backtest / Paper / Live / Killed, reusing the
-// shared stage-badge classes so it matches every other surface.
-function LifeBadge({ status }: { status: string | null | undefined }) {
-  const life = lifeStatusOf(status);
+// A row with NO computed cell — the engine's synthetic "New" row for an authored-but-uncomputed version. It has
+// no symbol (no backtest_symbols cell exists), so an empty symbol IS the signal. Such a version is "New" on THIS
+// screener (nothing computed per-symbol) regardless of the parent version's raw pipeline status — so it lands in
+// the New lane and is reachable via the Status="New" filter, instead of hiding under Killed/Screened/Paper.
+function isUncomputed(r: LabSymbolRow): boolean {
+  return r.symbol === "";
+}
+
+// The row's lifecycle lane: a cell-less (uncomputed) row is ALWAYS "New" (lab); otherwise the parent version's
+// normalized status. Single source for the badge, the Status dropdown, the filter and the status sort.
+function rowLifeStatus(r: LabSymbolRow): LifeStatus {
+  return isUncomputed(r) ? "lab" : lifeStatusOf(r.status);
+}
+
+// The small per-row lifecycle badge (replaces the old Verdict cell). New / Backtest / Paper / Live / Killed,
+// reusing the shared stage-badge classes so it matches every other surface.
+function LifeBadge({ row }: { row: LabSymbolRow }) {
+  const life = rowLifeStatus(row);
   return <span className={LIFE_BADGE_CLASS[life]}>{LIFE_LABEL[life]}</span>;
 }
 
@@ -99,7 +113,7 @@ const SORT_VALUE: Record<SortKey, (r: LabSymbolRow, comboNum?: Map<string, numbe
   sharpe: (r) => r.sharpe,
   dd: (r) => r.max_drawdown,
   trades: (r) => r.trades,
-  status: (r) => LIFE_RANK[lifeStatusOf(r.status)] ?? 0,
+  status: (r) => LIFE_RANK[rowLifeStatus(r)] ?? 0,
 };
 
 // Column order: status · return · venue · symbol · trades · dd · sharpe.
@@ -268,10 +282,12 @@ export function SymbolsTable({
     [rows],
   );
 
-  // The lifecycle statuses actually PRESENT in the rows (for the Status dropdown), ordered by pipeline stage.
+  // The lifecycle lanes actually PRESENT in the rows (for the Status dropdown), ordered by pipeline stage. Uses
+  // the row-level lane so a cell-less uncomputed row registers the "New" (lab) lane — making it selectable even
+  // though no parent version carries a literal lab status.
   const statusOptions = useMemo(() => {
     const present = new Set<LifeStatus>();
-    for (const r of rows) present.add(lifeStatusOf(r.status));
+    for (const r of rows) present.add(rowLifeStatus(r));
     const order: LifeStatus[] = ["lab", "screened", "paper", "live", "killed"];
     return order.filter((s) => present.has(s));
   }, [rows]);
@@ -282,7 +298,7 @@ export function SymbolsTable({
       if (strategySel.size && !strategySel.has(r.strategy_name)) return false;
       if (symbolSel.size && !symbolSel.has(r.symbol)) return false;
       if (venueSel.size && !venueSel.has(r.venue_id ?? "")) return false;
-      if (statusSel.size && !statusSel.has(lifeStatusOf(r.status))) return false;
+      if (statusSel.size && !statusSel.has(rowLifeStatus(r))) return false;
       if (q && !r.strategy_name.toLowerCase().includes(q) && !r.symbol.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -334,8 +350,9 @@ export function SymbolsTable({
     const r = filtered[deepLinkIndex];
     if (r) {
       setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id });
-      // A deep-linked sheet (opened via ?v= on load) also reads the resolved cell's standalone truth.
-      if (sheetVersionId === r.strategy_version_id) setSheetCell(r);
+      // A deep-linked sheet (opened via ?v= on load) also reads the resolved cell's standalone truth (unless the
+      // resolved row is uncomputed — then no per-cell numbers exist, keep the sheet on its honest fallbacks).
+      if (sheetVersionId === r.strategy_version_id) setSheetCell(isUncomputed(r) ? null : r);
     }
   }, [deepLinkIndex, filtered, sheetVersionId]);
 
@@ -373,25 +390,32 @@ export function SymbolsTable({
     // are DISTINCT: clicking one cell highlights only THAT row, never every sibling cell of the same algo.
     setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id });
     setSheetVersionId(r.strategy_version_id);
-    setSheetCell(r);
+    // An uncomputed (cell-less) row carries zeroed synthetic metrics — never feed those to the sheet as a "cell"
+    // (it would read +0.0% / 0 trades as if real). The sheet then falls back to its honest pooled/empty states.
+    setSheetCell(isUncomputed(r) ? null : r);
   }
 
   function renderCell(r: LabSymbolRow, key: ColKey) {
+    // An uncomputed (cell-less "New") row has no symbol/venue and its metrics are zeroed placeholders, NOT real
+    // results — render an explicit "—" so a not-yet-backtested version never reads as a flat 0% / 0-trade result.
+    const uncomputed = isUncomputed(r);
     switch (key) {
       case "symbol":
-        return <td key={key}>{r.symbol}</td>;
+        return <td key={key} className={uncomputed ? "quiet" : undefined}>{uncomputed ? "—" : r.symbol}</td>;
       case "venue":
-        return <td key={key} className={r.venue_id ? undefined : "quiet"}>{formatVenue(r.venue_id)}</td>;
+        return <td key={key} className={r.venue_id ? undefined : "quiet"}>{uncomputed ? "—" : formatVenue(r.venue_id)}</td>;
       case "return":
-        return <td key={key} style={{ textAlign: "right", color: r.return_pct >= 0 ? "var(--up)" : "var(--down)" }}>{formatPct(r.return_pct * 100)}</td>;
+        return uncomputed
+          ? <td key={key} style={{ textAlign: "right" }} className="quiet">—</td>
+          : <td key={key} style={{ textAlign: "right", color: r.return_pct >= 0 ? "var(--up)" : "var(--down)" }}>{formatPct(r.return_pct * 100)}</td>;
       case "sharpe":
-        return <td key={key} style={{ textAlign: "right" }}>{Number.isFinite(r.sharpe) ? r.sharpe.toFixed(2) : "—"}</td>;
+        return <td key={key} style={{ textAlign: "right" }} className={uncomputed ? "quiet" : undefined}>{uncomputed ? "—" : Number.isFinite(r.sharpe) ? r.sharpe.toFixed(2) : "—"}</td>;
       case "dd":
-        return <td key={key} style={{ textAlign: "right" }} className="quiet">{`${(r.max_drawdown * 100).toFixed(1)}%`}</td>;
+        return <td key={key} style={{ textAlign: "right" }} className="quiet">{uncomputed ? "—" : `${(r.max_drawdown * 100).toFixed(1)}%`}</td>;
       case "trades":
-        return <td key={key} style={{ textAlign: "right" }}>{r.trades}</td>;
+        return <td key={key} style={{ textAlign: "right" }} className={uncomputed ? "quiet" : undefined}>{uncomputed ? "—" : r.trades}</td>;
       case "status":
-        return <td key={key}><LifeBadge status={r.status} /></td>;
+        return <td key={key}><LifeBadge row={r} /></td>;
     }
   }
 
