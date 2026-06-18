@@ -194,6 +194,10 @@ export function SymbolsTable({
   // per-CELL triplet highlight (only the clicked row lights up). The deep-link opens the sheet by version; the
   // triplet is pinned only when ?symbol= (and optionally ?venue=) is present.
   const [sheetVersionId, setSheetVersionId] = useState<string | null>(deepLink?.version_id ?? null);
+  // The clicked ROW itself (a backtest_symbols cell) — passed to the sheet so its backtest-phase headline reads
+  // this cell's STANDALONE truth (Return / Max DD / Trades + equity) instead of the version's pooled aggregate
+  // (which for a brut-converted combo carries garbage, e.g. 505% DD). null on a deep-link with no row resolved.
+  const [sheetCell, setSheetCell] = useState<LabSymbolRow | null>(null);
   const [selectedTriplet, setSelectedTriplet] = useState<TripletKey | null>(
     deepLink && deepLink.symbol != null
       ? { strategy_version_id: deepLink.version_id, symbol: deepLink.symbol, venue_id: deepLink.venue ?? "" }
@@ -314,8 +318,12 @@ export function SymbolsTable({
     deepLinkDone.current = true;
     setPage(Math.floor(deepLinkIndex / PAGE_SIZE));
     const r = filtered[deepLinkIndex];
-    if (r) setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id });
-  }, [deepLinkIndex, filtered]);
+    if (r) {
+      setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id });
+      // A deep-linked sheet (opened via ?v= on load) also reads the resolved cell's standalone truth.
+      if (sheetVersionId === r.strategy_version_id) setSheetCell(r);
+    }
+  }, [deepLinkIndex, filtered, sheetVersionId]);
 
   const safePage = Math.min(page, pageCount - 1);
   const pageStart = safePage * PAGE_SIZE;
@@ -351,6 +359,7 @@ export function SymbolsTable({
     // are DISTINCT: clicking one cell highlights only THAT row, never every sibling cell of the same algo.
     setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id });
     setSheetVersionId(r.strategy_version_id);
+    setSheetCell(r);
   }
 
   function renderCell(r: LabSymbolRow, key: ColKey) {
@@ -521,16 +530,17 @@ export function SymbolsTable({
         </div>
       ) : null}
 
-      {/* The side panel stays keyed by VERSION (it shows the whole Version). Closing it drops both the sheet and
+      {/* The side panel stays keyed by VERSION (it shows the whole Version) but carries the clicked CELL so the
+          backtest-phase headline reads that cell's standalone truth. Closing it drops the sheet, the cell, and
           the per-cell row highlight so the table returns to a clean unselected state. */}
-      <SheetPanel id={sheetVersionId} onClose={() => { setSheetVersionId(null); setSelectedTriplet(null); }} />
+      <SheetPanel id={sheetVersionId} cell={sheetCell} onClose={() => { setSheetVersionId(null); setSheetCell(null); setSelectedTriplet(null); }} />
     </>
   );
 }
 
 // ── the right detail sheet — fetches the full Version detail client-side (via the same-origin proxy) and renders
 // the SHARED StrategySheet. Honest loading + error states. Ported from the OG strategies page (the regression fix). ──
-function SheetPanel({ id, onClose }: { id: string | null; onClose: () => void }) {
+function SheetPanel({ id, cell, onClose }: { id: string | null; cell?: LabSymbolRow | null; onClose: () => void }) {
   const [detail, setDetail] = useState<StrategyDetailResponse | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
 
@@ -571,7 +581,7 @@ function SheetPanel({ id, onClose }: { id: string | null; onClose: () => void })
       ) : state === "error" ? (
         <p className="quiet" style={{ fontSize: 12, padding: "20px 4px" }}>Could not load this strategy&apos;s detail — the engine did not respond.</p>
       ) : detail ? (
-        <StrategySheet strategy={detail} />
+        <StrategySheet strategy={detail} cell={cell} />
       ) : null}
     </SidePanel>
   );
