@@ -149,6 +149,53 @@ class BinanceSpotOHLCVProvider:
         return merged
 
 
+class RemoteBarsProvider:
+    """Fetch OHLCV from a Binance-REACHABLE HTTP engine (the always-on Railway EU `/market/bars` endpoint) instead
+    of calling Binance directly. THE FIX for Binance geo-blocking cloud IPs (Modal US returns nothing on a live
+    fetch): the remote does the venue fetch in a region that CAN reach Binance and returns closed-candle bars as
+    JSON; this provider just relays them. That removes the per-deploy local bar cache — so the compute fleet stays
+    MODULAR and ACCOUNT-SWAPPABLE (any Modal account deploys cacheless; point COSMU_BARS_URL at the EU engine).
+    Read-only + offline-safe (any transport error / non-200 → [] → the caller degrades, never fabricates). Sends
+    `x-api-key` when COSMU_BARS_KEY / API_SECRET_KEY is set — the same shared secret the engine middleware checks."""
+
+    def __init__(self, base_url: str, *, api_key: str | None = None, timeout: float = 30.0) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key if api_key is not None else (
+            os.environ.get("COSMU_BARS_KEY") or os.environ.get("API_SECRET_KEY") or None
+        )
+        self.timeout = timeout
+
+    def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        query = urllib.parse.urlencode({"symbol": symbol, "timeframe": timeframe, "limit": int(limit)})
+        url = f"{self.base_url}/market/bars?{query}"
+        headers = {"User-Agent": "cosmu-engine/0.1"}
+        if self.api_key:
+            headers["x-api-key"] = self.api_key
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=self.timeout, context=_ssl_context()) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+        except Exception:  # noqa: BLE001 — offline / refused / non-200 → empty, the caller degrades honestly
+            return []
+        rows = payload.get("bars", []) if isinstance(payload, dict) else payload
+        out: list[Bar] = []
+        for row in rows:
+            try:
+                out.append(_bar_from_json(row))
+            except Exception:  # noqa: BLE001 — skip a malformed row, never fabricate
+                continue
+        return out[-int(limit):] if limit else out
+
+
+def default_crypto_reference() -> MarketDataProvider:
+    """The default crypto reference provider for the screen / paper clock. When COSMU_BARS_URL is set, bars come
+    from that HTTP engine at RUNTIME (the Binance-reachable Railway EU box) → no bundled cache, so the Modal fleet
+    is modular + account-swappable. Unset (local / tests / current deploys) → the keyless BinanceSpotOHLCVProvider,
+    BYTE-IDENTICAL to before. A single env flag flips the whole crypto-bar source; nothing else changes."""
+    base = os.environ.get("COSMU_BARS_URL")
+    return RemoteBarsProvider(base) if base else BinanceSpotOHLCVProvider()
+
+
 class UniversalOHLCVProvider:
     """The UNIVERSAL PRICE LAYER reference provider: fetch a canonical PAIR's REFERENCE OHLCV ONCE and serve it to
     EVERY venue that UNIFIES onto it (data/reference.decision). Composes the keyless `BinanceSpotOHLCVProvider`
@@ -162,8 +209,9 @@ class UniversalOHLCVProvider:
     behaviour of its own, only the pair-keyed in-process memo so one screen pass fetches each reference once."""
 
     def __init__(self, reference: MarketDataProvider | None = None) -> None:
-        # The reference is injectable for tests / alternate references; defaults to the keyless Binance spot book.
-        self._reference = reference or BinanceSpotOHLCVProvider()
+        # The reference is injectable for tests / alternate references; defaults to the keyless Binance spot book —
+        # or, when COSMU_BARS_URL is set, the Railway EU bars engine (geo-block-free, cacheless deploys).
+        self._reference = reference or default_crypto_reference()
         self._memo: dict[tuple[str, str, int], list[Bar]] = {}  # (pair_id, timeframe, limit) -> bars
 
     @staticmethod
