@@ -1,0 +1,49 @@
+{
+  "name": "Meta-labeled funding-contrarian reversion (long spot)",
+  "rationale": "META-LABELING on a NON-momentum primary — the existing meta-label specs (momentum, reversion-RSI) both gate PRICE-only primaries; none gate a FUNDING signal. Here the PRIMARY is deliberately permissive crowding-contrarian: enter long spot when funding is below a low floor (perp shorts crowded / uncrowded-long, a setup that historically precedes a squeeze up) — that decides only the SIDE. The SECONDARY regularized-logistic classifier decides ACT vs SKIP, trained expanding-window + point-in-time on which barrier (stop/take/time) each PAST funding-contrarian entry hit first, netted of cost, reading the orthogonal state at entry: funding_rate, perp_spot_basis, rsi, vol_realized, dvol. The secondary only SIZES/SKIPS, never flips direction. Economic bet: the funding-contrarian setup has a real but regime-dependent edge (it works when basis/vol confirm the squeeze, fails in a genuine downtrend), and a secondary that reads those orthogonal confirmers can prune the failures the bare funding floor cannot. Distinct from metalabel-momentum (momentum primary), metalabel-reversion (RSI primary), and funding-reset-reversion (no secondary model at all). HONEST PRIOR: meta-labeling can only amplify an edge the primary already has; if the bare funding-contrarian primary has no edge net of fees, this is a powered FAIL — the spec runs that test cleanly. Disconfirmer 1: compare to the bare primary (no meta-label) — the secondary must ADD deflated Sharpe, not just cut trades. Disconfirmer 2: the secondary must beat a random skip of the same trade fraction. tier0 funding_rate primary + orthogonal meta features (incl. tier0 dvol/basis), fresh prod data — low-confidence until OOS.",
+  "catalyst": "the secondary model green-lights a funding-contrarian long in a regime where the squeeze-reversion has historically paid",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    { "feature": { "name": "funding_rate" }, "op": "lt", "threshold": { "param": "funding_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" }
+  },
+  "meta_label": {
+    "features": [
+      { "name": "funding_rate" },
+      { "name": "perp_spot_basis" },
+      { "name": "rsi", "lookback": 14 },
+      { "name": "vol_realized", "lookback": 14 },
+      { "name": "dvol" }
+    ],
+    "prob_threshold": { "param": "meta_thr" },
+    "sizing": "skip"
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_floor": { "kind": "float", "lo": -0.0003, "hi": -0.00001 },
+    "stop":          { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":            { "kind": "float", "lo": 0.05, "hi": 0.25 },
+    "time_stop":     { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 },
+    "meta_thr":      { "kind": "float", "lo": 0.45, "hi": 0.65 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

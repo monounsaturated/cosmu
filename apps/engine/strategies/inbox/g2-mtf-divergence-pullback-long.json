@@ -1,0 +1,48 @@
+{
+  "name": "Multi-timeframe DIVERGENCE pullback — slow uptrend, fast band-washout (long spot)",
+  "rationale": "MULTI-TIMEFRAME DIVERGENCE (not confirmation). dual-timeframe-momentum-confirmation requires fast AND slow momentum to AGREE (both up). This spec deliberately requires them to DISAGREE in the buy-the-dip way: a SLOW lookback return solidly positive (the higher-timeframe trend is intact) WHILE the FAST, statistically-measured price is washed out below its band (a short-term dislocation against the trend) — the textbook 'pullback within an uptrend' but read on two distinct timescales with two distinct feature types (slow ret_Nd for trend, bb_z for the fast statistical washout, so the two series never collide on a shared lookback). Mechanism before data: long spot when ret_Nd over a slow window is above a trend floor AND bb_z is below a fitted washout floor (price stretched below its mean) AND realized vol contained; exit when bb_z normalizes back toward the mean (dip resolved) or barriers fire. Distinct from rsi-dip-buy-in-an-uptrend (rsi dip + ret trend + vol — uses RSI not bb_z, and not framed as cross-timescale divergence) and bollinger-z-score-washout-reversion (washout + vol, NO higher-timeframe trend arm — it buys washouts in any regime). The novelty is the explicit slow-trend-UP x fast-washout-DOWN divergence. Disconfirmer 1: drop the slow trend arm — if a bare bb_z washout matches the deflated Sharpe, the higher-timeframe filter adds nothing and this is the existing washout spec. Disconfirmer 2: drop the bb_z arm — if slow-trend-long alone matches, it is just trend-following. Disconfirmer 3 (PIT/cost): both computed at bar close; net of ~20bps the pullback bounce must clear. tier0 ret_Nd + tier0 bb_z/vol, computed-at-backtest, unproven combination — low-confidence until OOS.",
+  "catalyst": "a positive SLOW-timeframe trend WHILE the FAST statistical price (bb_z) is washed out below its band — a higher-timeframe pullback, bought on spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 12
+  },
+  "entry": [
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "slow_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bbz_lb" } }, "op": "lt", "threshold": { "param": "washout_floor" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "vol_lb" } }, "op": "lt", "threshold": { "param": "vol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_z", "lookback": { "param": "bbz_lb" } }, "op": "gt", "threshold": { "param": "bbz_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "slow_lb":       { "kind": "int",   "lo": 30,    "hi": 90,  "step": 1 },
+    "trend_floor":   { "kind": "float", "lo": 0.0,   "hi": 0.10 },
+    "bbz_lb":        { "kind": "int",   "lo": 10,    "hi": 30,  "step": 1 },
+    "washout_floor": { "kind": "float", "lo": -3.0,  "hi": -1.0 },
+    "vol_lb":        { "kind": "int",   "lo": 10,    "hi": 30,  "step": 1 },
+    "vol_ceiling":   { "kind": "float", "lo": 0.04,  "hi": 0.13 },
+    "bbz_exit":      { "kind": "float", "lo": -0.5,  "hi": 1.0 },
+    "stop":          { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":            { "kind": "float", "lo": 0.05,  "hi": 0.24 },
+    "time_stop":     { "kind": "int",   "lo": 2,     "hi": 12,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

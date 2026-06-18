@@ -1,0 +1,44 @@
+{
+  "name": "DeFi-liquidity inflow momentum — ride trend backed by capital entering crypto (long spot)",
+  "rationale": "CROSS-METRIC (defi_tvl x momentum), an on-chain LIQUIDITY confirmation no existing spec uses. Price momentum cannot distinguish a move funded by genuine capital INFLOW from a thin reflexive drift. defi_tvl (total value locked across DeFi) is a free, daily on-chain read on whether real capital is FLOWING INTO crypto: a rising TVL means liquidity and risk appetite are entering the ecosystem, the macro fuel that sustains trends; a falling TVL is capital redeeming out, where momentum fades. This is the on-chain analogue of oi-buildup-confirmed-momentum (which uses perp OI) but on an ORTHOGONAL axis — DeFi capital is spot/protocol liquidity, not leveraged perp notional. Mechanism before data: long spot when defi_tvl crosses UP through a fitted level (capital inflow regime confirmed by the direction of the cross) AND price momentum is positive; exit when TVL turns down (liquidity tide reversing) or barriers fire. Distinct from oi-buildup (perp leverage axis), cross-market-dollar-weak-momentum (FX regime), and stablecoin-flow ideas (not yet ingested). Disconfirmer 1: drop the TVL arm — if bare momentum matches the deflated Sharpe, the liquidity confirmation adds nothing. Disconfirmer 2: TVL rises mechanically when token prices rise (TVL is denominated in USD of deposited tokens), so the cross_up could be a price proxy; if replacing the momentum arm with a price-DECLINE arm flips the edge sign, TVL is tracking price, not flow. Disconfirmer 3 (PIT/cost): defi_tvl is daily next-day-available; net of ~20bps the trend must clear. tier0 defi_tvl + tier0 ret_Nd, fresh prod data (DefiLlama), unproven combination — low-confidence until OOS.",
+  "catalyst": "defi_tvl crosses up (real capital flowing into crypto) WHILE price momentum is positive — a liquidity-backed trend, ridden on spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 21
+  },
+  "entry": [
+    { "feature": { "name": "defi_tvl" }, "op": "cross_up", "threshold": { "param": "tvl_level" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "defi_tvl" }, "op": "cross_down", "threshold": { "param": "tvl_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tvl_level": { "kind": "float", "lo": 40000000000, "hi": 160000000000 },
+    "tvl_exit":  { "kind": "float", "lo": 40000000000, "hi": 160000000000 },
+    "mom_lb":    { "kind": "int",   "lo": 5,    "hi": 30,  "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.0,  "hi": 0.05 },
+    "stop":      { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":        { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop": { "kind": "int",   "lo": 3,    "hi": 21,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
