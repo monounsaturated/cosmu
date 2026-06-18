@@ -27,6 +27,16 @@ function instrumentLine(r: LeaderboardRow): string {
   return [r.asset_class, formatVenue(r.venue), r.timeframe].filter((s) => s && s !== "—").join(" · ");
 }
 
+// The /strategies deep-link for a paper row → opens the screener with that Version's sheet and pins the matching
+// row. The leaderboard row carries no traded symbol (LeaderboardRow has none), so we pass only `venue` when it
+// exists; the screener then highlights the version's first row AT that venue (else its first row). symbol would
+// require a contract field that does not exist.
+function strategyHref(r: LeaderboardRow): string {
+  const params = new URLSearchParams({ v: r.version_id });
+  if (r.venue && r.venue !== "—") params.set("venue", r.venue);
+  return `/strategies?${params.toString()}`;
+}
+
 // How long the track has been funded — real `paper_age_days`. A fresh track reads "<1d"/"today" so a $0
 // P&L is legible as "just entered" rather than "no data". Never fabricated.
 function heldLabel(ageDays: number | null): string {
@@ -92,7 +102,7 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
                 return (
                   <tr key={row.version_id} className={cn(i >= LIM && "dash-extra")}>
                     <td className="pos-strat">
-                      <Link href={`/strategies?v=${row.version_id}`} className="strat-link" data-tip={row.name}>
+                      <Link href={strategyHref(row)} className="strat-link" data-tip={row.name}>
                         {row.name}
                       </Link>
                       {instr ? <span className="pos-sub">{instr}</span> : null}
