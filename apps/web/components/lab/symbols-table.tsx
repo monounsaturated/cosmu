@@ -83,14 +83,15 @@ function LifeBadge({ status }: { status: string | null | undefined }) {
   return <span className={LIFE_BADGE_CLASS[life]}>{LIFE_LABEL[life]}</span>;
 }
 
-// Sortable column keys. "strategy" is the identity column (always shown); the rest are pickable. The legacy
-// "verdict" column is gone; "status" is the per-row lifecycle stage.
-type ColKey = "symbol" | "venue" | "return" | "sharpe" | "dd" | "trades" | "status";
-type SortKey = "strategy" | ColKey;
+// Sortable column keys. "combo" and "strategy" are the two identity columns (always shown); the rest are pickable.
+// The legacy "verdict" column is gone; "status" is the per-row lifecycle stage.
+type ColKey = "status" | "return" | "venue" | "symbol" | "trades" | "dd" | "sharpe";
+type SortKey = "combo" | "strategy" | ColKey;
 type SortDir = "asc" | "desc";
 
 const LIFE_RANK: Record<LifeStatus, number> = { lab: 0, screened: 1, paper: 2, live: 3, killed: -1 };
-const SORT_VALUE: Record<SortKey, (r: LabSymbolRow) => number | string> = {
+const SORT_VALUE: Record<SortKey, (r: LabSymbolRow, comboNum?: Map<string, number>) => number | string> = {
+  combo: (r, comboNum) => comboNum?.get(comboKeyOf(r)) ?? 0,
   strategy: (r) => r.strategy_name.toLowerCase(),
   symbol: (r) => r.symbol.toLowerCase(),
   venue: (r) => (r.venue_id ?? "").toLowerCase(),
@@ -101,28 +102,30 @@ const SORT_VALUE: Record<SortKey, (r: LabSymbolRow) => number | string> = {
   status: (r) => LIFE_RANK[lifeStatusOf(r.status)] ?? 0,
 };
 
+// Column order: status · return · venue · symbol · trades · dd · sharpe.
+// Sharpe is HIDDEN by default; everything else is visible.
 const COLS: { key: ColKey; label: string; align?: "right"; tip?: string }[] = [
-  { key: "symbol", label: "Symbol" },
-  { key: "venue", label: "Venue" },
-  { key: "return", label: "Return", align: "right", tip: "Standalone net-of-fee return on THIS symbol at THIS venue — the truth, never a pooled mean." },
-  { key: "sharpe", label: "Sharpe", align: "right" },
-  { key: "dd", label: "Max DD", align: "right" },
-  { key: "trades", label: "Trades", align: "right" },
   { key: "status", label: "Status", tip: "The lifecycle stage of this Version — Backtest · Paper · Live · Killed. Badge-only; the money path reads forward evidence, not this." },
+  { key: "return", label: "Return", align: "right", tip: "Standalone net-of-fee return on THIS symbol at THIS venue — the truth, never a pooled mean." },
+  { key: "venue", label: "Venue" },
+  { key: "symbol", label: "Symbol" },
+  { key: "trades", label: "Trades", align: "right" },
+  { key: "dd", label: "Max DD", align: "right" },
+  { key: "sharpe", label: "Sharpe", align: "right" },
 ];
-const DEFAULT_VISIBLE: Record<ColKey, boolean> = { symbol: true, venue: true, return: true, sharpe: true, dd: true, trades: true, status: true };
+const DEFAULT_VISIBLE: Record<ColKey, boolean> = { status: true, return: true, venue: true, symbol: true, trades: true, dd: true, sharpe: false };
 const DEFAULT_COL_COUNT = Object.values(DEFAULT_VISIBLE).filter(Boolean).length;
 
-// Per-column CSS width class (table-layout:fixed honours these). The identity column (.col-strat) absorbs slack
-// so the default set fits ~1280px with no horizontal scroll; toggling extra columns adds the min-width floor.
+// Per-column CSS width class (table-layout:fixed honours these). The identity columns (.col-combo, .col-strat)
+// are fixed-size / flex-grow respectively; toggling extra columns adds the min-width floor.
 const COL_CLASS: Record<ColKey, string> = {
-  symbol: "col-sym",
-  venue: "col-venue",
-  return: "col-num",
-  sharpe: "col-num",
-  dd: "col-num",
-  trades: "col-num-sm",
   status: "col-status",
+  return: "col-num",
+  venue: "col-venue",
+  symbol: "col-sym",
+  trades: "col-num-sm",
+  dd: "col-num",
+  sharpe: "col-num",
 };
 
 // VerdictBadge is retained ONLY because the fiche triplet-card still renders a per-cell verdict; the screener
@@ -267,13 +270,13 @@ export function SymbolsTable({
     });
     const val = SORT_VALUE[sort.key];
     out.sort((a, b) => {
-      const va = val(a);
-      const vb = val(b);
+      const va = val(a, comboNumber);
+      const vb = val(b, comboNumber);
       const cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb));
       return sort.dir === "asc" ? cmp : -cmp;
     });
     return out;
-  }, [rows, strategySel, symbolSel, venueSel, statusSel, query, sort]);
+  }, [rows, strategySel, symbolSel, venueSel, statusSel, query, sort, comboNumber]);
 
   // ── Pagination: clamp to a max of PAGE_SIZE rows on screen; reset to page 1 whenever the filtered set changes
   // (any filter, search or sort change) so the operator never lands on an out-of-range / stale page. ──
@@ -427,6 +430,7 @@ export function SymbolsTable({
         ) : (
           <table className="screener-table" style={minWidth !== undefined ? { minWidth } : undefined}>
             <colgroup>
+              <col className="col-combo" />
               <col className="col-strat" />
               {visibleCols.map((c) => (
                 <col key={c.key} className={COL_CLASS[c.key]} />
@@ -434,6 +438,9 @@ export function SymbolsTable({
             </colgroup>
             <thead>
               <tr>
+                <th onClick={() => toggleSort("combo")} style={{ cursor: "pointer" }}>
+                  <div className="th-inner">Combo<span className={cn("sort-ind", sort.key === "combo" && (sort.dir === "asc" ? "asc" : "desc"))} /></div>
+                </th>
                 <th onClick={() => toggleSort("strategy")} style={{ cursor: "pointer" }}>
                   <div className="th-inner">Strategy<span className={cn("sort-ind", sort.key === "strategy" && (sort.dir === "asc" ? "asc" : "desc"))} /></div>
                 </th>
@@ -467,6 +474,8 @@ export function SymbolsTable({
                   >
                     <td>
                       {comboNum !== undefined ? <span className="combo-num" title={`Combo #${comboNum} — this strategy on this symbol at this venue`}>#{comboNum}</span> : null}
+                    </td>
+                    <td>
                       {stratNum !== undefined ? <span className="strat-num-sub" title={`Algorithm #${stratNum}`}>#{stratNum}</span> : null}
                       {r.strategy_name}
                       {r.kind === "llm" ? <span className="badge badge-iris" style={{ marginLeft: 6 }}>LLM</span> : null}
