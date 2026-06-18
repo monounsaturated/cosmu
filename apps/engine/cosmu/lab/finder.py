@@ -27,7 +27,7 @@ from cosmu.data.market import (
     MarketDataProvider,
     UniversalOHLCVProvider,
 )
-from cosmu.data.price_cells import build_crypto_cells
+from cosmu.data.price_cells import alt_ingest_symbol, build_crypto_cells
 from cosmu.data.universe import PERP_UNIVERSE
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
@@ -266,26 +266,31 @@ def _alt_by_cell(
     market: dict[str, list[Bar]],
     cell_meta: dict[str, tuple[str, str]],
 ) -> dict[str, dict[str, dict[str, float]]] | None:
-    """The point-in-time alt-data join keyed by CELL KEY, but fetched by each cell's CANONICAL symbol. Alt data
+    """The point-in-time alt-data join keyed by CELL KEY, but fetched by each cell's BARE INGEST symbol. Alt data
     (funding_rate, fear_greed, …) is a property of the PAIR/asset, not the venue cell — a 'BTC/USDT@kraken' cell
-    must read BTC/USDT's funding, never 'BTC/USDT@kraken' (which has no series). So we build the join once per
-    canonical symbol (deduped — N venue cells of one pair share one fetch) and replicate it under each cell key.
-    Returns None exactly when build_alt_by_symbol would (no alt features / no store), so the price-only path is
-    unchanged. The bars passed to build_alt_by_symbol are the cell's OWN bars so align_asof aligns to them — a
-    FALLBACK cell aligns its alt onto its own series, a UNIFY/reference cell onto the reference."""
-    # Map each canonical symbol to ONE representative cell's bars (any cell of the pair works for the asof index —
-    # UNIFY cells share the reference bars; a FALLBACK cell's own bars are a near-identical index for the alignment).
+    must read BTC/USDT's funding, never 'BTC/USDT@kraken' (which has no series). And ingest keys those series by the
+    BARE full-pair symbol (BTCUSDT), NOT the canonical slash pair (BTC/USDT) the universal price layer stamps on the
+    cell — so we map canonical→bare via alt_ingest_symbol before fetching (else funding/OI/on-chain silently read
+    None on the populated-universe path). The join is built once per bare ingest key (deduped — N venue cells of one
+    pair share one fetch) and replicated under each cell key. Returns None exactly when build_alt_by_symbol would (no
+    alt features / no store), so the price-only path is unchanged. The bars passed to build_alt_by_symbol are the
+    cell's OWN bars so align_asof aligns to them — a FALLBACK cell aligns its alt onto its own series, a
+    UNIFY/reference cell onto the reference."""
+    # Map each cell to its BARE ingest key (BTC/USDT -> BTCUSDT, no-op when already bare) and pick ONE representative
+    # cell's bars per key (any cell of the pair works for the asof index — UNIFY cells share the reference bars; a
+    # FALLBACK cell's own bars are a near-identical index for the alignment).
     canon_market: dict[str, list[Bar]] = {}
+    ingest_key_by_cell: dict[str, str] = {}
     for key, bars in market.items():
-        symbol = cell_meta.get(key, (key, ""))[0]
-        canon_market.setdefault(symbol, bars)
+        ingest_key = alt_ingest_symbol(cell_meta.get(key, (key, ""))[0])
+        ingest_key_by_cell[key] = ingest_key
+        canon_market.setdefault(ingest_key, bars)
     joined = build_alt_by_symbol(alt_store, spec, canon_market)
     if joined is None:
         return None
     out: dict[str, dict[str, dict[str, float]]] = {}
     for key in market:
-        symbol = cell_meta.get(key, (key, ""))[0]
-        feats = joined.get(symbol)
+        feats = joined.get(ingest_key_by_cell[key])
         if feats is not None:
             out[key] = feats
     return out or None
