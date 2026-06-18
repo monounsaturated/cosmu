@@ -224,3 +224,75 @@ def resolve_clob_token(symbol: str) -> str | None:
     """Module-level convenience: resolve a core symbol to its CLOB YES-token id via live Gamma discovery.
     Used by the Polymarket execution adapter's lazy resolver; returns None on any failure (best-effort)."""
     return PolymarketClobSource().resolve_token(symbol)
+
+
+class PerMarketOddsSource:
+    """Historical per-MARKET YES-odds for a single Polymarket conditionId — the per-conditionId odds series the
+    `PredictionDataAdapter` reads (provider="polymarket", symbol=conditionId, metric="odds"), as opposed to the
+    aggregate macro composites in `PolymarketClobSource`.
+
+    The CLOB `/prices-history` endpoint is keyed by the YES-outcome clobTokenId, NOT the conditionId — so each
+    fetch is two hops: Gamma `/markets?condition_ids={cid}` → `clobTokenIds[0]` (the YES token) → CLOB
+    `/prices-history?market={YES_token}&fidelity=1440&interval=max` → daily {t, p} rows where p ∈ [0,1] is the
+    implied probability. The series is stored keyed by the conditionId so the adapter can read it back without
+    re-resolving the token (the universe_pairs symbol IS the conditionId). PIT: available_at = ts (a midpoint
+    quote is known at its own bucket time; no declared release lag — same contract as `PolymarketClobSource`).
+
+    Offline-testable via injected `_gamma_fetcher(url)->list|dict` and `_clob_fetcher(url)->dict`.
+    """
+
+    CLOB_BASE = "https://clob.polymarket.com"
+    GAMMA_BASE = "https://gamma-api.polymarket.com"
+
+    def __init__(
+        self,
+        *,
+        _gamma_fetcher: Callable[[str], Any] | None = None,
+        _clob_fetcher: Callable[[str], Any] | None = None,
+    ) -> None:
+        self._gamma_fetcher = _gamma_fetcher or self._fetch
+        self._clob_fetcher = _clob_fetcher or self._fetch
+
+    def _fetch(self, url: str) -> Any:
+        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def yes_token_for(self, condition_id: str) -> str | None:
+        """Resolve a conditionId to its YES-outcome clobTokenId via Gamma. None on any failure / missing token —
+        the caller then skips this market (one dead resolution never aborts the batch)."""
+        url = f"{self.GAMMA_BASE}/markets?condition_ids={urllib.parse.quote(condition_id)}"
+        try:
+            data = self._gamma_fetcher(url)
+        except Exception:  # noqa: BLE001 — network/timeout/404 → skip, never abort
+            return None
+        rows = data if isinstance(data, list) else ([data] if isinstance(data, dict) else [])
+        for m in rows:
+            if not isinstance(m, dict):
+                continue
+            token = PolymarketClobSource._clob_token(m)  # noqa: SLF001 — shared YES-token extractor
+            if token:
+                return token
+        return None
+
+    def fetch_odds(self, condition_id: str, *, limit: int = 100_000) -> list[AltDataPoint]:
+        """Full daily YES-odds history for one conditionId, ascending by ts. Empty on any failure (unresolvable
+        token, dead CLOB fetch, no history) — the ingest treats it as 0 rows for that market, never an abort."""
+        token = self.yes_token_for(condition_id)
+        if not token:
+            return []
+        query = urllib.parse.urlencode({"market": token, "fidelity": 1440, "interval": "max"})
+        url = f"{self.CLOB_BASE}/prices-history?{query}"
+        try:
+            payload = self._clob_fetcher(url)
+        except Exception:  # noqa: BLE001 — network/timeout/404 → skip, never abort
+            return []
+        rows = payload.get("history", []) if isinstance(payload, dict) else []
+        out: list[AltDataPoint] = []
+        for row in rows:
+            try:
+                ts = datetime.fromtimestamp(int(row["t"]), tz=UTC)
+                out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["p"])))
+            except (KeyError, TypeError, ValueError, OSError):
+                continue
+        return sorted(out, key=lambda p: p.ts)[-limit:]

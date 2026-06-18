@@ -28,6 +28,10 @@ EQUITY_SCREEN_LIMIT = 50
 # Cap Hyperliquid perp symbols per screen. HL perps are highly correlated with Binance perps (same underlying),
 # so 30 liquid perps is already generous — matching the Binance PERP_UNIVERSE width.
 HL_SCREEN_LIMIT = 30
+# Cap prediction (Polymarket) markets per screen — the conditionIds whose per-market odds were ingested
+# (ingest/polymarket_odds.py). Matches the per-market ingest breadth so the finder screens exactly the markets
+# that have an `odds` series, not the full 296-row universe (most of which have no ingested history yet).
+PREDICTION_SCREEN_LIMIT = 30
 
 
 def equity_symbols(spec: StrategySpec) -> list[str]:
@@ -47,6 +51,26 @@ def hyperliquid_symbols(spec: StrategySpec) -> list[str]:
     if "hyperliquid" not in spec.universe.venues:
         return []
     return HyperliquidOHLCVProvider().available_symbols()[:HL_SCREEN_LIMIT]
+
+
+def prediction_markets(spec: StrategySpec, store: object) -> list[str]:
+    """Prediction (Polymarket) SCREEN markets for a spec — the conditionIds of the most-liquid OPEN markets from
+    universe_pairs, capped at `PREDICTION_SCREEN_LIMIT`. Empty unless the spec's universe declares the
+    'polymarket' venue AND the 'prediction' asset class (a prediction edge must opt in explicitly — every other
+    spec stays unaffected). The universe_pairs `symbol` for a polymarket row IS the conditionId, which is the key
+    the per-market odds ingest stored under and the key PredictionDataAdapter reads back. Never raises: a missing
+    table / unusable store degrades to no markets (price-only screen continues for any other legs)."""
+    if "polymarket" not in spec.universe.venues or "prediction" not in spec.universe.asset_classes:
+        return []
+    try:
+        rows = store.rows(
+            "SELECT symbol FROM universe_pairs WHERE venue = ? AND asset_class = ? AND active = 1 "
+            "ORDER BY liquidity_usd_24h DESC, symbol LIMIT ?",  # column is NOT NULL → no NULLS-LAST (SQLite-safe)
+            ("polymarket", "prediction", PREDICTION_SCREEN_LIMIT),
+        )
+    except Exception:  # noqa: BLE001 — no usable universe table → no prediction markets, never abort
+        return []
+    return [r["symbol"] for r in rows if r.get("symbol")]
 
 
 def _instrument_for(catalog: VenueCatalog, symbol: str, venue_id: str) -> Instrument | None:
