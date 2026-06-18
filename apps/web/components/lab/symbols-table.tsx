@@ -1,14 +1,15 @@
 "use client";
 
 // module: the Strategies SCREENER — one row per (algorithm × asset × venue) TRIPLET, never pooled. Each row is a
-// strategy on one symbol at one venue, ranked by standalone net-of-fee return. Carries the honest per-symbol
-// VERDICT: robust (edge generalizes across the tested symbols), fragile (a lone best-of-N winner — caution), thin
-// (too few trades to judge), negative (a loser). Restores the OG strategies-page UX on the granular rows: row
-// click → right SIDE PANEL with the full strategy sheet; a COLUMN PICKER; the DARK-MODE toggle; plus multi-select
-// symbol/venue filters (search + click to pick several). Visibility only — the deterministic Gate alone funds.
+// strategy on one symbol at one venue, ranked by standalone net-of-fee return. Restores the OG strategies-page UX
+// on the granular rows: row click → right SIDE PANEL with the full strategy sheet; a COLUMN PICKER; the DARK-MODE
+// toggle; plus multi-select STRATEGY / SYMBOL / VENUE / STATUS filters (search + checkbox + selected-first). Rows
+// are PAGINATED (100 max per page) and each algorithm carries a small stable "#n" number so the same algo is
+// recognisable across its asset/venue cells. Visibility only — the deterministic Gate alone funds.
 //
-// HONESTY: return_pct / max_drawdown are stored as FRACTIONS (0.21 = 21%) → ×100 for display. The verdict counts
-// symbols as INDEPENDENT, so on correlated majors (BTC~ETH) it can over-state "robust"; surfaced in the caption.
+// HONESTY: return_pct / max_drawdown are stored as FRACTIONS (0.21 = 21%) → ×100 for display. The per-row badge is
+// the LIFECYCLE stage (Backtest / Paper / Live / Killed), BADGE-ONLY — the money path reads forward evidence, not
+// this column. The legacy per-symbol "verdict" is no longer surfaced here (filtering is via the dropdowns).
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -16,8 +17,12 @@ import type { LabSymbolRow, StrategyDetailResponse } from "@cosmu/contracts-ts";
 import { SidePanel } from "@/components/ui/side-panel";
 import { StrategySheet } from "@/components/strategy/strategy-sheet";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { LIFE_BADGE_CLASS, LIFE_LABEL, type LifeStatus } from "@/lib/lifecycle";
 import { engineGetJson, enginePeek } from "@/lib/engine";
-import { cn, formatPct } from "@/lib/utils";
+import { cn, formatPct, isKilled, isPaper } from "@/lib/utils";
+
+// Rows shown per page — never render more than this many <tr> at once (keeps the DOM lean on a fat universe).
+const PAGE_SIZE = 100;
 
 // The fiche-triplet URL for a cell (deep-link target; kept for the comparison grid's navigate mode). venue_id is
 // carried as "" for a NULL-venue cell so the sibling stays addressable.
@@ -36,14 +41,33 @@ const VERDICT_META: Record<VerdictKey, { label: string; color: string; dim: stri
   thin: { label: "Thin", color: "var(--ink-2, #8a8a8a)", dim: "transparent" },
 };
 
-type FilterKey = "all" | VerdictKey;
+// Normalize a raw `strategy_versions.status` string onto the 5-lane LifeStatus taxonomy (lib/lifecycle). Mirrors
+// the engine's lifecycle vocabulary: `lab` → queued, `screened` → Backtest, `paper`/`forward_test` → Paper,
+// `live` → Live, `killed` → Killed. Reuses the shared isPaper/isKilled predicates so the taxonomy never drifts.
+// Anything unknown falls back to the earliest "queued" lane (never fabricates a more-advanced stage).
+function lifeStatusOf(status: string | null | undefined): LifeStatus {
+  if (isKilled(status)) return "killed";
+  if (isPaper(status)) return "paper";
+  const s = (status ?? "").toLowerCase();
+  if (s === "live") return "live";
+  if (s === "screened" || s === "backtested" || s === "backtest") return "screened";
+  return "lab";
+}
 
-// Sortable column keys. "strategy" is the identity column (always shown); the rest are pickable.
-type ColKey = "symbol" | "venue" | "return" | "sharpe" | "dd" | "trades" | "verdict";
+// The small per-row lifecycle badge (replaces the old Verdict cell). Backtest / Paper / Live / Killed, reusing the
+// shared stage-badge classes so it matches every other surface.
+function LifeBadge({ status }: { status: string | null | undefined }) {
+  const life = lifeStatusOf(status);
+  return <span className={LIFE_BADGE_CLASS[life]}>{LIFE_LABEL[life]}</span>;
+}
+
+// Sortable column keys. "strategy" is the identity column (always shown); the rest are pickable. The legacy
+// "verdict" column is gone; "status" is the per-row lifecycle stage.
+type ColKey = "symbol" | "venue" | "return" | "sharpe" | "dd" | "trades" | "status";
 type SortKey = "strategy" | ColKey;
 type SortDir = "asc" | "desc";
 
-const VERDICT_RANK: Record<string, number> = { robust: 3, fragile: 2, negative: 1, thin: 0 };
+const LIFE_RANK: Record<LifeStatus, number> = { lab: 0, screened: 1, paper: 2, live: 3, killed: -1 };
 const SORT_VALUE: Record<SortKey, (r: LabSymbolRow) => number | string> = {
   strategy: (r) => r.strategy_name.toLowerCase(),
   symbol: (r) => r.symbol.toLowerCase(),
@@ -52,7 +76,7 @@ const SORT_VALUE: Record<SortKey, (r: LabSymbolRow) => number | string> = {
   sharpe: (r) => r.sharpe,
   dd: (r) => r.max_drawdown,
   trades: (r) => r.trades,
-  verdict: (r) => VERDICT_RANK[r.verdict ?? "thin"] ?? 0,
+  status: (r) => LIFE_RANK[lifeStatusOf(r.status)] ?? 0,
 };
 
 const COLS: { key: ColKey; label: string; align?: "right"; tip?: string }[] = [
@@ -62,10 +86,12 @@ const COLS: { key: ColKey; label: string; align?: "right"; tip?: string }[] = [
   { key: "sharpe", label: "Sharpe", align: "right" },
   { key: "dd", label: "Max DD", align: "right" },
   { key: "trades", label: "Trades", align: "right" },
-  { key: "verdict", label: "Verdict", tip: "robust = edge generalizes across symbols · fragile = lone best-of-N winner · thin = too few trades · negative = loser." },
+  { key: "status", label: "Status", tip: "The lifecycle stage of this Version — Backtest · Paper · Live · Killed. Badge-only; the money path reads forward evidence, not this." },
 ];
-const DEFAULT_VISIBLE: Record<ColKey, boolean> = { symbol: true, venue: true, return: true, sharpe: true, dd: true, trades: true, verdict: true };
+const DEFAULT_VISIBLE: Record<ColKey, boolean> = { symbol: true, venue: true, return: true, sharpe: true, dd: true, trades: true, status: true };
 
+// VerdictBadge is retained ONLY because the fiche triplet-card still renders a per-cell verdict; the screener
+// table no longer uses it (filtering is via the dropdowns, the row badge is the lifecycle stage).
 export function VerdictBadge({ verdict }: { verdict: string | null }) {
   const meta = VERDICT_META[(verdict ?? "thin") as VerdictKey] ?? VERDICT_META.thin;
   if (verdict === "thin" || !verdict) return <span className="quiet">{meta.label}</span>;
@@ -108,14 +134,16 @@ export function SymbolsTable({
   const router = useRouter();
   // Deep-link: ?v=<version_id> opens that strategy's sheet on load (a link from any dashboard lands on it).
   const searchParams = useSearchParams();
-  const [filter, setFilter] = useState<FilterKey>("all");
+  const [strategySel, setStrategySel] = useState<Set<string>>(new Set());
   const [symbolSel, setSymbolSel] = useState<Set<string>>(new Set());
   const [venueSel, setVenueSel] = useState<Set<string>>(new Set());
+  const [statusSel, setStatusSel] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "return", dir: "desc" });
   const [visible, setVisible] = useState<Record<ColKey, boolean>>({ ...DEFAULT_VISIBLE });
   const [showPicker, setShowPicker] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("v"));
+  const [page, setPage] = useState(0);
   const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -127,18 +155,37 @@ export function SymbolsTable({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [showPicker]);
 
-  const counts = useMemo(() => {
-    const c: Record<string, number> = { all: rows.length, robust: 0, fragile: 0, thin: 0, negative: 0 };
-    for (const r of rows) c[r.verdict ?? "thin"] = (c[r.verdict ?? "thin"] ?? 0) + 1;
-    return c;
+  // ── Stable algorithm number: assign #1, #2, … to each DISTINCT strategy_name (sorted), computed once over ALL
+  // rows so the number is identical regardless of paging, sort or the active filters. A small additive badge in
+  // the Strategy cell so the operator recognises the same algorithm across its asset/venue cells. ──
+  const strategyNumber = useMemo(() => {
+    const names = Array.from(new Set(rows.map((r) => r.strategy_name))).sort((a, b) => a.localeCompare(b));
+    const map = new Map<string, number>();
+    names.forEach((n, i) => map.set(n, i + 1));
+    return map;
+  }, [rows]);
+
+  // Distinct strategy names (for the Strategy dropdown), sorted the same way as the number map so labels read #1…#n.
+  const strategyOptions = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.strategy_name))).sort((a, b) => a.localeCompare(b)),
+    [rows],
+  );
+
+  // The lifecycle statuses actually PRESENT in the rows (for the Status dropdown), ordered by pipeline stage.
+  const statusOptions = useMemo(() => {
+    const present = new Set<LifeStatus>();
+    for (const r of rows) present.add(lifeStatusOf(r.status));
+    const order: LifeStatus[] = ["lab", "screened", "paper", "live", "killed"];
+    return order.filter((s) => present.has(s));
   }, [rows]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const out = rows.filter((r) => {
-      if (filter !== "all" && (r.verdict ?? "thin") !== filter) return false;
+      if (strategySel.size && !strategySel.has(r.strategy_name)) return false;
       if (symbolSel.size && !symbolSel.has(r.symbol)) return false;
       if (venueSel.size && !venueSel.has(r.venue_id ?? "")) return false;
+      if (statusSel.size && !statusSel.has(lifeStatusOf(r.status))) return false;
       if (q && !r.strategy_name.toLowerCase().includes(q) && !r.symbol.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -150,7 +197,19 @@ export function SymbolsTable({
       return sort.dir === "asc" ? cmp : -cmp;
     });
     return out;
-  }, [rows, filter, symbolSel, venueSel, query, sort]);
+  }, [rows, strategySel, symbolSel, venueSel, statusSel, query, sort]);
+
+  // ── Pagination: clamp to a max of PAGE_SIZE rows on screen; reset to page 1 whenever the filtered set changes
+  // (any filter, search or sort change) so the operator never lands on an out-of-range / stale page. ──
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  useEffect(() => {
+    setPage(0);
+  }, [strategySel, symbolSel, venueSel, statusSel, query, sort]);
+  const safePage = Math.min(page, pageCount - 1);
+  const pageStart = safePage * PAGE_SIZE;
+  const pageRows = filtered.slice(pageStart, pageStart + PAGE_SIZE);
+  const rangeFrom = filtered.length === 0 ? 0 : pageStart + 1;
+  const rangeTo = Math.min(pageStart + PAGE_SIZE, filtered.length);
 
   const visibleCols = COLS.filter((c) => visible[c.key]);
   const minWidth = 200 + visibleCols.length * 96;
@@ -178,42 +237,50 @@ export function SymbolsTable({
         return <td key={key} style={{ textAlign: "right" }} className="quiet">{`${(r.max_drawdown * 100).toFixed(1)}%`}</td>;
       case "trades":
         return <td key={key} style={{ textAlign: "right" }}>{r.trades}</td>;
-      case "verdict":
-        return <td key={key}><VerdictBadge verdict={r.verdict} /></td>;
+      case "status":
+        return <td key={key}><LifeBadge status={r.status} /></td>;
     }
   }
 
   return (
     <>
-      <div className="toolbar-row" style={{ marginBottom: 8 }}>
+      {/* ── ONE-ROW toolbar: title + every filter dropdown (Strategies · Symbols · Venues · Status) + search +
+          Columns picker + dark-mode toggle, all on a single flex row (wraps only as a last resort). ── */}
+      <div className="toolbar-row screener-toolbar" style={{ marginBottom: 8 }}>
         <span className="page-title">{title}</span>
-        <div className="chip-row">
-          <Chip label="All" count={counts.all} active={filter === "all"} onClick={() => setFilter("all")} />
-          <Chip label="Robust" dot="var(--up)" count={counts.robust} active={filter === "robust"} onClick={() => setFilter("robust")} />
-          <Chip label="Fragile" dot="var(--gold)" count={counts.fragile} active={filter === "fragile"} onClick={() => setFilter("fragile")} />
-          <Chip label="Negative" dot="var(--down)" count={counts.negative} active={filter === "negative"} onClick={() => setFilter("negative")} />
-          <Chip label="Thin" count={counts.thin} active={filter === "thin"} onClick={() => setFilter("thin")} />
-        </div>
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          <MultiSelect label="symbols" options={symbols} selected={symbolSel} onChange={setSymbolSel} />
-          <MultiSelect label="venues" options={venues} selected={venueSel} onChange={setVenueSel} />
-          <input className="search-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search strategy or symbol…" aria-label="Search" />
-          <div className="col-picker-wrap" ref={pickerRef}>
-            <button type="button" className="btn-col-picker" onClick={() => setShowPicker((v) => !v)} aria-expanded={showPicker}>Columns</button>
-            <div className={cn("col-picker-menu", showPicker && "open")}>
-              <div className="cp-head">Show columns</div>
-              {COLS.map((c) => (
-                <div key={c.key} className={cn("col-picker-item", visible[c.key] && "on")} onClick={() => setVisible((v) => ({ ...v, [c.key]: !v[c.key] }))}>
-                  <span className="cp-ind" />
-                  <span className="cp-label">{c.label}</span>
-                </div>
-              ))}
-              <div className="col-picker-divider" />
-              <button type="button" className="cp-reset" onClick={() => setVisible({ ...DEFAULT_VISIBLE })}>Reset to default</button>
-            </div>
+        <MultiSelect
+          label="strategies"
+          options={strategyOptions}
+          selected={strategySel}
+          onChange={setStrategySel}
+          renderOption={(o) => `#${strategyNumber.get(o) ?? "?"} ${o}`}
+        />
+        <MultiSelect label="symbols" options={symbols} selected={symbolSel} onChange={setSymbolSel} />
+        <MultiSelect label="venues" options={venues} selected={venueSel} onChange={setVenueSel} formatValue={(v) => v || "—"} />
+        <MultiSelect
+          label="status"
+          options={statusOptions}
+          selected={statusSel}
+          onChange={(next) => setStatusSel(next)}
+          renderOption={(o) => LIFE_LABEL[o as LifeStatus] ?? o}
+          formatValue={(o) => LIFE_LABEL[o as LifeStatus] ?? o}
+        />
+        <input className="search-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search strategy or symbol…" aria-label="Search" style={{ minWidth: 150 }} />
+        <div className="col-picker-wrap" ref={pickerRef} style={{ marginLeft: "auto" }}>
+          <button type="button" className="btn-col-picker" onClick={() => setShowPicker((v) => !v)} aria-expanded={showPicker}>Columns</button>
+          <div className={cn("col-picker-menu cp-1", showPicker && "open")}>
+            <div className="cp-head">Show columns</div>
+            {COLS.map((c) => (
+              <div key={c.key} className={cn("col-picker-item", visible[c.key] && "on")} onClick={() => setVisible((v) => ({ ...v, [c.key]: !v[c.key] }))}>
+                <span className="cp-ind" />
+                <span className="cp-label">{c.label}</span>
+              </div>
+            ))}
+            <div className="col-picker-divider" />
+            <button type="button" className="cp-reset" onClick={() => setVisible({ ...DEFAULT_VISIBLE })}>Reset to default</button>
           </div>
-          <ThemeToggle />
         </div>
+        <ThemeToggle />
       </div>
 
       {ribbon ? <div style={{ marginBottom: 8 }}>{ribbon}</div> : null}
@@ -221,10 +288,9 @@ export function SymbolsTable({
       {caption ? (
         <p className="quiet" style={{ fontSize: 11, margin: "0 4px 8px" }}>
           Each row is one strategy on one symbol at one venue — the granular triplet, never a pooled mean. Ranked by
-          standalone return. “Robust” = the edge generalised across the symbols tested; “Fragile” = a lone winner
-          (best-of-N caution); “Thin” = too few trades to judge; “Negative” = a loser. Click a row to open its sheet.
-          The deterministic Gate alone decides funding. Note: the verdict counts symbols as independent, so
-          correlated majors (BTC~ETH) can over-state “Robust”.
+          standalone return. The badge shows the lifecycle stage (Backtest · Paper · Live · Killed). Filter with the
+          Strategies / Symbols / Venues / Status dropdowns; click a row to open its sheet. The deterministic Gate
+          alone decides funding.
         </p>
       ) : null}
 
@@ -255,22 +321,24 @@ export function SymbolsTable({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r, i) => {
+              {pageRows.map((r, i) => {
                 const isCurrent =
                   highlight !== undefined &&
                   highlight.strategy_version_id === r.strategy_version_id &&
                   highlight.symbol === r.symbol &&
                   (highlight.venue_id ?? "") === (r.venue_id ?? "");
                 const isSelected = selectedId === r.strategy_version_id;
+                const num = strategyNumber.get(r.strategy_name);
                 return (
                   <tr
-                    key={`${r.strategy_version_id}-${r.symbol}-${r.venue_id ?? ""}-${i}`}
+                    key={`${r.strategy_version_id}-${r.symbol}-${r.venue_id ?? ""}-${pageStart + i}`}
                     onClick={() => handleRow(r)}
                     className={cn(isCurrent && "row-current", isSelected && "sel")}
                     style={{ cursor: "pointer", ...(isCurrent ? { background: "var(--iris-dim, rgba(120,120,255,0.08))" } : {}) }}
                     title="Open this strategy"
                   >
                     <td>
+                      {num !== undefined ? <span className="strat-num" title={`Algorithm #${num}`}>#{num}</span> : null}
                       {r.strategy_name}
                       {r.kind === "llm" ? <span className="badge badge-iris" style={{ marginLeft: 6 }}>LLM</span> : null}
                     </td>
@@ -282,6 +350,38 @@ export function SymbolsTable({
           </table>
         )}
       </div>
+
+      {/* ── Pager: page X / Y + the visible range + prev/next arrows. Only shown when there's more than one page. ── */}
+      {filtered.length > 0 ? (
+        <div className="screener-pager">
+          <span className="quiet">
+            {rangeFrom.toLocaleString()}–{rangeTo.toLocaleString()} of {filtered.length.toLocaleString()}
+          </span>
+          {pageCount > 1 ? (
+            <div className="pager-ctrl">
+              <button
+                type="button"
+                className="pager-btn"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={safePage <= 0}
+                aria-label="Previous page"
+              >
+                ‹
+              </button>
+              <span className="pager-pos">Page {safePage + 1} / {pageCount}</span>
+              <button
+                type="button"
+                className="pager-btn"
+                onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                disabled={safePage >= pageCount - 1}
+                aria-label="Next page"
+              >
+                ›
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <SheetPanel id={selectedId} onClose={() => setSelectedId(null)} />
     </>
@@ -337,8 +437,25 @@ function SheetPanel({ id, onClose }: { id: string | null; onClose: () => void })
   );
 }
 
-// A multi-select dropdown with an inline search — click the button, search, click options to toggle several.
-function MultiSelect({ label, options, selected, onChange }: { label: string; options: string[]; selected: Set<string>; onChange: (next: Set<string>) => void }) {
+// A multi-select dropdown — click the button, search the options, click rows to toggle several. Selected options
+// FLOAT TO THE TOP (selected-first, then the rest) so the picks are visible at a glance; each option carries a
+// real checkbox. `renderOption`/`formatValue` let a caller show a friendlier label than the raw option value
+// (e.g. "#3 momentum" for a strategy, "Paper" for a status lane).
+function MultiSelect({
+  label,
+  options,
+  selected,
+  onChange,
+  renderOption,
+  formatValue,
+}: {
+  label: string;
+  options: string[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+  renderOption?: (o: string) => string;
+  formatValue?: (o: string) => string;
+}) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -352,8 +469,31 @@ function MultiSelect({ label, options, selected, onChange }: { label: string; op
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  const shown = options.filter((o) => o.toLowerCase().includes(q.trim().toLowerCase()));
-  const btnLabel = selected.size === 0 ? `All ${label}` : `${selected.size} ${label}`;
+  const optLabel = (o: string) => (renderOption ? renderOption(o) : o || "—");
+  const valLabel = (o: string) => (formatValue ? formatValue(o) : o || "—");
+
+  // Filter by the rendered label OR the raw value, then SELECTED-FIRST so picks float to the top.
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const matched = options.filter(
+      (o) => optLabel(o).toLowerCase().includes(needle) || o.toLowerCase().includes(needle),
+    );
+    return matched.slice().sort((a, b) => {
+      const sa = selected.has(a) ? 0 : 1;
+      const sb = selected.has(b) ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return optLabel(a).localeCompare(optLabel(b));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options, q, selected, renderOption]);
+
+  // Button label: "All X" when empty (clickable opener); the single value when one is picked; else "n X".
+  const btnLabel =
+    selected.size === 0
+      ? `All ${label}`
+      : selected.size === 1
+        ? valLabel(Array.from(selected)[0])
+        : `${selected.size} ${label}`;
 
   function toggle(o: string) {
     const n = new Set(selected);
@@ -363,37 +503,28 @@ function MultiSelect({ label, options, selected, onChange }: { label: string; op
   }
 
   return (
-    <div className="col-picker-wrap" ref={ref}>
+    <div className="col-picker-wrap ms-wrap" ref={ref}>
       <button type="button" className={cn("btn-col-picker", selected.size > 0 && "active")} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         {btnLabel}
+        <span className="ms-caret">▾</span>
       </button>
-      <div className={cn("col-picker-menu", open && "open")} style={{ minWidth: 200 }}>
+      <div className={cn("col-picker-menu cp-1", open && "open")} style={{ minWidth: 200, left: 0, right: "auto", transformOrigin: "top left" }}>
         <input className="search-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${label}…`} style={{ width: "100%", marginBottom: 6 }} />
         {selected.size > 0 ? (
-          <div className="col-picker-item" onClick={() => onChange(new Set())}>
-            <span className="cp-label">Clear ({selected.size})</span>
-          </div>
+          <button type="button" className="cp-reset" style={{ marginBottom: 2 }} onClick={() => onChange(new Set())}>
+            Clear ({selected.size})
+          </button>
         ) : null}
         <div style={{ maxHeight: 260, overflowY: "auto" }}>
           {shown.map((o) => (
             <div key={o} className={cn("col-picker-item", selected.has(o) && "on")} onClick={() => toggle(o)}>
               <span className="cp-ind" />
-              <span className="cp-label">{o || "—"}</span>
+              <span className="cp-label">{optLabel(o)}</span>
             </div>
           ))}
           {shown.length === 0 ? <p className="quiet" style={{ fontSize: 11, padding: 6 }}>No match.</p> : null}
         </div>
       </div>
     </div>
-  );
-}
-
-function Chip({ label, count, dot, active, onClick }: { label: string; count?: number; dot?: string; active: boolean; onClick: () => void }) {
-  return (
-    <button type="button" className={cn("chip", active && "active")} onClick={onClick}>
-      {dot ? <span className="chip-dot" style={{ background: dot }} /> : label === "All" ? <span className="chip-dot" /> : null}
-      {label}
-      {typeof count === "number" ? <span className="quiet" style={{ marginLeft: 4 }}>{count}</span> : null}
-    </button>
   );
 }
