@@ -30,7 +30,7 @@ from cosmu.data.universe import PERP_UNIVERSE
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.experiments import KIND_FINDER, ExperimentRecord, data_version, log_experiments
-from cosmu.knowledge.store import Store, Writer, utcnow
+from cosmu.knowledge.store import Store, Writer, tracks_has_cell_columns, utcnow
 from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_brut
 from cosmu.master.holdout import HoldoutLedger
@@ -627,11 +627,21 @@ class StrategyFinder:
                 # master/live_eligibility reads this cell's OWN clock origin + proven-regime passport — never a
                 # sibling cell's. Each cell stands alone; no sibling comparison decides funding.
                 _capital = self.settings.sim_track_capital
+                # Pre-migration the tracks table still has UNIQUE(strategy_version_id) (the per-cell UNIQUE arrives
+                # with the held migration), so a version with >1 passing cell would collide on the 2nd insert. Until
+                # migrated, degrade to ONE version-wide track per version (fund the first passing cell, skip the rest);
+                # post-migration every cell funds its own track. Schema-adaptive — crash-proof on both schemas.
+                _cell_cols = tracks_has_cell_columns(self.store)
+                _opened_version_wide = False
                 for _sym, cell in r.cells.items():
                     if not (cell.passed and cell.holdout_passed):
                         continue
+                    if not _cell_cols and _opened_version_wide:
+                        continue
                     open_paper_track(b, version_id=version_id, starting_capital=_capital, target_vol=cell.target_vol,
                                      symbol=cell.symbol, venue_id=cell.venue_id, store=self.store)
+                    if not _cell_cols:
+                        _opened_version_wide = True
                     proven = sorted(proven_regimes(cell.metrics.regime_returns))
                     b.append_event(
                         actor="master", kind="track_opened", ref_type="strategy_version",

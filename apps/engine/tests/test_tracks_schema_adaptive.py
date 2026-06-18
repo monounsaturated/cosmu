@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from decimal import Decimal
 
 import pytest
@@ -279,3 +280,54 @@ def test_migration_rewrite_assigns_legacy_series_to_its_cell(tmp_path):
     assert "bull" in proven_regimes_for(store, version_id, symbol=_SYM, venue_id=_VENUE)
     # one snapshot → no pairwise return yet, but the lookup resolves the right ref (non-crash, cell-keyed)
     assert forward_daily_returns(store, version_id, symbol=_SYM, venue_id=_VENUE) == []
+
+
+# ------------------------------------------ BLOCKER A (cont): multi-cell fan-out vs UN-MIGRATED prod UNIQUE(version)
+
+
+def _prodify(store: Store) -> None:
+    """Make a fresh SQLite `tracks` table match UN-MIGRATED PROD: drop the cell columns + the per-cell index, and
+    add back the OLD ``UNIQUE(strategy_version_id)`` (a fresh schema carries only uq_tracks_cell). This is what the
+    finder/loop fan-out actually hits in prod today — and what the held migration later replaces with the per-cell
+    UNIQUE."""
+    _drop_cell_columns(store)
+    store.rows("CREATE UNIQUE INDEX IF NOT EXISTS uq_tracks_version ON tracks(strategy_version_id)")
+
+
+def test_multi_cell_fanout_collides_without_guard_pre_migration(tmp_path):
+    """The hazard the finder/loop guard prevents: pre-migration tracks enforces UNIQUE(strategy_version_id), so a
+    version that passes the gate on >1 symbol would open a SECOND version-wide track and COLLIDE. Pin that the raw
+    second open raises, so the guard is load-bearing (not dead code)."""
+    store = _store(tmp_path, "collide")
+    _prodify(store)
+    assert tracks_has_cell_columns(store) is False
+    vid = _seed_version(store)
+    open_paper_track(store, version_id=vid, starting_capital="10000", symbol="BTCUSDT", venue_id=_VENUE, store=store)
+    with pytest.raises(sqlite3.IntegrityError):
+        open_paper_track(store, version_id=vid, starting_capital="10000", symbol="ETHUSDT", venue_id=_VENUE, store=store)
+
+
+def test_multi_cell_fanout_guard_degrades_pre_migration_fans_out_post(tmp_path):
+    """Mirror the finder/loop guard: PRE-migration fund ONE version-wide track per version (skip extra passing
+    cells) → no UNIQUE(version) collision; POST-migration the same fan-out opens one DISTINCT track per cell."""
+    # PRE-migration: the guard yields exactly one track, no crash.
+    store = _store(tmp_path, "guard_pre")
+    _prodify(store)
+    vid = _seed_version(store)
+    cell_cols = tracks_has_cell_columns(store)
+    opened_version_wide = False
+    for sym in ("BTCUSDT", "ETHUSDT", "SOLUSDT"):
+        if not cell_cols and opened_version_wide:
+            continue
+        open_paper_track(store, version_id=vid, starting_capital="10000", symbol=sym, venue_id=_VENUE, store=store)
+        if not cell_cols:
+            opened_version_wide = True
+    assert len(store.rows("SELECT id FROM tracks WHERE strategy_version_id = ?", (vid,))) == 1
+
+    # POST-migration (fresh schema: per-cell UNIQUE, no version UNIQUE): one track per cell.
+    store2 = _store(tmp_path, "guard_post")
+    assert tracks_has_cell_columns(store2) is True
+    vid2 = _seed_version(store2)
+    for sym in ("BTCUSDT", "ETHUSDT", "SOLUSDT"):
+        open_paper_track(store2, version_id=vid2, starting_capital="10000", symbol=sym, venue_id=_VENUE, store=store2)
+    assert len(store2.rows("SELECT id FROM tracks WHERE strategy_version_id = ?", (vid2,))) == 3

@@ -19,7 +19,7 @@ from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
 from cosmu.knowledge.block_registry import blocks_available, find_duplicate, record_version_blocks
-from cosmu.knowledge.store import Store, Writer, utcnow
+from cosmu.knowledge.store import Store, Writer, tracks_has_cell_columns, utcnow
 from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_brut
 from cosmu.master.live_eligibility import cell_id
@@ -625,11 +625,20 @@ class FarmLoop:
         # from real marks. track_opened is keyed to the CELL (cell_id) so master/live_eligibility reads this cell's
         # OWN clock origin + proven-regime passport — never a sibling cell's. Each cell stands alone.
         track_capital = self.settings.sim_track_capital
+        # Pre-migration tracks still has UNIQUE(strategy_version_id) — a version with >1 passing cell would collide
+        # on the 2nd insert. Until the held migration lands, degrade to ONE version-wide track per version; after it,
+        # every cell funds its own (UNIQUE(version,symbol,venue)). Schema-adaptive, crash-proof on both schemas.
+        _cell_cols = tracks_has_cell_columns(self.store)
+        _opened_version_wide = False
         for _sym, cell in sc.cells.items():
             if not (cell.passed and cell.holdout_passed):
                 continue
+            if not _cell_cols and _opened_version_wide:
+                continue
             open_paper_track(b, version_id=version_id, starting_capital=track_capital,
                              symbol=cell.symbol, venue_id=cell.venue_id, store=self.store)
+            if not _cell_cols:
+                _opened_version_wide = True
             cell_proven = sorted(proven_regimes(cell.metrics.regime_returns))
             cid = cell_id(version_id, cell.symbol, cell.venue_id)
             b.append_event(
