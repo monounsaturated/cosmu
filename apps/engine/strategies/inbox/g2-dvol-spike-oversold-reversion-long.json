@@ -1,0 +1,44 @@
+{
+  "name": "DVOL panic spike x oversold reversion — buy the implied-vol shock (spot)",
+  "rationale": "CROSS-METRIC (dvol x rsi) on the OPPOSITE side of the only existing DVOL spec. dvol-calm-regime-momentum trades momentum when DVOL is LOW (calm weather). This spec trades the COMPLEMENT regime: a DVOL SPIKE is the crypto-native options market pricing a fear/stress shock, and when an implied-vol spike coincides with price OVERSOLD (RSI below a fitted floor), it marks a capitulation where realized panic has overshot — the VIX-equivalent fear gauge at an extreme is a classic swing-horizon mean-reversion trigger (the dvol prior literally says 'elevated DVOL marks stress or opportunity'). Mechanism before data: long spot when dvol crosses UP through a fitted spike level (fresh fear, not a stale high) AND rsi is oversold; exit when dvol normalizes back down (fear bled off) or barriers fire. Distinct from fear-greed-contrarian (crowd survey, not options-implied) and from liquidation-cascade-reversal (forced-liquidation print, not implied vol). Disconfirmer 1: drop rsi — if a bare dvol spike long matches the deflated Sharpe, the oversold confirmation adds nothing. Disconfirmer 2: a dvol spike often coincides with a crash still in motion; if requiring rsi oversold makes the edge WORSE (we are catching falling knives), the joint state is not the bottom. Disconfirmer 3 (PIT/cost): DVOL is daily next-day-available; net of ~20bps the bounce must clear. tier0 dvol + tier0 rsi, fresh DVOL prod data (Deribit), unproven combination — low-confidence until OOS.",
+  "catalyst": "dvol crosses up into a fear-spike WHILE price is oversold (RSI low) — implied-vol panic overshoot, bought on spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    { "feature": { "name": "dvol" }, "op": "cross_up", "threshold": { "param": "dvol_spike" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "dvol" }, "op": "lt", "threshold": { "param": "dvol_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "dvol_spike": { "kind": "float", "lo": 50.0, "hi": 66.0 },
+    "dvol_exit":  { "kind": "float", "lo": 38.0, "hi": 55.0 },
+    "rsi_lb":     { "kind": "int",   "lo": 7,    "hi": 21,  "step": 1 },
+    "rsi_floor":  { "kind": "float", "lo": 20.0, "hi": 40.0 },
+    "stop":       { "kind": "float", "lo": 0.04, "hi": 0.16 },
+    "tp":         { "kind": "float", "lo": 0.05, "hi": 0.25 },
+    "time_stop":  { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

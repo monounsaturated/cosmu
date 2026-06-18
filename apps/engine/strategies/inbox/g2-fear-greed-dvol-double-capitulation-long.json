@@ -1,0 +1,46 @@
+{
+  "name": "Double-capitulation — crowd fear x implied-vol spike confirm (long spot)",
+  "rationale": "CROSS-METRIC of two ORTHOGONAL fear gauges (fear_greed x dvol). fear_greed is a SURVEY/behavioral crowd-mood index; dvol is the OPTIONS market's PRICED implied-vol. A single fear read is noisy and famously slips into value traps (cheap-for-a-reason). Requiring BOTH to be at an extreme simultaneously — crowd sentiment at extreme fear AND options pricing a vol spike — is a meta-labeling-by-confirmation: two independent measurement systems agreeing the panic is real, which historically marks capitulation lows better than either alone. Mechanism before data: long spot when fear_greed is below a fitted extreme-fear floor AND dvol is above a fitted stress ceiling AND price has stopped freefalling (short ret guard); exit when fear_greed recovers through a neutral level. This is strictly distinct from fear-greed-contrarian-buy-extreme-fear (fear_greed + ret_Nd ONLY, no options-vol confirmation) — the dvol arm is the orthogonal second opinion that arm lacks. Disconfirmer 1: drop dvol — if fear_greed + ret guard alone matches the deflated Sharpe, the options confirmation adds nothing and this is the existing fear spec. Disconfirmer 2: the two gauges are correlated in crises; if the JOINT extreme fires so rarely that effective-N is below the gate floor, the confirmation buys robustness at the cost of tradability — the gate's min-trades will catch it. Disconfirmer 3 (PIT/cost): both daily next-day-available; net of ~20bps the bounce must clear. tier0 fear_greed + tier0 dvol, both fresh prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "extreme crowd fear (fear_greed low) CONFIRMED by an options implied-vol spike (dvol high) while price has stopped declining — a two-gauge capitulation, bought on spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "fear_floor" } },
+    { "feature": { "name": "dvol" }, "op": "gt", "threshold": { "param": "dvol_stress" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "guard_lb" } }, "op": "gt", "threshold": { "param": "guard_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "fear_greed" }, "op": "gt", "threshold": { "param": "fear_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "fear_floor":  { "kind": "float", "lo": 10.0, "hi": 30.0 },
+    "fear_exit":   { "kind": "float", "lo": 45.0, "hi": 65.0 },
+    "dvol_stress": { "kind": "float", "lo": 48.0, "hi": 64.0 },
+    "guard_lb":    { "kind": "int",   "lo": 2,    "hi": 7,   "step": 1 },
+    "guard_floor": { "kind": "float", "lo": -0.10, "hi": -0.005 },
+    "stop":        { "kind": "float", "lo": 0.05, "hi": 0.18 },
+    "tp":          { "kind": "float", "lo": 0.06, "hi": 0.30 },
+    "time_stop":   { "kind": "int",   "lo": 3,    "hi": 14,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

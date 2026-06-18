@@ -1,0 +1,44 @@
+{
+  "name": "VIX calm-regime momentum — trade crypto trend only when equity vol is quiet (long spot)",
+  "rationale": "REGIME-SWITCHING cross-market gate (vix_level x crypto momentum). Crypto carries a high beta to broad-equity risk appetite, and equity-implied volatility (VIX) is the canonical risk-regime switch: when VIX is LOW, risk-on capital flows freely and momentum's favorable-skew premium holds; when VIX SPIKES, cross-asset deleveraging turns trend-following into a crash-prone bleed. This gates a crypto momentum LONG by the EQUITY vol regime — an orthogonal, cross-market regime read that the crypto-native dvol-calm-regime-momentum spec does NOT use (DVOL is crypto options; VIX is the equity fear gauge and leads cross-asset risk-off). Mechanism before data: long spot when crypto ret is positive AND vix_level sits below a fitted calm ceiling; exit when momentum fades or VIX spikes through an exit level (regime broke). Distinct from dvol-calm-regime-momentum (crypto DVOL gate), nasdaq-risk-appetite-leadlag-momentum (NDX price-direction, not vol-regime), and vol-regime-gated-momentum (own realized vol, not implied equity vol). Disconfirmer 1: drop the VIX gate — if bare crypto momentum matches the deflated Sharpe, the equity-vol regime adds nothing. Disconfirmer 2: VIX and crypto realized vol are correlated; if substituting vol_realized for vix_level does as well, the cross-market read is redundant with the existing realized-vol gate. Disconfirmer 3 (PIT/cost): VIX is daily next-day-available (FRED); net of ~20bps the gated momentum must clear. tier0 vix_level + tier0 ret_Nd, fresh-enough prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "positive crypto momentum WHILE equity-implied vol (VIX) is in a calm regime — momentum's friendly cross-market weather",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 18
+  },
+  "entry": [
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "vix_level" }, "op": "lt", "threshold": { "param": "vix_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vix_level" }, "op": "gt", "threshold": { "param": "vix_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lb":      { "kind": "int",   "lo": 5,    "hi": 30,  "step": 1 },
+    "mom_floor":   { "kind": "float", "lo": 0.0,  "hi": 0.06 },
+    "vix_ceiling": { "kind": "float", "lo": 16.0, "hi": 24.0 },
+    "vix_exit":    { "kind": "float", "lo": 22.0, "hi": 30.0 },
+    "stop":        { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":          { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":   { "kind": "int",   "lo": 3,    "hi": 18,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

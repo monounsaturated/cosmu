@@ -1,0 +1,48 @@
+{
+  "name": "Bad-news overreaction bounce — fade an extreme-negative headline shock (long spot)",
+  "rationale": "EVENT-STUDY, the CONTRARIAN side of the news axis. llm-narrative-pressure-long rides news MOMENTUM (bullish news + positive momentum = continuation). This spec is the explicit complement: an EXTREME-NEGATIVE news_event_score (a hack/ban/crash headline) reliably triggers a panic OVERREACTION on the day of, and liquid majors mean-revert as the headline is digested and the forced selling exhausts — the classic event-study overreaction-reversal. Mechanism before data: long spot when news_event_score is below a fitted extreme-negative floor (a genuine bad-news shock, not mild negativity) AND price has already gapped down hard (a deeply-negative short-window ret — the overreaction is in) AND realized vol is not in a runaway crash (an upper vol guard so we fade a shock, not a regime collapse); exit on price recovery via RSI or barriers. Distinct from llm-narrative-pressure-long (bullish-news momentum), fear-greed-contrarian (crowd survey, not a typed news event), and liquidation-cascade-reversal (forced-liquidation print). Disconfirmer 1: drop the news arm — if buying any deep down-day matches the deflated Sharpe, the news shock adds nothing (it is just a dip-buy). Disconfirmer 2: extreme-negative news can also mark the START of a justified repricing (a real solvency event); if requiring the deep down-day makes it WORSE, we are catching falling knives, not overreactions. Disconfirmer 3 (PIT/cost): news_event_score is PIT at headline availability; net of ~20bps the bounce must clear. tier1 news_event_score + tier0 ret_Nd/vol, fresh news prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "an extreme-negative news_event_score shock with price already gapped down hard in a contained-vol regime — a bad-news overreaction faded long on spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "entry": [
+    { "feature": { "name": "news_event_score" }, "op": "lt", "threshold": { "param": "news_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "shock_lb" } }, "op": "lt", "threshold": { "param": "shock_floor" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "vol_lb" } }, "op": "lt", "threshold": { "param": "vol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "news_floor":  { "kind": "float", "lo": -0.9, "hi": -0.3 },
+    "shock_lb":    { "kind": "int",   "lo": 1,    "hi": 4,   "step": 1 },
+    "shock_floor": { "kind": "float", "lo": -0.15, "hi": -0.03 },
+    "vol_lb":      { "kind": "int",   "lo": 10,   "hi": 30,  "step": 1 },
+    "vol_ceiling": { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "rsi_lb":      { "kind": "int",   "lo": 7,    "hi": 21,  "step": 1 },
+    "rsi_exit":    { "kind": "float", "lo": 48.0, "hi": 65.0 },
+    "stop":        { "kind": "float", "lo": 0.05, "hi": 0.18 },
+    "tp":          { "kind": "float", "lo": 0.05, "hi": 0.24 },
+    "time_stop":   { "kind": "int",   "lo": 2,    "hi": 8,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

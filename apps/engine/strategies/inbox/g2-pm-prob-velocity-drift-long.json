@@ -1,0 +1,44 @@
+{
+  "name": "Polymarket prob-velocity drift — fast risk repricing leads crypto (long spot)",
+  "rationale": "EVENT-STUDY / DRIFT. pm_prob_velocity is the SPEED at which prediction-market odds on macro/risk events are repricing — the derivative of belief, which by construction leads the slow-moving spot price (beliefs update in the prediction market before they propagate into a single asset's price). A positive prob-velocity spike = the crowd is rapidly pricing IN a risk-on/bullish-macro outcome; the underlying crypto then drifts up over the following days as that belief shift gets arbitraged into price (post-information drift). Mechanism before data: long spot when pm_prob_velocity crosses UP through a fitted velocity floor (fast bullish repricing) AND crypto momentum confirms the drift has started; exit when velocity decays (repricing done) or barriers fire. Distinct from polymarket-positioning-risk-flip (pm_implied_prob LEVEL + momentum — the static odds, not their velocity). The novelty is using the VELOCITY (the event-study leading edge), not the level. Disconfirmer 1: replace pm_prob_velocity with pm_implied_prob level — if the static read matches the deflated Sharpe, velocity adds nothing and this duplicates the positioning spec. Disconfirmer 2: drop the momentum arm — if a bare velocity spike matches, it is not a confirmed drift. Disconfirmer 3 (PIT/cost): Polymarket CLOB snapshot is PIT (no lag); net of ~20bps the drift must clear. tier0 pm_prob_velocity + tier0 ret_Nd, fresh prod data (polymarket), unproven combination — low-confidence until OOS.",
+  "catalyst": "pm_prob_velocity crosses up (fast bullish risk repricing in the prediction market) WHILE crypto momentum confirms the drift — long spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    { "feature": { "name": "pm_prob_velocity" }, "op": "cross_up", "threshold": { "param": "vel_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "pm_prob_velocity" }, "op": "lt", "threshold": { "param": "vel_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vel_floor": { "kind": "float", "lo": 0.02,  "hi": 0.20 },
+    "vel_exit":  { "kind": "float", "lo": -0.05, "hi": 0.05 },
+    "mom_lb":    { "kind": "int",   "lo": 3,     "hi": 15,  "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.0,   "hi": 0.04 },
+    "stop":      { "kind": "float", "lo": 0.04,  "hi": 0.15 },
+    "tp":        { "kind": "float", "lo": 0.05,  "hi": 0.24 },
+    "time_stop": { "kind": "int",   "lo": 2,     "hi": 10,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

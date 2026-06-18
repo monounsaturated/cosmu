@@ -1,0 +1,46 @@
+{
+  "name": "Basis carry x uncrowded funding — clean term premium, long spot",
+  "rationale": "CROSS-METRIC (perp_spot_basis x funding_rate) decomposing the price of leverage into its two orthogonal pieces: BASIS is the term/carry premium the market pays to be long the perp vs spot, while FUNDING is the realized periodic crowding payment. They usually move together, but the tradeable regime is when they DIVERGE: a POSITIVE basis (term structure says longs value the leverage) coexisting with LOW funding (the crowd has NOT yet piled in) is a structurally-bid market that is not over-leveraged — the cleanest setup to harvest the carry by simply holding SPOT (no perp, no funding paid). Mechanism before data: buy spot when basis is above a fitted premium floor (carry present) AND funding sits below a fitted ceiling (uncrowded) AND a slow trend confirms; exit when basis normalizes back down (carry gone) or funding spikes (crowd arrived). This is the explicit inverse-pairing the perp-basis-discount-contrarian-long-spot (basis EXTREME LOW reversion) and funding-gated-momentum (funding ceiling on a momentum long) each cover only ONE half of. Disconfirmer 1: drop the funding ceiling — if basis-positive alone matches the deflated Sharpe, the funding orthogonality adds nothing. Disconfirmer 2: drop basis, keep funding-ceiling + trend — if that matches, this is funding-gated-momentum re-skinned and basis is redundant. Disconfirmer 3 (PIT/cost): basis and funding are tightly coupled; the JOINT divergent state must beat each alone net of ~20bps. tier0 features (perp_spot_basis, funding_rate, ret_Nd), fresh prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "perp_spot_basis above a term-premium floor (carry bid) WHILE funding is below a crowding ceiling (uncrowded) and a slow trend confirms — harvest the carry on spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 21
+  },
+  "entry": [
+    { "feature": { "name": "perp_spot_basis" }, "op": "gt", "threshold": { "param": "basis_floor" } },
+    { "feature": { "name": "funding_rate" }, "op": "lt", "threshold": { "param": "funding_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "perp_spot_basis" }, "op": "lt", "threshold": { "param": "basis_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "basis_floor":     { "kind": "float", "lo": 0.0001, "hi": 0.0009 },
+    "basis_exit":      { "kind": "float", "lo": -0.0015, "hi": 0.0002 },
+    "funding_ceiling": { "kind": "float", "lo": -0.00001, "hi": 0.0001 },
+    "trend_lb":        { "kind": "int",   "lo": 20,    "hi": 60,   "step": 1 },
+    "trend_floor":     { "kind": "float", "lo": 0.0,   "hi": 0.04 },
+    "stop":            { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":              { "kind": "float", "lo": 0.06,  "hi": 0.28 },
+    "time_stop":       { "kind": "int",   "lo": 5,     "hi": 21,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
