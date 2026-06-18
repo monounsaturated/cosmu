@@ -75,6 +75,16 @@ def test_lifecycle_vocabulary_is_canonical_and_phantom_free():
     assert ls.sql_in_list(ls.PAPER_ALIASES) == "('forward_test', 'paper')"
 
 
+def test_screener_lane_label_is_new_not_queued():
+    """Item 6: the 'lab' screener lane (authored, ready, not-yet-computed) reads 'New' (was 'Queued'), and 'draft'
+    (still being authored) is its own upstream lane. Mirrors web LIFE_LABEL/STAGE_LABEL — keep the two in sync."""
+    assert ls.SCREENER_LABEL[ls.LAB] == "New"
+    assert ls.SCREENER_LABEL[ls.DRAFT] == "Draft"
+    assert ls.SCREENER_LABEL[ls.SCREENED] == "Backtest"
+    # 'Queued' must be gone from the lane labels (the rename is complete).
+    assert "Queued" not in ls.SCREENER_LABEL.values()
+
+
 def test_spine_kills_gate_failed_version_instead_of_validating(tmp_path, monkeypatch):
     # A gate-FAILED spine demo run must leave its version TERMINAL ('killed' with a reason), never stranded at the
     # old non-canonical 'validating' (the orphan that sat 13 days). Force a FAIL verdict deterministically.

@@ -125,6 +125,53 @@ def test_version_id_filter_narrows_to_one_version(tmp_path, monkeypatch):
     assert {r["symbol"] for r in only} == {"BTCUSDT"}
 
 
+def _seed_cell_less_version(store: Store, *, name: str, status: str = "screened") -> str:
+    """An AUTHORED version with NO backtest_symbols cell (no backtest at all). Returns version_id."""
+    sid = store.insert("strategies", {"name": name, "thesis": "t", "origin": "test", "created_at": "2026-06-17T00:00:00Z"})
+    return store.insert("strategy_versions", {
+        "strategy_id": sid, "spec": {"name": name}, "generated_code": "", "code_hash": "h", "params": {},
+        "origin": "test", "status": status, "kind": "quant", "created_at": "2026-06-17T00:00:00Z",
+    })
+
+
+def test_cell_less_versions_surface_as_new_rows(tmp_path, monkeypatch):
+    """Item 6: an authored-but-UNCOMPUTED version (no backtest_symbols cell) must surface as a synthetic 'New' row
+    — symbol empty, metrics zeroed, its own status carried — so the whole authored population is visible, not just
+    versions that have cells."""
+    store = _store(tmp_path)
+    _seed_cell(store, name="HasCell", symbol="BTCUSDT", venue="binance", return_pct=0.20, verdict="robust")
+    new_vid = _seed_cell_less_version(store, name="JustAuthored", status="screened")
+    rows = _client(monkeypatch, store).get("/lab/symbols").json()["rows"]
+    # The computed cell ranks first; the cell-less version is appended as a New row.
+    assert any(r["symbol"] == "BTCUSDT" for r in rows)
+    new_rows = [r for r in rows if r["strategy_version_id"] == new_vid]
+    assert len(new_rows) == 1
+    nr = new_rows[0]
+    assert nr["symbol"] == "" and nr["venue_id"] is None        # no cell → no symbol/venue
+    assert nr["return_pct"] == 0.0 and nr["trades"] == 0          # nothing computed → zeroed, never fabricated
+    assert nr["verdict"] is None
+    assert nr["strategy_name"] == "JustAuthored"
+
+
+def test_cell_less_versions_excluded_when_symbol_filtered(tmp_path, monkeypatch):
+    """A symbol/venue/verdict filter is asking for CELLS — a not-yet-computed version (no symbol) is not added."""
+    store = _store(tmp_path)
+    _seed_cell(store, name="HasCell", symbol="BTCUSDT", venue="binance", return_pct=0.20, verdict="robust")
+    _seed_cell_less_version(store, name="JustAuthored")
+    rows = _client(monkeypatch, store).get("/lab/symbols?symbol=BTCUSDT").json()["rows"]
+    assert {r["symbol"] for r in rows} == {"BTCUSDT"}  # no empty-symbol New row leaks into a filtered view
+
+
+def test_cell_less_version_appears_after_computed_cells(tmp_path, monkeypatch):
+    """New rows are appended AFTER the outlier-ranked computed cells (they carry no return to rank by)."""
+    store = _store(tmp_path)
+    _seed_cell(store, name="HasCell", symbol="ETHUSDT", venue="binance", return_pct=0.33, verdict="robust")
+    new_vid = _seed_cell_less_version(store, name="JustAuthored")
+    rows = _client(monkeypatch, store).get("/lab/symbols").json()["rows"]
+    assert rows[0]["symbol"] == "ETHUSDT"                 # computed cell first
+    assert rows[-1]["strategy_version_id"] == new_vid     # New row last
+
+
 def test_pooled_return_is_advisory_not_an_average_of_cells(tmp_path, monkeypatch):
     """pooled_return_pct carries the PARENT backtest's pooled OOS return (advisory), distinct from the cell's own
     standalone return_pct — it is NEVER an average of the per-symbol cells."""
