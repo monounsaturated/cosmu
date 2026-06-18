@@ -1,0 +1,44 @@
+{
+  "name": "Risk-on index regime momentum — LLM macro risk gauge gates the trend (long spot)",
+  "rationale": "REGIME-SWITCHING on an LLM-as-judge macro gauge (risk_on_off x momentum). risk_on_off is a [-1,+1]-style LLM index that standardizes macro/geopolitical narrative into a single cross-asset risk-appetite score (the LLM proposes, the deterministic Gate disposes — never the money path). It is an ORTHOGONAL regime read to the price/funding/vol gates the existing momentum specs use: it reads the NARRATIVE backdrop (Fed posture, geopolitics, macro headlines) rather than market internals. The hypothesis: crypto momentum's premium is regime-conditional on the macro risk backdrop — gate the trend to fire only when the risk-on index is elevated (a supportive narrative regime). Mechanism before data: long spot when risk_on_off is above a fitted risk-on floor AND price ret is positive; exit when momentum fades or the index drops through a risk-off exit level. Distinct from reg-risk-derisk-momentum (a REGULATORY-specific index, not broad macro risk), g2-vix-calm-regime-momentum (equity-implied vol, a market-internal gauge), and g2-macro-regime-gated-reversion (FRED curve gating REVERSION, not momentum). Disconfirmer 1: drop the risk_on_off gate — if bare momentum matches the deflated Sharpe, the narrative regime adds nothing. Disconfirmer 2: the LLM index is thin (few prod points so far) and updates slowly; if it is near-constant over the sample it selects nothing, and if effective-N is below the gate floor the min-trades guard catches it. Disconfirmer 3 (PIT/cost): risk_on_off is PIT at evidence-availability; net of ~20bps the gated momentum must clear. tier1 risk_on_off + tier0 ret_Nd, thin-but-fresh prod data — low-confidence until OOS.",
+  "catalyst": "positive crypto momentum WHILE the LLM macro risk-on index is elevated (supportive narrative regime) — narrative-regime-gated trend, long spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 16
+  },
+  "entry": [
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "risk_on_off" }, "op": "gt", "threshold": { "param": "riskon_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "risk_on_off" }, "op": "lt", "threshold": { "param": "riskoff_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lb":       { "kind": "int",   "lo": 5,    "hi": 30,  "step": 1 },
+    "mom_floor":    { "kind": "float", "lo": 0.0,  "hi": 0.06 },
+    "riskon_floor": { "kind": "float", "lo": 0.3,  "hi": 0.75 },
+    "riskoff_exit": { "kind": "float", "lo": 0.0,  "hi": 0.4 },
+    "stop":         { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":           { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":    { "kind": "int",   "lo": 3,    "hi": 16,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,44 @@
+{
+  "name": "Leverage-led-not-price divergence — rich basis x stalling price (perp short)",
+  "rationale": "CROSS-METRIC DIVERGENCE (perp_spot_basis x price), SHORT — an OI/leverage-divergence-style read built on the stationary basis instead of the non-stationary OI level. The signal is a divergence: the perp_spot_basis is RICH (perp trades at a premium = leverage is bid, longs paying up for exposure) WHILE the underlying PRICE has STALLED (a short-window ret near zero or rolling over). That divergence — leverage-bid but price-not-following — means the rally is being driven by derivatives positioning rather than genuine spot demand, a hollow structure that tends to unwind DOWN when the leverage gets squeezed. This is the basis analogue of the classic OI-up-price-flat weak-rally fade, made honest by using the bounded basis fraction (not a raw OI notional level that can't be thresholded). Mechanism before data: short when perp_spot_basis is above a fitted premium ceiling AND ret over a short window is between +/- a small band (stalled, via the symmetric between op) ; stop ABOVE, take-profit BELOW; exit when basis normalizes down (leverage relieved). Distinct from perp-basis-premium-contrarian-short (basis rich + price RISING momentum — a different price condition), funding-contrarian-crash-filter (funding, not basis), and g2-funding-basis-double-crowding (requires BOTH gauges rich + rollover). The novelty is the basis-RICH x price-STALLED DIVERGENCE. Disconfirmer 1: drop the price-stall arm — if shorting any rich basis matches the deflated Sharpe, the divergence adds nothing. Disconfirmer 2: a rich basis with rising price is a healthy trend (a LONG), so the stall arm must be load-bearing; if removing it flips the edge sign, the read is just 'short rich basis'. Disconfirmer 3 (PIT/cost): perp short pays/earns funding; net of ~20bps+. tier0 perp_spot_basis + tier0 ret_Nd, fresh prod data, unproven combination — low-confidence until OOS; SHORT = perp.",
+  "catalyst": "perp_spot_basis rich (leverage bid) WHILE price has stalled (ret within a flat band) — a hollow leverage-led rally faded with a perp short",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    { "feature": { "name": "perp_spot_basis" }, "op": "gt", "threshold": { "param": "basis_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "stall_lb" } }, "op": "between", "threshold": { "param": "stall_band" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "perp_spot_basis" }, "op": "lt", "threshold": { "param": "basis_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "basis_ceiling": { "kind": "float", "lo": 0.0001, "hi": 0.001 },
+    "stall_lb":      { "kind": "int",   "lo": 3,    "hi": 10,  "step": 1 },
+    "stall_band":    { "kind": "float", "lo": 0.005, "hi": 0.03 },
+    "basis_exit":    { "kind": "float", "lo": -0.001, "hi": 0.0002 },
+    "stop":          { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":            { "kind": "float", "lo": 0.05, "hi": 0.20 },
+    "time_stop":     { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}
