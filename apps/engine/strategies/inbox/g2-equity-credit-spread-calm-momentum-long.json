@@ -1,0 +1,44 @@
+{
+  "name": "Equity momentum gated by calm credit spreads (long)",
+  "rationale": "EQUITY SEGMENT (asset_classes=[equity]) + REGIME-SWITCHING — distinct asset class for diversity and a credit-regime switch the crypto specs cannot use (credit_spread is equity-only). Credit spreads are the bond market's real-time read on default/stress risk and lead equity drawdowns: equity trend-following pays in benign-credit regimes and gets whipsawed when spreads blow out (a credit event drags equities down regardless of price momentum). This gates an EQUITY momentum long by the credit regime: long when equity ret is positive AND credit_spread is below a fitted calm ceiling (no stress); exit when momentum fades or spreads widen through an exit level (credit regime broke). Distinct from every crypto spec and from the existing equity TAA arms (DAA/VAA/sector-rotation — those are monthly allocation models, not a credit-gated momentum trigger). It judges on the deploy/gate lane like other equity specs. Disconfirmer 1: drop the credit gate — if bare equity momentum matches the deflated Sharpe, the credit regime adds nothing. Disconfirmer 2: credit_spread is slow (next-day FRED); if it is near-constant over the sample it is not selecting regimes. Disconfirmer 3 (PIT/cost): credit_spread is daily next-day-available; net of equity round-trip costs the gated momentum must clear. tier0 credit_spread + tier0 ret_Nd (equity), credit_spread has prod data — low-confidence until OOS.",
+  "catalyst": "positive equity momentum WHILE credit spreads are calm (no bond-market stress) — credit-regime-gated equity trend",
+  "universe": {
+    "venues": ["ibkr"],
+    "asset_classes": ["equity"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 21
+  },
+  "entry": [
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "credit_spread" }, "op": "lt", "threshold": { "param": "spread_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "credit_spread" }, "op": "gt", "threshold": { "param": "spread_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lb":         { "kind": "int",   "lo": 20,   "hi": 90,  "step": 1 },
+    "mom_floor":      { "kind": "float", "lo": 0.0,  "hi": 0.06 },
+    "spread_ceiling": { "kind": "float", "lo": 2.75, "hi": 3.30 },
+    "spread_exit":    { "kind": "float", "lo": 3.10, "hi": 3.60 },
+    "stop":           { "kind": "float", "lo": 0.03, "hi": 0.12 },
+    "tp":             { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":      { "kind": "int",   "lo": 5,    "hi": 21,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

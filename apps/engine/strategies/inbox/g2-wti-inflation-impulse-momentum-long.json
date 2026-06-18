@@ -1,0 +1,44 @@
+{
+  "name": "Crude inflation-impulse x crypto momentum — the inflation-hedge narrative (long spot)",
+  "rationale": "CROSS-MARKET cross-metric (wti_crude x crypto momentum). Crude oil is the cleanest real-time inflation/growth impulse: a sharp WTI surge feeds an inflation narrative under which crypto (the 'digital gold / inflation hedge' story) often catches a bid as a non-sovereign store of value. The hypothesis is conditional, not unconditional: a rising oil impulse only pays for crypto when crypto's OWN price is already confirming the narrative (momentum up). Mechanism before data: long spot when wti_crude crosses UP through a fitted level (inflation impulse, read via the cross direction since the raw level is non-stationary) AND crypto ret over a window is positive; exit when crypto momentum fades or barriers fire. Distinct from cross-market-dollar-weak-momentum (FX/dollar axis), nasdaq-risk-appetite (equity tech axis), and g2-gold-riskoff-short (gold safety axis, short) — crude is a distinct commodity/inflation axis. Disconfirmer 1: drop the WTI arm — if bare crypto momentum matches the deflated Sharpe, the inflation impulse adds nothing. Disconfirmer 2: the inflation-hedge story is fragile and regime-dependent (crypto often trades as a risk asset, not a hedge); if substituting gold for crude does as well, this is a generic 'real-asset up' read, not a crude-specific impulse. Disconfirmer 3 (PIT/cost): WTI daily next-day-available (Stooq); net of ~20bps the move must clear. tier0 wti_crude + tier0 ret_Nd, fresh prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "wti_crude crosses up (inflation/growth impulse) WHILE crypto momentum confirms the hedge narrative — long spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 18
+  },
+  "entry": [
+    { "feature": { "name": "wti_crude" }, "op": "cross_up", "threshold": { "param": "wti_level" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "wti_level": { "kind": "float", "lo": 56.0, "hi": 110.0 },
+    "mom_lb":    { "kind": "int",   "lo": 5,    "hi": 25,  "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.0,  "hi": 0.04 },
+    "mom_exit":  { "kind": "float", "lo": -0.05, "hi": 0.0 },
+    "stop":      { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":        { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop": { "kind": "int",   "lo": 3,    "hi": 18,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

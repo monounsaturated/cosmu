@@ -1,0 +1,47 @@
+{
+  "name": "Calm-DVOL trend grind — low implied vol x strong ADX trend (long spot)",
+  "rationale": "CROSS-METRIC (dvol x adx). The one existing DVOL-calm spec gates RAW MOMENTUM (ret_Nd) by low DVOL. This gates a different, complementary trend primitive: ADX trend STRENGTH. Low crypto-native implied vol (calm options regime) plus a STRONG, established directional trend (high ADX) is the 'orderly markup' regime where trend-following compounds with minimal whipsaw — the options market is pricing calm AND the price structure is cleanly trending, two orthogonal confirmations (implied-vol regime vs realized-trend-quality) of the same favorable weather. Mechanism before data: long spot when dvol is below a fitted calm ceiling AND adx is above a fitted trend-strength floor AND a short ret confirms the trend is UP (ADX is direction-agnostic, so a positive-return arm pins the long side); exit when ADX weakens or DVOL spikes (regime broke) via barriers. Distinct from dvol-calm-regime-momentum (dvol + ret_Nd, no ADX), adx-trend-follow (ADX + ret_Nd, no implied-vol regime), and theory-calm-regime-momentum (realized ATR, not implied DVOL). Disconfirmer 1: drop the dvol arm — if bare ADX-trend-following matches the deflated Sharpe, the implied-vol regime adds nothing (it duplicates the ADX spec). Disconfirmer 2: drop the ADX arm — if dvol-calm + momentum matches, it duplicates the existing dvol spec. The edge must require BOTH. Disconfirmer 3 (PIT/cost): DVOL daily next-day-available; net of ~20bps the grind must clear. tier0 dvol + tier0 adx/ret, fresh DVOL prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "low crypto implied vol (dvol calm) WHILE a strong directional trend (high ADX) is rising — an orderly markup, ridden on spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 21
+  },
+  "entry": [
+    { "feature": { "name": "dvol" }, "op": "lt", "threshold": { "param": "dvol_ceiling" } },
+    { "feature": { "name": "adx", "lookback": { "param": "adx_lb" } }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "dir_lb" } }, "op": "gt", "threshold": { "param": "dir_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx", "lookback": { "param": "adx_lb" } }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "dvol_ceiling": { "kind": "float", "lo": 40.0, "hi": 55.0 },
+    "adx_lb":       { "kind": "int",   "lo": 10,   "hi": 28,  "step": 1 },
+    "adx_floor":    { "kind": "float", "lo": 20.0, "hi": 35.0 },
+    "dir_lb":       { "kind": "int",   "lo": 3,    "hi": 14,  "step": 1 },
+    "dir_floor":    { "kind": "float", "lo": 0.0,  "hi": 0.03 },
+    "adx_exit":     { "kind": "float", "lo": 15.0, "hi": 25.0 },
+    "stop":         { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":           { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":    { "kind": "int",   "lo": 4,    "hi": 21,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
