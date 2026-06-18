@@ -605,11 +605,17 @@ class FarmLoop:
         # version row (registry probed once per cohort; absent tables → flag off → no statement runs here).
         if self._cache.get("blocks_on"):
             record_version_blocks(b, version_id, cand.spec)
+        # Record the OOS (validation) window bounds from the cells' own validation timestamps so the read layer can
+        # ANNUALIZE the per-cell return (a +6% over 3mo ≠ +6% over 2yr). Coarse YYYY-MM (the annualizer is calendar-
+        # day based); the fullest-history cell is the representative span (cells of one screen share ~the same window).
+        _oos_s, _oos_e = _oos_window_from_runs(sc.per_symbol_runs)
         bt_id = b.insert(
             "backtests",
             {
                 "strategy_version_id": version_id,
                 "kind": "screen",
+                "oos_start": _oos_s,
+                "oos_end": _oos_e,
                 "oos_return": str(metrics.oos_return),
                 "sharpe": str(metrics.sharpe),
                 "sortino": str(metrics.sortino),
@@ -888,6 +894,21 @@ class FarmLoop:
 # THE crypto screen universe — the symbols every Binance gate-lane candidate is screened against. The funder
 # reads this too (orchestrator/loop.py): a survivor paper-trades ONLY on a symbol its gate evidence covered.
 CRYPTO_SCREEN_UNIVERSE: tuple[str, ...] = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")
+
+
+def _oos_window_from_runs(runs: dict) -> tuple[str | None, str | None]:
+    """Coarse OOS (validation) window bounds (YYYY-MM) for the screen, from the cells' OWN validation bar
+    timestamps (SymbolRun.bar_ts IS the validation stream). The read layer annualizes the per-cell return over this
+    window so combos of different lengths compare apples-to-apples. Uses the fullest-history cell as the
+    representative span; (None, None) when no cell has ≥2 bars (nothing to annualize over)."""
+    best: list = []
+    for run in runs.values():
+        ts = getattr(run, "bar_ts", None) or []
+        if len(ts) > len(best):
+            best = ts
+    if len(best) < 2:
+        return None, None
+    return str(best[0])[:7], str(best[-1])[:7]
 
 
 def _binance_symbols(spec: StrategySpec, enabled_venues: set[str], enabled_classes: set[str]) -> list[str]:

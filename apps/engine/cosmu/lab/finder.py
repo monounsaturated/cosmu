@@ -752,7 +752,7 @@ class StrategyFinder:
                     },
                 )
                 r.version_id = version_id
-                bt_id = b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, r.holdout_passed, venue, r.per_symbol))
+                bt_id = b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, r.holdout_passed, venue, r.per_symbol, _oos_window_from_market(market)))
                 # PER-CELL rows = the queryable unit of truth (1 strat × 1 symbol × 1 venue × 1 result). venue_id =
                 # the venue THIS symbol was actually priced at (the real fee axis of the S×A×V triple). `verdict`
                 # carries the BRUT per-cell pass/fail: 'pass' iff this cell cleared the gate on its OWN data (the
@@ -902,7 +902,21 @@ def _round_trip_cost(metrics: BacktestMetrics, venue) -> float:  # noqa: ANN001
     return fee * 2.0 * float(metrics.num_trades)
 
 
-def _backtest_row(version_id: str, m: BacktestMetrics, deflated: float, passed: bool, holdout_ok: bool, venue, per_symbol: dict | None = None) -> dict:  # noqa: ANN001 — venue catalog row
+def _oos_window_from_market(market: dict[str, list[Bar]]) -> tuple[str | None, str | None]:
+    """Coarse OOS (validation) window bounds (YYYY-MM) from the screened bars, so the read layer can ANNUALIZE the
+    per-cell return (windows differ → totals aren't comparable). Validation is the first ~80% of bars (matches the
+    backtest split); the fullest-history cell is the representative span. (None, None) when no cell has ≥2 bars."""
+    best: list[Bar] = []
+    for bars in market.values():
+        if len(bars) > len(best):
+            best = bars
+    if len(best) < 2:
+        return None, None
+    val = best[: int(len(best) * 0.8)] or best
+    return val[0].ts.strftime("%Y-%m"), val[-1].ts.strftime("%Y-%m")
+
+
+def _backtest_row(version_id: str, m: BacktestMetrics, deflated: float, passed: bool, holdout_ok: bool, venue, per_symbol: dict | None = None, oos: tuple[str | None, str | None] = (None, None)) -> dict:  # noqa: ANN001 — venue catalog row
     # best_symbol / best_pnl_pct = the single highest OOS return across the symbols tested. DISPLAY-ONLY (the
     # pooled deflated gate still decides pass/fail — funding the best-of-N would be a multiple-testing hole).
     best_symbol = max(per_symbol, key=lambda s: per_symbol[s].get("return", float("-inf"))) if per_symbol else None
@@ -910,6 +924,8 @@ def _backtest_row(version_id: str, m: BacktestMetrics, deflated: float, passed: 
     return {
         "strategy_version_id": version_id,
         "kind": "screen",
+        "oos_start": oos[0],
+        "oos_end": oos[1],
         "oos_return": str(m.oos_return),
         "sharpe": str(m.sharpe),
         "sortino": str(m.sortino),
